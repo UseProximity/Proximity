@@ -11,6 +11,7 @@
  * or its whole domain, or says "not them":
  *   - approve: every reply held from that sender to that landlord is run again,
  *     oldest first, and posts (dated at approval time, not when it was sent).
+ *     The landlord's approval runs them after its response (see deliverHeld).
  *   - decline: every held reply from that exact address becomes 'wrong_sender'
  *     and later ones are refused without asking again.
  *
@@ -45,21 +46,26 @@ export async function heldReplies(db, { landlordId, threadId }) {
 }
 
 /*
- * Run every held reply from senders matching `pattern` to this landlord again.
- * The claim is moved held -> error only if it is still held, so two approvals
- * at once cannot post a reply twice; processInboundEmail then reclaims the
- * 'error' row and runs it with the new decision in place.
+ * Claim every held reply from senders matching `pattern` to this landlord, so
+ * deliverHeld() can run them again. The claim is moved held -> error only if
+ * it is still held, so two approvals at once cannot post a reply twice;
+ * processInboundEmail then reclaims the 'error' row and runs it with the new
+ * decision in place. Claiming is quick, so it happens before the response and
+ * the replies stop showing as waiting straight away; delivering can take a
+ * while (fetch, parse, attachment scan, notify), so callers may run it later.
+ * A claimed row whose run never happens is left as 'error' with this reason,
+ * where the admin Conversations view can re-run it.
  */
-async function rerunHeld(landlordId, pattern) {
+async function claimHeld(landlordId, pattern) {
   const { data: rows, error } = await supabase
     .from("chat_inbound_emails")
-    .select("id, s3_key, from_email")
+    .select("id, s3_key, from_email, to_address")
     .eq("user_id", landlordId)
     .eq("status", "held")
     .order("created_at", { ascending: true });
   if (error) throw error;
 
-  const results = [];
+  const claimed = [];
   for (const row of (rows ?? []).filter((r) => patternMatches(pattern, r.from_email))) {
     const { data: taken } = await supabase
       .from("chat_inbound_emails")
@@ -68,9 +74,35 @@ async function rerunHeld(landlordId, pattern) {
       .eq("status", "held")
       .select("id")
       .maybeSingle();
-    if (!taken) continue;
-    const out = await processInboundEmail({ bucket: process.env.AWS_INBOUND_MAIL_BUCKET, key: row.s3_key });
-    results.push({ id: row.id, fromEmail: row.from_email, status: out.status, reason: out.reason ?? null });
+    if (taken) claimed.push(row);
+  }
+  return claimed;
+}
+
+/*
+ * The envelope recipient the reply first matched on. A reply that reached us
+ * only through SES's envelope (a BCC, an alias, a group) has no reply address
+ * in its headers, so without this a re-run could not find its conversation.
+ */
+export function storedRecipients(row) {
+  return row?.to_address ? [row.to_address] : [];
+}
+
+/** Run claimed replies again, oldest first. One failure does not stop the rest. */
+export async function deliverHeld(rows) {
+  const results = [];
+  for (const row of rows ?? []) {
+    try {
+      const out = await processInboundEmail({
+        bucket: process.env.AWS_INBOUND_MAIL_BUCKET,
+        key: row.s3_key,
+        recipients: storedRecipients(row),
+      });
+      results.push({ id: row.id, fromEmail: row.from_email, status: out.status, reason: out.reason ?? null });
+    } catch (err) {
+      console.error("deliverHeld: re-run failed for", row.id, err);
+      results.push({ id: row.id, fromEmail: row.from_email, status: "error", reason: "re-run crashed" });
+    }
   }
   return results;
 }
@@ -81,11 +113,12 @@ async function rerunHeld(landlordId, pattern) {
  * @param {object} input
  * @param {object} input.db         Supabase client for the decision (the admin
  *                                  view may point at the other database)
- * @param {boolean} input.rerun     run held replies again (only when `db` is
- *                                  this environment's own database)
+ * @param {boolean} input.rerun     claim held replies to run again (only when
+ *                                  `db` is this environment's own database);
+ *                                  pass the returned `claimed` to deliverHeld()
  * @param {"approve"|"decline"} input.decision
  * @param {"address"|"domain"} input.scope  ignored for decline (exact address only)
- * @returns {Promise<{ ok: boolean, error?: string, pattern?: string, results?: Array }>}
+ * @returns {Promise<{ ok: boolean, error?: string, pattern?: string, claimed?: Array }>}
  */
 export async function decideSender({ db = supabase, landlordId, email, scope = "address", decision, decidedBy, via, rerun = true }) {
   const address = normalizeEmail(email);
@@ -115,10 +148,10 @@ export async function decideSender({ db = supabase, landlordId, email, scope = "
       .eq("from_email", address)
       .eq("status", "held");
     if (declineError) throw declineError;
-    return { ok: true, pattern, results: [] };
+    return { ok: true, pattern, claimed: [] };
   }
 
-  return { ok: true, pattern, results: rerun ? await rerunHeld(landlordId, pattern) : [] };
+  return { ok: true, pattern, claimed: rerun ? await claimHeld(landlordId, pattern) : [] };
 }
 
 /** Remove one entry from a landlord's list. Returns false when it is not theirs. */

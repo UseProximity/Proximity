@@ -25,7 +25,6 @@ import { normalizeReviewSource } from "@/lib/reviews/source";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
 import {
   ensureReviewerAccount,
-  markEmailVerifiedFromLink,
   normalizeClassYear,
 } from "@/lib/reviews/onboarding";
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
@@ -265,8 +264,11 @@ export async function POST(req) {
         email,
         classYear: gradYear,
         source: normalizeReviewSource(source),
+        // The invite link was opened, which is the proof email verification
+        // asks for, so ensureReviewerAccount verifies the address up front.
         inboxProven: !!invite,
         priorSetupToken,
+        req,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -277,10 +279,6 @@ export async function POST(req) {
       setupEmail = email;
       existingAccount = !!account.existingAccount;
       setupByEmail = !!account.setupByEmail;
-
-      // The invite link was opened, which is the proof email verification asks
-      // for, arriving before the review instead of after it.
-      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
     } else if (!sessionUserId) {
       // Legacy Campus Hub path: a first name and nothing else.
       if (!name?.trim()) {

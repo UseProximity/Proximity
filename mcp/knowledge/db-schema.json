@@ -2422,7 +2422,7 @@
           "apple_sub:text",
           "apple_account:bool",
           "profile_setup_token:text",
-          "profile_setup_link_hash:text",
+          "profile_setup_link_hashes:text[]",
           "profile_setup_expires_at:timestamptz",
           "apple_refresh_token:text",
           "company_name:text"
@@ -2435,7 +2435,7 @@
           "role_id": "-> roles (student | landlord | super | admin ...)",
           "email_verified/email_verification_token": "email+password signup flow; google_account / apple_account mark OAuth accounts",
           "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review or waitlist signup. SHA-256 hash of the INLINE token returned to the submitting browser, only for an account that request created; profile fields only, never verifies email or sets a password (lib/reviews/onboarding.js)",
-          "profile_setup_link_hash": "SHA-256 hash of the EMAILED setup link token, minted at send time by the review confirmation and waitlist nudge emails; the only setup token that verifies email_verified and permits a password",
+          "profile_setup_link_hashes": "SHA-256 hashes of the EMAILED setup link tokens, one appended per review confirmation or waitlist nudge email (newest 5 kept, GIN-indexed, looked up with @>), so every link from the last 7 days works; all share profile_setup_expires_at and are cleared when the profile is finished. The only setup tokens that verify email_verified and permit a password. Replaced the single-value profile_setup_link_hash (migration 202610250001)",
           "password_reset_token": "SHA-256 hash of the emailed reset token (lib/auth/tokenHash.js), never the raw value",
           "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
           "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",

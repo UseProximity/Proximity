@@ -26,6 +26,8 @@ export async function GET() {
         .from("listing_reviews")
         .select("*, reviewer:users!user_id(name, image), listings(address)")
         .eq("legitimacy", false)
+        // Dismissed reviews are soft-deleted (see DELETE below); keep them gone.
+        .is("deleted_at", null)
         .in("listing_id", listingIds);
 
       if (error) {
@@ -81,6 +83,10 @@ export async function PATCH(request) {
 
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
+    // A dismissed review stays dismissed.
+    if (review.deleted_at) {
+      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    }
 
     // Mark review as legitimate
     const { error: updateError } = await supabase
@@ -92,9 +98,6 @@ export async function PATCH(request) {
       console.error("Error updating review legitimacy:", updateError);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
-
-    // Suppress unused variable warning — review used for ownership check only here
-    void review;
 
     return NextResponse.json({});
   } catch (error) {

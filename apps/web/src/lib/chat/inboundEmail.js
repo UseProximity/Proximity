@@ -169,9 +169,11 @@ async function storeAttachments(threadId, files) {
   return stored;
 }
 
+/** Update the log row. Returns false when the update failed. */
 async function finish(id, fields) {
   const { error } = await supabase.from("chat_inbound_emails").update(fields).eq("id", id);
   if (error) console.error("inbound email: log update failed:", error);
+  return !error;
 }
 
 async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
@@ -194,7 +196,7 @@ async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
 }
 
 /** A claim this old that never finished belongs to a run that died (timeout, cold kill). */
-const STALE_CLAIM_MS = 5 * 60_000;
+export const STALE_CLAIM_MS = 5 * 60_000;
 
 /**
  * Take over an existing row for this key, if its run failed before posting
@@ -404,12 +406,20 @@ async function processOne({ bucket, key, recipients }) {
         if (!isLandlord || forwarded) {
           return notice("wrong_sender", forwarded ? "forwarded" : "from address is not this participant", threadId);
         }
-        await finish(logId, {
+        /*
+         * Only ask the landlord about a reply we actually managed to hold. If the
+         * row can't be stored as held (the schema is missing the held columns,
+         * say), the catch below marks it 'error' so it shows up and can be re-run,
+         * instead of sitting in 'processing' behind an approval email whose
+         * Approve button finds nothing.
+         */
+        const held = await finish(logId, {
           ...base,
           status: "held",
           reason: "sender not approved yet",
           thread_id: threadId,
         });
+        if (!held) throw new Error("could not store the reply as held");
         await requestSenderApproval({ logId, landlordId: userId, threadId, fromEmail, senderName, preview });
         await maybeSendNotice({ logId, fromEmail, threadId, reason: "awaiting_approval" });
         return { status: "held", reason: "sender not approved yet" };

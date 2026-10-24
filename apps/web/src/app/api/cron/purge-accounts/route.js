@@ -340,7 +340,7 @@ async function purgeUser(user) {
       password_reset_token: null,
       password_reset_expires_at: null,
       profile_setup_token: null,
-      profile_setup_link_hash: null,
+      profile_setup_link_hashes: null,
       profile_setup_expires_at: null,
       google_account: false,
       apple_account: false,

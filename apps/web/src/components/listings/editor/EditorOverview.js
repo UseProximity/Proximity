@@ -68,7 +68,9 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   // No names, no links, no "contact us at" - same rule the property PATCH applies.
-  const descriptionProblem = checkListingDescription(draft.description);
+  const descriptionProblem = checkListingDescription(draft.description, {
+    previous: listing?.description ?? null,
+  });
 
   const set = (patch) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
   const toggleIn = (key, value) =>

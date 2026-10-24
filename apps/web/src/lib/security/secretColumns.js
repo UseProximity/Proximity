@@ -20,6 +20,7 @@ const SECRET_COLUMNS = new Set([
   "email_verification_expires_at",
   "profile_setup_token",
   "profile_setup_link_hash",
+  "profile_setup_link_hashes",
   "profile_setup_expires_at",
   "apple_refresh_token",
   "token_hash",

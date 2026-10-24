@@ -5,14 +5,15 @@
  * conversation from someone who is not set up to reply for them yet (Wyatt,
  * 2026-10-24). Each shows who sent it and what it says, with Approve (that
  * address, or everyone at their company) and Not them. Approving delivers the
- * reply straight away. Underneath, a quiet line lists who is already approved,
+ * reply in the background (it can take a few seconds), and the conversation is
+ * reloaded a moment later so it shows up. Underneath, a quiet line lists who is already approved,
  * with a way to remove them.
  *
  * Shows nothing when there is nothing held and nobody approved, and for
  * students. The landlord's own email (lib/chat/replySenderRequest.js) links
  * here. See lib/chat/replySenderApproval.js for the rules.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMessages } from "@/context/MessagesContext";
 
 function fmtWhen(iso) {
@@ -68,6 +69,13 @@ export default function HeldRepliesBanner({ threadId }) {
   const [data, setData] = useState({ held: [], senders: [] });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const timers = useRef([]);
+
+  // Pending reloads belong to the conversation that started them.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, [threadId]);
 
   const load = useCallback(async () => {
     try {
@@ -99,13 +107,12 @@ export default function HeldRepliesBanner({ threadId }) {
       } else if (decision === "decline") {
         setNote({ text: `Done. Nothing from ${h.fromEmail} will be posted.` });
       } else {
-        const failedOnes = (out.results ?? []).filter((r) => r.status !== "posted");
-        setNote(
-          failedOnes.length
-            ? { error: true, text: "Approved, but a reply could not be delivered. Our team has been told and will follow up." }
-            : { text: "Approved. The reply has been delivered." }
-        );
-        loadMessages?.(threadId)?.catch?.(() => {});
+        const many = (out.delivering ?? 0) > 1;
+        setNote({ text: many ? "Approved. The replies are being delivered." : "Approved. The reply is being delivered." });
+        // Delivery runs after the response; reload once it has had time to land.
+        for (const ms of [4000, 12000]) {
+          timers.current.push(setTimeout(() => loadMessages?.(threadId)?.catch?.(() => {}), ms));
+        }
       }
     } catch {
       setNote({ error: true, text: "Something went wrong. Please try again." });

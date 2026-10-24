@@ -45,3 +45,23 @@ export async function imageUrlInUse(url, { excludeImageId = null } = {}) {
   if (photoErr || planErr) return true;
   return (photoCount ?? 0) + (planCount ?? 0) > 0;
 }
+
+/**
+ * imageUrlInUse for a batch: whether ANY of `urls` is already a photo row or a
+ * floor plan. One query per table instead of two per URL. Fails safe the same
+ * way (an error counts as in use).
+ */
+export async function imageUrlsInUse(urls) {
+  const unique = [...new Set(urls)];
+  if (unique.length === 0) return false;
+  const [{ count: photoCount, error: photoErr }, { count: planCount, error: planErr }] =
+    await Promise.all([
+      supabase.from("listing_images").select("id", { count: "exact", head: true }).in("url", unique),
+      supabase
+        .from("listing_units")
+        .select("id", { count: "exact", head: true })
+        .in("floor_plan_image_url", unique),
+    ]);
+  if (photoErr || planErr) return true;
+  return (photoCount ?? 0) + (planCount ?? 0) > 0;
+}

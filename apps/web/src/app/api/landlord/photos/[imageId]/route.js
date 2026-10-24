@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { r2, getBucket, getPublicBaseUrl } from "@/lib/r2";
 import { canDeletePhoto } from "@/lib/listings/ownership";
 import { imageUrlInUse } from "@/lib/listings/imageRefs";
+import { hasDbRole } from "@/lib/userRole";
 
 /*
  * Remove one photo.
@@ -41,9 +42,11 @@ export async function DELETE(req, { params }) {
   }
 
   const { imageId } = await params;
-  // Only staff may reach across to the other environment's bucket.
+  // Only staff may reach across to the other environment's bucket. Checked
+  // against the DB, not the token role, which can be stale after a demotion.
+  const requestedDb = new URL(req.url).searchParams.get("db") || null;
   const db =
-    session.user.role === "super" ? new URL(req.url).searchParams.get("db") || null : null;
+    requestedDb && (await hasDbRole(session.user.id, ["super"])) ? requestedDb : null;
 
   const check = await canDeletePhoto(session.user.id, imageId);
   if (!check.ok) {

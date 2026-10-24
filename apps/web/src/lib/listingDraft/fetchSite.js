@@ -7,7 +7,7 @@
  * hop, and bodies are size-capped. The same check runs again inside the socket's
  * own DNS lookup (SAFE_AGENT), so the address actually connected to is the one
  * that was checked: a domain answering a public IP to the first lookup and
- * 127.0.0.1 to the second (DNS rebinding) gets nowhere. No JS rendering — we read what the server
+ * 127.0.0.1 to the second (DNS rebinding) gets nowhere. No JS rendering. We read what the server
  * sends, which Phase 0 showed is enough for most local landlord sites.
  */
 import dns from "node:dns/promises";
@@ -279,9 +279,12 @@ function decodeEntities(s) {
  * from every opener that had no closer, so a page of "<!--" repeated half a
  * million times cost ~10^11 steps. Here an unclosed block drops the rest of the
  * page (as a browser would hide it) and the scan never goes backwards.
+ * The closer is found with a case-insensitive regex over the original string,
+ * not indexOf on a lowercased copy: lowercasing can change the length (U+0130
+ * becomes two code units), which would shift every offset after it.
  */
 function stripBlocks(html, openRe, closerFor) {
-  const lower = html.toLowerCase();
+  const closerRes = new Map();
   let out = "";
   let pos = 0;
   openRe.lastIndex = 0;
@@ -289,9 +292,15 @@ function stripBlocks(html, openRe, closerFor) {
   while ((m = openRe.exec(html))) {
     out += html.slice(pos, m.index) + " ";
     const closer = closerFor(m);
-    const end = lower.indexOf(closer, m.index + m[0].length);
-    if (end === -1) return out;
-    pos = end + closer.length;
+    let closerRe = closerRes.get(closer);
+    if (!closerRe) {
+      closerRe = new RegExp(closer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      closerRes.set(closer, closerRe);
+    }
+    closerRe.lastIndex = m.index + m[0].length;
+    const hit = closerRe.exec(html);
+    if (!hit) return out;
+    pos = hit.index + hit[0].length;
     // A closing tag ("</script") still has its own ">" to step over.
     if (!closer.endsWith(">")) {
       const gt = html.indexOf(">", pos);
@@ -302,14 +311,57 @@ function stripBlocks(html, openRe, closerFor) {
   return out + html.slice(pos);
 }
 
+const LINE_BREAK_TAG = /^<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b/i;
+
+/*
+ * Replace every tag with a space (or a newline for line-breaking ones) in one
+ * forward pass. A "<" only opens a tag when a letter, "/", "!" or "?" follows,
+ * so "rent < $900" stays text. Inside a tag, a quote that follows "=" opens an
+ * attribute value and a ">" inside it doesn't end the tag. A quote with no
+ * partner later in the page is treated as a plain character, which keeps the
+ * scan forward-only (and so linear) with no cap on tag length: a data: URI or
+ * a page-builder JSON attribute can run to megabytes. A tag left open at the
+ * end of the page drops the rest, as a browser would.
+ */
+function stripTags(s) {
+  const lastQuote = { '"': s.lastIndexOf('"'), "'": s.lastIndexOf("'") };
+  let out = "";
+  let pos = 0;
+  let lt = s.indexOf("<");
+  while (lt !== -1) {
+    if (!/[a-z/!?]/i.test(s.charAt(lt + 1))) {
+      lt = s.indexOf("<", lt + 1);
+      continue;
+    }
+    let j = lt + 1;
+    let afterEquals = false;
+    while (j < s.length) {
+      const ch = s[j];
+      if (ch === ">") break;
+      if ((ch === '"' || ch === "'") && afterEquals && j < lastQuote[ch]) {
+        j = s.indexOf(ch, j + 1) + 1;
+        afterEquals = false;
+        continue;
+      }
+      if (ch === "=") afterEquals = true;
+      else if (!/\s/.test(ch)) afterEquals = false;
+      j++;
+    }
+    out += s.slice(pos, lt);
+    if (j >= s.length) return out + " ";
+    out += LINE_BREAK_TAG.test(s.slice(lt, Math.min(j + 1, lt + 8))) ? "\n" : " ";
+    pos = j + 1;
+    lt = s.indexOf("<", pos);
+  }
+  return out + s.slice(pos);
+}
+
 // Visible text only: scripts, styles, svg, comments and tags stripped. Every
-// repeat is bounded or forward-only, so the cost is linear in the page size.
+// scan is forward-only, so the cost is linear in the page size.
 export function htmlToText(html) {
   let s = stripBlocks(html, /<!--/g, () => "-->");
-  s = stripBlocks(s, /<(script|style|noscript|svg|iframe)\b[^>]{0,2000}>/gi, (m) => `</${m[1].toLowerCase()}`);
-  s = s
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]{0,2000}>/gi, "\n")
-    .replace(/<[^<>]{1,4000}>/g, " ");
+  s = stripBlocks(s, /<(script|style|noscript|svg|iframe)\b/gi, (m) => `</${m[1].toLowerCase()}`);
+  s = stripTags(s);
   s = decodeEntities(s);
   return s.replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
 }

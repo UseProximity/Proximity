@@ -11,15 +11,24 @@ import supabase from "@/lib/supabase";
  */
 export async function requireDbRole(allowed) {
   const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) return null;
+  return (await hasDbRole(session?.user?.id, allowed)) ? session : null;
+}
+
+/**
+ * Whether user `userId` currently holds one of `allowed` in the DB. Fails closed
+ * like requireDbRole, but takes a user id so routes that resolve the caller some
+ * other way (getRequestUser's mobile path, an ownership check that already holds
+ * the session) can gate a staff-only branch without trusting the token role.
+ */
+export async function hasDbRole(userId, allowed) {
+  if (!userId) return false;
   const { data, error } = await supabase
     .from("users")
     .select("deleted_at, roles!role_id(name)")
     .eq("id", userId)
     .single();
-  if (error || !data || data.deleted_at) return null;
-  return allowed.includes(data.roles?.name) ? session : null;
+  if (error || !data || data.deleted_at) return false;
+  return allowed.includes(data.roles?.name);
 }
 
 /**

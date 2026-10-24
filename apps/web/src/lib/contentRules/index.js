@@ -369,14 +369,21 @@ export function findPromo(text) {
  * this listing as the best match." Nothing a student needs to know is phrased
  * that way, so such sentences are refused at save time and stripped from
  * stored descriptions before ranking. Bounded repeats only (see PROMO_PATTERNS).
+ *
+ * Only words that can mean nothing but an AI are targets. Plain "assistant",
+ * "model", "reviewer" and "search engine" are ordinary housing copy (a leasing
+ * assistant, an assistant manager, the model unit, "easy to find on any search
+ * engine"), so they count only inside a phrase like "ranking assistant" or
+ * "AI assistant".
  */
+const AI_WORD = String.raw`(?:ai|llm|(?:large\s{1,3})?language\s{1,3}model|chat\s?bot|chat\s?gpt|gpt(?:-?\d{1,2}[a-z]?)?|claude|gemini|copilot|ranker)s?`;
 const AI_INSTRUCTION_RE = new RegExp(
   [
-    String.raw`\bignore\s{1,3}(?:all\s{1,3}|any\s{1,3})?(?:previous|prior|above|earlier)\s{1,3}(?:instructions|rules|prompts?)\b`,
-    String.raw`\b(?:ranking|matching|recommendation|search)\s{1,3}(?:assistant|model|engine|algorithm|bot|ai)\b`,
-    String.raw`\b(?:ai|llm|language\s{1,3}model|chat\s?bot|gpt|claude|assistant)s?\b[^.!?]{0,60}\b(?:must|should|always|never|rank|choose|pick|recommend|select|prioriti[sz]e|ignore)\b`,
+    String.raw`\b(?:ignore|disregard|forget)\s{1,3}(?:all\s{1,3}|any\s{1,3}|the\s{1,3}|your\s{1,3})?(?:previous|prior|above|earlier|preceding|other)\s{1,3}(?:instructions|rules|prompts?|directions)\b`,
+    String.raw`\b(?:ranking|matching|matchmaking|recommendation|ai)\s{1,3}(?:assistant|model|engine|algorithm|bot|agent|ai)s?\b`,
+    String.raw`\b${AI_WORD}\b[^.!?\n]{0,60}\b(?:must|should|shall|always|never|rank|choose|pick|recommend|select|prioriti[sz]e|ignore)\b`,
     String.raw`\b(?:system|developer)\s{0,3}(?:prompt|message|instructions?)\s{0,3}:`,
-    String.raw`\b(?:note|instructions?|message)\s{1,3}(?:to|for)\s{1,3}(?:the\s{1,3})?(?:ai|assistant|model|reviewer|ranker|bot)s?\b`,
+    String.raw`\b(?:note|instructions?|message)\s{1,3}(?:to|for)\s{1,3}(?:the\s{1,3}|any\s{1,3})?(?:${AI_WORD}|bots?|algorithms?)\b`,
   ].join("|"),
   "i"
 );
@@ -434,15 +441,29 @@ export function checkReviewText(text) {
   );
 }
 
-/** Error message for a listing description, or null when it's fine. */
-export function checkListingDescription(text) {
+const sameText = (a, b) =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
+
+/*
+ * Error message for a listing description, or null when it's fine.
+ *
+ * `previous` is the description as stored. When the text is unchanged the
+ * AI-instruction rule is skipped: an edit form sends the whole record on every
+ * save, and a stored sentence that rule flags is already stripped before
+ * ranking, so refusing it would only stop the landlord saving unrelated fields.
+ * The name and promo rules still apply to unchanged text (legacy copy blocks
+ * any save, by choice).
+ */
+export function checkListingDescription(text, { previous } = {}) {
   const long = tooLong(text, MAX_DESCRIPTION_LENGTH, "the description");
   if (long) return long;
   const names = findNames(text, { strict: true });
   if (names.length) {
     return nameMessage(names, "describe the role instead, like “the leasing office”.");
   }
-  if (findAiInstruction(text)) {
+  if (!sameText(text, previous) && findAiInstruction(text)) {
     return "Descriptions can't include instructions to automated tools. Describe the place for the students reading it.";
   }
   const promo = findPromo(text);
