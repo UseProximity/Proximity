@@ -4,8 +4,8 @@ export const maxDuration = 120;
 import { requireDbRole } from "@/lib/userRole";
 import { isProdData } from "@/lib/appEnv";
 import { getSupabaseClient } from "@/lib/supabase";
-import { processInboundEmail } from "@/lib/chat/inboundEmail";
-import { decideSender, removeSender } from "@/lib/chat/replySenderApproval";
+import { processInboundEmail, STALE_CLAIM_MS } from "@/lib/chat/inboundEmail";
+import { decideSender, deliverHeld, removeSender, storedRecipients } from "@/lib/chat/replySenderApproval";
 
 /*
  * Admin control over emailed replies that were not posted (Wyatt, 2026-10-24),
@@ -18,7 +18,9 @@ import { decideSender, removeSender } from "@/lib/chat/replySenderApproval";
  *        that has since been fixed, say).
  *   POST { inboundId, action: "retry" }
  *        run one refused reply through today's rules again, with no decision.
- *        A reply from someone new is then held and the landlord is asked.
+ *        A reply from someone new is then held and the landlord is asked. A
+ *        reply stuck in 'processing' (its run died) can be re-run once the
+ *        claim is older than STALE_CLAIM_MS.
  *   DELETE { landlordId, id }
  *        remove an entry from a landlord's list.
  *
@@ -40,20 +42,37 @@ function getDbTarget(req) {
 // The role is read from the database, not the session, like every admin route.
 const requireAdmin = () => requireDbRole(["super", "admin"]);
 
-// Only refused replies are re-run. 'posted' is done, 'processing' is in flight.
+// Only refused replies are re-run. 'posted' is done, and 'processing' is in
+// flight unless its claim is stale (see canRerunRow).
 const RERUNNABLE = new Set(["unauthenticated", "wrong_sender", "held", "unknown_address", "empty", "rejected", "error", "spam", "auto_reply"]);
+
+// A claim older than STALE_CLAIM_MS that never posted belongs to a run that died
+// (timeout, cold kill). created_at is the claim time.
+function isStaleClaim(row) {
+  return row.status === "processing" && !row.chat_message_id && Date.now() - Date.parse(row.created_at) > STALE_CLAIM_MS;
+}
+
+function canRerunRow(row) {
+  return RERUNNABLE.has(row.status) || isStaleClaim(row);
+}
 
 /** Move one row to 'error' (if it is still in the state read) and run it again. */
 async function rerunOne(db, row) {
-  const { data: taken } = await db
+  let claim = db
     .from("chat_inbound_emails")
     .update({ status: "error", reason: "re-run by admin" })
     .eq("id", row.id)
     .eq("status", row.status)
-    .select("id")
-    .maybeSingle();
+    .is("chat_message_id", null);
+  // A stale claim must still be the one read, not a fresh run that took it over.
+  if (row.status === "processing") claim = claim.eq("created_at", row.created_at);
+  const { data: taken } = await claim.select("id").maybeSingle();
   if (!taken) return { id: row.id, status: "skipped", reason: "changed while you were looking" };
-  const out = await processInboundEmail({ bucket: process.env.AWS_INBOUND_MAIL_BUCKET, key: row.s3_key });
+  const out = await processInboundEmail({
+    bucket: process.env.AWS_INBOUND_MAIL_BUCKET,
+    key: row.s3_key,
+    recipients: storedRecipients(row),
+  });
   return { id: row.id, fromEmail: row.from_email, status: out.status, reason: out.reason ?? null };
 }
 
@@ -73,17 +92,20 @@ export async function POST(req) {
 
   const target = getDbTarget(req);
   const db = getSupabaseClient(target);
+  // True when the switch points at this deployment's own database. Re-running
+  // and recording who decided both depend on it: decided_by references users
+  // in the target database, where this session's id may not exist.
   const canRerun = !target || target === (isProdData() ? "prod" : "dev");
 
   try {
     const { data: row, error } = await db
       .from("chat_inbound_emails")
-      .select("id, s3_key, from_email, status, user_id, thread_id, chat_threads:thread_id(landlord_id)")
+      .select("id, s3_key, from_email, to_address, status, created_at, chat_message_id, user_id, thread_id, chat_threads:thread_id(landlord_id)")
       .eq("id", inboundId)
       .maybeSingle();
     if (error) throw error;
     if (!row) return Response.json({ error: "Not found" }, { status: 404 });
-    if (!RERUNNABLE.has(row.status)) return Response.json({ error: `This reply is ${row.status}` }, { status: 409 });
+    if (!canRerunRow(row)) return Response.json({ error: `This reply is ${row.status}` }, { status: 409 });
 
     if (action === "retry") {
       if (!canRerun) return Response.json({ error: "Switch the dashboard to this site's own database to re-run replies" }, { status: 409 });
@@ -103,14 +125,15 @@ export async function POST(req) {
       email: row.from_email,
       scope,
       decision: action,
-      decidedBy: session.user.id ?? null,
+      // On the other database the decision is still marked decided_via 'admin'.
+      decidedBy: canRerun ? session.user.id ?? null : null,
       via: "admin",
       rerun: canRerun,
     });
     if (!out.ok) return Response.json({ error: out.error }, { status: 400 });
 
     // Approving also retries this reply when it was refused for another reason.
-    const results = [...out.results];
+    const results = await deliverHeld(out.claimed);
     if (action === "approve" && canRerun && row.status !== "held") results.push(await rerunOne(db, row));
 
     return Response.json({

@@ -8,18 +8,24 @@
  *         student side: only the landlord decides who speaks for them.
  *   POST  { heldId, decision: "approve" | "decline", scope: "address" | "domain" }
  *         decides on the sender of one held reply. Approving delivers every
- *         reply held from them; the response lists what happened to each.
+ *         reply held from them after the response, so it returns at once with
+ *         { ok, pattern, delivering }: how many replies are on their way. Each
+ *         is posted to its conversation as it lands, and one that cannot be
+ *         is reported to the team as before.
  *
  * Only the thread's landlord may decide, and only about a reply held in this
  * conversation, so the request can never name an arbitrary address.
  *
  * @auth user
  */
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
-import { decideSender, heldReplies } from "@/lib/chat/replySenderApproval";
+import { decideSender, deliverHeld, heldReplies } from "@/lib/chat/replySenderApproval";
 import { listReplySenders } from "@/lib/chat/replySenders";
+
+// Room for delivering several held replies after the response.
+export const maxDuration = 120;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -104,7 +110,14 @@ export async function POST(req, { params }) {
       via: "landlord",
     });
     if (!out.ok) return NextResponse.json({ error: out.error }, { status: 400 });
-    return NextResponse.json(out);
+
+    // The replies are already claimed (no longer 'held'), so a second click or
+    // a reload cannot run them twice; delivering them can take a while.
+    const claimed = out.claimed ?? [];
+    if (claimed.length) {
+      after(() => deliverHeld(claimed).catch((err) => console.error("reply-senders: delivering held replies failed:", err)));
+    }
+    return NextResponse.json({ ok: true, pattern: out.pattern, delivering: claimed.length });
   } catch (error) {
     console.error("POST /api/chat/threads/[threadId]/reply-senders failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { STALE_CLAIM_MS } from "@/lib/chat/inboundEmail";
 import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { domainApprovable } from "@/lib/chat/replySenders";
@@ -93,9 +94,9 @@ export async function GET(req, { params }) {
     const [{ data: inbound, error: inError }, { data: senders, error: sendersError }] = await Promise.all([
       supabase
         .from("chat_inbound_emails")
-        .select("id, from_email, sender_name, status, reason, body_preview, created_at, approval_requested_at")
+        .select("id, from_email, sender_name, status, reason, body_preview, created_at, approval_requested_at, chat_message_id")
         .eq("thread_id", threadId)
-        .not("status", "in", "(posted,processing)")
+        .neq("status", "posted")
         .order("created_at", { ascending: true }),
       thread.landlord_id
         ? supabase
@@ -187,7 +188,12 @@ export async function GET(req, { params }) {
         flags: eventsByMessage.get(m.id) ?? [],
       })),
       blockedAttempts,
-      refusedReplies: (inbound ?? []).map((r) => ({
+      refusedReplies: (inbound ?? [])
+        // A reply still being processed is normal; one stuck in 'processing'
+        // past the stale window belongs to a run that died, and is shown so it
+        // can be re-run.
+        .filter((r) => r.status !== "processing" || (!r.chat_message_id && Date.now() - Date.parse(r.created_at) > STALE_CLAIM_MS))
+        .map((r) => ({
         id: r.id,
         fromEmail: r.from_email,
         senderName: r.sender_name,

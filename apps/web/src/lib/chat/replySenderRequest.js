@@ -16,7 +16,7 @@ const first = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
  */
 export async function requestSenderApproval({ logId, landlordId, threadId, fromEmail, senderName, preview }) {
   try {
-    const { count } = await supabase
+    const { count, error: countError } = await supabase
       .from("chat_inbound_emails")
       .select("id", { head: true, count: "exact" })
       .eq("user_id", landlordId)
@@ -24,6 +24,12 @@ export async function requestSenderApproval({ logId, landlordId, threadId, fromE
       .eq("status", "held")
       .not("approval_requested_at", "is", null)
       .neq("id", logId);
+    // Without the count we can't tell whether they were already asked, and a
+    // duplicate approval email is worse than a missing one the admin view shows.
+    if (countError) {
+      console.error("reply sender approval: lookup failed:", countError);
+      return "lookup_failed";
+    }
     if (count > 0) return "already_asked";
 
     const [{ data: landlord }, { data: thread }] = await Promise.all([

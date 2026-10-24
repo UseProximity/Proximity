@@ -28,6 +28,7 @@ const STATUS_LABELS = {
   error: { label: "Processing failed", color: "red" },
   spam: { label: "Marked as spam", color: "gray" },
   auto_reply: { label: "Automatic reply", color: "gray" },
+  processing: { label: "Stuck while processing", color: "red" },
 };
 
 function fmtWhen(v) {
