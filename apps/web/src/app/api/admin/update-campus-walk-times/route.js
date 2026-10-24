@@ -1,13 +1,14 @@
+// @auth super
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { fetchWalkMinutes, haversineKm } from "@/utils/walkTimes";
 import { WASHU_PLACES, SHUTTLE_STOPS } from "@/utils/washuPlaces";
 
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session || session.user.role !== "super") {
+    const session = await requireDbRole(["super"]);
+    if (!session) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -1,7 +1,9 @@
+// @auth super
+// @auth GET admin
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
 import { getSupabaseClient } from "@/lib/supabase";
+import { requireDbRole } from "@/lib/userRole";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 
@@ -71,17 +73,8 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
-async function requireSuper() {
-  const session = await auth();
-  if (!session || session.user.role !== "super") return null;
-  return session;
-}
-
-async function requireSuperOrAdmin() {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) return null;
-  return session;
-}
+const requireSuper = () => requireDbRole(["super"]);
+const requireSuperOrAdmin = () => requireDbRole(["super", "admin"]);
 
 export async function GET(req, { params }) {
   const session = await requireSuperOrAdmin();

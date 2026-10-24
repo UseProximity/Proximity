@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-22T23:50:32.153Z",
+  "_generated": "2026-10-23T22:35:38.034Z",
   "count": 137,
   "utils": [
     {
@@ -473,7 +473,7 @@
     },
     {
       "file": "src/lib/userRole.js",
-      "description": "Resolve a user's authoritative role straight from the database."
+      "description": "Guard for privileged routes: returns the session only when the caller's role"
     },
     {
       "file": "src/lib/users/dashboardUser.js",

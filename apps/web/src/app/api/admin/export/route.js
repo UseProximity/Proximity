@@ -1,6 +1,7 @@
+// @auth admin
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 
@@ -10,8 +11,8 @@ function getDbTarget(req) {
 }
 
 async function requireSuperOrAdmin() {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) return null;
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) return null;
   return session;
 }
 
