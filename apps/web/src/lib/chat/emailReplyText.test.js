@@ -20,6 +20,16 @@ test("a reply that is only a phone number is the message, not a signature", () =
   assert.equal(extractReplyText({ text: `(314) 555-0123\n${QUOTE}` }), "(314) 555-0123");
 });
 
+test("a phone number under a lead-in or sign-off is the message, not a signature", () => {
+  assert.equal(extractReplyText({ text: `My number is:\n(314) 555-0123\n${QUOTE}` }), "My number is:\n(314) 555-0123");
+  assert.equal(extractReplyText({ text: `Thanks,\n3145550123\n${QUOTE}` }), "Thanks,\n3145550123");
+  assert.equal(extractReplyText({ text: `Text me here\n\nCell: 314-555-0123\n${QUOTE}` }), "Text me here\n\nCell: 314-555-0123");
+  assert.equal(
+    extractReplyText({ text: `Here you go:\nJessica Nelson\n(314) 555-0123\n${QUOTE}`, senderName: "Jessica Nelson" }),
+    "Here you go:\nJessica Nelson\n(314) 555-0123",
+  );
+});
+
 test("a signature under a real message is still removed", () => {
   const text = `Sounds good, see you at 3.\n\nJessica Nelson\nLeasing Manager\n(314) 555-0123\n${QUOTE}`;
   assert.equal(extractReplyText({ text, senderName: "Jessica Nelson" }), "Sounds good, see you at 3.");

@@ -11,7 +11,8 @@
  *      name, company, job title, phone, email, website or street address.
  *      If that trailing block is the whole reply (a student answering "what's
  *      your number?" with just the number), it is the message, so it stays
- *      (Wyatt, 2026-10-24).
+ *      (Wyatt, 2026-10-24). So does a block that is only phone numbers, or
+ *      that follows "My number is:".
  *   3. A dangling sign-off left at the end ("Best,", "Regards,"). A sign-off that
  *      is a sentence ("Thanks!") stays, because it is part of the message.
  *
@@ -111,6 +112,26 @@ function isSignatureLine(line, names) {
   );
 }
 
+// "Cell: 314-555-0123" as well as the bare number.
+function isPhoneOnly(line) {
+  return PHONE_LINE.test(line.replace(/^\s*(p|ph|phone|t|tel|m|mobile|cell|c)\s*[:.|]\s*/i, ""));
+}
+
+/*
+ * A trailing "signature" that is really the answer to "what's your number?":
+ * nothing in it but phone numbers (a real signature also carries a name, title
+ * or email), or it follows a line ending in a colon ("My number is:"). Kept so
+ * the number reaches moderation, which posts it with a guidelines notice rather
+ * than it vanishing as a signature (Wyatt, 2026-10-24).
+ */
+function isAnsweredNumber(kept, removed) {
+  const filled = removed.filter((l) => l.trim());
+  if (!filled.some(isPhoneOnly)) return false;
+  if (filled.every(isPhoneOnly)) return true;
+  const lead = kept.filter((l) => l.trim()).at(-1) ?? "";
+  return /:\s*$/.test(lead);
+}
+
 /** Rough text from an HTML-only email: quotes dropped, blocks become lines. */
 export function htmlToPlainText(html) {
   return String(html ?? "")
@@ -176,7 +197,9 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const beforeSignature = lines;
   lines = lines.slice();
   while (lines.length > 0 && isSignatureLine(lines[lines.length - 1], names)) lines.pop();
-  if (!lines.some((l) => l.trim())) lines = beforeSignature;
+  if (!lines.some((l) => l.trim()) || isAnsweredNumber(lines, beforeSignature.slice(lines.length))) {
+    lines = beforeSignature;
+  }
 
   // 3. a sign-off with nothing after it
   while (lines.length > 0 && (SIGN_OFF.test(lines[lines.length - 1]) || !lines[lines.length - 1].trim())) {
