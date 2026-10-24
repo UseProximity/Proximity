@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T17:44:21.240Z",
-  "count": 151,
+  "_generated": "2026-10-24T18:37:19.684Z",
+  "count": 152,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -86,6 +86,10 @@
     {
       "file": "src/lib/auth/loginThrottle.test.js",
       "description": "Run with: npm test (from apps/web). Uses Node's built-in test runner, so there"
+    },
+    {
+      "file": "src/lib/auth/passwordReset.js",
+      "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
     },
     {
       "file": "src/lib/auth/roles.js",
