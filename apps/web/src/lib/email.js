@@ -1039,3 +1039,19 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
       </div>`,
   });
 }
+
+/* The importer hit a site-wide cap: every import is paused until the window passes. */
+export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) {
+  await sendMailSafe(transporter, {
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website imports paused: ${kind} cap reached`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website imports paused</h2>
+        <p>The site-wide cap on ${escSync(kind)} reads was reached: ${Number(used)} of ${Number(limit)} in the last ${Number(hours)} hours.</p>
+        <p style="color:#444">Landlords are told to try again later until the window passes. If this is real demand, raise the cap (IMPORT_GLOBAL_* settings). If it is not, check listing_import_usage for the accounts behind it.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing imports on Proximity." })}
+      </div>`,
+  });
+}

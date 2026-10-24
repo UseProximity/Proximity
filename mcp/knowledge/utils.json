@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T19:21:01.992Z",
+  "_generated": "2026-10-24T19:55:32.684Z",
   "count": 160,
   "utils": [
     {
@@ -256,10 +256,6 @@
       "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
     },
     {
-      "file": "src/lib/listingDraft/rateLimit.js",
-      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
-    },
-    {
       "file": "src/lib/listingDraft/sightmap.js",
       "description": "SightMap inventory reader."
     },
@@ -482,6 +478,10 @@
     {
       "file": "src/lib/sourceImport/jobs.js",
       "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/limits.js",
+      "description": "Spending caps for the URL importer."
     },
     {
       "file": "src/lib/sourceImport/model.js",

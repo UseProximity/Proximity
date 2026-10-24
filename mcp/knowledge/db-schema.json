@@ -2470,6 +2470,19 @@
           "fetched_at:timestamptz"
         ],
         "notes": "pk key ('smart:'|'waited:<ms>:'|'render:<raw>:<ms>:' + url); index on fetched_at; RLS enabled, no policies. Migration 202610240001 (dev applied, prod pending)."
+      },
+      {
+        "table": "listing_import_usage",
+        "status": "unreleased",
+        "description": "URL importer spend per account: one row per picker read ('picker') and per batch or retry of buildings ('building', units = buildings). lib/sourceImport/limits.js sums it against per-account and site-wide caps before any paid read. Service role only.",
+        "columns": [
+          "id:int8",
+          "user_id:uuid",
+          "kind:text",
+          "units:int4",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk user_id->users.id (cascade); check kind in (picker, building), units > 0; indexes (user_id, kind, created_at), (kind, created_at); RLS enabled, no policies. Migration 202610240002 (dev applied, prod pending)."
       }
     ],
     "functions": [

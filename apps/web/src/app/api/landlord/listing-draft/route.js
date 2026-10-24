@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { discoverSite } from "@/lib/sourceImport/read";
 import { markAlreadyListed } from "@/lib/sourceImport/alreadyListed";
-import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
+import { spendImport } from "@/lib/sourceImport/limits";
 
 /*
  * The picker's call: what is at this URL?
@@ -43,9 +43,9 @@ export async function POST(req) {
     const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
     if (!rawUrl) return NextResponse.json({ error: "Paste a website address first." }, { status: 400 });
 
-    if (listingDraftRateLimited(session.user.id)) {
-      return NextResponse.json({ error: "You've used all your website imports for now. Try again in an hour." }, { status: 429 });
-    }
+    // Counted against the account's and the site's caps before anything paid runs.
+    const spend = await spendImport({ userId: session.user.id, kind: "picker", isSuper: session.user.role === "super" });
+    if (!spend.ok) return NextResponse.json({ error: spend.error }, { status: spend.status });
 
     const found = await discoverSite({ url: rawUrl, skipPmsSteer: body.skipPmsSteer === true });
 

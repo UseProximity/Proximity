@@ -5,6 +5,7 @@ import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireImporter } from "../../_auth";
 import { runPendingJobs } from "@/lib/sourceImport/jobs";
+import { spendImport } from "@/lib/sourceImport/limits";
 
 async function ownJob(jobId, userId) {
   const { data } = await supabase.from("listing_import_jobs").select("id, status, batch_id, listing_id").eq("id", jobId).eq("user_id", userId).maybeSingle();
@@ -21,6 +22,9 @@ export async function POST(req, { params }) {
   if (!["failed", "cancelled", "done"].includes(job.status)) {
     return NextResponse.json({ error: "That one is still being read." }, { status: 409 });
   }
+  // A retry is another paid read.
+  const spend = await spendImport({ userId: gate.userId, kind: "building", units: 1, isSuper: gate.isSuper });
+  if (!spend.ok) return NextResponse.json({ error: spend.error }, { status: spend.status });
   await supabase.from("listing_import_jobs").update({ status: "queued", step: "Waiting to read", error: null, progress: 0 }).eq("id", jobId);
   after(() => runPendingJobs({ batchId: job.batch_id, maxJobs: 1, budgetMs: 270000 }).catch(() => {}));
   return NextResponse.json({ ok: true });

@@ -366,6 +366,26 @@ export const cacheCounts = { hits: 0, misses: 0 };
  * inside readCounters.run({ render: {}, cache: {} }, ...) gets its own.
  */
 export const readCounters = new AsyncLocalStorage();
+/*
+ * A ceiling on paid renders inside one read. A building normally takes 2
+ * to 15 (a big portal's quote batches, a few blocked photos); a site built
+ * to waste credits, or a runaway loop, stops here instead. The read's
+ * counters carry their own cap (the picker's is lower); 60 otherwise.
+ */
+const READ_RENDER_CAP = Number(process.env.IMPORT_READ_RENDER_CAP) > 0 ? Number(process.env.IMPORT_READ_RENDER_CAP) : 60;
+function renderAllowed(what) {
+  const mine = readCounters.getStore();
+  if (!mine) return true;
+  const spent = Object.values(mine.render ?? {}).reduce((a, b) => a + b, 0);
+  const cap = mine.cap ?? READ_RENDER_CAP;
+  if (spent < cap) return true;
+  if (!mine.capLogged) {
+    mine.capLogged = true;
+    console.warn(`[render] read stopped rendering at its cap of ${cap} (${what})`);
+  }
+  return false;
+}
+
 function bump(kind, name) {
   (kind === "render" ? renderCounts : cacheCounts)[name] += 1;
   const mine = readCounters.getStore();
@@ -386,6 +406,7 @@ export async function renderPage(rawUrl, opts = {}) {
 }
 
 async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+  if (!renderAllowed("firecrawl")) return null;
   let url;
   try {
     url = new URL(rawUrl);
@@ -432,6 +453,7 @@ async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = n
 }
 
 async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
+  if (!renderAllowed("firecrawl")) return null;
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
   bump("render", "firecrawl");
@@ -503,6 +525,7 @@ async function jinaFetch(rawUrl, key) {
 }
 
 async function renderPageViaJina(rawUrl) {
+  if (!renderAllowed("jina")) return null;
   // JINA_API_KEY is the name people reach for (and the one the PR notes gave
   // out); accept it too so a mis-set key degrades to "wrong name, still works"
   // rather than a render fallback that silently never runs.
@@ -537,6 +560,7 @@ async function renderPageViaJina(rawUrl) {
 }
 
 async function renderPageViaTavily(rawUrl) {
+  if (!renderAllowed("tavily")) return null;
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
   bump("render", "tavily");

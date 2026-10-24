@@ -6,6 +6,7 @@ import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireImporter } from "../_auth";
 import { createImportBatch, runLanes, MAX_TARGETS } from "@/lib/sourceImport/jobs";
+import { spendImport } from "@/lib/sourceImport/limits";
 
 /*
  * Continue on the picker. Body: { pastedUrl, targets: [{ name, address, url,
@@ -27,6 +28,8 @@ export async function POST(req) {
   if (targets.length > MAX_TARGETS) {
     return NextResponse.json({ error: `Import up to ${MAX_TARGETS} properties at a time.` }, { status: 400 });
   }
+  const spend = await spendImport({ userId: gate.userId, kind: "building", units: targets.length, isSuper: gate.isSuper });
+  if (!spend.ok) return NextResponse.json({ error: spend.error }, { status: spend.status });
   const { data: user } = await supabase.from("users").select("name, email, phone").eq("id", gate.userId).maybeSingle();
   try {
     const batch = await createImportBatch({ userId: gate.userId, user, pastedUrl, targets, batchId: typeof body.batchId === "string" ? body.batchId : null });

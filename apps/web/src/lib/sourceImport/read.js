@@ -413,7 +413,12 @@ function fillFromModel(readerUnits, modelUnits) {
  *   { kind: "properties", sourceUrl, properties: [{ name, address, url, kind }] }
  *   { kind: "property", sourceUrl, snapshot, properties }
  */
-export async function discoverSite({ url: rawUrl, skipPmsSteer = false, readSingle = false, onStep = () => {} }) {
+export function discoverSite(args) {
+  // The picker's own counters, with a lower render ceiling than a building.
+  return readCounters.run({ render: {}, cache: {}, cap: Number(process.env.IMPORT_PICKER_RENDER_CAP) > 0 ? Number(process.env.IMPORT_PICKER_RENDER_CAP) : 20 }, () => discoverSiteInner(args));
+}
+
+async function discoverSiteInner({ url: rawUrl, skipPmsSteer = false, readSingle = false, onStep = () => {} }) {
   const pastedUrl = withScheme(rawUrl.trim());
   const pastedPortal = detectPmsPortal(pastedUrl);
   if (!skipPmsSteer && pastedPortal && SYNCABLE_PMS.has(pastedPortal)) {
