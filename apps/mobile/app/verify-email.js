@@ -20,8 +20,9 @@ export default function VerifyEmailScreen() {
   const [status, setStatus] = useState("verifying"); // verifying | success | invalid | failed
   const [message, setMessage] = useState(null);
   const [attempt, setAttempt] = useState(0);
-  // The token and attempt already sent, so a re-render (or a remount that keeps refs)
-  // cannot redeem the same one-time token twice.
+  // The token and attempt most recently sent. It stops a re-render (or a remount that keeps
+  // refs) redeeming the same one-time token twice, and lets a slower, older request see it
+  // has been superseded and leave the screen and the stored token alone.
   const sent = useRef(null);
 
   useEffect(() => {
@@ -33,16 +34,22 @@ export default function VerifyEmailScreen() {
     apiClient.auth
       .verifyEmail(token)
       .then(() => {
+        // Clears only this request's own token, so a newer link is never wiped.
+        if (sent.current !== key) {
+          clearLinkToken("verify", token);
+          return;
+        }
         // Set before clearing: clearing the token re-renders synchronously.
         setStatus("success");
-        clearLinkToken("verify");
+        clearLinkToken("verify", token);
       })
       .catch((err) => {
+        if (sent.current !== key) return;
         const text = getErrorMessage(err, ERROR_MESSAGES.AUTH.VERIFY_EMAIL);
         const dead = text === ERROR_MESSAGES.AUTH.VERIFY_LINK_INVALID;
         setMessage(text);
         setStatus(dead ? "invalid" : "failed");
-        if (dead) clearLinkToken("verify");
+        if (dead) clearLinkToken("verify", token);
       });
   }, [token, attempt]);
 

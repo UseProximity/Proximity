@@ -17,7 +17,11 @@ export function getLinkToken(kind) {
   return tokens[kind];
 }
 
-export function clearLinkToken(kind) {
+// With `onlyIfToken`, clears only if that exact token is still the stored one. A request
+// that finishes late passes the token it was sent with, so it cannot wipe a newer link
+// that arrived while it was in flight.
+export function clearLinkToken(kind, onlyIfToken) {
+  if (onlyIfToken !== undefined && tokens[kind] !== onlyIfToken) return;
   setLinkToken(kind, null);
 }
 

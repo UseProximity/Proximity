@@ -8,8 +8,8 @@
 // build pointed at staging open staging reset and verification emails. A production
 // build, or any other API URL (a LAN address, say), never claims it.
 //
-// CommonJS on purpose, like envGuard.js: app.config.js is loaded by Node. The host
-// list in chatLinks.js must stay in step with these; authLinks.test.js checks it.
+// CommonJS on purpose, like envGuard.js: app.config.js is loaded by Node. The two hosts
+// are defined only here; chatLinks.js imports them for the links the app accepts.
 
 const PRODUCTION_LINK_HOST = "useproximity.org";
 const STAGING_LINK_HOST = "proximity-livid.vercel.app";

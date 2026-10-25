@@ -59,6 +59,9 @@ export default function AuthCard({
         "Verification link is invalid or expired. Sign in below and we'll offer to send you a new one."
       );
     }
+    if (searchParams.get("error") === "verification_failed") {
+      setError("We couldn't verify your email just now. Please open the link again in a moment.");
+    }
     if (searchParams.get("error") === "ACCOUNT_DELETED") {
       setError(
         "This email is temporarily unavailable because it was recently used by a deleted account. Try again within 30 days. Need help? Contact info@useproximity.org."
