@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-21T02:07:47.692Z",
-  "count": 136,
+  "_generated": "2026-10-25T14:52:45.992Z",
+  "count": 141,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -64,6 +64,14 @@
       "description": "Sign in with Apple, server side (native iOS flow)."
     },
     {
+      "file": "src/lib/appLinks/aasa.js",
+      "description": "Builds the apple-app-site-association document served at"
+    },
+    {
+      "file": "src/lib/appLinks/aasa.test.js",
+      "description": "Run with: npm test (from apps/web). The matcher below models Apple's documented rules"
+    },
+    {
       "file": "src/lib/auth/callbackUrl.js",
       "description": "A return URL that arrives from outside (a query string, a request body, an"
     },
@@ -86,6 +94,18 @@
     {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/verifyEmail.js",
+      "description": "Redeems an email-verification token. Shared by GET (the web link) and POST (the mobile"
+    },
+    {
+      "file": "src/lib/auth/verifyEmail.test.js",
+      "description": "Run with: npm test (from apps/web). A small fake of the Supabase query builder: each"
+    },
+    {
+      "file": "src/lib/auth/verifyUrl.js",
+      "description": "The link in the verification email. `next` is where to send them once verified; it is"
     },
     {
       "file": "src/lib/authMobile.js",
