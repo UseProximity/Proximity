@@ -32,6 +32,9 @@ import {
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
+import ReviewEditForm from "./ReviewEditForm";
+import CardMenu from "@/components/ui/CardMenu";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { ChevronLeft, ChevronRight} from "lucide-react";
@@ -520,6 +523,7 @@ function ReviewsTab({
   setValRating,
   reviewLoading,
   handleReviewSubmit,
+  onReviewChange,
   preview = false,
 }) {
   const maxCount = Math.max(...starCounts.map((d) => d.count), 1);
@@ -602,8 +606,84 @@ function ReviewsTab({
     toast.success("User blocked successfully.", { duration: 6000 });
   }
 
+  // The viewer's own review being edited in place, and the one they asked to delete.
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingReview, setDeletingReview] = useState(false);
+
+  async function handleReviewEdit(review, { text, rating }) {
+    try {
+      const res = await fetch(`/api/reviews/${review._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: text, rating }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || "Couldn't save your review.");
+        return;
+      }
+      onReviewChange(review._id, {
+        comment: data.comment,
+        rating: Number(data.rating),
+        ...(data.editedAt ? { editedAt: data.editedAt } : {}),
+      });
+      setEditingReviewId(null);
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    }
+  }
+
+  async function handleReviewDelete() {
+    const review = deleteTarget;
+    setDeletingReview(true);
+    try {
+      const res = await fetch(`/api/reviews/${review._id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "Couldn't delete your review.");
+        return;
+      }
+      // Drops it from the list and from the star stats above.
+      onReviewChange(review._id, { deletedAt: new Date().toISOString() });
+      setDeleteTarget(null);
+      toast.success("Review deleted.");
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setDeletingReview(false);
+    }
+  }
+
+  function reviewMenuItems(review) {
+    if (preview || !session?.user) return [];
+    const isOwn = review.isMine || (review.reviewer?._id && review.reviewer._id === userId);
+    if (isOwn) {
+      return [
+        { label: "Edit", onClick: () => setEditingReviewId(review._id) },
+        { label: "Delete", onClick: () => setDeleteTarget(review), destructive: true },
+      ];
+    }
+    return [
+      { label: "Report", onClick: () => handleReport(review) },
+      // Anonymous reviews have no public author, so only Report applies.
+      ...(review.reviewer?._id
+        ? [{ label: "Block", onClick: () => setBlockTarget(review) }]
+        : []),
+    ];
+  }
+
   return (
     <div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete review?"
+          message="Your review and its star rating will be removed from this property. This can't be undone."
+          busy={deletingReview}
+          onConfirm={handleReviewDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
       {blockTarget && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
@@ -736,7 +816,7 @@ function ReviewsTab({
                 : null;
               return (
                 <div
-                  key={i}
+                  key={review._id || i}
                   className="border border-gray-100 rounded-xl p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -755,26 +835,46 @@ function ReviewsTab({
                           {review.reviewer?.name || "Anonymous"}
                         </div>
                         {date && (
-                          <div className="text-xs text-gray-400">{date}</div>
+                          <div className="text-xs text-gray-400">
+                            {date}
+                            {review.editedAt && " · Edited"}
+                          </div>
                         )}
                       </div>
                     </div>
-                    <StarRatingInput
-                      value={review.rating}
-                      readOnly
-                      showValue={false}
-                      px={14}
-                      color="red"
-                    />
+                    {/* While editing, the editor's own stars replace these. */}
+                    {editingReviewId !== review._id && (
+                      <div className="flex items-center gap-1">
+                        <StarRatingInput
+                          value={review.rating}
+                          readOnly
+                          showValue={false}
+                          px={14}
+                          color="red"
+                        />
+                        <CardMenu items={reviewMenuItems(review)} label="Review actions" />
+                      </div>
+                    )}
                   </div>
                   <div className="mb-3">
-                    <p className="text-gray-700 text-sm leading-relaxed">
-                      {review.comment}
-                    </p>
+                    {editingReviewId === review._id ? (
+                      <ReviewEditForm
+                        initialText={review.comment}
+                        initialRating={review.rating}
+                        minLength={5}
+                        onSave={(values) => handleReviewEdit(review, values)}
+                        onCancel={() => setEditingReviewId(null)}
+                      />
+                    ) : (
+                      <p className="text-gray-700 text-sm leading-relaxed">
+                        {review.comment}
+                      </p>
+                    )}
                     <ReviewReplySection
                       review={review}
                       owner={listing?.owner}
                       isLandlord={isLandlord}
+                      readOnly={preview}
                     />
                   </div>
                   <div className="flex gap-4 text-xs text-gray-400">
@@ -816,27 +916,6 @@ function ReviewsTab({
                         </>
                       );
                     })()}
-                    {session?.user && !review.isMine && review.reviewer?._id !== userId && (
-                      <span className="ml-auto flex gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleReport(review)}
-                          className="hover:text-gray-700 transition"
-                        >
-                          Report
-                        </button>
-                        {/* Anonymous reviews have no public author, so only Report applies. */}
-                        {review.reviewer?._id && (
-                          <button
-                            type="button"
-                            onClick={() => setBlockTarget(review)}
-                            className="hover:text-gray-700 transition"
-                          >
-                            Block
-                          </button>
-                        )}
-                      </span>
-                    )}
                   </div>
                   {reviewActionMsg[review._id] && (
                     <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
@@ -1495,6 +1574,11 @@ export default function ListingModalInfo({
   const [valRating, setValRating] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  // { [reviewId]: fields } for reviews the viewer edited or deleted this session.
+  const [reviewChanges, setReviewChanges] = useState({});
+  function onReviewChange(reviewId, patch) {
+    setReviewChanges((prev) => ({ ...prev, [reviewId]: { ...prev[reviewId], ...patch } }));
+  }
 
   // Walk times — read from pre-computed DB values (populated at listing creation)
   const walkLoading = false;
@@ -1943,10 +2027,12 @@ export default function ListingModalInfo({
   const viewerId = session?.user?.id;
   const isOwnListing =
     listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
-  // Reviews
+  // Reviews, with the viewer's own edits and deletes from this session laid
+  // over the loaded copy so the cards and the star stats update straight away.
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
-    .filter((r) => r.legitimacy);
+    .map((r) => (reviewChanges[r._id] ? { ...r, ...reviewChanges[r._id] } : r))
+    .filter((r) => r.legitimacy && !r.deletedAt);
   /*
    * Star average and count come from the feed aggregates when the bodies aren't
    * here, so a panel falling back to feed data still states the rating it knows
@@ -2509,6 +2595,7 @@ export default function ListingModalInfo({
                   setValRating={setValRating}
                   reviewLoading={reviewLoading}
                   handleReviewSubmit={handleReviewSubmit}
+                  onReviewChange={onReviewChange}
                   preview={preview}
                 />
               )}

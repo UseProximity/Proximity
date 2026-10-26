@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { hashToken } from "@/lib/auth/tokenHash";
 import {
   getBaseUrl,
   sendVerificationEmail,
@@ -9,6 +10,7 @@ import {
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { SIGNUP_ROLES } from "@/lib/auth/roles";
+import { isRestorable } from "@/lib/auth/accountRestore";
 
 export async function POST(req) {
   try {
@@ -43,14 +45,15 @@ export async function POST(req) {
 
     if (existing) {
       // Deleted accounts keep their row (and email) for a 30-day grace period
-      // before the purge cron frees it up — see api/cron/purge-accounts. Say so
-      // explicitly rather than "already exists," which reads as though signing
-      // in would work when it never will (auth.js rejects deleted accounts).
+      // before the purge cron frees it up (api/cron/purge-accounts). Inside it,
+      // signing in offers to restore the account (lib/auth/accountRestore), so
+      // point there rather than at a new account.
       if (existing.deleted_at) {
         return NextResponse.json(
           {
-            error:
-              "This email is temporarily unavailable because it was recently used by a deleted account. It frees up 30 days after deletion. Need help? Contact info@useproximity.org.",
+            error: isRestorable(existing)
+              ? "This email belongs to an account that was deleted recently. Sign in with it to restore the account, or wait 30 days from deletion to sign up fresh. Need help? Contact info@useproximity.org."
+              : "This email frees up shortly, once its deleted account finishes being removed. Try again tomorrow. Need help? Contact info@useproximity.org.",
           },
           { status: 409 }
         );
@@ -102,7 +105,7 @@ export async function POST(req) {
         await supabase
           .from("users")
           .update({
-            password_reset_token: token,
+            password_reset_token: hashToken(token),
             password_reset_expires_at: expires,
           })
           .eq("id", existing.id);

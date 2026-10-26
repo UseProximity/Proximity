@@ -121,7 +121,7 @@
           "changed_fields:jsonb",
           "changed_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk changed_by_id->users.id (set null); check changed_by_source in (user,system,migration,trigger) | event_type in (INSERT,UPDATE,DELETE); rls: service role only (no policies)",
+        "notes": "status=active; pk id; fk changed_by_id->users.id (set null); check changed_by_source in (user,system,migration,trigger) | event_type in (INSERT,UPDATE,DELETE); rls: service role only (no policies), anon/authenticated grants revoked (202610230003); fn_action_log drops password hash, token and cred_* columns before writing",
         "observed_2026_10_12": {
           "prod_rows": 64269,
           "prod_last_write": null
@@ -268,28 +268,29 @@
       },
       {
         "table": "chat_email_log",
-        "status": "unreleased",
-        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. Outbound chat alert emails sent through SES or Gmail, with the provider message id. The next alert to the same person in the same thread carries these ids as References/In-Reply-To so mail clients stack them as one thread (lib/chat/notifyEmail.js).",
+        "status": "live",
+        "description": "Every outbound chat email attempt (message alerts and 3 day reply reminders), sent through SES or the Gmail fallback, with the provider message id and a delivery status. SES delivery, delay, bounce, complaint, reject and rendering-failure events (/api/ses/events) move status forward only. Failed sends are logged as 'failed'. The daily check-in audits it (lib/chat/deliveryAudit.js). The next alert to the same person in the same thread carries earlier provider ids as References/In-Reply-To (lib/chat/notifyEmail.js).",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
           "recipient_id:uuid",
           "to_email:text",
-          "provider:text",
+          "provider:text (nullable)",
           "provider_message_id:text",
-          "created_at:timestamptz"
+          "created_at:timestamptz",
+          "kind:text (alert|reminder, default alert)",
+          "message_id:uuid (triggering chat message; no FK, outlives retention)",
+          "status:text (sent|delivered|delayed|bounced|complained|rejected|failed, default sent)",
+          "status_detail:text",
+          "status_at:timestamptz",
+          "delivered_at:timestamptz"
         ],
-        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (cascade); recipient_id->users.id (set null); check provider in (ses,gmail); rls: service role only (no policies)",
-        "observed_2026_10_12": {
-          "dev_rows": 4,
-          "dev_last_write": "2026-10-12",
-          "prod": "table absent"
-        }
+        "notes": "Live on dev and prod since 2026-10-13. Delivery tracking columns from migration 202610230001 (dev applied 2026-10-23; prod pending until the fix/email-reply-auth release). pk id; fk thread_id->chat_threads.id (cascade); recipient_id->users.id (set null); check provider in (ses,gmail); checks on kind and status; idx (status, created_at desc); rls: service role only (no policies)"
       },
       {
         "table": "chat_inbound_emails",
-        "status": "unreleased",
-        "description": "On staging via PR #289 (feat/email-reply-relay); prod after migrations 202610090001-0004, 202610120001 (landlord_contact_email_shared), 202610120002-0004 and the 202610070001 lockdown. One row per email received by the SES inbound pipeline (s3_key unique). status records how it was handled (posted = became a chat message via chat_message_id; spam, auto_reply, unauthenticated, unknown_address, wrong_sender, empty, rejected, error). Migration chat_email_relay_inbound (2026-10-09, dev).",
+        "status": "live",
+        "description": "One row per email received by the SES inbound pipeline (s3_key unique). status: posted (chat_message_id set), held (from someone other than the landlord, awaiting the landlord's approval; approving re-runs it), spam, auto_reply, unauthenticated, unknown_address, wrong_sender (incl. 'declined by landlord', 'forwarded'), empty, rejected, error. body_preview/sender_name keep what a held or refused reply said; approval_requested_at = landlord emailed about this sender (lib/chat/replySenderApproval.js). Unauthenticated rows record the addressed thread_id/user_id for display only.",
         "columns": [
           "id:uuid",
           "s3_key:text",
@@ -302,14 +303,55 @@
           "reason:text",
           "chat_message_id:uuid",
           "notice_sent_at:timestamptz",
-          "created_at:timestamptz"
+          "created_at:timestamptz",
+          "body_preview:text",
+          "sender_name:text",
+          "approval_requested_at:timestamptz"
         ],
-        "notes": "status=unreleased; EXISTS ON DEV ONLY; pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)",
-        "observed_2026_10_12": {
-          "dev_rows": 3,
-          "dev_last_write": "2026-10-12",
-          "prod": "table absent"
-        }
+        "notes": "Live on dev and prod. Status check includes 'held' since migration 202610240001 (dev applied 2026-10-24; prod with the feat/approved-reply-senders release). Partial index (user_id, from_email) where status='held'. pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)"
+      },
+      {
+        "table": "sent_emails",
+        "status": "live",
+        "description": "Every email the app sends, one row per attempt, for the admin Sent emails page (Wyatt, 2026-10-24). Written by sendMailSafe (lib/outreach.js) through recordEmail (lib/emailLog.js); callers label each email with logAs: { kind }, and the kind decides the category (lib/emailKinds.js). body_html and body_text are stored with every token in their links replaced by [removed]. SES events (/api/ses/events) move status forward with the same rules as chat_email_log. Gmail sends never get a delivery report and stay 'sent'. Rows copied from chat_email_log at creation have no subject or body.",
+        "columns": [
+          "id:uuid",
+          "created_at:timestamptz",
+          "category:text (chat|account|reviews|landlords|team|other)",
+          "kind:text",
+          "to_email:text",
+          "cc:text",
+          "redirected_to:text",
+          "from_email:text",
+          "subject:text",
+          "body_html:text",
+          "body_text:text",
+          "provider:text (ses|gmail)",
+          "provider_message_id:text",
+          "status:text (sent|delivered|delayed|bounced|complained|rejected|failed|suppressed)",
+          "status_detail:text",
+          "status_at:timestamptz",
+          "delivered_at:timestamptz",
+          "thread_id:uuid",
+          "user_id:uuid"
+        ],
+        "notes": "Migration 202610260001 (dev applied 2026-10-24; prod pending). pk id; no fks (the record outlives threads and users); indexes on created_at, (category, created_at), (status, created_at), provider_message_id; rls: service role only (no policies)"
+      },
+      {
+        "table": "landlord_reply_senders",
+        "status": "live",
+        "description": "Who may reply by email on a landlord's behalf besides their account email, alert address and same-company domain (Wyatt, 2026-10-24). pattern is one address ('vic@x.com') or a domain ('@x.com', never a shared free-mail domain). decision approved | declined ('not them'; an exact decline beats an approved domain). Managed by the landlord from the held-reply banner in the conversation (HeldRepliesBanner) or by admins in the Conversations view.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "pattern:text",
+          "decision:text (approved|declined)",
+          "decided_by:uuid",
+          "decided_via:text (landlord|admin)",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610240001 (dev applied 2026-10-24; prod with the feat/approved-reply-senders release). pk id; fk landlord_id->users.id (cascade), decided_by->users.id (set null); unique (landlord_id, pattern); rls: service role only (no policies)"
       },
       {
         "table": "chat_messages",
@@ -540,7 +582,7 @@
           "source:text",
           "confirmation_sent_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk dorm_id->dorms.id (cascade); user_id->users.id (set null); unique (mongo_id); check rating between 1 and 5; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk dorm_id->dorms.id (cascade); user_id->users.id (set null); unique (mongo_id); check rating between 1 and 5; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry the user_id behind anonymous reviews; service role only",
         "observed_2026_10_12": {
           "prod_rows": 73,
           "prod_last_write": "2026-10-12"
@@ -910,9 +952,10 @@
           "unreadable_pages:_int4",
           "model:text",
           "created_at:timestamptz",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "analysis_started_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk user_id->users.id (cascade); matched_listing_id->listings.id (set null); rls: service role only (no policies)",
+        "notes": "status=active; pk id; fk user_id->users.id (cascade); matched_listing_id->listings.id (set null); rls: service role only (no policies); analysis_started_at = atomic claim taken by PUT /api/lease-check before the paid analysis (202610230004), cleared on failure",
         "observed_2026_10_12": {
           "prod_rows": 1,
           "prod_last_write": "2026-09-12"
@@ -1386,7 +1429,7 @@
       {
         "table": "listing_review_replies",
         "status": "active",
-        "description": "Landlord replies to reviews. 0 rows in prod so far. 0 rows in prod so far.",
+        "description": "Landlord replies to reviews, one per review. Written by /api/replyReview (POST, PATCH, DELETE: author only). Hard-deleted so the landlord can reply again; action_log keeps a copy. Inserts were blocked by the write-RPC allowlist until migration 202610220001, so 0 rows in prod before 2026-10-22.",
         "columns": [
           "id:uuid",
           "review_id:uuid",
@@ -1394,9 +1437,10 @@
           "reply:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
+          "edited_at:timestamptz",
           "deleted_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk review_id->listing_reviews.id (cascade); user_id->users.id (cascade); unique (review_id); rls: on, with policies (app uses the service role anyway); edited_at set only by PATCH (drives the \"Edited\" label); audit trigger added in 202610220002",
         "observed_2026_10_12": {
           "prod_rows": 0,
           "prod_last_write": null
@@ -1431,7 +1475,8 @@
           "anonymous:bool",
           "unit_designator:text",
           "source:text",
-          "confirmation_sent_at:timestamptz"
+          "confirmation_sent_at:timestamptz",
+          "edited_at:timestamptz"
         ],
         "column_notes": {
           "legitimacy": "admin approval gate; false rows are hidden",
@@ -1440,7 +1485,7 @@
           "source": "?src= campaign tag from a printed QR code",
           "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
         },
-        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
         "observed_2026_10_12": {
           "prod_rows": 147,
           "prod_last_write": "2026-10-12"
@@ -2104,6 +2149,19 @@
         }
       },
       {
+        "table": "review_reply_reports",
+        "status": "active",
+        "description": "A user reporting a landlord's reply to a review (unique per reporter and reply). Written by /api/reviewReport { replyId }, cleaned by /api/cron/purge-accounts. Migration 202610220002. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "reply_id:uuid",
+          "reported_user_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk reporter_id->users.id (cascade); reply_id->listing_review_replies.id (cascade, so deleting a reply drops its reports); reported_user_id->users.id (set null); unique (reporter_id, reply_id); rls: service role only (no policies)"
+      },
+      {
         "table": "review_votes",
         "status": "active",
         "description": "Helpful/unhelpful votes on reviews. 0 rows in prod. 0 rows in prod.",
@@ -2391,6 +2449,7 @@
           "apple_sub:text",
           "apple_account:bool",
           "profile_setup_token:text",
+          "profile_setup_link_hashes:text[]",
           "profile_setup_expires_at:timestamptz",
           "apple_refresh_token:text",
           "company_name:text"
@@ -2402,7 +2461,9 @@
         "column_notes": {
           "role_id": "-> roles (student | landlord | super | admin ...)",
           "email_verified/email_verification_token": "email+password signup flow; google_account / apple_account mark OAuth accounts",
-          "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review",
+          "profile_setup_token/_expires_at": "7-day credential-less profile completion after a QR review or waitlist signup. SHA-256 hash of the INLINE token returned to the submitting browser, only for an account that request created; profile fields only, never verifies email or sets a password (lib/reviews/onboarding.js)",
+          "profile_setup_link_hashes": "SHA-256 hashes of the EMAILED setup link tokens, one appended per review confirmation or waitlist nudge email (newest 5 kept, GIN-indexed, looked up with @>), so every link from the last 7 days works; all share profile_setup_expires_at and are cleared when the profile is finished. The only setup tokens that verify email_verified and permit a password. Replaced the single-value profile_setup_link_hash (migration 202610250001)",
+          "password_reset_token": "SHA-256 hash of the emailed reset token (lib/auth/tokenHash.js), never the raw value",
           "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
           "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",
           "apple_refresh_token/company_name": "DEV ONLY columns"
@@ -2493,7 +2554,7 @@
         "name": "rpc_insert_as_user",
         "kind": "rpc",
         "args": "p_user_id, p_table, p_data jsonb",
-        "touches": "allow-listed tables only: users, listings, listing_units, unit_leases, listing_reviews, listing_amenities, listing_utilities, listing_landlords, listing_images, review_votes, user_listing_interactions",
+        "touches": "allow-listed tables only: users, listings, listing_units, unit_leases, listing_reviews, listing_review_replies, listing_amenities, listing_utilities, listing_landlords, listing_images, review_votes, user_listing_interactions",
         "called_from": "lib/supabaseWithUser.js",
         "defined_in": "supabase/migrations/202604240001_write_as_user_rpcs.sql",
         "description": "Generic single-row INSERT that stamps action_log with the acting user. The allowlist inside the function is the only way to add a table to it."
@@ -2897,6 +2958,7 @@
         "listing_images",
         "listing_landlords",
         "listing_metrics_daily",
+        "listing_review_replies",
         "listing_reviews",
         "listing_source_events",
         "listing_source_monitors",

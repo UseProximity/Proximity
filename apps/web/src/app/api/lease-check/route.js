@@ -37,6 +37,8 @@ const ANALYZABLE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]
 const MAX_TOTAL_BYTES = 32 * 1024 * 1024; // Anthropic's request cap
 const MAX_FILES = 25;
 const MAX_PDF_PAGES = 100; // soft cost/latency cap, not an API limit
+// Past maxDuration (300s) plus margin: a claim this old belongs to a dead run.
+const CLAIM_STALE_MS = 6 * 60 * 1000;
 
 function getBucket() {
   // Mirrors upload/route.js: production site -> prod bucket; staging & local -> dev.
@@ -149,6 +151,8 @@ export async function PUT(req) {
   const startedAt = Date.now();
   let bucket = null;
   let keys = [];
+  let claimedCheckId = null;
+  let analysisSaved = false;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -184,6 +188,29 @@ export async function PUT(req) {
         return Response.json({ error: "Invalid key" }, { status: 400 });
       }
     }
+
+    /*
+     * Claim the check before any paid work. Reading summary above is not enough:
+     * it is only written once the analysis returns a minute or two later, so a
+     * burst of parallel PUTs all saw it empty and each started its own Sonnet
+     * run on the scanner key. Exactly one request wins this conditional update.
+     * A claim older than CLAIM_STALE_MS is a run that died mid-way and may be
+     * retaken; a failed run releases its claim in finally.
+     */
+    const staleBefore = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+    const { data: claimed } = await supabase
+      .from("lease_checks")
+      .update({ analysis_started_at: new Date().toISOString() })
+      .eq("id", leaseCheckId)
+      .eq("user_id", session.user.id)
+      .is("summary", null)
+      .or(`analysis_started_at.is.null,analysis_started_at.lt.${staleBefore}`)
+      .select("id")
+      .maybeSingle();
+    if (!claimed) {
+      return Response.json({ error: "This lease is already being checked." }, { status: 409 });
+    }
+    claimedCheckId = leaseCheckId;
 
     bucket = getBucket();
 
@@ -262,6 +289,7 @@ export async function PUT(req) {
       console.error("[lease-check] persist failed:", updateError);
     }
 
+    analysisSaved = !updateError;
     return Response.json({
       leaseCheckId,
       summary: analysis.summary,
@@ -285,6 +313,14 @@ export async function PUT(req) {
     console.error("[lease-check] analyze error:", err);
     return Response.json({ error: "Something broke. Try again." }, { status: 500 });
   } finally {
+    // A run that didn't land its results gives the check back, so the student can retry.
+    if (claimedCheckId && !analysisSaved) {
+      await supabase
+        .from("lease_checks")
+        .update({ analysis_started_at: null })
+        .eq("id", claimedCheckId)
+        .is("summary", null);
+    }
     // The lease never outlives the request — delete every object, error path included.
     // (Backstop: /api/cron/lease-check-cleanup deletes anything under
     // lease-checks/tmp/ older than an hour, for uploads that never reach this PUT.)

@@ -500,9 +500,13 @@ function LeaseRow({ lease, inset = false }) {
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            aria-label={open ? "Hide details" : "Show details"}
-            className="shrink-0 rounded-lg p-2 text-gray-400 transition hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg p-2 text-xs font-medium text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
           >
+            {/*
+              * Spelled out because a bare chevron reads as decoration: the
+              * landlord's note (Early Access, lease start) sat behind it unseen.
+              */}
+            {open ? "Hide Details" : "View Details"}
             <ChevronDown
               className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
             />

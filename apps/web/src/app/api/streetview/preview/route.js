@@ -1,10 +1,11 @@
 /*
  * GET /api/streetview/preview?address=&lat=&lng=
  *
- * Returns { available, url } for the add-listing form's live Street View preview. `url` is a
- * live Google Static API image URL oriented toward the building (see src/lib/streetview.js).
- * The image is NOT persisted here — it's only stored in R2 on listing creation, when
- * /api/addListing fetches it server-side.
+ * Returns { available, url } for the add-listing form's live Street View preview, oriented
+ * toward the building (see src/lib/streetview.js). `url` is the image itself as a data: URL.
+ * The Static API URL carries GOOGLE_MAPS_SERVER_KEY, an unrestricted billing credential, so it
+ * is fetched here and never sent to the browser. The image is NOT persisted here; it's only
+ * stored in R2 on listing creation, when /api/addListing fetches it server-side.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -29,5 +30,21 @@ export async function GET(req) {
     lng: lng != null ? Number(lng) : null,
   });
 
-  return NextResponse.json({ available: shot.available, url: shot.url ?? null });
+  if (!shot.available || !shot.url) return NextResponse.json({ available: false, url: null });
+
+  try {
+    const img = await fetch(shot.url, { signal: AbortSignal.timeout(10_000) });
+    const type = (img.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!img.ok || !type.startsWith("image/")) {
+      return NextResponse.json({ available: false, url: null });
+    }
+    const bytes = Buffer.from(await img.arrayBuffer());
+    return NextResponse.json({
+      available: true,
+      url: `data:${type};base64,${bytes.toString("base64")}`,
+    });
+  } catch (err) {
+    console.error("[streetview/preview] image fetch failed:", err?.message);
+    return NextResponse.json({ available: false, url: null });
+  }
 }

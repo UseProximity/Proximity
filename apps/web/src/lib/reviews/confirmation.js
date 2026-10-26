@@ -25,6 +25,7 @@
 import supabase from "@/lib/supabase";
 import { listingPlaceName } from "./placeName";
 import { sendReviewConfirmationEmail } from "@/lib/email";
+import { issueProfileSetupLinkToken, needsProfileSetup } from "./onboarding";
 
 /** How long a reviewer gets to add another review before we send anyway. */
 export const CONFIRMATION_DELAY_MINUTES = 30;
@@ -123,19 +124,14 @@ export async function flushReviewConfirmation({ userId, baseUrl }) {
 
   const { data: user } = await supabase
     .from("users")
-    .select("email, name, profile_complete, profile_setup_token, profile_setup_expires_at")
+    .select("email, name, profile_complete, password_hash, google_account, apple_account")
     .eq("id", userId)
     .is("deleted_at", null)
     .maybeSingle();
   if (!user?.email) return { sent: false, reason: "no_email" };
 
-  // Only offer the profile step to an account that still has one to finish and
-  // a token that is actually live — otherwise the email ships a dead link.
-  const setupLive =
-    !user.profile_complete &&
-    !!user.profile_setup_token &&
-    !!user.profile_setup_expires_at &&
-    new Date(user.profile_setup_expires_at).getTime() > Date.now();
+  // Only offer the profile step to an account that still has one to finish.
+  const setupLive = needsProfileSetup(user);
 
   const claimed = await claim(pending, new Date().toISOString());
   if (!claimed.length) return { sent: false, reason: "already_claimed" };
@@ -145,12 +141,18 @@ export async function flushReviewConfirmation({ userId, baseUrl }) {
   const places = [...new Set(claimed.map((r) => r.place))];
 
   try {
+    /*
+     * The link token is minted here, at send time, so its raw value exists only
+     * in this email to the account's own address. Only the hash is stored. If
+     * minting fails the email still goes out, just without the setup link.
+     */
+    const setupToken = setupLive ? await issueProfileSetupLinkToken(userId) : null;
     await sendReviewConfirmationEmail({
       email: user.email,
       name: user.name,
       baseUrl,
       places,
-      setupToken: setupLive ? user.profile_setup_token : null,
+      setupToken,
     });
   } catch (err) {
     console.error("[reviewConfirmation] send failed:", err?.message);

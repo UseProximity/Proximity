@@ -91,9 +91,12 @@ export const leaseTypeLabel = (lease) => (lease?.sublease ? "Sublease" : "Standa
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // A date column is a calendar day, so it is compared as written rather than
-// shifted into the viewer's timezone.
+// shifted into the viewer's timezone. Today is the viewer's local day too: the
+// UTC date rolls over in the St. Louis evening, which would read tomorrow as "Now".
 function todayDay() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 // { text, now }. A date on or before today reads "Now"; a missing date is "-"

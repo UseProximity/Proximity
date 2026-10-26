@@ -38,7 +38,7 @@
 import { writeFileSync, readFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { analyzeImpact, formatImpactReport } from "../src/impact.mjs";
 import { runImpactTests, formatTestReport } from "../src/runner.mjs";
 import {
@@ -74,16 +74,20 @@ function writeTestEnv({ email, password, role }) {
   writeFileSync(envFile, `TEST_EMAIL=${email}\nTEST_PASSWORD=${password}\nTEST_ROLE=${role}\n`);
 }
 
-function git(args) {
-  return execSync(`git ${args}`, { cwd: ROOT, encoding: "utf-8" }).trim();
+// Arguments go to git as an array, never through a shell: a ref read from a PR
+// comment must not be able to become a command.
+function git(...args) {
+  return execFileSync("git", args, { cwd: ROOT, encoding: "utf-8" }).trim();
 }
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
 
 // Does this SHA exist in the current checkout? (A force-push/rebase can orphan
 // the commit we last tested — fall back to a full run if so.)
 function commitExists(sha) {
   if (!sha) return false;
   try {
-    git(`cat-file -e ${sha}^{commit}`);
+    git("cat-file", "-e", `${sha}^{commit}`);
     return true;
   } catch {
     return false;
@@ -95,7 +99,19 @@ function loadPrevState() {
     const raw = readFileSync(prevStateFile, "utf-8").trim();
     if (!raw || raw === "null") return null;
     const state = JSON.parse(raw);
-    return state && typeof state === "object" ? state : null;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    /*
+     * The workflow only takes this block from the bot's own comment, but treat
+     * it as untrusted anyway: a commit id must be exactly one, and bugs must be
+     * a list of objects, or the field is dropped (a full run, nothing carried).
+     */
+    if (state.lastTestedSha != null && !FULL_SHA.test(String(state.lastTestedSha))) {
+      delete state.lastTestedSha;
+    }
+    if (!Array.isArray(state.bugs) || !state.bugs.every((b) => b && typeof b === "object")) {
+      state.bugs = [];
+    }
+    return state;
   } catch {
     return null;
   }
@@ -110,7 +126,7 @@ async function main() {
 
   const prevState = loadPrevState();
   const runNumber = (prevState?.runNumber || 0) + 1;
-  const headSha = git(`rev-parse ${head}`);
+  const headSha = git("rev-parse", "--verify", "--end-of-options", head);
   const headShort = headSha.slice(0, 7);
 
   // Decide the test scope. Incremental = diff since the commit we last reviewed,

@@ -22,7 +22,7 @@
 const PLACEHOLDERS = ["name", "email", "phone"];
 
 const WAITLISTS = {
-  "6650 delmar boulevard|63130": {
+  "6650 delmar|63130": {
     label: "Waitlist",
     /*
      * A getter, not a string, so the env var is read at request time.

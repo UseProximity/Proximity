@@ -156,6 +156,8 @@ const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -246,6 +248,7 @@ export async function sendReviewDigestEmail({ to, items, dryRun = false }) {
     (items.corrections?.length ?? 0) + (items.undone?.length ?? 0);
 
   return sendMailSafe(transporter, {
+    logAs: { kind: "auto_unavailable_review" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     replyTo: "info@useproximity.org",

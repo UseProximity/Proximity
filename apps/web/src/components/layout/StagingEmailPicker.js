@@ -61,7 +61,8 @@ export default function StagingEmailPicker({ env }) {
             <p className="mt-1 text-sm text-gray-600">
               Enter the inbox that receives <strong>every</strong> email sent here (owner inquiries,
               etc.). They’re redirected here instead of reaching real people. Until you enter one,
-              emails are suppressed.
+              emails are suppressed. Only team-approved addresses receive mail; ask an admin to add
+              yours if nothing arrives.
             </p>
 
             <input

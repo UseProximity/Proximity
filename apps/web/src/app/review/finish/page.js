@@ -6,11 +6,11 @@
  * lives for a week, so a student who reviewed a place on their phone outside a
  * dorm can finish the profile on a laptop that never had the tab open.
  *
- * Opening this page also verifies the email address: the link exists nowhere but
- * that inbox, so arriving here proves control of it. The account becomes
- * loggable-in (via Google, or by setting a password) without a second email.
- * Note this is deliberately NOT done for the inline path, which never proved
- * anything about the inbox.
+ * Opening this page with the emailed link token also verifies the email address:
+ * that token exists nowhere but that inbox, so arriving with it proves control of
+ * it. The account becomes loggable-in (via Google, or by setting a password)
+ * without a second email. Deliberately NOT done for the inline token, which was
+ * handed to whoever submitted the form and proves nothing about the inbox.
  */
 import { redirect } from "next/navigation";
 import {
@@ -36,7 +36,18 @@ export default async function FinishProfilePage({ searchParams }) {
    */
   if (!found) redirect("/?profileSetup=expired");
 
-  await markEmailVerifiedFromLink(found.userId);
+  /*
+   * Only the emailed link token proves the inbox. The inline token (the
+   * waitlist dialog also links here with it) still opens the profile form, but
+   * verifies nothing, because it was handed to whoever typed the address.
+   * Verifying an unverified account wipes any password set before the inbox
+   * was proven, so the account step is offered again in that case.
+   */
+  let hasCredentials = found.hasCredentials;
+  if (found.viaEmailLink) {
+    await markEmailVerifiedFromLink(found.userId);
+    if (!found.emailVerified) hasCredentials = found.hasProviderLogin;
+  }
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10 pb-32 sm:pb-40">
@@ -44,7 +55,8 @@ export default async function FinishProfilePage({ searchParams }) {
         token={String(token)}
         prefill={found.prefill}
         email={found.email}
-        hasCredentials={found.hasCredentials}
+        hasCredentials={hasCredentials}
+        canSetPassword={found.viaEmailLink || found.emailVerified}
       />
     </div>
   );

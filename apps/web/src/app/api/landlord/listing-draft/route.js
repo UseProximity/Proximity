@@ -30,7 +30,10 @@ const PMS_DISPLAY = {
   doorloop: "DoorLoop",
 };
 import { extractListingDraft } from "@/lib/listingDraft/extract";
-import { listingDraftRateLimited } from "@/lib/listingDraft/rateLimit";
+import {
+  listingDraftRateLimited,
+  listingDraftRequestRateLimited,
+} from "@/lib/listingDraft/rateLimit";
 
 // Friendly, detail-free messages per DraftFetchError code (CLAUDE.md security:
 // never leak fetch internals). Unknown codes fall back to `unreachable`.
@@ -67,6 +70,12 @@ export async function POST(req) {
     }
     if (!["landlord", "super"].includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (listingDraftRequestRateLimited(session.user.id)) {
+      return NextResponse.json(
+        { error: "You've used all your website imports for now. Try again in an hour." },
+        { status: 429 }
+      );
     }
 
     const body = await req.json().catch(() => ({}));

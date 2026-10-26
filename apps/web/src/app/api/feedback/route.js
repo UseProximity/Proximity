@@ -41,6 +41,8 @@ const _mailer = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -108,6 +110,7 @@ export async function POST(req) {
     }
 
     await sendMailSafe(_mailer, {
+      logAs: { kind: "feedback" },
       from: `"Proximity Feedback" <${process.env.EMAIL_USER}>`,
       to: TEAM_EMAILS.join(", "),
       replyTo: providedEmail || undefined,

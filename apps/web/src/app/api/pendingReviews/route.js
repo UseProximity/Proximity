@@ -26,6 +26,8 @@ export async function GET() {
         .from("listing_reviews")
         .select("*, reviewer:users!user_id(name, image), listings(address)")
         .eq("legitimacy", false)
+        // Dismissed reviews are soft-deleted (see DELETE below); keep them gone.
+        .is("deleted_at", null)
         .in("listing_id", listingIds);
 
       if (error) {
@@ -81,6 +83,10 @@ export async function PATCH(request) {
 
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
+    // A dismissed review stays dismissed.
+    if (review.deleted_at) {
+      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    }
 
     // Mark review as legitimate
     const { error: updateError } = await supabase
@@ -92,9 +98,6 @@ export async function PATCH(request) {
       console.error("Error updating review legitimacy:", updateError);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
-
-    // Suppress unused variable warning — review used for ownership check only here
-    void review;
 
     return NextResponse.json({});
   } catch (error) {
@@ -119,13 +122,27 @@ export async function DELETE(request) {
     const { review, error, status } = await verifyReviewOwnership(reviewId, session.user.id);
     if (error) return NextResponse.json({ error }, { status });
 
-    // Delete the review
-    await supabase
+    /*
+     * Only a review still awaiting approval may be dismissed here. Published
+     * reviews auto-approve, so without this an owner could quietly erase every
+     * unfavourable review of their own property. And it is a soft delete, so a
+     * moderator can still see what was removed and by whom (action_log).
+     */
+    if (review.legitimacy !== false || review.deleted_at) {
+      return NextResponse.json(
+        { error: "Only a review awaiting approval can be dismissed." },
+        { status: 403 }
+      );
+    }
+    const { error: deleteError } = await supabase
       .from("listing_reviews")
-      .delete()
-      .eq("id", reviewId);
-
-    void review;
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", reviewId)
+      .eq("legitimacy", false);
+    if (deleteError) {
+      console.error("Error dismissing review:", deleteError.message);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
 
     return NextResponse.json({});
   } catch (error) {

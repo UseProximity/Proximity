@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-25T14:52:39.245Z",
-  "count": 128,
+  "_generated": "2026-10-26T10:49:59.075Z",
+  "count": 135,
   "routes": [
     {
       "path": "/api/account",
@@ -49,7 +49,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "public",
+        "GET": "admin",
         "POST": "super",
         "PATCH": "super",
         "DELETE": "super"
@@ -62,13 +62,29 @@
       "file": "src/app/api/admin/[table]/route.js"
     },
     {
+      "path": "/api/admin/chat/reply-senders",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin",
+        "DELETE": "admin"
+      },
+      "tables": [
+        "chat_inbound_emails"
+      ],
+      "file": "src/app/api/admin/chat/reply-senders/route.js"
+    },
+    {
       "path": "/api/admin/chat/threads",
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "chat_threads",
@@ -84,9 +100,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "chat_threads",
@@ -94,6 +110,8 @@
         "chat_messages",
         "chat_attachments",
         "chat_moderation_events",
+        "chat_inbound_emails",
+        "landlord_reply_senders",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
@@ -103,9 +121,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [],
       "file": "src/app/api/admin/db-env/route.js"
@@ -115,9 +133,9 @@
       "methods": [
         "POST"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "POST": "public"
+        "POST": "admin"
       },
       "tables": [
         "roles"
@@ -129,9 +147,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [
         "listings",
@@ -168,7 +186,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "public",
+        "GET": "admin",
         "PATCH": "super",
         "DELETE": "super"
       },
@@ -183,9 +201,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public"
+        "GET": "admin"
       },
       "tables": [
         "users",
@@ -199,10 +217,10 @@
         "GET",
         "POST"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public",
-        "POST": "public"
+        "GET": "admin",
+        "POST": "admin"
       },
       "tables": [
         "users",
@@ -216,9 +234,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "public",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "public"
+        "GET": "admin"
       },
       "tables": [
         "users"
@@ -230,12 +248,40 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "GET": "super"
+        "GET": "admin"
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/sent-emails",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/sent-emails/route.js"
+    },
+    {
+      "path": "/api/admin/sent-emails/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/sent-emails/[id]/route.js"
     },
     {
       "path": "/api/admin/update-campus-walk-times",
@@ -410,6 +456,18 @@
       "file": "src/app/api/auth/reset-password/route.js"
     },
     {
+      "path": "/api/auth/restore-account",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/auth/restore-account/route.js"
+    },
+    {
       "path": "/api/auth/set-password",
       "methods": [
         "POST"
@@ -536,6 +594,18 @@
       "file": "src/app/api/chat/realtime-token/route.js"
     },
     {
+      "path": "/api/chat/reply-senders/[id]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "DELETE": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/chat/reply-senders/[id]/route.js"
+    },
+    {
       "path": "/api/chat/threads",
       "methods": [
         "GET",
@@ -603,6 +673,23 @@
       },
       "tables": [],
       "file": "src/app/api/chat/threads/[threadId]/read/route.js"
+    },
+    {
+      "path": "/api/chat/threads/[threadId]/reply-senders",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "chat_threads",
+        "chat_inbound_emails"
+      ],
+      "file": "src/app/api/chat/threads/[threadId]/reply-senders/route.js"
     },
     {
       "path": "/api/chat/threads/[threadId]/report",
@@ -786,6 +873,7 @@
         "device_push_tokens",
         "user_blocks",
         "review_reports",
+        "review_reply_reports",
         "chat_reports",
         "review_invites",
         "users"
@@ -1142,11 +1230,11 @@
         "PATCH",
         "DELETE"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
         "GET": "public",
         "POST": "public",
-        "PATCH": "super",
+        "PATCH": "public",
         "DELETE": "public"
       },
       "tables": [
@@ -1677,15 +1765,20 @@
     {
       "path": "/api/replyReview",
       "methods": [
-        "POST"
+        "POST",
+        "PATCH",
+        "DELETE"
       ],
       "auth": "any",
       "methodAuth": {
-        "POST": "any"
+        "POST": "any",
+        "PATCH": "public",
+        "DELETE": "public"
       },
       "tables": [
         "listing_reviews",
-        "listing_landlords"
+        "listing_landlords",
+        "listing_review_replies"
       ],
       "file": "src/app/api/replyReview/route.js"
     },
@@ -1722,9 +1815,29 @@
       },
       "tables": [
         "listing_reviews",
-        "review_reports"
+        "review_reports",
+        "listing_review_replies",
+        "review_reply_reports",
+        "users",
+        "listings"
       ],
       "file": "src/app/api/reviewReport/route.js"
+    },
+    {
+      "path": "/api/reviews/[reviewId]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "PATCH": "public",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_reviews"
+      ],
+      "file": "src/app/api/reviews/[reviewId]/route.js"
     },
     {
       "path": "/api/reviews/confirm",
@@ -1791,7 +1904,9 @@
         "POST": "public"
       },
       "tables": [
-        "email_suppressions"
+        "email_suppressions",
+        "sent_emails",
+        "chat_email_log"
       ],
       "file": "src/app/api/ses/events/route.js"
     },

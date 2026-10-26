@@ -35,6 +35,7 @@ async function resolveOwnerForListing(listingId) {
     .from("listings")
     .select("id, address, title, contact_email, contact_name, listing_landlords(user_id, is_primary)")
     .eq("id", listingId)
+    .is("deleted_at", null)
     .single();
   if (!row) return null;
   const links = row.listing_landlords ?? [];
@@ -356,7 +357,18 @@ export async function POST(request) {
     // here (their chat is locked before the offer is made).
     if (action === "contact_owners") {
       if (!actor) return respond({ error: "Sign in to contact owners" }, { status: 403 });
-      const listingIds = Array.isArray(body.listingIds) ? [...new Set(body.listingIds.filter(Boolean))] : [];
+      /*
+       * Only listings this chat actually recommended. The ids come from the
+       * client, and without this anyone signed in could email (and, through the
+       * CC, learn the address of) the owner of every listing on the site in one
+       * request. recommendations is server-written; the transcript is not.
+       */
+      const recommended = new Set(
+        (chatSession.recommendations ?? []).map((r) => r?.listing_id).filter(Boolean)
+      );
+      const listingIds = Array.isArray(body.listingIds)
+        ? [...new Set(body.listingIds.filter((id) => recommended.has(id)))]
+        : [];
       // The web session carries the display name; a mobile Bearer token has none.
       const sessionName = (await auth())?.user?.name;
       const student = { name: (sessionName || actor.name || "A Proximity student").trim(), email: requestUser.email };
