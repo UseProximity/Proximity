@@ -10,6 +10,7 @@
  * 127.0.0.1 to the second (DNS rebinding) gets nowhere. No JS rendering. We read what the server
  * sends, which Phase 0 showed is enough for most local landlord sites.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import dns from "node:dns/promises";
 import { lookup as lookupCallback } from "node:dns";
 import net from "node:net";
@@ -209,6 +210,13 @@ export async function fetchPage(rawUrl) {
     }
     if (res.status === 403 || res.status === 429) throw new DraftFetchError("blocked");
     if (!res.ok) throw new DraftFetchError(`http_${res.status}`);
+    // A PDF or picture is a file to read (lib/sourceImport/readers/document.js),
+    // not a page: as text it is noise.
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (type === "application/pdf" || type.startsWith("image/")) {
+      res.body?.cancel?.().catch?.(() => {});
+      throw new DraftFetchError("document");
+    }
 
     const html = await readBodyCapped(res, MAX_BYTES);
     return { html, finalUrl: url.toString() };
@@ -373,6 +381,11 @@ export function htmlToText(html) {
 function normalizeImageUrl(u) {
   const wix = u.match(/^(https:\/\/static\.wixstatic\.com\/media\/[^/]+)\/v1\//);
   if (wix) return wix[1];
+  // GoDaddy (wsimg) puts its crop and resize after "/:/", usually a 600px
+  // thumbnail. Ask for one 1600px rendition so every size of a photo is one URL.
+  // Some pages also link the same photo over http.
+  const wsimg = u.match(/^https?:\/\/(img\d*\.wsimg\.com\/isteam\/ip\/[^/]+\/[^/]+?\.(?:jpe?g|png|webp))(?:\/:\/.*)?$/i);
+  if (wsimg) return `https://${wsimg[1]}/:/rs=w:1600`;
   if (/(cdn\.shopify\.com|\/cdn\/shop\/)/.test(u) && !/[?&]width=/.test(u)) {
     return u + (u.includes("?") ? "&" : "?") + "width=1600";
   }
@@ -410,10 +423,26 @@ export function extractImageCandidates(html, baseUrl, cap = 40) {
     out.push({ url: abs, alt });
   };
 
+  /*
+   * Lazy-loading sites leave a 1x1 placeholder in src and park the real photo in
+   * an attribute of their own: GoDaddy uses data-srclazy, WordPress plugins
+   * data-lazy-src or data-original. Rosebury's unit pages had 25 photos and
+   * only the building's cover came through until these were read.
+   */
+  const attr = (tag, name) =>
+    tag.match(new RegExp(`\\s${name}="([^"]+)"`, "i"))?.[1] ?? null;
+  // The first (usually largest listed) URL of a srcset, for tags that only have one.
+  const firstOfSrcset = (v) => (v ? v.split(",")[0].trim().split(/\s+/)[0] : null);
   for (const tag of html.match(/<img[^>]+>/gi) ?? []) {
+    const src = attr(tag, "src");
     push(
-      tag.match(/\bdata-src="([^"]+)"/i)?.[1] ?? tag.match(/\bsrc="([^"]+)"/i)?.[1],
-      decodeEntities(tag.match(/\balt="([^"]*)"/i)?.[1] ?? "")
+      attr(tag, "data-srclazy") ??
+        attr(tag, "data-lazy-src") ??
+        attr(tag, "data-src") ??
+        attr(tag, "data-original") ??
+        (src && !src.startsWith("data:") ? src : null) ??
+        firstOfSrcset(attr(tag, "data-srcsetlazy") ?? attr(tag, "data-srcset") ?? attr(tag, "srcset")),
+      decodeEntities(attr(tag, "alt") ?? "")
     );
   }
   for (const meta of html.match(
@@ -422,7 +451,7 @@ export function extractImageCandidates(html, baseUrl, cap = 40) {
     push(meta.match(/\bcontent="([^"]+)"/i)?.[1], "site cover image");
   }
   for (const m of html.matchAll(
-    /https?:\/\/[^\s"'<>\\()]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\)?]|$)/gi
+    /(?:https?:)?\/\/[^\s"'<>\\()]+?\.(?:jpe?g|png|webp)(?=[\s"'<>\\),?]|\/:\/|$)/gi
   )) {
     push(m[0], "");
   }
@@ -451,15 +480,128 @@ export function extractJsonLd(html, cap = 6000) {
  * Order: Firecrawl (best anti-bot) -> Jina Reader -> Tavily Extract
  * (renewing monthly free tier, returns text + images, wrapped as pseudo-HTML).
  */
-async function renderPageViaFirecrawl(rawUrl) {
+/*
+ * How many paid render calls have been made in this process, by service.
+ * A job reads this before and after its work to report what it cost in
+ * credits; Firecrawl charges one credit per scrape (five with a wait).
+ */
+export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
+export const cacheCounts = { hits: 0, misses: 0 };
+
+/*
+ * Per-read counters. Buildings of a batch now read side by side in one
+ * process, so the module-wide counts above mix them; a read that runs
+ * inside readCounters.run({ render: {}, cache: {} }, ...) gets its own.
+ */
+export const readCounters = new AsyncLocalStorage();
+/*
+ * A ceiling on paid renders inside one read. A building normally takes 2
+ * to 15 (a big portal's quote batches, a few blocked photos); a site built
+ * to waste credits, or a runaway loop, stops here instead. The read's
+ * counters carry their own cap (the picker's is lower); 60 otherwise.
+ */
+const READ_RENDER_CAP = Number(process.env.IMPORT_READ_RENDER_CAP) > 0 ? Number(process.env.IMPORT_READ_RENDER_CAP) : 60;
+function renderAllowed(what) {
+  const mine = readCounters.getStore();
+  if (!mine) return true;
+  const spent = Object.values(mine.render ?? {}).reduce((a, b) => a + b, 0);
+  const cap = mine.cap ?? READ_RENDER_CAP;
+  if (spent < cap) return true;
+  if (!mine.capLogged) {
+    mine.capLogged = true;
+    console.warn(`[render] read stopped rendering at its cap of ${cap} (${what})`);
+  }
+  return false;
+}
+
+function bump(kind, name) {
+  (kind === "render" ? renderCounts : cacheCounts)[name] += 1;
+  const mine = readCounters.getStore();
+  if (mine) mine[kind][name] = (mine[kind][name] ?? 0) + 1;
+}
+
+/*
+ * One rendered page, on demand, for readers that know the page they want
+ * (a leasing portal's apartment list): SSRF-checked, one credit, optional
+ * scripts kept (`raw`) and optional in-page actions whose return values come
+ * back as `returns`. Null on any failure.
+ */
+export async function renderPage(rawUrl, opts = {}) {
+  // A plain render is the same for every building that asks; one with page
+  // actions (a portal's quote sheet) is particular to its caller.
+  if (opts.actions) return renderPageUncached(rawUrl, opts);
+  return shared(`render:${opts.raw ? 1 : 0}:${opts.waitMs ?? 0}:${rawUrl}`, () => renderPageUncached(rawUrl, opts));
+}
+
+async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+  if (!renderAllowed("firecrawl")) return null;
+  let url;
+  try {
+    url = new URL(rawUrl);
+    await assertSafeUrl(url);
+  } catch {
+    return null;
+  }
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
+  bump("render", "firecrawl");
   try {
     const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url: rawUrl, formats: ["html"], timeout: 30000 }),
-      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        url: rawUrl,
+        formats: [raw ? "rawHtml" : "html"],
+        onlyMainContent: false,
+        ...(waitMs ? { waitFor: waitMs } : {}),
+        ...(actions ? { actions } : {}),
+        timeout: 60000,
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!res.ok) {
+      console.warn(`[render] firecrawl ${res.status} for ${rawUrl.slice(0, 100)}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
+      return null;
+    }
+    const data = await res.json();
+    const html = raw ? data?.data?.rawHtml : data?.data?.html;
+    if (typeof html !== "string" || !html) {
+      console.warn(`[render] firecrawl gave no html for ${rawUrl.slice(0, 100)}: ${JSON.stringify(data).slice(0, 300)}`);
+      return null;
+    }
+    return {
+      html: html.slice(0, MAX_BYTES * 3),
+      finalUrl: data?.data?.metadata?.url || rawUrl,
+      returns: (data?.data?.actions?.javascriptReturns ?? []).map((r) => r?.value),
+      screenshots: data?.data?.actions?.screenshots ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
+  if (!renderAllowed("firecrawl")) return null;
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return null;
+  bump("render", "firecrawl");
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      // onlyMainContent defaults to true, which strips header/nav/footer. That
+      // is where a management company keeps the link to its actual inventory
+      // ("Search Apartments", the per-city pages), so a corporate site came
+      // back as its homepage teaser with no way to reach the other 116
+      // properties. We need the whole document, chrome included.
+      body: JSON.stringify({
+        url: rawUrl,
+        formats: ["html"],
+        onlyMainContent: false,
+        ...(waitMs ? { waitFor: waitMs } : {}),
+        timeout: waitMs ? 45000 : 30000,
+      }),
+      signal: AbortSignal.timeout(waitMs ? 70000 : 45000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -474,33 +616,82 @@ async function renderPageViaFirecrawl(rawUrl) {
   }
 }
 
+/*
+ * Jina, with more than one way to stay alive.
+ *
+ * Three facts learned by testing it rather than reading about it:
+ *
+ *  - A key can run out. Ours has: it authenticates and then returns 402
+ *    InsufficientBalanceError on every call.
+ *  - WITHOUT a key the reader still answers, free, and it is not a toy: asked
+ *    for loftsateuclid.com/floorplans it returns eleven kilobytes of markdown
+ *    naming every floor plan.
+ *  - But browser rendering is the paid part. Ask a key-less call for
+ *    "X-Engine: browser" and it returns 401, which is what makes a key worth
+ *    having: the pages we fall back on are usually the ones that need JS.
+ *
+ * So: try each key we were given with the browser engine, drop a key that says
+ * it is empty and move to the next, and when none are left ask anyway without
+ * one. A cached snapshot of the page beats nothing, which is what this returned
+ * before. Set JINA_READER_KEY_2 to a second account's key and it is used when
+ * the first runs dry.
+ */
+const spentJinaKeys = new Set();
+
+async function jinaFetch(rawUrl, key) {
+  const headers = { "X-Return-Format": "html" };
+  // The browser engine is the paid feature; asking for it without a key is a
+  // guaranteed 401, so a key-less call asks for the readable version instead.
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+    headers["X-Engine"] = "browser";
+  }
+  return fetch(`https://r.jina.ai/${rawUrl}`, {
+    headers,
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
 async function renderPageViaJina(rawUrl) {
+  if (!renderAllowed("jina")) return null;
   // JINA_API_KEY is the name people reach for (and the one the PR notes gave
   // out); accept it too so a mis-set key degrades to "wrong name, still works"
   // rather than a render fallback that silently never runs.
-  const key = process.env.JINA_READER_KEY || process.env.JINA_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch(`https://r.jina.ai/${rawUrl}`, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "X-Return-Format": "html",
-        "X-Engine": "browser",
-      },
-      signal: AbortSignal.timeout(60000),
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-    if (!html) return null;
-    return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
-  } catch {
-    return null;
+  const keys = [
+    process.env.JINA_READER_KEY,
+    process.env.JINA_API_KEY,
+    process.env.JINA_READER_KEY_2,
+  ].filter((k) => k && !spentJinaKeys.has(k));
+
+  for (const key of [...keys, null]) {
+    try {
+      bump("render", "jina");
+      const res = await jinaFetch(rawUrl, key);
+      if (key && (res.status === 402 || res.status === 401 || res.status === 403)) {
+        spentJinaKeys.add(key);
+        console.log(
+          `[listing-draft] a Jina key is not usable (HTTP ${res.status}); ` +
+            `402 means that account is out of balance, not that the key is wrong. ` +
+            `Trying the next one, then the free key-less reader.`
+        );
+        continue;
+      }
+      if (!res.ok) return null;
+      const html = await res.text();
+      if (!html) return null;
+      return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
 async function renderPageViaTavily(rawUrl) {
+  if (!renderAllowed("tavily")) return null;
   const key = process.env.TAVILY_API_KEY;
   if (!key) return null;
+  bump("render", "tavily");
   try {
     const res = await fetch("https://api.tavily.com/extract", {
       method: "POST",
@@ -527,6 +718,45 @@ async function renderPageViaTavily(rawUrl) {
 
 const RENDER_FALLBACKS = [renderPageViaFirecrawl, renderPageViaJina, renderPageViaTavily];
 
+/*
+ * The render chain is scored on stripped-text length, which quietly punishes
+ * the sources that preserve structure. Tavily returns raw markdown wrapped in a
+ * single <div>: on macapartments.com that scored 4,703 characters against
+ * Firecrawl's 1,638, so the markdown blob won and extractLinks() came back with
+ * ZERO links, leaving the model no site navigation to offer as area folders.
+ *
+ * So the winner still supplies the text, but whichever candidate actually
+ * carried anchors supplies the links and images. When they are the same
+ * response (the normal case) nothing changes.
+ */
+const anchorCount = (html) => (html ? (html.match(/<a\b[^>]*\bhref=/gi) ?? []).length : 0);
+
+function withLinkHtml(page, structured) {
+  if (!page || !structured || structured === page) return page;
+  if (anchorCount(structured.html) <= anchorCount(page.html)) return page;
+  return { ...page, linkHtml: structured.html };
+}
+
+/*
+ * One render that deliberately waits for the page's own scripts to finish.
+ *
+ * Used for widget-driven availability (SightMap on RealPage sites): the plain
+ * render of metroflatsstl.com's floor-plans page is 32KB and never mentions the
+ * widget, while the same page given nine seconds is 722KB and carries the embed
+ * token we need. Far too slow to do on every import, so the route only reaches
+ * for it when the page looks like one of those.
+ */
+export async function renderPageWaited(rawUrl, waitMs = 9000) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+    await assertSafeUrl(url);
+  } catch {
+    return null;
+  }
+  return shared(`waited:${waitMs}:${rawUrl}`, () => renderPageViaFirecrawl(rawUrl, waitMs));
+}
+
 // Run the render chain directly (SSRF-checked first) and return the best
 // result, or null. Used when a page passed the thin check but its listings
 // clearly live in a JS widget (PMS portal detected, little real content).
@@ -544,20 +774,22 @@ export async function tryRenderPage(rawUrl) {
   }
   let best = null;
   let bestLen = 0;
+  let structured = null;
   for (const render of RENDER_FALLBACKS) {
     const rendered = await render(rawUrl);
     const len = rendered ? htmlToText(rendered.html).length : 0;
+    if (anchorCount(rendered?.html) > anchorCount(structured?.html)) structured = rendered;
     if (len > bestLen) {
       best = rendered;
       bestLen = len;
     }
     if (bestLen >= 3000) break;
   }
-  return best;
+  return withLinkHtml(best, structured);
 }
 
 // Codes where a render service can't help (or must not be asked to try).
-const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed"]);
+const NO_RENDER_CODES = new Set(["bad_url", "unsupported_scheme", "private_address", "dns_failed", "document"]);
 
 // 10-minute page cache so the pick-a-property second request (and background
 // queue prefetches) don't re-download pages this instance just fetched.
@@ -579,9 +811,56 @@ function cachePut(url, page) {
  * render when the plain fetch was blocked or came back thin (JS-rendered site)
  * and a key is configured. Throws DraftFetchError like fetchPage.
  */
+/*
+ * A second cache layer shared across server instances, plugged in by the
+ * importer (lib/sourceImport/pageCache.js). The memory cache above only
+ * helps calls that land on the same instance; an import batch hands each
+ * building to a fresh call, so without this every building re-fetched the
+ * landlord's home page, property list and site-wide pages. Concurrent asks
+ * for the same page also wait for the one fetch in flight.
+ */
+let _sharedStore = null;
+export function setSharedPageCache(store) {
+  _sharedStore = store;
+}
+const _inflight = new Map();
+
+async function shared(key, load) {
+  if (_inflight.has(key)) {
+    // Another building is fetching this page right now: wait for it.
+    bump("cache", "hits");
+    return _inflight.get(key);
+  }
+  const run = (async () => {
+    if (_sharedStore) {
+      const hit = await _sharedStore.get(key).catch(() => null);
+      if (hit) {
+        bump("cache", "hits");
+        return hit;
+      }
+    }
+    bump("cache", "misses");
+    const value = await load();
+    if (value && _sharedStore) await _sharedStore.set(key, value).catch(() => {});
+    return value;
+  })();
+  _inflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    _inflight.delete(key);
+  }
+}
+
 export async function fetchPageSmart(rawUrl) {
   const hit = _pageCache.get(rawUrl);
   if (hit && Date.now() - hit.at < PAGE_CACHE_TTL_MS) return hit.page;
+  const page = await shared(`smart:${rawUrl}`, () => fetchPageSmartUncached(rawUrl));
+  cachePut(rawUrl, page);
+  return page;
+}
+
+async function fetchPageSmartUncached(rawUrl) {
 
   let page = null;
   let fetchErr = null;
@@ -593,10 +872,12 @@ export async function fetchPageSmart(rawUrl) {
   }
 
   let bestLen = page ? htmlToText(page.html).length : 0;
+  let structured = anchorCount(page?.html) ? page : null;
   if (bestLen < 800) {
     for (const render of RENDER_FALLBACKS) {
       const rendered = await render(rawUrl);
       const len = rendered ? htmlToText(rendered.html).length : 0;
+      if (anchorCount(rendered?.html) > anchorCount(structured?.html)) structured = rendered;
       if (len > bestLen) {
         page = rendered;
         bestLen = len;
@@ -604,7 +885,31 @@ export async function fetchPageSmart(rawUrl) {
       if (bestLen >= 800) break; // good enough — stop spending credits
     }
   }
+  /*
+   * One retry before giving up.
+   *
+   * A transient timeout, or a render service rate-limiting under a burst,
+   * surfaced to the landlord as "we couldn't reach that page", which reads as
+   * permanent and is where they stop. Both sites that failed this way in the
+   * 34-site audit (apartments.com under a batch, a Wix page mid-run) succeeded
+   * on the very next attempt.
+   */
+  if (!page && fetchErr && !NO_RENDER_CODES.has(fetchErr.code)) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      page = await fetchPage(rawUrl);
+    } catch {
+      for (const render of RENDER_FALLBACKS) {
+        const rendered = await render(rawUrl);
+        if (rendered && htmlToText(rendered.html).length > 200) {
+          page = rendered;
+          break;
+        }
+      }
+    }
+  }
   if (!page) throw fetchErr ?? new DraftFetchError("unreachable");
+  page = withLinkHtml(page, structured);
   cachePut(rawUrl, page);
   return page;
 }
@@ -640,28 +945,179 @@ export function sameSite(a, b) {
   }
 }
 
-// Same-site links: [{ url, text }] for the model to name property subpages.
-export function extractLinks(html, baseUrl, cap = 40) {
-  const seen = new Set();
-  const out = [];
-  const re = /<a\b[^>]*href="([^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  let m;
-  while ((m = re.exec(html)) && out.length < cap) {
-    let abs;
+/*
+ * Analytics/click-tracking parameters, dropped so the same destination doesn't
+ * appear as several links. Everything else in the query string is KEPT: on a
+ * RentCafe or Entrata corporate site the area filter IS a query parameter
+ * (/searchlisting?citystate=st.%20louis,mo), so chopping at "?" collapsed every
+ * city down to one undifferentiated search page and made area folders
+ * impossible for exactly the big multi-city companies that need them.
+ */
+const TRACKING_PARAMS =
+  /^(utm_|rcstdid$|gclid$|fbclid$|msclkid$|mkt_tok$|_ga$|_gl$|ref$|source$|yclid$|igshid$)/i;
+
+// Canonical form for comparing two links: tracking params dropped, fragment
+// dropped, trailing slash and default port normalized, host lowercased.
+export function normalizeLinkUrl(raw, baseUrl) {
+  let u;
+  try {
+    u = new URL(decodeEntities(raw), baseUrl);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:"].includes(u.protocol)) return null;
+  u.hash = "";
+  for (const key of [...u.searchParams.keys()]) {
+    if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
+  }
+  u.hostname = u.hostname.toLowerCase();
+  if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+    u.pathname = u.pathname.replace(/\/+$/, "");
+  }
+  return u.toString();
+}
+
+// The hostname, lowercased. Throws on anything that is not a URL, which every
+// caller here treats as "not a link we can use".
+export function hostOf(url) {
+  return new URL(url).hostname.toLowerCase();
+}
+
+/*
+ * The property's OWN website, linked from a management company's page about it.
+ *
+ * Mac gives each building its own domain and links straight to it, so picking a
+ * building from the list already landed us on the building's site. Keeley links
+ * to its own summary page first — "Lofts at Euclid" on keeleyproperties.com,
+ * three thousand characters of blurb, a price range, and no floor plans,
+ * because the floor plans are on loftsateuclid.com. The drill looked for a
+ * same-site floor-plans link, found none, and the landlord got a property with
+ * nothing under it. Every property in their portfolio is built this way.
+ *
+ * The host has to echo the property's name, which is what makes this safe:
+ * these pages also link to the company's sibling businesses, the web designer
+ * who built the site, and a resident login portal, and none of those are the
+ * property. "Lofts at Euclid" matches loftsateuclid.com, "The Koken" matches
+ * kokenliving.com, "Citizen Park" matches livecitizenpark.com. Words too short
+ * or too common to identify anything are not allowed to make the match.
+ */
+const OWN_SITE_NOISE_RE =
+  /facebook|instagram|linkedin|twitter|x\.com|youtube|tiktok|pinterest|yelp|google|maps|apple|goo\.gl|bit\.ly|securecafe|rentcafe|appfolio|buildium|entrata|realpage|yardi|resident|portal|payment|policy|privacy|terms|accessibility|wordpress|squarespace|wix|godaddy|brindle|design|agency|construction|restoration/i;
+
+const NAME_STOPWORDS = new Set([
+  "the", "at", "on", "of", "and", "a", "an", "in", "apartments", "apartment",
+  "residences", "residence", "living", "lofts", "loft", "place", "properties",
+  "property", "homes", "home", "house", "flats", "suites", "towers", "tower",
+  "llc", "inc", "co", "company", "group", "management", "realty",
+]);
+
+export function findPropertyOwnSite(html, pageUrl, propertyName) {
+  const name = String(propertyName ?? "").toLowerCase();
+  if (!name.trim()) return null;
+  let pageHost;
+  try {
+    pageHost = hostOf(pageUrl);
+  } catch {
+    return null;
+  }
+  const condensed = name.replace(/[^a-z0-9]/g, "");
+  const words = name
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 5 && !NAME_STOPWORDS.has(w));
+
+  for (const link of extractAllLinks(html, pageUrl, 300)) {
+    if (link.internal) continue;
+    if (OWN_SITE_NOISE_RE.test(link.url)) continue;
+    let host;
     try {
-      abs = new URL(decodeEntities(m[1]), baseUrl).toString();
+      host = hostOf(link.url);
     } catch {
       continue;
     }
-    if (!abs.startsWith("http") || !sameSite(abs, baseUrl)) continue;
-    if (/\.(css|js|xml|pdf|jpg|jpeg|png|webp|ico)(\?|$)/i.test(abs)) continue;
-    abs = abs.split("?")[0];
+    if (!host || host === pageHost) continue;
+    // Compare the bare name: no www, no dots, no top-level domain.
+    const bare = host.replace(/^www\./, "").replace(/\.[a-z.]+$/, "").replace(/[^a-z0-9]/g, "");
+    if (!bare) continue;
+    if (
+      (condensed.length >= 5 && (bare.includes(condensed) || condensed.includes(bare))) ||
+      words.some((w) => bare.includes(w))
+    ) {
+      return link.url;
+    }
+  }
+  return null;
+}
+
+const LINK_ASSET_RE = /\.(css|js|xml|pdf|jpe?g|png|webp|gif|svg|ico|zip|docx?)(\?|$)/i;
+
+// Destinations that are never a property page. Worth dropping explicitly: every
+// property card on a RentCafe site carries a "get directions" link, so these
+// otherwise took half the candidate-link budget and taught the model nothing.
+const LINK_NOISE_RE =
+  /^https?:\/\/([a-z0-9-]+\.)*(maps\.google\.[a-z.]+|google\.[a-z.]+\/maps|facebook\.com|twitter\.com|x\.com|instagram\.com|linkedin\.com|youtube\.com|youtu\.be|tiktok\.com|pinterest\.com|yelp\.com)\//i;
+
+/*
+ * Every link on the page: [{ url, text, internal }], deduped and asset-filtered.
+ * Cross-site links are kept here (a management company routinely gives each
+ * building its own domain) — callers that only want same-site links filter on
+ * `internal`.
+ */
+export function extractAllLinks(html, baseUrl, cap = 120) {
+  const seen = new Set();
+  const out = [];
+  const re = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const base = normalizeLinkUrl(baseUrl, baseUrl);
+  let m;
+  while ((m = re.exec(html)) && out.length < cap) {
+    const abs = normalizeLinkUrl(m[1], baseUrl);
+    if (!abs || abs === base) continue; // in-page anchors resolve to the page
+    if (LINK_ASSET_RE.test(abs) || LINK_NOISE_RE.test(abs)) continue;
     if (seen.has(abs)) continue;
     seen.add(abs);
     const text = htmlToText(m[2]).replace(/\n/g, " ").slice(0, 80).trim();
-    out.push({ url: abs, text });
+    out.push({ url: abs, text, internal: sameSite(abs, baseUrl) });
   }
   return out;
+}
+
+/*
+ * What a page offers besides ordinary links: files it links to (a PDF
+ * availability list, a price-sheet picture, a Google Sheet or Doc, a Drive
+ * file) and frames embedded in it (a published Sheet, a listings widget).
+ * Ordinary link extraction drops both; the page hunt gets them, labelled,
+ * and chooses whether to read them.
+ */
+const FILE_LINK_RE = /\.(pdf|jpe?g|png|webp)(\?|#|$)|^https?:\/\/(drive\.google\.com\/(file\/d\/|open\?id=|uc\?)|docs\.google\.com\/(spreadsheets|document|presentation)\/d\/)/i;
+export function extractDocumentLinks(html, baseUrl, cap = 30) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw, text, kind) => {
+    const abs = normalizeLinkUrl(raw, baseUrl);
+    if (!abs || seen.has(abs) || out.length >= cap) return;
+    seen.add(abs);
+    out.push({ url: abs, text, internal: sameSite(abs, baseUrl), kind });
+  };
+  for (const m of String(html ?? "").matchAll(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const abs = normalizeLinkUrl(m[1], baseUrl);
+    if (!abs || !FILE_LINK_RE.test(abs)) continue;
+    const label = htmlToText(m[2]).replace(/\n/g, " ").slice(0, 80).trim() || (m[0].match(/\b(?:title|aria-label)=["']([^"']+)["']/i)?.[1] ?? "");
+    push(m[1], `(linked file) ${label}`.trim(), "file");
+  }
+  for (const m of String(html ?? "").matchAll(/<iframe\b[^>]*>/gi)) {
+    const src = m[0].match(/\bsrc=["']([^"']+)["']/i)?.[1];
+    if (!src || /youtube|vimeo|google\.[a-z.]+\/maps|maps\.google|matterport|facebook|recaptcha|googletagmanager|doubleclick/i.test(src)) continue;
+    const title = m[0].match(/\btitle=["']([^"']*)["']/i)?.[1] ?? "";
+    push(src, `(embedded in the page) ${title}`.trim(), "frame");
+  }
+  return out;
+}
+
+// Same-site links: [{ url, text }] for the model to name property subpages.
+export function extractLinks(html, baseUrl, cap = 40) {
+  return extractAllLinks(html, baseUrl, cap * 4)
+    .filter((l) => l.internal)
+    .slice(0, cap)
+    .map(({ url, text }) => ({ url, text }));
 }
 
 /*
@@ -679,6 +1135,28 @@ const PMS_PORTALS = [
   { name: "showmojo", host: /(^|\.)showmojo\.com$/i, scan: /https?:\/\/showmojo\.com/i },
   { name: "rentcafe", host: /(^|\.)(rentcafe|securecafe)\.com$/i, scan: /https?:\/\/[a-z0-9.-]*(rentcafe|securecafe)\.com/i },
 ];
+
+/*
+ * Listing portals. A page on one of these describes exactly ONE property, and
+ * every other property-looking link on it is a competitor from the portal's own
+ * "nearby listings" rail.
+ *
+ * Pasting apartments.com/5316-pershing-ave returned a picker of FORTY buildings
+ * (Avenir, SoHo, Clayton on the Park, Coronado Place and Towers), each with a
+ * working apartments.com URL, so a landlord importing their own listing could
+ * publish a competitor's building on Proximity. On these hosts we take the one
+ * listing and never offer a picker.
+ */
+const LISTING_PORTALS =
+  /(^|\.)(apartments\.com|zillow\.com|trulia\.com|hotpads\.com|forrent\.com|forrentuniversity\.com|rent\.com|apartmentlist\.com|padmapper\.com|zumper\.com|realtor\.com|showmetherent\.com|apartmentfinder\.com|apartmentguide\.com)$|(^|\.)wustl\.edu$/i;
+
+export function isListingPortal(url) {
+  try {
+    return LISTING_PORTALS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 // Systems the existing PMS sync supports — worth steering to instead.
 export const SYNCABLE_PMS = new Set(["appfolio", "buildium", "rentecdirect", "doorloop"]);

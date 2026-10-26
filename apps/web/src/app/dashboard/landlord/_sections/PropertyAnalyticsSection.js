@@ -16,6 +16,8 @@ import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
+import ImportGaps from "@/components/listings/editor/ImportGaps";
+import BackToTop from "@/components/ui/BackToTop";
 import ListingMetricsChart from "./ListingMetricsChart";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 
@@ -250,6 +252,10 @@ export default function PropertyAnalyticsSection({
         * whole property at once, which is what let a property owner's save
         * silently rewrite another landlord's offering.
         */}
+      <BackToTop />
+      {/* A draft says what it still needs, with a way to each field. */}
+      {p.isDraft && <ImportGaps listing={p} />}
+
       <EditorOverview
         listing={p}
         canEdit={isPropertyOwner}

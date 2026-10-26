@@ -1550,7 +1550,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff). Zero rows; created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows; created outside the repo migrations. Service role only.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1569,7 +1569,8 @@
           "next_check_at:timestamptz",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "index_url:text"
+          "index_url:text",
+          "portal:jsonb"
         ],
         "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unique (listing_id); check source_kind in (own_site,portal) | last_status in (ok,unchanged,changed,fetch_failed,parse_failed,suppressed,skipped,gone,url_stale); rls: service role only (no policies)",
         "observed_2026_10_12": {
@@ -2519,6 +2520,30 @@
           "prod_rows": 33,
           "prod_last_write": "2026-09-19"
         }
+      },
+      {
+        "table": "listing_import_page_cache",
+        "status": "unreleased",
+        "description": "Short-lived cache of landlord pages fetched by the URL importer (lib/sourceImport/pageCache.js), shared by every building of a batch across server instances. Read for 15 minutes, cleared after an hour by the importer. Service role only.",
+        "columns": [
+          "key:text",
+          "page:jsonb",
+          "fetched_at:timestamptz"
+        ],
+        "notes": "pk key ('smart:'|'waited:<ms>:'|'render:<raw>:<ms>:' + url); index on fetched_at; RLS enabled, no policies. Migration 202610240001 (dev applied, prod pending)."
+      },
+      {
+        "table": "listing_import_usage",
+        "status": "unreleased",
+        "description": "URL importer spend per account: one row per picker read ('picker') and per batch or retry of buildings ('building', units = buildings). lib/sourceImport/limits.js sums it against per-account and site-wide caps before any paid read. Service role only.",
+        "columns": [
+          "id:int8",
+          "user_id:uuid",
+          "kind:text",
+          "units:int4",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk user_id->users.id (cascade); check kind in (picker, building), units > 0; indexes (user_id, kind, created_at), (kind, created_at); RLS enabled, no policies. Migration 202610240002 (dev applied, prod pending)."
       }
     ],
     "functions": [

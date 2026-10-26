@@ -1,11 +1,15 @@
 "use client";
 
 import { HOME_TYPES } from "@/components/listings/listingFormOptions";
-import { StepFrame, Chip, FieldLabel, inputCls, importedInputCls } from "@/components/listings/wizard/wizardShared";
+import { StepFrame, Chip, FieldLabel } from "@/components/listings/wizard/wizardShared";
 
-// Screen 2: what kind of place. Chips and toggles only — the availability ask
-// costs one tap ("Available now" is pre-selected) but is a conscious choice,
-// because matchmaking needs a move-in signal on every listing.
+// Screen 2: what kind of place. Chips and toggles only.
+//
+// Availability used to be asked here as well, for the whole property. It is
+// not any more: a building releases apartment by apartment, so the date lives
+// on the units step, one per apartment, and that is the date students filter
+// on and the one the listing page shows. Asking a second time here only gave a
+// landlord a way to contradict themselves.
 export default function StepBasics({ w }) {
   return (
     <StepFrame
@@ -45,38 +49,6 @@ export default function StepBasics({ w }) {
           >
             21+ only
           </Chip>
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <FieldLabel>When is it available?</FieldLabel>
-        <div className="flex flex-wrap items-center gap-2">
-          <Chip
-            on={w.availabilityMode === "now"}
-            onClick={() => {
-              w.setAvailabilityMode("now");
-              w.setField("move_in_date", "");
-            }}
-          >
-            Available now
-          </Chip>
-          <Chip
-            on={w.availabilityMode === "date"}
-            onClick={() => w.setAvailabilityMode("date")}
-          >
-            From a date
-          </Chip>
-          {w.availabilityMode === "date" && (
-            <input
-              type="date"
-              value={w.form.move_in_date}
-              onChange={(e) => w.setField("move_in_date", e.target.value)}
-              autoFocus
-              className={`${inputCls} w-44${
-                w.importedFields.has("move_in_date") ? importedInputCls : ""
-              }`}
-            />
-          )}
         </div>
       </div>
     </StepFrame>
