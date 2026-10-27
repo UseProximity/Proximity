@@ -69,6 +69,9 @@ export default function AuthCard({
         "Verification link is invalid or expired. Sign in below and we'll offer to send you a new one."
       );
     }
+    if (searchParams.get("error") === "verification_failed") {
+      setError("We couldn't verify your email just now. Please open the link again in a moment.");
+    }
     if (searchParams.get("error") === "ACCOUNT_DELETED") {
       const token = searchParams.get("restore");
       if (token) {

@@ -10,6 +10,7 @@
 import nodemailer from "nodemailer";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { sendMailSafe } from "./outreach";
+import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
 
@@ -680,9 +681,7 @@ export async function sendReplySenderApprovalEmail({ to, ...input }) {
 // middle of something (publishing a listing) lands back in it. The verify route
 // sanitizes it again, so the link is not trusted just because we built it.
 export async function sendVerificationEmail({ email, name, token, baseUrl, next, req }) {
-  const verifyUrl =
-    `${baseUrl}/api/auth/verify-email?token=${token}` +
-    (next ? `&next=${encodeURIComponent(next)}` : "");
+  const verifyUrl = buildVerifyUrl({ baseUrl, token, next });
   await sendMailSafe(
     transporter,
     {

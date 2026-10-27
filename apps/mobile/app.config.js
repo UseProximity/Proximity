@@ -1,4 +1,5 @@
 const { distributableEnvProblems } = require("./src/lib/envGuard");
+const { associatedDomainsFor } = require("./src/lib/linkDomains");
 
 // EAS sets EAS_BUILD_PROFILE on the machine that builds. A preview, testflight or
 // production build must not start from the local development environment
@@ -78,11 +79,16 @@ module.exports = {
     ios: {
       supportsTablet: false,
       bundleIdentifier: "com.proximityllc.proximity",
-      // Universal Links: https://useproximity.org/chat-link and /messages open the app.
-      // The matching paths are listed in the site's
-      // /.well-known/apple-app-site-association (apps/web/public/.well-known). www is
-      // left out because it redirects to the apex domain.
-      associatedDomains: ["applinks:useproximity.org"],
+      // Universal Links: which paths open the app is decided by the site's
+      // /.well-known/apple-app-site-association, built by apps/web/src/lib/appLinks/aasa.js
+      // and served by the route handler under apps/web/src/app/.well-known/. /chat-link and
+      // /messages are always advertised. /reset-password and /api/auth/verify-email are
+      // advertised only where the web deployment explicitly sets APP_LINKS_AUTH_PATHS, which
+      // is left off until a build that handles them is released. www is left out because it
+      // redirects to the apex domain. A build whose API URL is the
+      // staging deployment also claims the staging host (see src/lib/linkDomains.js), so
+      // staging emails open a staging TestFlight build; production builds never do.
+      associatedDomains: associatedDomainsFor(process.env.EXPO_PUBLIC_API_URL),
       infoPlist: {
         // The Mapbox map library links Apple's location APIs, so App Store Connect
         // warns (ITMS-90683) when this string is missing. The app never requests

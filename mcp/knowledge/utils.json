@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T22:48:58.447Z",
-  "count": 156,
+  "_generated": "2026-10-26T10:49:59.086Z",
+  "count": 159,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -64,6 +64,10 @@
       "description": "Sign in with Apple, server side (native iOS flow)."
     },
     {
+      "file": "src/lib/appLinks/aasa.js",
+      "description": "Builds the apple-app-site-association document served at"
+    },
+    {
       "file": "src/lib/auth/accountRestore.js",
       "description": "Restoring a deleted account inside its 30-day grace period."
     },
@@ -98,6 +102,14 @@
     {
       "file": "src/lib/auth/tokenHash.js",
       "description": "Hash for bearer tokens we email or hand out (password reset, profile setup)."
+    },
+    {
+      "file": "src/lib/auth/verifyEmail.js",
+      "description": "Redeems an email-verification token. Shared by GET (the web link) and POST (the mobile"
+    },
+    {
+      "file": "src/lib/auth/verifyUrl.js",
+      "description": "The link in the verification email. `next` is where to send them once verified; it is"
     },
     {
       "file": "src/lib/authMobile.js",

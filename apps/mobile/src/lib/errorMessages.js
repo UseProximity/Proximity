@@ -22,6 +22,11 @@ export const ERROR_MESSAGES = {
     RESEND_VERIFICATION: "Couldn't send the verification email. Please try again.",
     RESEND_EMAIL: "Couldn't resend the email. Please try again.",
     RESET_EMAIL: "Couldn't send the reset email. Please try again.",
+    RESET_PASSWORD: "Couldn't reset your password. Please try again.",
+    RESET_LINK_INVALID: "This reset link is invalid or has expired. Request a new one.",
+    VERIFY_EMAIL: "Couldn't verify your email. Please try again.",
+    VERIFY_LINK_INVALID:
+      "This verification link is invalid or has expired. If you already verified your email, sign in. Otherwise sign in to request a new link.",
     INVALID_CREDENTIALS: "Incorrect email or password.",
     EMAIL_NOT_VERIFIED: "Verify your email before signing in.",
     APPLE_EMAIL_NOT_VERIFIED:
@@ -196,9 +201,9 @@ export const SERVER_ERRORS = {
   TOKEN_EXPIRED: E.AUTH.SESSION_EXPIRED,
   EMAIL_EXISTS: E.AUTH.EMAIL_EXISTS,
   GOOGLE_ACCOUNT: E.AUTH.GOOGLE_ACCOUNT,
-  SET_PASSWORD_EMAILED: E.AUTH.SET_PASSWORD_EMAILED,
   MISSING_FIELDS: E.AUTH.FIELDS_REQUIRED,
   // Sign up and password reset.
+  SET_PASSWORD_EMAILED: E.AUTH.SET_PASSWORD_EMAILED,
   "An account with this email already exists.": E.AUTH.EMAIL_EXISTS,
   "This email is linked to an Apple account. Please sign in with Apple.": E.AUTH.APPLE_ACCOUNT,
   "This email uses Google sign-in. Please continue with Google.": E.AUTH.GOOGLE_ACCOUNT,
@@ -208,6 +213,9 @@ export const SERVER_ERRORS = {
   "Email is required.": E.AUTH.EMAIL_INVALID,
   "Name is required.": E.AUTH.NAME_REQUIRED,
   "Password must be at least 8 characters.": E.AUTH.PASSWORD_SHORT,
+  // Password reset and email verification links.
+  "Reset link is invalid or has expired.": E.AUTH.RESET_LINK_INVALID,
+  "Verification link is invalid or has expired.": E.AUTH.VERIFY_LINK_INVALID,
   // Change password.
   "Current password is incorrect": E.PROFILE.CURRENT_PASSWORD_INCORRECT,
   "New password must be at least 8 characters": E.PROFILE.NEW_PASSWORD_SHORT,

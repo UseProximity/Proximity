@@ -58,6 +58,23 @@ export class AuthResource {
     });
   }
 
+  // The token comes from the emailed link and is the only credential: no Bearer header.
+  resetPassword(token, password) {
+    return this.client.request("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+      skipAuth: true,
+    });
+  }
+
+  verifyEmail(token) {
+    return this.client.request("/api/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+      skipAuth: true,
+    });
+  }
+
   // First password for an account that has none. The server refuses (409) when
   // one already exists; changing a known password goes through changePassword.
   setPassword(password) {

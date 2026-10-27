@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-24T19:51:35.598Z",
+  "_generated": "2026-10-26T10:49:59.075Z",
   "count": 135,
   "routes": [
     {
@@ -499,11 +499,13 @@
     {
       "path": "/api/auth/verify-email",
       "methods": [
-        "GET"
+        "GET",
+        "POST"
       ],
       "auth": "public",
       "methodAuth": {
-        "GET": "public"
+        "GET": "public",
+        "POST": "public"
       },
       "tables": [
         "users"
