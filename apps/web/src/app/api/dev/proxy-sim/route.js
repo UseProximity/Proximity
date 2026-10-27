@@ -60,6 +60,25 @@ export async function POST(req) {
       if (!t) return NextResponse.json({ error: "no such tour" }, { status: 404 });
       return NextResponse.json(await landlordAct({ tourId: body.tourId, landlordId: t.landlord_id, action: body.tourAction, slot: body.slot ?? null, slots: body.slots ?? [] }));
     }
+    if (body.action === "addurl") {
+      // A landlord adds a website to a live listing, then the queued job runs inline.
+      const { addUrl } = await import("@/lib/agents/sync");
+      const { runJob } = await import("@/lib/sourceImport/jobs");
+      const { data: owner } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", body.listingId).eq("is_primary", true).maybeSingle();
+      const r = await addUrl({ listingId: body.listingId, url: body.url, userId: owner?.user_id ?? null });
+      if (r.error) return NextResponse.json(r, { status: r.status ?? 400 });
+      const job = await runJob(r.job.id);
+      return NextResponse.json({ job: { id: job.id, status: job.status, step: job.step, error: job.error, result: job.result } });
+    }
+    if (body.action === "sync") {
+      // One listing's sync, inline, as the daily job would run it.
+      const { ensureMonitors, monitorFor, syncMonitor } = await import("@/lib/sourceImport/sync");
+      await ensureMonitors();
+      const m = await monitorFor(body.listingId);
+      if (!m) return NextResponse.json({ error: "no monitor for this listing" }, { status: 404 });
+      const item = await syncMonitor(m, { force: body.force !== false, autoApply: body.propose ? false : null, email: false });
+      return NextResponse.json({ ...item, applied: item.applied.map((c) => `${c.kind} ${c.field ?? ""} ${c.note ?? ""}`), held: item.held.map((c) => `${c.kind} ${c.field ?? ""} ${c.note ?? ""}`) });
+    }
     if (body.action === "synthesize") {
       const source = await findOrCreateSource({ listingId: body.listingId, kind: "admin", label: `dev sim ${Date.now()}` });
       const result = await synthesizeKnowledge({ listingId: body.listingId, text: body.text, sourceKind: body.sourceKind ?? "landlord_statement", sourceId: source.id, cause: "admin", landlordSet: !!body.landlordSet });

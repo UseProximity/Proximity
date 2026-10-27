@@ -51,8 +51,14 @@ async function scopeLabels(listingId, facts) {
   return { units, leases };
 }
 
+/* Sources whose pages have failed too often: their facts are not current. */
+async function staleSourceIds(listingId) {
+  const { data } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("last_status", "stale");
+  return new Set((data ?? []).map((s) => s.id));
+}
+
 export async function studentFacts(listingId) {
-  const facts = await currentFacts(listingId);
+  const [facts, stale] = await Promise.all([currentFacts(listingId), staleSourceIds(listingId)]);
   const today = todayChicago();
   const owners = await ownerLabels(listingId);
   const { units, leases } = await scopeLabels(listingId, facts);
@@ -68,6 +74,7 @@ export async function studentFacts(listingId) {
     }
     if (f.confidence === "low") continue;
     if (f.valid_until && f.valid_until < today) continue;
+    if (f.source_id && stale.has(f.source_id) && !f.landlord_set) continue;
     const scope = { level: f.scope_level };
     if (f.scope_level === "owner") scope.label = owners.get(f.scope_id) ?? "Another owner";
     else if (f.scope_level === "unit") scope.label = units.get(f.scope_id) ?? "One unit type";

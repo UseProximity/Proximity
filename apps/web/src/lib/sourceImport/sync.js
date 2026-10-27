@@ -2,16 +2,19 @@
  * The recurring source sync.
  *
  * Every published listing with a source URL has a monitor row saying when it
- * is next due. On each run the due ones are read the same way an import reads
- * them (readProperty), the snapshot is kept, and if anything about the units
- * or prices changed the snapshot is applied under the sync rules in apply.js.
- * What was applied and what was held is summarised in one digest email per
- * run; a read that failed outright gets its own email right away.
+ * is next due. syncMonitor reads one the same way an import reads it
+ * (readProperty), keeps the snapshot, and if anything about the units or
+ * prices changed applies it under the sync rules in apply.js. Then the pages
+ * go through Proxy's synthesis (lib/agents/pages.js) so fees, policies and
+ * specials land in the listing's knowledge.
  *
- * The interval lives on the monitor (check_interval_days, default 7), so
- * moving a landlord, or everyone, to daily is a column update rather than a
- * deploy. The admin trigger runs one listing on demand regardless of when it
- * is due.
+ * Since the per-listing agents (PRD v3) the daily batch runs each listing as
+ * its own job in the import lanes (lib/agents/sync.js); runSourceSync, which
+ * reads listings one after another, remains for an admin's on-demand run and
+ * for the unscheduled /api/cron/source-sync route.
+ *
+ * The interval lives on the monitor (check_interval_days, default 1 since
+ * the agents), so moving a landlord to weekly is a column update.
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail } from "@/lib/email";
@@ -19,13 +22,15 @@ import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
 import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
+import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
+import { ensureAgent } from "@/lib/agents/store";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const DEFAULT_INTERVAL_DAYS = 7;
+export const DEFAULT_INTERVAL_DAYS = 1;
 const MAX_BACKOFF_DAYS = 14;
 
 const plusDays = (days) => new Date(Date.now() + days * 86400000).toISOString();
@@ -35,7 +40,7 @@ const plusDays = (days) => new Date(Date.now() + days * 86400000).toISOString();
  * prod listings whose source URLs were set by hand before any sync existed
  * are the case: nothing ever wrote their monitors.
  */
-async function ensureMonitors() {
+export async function ensureMonitors() {
   const { data: rows } = await supabase
     .from("listings")
     .select("id, source_url, source_kind, listing_source_monitors!listing_id(id)")
@@ -53,10 +58,12 @@ async function ensureMonitors() {
   return missing.length;
 }
 
-async function dueMonitors({ listingId, limit, force }) {
+const MONITOR_SELECT = "id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)";
+
+export async function dueMonitors({ listingId = null, limit = 30, force = false } = {}) {
   let q = supabase
     .from("listing_source_monitors")
-    .select("id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)")
+    .select(MONITOR_SELECT)
     .order("next_check_at", { ascending: true, nullsFirst: true })
     .limit(limit);
   if (listingId) q = q.eq("listing_id", listingId);
@@ -77,6 +84,11 @@ async function dueMonitors({ listingId, limit, force }) {
   });
 }
 
+export async function monitorFor(listingId) {
+  const { data } = await supabase.from("listing_source_monitors").select(MONITOR_SELECT).eq("listing_id", listingId).maybeSingle();
+  return data ?? null;
+}
+
 async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
   // The snapshot minus photo lists, which are long and not what a diff needs.
   const normalized = snapshot
@@ -93,7 +105,106 @@ async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
 }
 
 /*
- * Run the sync. Returns { checked, items } where items are the digest rows.
+ * Sync one monitor. Returns the digest row for it. Never throws: a failure
+ * is recorded on the monitor (with backoff) and returned as status "failed".
+ *   force       read even if the fingerprint is unchanged
+ *   autoApply   false records every structural change as open (the landlord
+ *               reviews them) and applies nothing
+ *   onStep      progress text, for a job
+ *   knowledge   also read the pages into the listing's knowledge (default)
+ */
+export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null } = {}) {
+  const listing = m.listings;
+  const label = listing.title ?? listing.address;
+  const interval = m.check_interval_days || DEFAULT_INTERVAL_DAYS;
+  const started = Date.now();
+  const baseUrl = getBaseUrl();
+  try {
+    await ensureAgent(listing.id);
+    const snapshot = await readProperty({
+      pastedUrl: m.index_url ?? m.source_url,
+      target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
+      knownPortal: m.portal ?? null,
+      onStep,
+    });
+    if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    await keepSnapshot(m.id, { ok: true, snapshot });
+    const fp = fingerprint(snapshot);
+    const unchanged = !force && m.last_fingerprint === fp;
+    let result = null;
+    if (!unchanged) {
+      onStep("Saving");
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId });
+    }
+    let pages = [];
+    if (knowledge) {
+      onStep("Reading the pages into knowledge");
+      const flyers = snapshot.trace?.found?.flyers ?? [];
+      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...flyers], cause: "sync", actorId, force });
+    }
+    const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
+    await supabase
+      .from("listing_source_monitors")
+      .update({
+        last_checked_at: new Date().toISOString(),
+        last_extracted_at: new Date().toISOString(),
+        last_status: status,
+        last_error: null,
+        consecutive_failures: 0,
+        last_fingerprint: fp,
+        next_check_at: plusDays(interval),
+      })
+      .eq("id", m.id);
+    await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);
+    const item = {
+      listingId: listing.id,
+      listing: label,
+      status,
+      platform: snapshot.platform,
+      confidence: snapshot.confidence,
+      seconds: Math.round((Date.now() - started) / 1000),
+      applied: result?.applied ?? [],
+      held: result?.held ?? [],
+      holdReason: result?.holdReason ?? null,
+      summary: summarize(snapshot),
+      pages,
+    };
+    console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${item.seconds}s, ${pages.filter((p) => p.written).length} page${pages.length === 1 ? "" : "s"} with new knowledge)`);
+    return item;
+  } catch (err) {
+    const code = err instanceof DraftFetchError ? err.code : null;
+    const failures = (m.consecutive_failures ?? 0) + 1;
+    const message = code ? `fetch failed (${code})` : err?.message ?? "sync failed";
+    await keepSnapshot(m.id, { ok: false, error: message });
+    await supabase
+      .from("listing_source_monitors")
+      .update({
+        last_checked_at: new Date().toISOString(),
+        last_status: code ? "fetch_failed" : "parse_failed",
+        last_error: message.slice(0, 500),
+        consecutive_failures: failures,
+        next_check_at: plusDays(Math.min(interval * (failures + 1), MAX_BACKOFF_DAYS)),
+      })
+      .eq("id", m.id);
+    // The monitored pages share the failure count; after a few in a row their
+    // facts are stale. Other page sources (a link from an answer) are not touched.
+    await supabase.from("listing_sources").update({ consecutive_failures: failures, last_status: code ? "fetch_failed" : "parse_failed", last_error: message.slice(0, 500), last_checked_at: new Date().toISOString() })
+      .eq("listing_id", listing.id).eq("kind", "page").in("url", [m.source_url, m.index_url].filter(Boolean));
+    const stale = await markStaleSources(listing.id);
+    console.error(`[source-sync] ${label}: ${message}${stale ? ` (${stale} source${stale === 1 ? "" : "s"} now stale)` : ""}`);
+    if (email) {
+      try {
+        await sendSourceSyncFailureEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, error: message, failures, baseUrl });
+      } catch (e) {
+        console.error("[source-sync] failure email:", e?.message);
+      }
+    }
+    return { listingId: listing.id, listing: label, status: "failed", error: message, failures, applied: [], held: [], pages: [] };
+  }
+}
+
+/*
+ * Run the sync inline, listing after listing. Returns { checked, items }.
  *   listingId  one listing, on demand
  *   force      run it even if not due, muted, or still a draft
  */
@@ -101,85 +212,13 @@ export async function runSourceSync({ listingId = null, limit = 30, force = fals
   await ensureMonitors();
   const monitors = await dueMonitors({ listingId, limit, force });
   const items = [];
-  const baseUrl = getBaseUrl();
-
-  for (const m of monitors) {
-    const listing = m.listings;
-    const label = listing.title ?? listing.address;
-    const interval = m.check_interval_days || DEFAULT_INTERVAL_DAYS;
-    const started = Date.now();
-    try {
-      const snapshot = await readProperty({
-        pastedUrl: m.index_url ?? m.source_url,
-        target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
-        knownPortal: m.portal ?? null,
-      });
-      if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
-      await keepSnapshot(m.id, { ok: true, snapshot });
-      const fp = fingerprint(snapshot);
-      const unchanged = !force && m.last_fingerprint === fp;
-      let result = null;
-      if (!unchanged) {
-        result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: m.auto_apply !== false, listingLabel: label });
-      }
-      const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
-      await supabase
-        .from("listing_source_monitors")
-        .update({
-          last_checked_at: new Date().toISOString(),
-          last_extracted_at: new Date().toISOString(),
-          last_status: status,
-          last_error: null,
-          consecutive_failures: 0,
-          last_fingerprint: fp,
-          next_check_at: plusDays(interval),
-        })
-        .eq("id", m.id);
-      items.push({
-        listingId: listing.id,
-        listing: label,
-        status,
-        platform: snapshot.platform,
-        confidence: snapshot.confidence,
-        seconds: Math.round((Date.now() - started) / 1000),
-        applied: result?.applied ?? [],
-        held: result?.held ?? [],
-        holdReason: result?.holdReason ?? null,
-        summary: summarize(snapshot),
-      });
-      console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${Math.round((Date.now() - started) / 1000)}s)`);
-    } catch (err) {
-      const code = err instanceof DraftFetchError ? err.code : null;
-      const failures = (m.consecutive_failures ?? 0) + 1;
-      const message = code ? `fetch failed (${code})` : err?.message ?? "sync failed";
-      await keepSnapshot(m.id, { ok: false, error: message });
-      await supabase
-        .from("listing_source_monitors")
-        .update({
-          last_checked_at: new Date().toISOString(),
-          last_status: code ? "fetch_failed" : "parse_failed",
-          last_error: message.slice(0, 500),
-          consecutive_failures: failures,
-          next_check_at: plusDays(Math.min(interval * (failures + 1), MAX_BACKOFF_DAYS)),
-        })
-        .eq("id", m.id);
-      items.push({ listingId: listing.id, listing: label, status: "failed", error: message, applied: [], held: [] });
-      console.error(`[source-sync] ${label}: ${message}`);
-      if (email) {
-        try {
-          await sendSourceSyncFailureEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, error: message, failures, baseUrl });
-        } catch (e) {
-          console.error("[source-sync] failure email:", e?.message);
-        }
-      }
-    }
-  }
+  for (const m of monitors) items.push(await syncMonitor(m, { force, email }));
 
   // One digest per run, when there is anything to say.
   const worth = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
   if (email && worth.length) {
     try {
-      await sendSourceSyncDigestEmail({ to: ALERT_TO, items, baseUrl });
+      await sendSourceSyncDigestEmail({ to: ALERT_TO, items, baseUrl: getBaseUrl() });
     } catch (e) {
       console.error("[source-sync] digest email:", e?.message);
     }

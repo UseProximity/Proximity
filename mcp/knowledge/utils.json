@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T04:03:39.796Z",
-  "count": 204,
+  "_generated": "2026-10-27T04:14:27.443Z",
+  "count": 206,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -40,6 +40,10 @@
       "description": "The team's counts for the per-listing agents: agents by status, current"
     },
     {
+      "file": "src/lib/agents/pages.js",
+      "description": "Pages into knowledge (PRD v3, milestone 6)."
+    },
+    {
       "file": "src/lib/agents/proxy.js",
       "description": "Proxy answers a student (PRD v3, milestone 2)."
     },
@@ -74,6 +78,10 @@
     {
       "file": "src/lib/agents/studentView.js",
       "description": "What a student (or anything acting for one: the read API, Proxy's context,"
+    },
+    {
+      "file": "src/lib/agents/sync.js",
+      "description": "The daily per-agent sync (PRD v3, milestone 6)."
     },
     {
       "file": "src/lib/agents/synthesize.js",

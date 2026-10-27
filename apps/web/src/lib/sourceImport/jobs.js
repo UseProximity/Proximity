@@ -29,6 +29,7 @@ import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { readProperty, DraftFetchError } from "./read.js";
 import { applySnapshot } from "./apply.js";
 import { summarize } from "./snapshot.js";
+import { runSyncJob } from "@/lib/agents/sync";
 
 // WashU's Danforth campus, the pin a draft gets when its address will not
 // geocode. The listing is a draft, the editor shows the address, and the
@@ -310,6 +311,20 @@ export async function runJob(jobId) {
 
   try {
     if (!job.listing_id) throw new Error("This property has nothing to import into.");
+
+    // A per-agent sync rides the same lanes (lib/agents/sync.js).
+    if (target.sync) {
+      const item = await runSyncJob(job, { onStep });
+      await supabase.from("listing_import_jobs").update({
+        status: "done",
+        step: target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : `${item.applied.length} applied, ${item.held.length} held`,
+        progress: 100, finished_at: new Date().toISOString(),
+        result: { mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds },
+      }).eq("id", jobId);
+      const { data: freshSync } = await supabase.from("listing_import_jobs").select("*").eq("id", jobId).maybeSingle();
+      return freshSync;
+    }
+
     const { data: listing } = await supabase.from("listings").select("id, title, address, published_at").eq("id", job.listing_id).maybeSingle();
     if (!listing) throw new Error("The draft for this property no longer exists.");
 

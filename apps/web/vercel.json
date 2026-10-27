@@ -48,6 +48,10 @@
     {
       "path": "/api/cron/agent-questions",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-sync",
+      "schedule": "0 9 * * *"
     }
   ]
 }

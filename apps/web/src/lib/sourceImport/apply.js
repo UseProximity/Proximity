@@ -317,26 +317,57 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     }
     const offers = snap.available ? snap.offers : [];
     const seen = new Set();
+    const unmatchedOffers = [];
     for (const o of offers) {
       const k = leaseKey(o.rent, o.rentIsPerPerson);
       seen.add(k);
       const l = byKey.get(k);
-      const apartments = leaseBlurb(o);
       if (!l) {
         if (o.rent == null && mine.some((x) => x.rent == null)) continue;
-        push({
-          kind: "lease_new",
-          unitKey: snap.key,
-          unitId: db.id,
-          field: "rent",
-          old: null,
-          new: { rent: o.rent, rentIsPerPerson: o.rentIsPerPerson, leaseTermMonths: o.leaseTermMonths, availableFrom: o.availableFrom, apartments: o.apartments },
-          detail: { op: "lease_insert", unitId: db.id, label, offer: o, draft: false },
-        });
+        unmatchedOffers.push(o);
         continue;
       }
-      const lp = {};
+      planLeaseUpdate(o, l);
+    }
+    /*
+     * A price change edits the lease in place (Wyatt, 2026-10-26): on a sync,
+     * an offer at a price the unit does not have and a live lease at a price
+     * the site no longer shows are the same lease repriced, paired cheapest
+     * to cheapest. Only what is left over is a new lease or a withdrawal, so
+     * a plan that gains a second price gets a second lease and one that loses
+     * a price loses one. An import still creates one lease per price.
+     */
+    const goneLeases = mine.filter((l) => !l.unavailable && !seen.has(leaseKey(l.rent, l.rent_is_per_person)));
+    if (mode === "sync") {
+      const byRent = (a, b) => (a.rent ?? 0) - (b.rent ?? 0);
+      const pairsOffers = unmatchedOffers.filter((o) => o.rent != null).sort(byRent);
+      const pairsLeases = goneLeases.filter((l) => l.rent != null).sort(byRent);
+      while (pairsOffers.length && pairsLeases.length) {
+        const o = pairsOffers.shift();
+        const l = pairsLeases.shift();
+        unmatchedOffers.splice(unmatchedOffers.indexOf(o), 1);
+        goneLeases.splice(goneLeases.indexOf(l), 1);
+        seen.add(leaseKey(l.rent, l.rent_is_per_person));
+        planLeaseUpdate(o, l, { rent: o.rent, rent_is_per_person: o.rentIsPerPerson ?? l.rent_is_per_person });
+      }
+    }
+    for (const o of unmatchedOffers) {
+      push({
+        kind: "lease_new",
+        unitKey: snap.key,
+        unitId: db.id,
+        field: "rent",
+        old: null,
+        new: { rent: o.rent, rentIsPerPerson: o.rentIsPerPerson, leaseTermMonths: o.leaseTermMonths, availableFrom: o.availableFrom, apartments: o.apartments },
+        detail: { op: "lease_insert", unitId: db.id, label, offer: o, draft: false },
+      });
+    }
+
+    function planLeaseUpdate(o, l, repriced = null) {
+      const apartments = leaseBlurb(o);
+      const lp = { ...(repriced ?? {}) };
       const diff = {};
+      if (repriced) diff.rent = { old: l.rent, new: o.rent };
       if (o.leaseTermMonths.length && !sameTerms(o.leaseTermMonths, l.lease_term_months)) {
         lp.lease_term_months = o.leaseTermMonths;
         diff.leaseTermMonths = { old: l.lease_term_months ?? [], new: o.leaseTermMonths };
@@ -364,12 +395,11 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           detail: { op: "lease_update", leaseId: l.id, label, patch: { ...lp, unavailable: false, is_active: true } },
         });
       } else if (Object.keys(lp).length) {
-        push({ kind: "lease_updated", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
+        push({ kind: repriced ? "rent_change" : "lease_updated", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
       }
     }
     // A price the site no longer offers (or a unit it stopped offering).
-    for (const l of mine) {
-      if (l.unavailable || seen.has(leaseKey(l.rent, l.rent_is_per_person))) continue;
+    for (const l of goneLeases) {
       if (mode === "import") continue;
       push({ kind: "lease_withdrawn", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: "unavailable", old: false, new: true, detail: { op: "lease_withdraw", leaseId: l.id, label, rent: l.rent } });
     }
@@ -595,6 +625,22 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
   return saved;
 }
 
+/*
+ * What a landlord has set by hand since launch: lease and unit ids, and
+ * property fields as "property:<field>", from the knowledge store's core
+ * provenance rows (lib/agents/store.js).
+ */
+async function landlordSetScopes(listingId) {
+  const { data } = await supabase.from("listing_facts").select("field_key, scope_level, scope_id")
+    .eq("listing_id", listingId).eq("section", "core").eq("landlord_set", true).eq("is_current", true).limit(2000);
+  const out = new Set();
+  for (const f of data ?? []) {
+    if ((f.scope_level === "lease" || f.scope_level === "unit") && f.scope_id) out.add(f.scope_id);
+    else if (f.scope_level === "property" && f.field_key.startsWith("core.property.")) out.add(`property:${f.field_key.slice("core.property.".length)}`);
+  }
+  return out;
+}
+
 /* Lease ids a previous sync withdrew, so a relist of one is routine. */
 async function withdrawnBySyncFor(listingId) {
   const { data } = await supabase.from("listing_source_events").select("detail").eq("listing_id", listingId).eq("kind", "lease_withdrawn").eq("applied", true);
@@ -637,9 +683,34 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
   }
 
+  /*
+   * Landlord-set values are never overwritten by a sync (PRD v3, "When
+   * sources disagree"): a lease, unit or property field a landlord set after
+   * launch has a core provenance row with landlord_set, and any change to it
+   * is held for the landlord instead of applied.
+   */
+  if (mode === "sync") {
+    const protectedIds = await landlordSetScopes(listingId);
+    if (protectedIds.size) {
+      for (const c of changes) {
+        const leaseId = c.leaseId ?? c.detail?.leaseId ?? null;
+        const unitId = c.unitId ?? c.detail?.unitId ?? null;
+        const propertyHit = c.kind === "property_updated" && Object.keys(c.detail?.patch ?? {}).some((f) => protectedIds.has(`property:${f}`));
+        if ((leaseId && protectedIds.has(leaseId)) || (unitId && protectedIds.has(unitId) && c.kind !== "lease_new") || propertyHit) {
+          c.auto = false;
+          c.judge = false;
+          c.protected = true;
+          c.note = "set by the landlord; held for their approval";
+        }
+      }
+    }
+  }
+
   // The model's second opinion on the changes the rules would not apply.
+  // Never on specs (beds, baths, size, name): those are the landlord's call,
+  // then admin's (PRD v3).
   if (autoApply && !holdReason && mode === "sync") {
-    for (const c of changes.filter((x) => !x.auto && x.judge)) {
+    for (const c of changes.filter((x) => !x.auto && x.judge && x.kind !== "spec_mismatch")) {
       const verdict = await judgeChange({ listingLabel: label, unitLabel: c.detail.label, field: c.field, oldValue: c.old, newValue: c.new, context: `kind ${c.kind}` });
       c.judgeResult = verdict;
       if (verdict.verdict === "apply") c.auto = true;

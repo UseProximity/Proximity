@@ -1528,7 +1528,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch.",
+        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -2526,7 +2526,7 @@
       {
         "table": "listing_import_jobs",
         "status": "unreleased",
-        "description": "Background jobs for the paste-your-website importer (feat/agents-importer): one row per draft listing a landlord ticked in the site picker. /api/cron/import-jobs (every 2 minutes) runs queued jobs in lanes; the add-listing workspace polls status/step/progress. target jsonb = what the picker handed over (name, address, url, levelUrl, pastedUrl, alreadyListed); result jsonb = counts, landlord notes and the applied snapshot. Service role only.",
+        "description": "Background jobs for the paste-your-website importer (feat/agents-importer): one row per draft listing a landlord ticked in the site picker. /api/cron/import-jobs (every 2 minutes) runs queued jobs in lanes; the add-listing workspace polls status/step/progress. target jsonb = what the picker handed over (name, address, url, levelUrl, pastedUrl, alreadyListed); result jsonb = counts, landlord notes and the applied snapshot. Service role only. Since milestone 6 a job with target.sync = true is a per-agent sync (target.propose = true holds every displayed-field change as an open listing_source_events row for the landlord to confirm); user_id is the Proxy system user for the daily batch.",
         "columns": [
           "id:uuid",
           "batch_id:uuid",
@@ -2577,7 +2577,7 @@
       {
         "table": "listing_sources",
         "status": "unreleased",
-        "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only.",
+        "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only. Page sources are written by lib/agents/pages.js on every sync (last_fingerprint = hash of the page text, so unchanged pages are not re-synthesized); last_status 'stale' after 3 failures in a row hides the source's facts from Proxy.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
