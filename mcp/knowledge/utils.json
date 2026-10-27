@@ -1,8 +1,32 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T02:47:55.161Z",
-  "count": 181,
+  "_generated": "2026-10-27T03:19:49.643Z",
+  "count": 187,
   "utils": [
+    {
+      "file": "src/lib/agents/flags.js",
+      "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/overview.js",
+      "description": "The team's counts for the per-listing agents: agents by status, current"
+    },
+    {
+      "file": "src/lib/agents/sections.js",
+      "description": "The vocabulary of the knowledge store: sections, scopes, the fee and policy"
+    },
+    {
+      "file": "src/lib/agents/seed.js",
+      "description": "Seeding an agent from what the app already knows (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/store.js",
+      "description": "The knowledge store's one write path (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/studentView.js",
+      "description": "What a student (or anything acting for one: the read API, Proxy's context,"
+    },
     {
       "file": "src/lib/analytics/access.js",
       "description": "Who can open /analytics, and which tabs they see."

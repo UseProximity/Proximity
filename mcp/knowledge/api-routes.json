@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-27T02:47:55.129Z",
-  "count": 145,
+  "_generated": "2026-10-27T03:19:49.612Z",
+  "count": 148,
   "routes": [
     {
       "path": "/api/account",
@@ -61,6 +61,22 @@
         "users"
       ],
       "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/agents",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "listing_agents"
+      ],
+      "file": "src/app/api/admin/agents/route.js"
     },
     {
       "path": "/api/admin/chat/reply-senders",
@@ -954,6 +970,20 @@
       "file": "src/app/api/cron/waitlist-nudge/route.js"
     },
     {
+      "path": "/api/dev/agents-seed",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/dev/agents-seed/route.js"
+    },
+    {
       "path": "/api/dev/inbound-email",
       "methods": [
         "POST"
@@ -1712,6 +1742,20 @@
       },
       "tables": [],
       "file": "src/app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listing/[listingId]/facts",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/listing/[listingId]/facts/route.js"
     },
     {
       "path": "/api/listings",

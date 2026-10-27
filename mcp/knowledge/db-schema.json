@@ -1118,7 +1118,7 @@
       {
         "table": "listing_concessions",
         "status": "ops_curated",
-        "description": "Promotional concessions per listing (amount_type flat|percentage|months_free, valid_from/valid_until, active). NOT read or written by any app code on staging; rows are curated by hand during property review sessions (last_verified_source holds the sources, e.g. RentCafe rental options pages) and by the unmerged importer branches (feat/listing-import-url, feat/import-match-sync). 35 rows in prod, still being updated as of 2026-10-12. Product decision pending: build a UI for it or stop curating.",
+        "description": "Promotional concessions per listing (amount_type flat|percentage|months_free, valid_from/valid_until, active). NOT read or written by any app code on staging; rows are curated by hand during property review sessions (last_verified_source holds the sources, e.g. RentCafe rental options pages) and by the unmerged importer branches (feat/listing-import-url, feat/import-match-sync). 35 rows in prod, still being updated as of 2026-10-12. Product decision pending: build a UI for it or stop curating. Seeded into listing_facts by lib/agents/seed.js (per-listing agents, 2026-10-27).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1135,7 +1135,7 @@
           "last_verified_at:timestamptz",
           "last_verified_source:text"
         ],
-        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); check amount_type in (flat,percentage,months_free); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->unit_leases.id (set null; repointed from the retired listing_leases by 202610270001); check amount_type in (flat,percentage,months_free); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 35,
           "prod_last_write": "2026-10-12"
@@ -1201,7 +1201,7 @@
       {
         "table": "listing_fees",
         "status": "ops_curated",
-        "description": "Itemised fees per listing (fee_type_id -> fee_types; basis flat|per_person|per_bed|per_unit|per_day|per_bedroom_per_month|percentage; refundable). NOT read or written by any app code on staging; 196 rows in prod curated by hand during property reviews (last_verified_source records where each number came from) and by the importer branches. Product decision pending: build a UI for it or stop curating.",
+        "description": "Itemised fees per listing (fee_type_id -> fee_types; basis flat|per_person|per_bed|per_unit|per_day|per_bedroom_per_month|percentage; refundable). NOT read or written by any app code on staging; 196 rows in prod curated by hand during property reviews (last_verified_source records where each number came from) and by the importer branches. Product decision pending: build a UI for it or stop curating. Seeded into listing_facts by lib/agents/seed.js (per-listing agents, 2026-10-27).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1217,36 +1217,10 @@
           "last_verified_at:timestamptz",
           "last_verified_source:text"
         ],
-        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); fee_type_id->fee_types.id; check basis in (flat,per_person,per_bed,per_unit,per_day,per_bedroom_per_month,percentage); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->unit_leases.id (set null; repointed from the retired listing_leases by 202610270001); fee_type_id->fee_types.id; check basis in (flat,per_person,per_bed,per_unit,per_day,per_bedroom_per_month,percentage); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 196,
           "prod_last_write": "2026-10-12"
-        }
-      },
-      {
-        "table": "listing_field_states",
-        "status": "unused",
-        "description": "Per-field verification/confidence state for listing data. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
-        "columns": [
-          "id:uuid",
-          "listing_id:uuid",
-          "table_name:text",
-          "record_id:uuid",
-          "field_name:text",
-          "state:text",
-          "source:text",
-          "ai_confidence:numeric",
-          "evidence:text",
-          "suggested_value:text",
-          "last_changed_at:timestamptz",
-          "changed_by:uuid",
-          "extraction_run_id:uuid",
-          "created_at:timestamptz"
-        ],
-        "notes": "status=unused; pk id; fk listing_id->listings.id (cascade); changed_by->users.id (set null); extraction_run_id->lease_extraction_runs.id (set null); unique (table_name, record_id, field_name); check state in (confirmed,ai_suggested,empty,rejected); rls: on, with policies (app uses the service role anyway)",
-        "observed_2026_10_12": {
-          "prod_rows": 0,
-          "prod_last_write": null
         }
       },
       {
@@ -2578,6 +2552,147 @@
           "fetched_at:timestamptz"
         ],
         "notes": "pk key; index (fetched_at); RLS enabled, no policies. Migration 202610240001_import_page_cache (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_agents",
+        "status": "unreleased",
+        "description": "Per-listing agents (PRD v3): one row per listing. status is the per-listing switch: off until the pilot, pilot or on = Proxy answers (with the global LISTING_AGENTS_ENABLED switch, lib/agents/flags.js). seeded_at set by lib/agents/seed.js; sync bookkeeping filled by milestone 6. Service role only.",
+        "columns": [
+          "listing_id:uuid",
+          "status:text",
+          "seeded_at:timestamptz",
+          "last_sync_at:timestamptz",
+          "last_manual_sync_at:timestamptz",
+          "manual_syncs_today:int4",
+          "manual_sync_day:date",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk listing_id -> listings.id (cascade); check status in (off, pilot, on); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_sources",
+        "status": "unreleased",
+        "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "url:text",
+          "document_id:uuid",
+          "message_id:uuid",
+          "question_id:uuid",
+          "user_id:uuid",
+          "owner_id:uuid",
+          "label:text",
+          "enabled:bool",
+          "check_interval_days:int4",
+          "next_check_at:timestamptz",
+          "last_checked_at:timestamptz",
+          "last_status:text",
+          "last_error:text",
+          "consecutive_failures:int4",
+          "last_fingerprint:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), message_id->chat_messages.id (set null), user_id/owner_id->users.id (set null), document_id->listing_documents.id (set null); unique (listing_id) where kind=site_data; unique (listing_id, url) where kind=page; check kind, last_status; RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_facts",
+        "status": "unreleased",
+        "description": "The knowledge store: one row per claim about a listing. section core|fees|policies|specials|misc, dotted field_key (fee.application, policy.pets, special.<slug>, misc.<slug>, core.verified), structured value jsonb, a one-line student-safe summary, scope (property | owner = users.id or the nil uuid for unclaimed leases | unit = listing_units.id | lease = unit_leases.id), source, redacted excerpt, confidence, landlord_set (outranks every other source; a sync holds instead of overwriting), validity window. One current row per key and scope; superseded rows keep history. Core VALUES are not copied here (read live from listings/units/leases); a core row records provenance only. Written only through lib/agents/store.js setFact.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "section:text",
+          "field_key:text",
+          "value:jsonb",
+          "summary:text",
+          "scope_level:text",
+          "scope_id:uuid",
+          "source_id:uuid",
+          "source_ref:text",
+          "excerpt:text",
+          "confidence:text",
+          "landlord_set:bool",
+          "set_by:uuid",
+          "observed_at:timestamptz",
+          "valid_from:date",
+          "valid_until:date",
+          "is_current:bool",
+          "superseded_by:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_fact_events",
+        "status": "unreleased",
+        "description": "Change history and review queue for listing_facts: every setFact writes one (cause seed|sync|url_added|landlord_chat|landlord_answer|dashboard|admin|document|backfill|revert; status applied|held|proposed|approved|rejected|reverted) with old and new value. 'held' = a change to a landlord-set fact waiting for the landlord; 'proposed' = an extraction waiting for confirmation. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "fact_id:uuid",
+          "previous_fact_id:uuid",
+          "section:text",
+          "field_key:text",
+          "scope_level:text",
+          "scope_id:uuid",
+          "cause:text",
+          "status:text",
+          "old_value:jsonb",
+          "new_value:jsonb",
+          "actor_id:uuid",
+          "source_id:uuid",
+          "detail:jsonb",
+          "decided_by:uuid",
+          "decided_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), fact_id/previous_fact_id->listing_facts.id (set null), actor_id/decided_by->users.id, source_id->listing_sources.id; index (listing_id, created_at desc) and a partial one on held/proposed; RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_documents",
+        "status": "unreleased",
+        "description": "Files a landlord uploads to their agent (brochure, fee sheet, policy PDF): metadata, extraction status and the redacted excerpt kept afterwards. The file itself is deleted once extraction finishes (file_deleted_at). Milestone 7 fills it. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "uploaded_by:uuid",
+          "filename:text",
+          "mime_type:text",
+          "size_bytes:int4",
+          "storage_key:text",
+          "status:text",
+          "reject_reason:text",
+          "excerpt:text",
+          "facts_count:int4",
+          "error:text",
+          "extracted_at:timestamptz",
+          "file_deleted_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), uploaded_by->users.id (set null); check status in (uploaded, extracting, done, rejected, failed); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_agent_usage",
+        "status": "unreleased",
+        "description": "Model spend per agent (answers, triage, extraction, sync reads): tokens and cost in cents per call, summed against the per-agent and site-wide caps. Written by lib/agents/store.js recordUsage. Service role only.",
+        "columns": [
+          "id:int8",
+          "listing_id:uuid",
+          "kind:text",
+          "model:text",
+          "input_tokens:int4",
+          "output_tokens:int4",
+          "cost_cents:numeric",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade); indexes (listing_id, created_at), (created_at); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
       }
     ],
     "functions": [
