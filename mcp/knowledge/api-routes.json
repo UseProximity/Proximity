@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-27T04:14:27.422Z",
-  "count": 165,
+  "_generated": "2026-10-27T04:28:38.457Z",
+  "count": 171,
   "routes": [
     {
       "path": "/api/account",
@@ -77,6 +77,24 @@
         "listing_agents"
       ],
       "file": "src/app/api/admin/agents/route.js"
+    },
+    {
+      "path": "/api/admin/agents/queue",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "listing_fact_events",
+        "listing_source_events",
+        "listing_agents"
+      ],
+      "file": "src/app/api/admin/agents/queue/route.js"
     },
     {
       "path": "/api/admin/chat/reply-senders",
@@ -1396,6 +1414,54 @@
       "file": "src/app/api/landlord/listings/[listingId]/route.js"
     },
     {
+      "path": "/api/landlord/listings/[listingId]/agent",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/changes",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/changes/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/chat",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/chat/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/documents",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/documents/route.js"
+    },
+    {
       "path": "/api/landlord/listings/[listingId]/agent/sync",
       "methods": [
         "GET",
@@ -1408,6 +1474,18 @@
       },
       "tables": [],
       "file": "src/app/api/landlord/listings/[listingId]/agent/sync/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/tell",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/tell/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/agent/url",

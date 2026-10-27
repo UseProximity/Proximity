@@ -1297,13 +1297,14 @@
       {
         "table": "listing_landlords",
         "status": "active",
-        "description": "Join: listing ↔ landlord user (is_primary flags the owner).",
+        "description": "Join: listing ↔ landlord user (is_primary flags the owner). claimed_at (202610270007... see 202610270006_claimed_at): when the owner claimed the listing, default now(); existing rows backfilled to at least 15 days before the migration so everyone at launch counts as verified. An owner claimed within 14 days has agent edits held for admin review (lib/agents/coreWrites.js recentlyClaimed).",
         "columns": [
           "listing_id:uuid",
           "user_id:uuid",
           "is_primary:bool",
           "created_at:timestamptz",
-          "id:uuid"
+          "id:uuid",
+          "claimed_at:timestamptz"
         ],
         "notes": "status=active; pk id; fk listing_id->listings.id (cascade); user_id->users.id (cascade); unique (listing_id, user_id); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
@@ -2605,7 +2606,7 @@
       {
         "table": "listing_facts",
         "status": "unreleased",
-        "description": "The knowledge store: one row per claim about a listing. section core|fees|policies|specials|misc, dotted field_key (fee.application, policy.pets, special.<slug>, misc.<slug>, core.verified), structured value jsonb, a one-line student-safe summary, scope (property | owner = users.id or the nil uuid for unclaimed leases | unit = listing_units.id | lease = unit_leases.id), source, redacted excerpt, confidence, landlord_set (outranks every other source; a sync holds instead of overwriting), validity window. One current row per key and scope; superseded rows keep history. Core VALUES are not copied here (read live from listings/units/leases); a core row records provenance only. Written only through lib/agents/store.js setFact.",
+        "description": "The knowledge store: one row per claim about a listing. section core|fees|policies|specials|misc, dotted field_key (fee.application, policy.pets, special.<slug>, misc.<slug>, core.verified), structured value jsonb, a one-line student-safe summary, scope (property | owner = users.id or the nil uuid for unclaimed leases | unit = listing_units.id | lease = unit_leases.id), source, redacted excerpt, confidence, landlord_set (outranks every other source; a sync holds instead of overwriting), validity window. One current row per key and scope; superseded rows keep history. Core VALUES are not copied here (read live from listings/units/leases); a core row records provenance only. Written only through lib/agents/store.js setFact. Core provenance rows core.<lease|unit|property>.<field> with landlord_set are written by lib/agents/coreWrites.js markLandlordSet from the dashboard's property, unit and lease routes and from the agent chat; apply.js holds sync changes to those scopes.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",

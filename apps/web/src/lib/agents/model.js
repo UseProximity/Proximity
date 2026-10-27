@@ -86,7 +86,7 @@ export async function parseStructured({ model = SONNET, system, messages, schema
  */
 export async function runTools({
   model = SONNET, system, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
-  tag, listingId = null, kind = "tools",
+  tag, listingId = null, kind = "tools", finalTool = "final",
 }) {
   const client = getClient();
   const convo = [...messages];
@@ -100,12 +100,12 @@ export async function runTools({
       max_tokens: maxTokens,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       tools,
-      // On the last round the model must answer, so it is told to call final.
-      tool_choice: last ? { type: "tool", name: "final" } : { type: "auto" },
+      // On the last round the model must answer, so it is told to call the final tool.
+      tool_choice: last ? { type: "tool", name: finalTool } : { type: "auto" },
       messages: convo,
     });
     addUsage(usage, resp.usage);
-    const finalBlock = resp.content.find((b) => b.type === "tool_use" && b.name === "final");
+    const finalBlock = resp.content.find((b) => b.type === "tool_use" && b.name === finalTool);
     text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });

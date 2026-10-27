@@ -19,6 +19,7 @@ import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
 import BackToTop from "@/components/ui/BackToTop";
 import ListingMetricsChart from "./ListingMetricsChart";
+import AgentTab from "@/components/landlord/AgentTab";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 
 export default function PropertyAnalyticsSection({
@@ -278,6 +279,19 @@ export default function PropertyAnalyticsSection({
         currentUserEmail={currentUserEmail}
         onChanged={onPhotosChanged}
       />
+
+      {/* The listing's agent: what Proxy knows, what is waiting on the
+          landlord, and the conversation that edits the listing (PRD v3). */}
+      {!p.isDraft && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Agent</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AgentTab listingId={listingId} viewAsId={viewAsId} />
+          </CardContent>
+        </Card>
+      )}
 
     </div>
   );

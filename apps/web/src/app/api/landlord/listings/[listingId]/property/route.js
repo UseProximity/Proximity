@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
+import { markLandlordSet } from "@/lib/agents/coreWrites";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import {
   findPropertyNameConflict,
@@ -162,6 +163,12 @@ export async function PATCH(req, { params }) {
       }
       console.error("[listings/property] update failed:", error.message);
       return NextResponse.json({ error: "Could not save those details." }, { status: 500 });
+    }
+    // A dashboard edit after launch is landlord-set: a website sync holds
+    // changes to these fields for the landlord instead of applying them.
+    const protectedFields = Object.fromEntries(Object.entries(patch).filter(([k]) => ["description", "furnished", "sublease_friendly"].includes(k)));
+    if (Object.keys(protectedFields).length) {
+      markLandlordSet({ listingId, target: "property", fields: protectedFields, userId: session.user.id, cause: "dashboard" }).catch(() => {});
     }
   }
 

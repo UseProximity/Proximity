@@ -1,15 +1,23 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T04:14:27.443Z",
-  "count": 206,
+  "_generated": "2026-10-27T04:28:38.473Z",
+  "count": 210,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
     },
     {
+      "file": "src/lib/agents/compliance.js",
+      "description": "Fair-housing screening of what landlords add to a listing's knowledge"
+    },
+    {
       "file": "src/lib/agents/context.js",
       "description": "Everything Proxy may know about one listing, as text for the model and as"
+    },
+    {
+      "file": "src/lib/agents/coreWrites.js",
+      "description": "Displayed fields, written by the agent (PRD v3, \"Edit by conversation\")."
     },
     {
       "file": "src/lib/agents/corrections.js",
@@ -20,8 +28,16 @@
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
     },
     {
+      "file": "src/lib/agents/gate.js",
+      "description": "Who may use a listing's agent tools on this request: any owner of the"
+    },
+    {
       "file": "src/lib/agents/ingest.js",
       "description": "Getting documents and links into a listing's knowledge (PRD v3, with"
+    },
+    {
+      "file": "src/lib/agents/landlordAgent.js",
+      "description": "The landlord's side of their listing's agent (PRD v3, milestone 7)."
     },
     {
       "file": "src/lib/agents/limits.js",
