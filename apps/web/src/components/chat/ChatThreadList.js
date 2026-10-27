@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CalendarDays, Check } from "lucide-react";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import { sortThreadsByRecency } from "@/utils/chatThreadGrouping";
 
@@ -80,8 +81,18 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
           >
             {title}
           </p>
-          <span className="text-[10px] text-gray-400 flex-shrink-0">
-            {formatPreviewTime(thread.lastMessageAt)}
+          <span className="flex flex-shrink-0 items-center gap-1.5">
+            {thread.tour && (
+              <span
+                title={thread.tour.status === "confirmed" ? "Tour confirmed" : thread.tour.status === "proposed" ? "Pick a tour time" : "Tour requested"}
+                className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${thread.tour.status === "confirmed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+              >
+                {thread.tour.status === "confirmed" ? <Check className="h-3 w-3" /> : <CalendarDays className="h-3 w-3" />}
+              </span>
+            )}
+            <span className="text-[10px] text-gray-400">
+              {formatPreviewTime(thread.lastMessageAt)}
+            </span>
           </span>
         </div>
         {subtitle && (

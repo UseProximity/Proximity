@@ -36,7 +36,7 @@ export async function POST(req) {
     if (body.action === "answer") {
       const { data: q } = await supabase.from("listing_questions").select("owner_id").eq("id", body.questionId).maybeSingle();
       if (!q) return NextResponse.json({ error: "no such question" }, { status: 404 });
-      const result = await answerQuestion({ questionId: body.questionId, landlordUserId: body.asUserId ?? q.owner_id, body: body.body, done: body.done !== false, via: "app" });
+      const result = await answerQuestion({ questionId: body.questionId, landlordUserId: body.asUserId ?? q.owner_id, body: body.body, done: typeof body.done === "boolean" ? body.done : null, via: "app" });
       return NextResponse.json(result);
     }
     if (body.action === "facts") {

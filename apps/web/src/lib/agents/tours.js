@@ -9,9 +9,9 @@
  * from, until one side confirms or cancels.
  *
  * On confirmation both sides get each other's name, email and phone, and an
- * in-app thread opens between them with the contact-detail and link
- * restrictions lifted (chat_threads.unrestricted). Proxy keeps answering in
- * the Proxy thread. Reminders: landlord at day 1 and 3, the student told on
+ * contact details are exchanged (phone and email, in the confirmation and
+ * by email); there is no second chat, the tour rides on the Proxy thread
+ * (Wyatt, 2026-10-27). Proxy keeps answering there. Reminders: landlord at day 1 and 3, the student told on
  * day 5, and both reminded the day before a confirmed tour.
  */
 import supabase from "@/lib/supabase";
@@ -142,30 +142,18 @@ async function confirm(t, slot, byUserId) {
   const when = fmtSlot(slot);
   const label = t.listings?.title || t.listings?.address || "the listing";
 
-  // The in-app thread between the two, names and all, with contact details allowed.
-  let threadId = t.thread_id ?? null;
-  if (!threadId) {
-    const { data: started, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
-      p_user_id: t.student_id, p_listing_id: t.listing_id,
-      p_body: `Tour confirmed for ${when} at ${label}. Reach me at ${[studentContact?.phone, studentContact?.email].filter(Boolean).join(" or ")}.`,
-      p_lease_id: t.lease_id,
-    });
-    if (error) console.error("[tours] could not open the thread:", error.message);
-    threadId = started?.threadId ?? null;
-    if (threadId) {
-      await supabase.from("chat_threads").update({ unrestricted: true }).eq("id", threadId);
-      await supabase.from("chat_participants").upsert({ thread_id: threadId, user_id: t.landlord_id }, { onConflict: "thread_id,user_id", ignoreDuplicates: true });
-    }
-  }
+  // One chat per listing (Wyatt, 2026-10-27): no second thread opens. Both
+  // sides get each other's phone and email here and by email, and the tour
+  // sits on the Proxy conversation as a marker.
   const { data: updated, error } = await supabase.from("tour_requests").update({
     status: "confirmed", confirmed_slot: slot, confirmed_by: byUserId, confirmed_at: now, student_contact: studentContact, landlord_contact: landlordContact,
-    thread_id: threadId, last_activity_at: now,
+    last_activity_at: now,
   }).eq("id", t.id).select(TOUR_SELECT).single();
   if (error) throw fail("tour confirm", error);
   if (t.proxy_thread_id) {
     const reach = [landlordContact?.name, landlordContact?.phone, landlordContact?.email].filter(Boolean).join(", ");
     await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
-      body: `Your tour is confirmed for ${when}. The landlord has your contact details, and you have theirs: ${reach || "see your tours"}. You can also message them directly on Proximity now. I'm still here for any questions about the place.`,
+      body: `Your tour is confirmed for ${when}. The landlord has your phone and email, and here are theirs: ${reach || "see the tour above"}. Reach them directly to coordinate; I'm still here for any questions about the place.`,
       metadata: { tourId: t.id, confirmed: true } });
   }
   notifyTourConfirmed({ tourId: t.id }).catch((err) => console.error("[tours] confirm alert failed:", err?.message ?? err));

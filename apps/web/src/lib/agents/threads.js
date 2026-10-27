@@ -157,9 +157,10 @@ export async function listProxyInbox(userId) {
   if (error) throw fail("proxy inbox", error);
   const out = [];
   for (const t of threads ?? []) {
-    const [{ data: last }, { data: part }] = await Promise.all([
+    const [{ data: last }, { data: part }, { data: tour }] = await Promise.all([
       supabase.from("chat_messages").select("body, message_type, created_at, sender_id").eq("thread_id", t.id).is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("chat_participants").select("last_read_at").eq("thread_id", t.id).eq("user_id", userId).maybeSingle(),
+      supabase.from("tour_requests").select("status, confirmed_slot").eq("listing_id", t.listing_id).eq("student_id", userId).in("status", ["requested", "proposed", "confirmed"]).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (!last) continue;
     let unread = 0;
@@ -177,6 +178,7 @@ export async function listProxyInbox(userId) {
       otherUserId: PROXY_USER_ID, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
       lastMessageBody: last.body, lastMessageType: last.message_type, lastMessageAt: last.created_at, lastMessageMine: last.sender_id === userId,
       unreadCount: unread, hasUnread: unread > 0,
+      tour: tour ? { status: tour.status, confirmedSlot: tour.confirmed_slot } : null,
     });
   }
   return out;

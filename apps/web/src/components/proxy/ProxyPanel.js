@@ -41,8 +41,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
-import { Send, Sparkles, Flag, CalendarDays } from "lucide-react";
-import TourBooking from "./TourBooking";
+import { Send, Sparkles, Flag } from "lucide-react";
+import TourMarker from "./TourMarker";
+import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
 const dateLabel = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
@@ -164,7 +165,7 @@ function Bubble({ msg, onReport, animate = false, asked = null }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, showTour = true, onTourIntent = null }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -233,18 +234,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return () => clearInterval(t);
   }, [active, thread, sending, refresh]);
 
-  // A tour already requested, proposed or confirmed here stays on screen when
-  // the student comes back, instead of a Book a tour button.
-  useEffect(() => {
-    if (!listingId || !session?.user?.id) return;
-    let cancelled = false;
-    fetch(`/api/tours?listingId=${encodeURIComponent(listingId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d?.tour && ["requested", "proposed", "confirmed"].includes(d.tour.status)) setBookingOpen(true); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [listingId, session?.user?.id]);
-
   // The conversation stays pinned to its newest message: the list's own
   // scroll follows every change (an answer typing out grows the text node by
   // node), and the modal keeps the bottom of the panel in view.
@@ -292,7 +281,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       const incoming = data.messages ?? [];
       setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
-      if (data.intent === "tour" && session?.user?.id) setBookingOpen(true);
+      if (data.intent === "tour" && session?.user?.id) { if (showTour) setBookingOpen(true); else onTourIntent?.(); }
       // Seen on the page: no email for this answer.
       if (active) refresh();
     } catch {
@@ -303,7 +292,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [input, thread, sending, leaseId, session?.user?.id, active, refresh]);
+  }, [input, thread, sending, leaseId, session?.user?.id, active, refresh, showTour, onTourIntent]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;
@@ -338,6 +327,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
   }
 
+  const tour = showTour && !testMode
+    ? TourMarker({ listing, leaseChoices: choices, leaseId, proxyThreadId: thread?.id ?? null, signedIn, open: bookingOpen, onOpenChange: setBookingOpen, mode: "inline" })
+    : null;
+
   return (
     <div ref={rootRef} className="flex flex-col gap-3">
       {testMode && (
@@ -350,24 +343,13 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         <p className="text-sm text-gray-700">
           Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
         </p>
-        {!testMode && choices.length > 0 && !bookingOpen && (
-          signedIn ? (
-            <button type="button" onClick={() => setBookingOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
-              <CalendarDays className="h-3.5 w-3.5" /> Book a tour
-            </button>
-          ) : (
-            <button type="button" onClick={() => signIn()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
-              <CalendarDays className="h-3.5 w-3.5" /> Sign in to book a tour
-            </button>
-          )
-        )}
+        {tour?.button}
       </div>
 
-      {bookingOpen && signedIn && (
-        <TourBooking listing={listing} leaseChoices={choices} initialLeaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} />
-      )}
+      {tour?.card}
 
       <div className="rounded-2xl border-2 border-gray-300 bg-white shadow-md">
+        {loading && <ChatSkeleton rows={3} className="border-b border-gray-100 p-4" />}
         {started && (
           <div ref={listRef} className="flex max-h-[480px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-4">
             {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} asked={m.id === lastAskedId ? askedInfo : null} />)}

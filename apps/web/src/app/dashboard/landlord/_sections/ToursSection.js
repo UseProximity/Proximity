@@ -111,7 +111,7 @@ export default function ToursSection({ viewAsId = null }) {
               <div className="flex items-center gap-2 text-xs text-gray-500"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> {t.listingTitle}{t.lease ? ` · ${t.lease.unit}` : ""}</div>
               <p className="mt-1 font-medium text-gray-900">{fmtSlot(t.confirmedSlot)} with {t.studentName}</p>
               {t.contact && <p className="text-gray-600">{[t.contact.phone, t.contact.email].filter(Boolean).join(" · ")}</p>}
-              {t.threadId && <a href={`/messages?thread=${t.threadId}`} className="text-xs text-red-600 underline">Open the conversation</a>}
+
             </div>
           ))}
         </section>

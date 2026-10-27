@@ -8,9 +8,11 @@
  * is also saved on their account as a weekday pattern and painted in for
  * them next time (Wyatt, 2026-10-27). The card then tracks the request:
  * waiting, the landlord's proposed times to pick from, or confirmed with
- * the landlord's contact details and a link to the conversation.
+ * the landlord's contact details. There is one chat per listing: the tour
+ * lives on the Proxy conversation as a marker (TourMarker), not in a
+ * second thread.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDays, X } from "lucide-react";
 import { DateGrid, zoneAbbrev } from "./AvailabilityGrid";
@@ -53,7 +55,7 @@ function StatusCard({ tour, onCancel, onPick, busy }) {
         <div className="mt-1 space-y-1 text-gray-700">
           <p className="font-medium">{fmtSlot(tour.confirmedSlot)}</p>
           {tour.contact && <p>Landlord: {[tour.contact.name, tour.contact.phone, tour.contact.email].filter(Boolean).join(" · ")}</p>}
-          {tour.threadId && <a href={`/messages?thread=${tour.threadId}`} className="text-red-600 underline">Message the landlord</a>}
+          <p className="text-xs text-gray-500">Reach them by phone or email; they have your details too.</p>
         </div>
       )}
       {(open || tour.status === "confirmed") && (
@@ -65,7 +67,7 @@ function StatusCard({ tour, onCancel, onPick, busy }) {
   );
 }
 
-export default function TourBooking({ listing, leaseChoices, initialLeaseId = null, proxyThreadId = null, onClose }) {
+export default function TourBooking({ listing, leaseChoices, initialLeaseId = null, proxyThreadId = null, onClose, onTourChange = null }) {
   const listingId = listing?._id;
   const [loading, setLoading] = useState(true);
   const [tour, setTour] = useState(null);
@@ -75,6 +77,9 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
   // The lease is the one the conversation is about (the panel's selection).
   const leaseId = initialLeaseId ?? (leaseChoices.length === 1 ? leaseChoices[0].id : null);
   const [busy, setBusy] = useState(false);
+  // The marker above learns about every change without re-running the load.
+  const onChangeRef = useRef(onTourChange);
+  onChangeRef.current = onTourChange;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +93,7 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
       setPhone(a.phone ?? "");
       setEmail(a.email ?? null);
       setTour(t.tour ?? null);
+      onChangeRef.current?.(t.tour ?? null);
     } catch {
       toast.error("Could not load your availability.");
     } finally {
@@ -108,6 +114,7 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(data?.error || "Could not request the tour."); return; }
       setTour(data.tour);
+      onChangeRef.current?.(data.tour);
       toast.success("Tour requested. We'll let you know when the landlord confirms.");
     } finally {
       setBusy(false);
@@ -122,14 +129,22 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(data?.error || "Could not update the tour."); return; }
       setTour(data.tour);
+      onChangeRef.current?.(data.tour);
       if (action === "pick") toast.success("Tour confirmed.");
-      if (action === "cancel") { toast("Tour cancelled."); setTour(null); }
+      if (action === "cancel") { toast("Tour cancelled."); setTour(null); onChangeRef.current?.(null); }
     } finally {
       setBusy(false);
     }
   };
 
-  if (loading) return <div className="py-4 text-center text-sm text-gray-400">Loading your availability...</div>;
+  if (loading) {
+    return (
+      <div className="animate-pulse rounded-xl border border-gray-200 bg-white p-4" role="status" aria-label="Loading your tour">
+        <div className="mb-3 h-4 w-32 rounded bg-gray-200" />
+        <div className="h-24 w-full rounded-lg bg-gray-100" />
+      </div>
+    );
+  }
 
   if (tour && ["requested", "proposed", "confirmed"].includes(tour.status)) {
     return <StatusCard tour={tour} busy={busy} onCancel={() => act("cancel")} onPick={(s) => act("pick", s)} />;

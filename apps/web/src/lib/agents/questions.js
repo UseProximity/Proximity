@@ -162,6 +162,30 @@ export async function classifyReply({ question, text, listingId }) {
   }
 }
 
+const ClarifierWording = z.object({
+  message: z.string().describe("Proxy's message to the student: one short paragraph in Proxy's own voice that says the landlord needs one detail before they can answer, asks that question clearly (reworded as Proxy, not quoted), and ends by telling the student to reply here so Proxy can pass it on. No greeting, no contact details, no em dash."),
+});
+
+/*
+ * A landlord's question back, asked by Proxy in its own words (Wyatt,
+ * 2026-10-27). Falls back to a plain relay if the model is unavailable.
+ */
+async function proxyAsksClarifier({ question, clarifier, listingId }) {
+  const fallback = `The landlord needs one thing from you before they can answer: ${clarifier}\n\nReply here and I'll pass it straight on.`;
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, listingId, kind: "clarifier_wording", tag: "clarifier-wording", maxTokens: 220,
+      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you; the landlord replied with a question of their own before answering. Write what you say to the student. Make it clear the question comes from the landlord.",
+      messages: [{ role: "user", content: `The student asked: "${question}"\n\nThe landlord replied with this question: "${clarifier}"` }],
+      schema: ClarifierWording,
+    });
+    const text = parsed?.message?.trim();
+    return text && text.length > 20 ? text : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /*
  * The landlord answers. `done` false = a clarifying question for the
  * student; null = let classifyReply decide from the text.
@@ -189,9 +213,10 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
 
   if (!done) {
     await supabase.from("listing_questions").update({ pending_clarifier: true, last_activity_at: now }).eq("id", q.id);
+    // Proxy asks the landlord's question in turn, in its own words, and says whose it is.
+    const asked = await proxyAsksClarifier({ question: q.question, clarifier: screened.text, listingId: q.listing_id });
     for (const w of waiters) {
-      // Proxy asks the landlord's question in turn, and says whose it is.
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `The landlord needs one thing from you before they can answer: ${screened.text}\n\nReply here and I'll pass it straight on.`, metadata: { questionId: q.id, clarifier: true } });
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: screened.text } });
       notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "clarifier", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };

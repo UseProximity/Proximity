@@ -52,7 +52,7 @@ export default function StudentTours() {
               <div className="mt-1 text-gray-700">
                 <p className="font-medium">{fmtSlot(t.confirmedSlot)}</p>
                 {t.contact && <p>Landlord: {[t.contact.name, t.contact.phone, t.contact.email].filter(Boolean).join(" · ")}</p>}
-                {t.threadId && <a href={`/messages?thread=${t.threadId}`} className="text-red-600 underline">Message the landlord</a>}
+                {t.proxyThreadId && <a href={`/?messages=1&thread=${t.proxyThreadId}`} className="text-red-600 underline">Open the conversation</a>}
               </div>
             )}
             {t.status === "proposed" && (

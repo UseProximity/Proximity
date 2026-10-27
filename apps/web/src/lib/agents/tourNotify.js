@@ -13,6 +13,11 @@ import { postProxyMessage } from "./threads";
 const TZ = "America/Chicago";
 const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+// The student's link: their Proxy conversation on the listing, which carries the tour.
+function studentUrl(r) {
+  return r.t.proxy_thread_id ? `${getBaseUrl()}/?messages=1&thread=${r.t.proxy_thread_id}` : `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`;
+}
+
 async function loadTour(tourId) {
   const { data: t } = await supabase.from("tour_requests")
     .select("*, listings!listing_id(title, address), unit_leases!lease_id(rent, listing_units!unit_id(name, bedrooms, bathrooms))")
@@ -90,8 +95,8 @@ export async function notifyTourConfirmed({ tourId }) {
       subject: `Tour confirmed: ${r.listingLabel}, ${when}`,
       intro: `You're booked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`,
       lines: [`Landlord: ${[lc.name, lc.phone, lc.email].filter(Boolean).join(", ") || "see your dashboard"}`, `Address: ${r.address}`],
-      note: "You can also message the landlord directly on Proximity now. Proxy is still there for questions about the place.",
-      ctaLabel: "Open the conversation", ctaUrl: `${getBaseUrl()}/messages?thread=${r.t.thread_id ?? ""}`, attachment: file, userId: r.student.id,
+      note: "Reach the landlord by phone or email to coordinate. Proxy is still there for questions about the place.",
+      ctaLabel: "Open the conversation", ctaUrl: studentUrl(r), attachment: file, userId: r.student.id,
     });
     sent.push("student");
   }
@@ -101,8 +106,8 @@ export async function notifyTourConfirmed({ tourId }) {
       subject: `Tour confirmed: ${r.student?.name || "a student"} on ${when}`,
       intro: `${r.student?.name || "A student"} is touring ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`,
       lines: [`Reach them at: ${[sc.phone, sc.email].filter(Boolean).join(" or ") || "see your dashboard"}`],
-      note: "You can also message them directly on Proximity now.",
-      ctaLabel: "Open the conversation", ctaUrl: `${getBaseUrl()}/messages?thread=${r.t.thread_id ?? ""}`, attachment: file, userId: r.landlord.id,
+      note: "Reach them by phone or email to coordinate.",
+      ctaLabel: "Open your tours", ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`, attachment: file, userId: r.landlord.id,
     });
     sent.push("landlord");
   }
@@ -137,7 +142,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
         kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
         lines: [`${u.id === r.student?.id ? "Landlord" : "Student"}: ${[other?.name, other?.phone, other?.email].filter(Boolean).join(", ")}`, `Address: ${r.address}`],
-        note: "", ctaLabel: "Open the conversation", ctaUrl: `${getBaseUrl()}/messages?thread=${r.t.thread_id ?? ""}`, userId: u.id,
+        note: "", ctaLabel: u.id === r.student?.id ? "Open the conversation" : "Open your tours", ctaUrl: u.id === r.student?.id ? studentUrl(r) : `${getBaseUrl()}/dashboard/landlord?tab=tours`, userId: u.id,
       });
     }
     return "sent";
