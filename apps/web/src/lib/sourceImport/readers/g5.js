@@ -86,6 +86,19 @@ export async function fetchG5Locations(clientUrn) {
  * returns Map(apartment id -> [{ months, price }]). No credits, no model.
  */
 const VLS_DEFAULT = "https://vendor-leads.g5marketingcloud.com";
+
+// The host comes from the landlord's page and is POSTed to without the
+// fetchSite guard, so only G5's own https hosts are accepted. Anything else
+// (an internal address, another domain) falls back to the default.
+function safeVlsHost(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:" && /(^|\.)g5marketingcloud\.com$/i.test(u.hostname)) return u.origin;
+  } catch {
+    /* not a URL */
+  }
+  return VLS_DEFAULT;
+}
 const PUSHER_HOST = "ws.pusherapp.com";
 const MAX_TERM_LOOKUPS = 80;
 const MATRIX_WAIT_MS = 12000;
@@ -124,7 +137,7 @@ export async function fetchG5LeaseTerms({ locationUrn, vlsHost = VLS_DEFAULT, pl
       },
     };
     try {
-      const res = await fetch(`${vlsHost.replace(/\/$/, "")}/api/v1/lease_terms_retrievals`, {
+      const res = await fetch(`${safeVlsHost(vlsHost)}/api/v1/lease_terms_retrievals`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(body),

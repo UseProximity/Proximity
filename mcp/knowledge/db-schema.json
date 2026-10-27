@@ -1521,7 +1521,7 @@
       {
         "table": "listing_source_events",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches feat/listing-import-url and feat/import-match-sync): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows; table exists on both DBs but was created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -1550,7 +1550,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows; created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1581,7 +1581,7 @@
       {
         "table": "listing_source_snapshots",
         "status": "unreleased",
-        "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows; created outside the repo migrations.",
+        "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -2543,7 +2543,41 @@
           "units:int4",
           "created_at:timestamptz"
         ],
-        "notes": "pk id; fk user_id->users.id (cascade); check kind in (picker, building), units > 0; indexes (user_id, kind, created_at), (kind, created_at); RLS enabled, no policies. Migration 202610240002 (dev applied, prod pending)."
+        "notes": "pk id; fk user_id->users.id (cascade); check kind in (picker, building), units > 0; indexes (user_id, kind, created_at), (kind, created_at); RLS enabled, no policies. Migration 202610240002 (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_import_jobs",
+        "status": "unreleased",
+        "description": "Background jobs for the paste-your-website importer (feat/agents-importer): one row per draft listing a landlord ticked in the site picker. /api/cron/import-jobs (every 2 minutes) runs queued jobs in lanes; the add-listing workspace polls status/step/progress. target jsonb = what the picker handed over (name, address, url, levelUrl, pastedUrl, alreadyListed); result jsonb = counts, landlord notes and the applied snapshot. Service role only.",
+        "columns": [
+          "id:uuid",
+          "batch_id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "target:jsonb",
+          "status:text",
+          "step:text",
+          "progress:int4",
+          "attempts:int4",
+          "error:text",
+          "result:jsonb",
+          "started_at:timestamptz",
+          "finished_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk user_id->users.id (cascade); listing_id->listings.id (set null); check status in (queued, running, done, failed, cancelled); indexes (batch_id, created_at), (status, created_at), (user_id, created_at desc); RLS enabled, no policies. Migration 202610200001 (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_import_page_cache",
+        "status": "unreleased",
+        "description": "Short-lived cache of landlord pages fetched by lib/sourceImport, shared by every building read in a batch and by the picker before it, so a 12-building import fetches the site-wide pages once. Rows older than an hour are cleared by the importer itself. Service role only.",
+        "columns": [
+          "key:text",
+          "page:jsonb",
+          "fetched_at:timestamptz"
+        ],
+        "notes": "pk key; index (fetched_at); RLS enabled, no policies. Migration 202610240001_import_page_cache (dev applied; prod applied at the milestone 0 merge)."
       }
     ],
     "functions": [

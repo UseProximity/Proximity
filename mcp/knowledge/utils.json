@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-24T22:48:58.447Z",
-  "count": 156,
+  "_generated": "2026-10-27T02:47:55.161Z",
+  "count": 181,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -312,6 +312,10 @@
       "description": "Loader for the published legal documents (/privacy, /terms)."
     },
     {
+      "file": "src/lib/listingDraft/assignPhotos.js",
+      "description": "Second pass of the paste-your-website draft: which photos show which floor"
+    },
+    {
       "file": "src/lib/listingDraft/extract.js",
       "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
     },
@@ -320,8 +324,12 @@
       "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
     },
     {
-      "file": "src/lib/listingDraft/rateLimit.js",
-      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+      "file": "src/lib/listingDraft/floorPlanUnits.js",
+      "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
+    },
+    {
+      "file": "src/lib/listingDraft/sightmap.js",
+      "description": "SightMap inventory reader."
     },
     {
       "file": "src/lib/listings/filterListings.js",
@@ -536,6 +544,94 @@
       "description": "The evidence-backed target-query map the measurement engine tracks."
     },
     {
+      "file": "src/lib/sourceImport/alreadyListed.js",
+      "description": "Which of these buildings are already on Proximity, and whose."
+    },
+    {
+      "file": "src/lib/sourceImport/apply.js",
+      "description": "Lay a snapshot over a listing."
+    },
+    {
+      "file": "src/lib/sourceImport/assets.js",
+      "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
+    },
+    {
+      "file": "src/lib/sourceImport/jobs.js",
+      "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/limits.js",
+      "description": "Spending caps for the URL importer."
+    },
+    {
+      "file": "src/lib/sourceImport/model.js",
+      "description": "The model calls behind the importer: Haiku first, Sonnet only when Haiku"
+    },
+    {
+      "file": "src/lib/sourceImport/pageCache.js",
+      "description": "The importer's shared page cache (see setSharedPageCache in"
+    },
+    {
+      "file": "src/lib/sourceImport/read.js",
+      "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/document.js",
+      "description": "Files a landlord's site links to instead of putting the numbers on the"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/embeddedProperties.js",
+      "description": "A company's property list embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/entrata.js",
+      "description": "Entrata floor plans, as the \"pm-entrata-manager\" WordPress plugin renders"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/floorPlanVision.js",
+      "description": "Which of a unit's images is its floor plan diagram."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/flyer.js",
+      "description": "\"What's included\" flyers."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/g5.js",
+      "description": "G5 (g5marketingcloud.com) inventory reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
+      "description": "Floor plans embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/securecafe.js",
+      "description": "SecureCafe (RentCafe online leasing) portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/zillow.js",
+      "description": "A Zillow listing's own photos."
+    },
+    {
+      "file": "src/lib/sourceImport/sanitize.js",
+      "description": "Make an imported description publishable under the content rules."
+    },
+    {
+      "file": "src/lib/sourceImport/snapshot.js",
+      "description": "The one shape every reader produces and the one shape the writer consumes."
+    },
+    {
+      "file": "src/lib/sourceImport/sync.js",
+      "description": "The recurring source sync."
+    },
+    {
+      "file": "src/lib/sourceSync/attach.js",
+      "description": "Attach (or clear) the source URL a listing is monitored against."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.js",
+      "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
       "file": "src/lib/streetview.js",
       "description": "Google Street View Static API helper."
     },
@@ -546,6 +642,10 @@
     {
       "file": "src/lib/supabaseWithUser.js",
       "description": "Thin wrappers around the write-as-user RPCs defined in migration"
+    },
+    {
+      "file": "src/lib/useLeaveGuard.js",
+      "description": "Ask before leaving a page with work in flight, and clean up if they go."
     },
     {
       "file": "src/lib/userRole.js",

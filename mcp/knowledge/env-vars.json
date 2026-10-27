@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-24T19:51:35.687Z",
-  "count": 87,
+  "_generated": "2026-10-27T02:47:55.201Z",
+  "count": 95,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -196,6 +196,22 @@
       "public": false
     },
     {
+      "name": "IMPORT_LANES",
+      "public": false
+    },
+    {
+      "name": "IMPORT_PAGE_CACHE",
+      "public": false
+    },
+    {
+      "name": "IMPORT_PICKER_RENDER_CAP",
+      "public": false
+    },
+    {
+      "name": "IMPORT_READ_RENDER_CAP",
+      "public": false
+    },
+    {
       "name": "IMPORT_SECRET",
       "public": false
     },
@@ -205,6 +221,10 @@
     },
     {
       "name": "JINA_READER_KEY",
+      "public": false
+    },
+    {
+      "name": "JINA_READER_KEY_2",
       "public": false
     },
     {
@@ -329,6 +349,18 @@
     },
     {
       "name": "R2_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "SOURCE_IMPORT_MODEL",
+      "public": false
+    },
+    {
+      "name": "SOURCE_SYNC_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "SOURCE_SYNC_PORTALS_ENABLED",
       "public": false
     },
     {

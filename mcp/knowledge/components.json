@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-24T19:51:35.602Z",
-  "count": 138,
+  "_generated": "2026-10-27T02:47:55.136Z",
+  "count": 141,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -474,6 +474,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ImportGaps",
+      "file": "src/components/listings/editor/ImportGaps.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "listingFormOptions",
       "file": "src/components/listings/listingFormOptions.js",
       "description": "No description. Run generate after adding a description above."
@@ -481,6 +486,11 @@
     {
       "name": "AddListingWizard",
       "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ImportWorkspace",
+      "file": "src/components/listings/wizard/ImportWorkspace.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -611,6 +621,11 @@
     {
       "name": "setupTokenStore",
       "file": "src/components/reviews/setupTokenStore.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BackToTop",
+      "file": "src/components/ui/BackToTop.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

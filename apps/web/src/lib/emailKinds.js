@@ -41,6 +41,9 @@ export const KINDS = {
   content_report: ["team", "Content report"],
   contact_mismatch: ["team", "Landlord contact mismatch"],
   feedback: ["team", "Site feedback"],
+  source_sync_digest: ["team", "Website sync digest"],
+  source_sync_failure: ["team", "Website sync failure"],
+  import_cap_alert: ["team", "Website import cap reached"],
 };
 
 export function categoryOf(kind) {

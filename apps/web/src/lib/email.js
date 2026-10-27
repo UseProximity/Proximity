@@ -1164,6 +1164,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
   const quiet = items.length - changed.length;
   await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_digest" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     subject: `Website sync: ${changed.length} listing${changed.length === 1 ? "" : "s"} changed or need a look`,
@@ -1180,6 +1181,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
 
 export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourceUrl, error, failures, baseUrl }) {
   await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_failure" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     subject: `Website sync failed: ${listing}`,
@@ -1198,6 +1200,7 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
 /* The importer hit a site-wide cap: every import is paused until the window passes. */
 export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) {
   await sendMailSafe(transporter, {
+    logAs: { kind: "import_cap_alert" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
     subject: `Website imports paused: ${kind} cap reached`,

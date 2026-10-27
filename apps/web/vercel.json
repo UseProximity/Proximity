@@ -44,10 +44,6 @@
     {
       "path": "/api/cron/import-jobs",
       "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/cron/source-sync",
-      "schedule": "0 10 * * 1"
     }
   ]
 }
