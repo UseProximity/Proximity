@@ -92,9 +92,9 @@ export async function handleQuestionEmail({ parsed, fromEmail, token, attachment
     await finish(logId, { ...base, status: "empty", reason: "no new text" });
     return { status: "empty", reason: "no new text" };
   }
-  const kind = text ? await classifyReply({ question: q.question, text, listingId: q.listing_id }) : "answer";
+  const kind = text ? (await classifyReply({ question: q.question, text, listingId: q.listing_id })).kind : "answer";
   const body = text || "Please see the details I've shared.";
-  const result = await answerQuestion({ questionId: q.id, landlordUserId: q.owner_id, body, done: kind !== "clarifier", via: "email" });
+  const result = await answerQuestion({ questionId: q.id, landlordUserId: q.owner_id, body, done: kind === "other" ? true : null, via: "email" });
   if (result.error) {
     await finish(logId, { ...base, status: "rejected", reason: String(result.error).slice(0, 200) });
     return { status: "rejected", reason: result.error };

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { proxyActor, proxyAvailable } from "@/lib/agents/access";
-import { getOrCreateProxyThread, listMessages, shapeMessage, markRead, claimVisitorThreads } from "@/lib/agents/threads";
+import { getOrCreateProxyThread, listMessages, shapeMessage, markRead, claimVisitorThreads, claimThreadsByEmail } from "@/lib/agents/threads";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,6 +33,9 @@ export async function POST(req) {
     // A signed-in student who asked while signed out: those threads are theirs now.
     if (actor.userId && actor.cookieVisitorId) {
       await claimVisitorThreads({ visitorId: actor.cookieVisitorId, userId: actor.userId }).catch((err) => console.error("[proxy] claim failed:", err?.message ?? err));
+    }
+    if (actor.userId) {
+      await claimThreadsByEmail({ userId: actor.userId }).catch((err) => console.error("[proxy] claim by email failed:", err?.message ?? err));
     }
 
     const { thread } = await getOrCreateProxyThread({ listingId, userId: actor.userId, visitorId: actor.visitorId, leaseId });

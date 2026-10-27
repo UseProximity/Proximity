@@ -30,6 +30,7 @@ import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_US
 import { sanitizeStudentText } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
 import { askLandlord, pendingClarifierFor, studentReplyToClarifier } from "./questions";
+import { handleVisitorEmail, askedLine } from "./visitorEmail";
 import { shortDate } from "./sections";
 
 const SYSTEM = `You are Proxy, the assistant for one rental listing on Proximity, a housing site for WashU (Washington University in St. Louis) students. You answer students' questions about this listing inside a chat on the listing's page. The landlord is not in this chat. What you cannot answer, Proximity sends to the landlord on the student's behalf; the landlord answers you, and you post it back here later.
@@ -163,6 +164,16 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
 
   const studentMsg = await postMessage({ threadId: thread.id, listingId, senderId: userId, body: text, type: "text", metadata: visitorId && !userId ? { visitor: true } : {} });
   const out = [studentMsg];
+
+  // A signed-out visitor giving their email for the alert: handled without
+  // the model, never sent to the landlord.
+  if (!userId && !testMode) {
+    const given = await handleVisitorEmail({ thread, text });
+    if (given) {
+      out.push(await postProxyMessage({ threadId: thread.id, listingId, body: given.reply, type: "proxy_note", metadata: { notifyEmail: true } }));
+      return { messages: out, outcome: given.held ? "account_exists" : "notify_email", intent: "notify_email", questionIds: [] };
+    }
+  }
   const facts = await currentFacts(listingId);
   const factByKey = new Map(facts.map((f) => [f.field_key, f]));
 
@@ -214,7 +225,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     if (canAsk) {
       const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: text, leaseId: chosenLeaseId, askerUserId: userId, visitorId });
       questionIds = q ? [q.id] : [];
-      reply = "I couldn't work that out just now, so I've sent your message to the landlord.";
+      reply = `I couldn't work that out just now, so I've sent your message to the landlord. ${await askedLine({ thread, userId })}`;
       out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_asked", metadata: { questionIds } }));
       outcome = "asked_landlord";
     } else {
@@ -245,7 +256,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
       }
       if (questionIds.length) {
         const list = toAsk.slice(0, 3).map((u) => `"${u.question}"`).join(" and ");
-        out.push(await postProxyMessage({ threadId: thread.id, listingId, body: `I don't have that yet, so I've sent it to the landlord: ${list}.`, type: "proxy_asked", metadata: { questionIds } }));
+        out.push(await postProxyMessage({ threadId: thread.id, listingId, body: `I don't have that yet, so I've sent it to the landlord: ${list}. ${await askedLine({ thread, userId })}`, type: "proxy_asked", metadata: { questionIds } }));
       }
     }
     outcome = final.intent === "small_talk" ? "chit_chat"

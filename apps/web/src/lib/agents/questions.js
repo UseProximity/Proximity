@@ -31,6 +31,7 @@ import { findOrCreateSource } from "./store";
 import { notifyLandlordQuestion, notifyLandlordStudentReply, notifyStudentThread } from "./notify";
 import { stampReplyToken } from "./questionTokens";
 import { ingestLinks } from "./ingest";
+import { heldThreadIds } from "./visitorEmail";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
 
@@ -140,7 +141,9 @@ async function waitersOf(questionId) {
 }
 
 const ReplyKind = z.object({
-  kind: z.enum(["answer", "clarifier", "other"]).describe("answer: it answers the question (fully or partly). clarifier: it asks the student something before answering. other: unrelated, empty, or an out-of-office style message."),
+  kind: z.enum(["answer", "clarifier", "both", "other"]).describe("answer: it answers the question. clarifier: it only asks the student something before answering. both: it gives an answer AND asks the student a follow-up question. other: unrelated, empty, or an out-of-office style message."),
+  answer_part: z.string().describe("For both: the answering part of the reply, in the landlord's words. Otherwise empty."),
+  question_part: z.string().describe("For both: the question the landlord asks the student, in the landlord's words. Otherwise empty."),
 });
 
 /*
@@ -151,14 +154,14 @@ const ReplyKind = z.object({
 export async function classifyReply({ question, text, listingId }) {
   try {
     const { parsed } = await parseStructured({
-      model: HAIKU, listingId, kind: "classify_reply", tag: "reply-kind", maxTokens: 60,
-      system: "A landlord replied to a question a student asked through Proxy, a rental listing's assistant. Decide what the reply is. A reply that asks the student for a detail before answering (which unit, when, how many) is a clarifier, even if it also says a little.",
+      model: HAIKU, listingId, kind: "classify_reply", tag: "reply-kind", maxTokens: 400,
+      system: "A landlord replied to a question a student asked through Proxy, a rental listing's assistant. Decide what the reply is. A reply that only asks the student for a detail before answering (which unit, when, how many) is a clarifier. A reply that answers and also asks the student something is both: split it into the answer part and the question part.",
       messages: [{ role: "user", content: `Question: "${question}"\n\nReply:\n\"\"\"\n${text.slice(0, 3000)}\n\"\"\"` }],
       schema: ReplyKind,
     });
-    return parsed?.kind ?? "answer";
+    return { kind: parsed?.kind ?? "answer", answerPart: parsed?.answer_part?.trim() ?? "", questionPart: parsed?.question_part?.trim() ?? "" };
   } catch {
-    return "answer";
+    return { kind: "answer", answerPart: "", questionPart: "" };
   }
 }
 
@@ -170,7 +173,7 @@ const ClarifierWording = z.object({
  * A landlord's question back, asked by Proxy in its own words (Wyatt,
  * 2026-10-27). Falls back to a plain relay if the model is unavailable.
  */
-async function proxyAsksClarifier({ question, clarifier, listingId }) {
+export async function proxyAsksClarifier({ question, clarifier, listingId }) {
   const fallback = `The landlord needs one thing from you before they can answer: ${clarifier}\n\nReply here and I'll pass it straight on.`;
   try {
     const { parsed } = await parseStructured({
@@ -203,7 +206,12 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   if (screened.onlyContact) {
     return { error: "Contact details are shared with a student only when they book a tour. Please answer the question itself.", status: 422, screened: true };
   }
-  if (done == null) done = (await classifyReply({ question: q.question, text: screened.text, listingId: q.listing_id })) !== "clarifier";
+  let both = null;
+  if (done == null) {
+    const c = await classifyReply({ question: q.question, text: screened.text, listingId: q.listing_id });
+    done = c.kind !== "clarifier";
+    if (c.kind === "both" && c.answerPart && c.questionPart) both = c;
+  }
   await supabase.from("listing_question_messages").insert({
     question_id: q.id, sender: "landlord", user_id: landlordUserId, body: screened.text, raw_body: screened.removed ? screened.original : null,
     screened: screened.removed > 0, via,
@@ -211,11 +219,42 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   const waiters = await waitersOf(q.id);
   const now = new Date().toISOString();
 
+  // An answer with a follow-up question (Wyatt, 2026-10-27): the student gets
+  // the answer now, Proxy asks the follow-up in turn, and the question stays
+  // open for the student's reply and the landlord's final word.
+  if (both) {
+    const answerText = screenLandlordText(both.answerPart).text || screened.text;
+    const followUp = screenLandlordText(both.questionPart).text;
+    try {
+      const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
+      const { data: primary } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", q.listing_id).eq("is_primary", true).maybeSingle();
+      await synthesizeKnowledge({
+        listingId: q.listing_id, text: answerText, sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
+        cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question,
+        ownerDefault: primary?.user_id && primary.user_id !== landlordUserId ? landlordUserId : null,
+      });
+    } catch (err) {
+      console.error("[proxy] synthesis failed:", err?.message ?? err);
+    }
+    await supabase.from("listing_questions").update({ pending_clarifier: true, answer: answerText, last_activity_at: now }).eq("id", q.id);
+    const asked = await proxyAsksClarifier({ question: q.question, clarifier: followUp, listingId: q.listing_id });
+    const heldB = await heldThreadIds(waiters.map((w) => w.thread_id));
+    for (const w of waiters) {
+      if (heldB.has(w.thread_id)) continue;
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `From the landlord: ${answerText}`, metadata: { questionId: q.id } });
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
+      notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
+    }
+    return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
+  }
+
   if (!done) {
     await supabase.from("listing_questions").update({ pending_clarifier: true, last_activity_at: now }).eq("id", q.id);
     // Proxy asks the landlord's question in turn, in its own words, and says whose it is.
     const asked = await proxyAsksClarifier({ question: q.question, clarifier: screened.text, listingId: q.listing_id });
+    const heldC = await heldThreadIds(waiters.map((w) => w.thread_id));
     for (const w of waiters) {
+      if (heldC.has(w.thread_id)) continue; // waits for the login, released by the claim
       await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: screened.text } });
       notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     }
@@ -249,7 +288,9 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     status: "answered", answer: screened.text, answered_by: landlordUserId, answered_at: now, pending_clarifier: false, last_activity_at: now,
   }).eq("id", q.id);
   let relayedTo = 0;
+  const held = await heldThreadIds(waiters.map((w) => w.thread_id));
   for (const w of waiters) {
+    if (held.has(w.thread_id)) continue; // waits for the login, released by the claim
     await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `From the landlord: ${relayText}`, metadata: { questionId: q.id } });
     await supabase.from("listing_question_waiters").update({ relayed_at: now }).eq("id", w.id);
     notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});

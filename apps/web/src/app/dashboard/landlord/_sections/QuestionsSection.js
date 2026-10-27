@@ -36,7 +36,9 @@ function QuestionCard({ q, onDone, viewAsId = null }) {
       const who = data.relayedTo === 1 ? "the student" : `${data.relayedTo} students`;
       toast.success(data.kind === "clarifier"
         ? `Proxy is asking ${who} for you. Their reply will show up here.`
-        : `Sent to ${who}${data.saved?.written ? " and saved to your listing's knowledge" : ""}.`);
+        : data.kind === "both"
+          ? `Answer sent to ${who}; Proxy is asking your follow-up and will bring back their reply.`
+          : `Sent to ${who}${data.saved?.written ? " and saved to your listing's knowledge" : ""}.`);
       if (data.screened) toast("Contact details were removed before sending.", { icon: "ℹ️" });
       setText("");
       onDone();
@@ -68,8 +70,7 @@ function QuestionCard({ q, onDone, viewAsId = null }) {
         placeholder="Your answer, or a question for the student if you need a detail first (which unit, when, how many). Either goes back through Proxy; an answer is saved so you are not asked again."
         className="mt-3 w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none"
       />
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="text-xs text-gray-500">Proxy can tell an answer from a question and relays either.</span>
+      <div className="mt-2 flex justify-end">
         <button type="button" disabled={busy || !text.trim()} onClick={submit} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Sending..." : "Send"}</button>
       </div>
     </div>

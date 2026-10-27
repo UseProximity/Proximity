@@ -16,10 +16,9 @@
  * the modal scrolls to the bottom of the panel, and the conversation stays
  * pinned to its newest message while an answer types out.
  *
- * A question Proxy had to send on is shown as its own card: sent to the
- * landlord, and the student will be emailed when the answer comes (the
- * signed-in student's own email, or the notify-me address a visitor gives
- * right there).
+ * A question Proxy had to send on reads as a plain Proxy message that says
+ * so and how the answer will reach them; a signed-out visitor is asked for
+ * their email in that message and types it into the chat (visitorEmail.js).
  *
  * Message kinds, from the API:
  *   mine          the student's own messages
@@ -111,43 +110,12 @@ function useTypeOut(text, animate) {
   return shown;
 }
 
-function AskedFooter({ email, notify }) {
-  if (email) {
-    return <p className="mt-2 text-xs text-amber-900">You&apos;ll get an email at <span className="font-semibold">{email}</span> as soon as they answer, and the answer will show up here.</p>;
-  }
-  if (!notify) return <p className="mt-2 text-xs text-amber-900">The answer will show up here as soon as it comes in.</p>;
-  if (notify.saved) return <p className="mt-2 text-xs text-amber-900">We&apos;ll email you as soon as they answer, and the answer will show up here.</p>;
-  return (
-    <div className="mt-2 flex flex-col gap-1.5 text-xs text-amber-900">
-      <span>Want an email as soon as they answer? It is never shown to the landlord.</span>
-      <div className="flex gap-2">
-        <input type="email" value={notify.email} onChange={(e) => notify.setEmail(e.target.value)} placeholder="you@wustl.edu" className="w-48 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900" />
-        <button type="button" onClick={notify.save} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Notify me</button>
-      </div>
-    </div>
-  );
-}
-
-function Bubble({ msg, onReport, animate = false, asked = null }) {
+function Bubble({ msg, onReport, animate = false }) {
   const shown = useTypeOut(msg.body ?? "", animate && !msg.isMine);
   if (msg.isMine) {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-red-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap">{msg.body}</div>
-      </div>
-    );
-  }
-  if (msg.type === "proxy_asked") {
-    return (
-      <div className="flex items-start gap-2">
-        <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100">
-          <Sparkles className="h-3 w-3 text-amber-700" />
-        </div>
-        <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 px-3.5 py-2.5">
-          <span className="mb-1 inline-block rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Sent to the landlord</span>
-          <div className="text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">{(msg.body ?? "").slice(0, shown)}</div>
-          {shown >= (msg.body ?? "").length && asked && <AskedFooter email={asked.email} notify={asked.notify} />}
-        </div>
       </div>
     );
   }
@@ -191,8 +159,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [signInNeeded, setSignInNeeded] = useState(false);
-  const [notifyEmail, setNotifyEmail] = useState("");
-  const [notifySaved, setNotifySaved] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   // Messages that arrived in this session type themselves out.
   const [fresh, setFresh] = useState(() => new Set());
@@ -216,7 +182,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         setThread(data.thread);
         setMessages(data.messages ?? []);
         setTestMode(!!data.testMode);
-        setNotifySaved(!!data.thread?.hasNotifyEmail);
       })
       .catch(() => { if (!cancelled) setUnavailable("Proxy could not load just now."); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -319,24 +284,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     }
   }, [thread]);
 
-  const saveNotify = useCallback(async () => {
-    if (!thread) return;
-    const r = await fetch(`/api/proxy/threads/${thread.id}/notify-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: notifyEmail }) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) { toast.error(data?.error || "Could not save that."); return; }
-    setNotifySaved(true);
-    toast.success("We'll email you when the landlord answers.");
-  }, [thread, notifyEmail]);
-
   const aboutLabel = selectedLease
     ? `${unitLabel ?? "this unit"}${selectedLease.rent ? ` at ${money(selectedLease.rent)}/mo` : ""}`
     : unitLabel ?? "this place";
-
-  const lastAskedId = [...messages].reverse().find((m) => m.type === "proxy_asked")?.id ?? null;
-  const askedInfo = testMode ? null : {
-    email: signedIn ? session?.user?.email ?? null : null,
-    notify: signedIn ? null : { email: notifyEmail, setEmail: setNotifyEmail, save: saveNotify, saved: notifySaved },
-  };
 
   if (unavailable) {
     return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
@@ -367,7 +317,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         {loading && <ChatSkeleton rows={3} className="border-b border-gray-100 p-4" />}
         {started && (
           <div ref={listRef} className="flex max-h-[480px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-4">
-            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} asked={m.id === lastAskedId ? askedInfo : null} />)}
+            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} />)}
             {sending && <TypingBubble />}
             <div ref={endRef} />
           </div>

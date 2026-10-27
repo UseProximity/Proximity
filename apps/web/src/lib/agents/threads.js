@@ -204,8 +204,29 @@ export async function claimVisitorThreads({ visitorId, userId }) {
     .from("chat_threads").select(THREAD_COLS).eq("thread_type_id", typeId)
     .eq("visitor_id", visitorId).is("interested_user_id", null).is("deleted_at", null);
   if (error) throw fail("claim lookup", error);
+  return claimThreads({ userId, threads: mine ?? [] });
+}
+
+/*
+ * Logging in with a verified email claims every visitor thread that gave
+ * that email (Wyatt, 2026-10-27), from any device. Where the account
+ * already has a thread for the listing, the visitor's messages join it.
+ */
+export async function claimThreadsByEmail({ userId }) {
+  if (!userId) return 0;
+  const { data: u } = await supabase.from("users").select("email, email_verified").eq("id", userId).maybeSingle();
+  if (!u?.email || !u.email_verified) return 0;
+  const typeId = await proxyThreadTypeId();
+  const { data: mine, error } = await supabase
+    .from("chat_threads").select(THREAD_COLS).eq("thread_type_id", typeId)
+    .ilike("notify_email", u.email.replace(/[\\%_]/g, "\\$&")).is("interested_user_id", null).is("deleted_at", null);
+  if (error) throw fail("claim by email", error);
+  return claimThreads({ userId, threads: mine ?? [] });
+}
+
+async function claimThreads({ userId, threads }) {
   let claimed = 0;
-  for (const t of mine ?? []) {
+  for (const t of threads) {
     const existing = await findProxyThread({ listingId: t.listing_id, userId });
     if (existing && existing.id !== t.id) {
       await supabase.from("chat_messages").update({ thread_id: existing.id }).eq("thread_id", t.id);
@@ -213,14 +234,49 @@ export async function claimVisitorThreads({ visitorId, userId }) {
       await supabase.from("listing_agent_questions").update({ thread_id: existing.id, user_id: userId }).eq("thread_id", t.id);
       await supabase.from("chat_threads").update({ deleted_at: new Date().toISOString() }).eq("id", t.id);
       if (!existing.lease_id && t.lease_id) await supabase.from("chat_threads").update({ lease_id: t.lease_id }).eq("id", existing.id);
+      await releaseHeld({ threadId: existing.id, listingId: t.listing_id });
     } else {
-      await supabase.from("chat_threads").update({ interested_user_id: userId, visitor_id: null }).eq("id", t.id);
+      const state = { ...(t.proxy_state ?? {}) };
+      delete state.heldForAccount;
+      await supabase.from("chat_threads").update({ interested_user_id: userId, visitor_id: null, notify_email: null, proxy_state: state }).eq("id", t.id);
       await supabase.from("chat_participants").upsert({ thread_id: t.id, user_id: userId }, { onConflict: "thread_id,user_id", ignoreDuplicates: true });
       await supabase.from("chat_messages").update({ sender_id: userId }).eq("thread_id", t.id).is("sender_id", null);
       await supabase.from("listing_question_waiters").update({ user_id: userId }).eq("thread_id", t.id);
       await supabase.from("listing_agent_questions").update({ user_id: userId }).eq("thread_id", t.id);
+      await releaseHeld({ threadId: t.id, listingId: t.listing_id });
     }
     claimed++;
   }
   return claimed;
+}
+
+/*
+ * Answers (and landlord questions back) that waited for this login are
+ * posted now, with the usual email.
+ */
+async function releaseHeld({ threadId, listingId }) {
+  const { data: waits } = await supabase.from("listing_question_waiters").select("id, question_id").eq("thread_id", threadId).is("relayed_at", null);
+  if (!waits?.length) return;
+  const ids = waits.map((w) => w.question_id);
+  const { data: qs } = await supabase.from("listing_questions").select("id, status, answer, pending_clarifier, question").in("id", ids);
+  const { proxyAsksClarifier } = await import("./questions");
+  const { notifyStudentThread } = await import("./notify");
+  const now = new Date().toISOString();
+  let posted = false;
+  for (const q of qs ?? []) {
+    if (q.status === "answered" && q.answer) {
+      await postProxyMessage({ threadId, listingId, type: "proxy_relay", body: `From the landlord: ${q.answer}`, metadata: { questionId: q.id } });
+      await supabase.from("listing_question_waiters").update({ relayed_at: now }).eq("thread_id", threadId).eq("question_id", q.id);
+      posted = true;
+    } else if (q.status === "open" && q.pending_clarifier) {
+      const { data: last } = await supabase.from("listing_question_messages").select("body").eq("question_id", q.id).eq("sender", "landlord").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (last?.body) {
+        const asked = await proxyAsksClarifier({ question: q.question, clarifier: last.body, listingId });
+        await postProxyMessage({ threadId, listingId, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: last.body } });
+        posted = true;
+      }
+    }
+  }
+  if (posted) notifyStudentThread({ threadId, kind: "proxy_relay" }).catch(() => {});
+  await supabase.from("chat_threads").update({ proxy_state: {} }).eq("id", threadId).is("proxy_state", null);
 }
