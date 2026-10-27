@@ -158,6 +158,18 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     // The thread is opened once per listing; the lease rides on each message.
   }, [listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A tour already requested, proposed or confirmed here stays on screen when
+  // the student comes back, instead of a Book a tour button.
+  useEffect(() => {
+    if (!listingId || !session?.user?.id) return;
+    let cancelled = false;
+    fetch(`/api/tours?listingId=${encodeURIComponent(listingId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.tour && ["requested", "proposed", "confirmed"].includes(d.tour.status)) setBookingOpen(true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [listingId, session?.user?.id]);
+
   useEffect(() => { endRef.current?.scrollIntoView({ block: "nearest" }); }, [messages.length, sending]);
 
   const send = useCallback(async () => {

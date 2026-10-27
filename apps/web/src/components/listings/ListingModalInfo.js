@@ -2495,7 +2495,7 @@ export default function ListingModalInfo({
                             : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
                         }`}
                       >
-                        {tab.id === "contact" && (listing.agent?.live || preview) ? "Ask" : tab.label}
+                        {tab.label}
                       </button>
                     )
                   )}
