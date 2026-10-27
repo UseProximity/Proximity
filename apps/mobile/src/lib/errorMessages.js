@@ -74,6 +74,8 @@ export const ERROR_MESSAGES = {
     FAVORITE: "Couldn't update your saved listings. Please try again.",
     MESSAGE_SEND: "Couldn't send your message. Please try again.",
     REPORT_REVIEW: "Couldn't send your report. Please try again.",
+    REPORT_LISTING: "Couldn't send your report. Please try again.",
+    REPORT_OWN_LISTING: "You can't report your own listing.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
@@ -261,6 +263,7 @@ export const SERVER_ERRORS = {
   "You have a lease at this property but don't own the property record, so you can't edit it. Edit your own lease instead.":
     E.LISTINGS.NOT_OWNER,
   "You can't report your own review": E.LISTINGS.REPORT_OWN_REVIEW,
+  "You can't report your own listing": E.LISTINGS.REPORT_OWN_LISTING,
   "Review not found": E.LISTINGS.REVIEW_NOT_FOUND,
   "You can't block yourself": E.LISTINGS.BLOCK_SELF,
   "This reviewer can't be blocked": E.LISTINGS.BLOCK_UNAVAILABLE,
