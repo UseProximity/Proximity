@@ -3,10 +3,11 @@
 /*
  * The Agent tab on a property's dashboard page (PRD v3, milestone 7).
  *
- * What the listing's agent knows and where it came from, what is waiting
- * for the landlord, a conversation with the agent that ends in a diff to
- * confirm, "Tell the agent", a website to add, a document to upload, Sync
- * now, and the change history with revert.
+ * One conversation with the agent at the top (tell it something new or
+ * change what students see; every write is confirmed first), then what is
+ * waiting for the landlord, one place to add a source (a website or a
+ * file), what the agent knows and where it came from, and the change
+ * history with revert.
  *
  * Every write goes through the agent routes, which check ownership: the
  * property owner changes property-level things, every owner their own
@@ -104,7 +105,7 @@ function AgentChat({ listingId, onChanged }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-gray-900"><Sparkles className="h-4 w-4 text-red-600" /> Talk to your agent</p>
-      <p className="mb-3 text-xs text-gray-500">Change what students see (&quot;lower the 2-bed to $1,450&quot;, &quot;unit 3 is available from January 1&quot;) or add what they should know. You confirm every change before it is saved.</p>
+      <p className="mb-3 text-xs text-gray-500">Tell it something new (&quot;parking is $75 a month&quot;), change what students see (&quot;lower the 2-bed to $1,450&quot;), or ask what it knows. You confirm before anything is saved.</p>
       <div className="mb-3 max-h-72 space-y-2 overflow-y-auto">
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -129,14 +130,15 @@ function AgentChat({ listingId, onChanged }) {
         <div ref={endRef} />
       </div>
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2">
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Tell your agent something, or ask it a question" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" disabled={busy} />
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Tell your agent something, change a detail, or ask it a question" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" disabled={busy} />
         <button type="submit" disabled={busy || !input.trim()} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Send</button>
       </form>
     </div>
   );
 }
 
-function AddKnowledge({ listingId, owner, sync, onChanged }) {
+function AddSource({ listingId, owner, sync, onChanged }) {
+  const [mode, setMode] = useState("website");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(null);
   const fileRef = useRef(null);
@@ -173,56 +175,40 @@ function AddKnowledge({ listingId, owner, sync, onChanged }) {
     } catch (err) { toast.error(err.message); } finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   };
 
+  const tab = (key, label, Icon) => (
+    <button type="button" onClick={() => setMode(key)} className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${mode === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+      <Icon className="h-3 w-3" /> {label}
+    </button>
+  );
+
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-gray-200 bg-white p-3 text-sm">
-        <p className="mb-1 flex items-center gap-2 font-semibold text-gray-900"><Link2 className="h-4 w-4 text-red-600" /> Website</p>
-        {sync?.hasSource ? (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold text-gray-900">Add something</p>
+        <div className="flex gap-1">{tab("website", "Website", Link2)}{tab("file", "File", Upload)}</div>
+      </div>
+      <p className="mb-3 text-xs text-gray-500">What your agent learns from it is saved with the source, so students (and you) can see where it came from.</p>
+      {mode === "website" ? (
+        sync?.hasSource ? (
           <>
-            <p className="truncate text-xs text-gray-500" title={sync.sourceUrl}>{sync.sourceUrl}</p>
-            <p className="text-xs text-gray-500">Last read {when(sync.lastCheckedAt) || "never"}{sync.lastStatus ? ` (${sync.lastStatus.replace(/_/g, " ")})` : ""}{sync.running ? " · running now" : ""}</p>
+            <p className="truncate text-xs text-gray-700" title={sync.sourceUrl}>{sync.sourceUrl}</p>
+            <p className="text-xs text-gray-500">Last read {when(sync.lastCheckedAt) || "never"}{sync.lastStatus ? ` (${sync.lastStatus.replace(/_/g, " ")})` : ""}{sync.running ? " · running now" : ""}. It is re-read every day.</p>
             <button disabled={busy === "sync" || !!sync.running} onClick={syncNow} className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"><RefreshCw className="h-3 w-3" /> Sync now ({sync.manualLeft} left today)</button>
           </>
         ) : owner ? (
-          <>
-            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-building.com" className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
-            <button disabled={busy === "url"} onClick={addUrl} className="mt-2 rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Add website</button>
-          </>
-        ) : <p className="text-xs text-gray-500">The property owner can add the building&apos;s website.</p>}
-      </div>
-      <div className="rounded-xl border border-gray-200 bg-white p-3 text-sm">
-        <p className="mb-1 flex items-center gap-2 font-semibold text-gray-900"><Upload className="h-4 w-4 text-red-600" /> Document</p>
-        <p className="text-xs text-gray-500">A fee sheet, brochure or policy PDF, up to 10MB. The file is read and deleted; only what it says is kept.</p>
-        <input ref={fileRef} type="file" accept="application/pdf,image/*,text/plain" onChange={(e) => upload(e.target.files?.[0])} disabled={busy === "doc"} className="mt-2 w-full text-xs" />
-        {busy === "doc" && <p className="text-xs text-gray-400">Reading...</p>}
-      </div>
-      <div className="rounded-xl border border-gray-200 bg-white p-3 text-sm">
-        <p className="mb-1 flex items-center gap-2 font-semibold text-gray-900"><Sparkles className="h-4 w-4 text-red-600" /> Tell the agent</p>
-        <TellAgent listingId={listingId} onChanged={onChanged} />
-      </div>
+          <form onSubmit={(e) => { e.preventDefault(); addUrl(); }} className="flex gap-2">
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-building.com" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <button type="submit" disabled={busy === "url" || !url.trim()} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy === "url" ? "Adding..." : "Add website"}</button>
+          </form>
+        ) : <p className="text-xs text-gray-500">The property owner can add the building&apos;s website.</p>
+      ) : (
+        <>
+          <p className="text-xs text-gray-500">A fee sheet, flyer, brochure or policy PDF (or an image of one), up to 10MB. The file is read and deleted; only what it says is kept.</p>
+          <input ref={fileRef} type="file" accept="application/pdf,image/*,text/plain" onChange={(e) => upload(e.target.files?.[0])} disabled={busy === "doc"} className="mt-2 w-full text-xs" />
+          {busy === "doc" && <p className="mt-1 text-xs text-gray-400">Reading...</p>}
+        </>
+      )}
     </div>
-  );
-}
-
-function TellAgent({ listingId, onChanged }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const tell = async () => {
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    try {
-      const r = await post(`/api/landlord/listings/${listingId}/agent/tell`, { text: text.trim() });
-      if (r.held) toast(r.reason, { icon: "⏳" });
-      else toast.success(`Saved ${r.synthesis.written} thing${r.synthesis.written === 1 ? "" : "s"}${r.synthesis.unchanged ? ` (${r.synthesis.unchanged} already known)` : ""}.`);
-      setText("");
-      onChanged();
-    } catch (err) { toast.error(err.message); } finally { setBusy(false); }
-  };
-  return (
-    <>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Parking is $75 a month, first come first served." className="mt-1 w-full resize-none rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
-      <button disabled={busy || !text.trim()} onClick={tell} className="mt-1 rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save"}</button>
-    </>
   );
 }
 
@@ -233,7 +219,7 @@ function Knowledge({ sections }) {
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <p className="mb-1 text-sm font-semibold text-gray-900">What your agent knows ({total})</p>
       <p className="mb-3 text-xs text-gray-500">Rent, beds and availability come from your listing itself. Everything else Proxy tells students is here, with where it came from.</p>
-      {total === 0 && <p className="text-sm text-gray-500">Nothing yet. Add your website, a document, or tell the agent something.</p>}
+      {total === 0 && <p className="text-sm text-gray-500">Nothing yet. Tell the agent something, or add your website or a file.</p>}
       {["fees", "policies", "specials", "misc", "core"].map((s) => sections[s]?.length ? (
         <div key={s} className="mb-2">
           <button type="button" onClick={() => setOpen((o) => ({ ...o, [s]: !o[s] }))} className="flex w-full items-center gap-1 text-left text-sm font-medium text-gray-800">
@@ -319,9 +305,9 @@ export default function AgentTab({ listingId, viewAsId = null }) {
           {data.sync?.lastCheckedAt && <span>Website last read {when(data.sync.lastCheckedAt)}</span>}
         </div>
       </div>
-      <HeldChanges listingId={listingId} held={data.held} onDone={load} />
       <AgentChat listingId={listingId} onChanged={load} />
-      <AddKnowledge listingId={listingId} owner={data.owner} sync={data.sync} onChanged={load} />
+      <HeldChanges listingId={listingId} held={data.held} onDone={load} />
+      <AddSource listingId={listingId} owner={data.owner} sync={data.sync} onChanged={load} />
       <Knowledge sections={data.sections} />
       <ChangeHistory listingId={listingId} history={data.history} onDone={load} />
     </div>
