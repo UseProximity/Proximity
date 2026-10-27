@@ -16,10 +16,22 @@
  *     incoming `req` through when a caller has one, so the header/cookie checks can run
  *     (or, from inside after(), the header value captured earlier with stagingEmailHeader).
  *
+ * The cookie and header are set by the client, so anyone visiting a staging or preview
+ * deployment can set them. A redirect target they name is only honoured when it is on
+ * STAGING_EMAIL_ALLOWLIST (server env, comma-separated addresses or "@domain" entries;
+ * defaults to the team's own domain). Otherwise a stranger could point the cookie at
+ * their own inbox, request a password reset for any account in the prod-data snapshot,
+ * and receive the link.
+ *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
+ *
+ * Every attempt (sent, redirected, suppressed or failed) is written to sent_emails for
+ * the admin "Sent emails" page (lib/emailLog.js, Wyatt, 2026-10-24). Label the email with
+ * `logAs: { kind, threadId?, userId? }` on the message; it is removed before sending.
  */
 import { outreachEnabled } from "./appEnv.js";
+import { recordEmail } from "./emailLog.js";
 
 // One ordinary address only: commas, semicolons and angle brackets are rejected so a
 // header, cookie or env value cannot name several recipients (nodemailer splits on them).
@@ -28,6 +40,19 @@ import { outreachEnabled } from "./appEnv.js";
 const EMAIL_RE = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 const RECIPIENT_COOKIE = "staging_email_to";
 const RECIPIENT_HEADER = "x-staging-email-to";
+const DEFAULT_ALLOWLIST = "@useproximity.org";
+
+// Whether a client-chosen redirect target is one the server has approved.
+function allowedTestRecipient(address) {
+  const entries = (process.env.STAGING_EMAIL_ALLOWLIST || DEFAULT_ALLOWLIST)
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const addr = address.toLowerCase();
+  return entries.some((e) => (e.startsWith("@") ? addr.endsWith(e) : addr === e));
+}
+const usableTestRecipient = (value) =>
+  !!value && EMAIL_RE.test(value) && allowedTestRecipient(value);
 
 // The raw test-recipient header from a request, or null. Routes that send inside
 // after() read it here BEFORE scheduling the callback and pass the plain string on
@@ -42,19 +67,54 @@ export function stagingEmailHeader(req) {
 // outside a request context (e.g. cron / webhooks), when unset, or when `req` is omitted.
 async function stagingTestRecipient(req) {
   const headerValue = typeof req === "string" ? req : stagingEmailHeader(req);
-  if (headerValue && EMAIL_RE.test(headerValue)) return headerValue;
+  if (usableTestRecipient(headerValue)) return headerValue;
 
   try {
     const { cookies } = await import("next/headers");
     const store = await cookies();
     const value = store.get(RECIPIENT_COOKIE)?.value;
-    return value && EMAIL_RE.test(value) ? value : null;
+    return usableTestRecipient(value) ? value : null;
   } catch {
     return null;
   }
 }
 
+// SES's MessageId is what its delivery events carry; nodemailer's SES transport
+// returns it as `response`. Gmail (SMTP) never reports delivery.
+function sentOutcome(transporter, info, redirectedTo) {
+  const ses = transporter?.transporter?.name === "SESTransport";
+  return {
+    provider: ses ? "ses" : "gmail",
+    providerMessageId: ses ? info?.response ?? null : info?.messageId ?? null,
+    status: "sent",
+    redirectedTo,
+  };
+}
+
 export async function sendMailSafe(transporter, message, req) {
+  const { logAs, ...mail } = message ?? {};
+  let redirectedTo = null;
+  try {
+    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; });
+    await recordEmail(
+      mail,
+      logAs,
+      info?.suppressed ? { status: "suppressed" } : sentOutcome(transporter, info, redirectedTo)
+    );
+    return info;
+  } catch (err) {
+    const ses = transporter?.transporter?.name === "SESTransport";
+    await recordEmail(mail, logAs, {
+      provider: ses ? "ses" : "gmail",
+      status: "failed",
+      detail: String(err?.message ?? err),
+      redirectedTo,
+    });
+    throw err;
+  }
+}
+
+async function deliver(transporter, message, req, onRedirect) {
   if (outreachEnabled()) {
     return transporter.sendMail(message);
   }
@@ -71,6 +131,7 @@ export async function sendMailSafe(transporter, message, req) {
   if (to) {
     const original = message?.to ?? "(none)";
     console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);
+    onRedirect(to);
     // Collapse everything to the single test inbox — drop cc/bcc so a real (or
     // placeholder) carbon-copy recipient is never emailed off production.
     return transporter.sendMail({

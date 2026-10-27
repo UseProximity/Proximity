@@ -61,6 +61,9 @@ const HIDDEN_COLS = new Set([
   "email_verification_expires_at",
   "password_reset_token",
   "password_reset_expires_at",
+  "profile_setup_token",
+  "profile_setup_link_hashes",
+  "profile_setup_expires_at",
 ]);
 
 function isTimestampLike(key) {

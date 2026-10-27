@@ -8,12 +8,18 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sendMailSafe, stagingEmailHeader } from "./outreach.js";
 
-const ENV_KEYS = ["APP_ENV", "VERCEL_ENV", "OUTREACH_TEST_RECIPIENT"];
+// The sent_emails log needs a database; these tests only check where mail goes.
+process.env.EMAIL_LOG_DISABLED = "1";
+
+const ENV_KEYS = ["APP_ENV", "VERCEL_ENV", "OUTREACH_TEST_RECIPIENT", "STAGING_EMAIL_ALLOWLIST"];
 let saved;
 
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
+  // The addresses these tests redirect to; the allowlist describe block below
+  // covers what happens to everything else.
+  process.env.STAGING_EMAIL_ALLOWLIST = "@test.example, @sub.test.example, @x.co";
 });
 afterEach(() => {
   for (const k of ENV_KEYS) {
@@ -37,6 +43,16 @@ describe("stagingEmailHeader", () => {
     assert.equal(stagingEmailHeader(reqWith(undefined)), null);
     assert.equal(stagingEmailHeader(undefined), null);
     assert.equal(stagingEmailHeader(null), null);
+  });
+});
+
+describe("sent email log label", () => {
+  it("is removed before the message reaches the mail provider", async () => {
+    process.env.APP_ENV = "production";
+    const t = fakeTransporter();
+    await sendMailSafe(t, { ...message(), logAs: { kind: "password_reset" } });
+    assert.equal(t.sent.length, 1);
+    assert.equal("logAs" in t.sent[0], false);
   });
 });
 
@@ -228,5 +244,46 @@ describe("production ignores multi-recipient input too", () => {
     await sendMailSafe(t, message(), reqWith("a@b.co,c@d.co"));
     assert.equal(t.sent.length, 1);
     assert.equal(t.sent[0].to, "landlord@real.example");
+  });
+});
+
+describe("staging redirect allowlist", () => {
+  beforeEach(() => {
+    process.env.APP_ENV = "staging";
+  });
+
+  it("ignores a client-chosen inbox that is not on the allowlist", async () => {
+    process.env.STAGING_EMAIL_ALLOWLIST = "qa@test.example";
+    const t = fakeTransporter();
+    const res = await sendMailSafe(t, message(), reqWith("attacker@evil.example"));
+    assert.equal(t.sent.length, 0);
+    assert.deepEqual(res, { suppressed: true });
+  });
+
+  it("falls back to the server-set env recipient when the client one is refused", async () => {
+    process.env.STAGING_EMAIL_ALLOWLIST = "qa@test.example";
+    process.env.OUTREACH_TEST_RECIPIENT = "env@elsewhere.example";
+    const t = fakeTransporter();
+    await sendMailSafe(t, message(), reqWith("attacker@evil.example"));
+    assert.equal(t.sent[0].to, "env@elsewhere.example");
+  });
+
+  it("accepts exact addresses and @domain entries, case-insensitively", async () => {
+    process.env.STAGING_EMAIL_ALLOWLIST = "qa@test.example, @team.example";
+    for (const ok of ["QA@test.example", "anyone@team.example"]) {
+      const t = fakeTransporter();
+      await sendMailSafe(t, message(), reqWith(ok));
+      assert.equal(t.sent[0].to, ok);
+    }
+  });
+
+  it("defaults to the team domain when no allowlist is configured", async () => {
+    delete process.env.STAGING_EMAIL_ALLOWLIST;
+    const refused = fakeTransporter();
+    await sendMailSafe(refused, message(), reqWith("tester@test.example"));
+    assert.equal(refused.sent.length, 0);
+    const accepted = fakeTransporter();
+    await sendMailSafe(accepted, message(), reqWith("wyatt@useproximity.org"));
+    assert.equal(accepted.sent[0].to, "wyatt@useproximity.org");
   });
 });

@@ -162,9 +162,24 @@ export async function PATCH(req, { params }) {
     if (LISTING_COLS.has(k)) safeUpdates[k] = v;
   }
 
-  // Same no-names / no-self-promotion rule the listing had to pass to be created.
+  /*
+   * Same no-names / no-self-promotion rule the listing had to pass to be created.
+   * The stored text is passed as `previous` because the form sends the whole
+   * record on every save, changed or not (see checkListingDescription).
+   */
   if (safeUpdates.description !== undefined) {
-    const problem = checkListingDescription(safeUpdates.description);
+    const { data: stored, error: storedError } = await supabase
+      .from("listings")
+      .select("description")
+      .eq("id", listingId)
+      .maybeSingle();
+    if (storedError) {
+      console.error("[landlord PATCH] description lookup failed:", storedError.message);
+      return NextResponse.json({ error: "Could not save that property." }, { status: 500 });
+    }
+    const problem = checkListingDescription(safeUpdates.description, {
+      previous: stored?.description ?? null,
+    });
     if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 

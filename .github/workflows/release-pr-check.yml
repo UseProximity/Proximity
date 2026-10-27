@@ -58,10 +58,15 @@ jobs:
               owner, repo, issue_number,
             });
             // listComments is chronological; the last match is the newest state.
+            // Only this workflow's own comments count: anyone who can comment on
+            // the PR could otherwise post a hidden state block that clears the
+            // open-bug ledger. And the LAST marker in the body is the real one,
+            // so model-written narrative earlier in the comment can't shadow it.
             let state = 'null';
             for (const c of comments) {
+              if (c.user?.type !== 'Bot' || c.user?.login !== 'github-actions[bot]') continue;
               const body = c.body || '';
-              const s = body.indexOf(begin);
+              const s = body.lastIndexOf(begin);
               if (s === -1) continue;
               const e = body.indexOf(end, s + begin.length);
               if (e === -1) continue;

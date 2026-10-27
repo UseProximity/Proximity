@@ -20,6 +20,7 @@ export default function FinishProfileClient({
   prefill,
   email,
   hasCredentials = false,
+  canSetPassword = false,
 }) {
   const [outcome, setOutcome] = useState(null);
   const [credentialsDone, setCredentialsDone] = useState(hasCredentials);
@@ -60,6 +61,7 @@ export default function FinishProfileClient({
       <ReviewAccountStep
         token={token}
         email={email || prefill?.email}
+        canSetPassword={canSetPassword}
         onPasswordSet={() => setCredentialsDone(true)}
         onSkip={() => setOutcome("skipped")}
         heading="Finish setting up your account"

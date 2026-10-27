@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import { useAuth } from "../../src/hooks/useAuth";
 import apiClient from "../../src/lib/apiClient";
 import { Button } from "../../src/components/ui/Button";
@@ -20,6 +20,7 @@ const ROLES = [
 export default function SignupScreen() {
   const { signup, isLoading } = useAuth();
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -58,6 +59,15 @@ export default function SignupScreen() {
     }
   }
 
+  // Sign In links here, so when it is the screen just below this one, go back to
+  // it instead of pushing another copy (toggling between the two would otherwise
+  // grow the stack without limit). From anywhere else, open Sign In fresh.
+  function handleSignInInstead() {
+    const { routes, index } = navigation.getState();
+    if (routes[index - 1]?.name === "login") router.back();
+    else router.push("/(auth)/login");
+  }
+
   if (verifiedEmail) {
     return (
       <AuthScreen compact>
@@ -92,7 +102,7 @@ export default function SignupScreen() {
   }
 
   return (
-    <AuthScreen onBack={() => router.push("/(auth)/login")} backLabel="Sign in instead">
+    <AuthScreen onBack={handleSignInInstead} backLabel="Sign in instead">
       <Text className="text-[22px] font-bold text-gray-900 text-center">Create account</Text>
       <Text className="text-sm text-gray-500 text-center mt-1 mb-5">
         Join thousands of students finding housing near campus.

@@ -25,7 +25,6 @@ import { normalizeReviewSource } from "@/lib/reviews/source";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
 import {
   ensureReviewerAccount,
-  markEmailVerifiedFromLink,
   normalizeClassYear,
 } from "@/lib/reviews/onboarding";
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
@@ -44,6 +43,7 @@ export async function GET(req) {
   let query = supabase
     .from("dorm_reviews")
     .select(SELECT)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (dormName) {
@@ -62,6 +62,7 @@ export async function GET(req) {
       .from("dorm_reviews")
       .select(SELECT)
       .eq("dorm_id", dormRecord.id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
   }
 
@@ -72,7 +73,14 @@ export async function GET(req) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 
-  return NextResponse.json(reviews || []);
+  /*
+   * This feed is public, and a review posted as anonymous still stores its
+   * author's user_id (and /refer/<id> shows the name for any user id), so the
+   * author's identity never goes out with it.
+   */
+  return NextResponse.json(
+    (reviews || []).map(({ user_id: _userId, reviewer_email: _email, ...review }) => review)
+  );
 }
 
 /*
@@ -160,6 +168,7 @@ export async function POST(req) {
       source,
       reviewer,
       inviteToken,
+      setupToken: priorSetupToken,
     } = body;
 
     const session = await auth();
@@ -225,6 +234,8 @@ export async function POST(req) {
     let setupEmail = null;
     // Signed-out reviewer whose email already belongs to a real account.
     let existingAccount = false;
+    // Existing account still to be set up: its owner is emailed the link.
+    let setupByEmail = false;
     if (signedOutReviewer) {
       // With an invite the address comes from the invite row, never from the
       // request body. See /api/reviewReferral for why that is the whole point.
@@ -253,6 +264,11 @@ export async function POST(req) {
         email,
         classYear: gradYear,
         source: normalizeReviewSource(source),
+        // The invite link was opened, which is the proof email verification
+        // asks for, so ensureReviewerAccount verifies the address up front.
+        inboxProven: !!invite,
+        priorSetupToken,
+        req,
       });
       if (account.error) {
         return NextResponse.json({ error: account.error }, { status: 400 });
@@ -262,10 +278,7 @@ export async function POST(req) {
       setupToken = account.setupToken;
       setupEmail = email;
       existingAccount = !!account.existingAccount;
-
-      // The invite link was opened, which is the proof email verification asks
-      // for, arriving before the review instead of after it.
-      if (invite) await markEmailVerifiedFromLink(reviewerUserId);
+      setupByEmail = !!account.setupByEmail;
     } else if (!sessionUserId) {
       // Legacy Campus Hub path: a first name and nothing else.
       if (!name?.trim()) {
@@ -328,6 +341,9 @@ export async function POST(req) {
         ...review,
         setupToken,
         existingAccount,
+        setupByEmail,
+        // An invite proved the inbox, so the profile step may offer a password.
+        canSetPassword: !!invite,
         prefill: setupToken
           ? {
               firstName: String(signedOutReviewer.firstName || "").trim(),

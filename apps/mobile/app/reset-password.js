@@ -27,9 +27,14 @@ export default function ResetPasswordScreen() {
   // token arriving again, or the token being cleared after use, changes nothing, so the
   // form is never reset under someone typing and a used token cannot be submitted twice.
   const lastToken = useRef(token);
+  // Identifies the latest submit. A new link or a new submit moves it on, so a slower, older
+  // request can tell it is stale and must not touch the screen or the stored token.
+  const submitId = useRef(0);
   useEffect(() => {
     if (!token || token === lastToken.current) return;
     lastToken.current = token;
+    submitId.current += 1;
+    setIsLoading(false);
     setLinkDead(false);
     setDone(false);
     setError(null);
@@ -47,22 +52,30 @@ export default function ResetPasswordScreen() {
       setError(ERROR_MESSAGES.PROFILE.PASSWORDS_MISMATCH);
       return;
     }
+    const id = ++submitId.current;
+    const submitted = token;
     setIsLoading(true);
     try {
-      await apiClient.auth.resetPassword(token, password);
+      await apiClient.auth.resetPassword(submitted, password);
+      // Clears only the token this request used, so a newer link is never wiped.
+      if (id !== submitId.current) {
+        clearLinkToken("reset", submitted);
+        return;
+      }
       // Set before clearing: clearing the token re-renders synchronously.
       setDone(true);
-      clearLinkToken("reset");
+      clearLinkToken("reset", submitted);
     } catch (err) {
+      if (id !== submitId.current) return;
       const message = getErrorMessage(err, ERROR_MESSAGES.AUTH.RESET_PASSWORD);
       if (message === ERROR_MESSAGES.AUTH.RESET_LINK_INVALID) {
         setLinkDead(true);
-        clearLinkToken("reset");
+        clearLinkToken("reset", submitted);
       } else {
         setError(message);
       }
     } finally {
-      setIsLoading(false);
+      if (id === submitId.current) setIsLoading(false);
     }
   }
 

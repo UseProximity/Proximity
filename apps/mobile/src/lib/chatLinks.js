@@ -1,15 +1,20 @@
-// Pure helpers for opening a conversation from a link. No imports, so both the
-// native-intent hook and the login screens can use them.
+// Pure helpers for opening the app from an emailed link, for both the native-intent hook
+// and the login screens. The only import is the link-host constants.
 //
-// A link only ever names a conversation; it never proves access to one. The chat
-// screen and the API still decide whether the signed-in user may read the thread.
-// The email's magic-link token is never read here: the whole query string is dropped
-// apart from the one thread id, and that id must be a strict UUID.
+// A conversation link only ever names a conversation; it never proves access to one. The
+// chat screen and the API still decide whether the signed-in user may read the thread.
+// For these links the whole query string is dropped apart from the one thread id (a
+// strict UUID), so the email's magic-link token is never read.
+//
+// The password-reset and email-verification links are different: their one-time token is
+// the point, so authLinkFromIncomingLink extracts it (a strict UUID) for the hand-off in
+// linkTokens.js. Nothing else in the query is read.
+import { PRODUCTION_LINK_HOST, STAGING_LINK_HOST } from "./linkDomains.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // The staging host is accepted too: the app only receives a link for a host its build
 // claims (src/lib/linkDomains.js), and only staging-backed builds claim that one.
-const WEB_HOSTS = new Set(["useproximity.org", "www.useproximity.org", "proximity-livid.vercel.app"]);
+const WEB_HOSTS = new Set([PRODUCTION_LINK_HOST, `www.${PRODUCTION_LINK_HOST}`, STAGING_LINK_HOST]);
 const APP_SCHEMES = new Set(["proximity:", "org.useproximity.app:"]);
 // The only web paths that map to a conversation, and the query key carrying its id.
 const LINK_ROUTES = { "/chat-link": "t", "/messages": "thread" };

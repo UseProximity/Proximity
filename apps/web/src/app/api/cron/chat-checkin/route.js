@@ -14,6 +14,12 @@
  * blocked the other. The outcome is stored on the alert row (reminder_status).
  * Dry runs send no reminders; the JSON says which would have gone out.
  *
+ * The same email carries the delivery audit (lib/chat/deliveryAudit.js, Wyatt,
+ * 2026-10-23): every message since the last run that the other side was not
+ * emailed about, every alert email not confirmed delivered, and every emailed
+ * reply that was not posted. The email goes out when there is a silence to
+ * report or the audit found a problem.
+ *
  * Each silence is reported once. chat_checkin_alerts remembers which
  * unanswered message a thread was alerted on; the same message is never sent
  * again, but a newer message that then goes unanswered is. Every run, success
@@ -24,6 +30,8 @@
  *               [DRY RUN], write nothing that would stop a later real run.
  *   ?html=1     with dry_run: return the email as HTML instead of JSON and
  *               send nothing. For checking the layout.
+ *   ?audit_since=<ISO date>  with dry_run: start the delivery audit there
+ *               instead of at the last run, to look back over a longer stretch.
  *
  * Off production, sendMailSafe redirects the email to OUTREACH_TEST_RECIPIENT
  * or suppresses it, so staging and local never reach the real inboxes.
@@ -39,6 +47,7 @@ import { getBaseUrl } from "@/lib/email";
 import { sendReplyReminder } from "@/lib/chat/notifyEmail";
 import { assertThreadNotBlocked } from "@/lib/chat/safety";
 import { unavailableListingIds, silenceIsTooOld } from "@/lib/chat/followups";
+import { auditChatDelivery, auditHasProblems } from "@/lib/chat/deliveryAudit";
 import {
   findStaleThreads,
   sendCheckinDigestEmail,
@@ -61,6 +70,22 @@ export async function GET(req) {
   const stats = { staleFound: 0, alreadyAlerted: 0, alerted: 0, landlordsQuiet: 0, studentsQuiet: 0, emailed: false, reminders: {} };
 
   try {
+    // Before anything is sent, so this run's reminders are not in its own window.
+    let audit;
+    try {
+      const auditSince = dryRun ? Date.parse(url.searchParams.get("audit_since") ?? "") : NaN;
+      audit = await auditChatDelivery(supabase, {
+        now: startedAt,
+        since: Number.isFinite(auditSince) ? new Date(auditSince) : undefined,
+      });
+      stats.audit = audit.stats;
+    } catch (err) {
+      console.error("[chat-checkin] delivery audit failed:", err);
+      audit = { error: String(err?.message ?? err) };
+      stats.audit = { error: audit.error };
+    }
+    const auditFlagged = Boolean(audit.error) || auditHasProblems(audit);
+
     const stale = await findStaleThreads(supabase, { now: startedAt, days: STALE_AFTER_DAYS });
     stats.staleFound = stale.length;
 
@@ -83,19 +108,22 @@ export async function GET(req) {
     stats.studentsQuiet = fresh.filter((s) => s.quietSide === "student").length;
 
     if (htmlPreview) {
-      const { html } = renderCheckinDigest({ items: fresh, baseUrl: getBaseUrl(), dryRun: true });
+      const { html } = renderCheckinDigest({ items: fresh, audit, baseUrl: getBaseUrl(), dryRun: true });
       return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
-    if (fresh.length > 0) {
+    if (fresh.length > 0 || auditFlagged) {
       const sent = await sendCheckinDigestEmail({
         to: recipients,
         items: fresh,
+        audit,
         baseUrl: getBaseUrl(),
         dryRun,
       });
       stats.emailed = !sent?.suppressed;
+    }
 
+    if (fresh.length > 0) {
       const rows = fresh.map((s) => ({
         thread_id: s.threadId,
         last_message_id: s.lastMessage.id,
@@ -130,6 +158,7 @@ export async function GET(req) {
       dryRun,
       ...stats,
       recipients,
+      ...(dryRun ? { audit } : {}),
       items: (() => {
         const reminderOf = new Map(outcomes.map((o) => [o.threadId, o.status]));
         return fresh.map((s) => ({

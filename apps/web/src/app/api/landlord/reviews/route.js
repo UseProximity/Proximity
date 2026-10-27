@@ -35,6 +35,7 @@ export async function GET(req) {
       reply,
       created_at,
       updated_at,
+      edited_at,
       user_id
     )`
     )
@@ -74,6 +75,7 @@ export async function GET(req) {
             reply: r.listing_review_replies.reply,
             createdAt: r.listing_review_replies.created_at,
             updatedAt: r.listing_review_replies.updated_at,
+            editedAt: r.listing_review_replies.edited_at ?? null,
             userId: r.listing_review_replies.user_id,
           }
         : null,

@@ -1,8 +1,10 @@
+// @auth super
 // app/api/admin/listing-images/route.js
 import { DeleteObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "@/lib/r2";
 import { getSupabaseClient } from "@/lib/supabase";
 import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,7 +54,7 @@ export async function PATCH(req) {
     if (!session?.user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "super") {
+    if (!(await requireDbRole(["super"]))) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -146,7 +148,7 @@ export async function DELETE(req) {
     if (!session?.user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "super") {
+    if (!(await requireDbRole(["super"]))) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 

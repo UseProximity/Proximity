@@ -16,6 +16,7 @@
  */
 import supabase from "@/lib/supabase";
 import { sendWaitlistNudgeEmail } from "@/lib/email";
+import { issueProfileSetupLinkToken, needsProfileSetup } from "@/lib/reviews/onboarding";
 
 export const NUDGE_DELAY_MINUTES = 30;
 
@@ -73,7 +74,7 @@ export async function flushWaitlistNudge({ lead, baseUrl }) {
   const { data: user } = await supabase
     .from("users")
     .select(
-      "id, name, email, profile_complete, password_hash, google_account, apple_account, profile_setup_token, profile_setup_expires_at"
+      "id, name, email, profile_complete, password_hash, google_account, apple_account"
     )
     .eq("id", lead.user_id)
     .is("deleted_at", null)
@@ -84,30 +85,26 @@ export async function flushWaitlistNudge({ lead, baseUrl }) {
     return { sent: false, reason: "no-account" };
   }
 
-  const hasCredentials =
-    !!user.password_hash || !!user.google_account || !!user.apple_account;
-  const tokenLive =
-    !!user.profile_setup_token &&
-    !!user.profile_setup_expires_at &&
-    new Date(user.profile_setup_expires_at).getTime() > Date.now();
-
   /*
    * Nothing to finish, so nothing to say. Credentials mean they can already sign
-   * in (they may have had an account all along), and without a live token there
-   * is no link to send that would do anything.
+   * in (they may have had an account all along).
    */
-  if (user.profile_complete || hasCredentials || !tokenLive) {
+  if (!needsProfileSetup(user)) {
     await markNudged(lead.user_id);
-    return { sent: false, reason: user.profile_complete || hasCredentials ? "complete" : "no-token" };
+    return { sent: false, reason: "complete" };
   }
 
   await markNudged(lead.user_id);
+
+  // Minted at send time so the raw link exists only in this email; see onboarding.js.
+  const setupToken = await issueProfileSetupLinkToken(user.id);
+  if (!setupToken) return { sent: false, reason: "no-token" };
 
   await sendWaitlistNudgeEmail({
     email: user.email,
     name: user.name || lead.name,
     baseUrl,
-    setupToken: user.profile_setup_token,
+    setupToken,
   });
 
   return { sent: true };

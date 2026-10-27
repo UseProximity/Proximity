@@ -28,7 +28,7 @@
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
- *   - blocks/reports user_blocks (either side) and the review_reports, chat_reports and listing_reports this person filed.
+ *   - blocks/reports user_blocks (either side) and the review_reports, review_reply_reports, chat_reports and listing_reports this person filed.
  *   - listings       sole-owned listings are soft-deleted by the users trigger.
  *                    The owner's phone is scrubbed now; their name and email
  *                    stay on the withdrawn listing for three years (Terms s17A).
@@ -57,11 +57,13 @@ import { r2 } from "@/lib/r2";
 import { isProdData } from "@/lib/appEnv";
 import { revokeAppleToken } from "@/lib/appleAuth";
 import { expireAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
+import { ACCOUNT_GRACE_PERIOD_MS } from "@/lib/auth/accountRestore";
 
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const GRACE_PERIOD_MS = 30 * DAY_MS;
+// The same window sign-in uses to offer a restore (lib/auth/accountRestore).
+const GRACE_PERIOD_MS = ACCOUNT_GRACE_PERIOD_MS;
 const RETENTION_MS = 3 * 365 * DAY_MS;
 const TOMBSTONE_EMAIL = "deleted+%@deleted.invalid";
 
@@ -269,6 +271,10 @@ async function purgeUser(user) {
     supabase.from("review_reports").delete().eq("reporter_id", userId)
   );
   await must(
+    "review_reply_reports by reporter",
+    supabase.from("review_reply_reports").delete().eq("reporter_id", userId)
+  );
+  await must(
     "chat_reports by reporter",
     supabase.from("chat_reports").delete().eq("reporter_id", userId)
   );
@@ -338,6 +344,7 @@ async function purgeUser(user) {
       password_reset_token: null,
       password_reset_expires_at: null,
       profile_setup_token: null,
+      profile_setup_link_hashes: null,
       profile_setup_expires_at: null,
       google_account: false,
       apple_account: false,
