@@ -15,7 +15,7 @@
  *                  clarifying question, relayed to the students; a final one
  *                  is synthesized into the listing's knowledge (every answer
  *                  is saved, Wyatt 2026-10-26) and relayed to every waiting
- *                  thread as "From the landlord".
+ *                  thread in Proxy's own words.
  * studentReplyToClarifier   the student's side of that exchange.
  *
  * Nothing here ever shows a landlord who asked. The context line is the
@@ -165,8 +165,35 @@ export async function classifyReply({ question, text, listingId }) {
   }
 }
 
+const RelayWording = z.object({
+  message: z.string().describe("Proxy's message to the student: one or two plain sentences in Proxy's own voice, first person, passing on what the landlord said (for example 'I've gotten confirmation from the landlord that ...' or 'The landlord got back to me: ...'). If there is a follow-up question from the landlord, ask it naturally in the same message and say to reply here. No label like 'From the landlord:', no quotation marks around the landlord's words, no contact details, no em dash."),
+});
+
+/*
+ * What Proxy tells the student when the landlord has answered, optionally
+ * with a follow-up question. One or two grey sentences in Proxy's words
+ * (Wyatt, 2026-10-27: everything is filtered through Proxy).
+ */
+export async function proxyRelays({ question, answer, followUp = "", listingId }) {
+  const fallback = followUp
+    ? `The landlord got back to me: ${answer} They also want to know: ${followUp} Reply here and I'll pass it on.`
+    : `The landlord got back to me: ${answer}`;
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, listingId, kind: "relay_wording", tag: "relay-wording", maxTokens: 260,
+      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you and the landlord has now replied to you. Write what you tell the student. Keep every fact the landlord gave and add nothing: no caveats, no guesses, nothing about what the landlord did not mention.",
+      messages: [{ role: "user", content: `The student asked: "${question}"\n\nThe landlord's reply: "${answer}"${followUp ? `\n\nThe landlord also asks the student: "${followUp}"` : ""}` }],
+      schema: RelayWording,
+    });
+    const text = parsed?.message?.trim();
+    return text && text.length > 10 ? text : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 const ClarifierWording = z.object({
-  message: z.string().describe("Proxy's message to the student: one short paragraph in Proxy's own voice that says the landlord needs one detail before they can answer, asks that question clearly (reworded as Proxy, not quoted), and ends by telling the student to reply here so Proxy can pass it on. No greeting, no contact details, no em dash."),
+  message: z.string().describe("Proxy's message to the student: one or two plain sentences in Proxy's own voice saying the landlord needs one detail before they can answer, asking that question naturally (reworded, not quoted), and saying to reply here. No greeting, no label, no contact details, no em dash."),
 });
 
 /*
@@ -174,7 +201,7 @@ const ClarifierWording = z.object({
  * 2026-10-27). Falls back to a plain relay if the model is unavailable.
  */
 export async function proxyAsksClarifier({ question, clarifier, listingId }) {
-  const fallback = `The landlord needs one thing from you before they can answer: ${clarifier}\n\nReply here and I'll pass it straight on.`;
+  const fallback = `The landlord needs one thing before they can answer: ${clarifier} Reply here and I'll pass it on.`;
   try {
     const { parsed } = await parseStructured({
       model: HAIKU, listingId, kind: "clarifier_wording", tag: "clarifier-wording", maxTokens: 220,
@@ -237,12 +264,11 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
       console.error("[proxy] synthesis failed:", err?.message ?? err);
     }
     await supabase.from("listing_questions").update({ pending_clarifier: true, answer: answerText, last_activity_at: now }).eq("id", q.id);
-    const asked = await proxyAsksClarifier({ question: q.question, clarifier: followUp, listingId: q.listing_id });
+    const combined = await proxyRelays({ question: q.question, answer: answerText, followUp, listingId: q.listing_id });
     const heldB = await heldThreadIds(waiters.map((w) => w.thread_id));
     for (const w of waiters) {
       if (heldB.has(w.thread_id)) continue;
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `From the landlord: ${answerText}`, metadata: { questionId: q.id } });
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
       notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
@@ -283,7 +309,9 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   } catch (err) {
     console.error("[proxy] link ingest failed:", err?.message ?? err);
   }
-  const relayText = synthesis?.answer ? screenLandlordText(synthesis.answer).text : screened.text;
+  // Proxy rewords the landlord's own words, not the knowledge-base version,
+  // so nothing the landlord did not say creeps into the relay.
+  const relayText = await proxyRelays({ question: q.question, answer: screened.text, listingId: q.listing_id });
   await supabase.from("listing_questions").update({
     status: "answered", answer: screened.text, answered_by: landlordUserId, answered_at: now, pending_clarifier: false, last_activity_at: now,
   }).eq("id", q.id);
@@ -291,7 +319,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   const held = await heldThreadIds(waiters.map((w) => w.thread_id));
   for (const w of waiters) {
     if (held.has(w.thread_id)) continue; // waits for the login, released by the claim
-    await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `From the landlord: ${relayText}`, metadata: { questionId: q.id } });
+    await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: relayText, metadata: { questionId: q.id } });
     await supabase.from("listing_question_waiters").update({ relayed_at: now }).eq("id", w.id);
     notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     relayedTo++;

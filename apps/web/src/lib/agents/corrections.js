@@ -31,7 +31,7 @@ export async function postCorrections({ listingId, changes }) {
       const { data: already } = await supabase.from("chat_messages").select("id").eq("thread_id", threadId)
         .eq("message_type", "proxy_note").contains("metadata", { correction: c.key, summary: c.summary }).limit(1);
       if (already?.length) continue;
-      await postProxyMessage({ threadId, listingId, type: "proxy_note", body: `Update: ${c.summary}`, metadata: { correction: c.key, summary: c.summary } });
+      await postProxyMessage({ threadId, listingId, type: "proxy_note", body: `Quick update from the landlord: ${c.summary}`, metadata: { correction: c.key, summary: c.summary } });
       posted++;
       const { data: todays } = await supabase.from("sent_emails").select("id").eq("thread_id", threadId)
         .in("kind", ["proxy_answer", "proxy_relay", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);

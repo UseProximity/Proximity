@@ -20,13 +20,14 @@
  * so and how the answer will reach them; a signed-out visitor is asked for
  * their email in that message and types it into the chat (visitorEmail.js).
  *
- * Message kinds, from the API:
+ * Message kinds, from the API (all drawn the same: one grey Proxy bubble,
+ * no labels; Proxy writes everything in its own words, Wyatt 2026-10-27):
  *   mine          the student's own messages
  *   proxy_answer  Proxy, from the listing's details ("Based on details
  *                 updated Oct 24" underneath when it drew on dated facts)
  *   proxy_asked   Proxy sent something to the landlord
- *   proxy_relay   the landlord's answer, relayed by Proxy; with `clarifier`
- *                 it is the landlord's question back, which Proxy asks in turn
+ *   proxy_relay   what the landlord said, in Proxy's words; with `clarifier`
+ *                 it carries the landlord's question back
  *   proxy_note    an update: a correction, or no answer yet
  *
  * While the panel is on screen it polls the thread every 15 seconds, so a
@@ -119,19 +120,13 @@ function Bubble({ msg, onReport, animate = false }) {
       </div>
     );
   }
-  const chip =
-    msg.type === "proxy_relay" && msg.clarifier ? ["The landlord is asking you", "bg-amber-100 text-amber-800"]
-    : msg.type === "proxy_relay" ? ["From the landlord", "bg-emerald-100 text-emerald-800"]
-    : msg.type === "proxy_note" ? ["Update", "bg-gray-200 text-gray-700"]
-    : null;
   return (
     <div className="flex items-start gap-2">
       <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50">
         <Sparkles className="h-3 w-3 text-red-600" />
       </div>
       <div className="max-w-[85%]">
-        {chip && <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${chip[1]}`}>{chip[0]}</span>}
-        <div className={`rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${msg.type === "proxy_note" ? "bg-gray-50 text-gray-600" : msg.type === "proxy_relay" && msg.clarifier ? "border border-amber-200 bg-amber-50 text-gray-900" : "bg-gray-100 text-gray-900"}`}>
+        <div className="rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-2 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">
           {(msg.body ?? "").slice(0, shown)}
         </div>
         {(msg.type === "proxy_answer") && shown >= (msg.body ?? "").length && (

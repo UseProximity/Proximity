@@ -259,13 +259,13 @@ async function releaseHeld({ threadId, listingId }) {
   if (!waits?.length) return;
   const ids = waits.map((w) => w.question_id);
   const { data: qs } = await supabase.from("listing_questions").select("id, status, answer, pending_clarifier, question").in("id", ids);
-  const { proxyAsksClarifier } = await import("./questions");
+  const { proxyAsksClarifier, proxyRelays } = await import("./questions");
   const { notifyStudentThread } = await import("./notify");
   const now = new Date().toISOString();
   let posted = false;
   for (const q of qs ?? []) {
     if (q.status === "answered" && q.answer) {
-      await postProxyMessage({ threadId, listingId, type: "proxy_relay", body: `From the landlord: ${q.answer}`, metadata: { questionId: q.id } });
+      await postProxyMessage({ threadId, listingId, type: "proxy_relay", body: await proxyRelays({ question: q.question, answer: q.answer, listingId }), metadata: { questionId: q.id } });
       await supabase.from("listing_question_waiters").update({ relayed_at: now }).eq("thread_id", threadId).eq("question_id", q.id);
       posted = true;
     } else if (q.status === "open" && q.pending_clarifier) {

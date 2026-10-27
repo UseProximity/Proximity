@@ -42,13 +42,13 @@ Rules:
 - Be direct and brief. Say the facts; two short paragraphs at most. Plain words a student would use.
 - When leases come from different owners (Owner A, Owner B, Unclaimed leases), say which owner's leases an answer applies to and never merge their terms.
 - Never name a source, URL, website, portal, document or "per the website". Never include phone numbers, emails or links. If asked for the landlord's contact details, say that booking a tour through Proximity puts them in touch.
-- Money and policy answers end with a short line to confirm with the landlord before signing.
+- Never tell the student to confirm, check or verify anything with the landlord: you are their way to the landlord. Just give the facts.
 - Do not quote a special that is past its valid-until date.
 - If the student asks about a different listing, say you can only help with this one.
 - Judgement questions (is the area safe, what are the neighbours like, is the landlord good, who lives here) are not facts about the building: say you cannot answer those and point to the listing's reviews.
 - Small talk ("thanks", "ok") gets one friendly line and no questions for the landlord.
 - A message that mixes questions: answer what you know, and put only the rest in unanswered_questions, each as one clear question in the student's words.
-- Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in. Say it in this shape: one plain sentence that you do not have that, then that you are asking the landlord and will post their answer here. Never tell the student to check or confirm with the landlord themselves for something you lack; the confirm-before-signing line is only for facts you did give.
+- Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in. When the whole message is something you do not have, your reply is one plain sentence saying you do not have it yet (the asking is added after you). When part of it is answered, answer that part and end with one short sentence that you have asked the landlord about the rest and will let them know when they respond. Never tell the student to check or confirm with the landlord themselves.
 - If the student wants to tour, set intent "tour" and tell them they can request one with the Request a tour button above this chat (they need to be signed in); pick a lease first if the listing has several. Do not send a tour request to the landlord as a question.
 - If the student wants to apply or negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "apply" or "negotiate" when that is what they want.
 - Nudge toward a tour only when nudge_allowed is true: one natural sentence built from a real fact about this place, never pushy, never in a reply that also says you are asking the landlord or that nothing is available. Report nudged: true when you did.
@@ -225,7 +225,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     if (canAsk) {
       const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: text, leaseId: chosenLeaseId, askerUserId: userId, visitorId });
       questionIds = q ? [q.id] : [];
-      reply = `I couldn't work that out just now, so I've sent your message to the landlord. ${await askedLine({ thread, userId })}`;
+      reply = `I couldn't work that out just now, but I've sent your message to the landlord and will let you know when they respond. ${await askedLine({ thread, userId })}`;
       out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_asked", metadata: { questionIds } }));
       outcome = "asked_landlord";
     } else {
@@ -237,7 +237,6 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     reply = String(final.reply).trim();
     const usedKeys = (final.answered_keys ?? []).filter((k) => factByKey.has(k));
     const updatedAt = usedKeys.map((k) => factByKey.get(k).observed_at).sort().pop() ?? null;
-    out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_answer", metadata: { factKeys: usedKeys, updatedAt, intent: final.intent } }));
 
     if (pending && final.clarifier_reply) {
       await studentReplyToClarifier({ question: pending, thread, body: text, userId });
@@ -254,10 +253,20 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
         const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: u.question, leaseId: lease?.id ?? null, askerUserId: userId, visitorId });
         if (q) questionIds.push(q.id);
       }
-      if (questionIds.length) {
-        const list = toAsk.slice(0, 3).map((u) => `"${u.question}"`).join(" and ");
-        out.push(await postProxyMessage({ threadId: thread.id, listingId, body: `I don't have that yet, so I've sent it to the landlord: ${list}. ${await askedLine({ thread, userId })}`, type: "proxy_asked", metadata: { questionIds } }));
-      }
+    }
+    // One grey sentence (Wyatt, 2026-10-27): when nothing could be answered
+    // the model's "I don't have that" is folded into the asking line; when
+    // part was answered, the answer posts and the asking line follows it.
+    const nothingAnswered = !usedKeys.length && questionIds.length > 0 && final.intent !== "small_talk";
+    if (nothingAnswered) {
+      const body = `I don't have that yet, but I've asked the landlord and will let you know when they respond. ${await askedLine({ thread, userId })}`;
+      out.push(await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds } }));
+    } else if (questionIds.length) {
+      // Partly answered: the answer already says the rest went to the landlord; only how the answer arrives is added.
+      const body = `${reply} ${await askedLine({ thread, userId })}`.trim();
+      out.push(await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds, factKeys: usedKeys, updatedAt, intent: final.intent } }));
+    } else {
+      out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_answer", metadata: { factKeys: usedKeys, updatedAt, intent: final.intent } }));
     }
     outcome = final.intent === "small_talk" ? "chit_chat"
       : final.intent === "tour" ? "tour"
