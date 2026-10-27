@@ -1,11 +1,14 @@
 // Matchmaking chat state, mirroring apps/web/src/components/matchmaking/ChatClient.js's
 // logic (same optimistic-update flow via the shared questionEngine, same
 // request shapes against apiClient.matchmaking.*) but as a Zustand store
-// instead of component state, and in-memory only: a guest's session can't be
-// resumed server-side anyway (GET /api/matchmaking/chat always returns
-// { session: null } for the shared guest identity), so there's nothing to gain
-// from persisting across an app restart, matching this plan's "in-memory"
-// framing of the port.
+// instead of component state, and in-memory only: the server is the source of truth
+// for a signed-in user's chat (GET /api/matchmaking/chat resumes it), so nothing is
+// persisted across an app restart.
+//
+// Signed out: the website lets a visitor chat anonymously, so the API answers a request
+// with no session with 200 { session: null, anonymous: true } rather than a 401. The app
+// has no anonymous flow; init() treats that answer (and a 401, e.g. an expired token) as
+// "sign in first" by setting needsAuth, without starting a chat.
 import { create } from "zustand";
 import apiClient from "../lib/apiClient";
 import { isNetworkError } from "../lib/apiError";
@@ -18,6 +21,11 @@ import {
   rewindTo,
   QUESTION_BY_ID,
 } from "@proximity/shared";
+
+// Bumped by reset() whenever the auth identity changes. init() and startFresh() remember
+// the value they started under and drop their result if it has moved on, so a slow
+// request from the previous identity cannot overwrite the newer state.
+let epoch = 0;
 
 // Serializes every POST so a fast double-tap can never let the server see
 // out-of-order writes (mirrors ChatClient's postChain ref).
@@ -92,8 +100,17 @@ export const useChatStore = create((set, get) => ({
   init: async () => {
     if (get().isInitialized) return;
     set({ loading: true, isInitialized: true });
+    const startedIn = epoch;
     try {
-      const { session } = await apiClient.matchmaking.getSession();
+      const { session, anonymous } = await apiClient.matchmaking.getSession();
+      if (startedIn !== epoch) return;
+      // A request with no session is answered as an anonymous website visitor, not a
+      // 401 (see GET /api/matchmaking/chat). The app has no anonymous flow, so this is
+      // the same "sign in first" outcome, reached before any chat is started.
+      if (anonymous) {
+        set({ needsAuth: true, loading: false });
+        return;
+      }
       if (session) {
         const serverMessages = (session.transcript ?? []).map((m) => ({
           role: m.role,
@@ -142,6 +159,7 @@ export const useChatStore = create((set, get) => ({
         await get().startFresh();
       }
     } catch (err) {
+      if (startedIn !== epoch) return;
       if (err?.status === 401) {
         set({ needsAuth: true, loading: false });
         return;
@@ -156,8 +174,10 @@ export const useChatStore = create((set, get) => ({
 
   startFresh: async () => {
     set({ loading: true, error: null });
+    const startedIn = epoch;
     try {
       const data = await apiClient.matchmaking.sendTurn({ message: "" });
+      if (startedIn !== epoch) return;
       set({
         sessionId: data.sessionId,
         preferences: data.preferences ?? {},
@@ -172,6 +192,7 @@ export const useChatStore = create((set, get) => ({
         loading: false,
       });
     } catch (err) {
+      if (startedIn !== epoch) return;
       if (err?.status === 401) {
         set({ needsAuth: true, loading: false });
         return;
@@ -192,6 +213,7 @@ export const useChatStore = create((set, get) => ({
   // Leaves isInitialized false so a subsequent init() actually runs its auth
   // check instead of no-op'ing on stale state from a previous session.
   reset: () => {
+    epoch += 1;
     set({ ...initialState });
   },
 
