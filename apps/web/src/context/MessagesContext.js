@@ -124,6 +124,11 @@ export function MessagesProvider({ children }) {
   activeThreadIdRef.current = activeThreadId;
   userIdRef.current = userId;
   messagesStatusRef.current = messagesStatusByThread;
+  // A student's Proxy conversations sit in the same inbox (kind "proxy") but
+  // are loaded, read and sent through the Proxy routes by ProxyThread, so the
+  // direct-chat paths below skip them.
+  const threadKindRef = useRef(new Map());
+  threadKindRef.current = new Map(threads.map((t) => [t.threadId, t.kind ?? "direct"]));
 
   const clearChatState = useCallback(() => {
     refreshSeqRef.current += 1;
@@ -169,6 +174,7 @@ export function MessagesProvider({ children }) {
 
   const loadMessages = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return [];
+    if (threadKindRef.current.get(threadId) === "proxy") return [];
 
     const inFlight = loadInFlightRef.current.get(threadId);
     if (inFlight) return inFlight;
@@ -232,6 +238,11 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
+    if (threadKindRef.current.get(threadId) === "proxy") {
+      // ProxyThread's own fetch marks it read on the server; clear the badge here.
+      setThreads((prev) => prev.map((t) => (t.threadId === threadId ? { ...t, hasUnread: false, unreadCount: 0 } : t)));
+      return null;
+    }
 
     // A hidden tab isn't being read, whatever the thread state says. Without this, a
     // background /messages tab marks incoming messages read, telling the sender they were
@@ -612,6 +623,15 @@ export function MessagesProvider({ children }) {
         threadUnsubscribeRef.current();
         threadUnsubscribeRef.current = null;
       }
+      return;
+    }
+
+    if (threadKindRef.current.get(activeThreadId) === "proxy") {
+      if (threadUnsubscribeRef.current) {
+        threadUnsubscribeRef.current();
+        threadUnsubscribeRef.current = null;
+      }
+      markThreadRead(activeThreadId).catch(() => {});
       return;
     }
 

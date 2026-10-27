@@ -1,13 +1,14 @@
 /*
  * Emails Proxy sends (PRD v3).
  *
- *   notifyStudentThread        a student who has left the page gets an email
- *                              when Proxy answers or relays a landlord's
- *                              answer. Same 30-second wait as chat alerts,
- *                              so a burst of messages becomes one email, and
- *                              nothing is sent if they read the thread in the
- *                              meantime. A signed-out visitor is emailed only
- *                              if they left an address on the thread.
+ *   notifyStudentThread        Proxy's own answer is emailed only to a student
+ *                              who has left the page: same 30-second wait as
+ *                              chat alerts, so a burst becomes one email, and
+ *                              nothing is sent if they read it in the meantime
+ *                              (Wyatt, 2026-10-27: answered on the page means
+ *                              no email). A landlord's reply relayed by Proxy
+ *                              is always emailed. A signed-out visitor is
+ *                              emailed only if they left an address.
  *   notifyLandlordQuestion     a landlord gets one email per new question,
  *                              with the context line and a link to their
  *                              queue. Never the student's name.
@@ -50,7 +51,7 @@ export async function notifyStudentThread({ threadId, kind = "proxy_answer", qui
     if (quietMs > 0) await sleep(quietMs);
     const r = await threadRecipient(threadId);
     if (!r?.email) return "no_recipient";
-    if (r.userId) {
+    if (r.userId && kind !== "proxy_relay") {
       const { data: p } = await supabase.from("chat_participants").select("last_read_at").eq("thread_id", threadId).eq("user_id", r.userId).maybeSingle();
       if (p?.last_read_at && new Date(p.last_read_at) >= at) return "read";
     }

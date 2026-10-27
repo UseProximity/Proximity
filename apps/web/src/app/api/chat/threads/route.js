@@ -20,6 +20,7 @@ import {
   assertListingContactNotBlocked,
 } from "@/lib/chat/safety";
 import { annotateNoReply } from "@/lib/chat/followups";
+import { listProxyInbox } from "@/lib/agents/threads";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -48,7 +49,11 @@ export async function GET(req) {
     }
 
     const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
-    return NextResponse.json(await annotateNoReply(authUser.id, inbox));
+    const direct = (await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
+    // The student's Proxy conversations ride along, on their own tab in the
+    // overlay. They never fail the inbox.
+    const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
+    return NextResponse.json([...direct, ...proxy]);
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

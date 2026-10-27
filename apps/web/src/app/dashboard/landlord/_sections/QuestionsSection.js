@@ -5,10 +5,12 @@
  *
  * A landlord never sees who asked: each card carries the question, which
  * lease it is about and whether the student was signed in, and how many
- * students are waiting on it. "Send answer" goes back to every one of them
- * through Proxy and is saved to the listing's knowledge, so the question is
- * not asked again. "Ask the student" relays a clarifying question instead.
- * Phone numbers, emails and links are removed from anything sent.
+ * students are waiting on it. One box, one Send (Wyatt, 2026-10-27): an
+ * answer goes back to every waiting student through Proxy and is saved to
+ * the listing's knowledge, so the question is not asked again; a question
+ * back to the student is relayed as the landlord's question, and Proxy
+ * tells the two apart. Phone numbers, emails and links are removed from
+ * anything sent.
  */
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -20,20 +22,21 @@ function QuestionCard({ q, onDone, viewAsId = null }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const submit = async (done) => {
+  const submit = async () => {
     const body = text.trim();
     if (!body || busy) return;
     setBusy(true);
     try {
       const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
       const r = await fetch(`/api/landlord/questions/${q.id}${qs}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, done }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(data?.error || "Could not send that."); return; }
-      toast.success(done
-        ? `Sent to ${data.relayedTo === 1 ? "the student" : `${data.relayedTo} students`}${data.saved?.written ? " and saved to your listing's knowledge" : ""}.`
-        : "Sent to the student.");
+      const who = data.relayedTo === 1 ? "the student" : `${data.relayedTo} students`;
+      toast.success(data.kind === "clarifier"
+        ? `Proxy is asking ${who} for you. Their reply will show up here.`
+        : `Sent to ${who}${data.saved?.written ? " and saved to your listing's knowledge" : ""}.`);
       if (data.screened) toast("Contact details were removed before sending.", { icon: "ℹ️" });
       setText("");
       onDone();
@@ -62,12 +65,12 @@ function QuestionCard({ q, onDone, viewAsId = null }) {
         onChange={(e) => setText(e.target.value)}
         rows={3}
         maxLength={4000}
-        placeholder="Your answer. It goes back to the student through Proxy and is saved so you are not asked again."
+        placeholder="Your answer, or a question for the student if you need a detail first (which unit, when, how many). Either goes back through Proxy; an answer is saved so you are not asked again."
         className="mt-3 w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none"
       />
-      <div className="mt-2 flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !text.trim()} onClick={() => submit(true)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Send answer</button>
-        <button type="button" disabled={busy || !text.trim()} onClick={() => submit(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">Ask the student something first</button>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-xs text-gray-500">Proxy can tell an answer from a question and relays either.</span>
+        <button type="button" disabled={busy || !text.trim()} onClick={submit} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Sending..." : "Send"}</button>
       </div>
     </div>
   );

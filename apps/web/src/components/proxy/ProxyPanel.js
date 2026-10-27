@@ -26,8 +26,14 @@
  *   proxy_answer  Proxy, from the listing's details ("Based on details
  *                 updated Oct 24" underneath when it drew on dated facts)
  *   proxy_asked   Proxy sent something to the landlord
- *   proxy_relay   the landlord's answer, relayed by Proxy
+ *   proxy_relay   the landlord's answer, relayed by Proxy; with `clarifier`
+ *                 it is the landlord's question back, which Proxy asks in turn
  *   proxy_note    an update: a correction, or no answer yet
+ *
+ * While the panel is on screen it polls the thread every 15 seconds, so a
+ * landlord's reply shows up without a reload, and every poll marks the
+ * thread read, which is what stops the email Proxy would otherwise send for
+ * an answer the student already saw here.
  *
  * The owner's "View as Student" preview and admins get test mode: real
  * answers, nothing logged or sent on.
@@ -131,7 +137,8 @@ function Bubble({ msg, onReport, animate = false, asked = null }) {
     );
   }
   const chip =
-    msg.type === "proxy_relay" ? ["From the landlord", "bg-emerald-100 text-emerald-800"]
+    msg.type === "proxy_relay" && msg.clarifier ? ["The landlord is asking you", "bg-amber-100 text-amber-800"]
+    : msg.type === "proxy_relay" ? ["From the landlord", "bg-emerald-100 text-emerald-800"]
     : msg.type === "proxy_note" ? ["Update", "bg-gray-200 text-gray-700"]
     : null;
   return (
@@ -141,7 +148,7 @@ function Bubble({ msg, onReport, animate = false, asked = null }) {
       </div>
       <div className="max-w-[85%]">
         {chip && <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${chip[1]}`}>{chip[0]}</span>}
-        <div className={`rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${msg.type === "proxy_note" ? "bg-gray-50 text-gray-600" : "bg-gray-100 text-gray-900"}`}>
+        <div className={`rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${msg.type === "proxy_note" ? "bg-gray-50 text-gray-600" : msg.type === "proxy_relay" && msg.clarifier ? "border border-amber-200 bg-amber-50 text-gray-900" : "bg-gray-100 text-gray-900"}`}>
           {(msg.body ?? "").slice(0, shown)}
         </div>
         {(msg.type === "proxy_answer") && shown >= (msg.body ?? "").length && (
@@ -201,6 +208,31 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     // The thread is opened once per listing; the lease rides on each message.
   }, [listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll while on screen and visible: new messages (a landlord's reply) come
+  // in and type out, and the server marks the thread read.
+  const refresh = useCallback(async () => {
+    if (!thread || typeof document === "undefined" || document.visibilityState !== "visible") return;
+    try {
+      const r = await fetch(`/api/proxy/threads/${thread.id}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const incoming = data.messages ?? [];
+      setMessages((m) => {
+        const have = new Set(m.map((x) => x.id));
+        const extra = incoming.filter((x) => !have.has(x.id));
+        if (!extra.length) return m;
+        setFresh((f) => new Set([...f, ...extra.filter((x) => x.fromProxy).map((x) => x.id)]));
+        return [...m, ...extra];
+      });
+    } catch {}
+  }, [thread]);
+
+  useEffect(() => {
+    if (!active || !thread || sending) return;
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [active, thread, sending, refresh]);
+
   // A tour already requested, proposed or confirmed here stays on screen when
   // the student comes back, instead of a Book a tour button.
   useEffect(() => {
@@ -223,17 +255,18 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       el.scrollTop = el.scrollHeight;
       rootRef.current?.scrollIntoView({ block: "end" });
     };
-    pin();
     const obs = new MutationObserver(pin);
     obs.observe(el, { childList: true, characterData: true, subtree: true });
     return () => obs.disconnect();
   }, [active, started]);
 
-  // Opening the Contact tab lands on the bottom of the panel (the input),
-  // after the modal's own scroll to the tab strip.
+  // Opening the Contact tab glides to the bottom of the panel (the input),
+  // after the modal's own jump to the tab strip has happened.
   useEffect(() => {
     if (!active || loading) return;
-    const t = setTimeout(() => rootRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }), 160);
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    const t = setTimeout(() => rootRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }), 180);
     return () => clearTimeout(t);
   }, [active, loading]);
 
@@ -260,6 +293,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
       if (data.intent === "tour" && session?.user?.id) setBookingOpen(true);
+      // Seen on the page: no email for this answer.
+      if (active) refresh();
     } catch {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setInput(text);
@@ -268,7 +303,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [input, thread, sending, leaseId, session?.user?.id]);
+  }, [input, thread, sending, leaseId, session?.user?.id, active, refresh]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;

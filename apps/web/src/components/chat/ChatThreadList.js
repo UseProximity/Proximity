@@ -120,9 +120,19 @@ export default function ChatThreadList({
   loading = false,
   error = false,
   onRetry,
+  emptyMessage = "No conversations yet. Message a landlord from a listing to get started.",
+  tabs = null,
 }) {
   const ordered = sortThreadsByRecency(threads);
+  const body = listBody();
+  return tabs ? (
+    <div className="flex flex-col flex-1 min-h-0">
+      {tabs}
+      {body}
+    </div>
+  ) : body;
 
+  function listBody() {
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center py-12 min-h-0">
@@ -173,7 +183,7 @@ export default function ChatThreadList({
           </svg>
         </div>
         <p className="text-sm text-gray-500 max-w-[240px]">
-          No conversations yet. Message a landlord from a listing to get started.
+          {emptyMessage}
         </p>
         <Link
           href="/browse"
@@ -201,4 +211,5 @@ export default function ChatThreadList({
       </div>
     </div>
   );
+  }
 }

@@ -139,11 +139,35 @@ async function waitersOf(questionId) {
   return data ?? [];
 }
 
+const ReplyKind = z.object({
+  kind: z.enum(["answer", "clarifier", "other"]).describe("answer: it answers the question (fully or partly). clarifier: it asks the student something before answering. other: unrelated, empty, or an out-of-office style message."),
+});
+
 /*
- * The landlord answers. `done` false = a clarifying question for the student.
- * Returns { question, relayedTo, synthesis, screened }.
+ * What a landlord's reply is: an answer, or a question back to the student.
+ * The landlord writes one thing in one box (Wyatt, 2026-10-27) and Proxy
+ * tells the two apart, in the app and by email alike.
  */
-export async function answerQuestion({ questionId, landlordUserId, body, done = true, via = "app" }) {
+export async function classifyReply({ question, text, listingId }) {
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, listingId, kind: "classify_reply", tag: "reply-kind", maxTokens: 60,
+      system: "A landlord replied to a question a student asked through Proxy, a rental listing's assistant. Decide what the reply is. A reply that asks the student for a detail before answering (which unit, when, how many) is a clarifier, even if it also says a little.",
+      messages: [{ role: "user", content: `Question: "${question}"\n\nReply:\n\"\"\"\n${text.slice(0, 3000)}\n\"\"\"` }],
+      schema: ReplyKind,
+    });
+    return parsed?.kind ?? "answer";
+  } catch {
+    return "answer";
+  }
+}
+
+/*
+ * The landlord answers. `done` false = a clarifying question for the
+ * student; null = let classifyReply decide from the text.
+ * Returns { question, kind, relayedTo, synthesis, screened }.
+ */
+export async function answerQuestion({ questionId, landlordUserId, body, done = null, via = "app" }) {
   const { data: q, error } = await supabase.from("listing_questions").select("*").eq("id", questionId).maybeSingle();
   if (error) throw fail("question", error);
   if (!q) return { error: "Question not found", status: 404 };
@@ -155,6 +179,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   if (screened.onlyContact) {
     return { error: "Contact details are shared with a student only when they book a tour. Please answer the question itself.", status: 422, screened: true };
   }
+  if (done == null) done = (await classifyReply({ question: q.question, text: screened.text, listingId: q.listing_id })) !== "clarifier";
   await supabase.from("listing_question_messages").insert({
     question_id: q.id, sender: "landlord", user_id: landlordUserId, body: screened.text, raw_body: screened.removed ? screened.original : null,
     screened: screened.removed > 0, via,
@@ -165,10 +190,11 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   if (!done) {
     await supabase.from("listing_questions").update({ pending_clarifier: true, last_activity_at: now }).eq("id", q.id);
     for (const w of waiters) {
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `The landlord asks: ${screened.text}`, metadata: { questionId: q.id, clarifier: true } });
+      // Proxy asks the landlord's question in turn, and says whose it is.
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: `The landlord needs one thing from you before they can answer: ${screened.text}\n\nReply here and I'll pass it straight on.`, metadata: { questionId: q.id, clarifier: true } });
       notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     }
-    return { question: { ...q, pending_clarifier: true }, relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
+    return { question: { ...q, pending_clarifier: true }, kind: "clarifier", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
   }
 
   // Final answer: into the knowledge base, then to every waiting student.
@@ -204,7 +230,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     relayedTo++;
   }
-  return { question: { ...q, status: "answered", answer: screened.text }, relayedTo, synthesis, links, screened: screened.removed > 0 };
+  return { question: { ...q, status: "answered", answer: screened.text }, kind: "answer", relayedTo, synthesis, links, screened: screened.removed > 0 };
 }
 
 /* The landlord's queue: open questions first, then recent answered ones. */

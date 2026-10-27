@@ -1,10 +1,11 @@
 /*
- * POST /api/landlord/questions/[questionId]  { body, done }
+ * POST /api/landlord/questions/[questionId]  { body, done? }
  *
- * The landlord answers Proxy. done: true is the answer (saved to the
- * listing's knowledge and relayed to every waiting student); done: false is
- * a clarifying question for the student. Contact details are removed before
- * anything reaches a student.
+ * The landlord replies to Proxy in one box. Left to itself, Proxy works out
+ * whether the reply is the answer (saved to the listing's knowledge and
+ * relayed to every waiting student) or a question back to the student
+ * (relayed as the landlord's question); `done` forces either. Contact
+ * details are removed before anything reaches a student.
  *
  * @auth landlord
  */
@@ -26,11 +27,11 @@ export async function POST(req, { params }) {
     // A super "viewing as" a landlord answers as that landlord.
     const landlordUserId = resolveDashboardUserId(session, new URL(req.url).searchParams);
     const result = await answerQuestion({
-      questionId, landlordUserId, body: String(body?.body ?? ""), done: body?.done !== false, via: "app",
+      questionId, landlordUserId, body: String(body?.body ?? ""), done: typeof body?.done === "boolean" ? body.done : null, via: "app",
     });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json({
-      ok: true, status: result.question.status, relayedTo: result.relayedTo, screened: result.screened,
+      ok: true, status: result.question.status, kind: result.kind, relayedTo: result.relayedTo, screened: result.screened,
       saved: result.synthesis ? { written: result.synthesis.written, retired: result.synthesis.retired, notes: result.synthesis.notes } : null,
     });
   } catch (err) {

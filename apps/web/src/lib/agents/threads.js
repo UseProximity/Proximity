@@ -138,7 +138,48 @@ export function shapeMessage(m, { userId = null } = {}) {
     updatedAt: m.metadata?.updatedAt ?? null,
     questionIds: m.metadata?.questionIds ?? [],
     questionId: m.metadata?.questionId ?? null,
+    clarifier: !!m.metadata?.clarifier,
   };
+}
+
+/*
+ * The student's Proxy conversations, shaped like inbox rows so the Messages
+ * overlay can list them on their own tab (Wyatt, 2026-10-27). One row per
+ * listing; the other party is always Proxy.
+ */
+export async function listProxyInbox(userId) {
+  if (!userId) return [];
+  const typeId = await proxyThreadTypeId();
+  const { data: threads, error } = await supabase.from("chat_threads")
+    .select("id, listing_id, lease_id, updated_at, listings!listing_id(id, title, address, min_rent, max_rent, listing_images(url, sort_order))")
+    .eq("thread_type_id", typeId).eq("interested_user_id", userId).is("deleted_at", null)
+    .order("updated_at", { ascending: false }).limit(50);
+  if (error) throw fail("proxy inbox", error);
+  const out = [];
+  for (const t of threads ?? []) {
+    const [{ data: last }, { data: part }] = await Promise.all([
+      supabase.from("chat_messages").select("body, message_type, created_at, sender_id").eq("thread_id", t.id).is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("chat_participants").select("last_read_at").eq("thread_id", t.id).eq("user_id", userId).maybeSingle(),
+    ]);
+    if (!last) continue;
+    let unread = 0;
+    if (!part?.last_read_at || new Date(last.created_at) > new Date(part.last_read_at)) {
+      let q = supabase.from("chat_messages").select("id", { count: "exact", head: true }).eq("thread_id", t.id).is("deleted_at", null).neq("sender_id", userId);
+      if (part?.last_read_at) q = q.gt("created_at", part.last_read_at);
+      unread = (await q).count ?? 0;
+    }
+    const images = (t.listings?.listing_images ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    out.push({
+      kind: "proxy", threadId: t.id, subject: null, updatedAt: t.updated_at,
+      listingId: t.listing_id, leaseId: t.lease_id, listingTitle: t.listings?.title ?? null, listingAddress: t.listings?.address ?? null,
+      listingImage: images[0]?.url ?? null, listingMinRent: t.listings?.min_rent ?? null, listingMaxRent: t.listings?.max_rent ?? null,
+      listings: [], listingCount: 1, isInterestedUser: true,
+      otherUserId: PROXY_USER_ID, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
+      lastMessageBody: last.body, lastMessageType: last.message_type, lastMessageAt: last.created_at, lastMessageMine: last.sender_id === userId,
+      unreadCount: unread, hasUnread: unread > 0,
+    });
+  }
+  return out;
 }
 
 /*

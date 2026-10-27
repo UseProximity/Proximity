@@ -14,15 +14,13 @@
  * the listing's knowledge, links are fetched and read, and the answer goes
  * through answerQuestion like an in-app one, contact details removed.
  */
-import { z } from "zod";
 import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
 import { replyDomain, hashReplyToken } from "@/lib/chat/replyAddress";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
-import { parseStructured, HAIKU } from "./model";
-import { answerQuestion } from "./questions";
+import { answerQuestion, classifyReply } from "./questions";
 import { ingestDocument } from "./ingest";
 
 export { questionReplyToken, questionReplyAddress, stampReplyToken } from "./questionTokens";
@@ -43,24 +41,6 @@ export function findQuestionToken(parsed, recipients = []) {
     if (m) return { token: m[1].toLowerCase(), address: m[0].toLowerCase() };
   }
   return null;
-}
-
-const ReplyKind = z.object({
-  kind: z.enum(["answer", "clarifier", "other"]).describe("answer: it answers the question (fully or partly). clarifier: it asks the student something before answering. other: unrelated, empty, or an out-of-office style message."),
-});
-
-async function classifyReply({ question, text, listingId }) {
-  try {
-    const { parsed } = await parseStructured({
-      model: HAIKU, listingId, kind: "classify_reply", tag: "email-reply-kind", maxTokens: 60,
-      system: "A landlord replied by email to a question a student asked through Proxy, a rental listing's assistant. Decide what the reply is.",
-      messages: [{ role: "user", content: `Question: "${question}"\n\nReply:\n"""\n${text.slice(0, 3000)}\n"""` }],
-      schema: ReplyKind,
-    });
-    return parsed?.kind ?? "answer";
-  } catch {
-    return "answer";
-  }
 }
 
 /*
