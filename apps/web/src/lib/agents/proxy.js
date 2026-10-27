@@ -214,7 +214,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     if (canAsk) {
       const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: text, leaseId: chosenLeaseId, askerUserId: userId, visitorId });
       questionIds = q ? [q.id] : [];
-      reply = "I couldn't work that out just now, so I've sent your message to the landlord. I'll post their answer here.";
+      reply = "I couldn't work that out just now, so I've sent your message to the landlord.";
       out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_asked", metadata: { questionIds } }));
       outcome = "asked_landlord";
     } else {
@@ -245,7 +245,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
       }
       if (questionIds.length) {
         const list = toAsk.slice(0, 3).map((u) => `"${u.question}"`).join(" and ");
-        out.push(await postProxyMessage({ threadId: thread.id, listingId, body: `I've asked the landlord: ${list}. I'll post their answer here as soon as it comes in.`, type: "proxy_asked", metadata: { questionIds } }));
+        out.push(await postProxyMessage({ threadId: thread.id, listingId, body: `I don't have that yet, so I've sent it to the landlord: ${list}.`, type: "proxy_asked", metadata: { questionIds } }));
       }
     }
     outcome = final.intent === "small_talk" ? "chit_chat"

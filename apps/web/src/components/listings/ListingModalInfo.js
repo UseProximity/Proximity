@@ -2608,15 +2608,21 @@ export default function ListingModalInfo({
                * agent is live, the Contact tab is the Proxy conversation, signed
                * in or not. The owner's preview gets it too, in test mode. The
                * old contact form stays for every other listing.
+               *
+               * Mounted with the listing and only hidden on the other tabs, so
+               * the conversation is already loaded when Contact opens.
                */}
-              {activeTab === "contact" && (listing.agent?.live || preview) && (
-                <ProxyPanel
-                  listing={listing}
-                  session={session}
-                  selectedLease={selectedLease}
-                  unitLabel={selectedUnitName ?? sortedUnits[selectedUnitIdx]?.label ?? null}
-                  preview={preview}
-                />
+              {(listing.agent?.live || preview) && (
+                <div className={activeTab === "contact" ? "" : "hidden"}>
+                  <ProxyPanel
+                    listing={listing}
+                    session={session}
+                    selectedLease={selectedLease}
+                    unitLabel={selectedUnitName ?? sortedUnits[selectedUnitIdx]?.label ?? null}
+                    preview={preview}
+                    active={activeTab === "contact"}
+                  />
+                </div>
               )}
               {activeTab === "contact" && !listing.agent?.live && !preview && !session && (
                 <SignInPrompt

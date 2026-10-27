@@ -11,6 +11,15 @@
  * student is asking about (the one whose Contact they clicked, or the open
  * unit's first offering) with Book a tour beside it; then one box that is
  * just the input until the first message, and the conversation after.
+ * The panel is mounted with the listing (hidden until the Contact tab) so
+ * the thread is loaded before the student gets there; when the tab opens
+ * the modal scrolls to the bottom of the panel, and the conversation stays
+ * pinned to its newest message while an answer types out.
+ *
+ * A question Proxy had to send on is shown as its own card: sent to the
+ * landlord, and the student will be emailed when the answer comes (the
+ * signed-in student's own email, or the notify-me address a visitor gives
+ * right there).
  *
  * Message kinds, from the API:
  *   mine          the student's own messages
@@ -81,7 +90,24 @@ function useTypeOut(text, animate) {
   return shown;
 }
 
-function Bubble({ msg, onReport, animate = false }) {
+function AskedFooter({ email, notify }) {
+  if (email) {
+    return <p className="mt-2 text-xs text-amber-900">You&apos;ll get an email at <span className="font-semibold">{email}</span> as soon as they answer, and the answer will show up here.</p>;
+  }
+  if (!notify) return <p className="mt-2 text-xs text-amber-900">The answer will show up here as soon as it comes in.</p>;
+  if (notify.saved) return <p className="mt-2 text-xs text-amber-900">We&apos;ll email you as soon as they answer, and the answer will show up here.</p>;
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 text-xs text-amber-900">
+      <span>Want an email as soon as they answer? It is never shown to the landlord.</span>
+      <div className="flex gap-2">
+        <input type="email" value={notify.email} onChange={(e) => notify.setEmail(e.target.value)} placeholder="you@wustl.edu" className="w-48 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-sm text-gray-900" />
+        <button type="button" onClick={notify.save} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Notify me</button>
+      </div>
+    </div>
+  );
+}
+
+function Bubble({ msg, onReport, animate = false, asked = null }) {
   const shown = useTypeOut(msg.body ?? "", animate && !msg.isMine);
   if (msg.isMine) {
     return (
@@ -90,9 +116,22 @@ function Bubble({ msg, onReport, animate = false }) {
       </div>
     );
   }
+  if (msg.type === "proxy_asked") {
+    return (
+      <div className="flex items-start gap-2">
+        <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100">
+          <Sparkles className="h-3 w-3 text-amber-700" />
+        </div>
+        <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <span className="mb-1 inline-block rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Sent to the landlord</span>
+          <div className="text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">{(msg.body ?? "").slice(0, shown)}</div>
+          {shown >= (msg.body ?? "").length && asked && <AskedFooter email={asked.email} notify={asked.notify} />}
+        </div>
+      </div>
+    );
+  }
   const chip =
-    msg.type === "proxy_asked" ? ["Asked the landlord", "bg-amber-100 text-amber-800"]
-    : msg.type === "proxy_relay" ? ["From the landlord", "bg-emerald-100 text-emerald-800"]
+    msg.type === "proxy_relay" ? ["From the landlord", "bg-emerald-100 text-emerald-800"]
     : msg.type === "proxy_note" ? ["Update", "bg-gray-200 text-gray-700"]
     : null;
   return (
@@ -118,7 +157,7 @@ function Bubble({ msg, onReport, animate = false }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -137,6 +176,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const [fresh, setFresh] = useState(() => new Set());
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
+  const signedIn = !!session?.user?.id;
+  const started = messages.length > 0 || sending;
 
   useEffect(() => {
     if (!listingId) return;
@@ -170,7 +213,29 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return () => { cancelled = true; };
   }, [listingId, session?.user?.id]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "nearest" }); }, [messages.length, sending]);
+  // The conversation stays pinned to its newest message: the list's own
+  // scroll follows every change (an answer typing out grows the text node by
+  // node), and the modal keeps the bottom of the panel in view.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !active) return;
+    const pin = () => {
+      el.scrollTop = el.scrollHeight;
+      rootRef.current?.scrollIntoView({ block: "end" });
+    };
+    pin();
+    const obs = new MutationObserver(pin);
+    obs.observe(el, { childList: true, characterData: true, subtree: true });
+    return () => obs.disconnect();
+  }, [active, started]);
+
+  // Opening the Contact tab lands on the bottom of the panel (the input),
+  // after the modal's own scroll to the tab strip.
+  useEffect(() => {
+    if (!active || loading) return;
+    const t = setTimeout(() => rootRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }), 160);
+    return () => clearTimeout(t);
+  }, [active, loading]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -224,19 +289,22 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     toast.success("We'll email you when the landlord answers.");
   }, [thread, notifyEmail]);
 
-  const asked = messages.some((m) => m.type === "proxy_asked");
-  const signedIn = !!session?.user?.id;
-  const started = messages.length > 0 || sending;
   const aboutLabel = selectedLease
     ? `${unitLabel ?? "this unit"}${selectedLease.rent ? ` at ${money(selectedLease.rent)}/mo` : ""}`
     : unitLabel ?? "this place";
+
+  const lastAskedId = [...messages].reverse().find((m) => m.type === "proxy_asked")?.id ?? null;
+  const askedInfo = testMode ? null : {
+    email: signedIn ? session?.user?.email ?? null : null,
+    notify: signedIn ? null : { email: notifyEmail, setEmail: setNotifyEmail, save: saveNotify, saved: notifySaved },
+  };
 
   if (unavailable) {
     return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={rootRef} className="flex flex-col gap-3">
       {testMode && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
@@ -264,10 +332,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         <TourBooking listing={listing} leaseChoices={choices} initialLeaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} />
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="rounded-2xl border-2 border-gray-300 bg-white shadow-md">
         {started && (
-          <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-3">
-            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} />)}
+          <div ref={listRef} className="flex max-h-[480px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-4">
+            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} asked={m.id === lastAskedId ? askedInfo : null} />)}
             {sending && <TypingBubble />}
             <div ref={endRef} />
           </div>
@@ -278,34 +346,25 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
             <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
           </div>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 p-2">
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 p-3">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              rows={started ? 1 : 2}
+              rows={started ? 2 : 3}
               maxLength={2000}
               placeholder={started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
               disabled={loading || sending || !thread}
-              className="flex-1 resize-none rounded-lg border-0 px-2 py-2 text-sm focus:outline-none focus:ring-0"
+              className="flex-1 resize-none rounded-lg border-0 px-2 py-2 text-base focus:outline-none focus:ring-0"
             />
-            <button type="submit" disabled={loading || sending || !input.trim()} className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-600 px-3 text-sm font-semibold text-white disabled:opacity-40">
-              <Send className="h-4 w-4" />
+            <button type="submit" disabled={loading || sending || !input.trim()} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
+              <Send className="h-5 w-5" />
             </button>
           </form>
         )}
       </div>
 
-      {asked && !signedIn && !notifySaved && !testMode && (
-        <div className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 sm:flex-row sm:items-center">
-          <span className="flex-1">Want an email when the landlord answers? It is never shown to them.</span>
-          <div className="flex gap-2">
-            <input type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)} placeholder="you@wustl.edu" className="w-44 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
-            <button type="button" onClick={saveNotify} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Notify me</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
