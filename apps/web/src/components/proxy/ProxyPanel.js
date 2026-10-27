@@ -42,7 +42,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 import { Send, Sparkles, Flag } from "lucide-react";
-import TourMarker from "./TourMarker";
+import { useTour, TourButton, TourCard } from "./TourMarker";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
@@ -188,6 +188,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const listRef = useRef(null);
   const signedIn = !!session?.user?.id;
   const started = messages.length > 0 || sending;
+  // The tour on this conversation (a marker on the top line, its card below).
+  const { tour, setTour } = useTour(listingId, signedIn);
 
   useEffect(() => {
     if (!listingId) return;
@@ -327,9 +329,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
   }
 
-  const tour = showTour && !testMode
-    ? TourMarker({ listing, leaseChoices: choices, leaseId, proxyThreadId: thread?.id ?? null, signedIn, open: bookingOpen, onOpenChange: setBookingOpen, mode: "inline" })
-    : null;
+  const tourShown = showTour && !testMode && choices.length > 0;
 
   return (
     <div ref={rootRef} className="flex flex-col gap-3">
@@ -343,10 +343,12 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         <p className="text-sm text-gray-700">
           Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
         </p>
-        {tour?.button}
+        {tourShown && <TourButton tour={tour} signedIn={signedIn} open={bookingOpen} onOpenChange={setBookingOpen} />}
       </div>
 
-      {tour?.card}
+      {tourShown && bookingOpen && signedIn && (
+        <TourCard listing={listing} leaseChoices={choices} leaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} setTour={setTour} />
+      )}
 
       <div className="rounded-2xl border-2 border-gray-300 bg-white shadow-md">
         {loading && <ChatSkeleton rows={3} className="border-b border-gray-100 p-4" />}

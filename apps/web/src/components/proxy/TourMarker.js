@@ -8,8 +8,10 @@
  * drops down the booking card with the details and the actions (pick a
  * time, cancel, request again).
  *
- *   mode "inline"   the card opens underneath (the listing's Contact tab)
- *   mode "popover"  the card floats under the marker (the Messages header)
+ * useTour holds the tour; TourButton and TourCard render the two halves so
+ * the Contact tab can put the button on its top line and the card below
+ * (hooks stay unconditional in the panel), and the default TourMarker is
+ * the popover version for the Messages header.
  */
 import { useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
@@ -26,11 +28,8 @@ export function tourLabel(tour) {
   return "Tour requested";
 }
 
-export default function TourMarker({ listing, leaseChoices, leaseId = null, proxyThreadId = null, signedIn, open, onOpenChange, mode = "inline", disabled = false }) {
-  const listingId = listing?._id;
+export function useTour(listingId, signedIn) {
   const [tour, setTour] = useState(null);
-  const boxRef = useRef(null);
-
   useEffect(() => {
     if (!listingId || !signedIn) return;
     let cancelled = false;
@@ -40,63 +39,75 @@ export default function TourMarker({ listing, leaseChoices, leaseId = null, prox
       .catch(() => {});
     return () => { cancelled = true; };
   }, [listingId, signedIn]);
+  return { tour, setTour: (t) => setTour(t && LIVE.has(t.status) ? t : null) };
+}
 
-  // A popover closes on a click outside or Escape.
-  useEffect(() => {
-    if (mode !== "popover" || !open) return;
-    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) onOpenChange(false); };
-    const onKey = (e) => { if (e.key === "Escape") onOpenChange(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [mode, open, onOpenChange]);
-
-  if (disabled || !leaseChoices?.length) return null;
+export function TourButton({ tour, signedIn, open, onOpenChange }) {
   const label = tourLabel(tour);
-
-  const button = !signedIn ? (
-    <button type="button" onClick={() => signIn()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
-      <CalendarDays className="h-3.5 w-3.5" /> Sign in to book a tour
-    </button>
-  ) : label ? (
-    <button
-      type="button"
-      onClick={() => onOpenChange(!open)}
-      aria-expanded={open}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${tour.status === "confirmed" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}
-    >
-      {tour.status === "confirmed" ? <Check className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
-      {label}
-      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-    </button>
-  ) : (
+  if (!signedIn) {
+    return (
+      <button type="button" onClick={() => signIn()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
+        <CalendarDays className="h-3.5 w-3.5" /> Sign in to book a tour
+      </button>
+    );
+  }
+  if (label) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${tour.status === "confirmed" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}
+      >
+        {tour.status === "confirmed" ? <Check className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+    );
+  }
+  return (
     <button type="button" onClick={() => onOpenChange(!open)} aria-expanded={open} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
       <CalendarDays className="h-3.5 w-3.5" /> Book a tour
     </button>
   );
+}
 
-  const card = open && signedIn ? (
+export function TourCard({ listing, leaseChoices, leaseId = null, proxyThreadId = null, onClose, setTour }) {
+  return (
     <TourBooking
       listing={listing}
       leaseChoices={leaseChoices}
       initialLeaseId={leaseId}
       proxyThreadId={proxyThreadId}
-      onClose={() => onOpenChange(false)}
-      onTourChange={(t) => setTour(t && LIVE.has(t.status) ? t : null)}
+      onClose={onClose}
+      onTourChange={setTour}
     />
-  ) : null;
+  );
+}
 
-  if (mode === "popover") {
-    return (
-      <div ref={boxRef} className="relative">
-        {button}
-        {card && (
-          <div className="absolute right-0 top-full z-20 mt-2 w-[min(92vw,30rem)] rounded-xl bg-white shadow-xl">
-            {card}
-          </div>
-        )}
-      </div>
-    );
-  }
-  return { button, card };
+/* The popover version: the button with the card floating under it. */
+export default function TourMarker({ listing, leaseChoices, leaseId = null, proxyThreadId = null, signedIn, open, onOpenChange }) {
+  const { tour, setTour } = useTour(listing?._id, signedIn);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) onOpenChange(false); };
+    const onKey = (e) => { if (e.key === "Escape") onOpenChange(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open, onOpenChange]);
+
+  if (!leaseChoices?.length) return null;
+  return (
+    <div ref={boxRef} className="relative">
+      <TourButton tour={tour} signedIn={signedIn} open={open} onOpenChange={onOpenChange} />
+      {open && signedIn && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-[min(92vw,30rem)] rounded-xl bg-white shadow-xl">
+          <TourCard listing={listing} leaseChoices={leaseChoices} leaseId={leaseId} proxyThreadId={proxyThreadId} onClose={() => onOpenChange(false)} setTour={setTour} />
+        </div>
+      )}
+    </div>
+  );
 }
