@@ -356,7 +356,7 @@
       {
         "table": "chat_messages",
         "status": "active",
-        "description": "Messages in a chat thread. Written ONLY through rpc_send_chat_message / rpc_send_chat_attachment_message (rate limited by fn_chat_assert_send_rate, body <= 5000 chars), read through rpc_get_chat_messages; app code never selects the table directly except Supabase Realtime, which pushes INSERTs to MessagesContext.js. listing_id = the property this message is about (a thread can move between properties; fn_chat_current_listing_id picks the latest). message_type text|attachment; metadata jsonb carries attachment previews. deleted_at = soft delete. trg_bump_chat_thread_on_message bumps chat_threads.updated_at. RLS policies allow participants to select and insert, but the app goes through the service role. Live in prod since 2026-10-07 (migrations 202607300001 to 202610070003).",
+        "description": "Messages in a chat thread. Written ONLY through rpc_send_chat_message / rpc_send_chat_attachment_message (rate limited by fn_chat_assert_send_rate, body <= 5000 chars), read through rpc_get_chat_messages; app code never selects the table directly except Supabase Realtime, which pushes INSERTs to MessagesContext.js. listing_id = the property this message is about (a thread can move between properties; fn_chat_current_listing_id picks the latest). message_type text|attachment; metadata jsonb carries attachment previews. deleted_at = soft delete. trg_bump_chat_thread_on_message bumps chat_threads.updated_at. RLS policies allow participants to select and insert, but the app goes through the service role. Live in prod since 2026-10-07 (migrations 202607300001 to 202610070003). message_type now also proxy_answer | proxy_asked | proxy_relay | proxy_note, sent by the Proxy system user 00000000-0000-0000-0000-000000000010; metadata carries factKeys, updatedAt, questionIds.",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -447,7 +447,7 @@
       {
         "table": "chat_threads",
         "status": "active",
-        "description": "One conversation. Since 202610030001 (chat_pair_threads) a thread is the PAIR (listing_id, landlord_id, interested_user_id): partial unique index on those three for live threads, so a student has one thread per landlord per property. thread_type_id -> thread_types (fn_chat_direct_type_id). landlord_id is resolved by fn_chat_resolve_landlord (lease owner first, then primary landlord, never the info@ house account). lease_id exists ONLY on dev. updated_at is bumped on every message and orders the inbox (rpc_list_chat_threads). deleted_at = soft delete. Live in prod since 2026-10-07.",
+        "description": "One conversation. Since 202610030001 (chat_pair_threads) a thread is the PAIR (listing_id, landlord_id, interested_user_id): partial unique index on those three for live threads, so a student has one thread per landlord per property. thread_type_id -> thread_types (fn_chat_direct_type_id). landlord_id is resolved by fn_chat_resolve_landlord (lease owner first, then primary landlord, never the info@ house account). lease_id exists ONLY on dev. updated_at is bumped on every message and orders the inbox (rpc_list_chat_threads). deleted_at = soft delete. Live in prod since 2026-10-07. Proxy threads (thread type 'proxy', per-listing agents): one per listing per student (interested_user_id) or signed-out visitor (visitor_id = prx_vid cookie), no landlord participant, never listed by rpc_list_chat_threads. notify_email = a visitor's address for updates (never shown to landlords); unrestricted = a tour thread with contact/link moderation lifted; proxy_state = Proxy's notes (nudge turn).",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -458,7 +458,11 @@
           "deleted_at:timestamptz",
           "interested_user_id:uuid",
           "landlord_id:uuid",
-          "lease_id:uuid"
+          "lease_id:uuid",
+          "visitor_id:uuid",
+          "notify_email:text",
+          "unrestricted:bool",
+          "proxy_state:jsonb"
         ],
         "dev_only_columns": [
           "lease_id"
@@ -2289,7 +2293,7 @@
       {
         "table": "thread_types",
         "status": "reference",
-        "description": "Lookup for chat_threads.thread_type_id (2 rows). fn_chat_direct_type_id resolves the direct type; no app code reads it.",
+        "description": "Lookup for chat_threads.thread_type_id (2 rows). fn_chat_direct_type_id resolves the direct type; no app code reads it. 'proxy' added 2026-10-27 for Proxy threads.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2391,7 +2395,7 @@
       {
         "table": "users",
         "status": "active",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] Fixed system row 00000000-0000-0000-0000-000000000010 = Proxy (proxy@useproximity.org, role system, is_system), the sender of Proxy's chat messages.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2693,6 +2697,94 @@
           "created_at:timestamptz"
         ],
         "notes": "pk id; fk listing_id->listings.id (cascade); indexes (listing_id, created_at), (created_at); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_questions",
+        "status": "unreleased",
+        "description": "A question Proxy could not answer, sent to one landlord (owner_id = the owner of the lease the student chose, else the primary owner, else the placeholder contact user; NULL = unroutable, waits for a claim). One row per distinct open question per listing: lib/agents/questions.js dedupes exact matches by `normalized` and near matches with Haiku, so several students wait on one row (asked_count). status open|answered|closed|unroutable; pending_clarifier while the landlord's clarifying question waits on the student; reminder_1_at/reminder_3_at/student_told_at driven by /api/cron/agent-questions (hourly). context is the one line a landlord sees about the asker (lease, signed in or not), never a name.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "owner_id:uuid",
+          "status:text",
+          "question:text",
+          "normalized:text",
+          "section:text",
+          "context:text",
+          "asked_count:int4",
+          "first_thread_id:uuid",
+          "answer:text",
+          "answered_by:uuid",
+          "answered_at:timestamptz",
+          "closed_at:timestamptz",
+          "pending_clarifier:bool",
+          "reminder_1_at:timestamptz",
+          "reminder_3_at:timestamptz",
+          "student_told_at:timestamptz",
+          "last_activity_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), owner_id/answered_by->users (set null), first_thread_id->chat_threads (set null); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "listing_question_waiters",
+        "status": "unreleased",
+        "description": "The Proxy threads (students or visitors) waiting on a listing_questions row; relayed_at once the answer was posted into that thread.",
+        "columns": [
+          "id:uuid",
+          "question_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "user_id:uuid",
+          "visitor_id:uuid",
+          "relayed_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; unique (question_id, thread_id); fk question_id->listing_questions (cascade), thread_id->chat_threads (cascade); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "listing_question_messages",
+        "status": "unreleased",
+        "description": "The exchange on a question: the landlord's clarifying questions and answer (body after contact details were removed; raw_body as written, never shown to students), the student's replies, via app|email.",
+        "columns": [
+          "id:uuid",
+          "question_id:uuid",
+          "sender:text",
+          "thread_id:uuid",
+          "user_id:uuid",
+          "body:text",
+          "raw_body:text",
+          "screened:bool",
+          "via:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; check sender in (landlord, student, proxy), via in (app, email); fk question_id->listing_questions (cascade); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "listing_agent_questions",
+        "status": "unreleased",
+        "description": "The audit log of every student message Proxy handled: the question, Proxy's reply, the fact keys it drew on, the outcome (answered | asked_landlord | partly_answered | chit_chat | tour | unavailable | declined | failed | test), model and latency, asker (user_id or visitor_id), inquiry flag (false in test mode), reported_at from 'Report this answer'. Also the rate-limit ledger (lib/agents/limits.js). PII stripped at the 30-day purge.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "user_id:uuid",
+          "visitor_id:uuid",
+          "question:text",
+          "answer:text",
+          "fact_keys:text[]",
+          "outcome:text",
+          "question_id:uuid",
+          "model:text",
+          "latency_ms:int4",
+          "inquiry:bool",
+          "reported_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), thread_id/message_id (set null), user_id->users (set null), question_id->listing_questions (set null); indexes (listing_id, created_at desc), (thread_id, created_at); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
       }
     ],
     "functions": [

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-27T03:19:49.612Z",
-  "count": 148,
+  "_generated": "2026-10-27T03:44:13.652Z",
+  "count": 157,
   "routes": [
     {
       "path": "/api/account",
@@ -758,6 +758,20 @@
       "file": "src/app/api/contacted/route.js"
     },
     {
+      "path": "/api/cron/agent-questions",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listing_questions"
+      ],
+      "file": "src/app/api/cron/agent-questions/route.js"
+    },
+    {
       "path": "/api/cron/auto-unavailable",
       "methods": [
         "GET"
@@ -1048,6 +1062,20 @@
         "listings"
       ],
       "file": "src/app/api/dev/matchmaking-saturation-sim/route.js"
+    },
+    {
+      "path": "/api/dev/proxy-sim",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "listing_questions"
+      ],
+      "file": "src/app/api/dev/proxy-sim/route.js"
     },
     {
       "path": "/api/devices/push-token",
@@ -1640,6 +1668,30 @@
       "file": "src/app/api/landlord/publish/route.js"
     },
     {
+      "path": "/api/landlord/questions",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/questions/route.js"
+    },
+    {
+      "path": "/api/landlord/questions/[questionId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/questions/[questionId]/route.js"
+    },
+    {
       "path": "/api/landlord/reviews",
       "methods": [
         "GET"
@@ -1917,6 +1969,71 @@
         "listings"
       ],
       "file": "src/app/api/properties/lookup/route.js"
+    },
+    {
+      "path": "/api/proxy/threads",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/[threadId]/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/messages",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/[threadId]/messages/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/notify-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "chat_threads"
+      ],
+      "file": "src/app/api/proxy/threads/[threadId]/notify-email/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/report",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "chat_messages",
+        "listing_agent_questions"
+      ],
+      "file": "src/app/api/proxy/threads/[threadId]/report/route.js"
     },
     {
       "path": "/api/referralPayment",

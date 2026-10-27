@@ -22,6 +22,7 @@ import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions from "@/components/listings/LeaseOptions";
+import ProxyPanel from "@/components/proxy/ProxyPanel";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
@@ -2522,7 +2523,7 @@ export default function ListingModalInfo({
                             : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
                         }`}
                       >
-                        {tab.label}
+                        {tab.id === "contact" && (listing.agent?.live || preview) ? "Ask" : tab.label}
                       </button>
                     )
                   )}
@@ -2630,13 +2631,27 @@ export default function ListingModalInfo({
                   preview={preview}
                 />
               )}
-              {activeTab === "contact" && !session && (
+              {/*
+               * Proxy first (per-listing agents, PRD v3): on a listing whose
+               * agent is live, the Contact tab is the Proxy conversation, signed
+               * in or not. The owner's preview gets it too, in test mode. The
+               * old contact form stays for every other listing.
+               */}
+              {activeTab === "contact" && (listing.agent?.live || preview) && (
+                <ProxyPanel
+                  listing={listing}
+                  session={session}
+                  selectedLease={selectedLease}
+                  preview={preview}
+                />
+              )}
+              {activeTab === "contact" && !listing.agent?.live && !preview && !session && (
                 <SignInPrompt
                   message="Sign in to contact the property manager."
                   tab="contact"
                 />
               )}
-              {activeTab === "contact" && session && (
+              {activeTab === "contact" && !listing.agent?.live && !preview && session && (
                 <ContactTab
                   listing={listing}
                   session={session}

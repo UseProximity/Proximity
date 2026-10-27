@@ -27,6 +27,7 @@ import {
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
 import { sortUnits } from "@/utils/unitOrder";
+import { agentIsLive } from "@/lib/agents/flags";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -622,5 +623,13 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
     };
   });
 
-  return buildListing(row, ownerUser, reviews);
+  const built = buildListing(row, ownerUser, reviews);
+  /*
+   * Whether Proxy answers on this listing (per-listing agents, PRD v3). Both
+   * switches must be on: the global one and the listing's own status. The
+   * modal shows the Proxy panel in place of the contact form when it is.
+   */
+  const { data: agent } = await supabase.from("listing_agents").select("status").eq("listing_id", row.id).maybeSingle();
+  built.agent = { live: agentIsLive(agent) };
+  return built;
 }

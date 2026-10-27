@@ -207,7 +207,7 @@ export default function PropertyAnalyticsSection({
             icon: <Star className="h-4 w-4 text-yellow-500" />,
           },
           {
-            label: "Contacts",
+            label: "Inquiries",
             value: totalContacts,
             icon: <MessageSquare className="h-4 w-4 text-blue-500" />,
           },

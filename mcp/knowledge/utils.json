@@ -1,15 +1,47 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T03:19:49.643Z",
-  "count": 187,
+  "_generated": "2026-10-27T03:44:13.670Z",
+  "count": 197,
   "utils": [
+    {
+      "file": "src/lib/agents/access.js",
+      "description": "Who is talking to Proxy on this request, and in what capacity."
+    },
+    {
+      "file": "src/lib/agents/context.js",
+      "description": "Everything Proxy may know about one listing, as text for the model and as"
+    },
     {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
     },
     {
+      "file": "src/lib/agents/limits.js",
+      "description": "Rate limits for Proxy, separate from the chat send limits (which never"
+    },
+    {
+      "file": "src/lib/agents/model.js",
+      "description": "The model calls behind the per-listing agents."
+    },
+    {
+      "file": "src/lib/agents/notify.js",
+      "description": "Emails Proxy sends (PRD v3)."
+    },
+    {
       "file": "src/lib/agents/overview.js",
       "description": "The team's counts for the per-listing agents: agents by status, current"
+    },
+    {
+      "file": "src/lib/agents/proxy.js",
+      "description": "Proxy answers a student (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/questions.js",
+      "description": "Questions Proxy sends to landlords, and what comes back (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/screen.js",
+      "description": "Text hygiene for Proxy."
     },
     {
       "file": "src/lib/agents/sections.js",
@@ -26,6 +58,14 @@
     {
       "file": "src/lib/agents/studentView.js",
       "description": "What a student (or anything acting for one: the read API, Proxy's context,"
+    },
+    {
+      "file": "src/lib/agents/synthesize.js",
+      "description": "Proxy learns (PRD v3, with Wyatt's note of 2026-10-26: the model, not a"
+    },
+    {
+      "file": "src/lib/agents/threads.js",
+      "description": "Proxy threads (PRD v3, milestone 2)."
     },
     {
       "file": "src/lib/analytics/access.js",

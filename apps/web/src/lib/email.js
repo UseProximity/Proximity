@@ -1213,3 +1213,81 @@ export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) 
       </div>`,
   });
 }
+
+/* ─── Per-listing agents (Proxy) ─────────────────────────────────────────── */
+
+function proxyParagraphs(messages) {
+  return (messages ?? []).map((m) =>
+    `<div style="margin:10px 0;padding:12px 14px;background:#f9fafb;border-left:3px solid #ef4444;border-radius:6px;white-space:pre-wrap">${escapeHtml(String(m))}</div>`
+  ).join("");
+}
+
+/*
+ * To a student who has left the listing page: Proxy answered, or relayed the
+ * landlord's answer, or has no answer yet. Never names the landlord.
+ */
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  const subject = kind === "proxy_relay"
+    ? `The landlord answered your question about ${listingLabel}`
+    : kind === "proxy_no_answer"
+      ? `No answer yet about ${listingLabel}`
+      : `Proxy answered your question about ${listingLabel}`;
+  await sendMailSafe(transporter, {
+    logAs: { kind, threadId, userId },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${kind === "proxy_relay" ? "The landlord's answer came back." : kind === "proxy_no_answer" ? "An update on your question." : "Here is what Proxy found."} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
+        ${proxyParagraphs(messages)}
+        <a href="${threadUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open the conversation</a>
+        <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>
+        ${emailFooter({ reason: "You are receiving this because you asked Proxy about a listing on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * To a landlord: a student's question Proxy could not answer (or a reminder,
+ * or the student's reply to a clarifying question). The student is never
+ * named; the context line says which lease and whether they were signed in.
+ * A contact with no account yet is asked to create one to answer.
+ */
+export async function sendProxyLandlordQuestionEmail({
+  to, name, listingLabel, question, context, queueUrl, kind = "proxy_question",
+  hasAccount = true, studentReply = null, reminderDay = null,
+}) {
+  const first = name ? String(name).split(" ")[0] : "";
+  const subject = reminderDay
+    ? `Reminder: a student is waiting on an answer about ${listingLabel}`
+    : studentReply
+      ? `The student replied about ${listingLabel}`
+      : `A student has a question about ${listingLabel}`;
+  const intro = reminderDay
+    ? `A student asked this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting. Proxy will tell them there is no answer after five days.`
+    : studentReply
+      ? "The student answered your question:"
+      : "Proxy, the assistant on your listing, could not answer this from what it knows, so it is passing it to you. Your answer goes back to the student through Proxy and is saved so you are not asked again.";
+  await sendMailSafe(transporter, {
+    logAs: { kind },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    replyTo: CHAT_FROM_ADDRESS,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${escapeHtml(intro)}</p>
+        <p style="color:#666;font-size:12px;margin:0">${escapeHtml(context ?? "")}</p>
+        ${proxyParagraphs([question])}
+        ${studentReply ? `<p style="color:#666;font-size:12px;margin:12px 0 0">Their reply:</p>${proxyParagraphs([studentReply])}` : ""}
+        <a href="${queueUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${hasAccount ? "Answer in your dashboard" : "Create an account to answer"}</a>
+        ${hasAccount ? "" : `<p style="color:#666;font-size:12px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Sign up with it to see and answer questions from students.</p>`}
+        <p style="color:#666;font-size:12px">Phone numbers, emails and links in an answer are removed before it reaches a student. Contact details are shared when a student books a tour.</p>
+        ${emailFooter({ reason: "You are receiving this because you are the contact for a listing on Proximity." })}
+      </div>`,
+  });
+}

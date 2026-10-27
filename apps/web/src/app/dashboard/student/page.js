@@ -847,14 +847,14 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <h2 className="text-lg font-bold text-gray-900">Contacted</h2>
+                <h2 className="text-lg font-bold text-gray-900">Inquiries</h2>
               </div>
               <div className="border-b border-gray-200 mb-4" />
 
               {contacted.length === 0 ? (
                 <div>
                   <p className="text-sm text-gray-500 mb-6">
-                    You haven&apos;t contacted any leasing agents yet. Browse listings to get started.
+                    You haven&apos;t asked about any places yet. Browse listings to get started.
                   </p>
                   <Link href="/browse"
                     className="inline-block px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
