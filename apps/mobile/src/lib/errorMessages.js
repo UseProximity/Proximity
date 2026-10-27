@@ -145,6 +145,10 @@ export const ERROR_MESSAGES = {
     FILE_NAME_LONG: "A file name is too long. Rename the file and try again.",
     RATE_LIMIT: "You're sending messages too quickly. Please wait a moment and try again.",
     NOT_FOUND: "This conversation couldn't be found.",
+    // Landlord's held email replies (HeldRepliesBanner).
+    REPLY_DECIDE: "Something went wrong. Please try again.",
+    REPLY_REMOVE: "Couldn't remove that sender. Please try again.",
+    REPLY_NOT_WAITING: "That reply is no longer waiting. It may already have been handled.",
     BLOCK: "Couldn't block this user. Please try again.",
     REPORT: "Couldn't send your report. Please try again.",
     REPORT_OWN: "You can't report your own message.",
@@ -240,6 +244,7 @@ export const SERVER_ERRORS = {
   "Choose a reason for your report": E.CHAT.REPORT_REASON,
   "You have sent a lot of messages in a short time. Try again shortly.": E.CHAT.RATE_LIMIT,
   [E.CHAT.UNAVAILABLE]: E.CHAT.UNAVAILABLE,
+  "That reply is no longer waiting": E.CHAT.REPLY_NOT_WAITING,
   // Answers to the chat send, start and attachment routes.
   PASSWORD_REQUIRED: E.CHAT.PASSWORD_REQUIRED, // body.code, not text
   "listing not found": E.LISTINGS.NOT_FOUND,

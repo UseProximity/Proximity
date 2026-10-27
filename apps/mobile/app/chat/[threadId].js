@@ -46,7 +46,9 @@ import {
   uploadChatAttachments,
 } from "../../src/lib/chatPhotos";
 import { pickChatPdfs } from "../../src/lib/chatPdf";
+import { isLandlord } from "@proximity/auth-core";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
+import { HeldRepliesBanner } from "../../src/components/chat/HeldRepliesBanner";
 import { ChatSheets } from "../../src/components/chat/ChatSheets";
 import { ChatPhotoViewer } from "../../src/components/chat/ChatPhotoViewer";
 import { SendButton } from "../../src/components/ui/SendButton";
@@ -585,6 +587,11 @@ export default function ChatThreadScreen() {
         <ErrorMessage compact className="mx-4 mb-2">
           {sendError}
         </ErrorMessage>
+
+        {/* Landlord only; the server is the authority on who may see or act on these. */}
+        {!unavailable && user && isLandlord(user.role) ? (
+          <HeldRepliesBanner threadId={threadId} onDelivered={loadLatest} />
+        ) : null}
 
         {unavailable ? (
           <View className="border-t border-gray-100 bg-white px-4 py-4 items-center">
