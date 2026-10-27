@@ -1294,3 +1294,29 @@ export async function sendProxyLandlordQuestionEmail({
       </div>`,
   });
 }
+
+/*
+ * Tour scheduling emails (per-listing agents): request, proposal,
+ * confirmation (with a calendar file), cancellation, reminders. One shape,
+ * the caller supplies the words.
+ */
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  await sendMailSafe(transporter, {
+    logAs: { kind, userId },
+    from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    replyTo: CHAT_FROM_ADDRESS,
+    subject,
+    ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }] } : {}),
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${escapeHtml(intro)}</p>
+        ${lines.length ? `<ul style="margin:8px 0 12px 18px;padding:0">${lines.map((l) => `<li style="margin:3px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
+        ${note ? `<p style="color:#444">${escapeHtml(note)}</p>` : ""}
+        ${ctaUrl ? `<a href="${ctaUrl}" style="display:inline-block;margin:12px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${escapeHtml(ctaLabel ?? "Open Proximity")}</a>` : ""}
+        ${emailFooter({ reason: "You are receiving this because of a tour request on Proximity." })}
+      </div>`,
+  });
+}

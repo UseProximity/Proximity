@@ -26,7 +26,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
-import { Send, Sparkles, Flag } from "lucide-react";
+import { Send, Sparkles, Flag, CalendarDays } from "lucide-react";
+import TourBooking from "./TourBooking";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
 const dateLabel = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
@@ -96,6 +97,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [signInNeeded, setSignInNeeded] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySaved, setNotifySaved] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => { if (selectedLease?.id) setLeaseId(selectedLease.id); }, [selectedLease?.id]);
@@ -142,6 +144,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         return;
       }
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...(data.messages ?? [])]);
+      // Wanting a tour opens the booking card right under the chat.
+      if (data.intent === "tour" && session?.user?.id) setBookingOpen(true);
     } catch {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setInput(text);
@@ -149,7 +153,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     } finally {
       setSending(false);
     }
-  }, [input, thread, sending, leaseId]);
+  }, [input, thread, sending, leaseId, session?.user?.id]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;
@@ -220,6 +224,21 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
             <button type="button" onClick={saveNotify} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Notify me</button>
           </div>
         </div>
+      )}
+
+      {!testMode && choices.length > 0 && !unavailable && (
+        bookingOpen && signedIn ? (
+          <TourBooking listing={listing} leaseChoices={choices} initialLeaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} />
+        ) : (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+            <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-red-600" /> Ready to see it in person?</span>
+            {signedIn ? (
+              <button type="button" onClick={() => setBookingOpen(true)} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Book a tour</button>
+            ) : (
+              <button type="button" onClick={() => signIn()} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Sign in to book a tour</button>
+            )}
+          </div>
+        )
       )}
 
       {signInNeeded ? (

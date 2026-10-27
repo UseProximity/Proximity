@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import StudentTours from "@/components/proxy/StudentTours";
 
 function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -841,6 +842,8 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
 
           {/* ── RIGHT COLUMN ── */}
           <div className="space-y-8">
+            {/* Tours booked through Proxy (per-listing agents). Renders nothing when there are none. */}
+            <StudentTours />
             {/* Contacted section */}
             <div>
               <div className="flex items-center gap-2 mb-1">

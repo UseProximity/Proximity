@@ -18,6 +18,7 @@ import supabase from "@/lib/supabase";
 import { cronAuthorized } from "@/app/api/landlord/import/_auth";
 import { agentsEnabled } from "@/lib/agents/flags";
 import { remindLandlord, tellStudentsNoAnswer } from "@/lib/agents/notify";
+import { runTourReminders } from "@/lib/agents/tours";
 
 const DAY = 24 * 60 * 60 * 1000;
 const before = (days) => new Date(Date.now() - days * DAY).toISOString();
@@ -52,5 +53,11 @@ export async function GET(req) {
       console.error("[agent-questions] failed on", q.id, err?.message ?? err);
     }
   }
-  return NextResponse.json(out);
+  let tours = null;
+  try {
+    tours = await runTourReminders();
+  } catch (err) {
+    console.error("[agent-questions] tour reminders failed:", err?.message ?? err);
+  }
+  return NextResponse.json({ ...out, tours });
 }

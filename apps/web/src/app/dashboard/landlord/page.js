@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   BarChart3,
+  CalendarDays,
   MapPin,
   MessageCircleQuestion,
   Plug,
@@ -20,6 +21,7 @@ import ProfileSection from "./_sections/ProfileSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
 import QuestionsSection from "./_sections/QuestionsSection";
+import ToursSection from "./_sections/ToursSection";
 import PropertyAnalyticsSection from "./_sections/PropertyAnalyticsSection";
 import { useLandlordDashboard } from "./_hooks/useLandlordDashboard";
 
@@ -135,6 +137,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
       case "questions":
         return <QuestionsSection viewAsId={viewAsId} />;
+      case "tours":
+        return <ToursSection viewAsId={viewAsId} />;
       case "integrations":
         return <IntegrationsSection />;
       case "analytics":
@@ -369,6 +373,17 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   >
                     <MessageCircleQuestion className="h-4 w-4" />
                     Questions
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("tours")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "tours"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    Tours
                   </button>
                   {isLandlord && (
                   <button

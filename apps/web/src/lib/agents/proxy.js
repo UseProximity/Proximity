@@ -48,7 +48,8 @@ Rules:
 - Small talk ("thanks", "ok") gets one friendly line and no questions for the landlord.
 - A message that mixes questions: answer what you know, and put only the rest in unanswered_questions, each as one clear question in the student's words.
 - Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in.
-- If the student wants to tour, apply, negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "tour" or "apply" when that is what they want.
+- If the student wants to tour, set intent "tour" and tell them they can book one with the Book a tour button under this chat (they need to be signed in); pick a lease first if the listing has several. Do not send a tour request to the landlord as a question.
+- If the student wants to apply or negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "apply" or "negotiate" when that is what they want.
 - Nudge toward a tour only when nudge_allowed is true: one natural sentence built from a real fact about this place, never pushy, never in a reply that also says you are asking the landlord or that nothing is available. Report nudged: true when you did.
 - When the listing has no lease on offer (see availability), answer facts but do not offer to ask the landlord: say nothing is available right now and that they can browse similar places on Proximity.
 - When a landlord's clarifying question is pending and the student's message answers it, set clarifier_reply: true and keep your reply to acknowledging it.
@@ -231,8 +232,9 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     }
 
     const toAsk = (final.unanswered_questions ?? []).map((u) => ({ question: String(u.question ?? "").trim(), leaseNumber: Number(u.lease_number) || 0 })).filter((u) => u.question);
-    if (["tour", "apply", "negotiate"].includes(final.intent) && !toAsk.length) {
-      toAsk.push({ question: final.intent === "tour" ? "The student would like to schedule a tour. What times work for you?" : `The student would like to ${final.intent === "apply" ? "apply" : "discuss the terms"}. ${text}`, leaseNumber: chosenLease?.index ?? 0 });
+    // Tours are booked through the tour flow, never relayed as a question.
+    if (["apply", "negotiate"].includes(final.intent) && !toAsk.length) {
+      toAsk.push({ question: `The student would like to ${final.intent === "apply" ? "apply" : "discuss the terms"}. ${text}`, leaseNumber: chosenLease?.index ?? 0 });
     }
     if (toAsk.length && canAsk) {
       for (const u of toAsk.slice(0, 3)) {

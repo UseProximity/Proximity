@@ -19,6 +19,7 @@ import { currentFacts, findOrCreateSource } from "@/lib/agents/store";
 import { synthesizeKnowledge } from "@/lib/agents/synthesize";
 import { handleQuestionEmail } from "@/lib/agents/questionEmail";
 import { questionReplyToken } from "@/lib/agents/questionTokens";
+import { landlordAct } from "@/lib/agents/tours";
 
 const guard = () => process.env.NODE_ENV === "production";
 
@@ -52,6 +53,12 @@ export async function POST(req) {
       const log = [];
       const result = await handleQuestionEmail({ parsed, fromEmail: String(body.from ?? q.users?.email).toLowerCase(), token, attachments: [], logId: null, finish: async (_id, f) => { log.push(f); } });
       return NextResponse.json({ result, log });
+    }
+    if (body.action === "tour") {
+      // The landlord's side of a tour request, as its landlord.
+      const { data: t } = await supabase.from("tour_requests").select("landlord_id").eq("id", body.tourId).maybeSingle();
+      if (!t) return NextResponse.json({ error: "no such tour" }, { status: 404 });
+      return NextResponse.json(await landlordAct({ tourId: body.tourId, landlordId: t.landlord_id, action: body.tourAction, slot: body.slot ?? null, slots: body.slots ?? [] }));
     }
     if (body.action === "synthesize") {
       const source = await findOrCreateSource({ listingId: body.listingId, kind: "admin", label: `dev sim ${Date.now()}` });

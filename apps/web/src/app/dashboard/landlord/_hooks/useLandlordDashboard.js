@@ -387,6 +387,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         return "My Reviews";
       case "questions":
         return "Questions from students";
+      case "tours":
+        return "Tour requests";
       case "integrations":
         return "PMS Sync (Beta)";
       case "profile":

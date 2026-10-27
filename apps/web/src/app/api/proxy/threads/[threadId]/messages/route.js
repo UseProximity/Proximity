@@ -46,6 +46,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({
       messages: result.messages.map((m) => shapeMessage(m, { userId: actor.userId })),
       outcome: result.outcome,
+      intent: result.intent,
       questionIds: result.questionIds,
     });
   } catch (err) {

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-27T03:44:13.652Z",
-  "count": 157,
+  "_generated": "2026-10-27T04:03:39.760Z",
+  "count": 162,
   "routes": [
     {
       "path": "/api/account",
@@ -686,7 +686,9 @@
         "GET": "any",
         "POST": "landlord+"
       },
-      "tables": [],
+      "tables": [
+        "chat_threads"
+      ],
       "file": "src/app/api/chat/threads/[threadId]/messages/route.js"
     },
     {
@@ -1073,7 +1075,8 @@
         "POST": "public"
       },
       "tables": [
-        "listing_questions"
+        "listing_questions",
+        "tour_requests"
       ],
       "file": "src/app/api/dev/proxy-sim/route.js"
     },
@@ -1707,6 +1710,30 @@
       "file": "src/app/api/landlord/reviews/route.js"
     },
     {
+      "path": "/api/landlord/tours",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/tours/route.js"
+    },
+    {
+      "path": "/api/landlord/tours/[tourId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/tours/[tourId]/route.js"
+    },
+    {
       "path": "/api/lease-check",
       "methods": [
         "GET",
@@ -2236,6 +2263,48 @@
         "testimonials"
       ],
       "file": "src/app/api/testimonials/route.js"
+    },
+    {
+      "path": "/api/tours",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/tours/route.js"
+    },
+    {
+      "path": "/api/tours/[tourId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/tours/[tourId]/route.js"
+    },
+    {
+      "path": "/api/tours/availability",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "PUT": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/tours/availability/route.js"
     },
     {
       "path": "/api/upload",

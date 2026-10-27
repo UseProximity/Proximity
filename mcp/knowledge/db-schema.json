@@ -2786,6 +2786,51 @@
           "created_at:timestamptz"
         ],
         "notes": "pk id; fk listing_id->listings (cascade), thread_id/message_id (set null), user_id->users (set null), question_id->listing_questions (set null); indexes (listing_id, created_at desc), (thread_id, created_at); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "student_availability",
+        "status": "unreleased",
+        "description": "A student's weekly tour availability pattern (per-listing agents, tour scheduling): { mon: [9,10,14], ... } hour blocks 8 to 19 in America/Chicago. Set once from the Book a tour card and reused for every request (lib/agents/tourTime.js turns it into real-date slots over the next 14 days).",
+        "columns": [
+          "user_id:uuid",
+          "pattern:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk user_id -> users.id (cascade); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
+      },
+      {
+        "table": "tour_requests",
+        "status": "unreleased",
+        "description": "One tour request per student per lease (lib/agents/tours.js): the real-date slots the student offered (student_slots, ISO UTC), the landlord's counter-proposals (landlord_slots), the confirmed slot, and the contact details each side received on confirmation (student_contact, landlord_contact: name, email, phone). landlord_id = owner of the lease, else primary owner, else the listing's contact placeholder. status requested|proposed|confirmed|cancelled|expired. thread_id = the in-app thread opened on confirmation (chat_threads.unrestricted = true: contact details and links allowed); proxy_thread_id = the Proxy thread the request came from. Reminder stamps driven by /api/cron/agent-questions (landlord day 1 and 3, student told day 5, both the day before).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "student_id:uuid",
+          "landlord_id:uuid",
+          "status:text",
+          "student_slots:jsonb",
+          "landlord_slots:jsonb",
+          "confirmed_slot:timestamptz",
+          "confirmed_by:uuid",
+          "confirmed_at:timestamptz",
+          "student_contact:jsonb",
+          "landlord_contact:jsonb",
+          "student_phone:text",
+          "proxy_thread_id:uuid",
+          "thread_id:uuid",
+          "cancelled_by:uuid",
+          "cancel_reason:text",
+          "reminder_1_at:timestamptz",
+          "reminder_3_at:timestamptz",
+          "student_told_at:timestamptz",
+          "day_before_reminded_at:timestamptz",
+          "last_activity_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), student_id->users (cascade), landlord_id/confirmed_by/cancelled_by->users (set null), proxy_thread_id/thread_id->chat_threads (set null); unique (student_id, coalesce(lease_id, listing_id)) where status in (requested, proposed); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
       }
     ],
     "functions": [

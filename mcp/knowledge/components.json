@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-27T03:44:13.656Z",
-  "count": 142,
+  "_generated": "2026-10-27T04:03:39.764Z",
+  "count": 145,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -579,8 +579,23 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AvailabilityGrid",
+      "file": "src/components/proxy/AvailabilityGrid.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ProxyPanel",
       "file": "src/components/proxy/ProxyPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StudentTours",
+      "file": "src/components/proxy/StudentTours.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourBooking",
+      "file": "src/components/proxy/TourBooking.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
