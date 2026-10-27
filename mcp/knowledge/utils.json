@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T03:44:13.670Z",
-  "count": 197,
+  "_generated": "2026-10-27T03:52:32.685Z",
+  "count": 201,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -12,8 +12,16 @@
       "description": "Everything Proxy may know about one listing, as text for the model and as"
     },
     {
+      "file": "src/lib/agents/corrections.js",
+      "description": "\"Students are told when an answer they received is later corrected\""
+    },
+    {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/ingest.js",
+      "description": "Getting documents and links into a listing's knowledge (PRD v3, with"
     },
     {
       "file": "src/lib/agents/limits.js",
@@ -36,8 +44,16 @@
       "description": "Proxy answers a student (PRD v3, milestone 2)."
     },
     {
+      "file": "src/lib/agents/questionEmail.js",
+      "description": "Landlords answer Proxy's questions by email (PRD v3, milestone 3)."
+    },
+    {
       "file": "src/lib/agents/questions.js",
       "description": "Questions Proxy sends to landlords, and what comes back (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/questionTokens.js",
+      "description": "The per-question reply address a landlord can answer from (PRD v3)."
     },
     {
       "file": "src/lib/agents/screen.js",

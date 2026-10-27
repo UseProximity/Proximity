@@ -29,6 +29,8 @@ import { screenLandlordText } from "./screen";
 import { synthesizeKnowledge } from "./synthesize";
 import { findOrCreateSource } from "./store";
 import { notifyLandlordQuestion, notifyLandlordStudentReply, notifyStudentThread } from "./notify";
+import { stampReplyToken } from "./questionTokens";
+import { ingestLinks } from "./ingest";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
 
@@ -100,6 +102,7 @@ export async function askLandlord({ ctx, thread, messageId, questionText, leaseI
     }).select("*").single();
     if (error) throw fail("question create", error);
     row = data;
+    if (ownerId) await stampReplyToken({ questionId: row.id, ownerId }).catch((err) => console.error("[proxy] reply token:", err?.message ?? err));
   }
   await supabase.from("listing_question_waiters").upsert(
     { question_id: row.id, thread_id: thread.id, message_id: messageId, user_id: askerUserId, visitor_id: askerUserId ? null : visitorId },
@@ -170,17 +173,25 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
 
   // Final answer: into the knowledge base, then to every waiting student.
   let synthesis = null;
+  let links = [];
+  const { data: primary } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", q.listing_id).eq("is_primary", true).maybeSingle();
+  const nonPrimary = primary?.user_id && primary.user_id !== landlordUserId;
+  const ownerDefault = nonPrimary ? landlordUserId : null;
   try {
     const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
-    const { data: primary } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", q.listing_id).eq("is_primary", true).maybeSingle();
-    const nonPrimary = primary?.user_id && primary.user_id !== landlordUserId;
     synthesis = await synthesizeKnowledge({
       listingId: q.listing_id, text: screened.text, sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
-      cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question,
-      ownerDefault: nonPrimary ? landlordUserId : null,
+      cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question, ownerDefault,
     });
   } catch (err) {
     console.error("[proxy] synthesis failed:", err?.message ?? err);
+  }
+  // A link in the answer (a flyer, a fee page) is read into the knowledge
+  // base too, from the text as written, since screening removes links.
+  try {
+    links = await ingestLinks({ listingId: q.listing_id, text: screened.original, cause: "landlord_answer", landlordSet: true, actorId: landlordUserId, ownerDefault, question: q.question });
+  } catch (err) {
+    console.error("[proxy] link ingest failed:", err?.message ?? err);
   }
   const relayText = synthesis?.answer ? screenLandlordText(synthesis.answer).text : screened.text;
   await supabase.from("listing_questions").update({
@@ -193,7 +204,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
     relayedTo++;
   }
-  return { question: { ...q, status: "answered", answer: screened.text }, relayedTo, synthesis, screened: screened.removed > 0 };
+  return { question: { ...q, status: "answered", answer: screened.text }, relayedTo, synthesis, links, screened: screened.removed > 0 };
 }
 
 /* The landlord's queue: open questions first, then recent answered ones. */

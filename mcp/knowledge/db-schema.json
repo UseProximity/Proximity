@@ -2701,7 +2701,7 @@
       {
         "table": "listing_questions",
         "status": "unreleased",
-        "description": "A question Proxy could not answer, sent to one landlord (owner_id = the owner of the lease the student chose, else the primary owner, else the placeholder contact user; NULL = unroutable, waits for a claim). One row per distinct open question per listing: lib/agents/questions.js dedupes exact matches by `normalized` and near matches with Haiku, so several students wait on one row (asked_count). status open|answered|closed|unroutable; pending_clarifier while the landlord's clarifying question waits on the student; reminder_1_at/reminder_3_at/student_told_at driven by /api/cron/agent-questions (hourly). context is the one line a landlord sees about the asker (lease, signed in or not), never a name.",
+        "description": "A question Proxy could not answer, sent to one landlord (owner_id = the owner of the lease the student chose, else the primary owner, else the placeholder contact user; NULL = unroutable, waits for a claim). One row per distinct open question per listing: lib/agents/questions.js dedupes exact matches by `normalized` and near matches with Haiku, so several students wait on one row (asked_count). status open|answered|closed|unroutable; pending_clarifier while the landlord's clarifying question waits on the student; reminder_1_at/reminder_3_at/student_told_at driven by /api/cron/agent-questions (hourly). context is the one line a landlord sees about the asker (lease, signed in or not), never a name. reply_token_hash (202610270003): SHA-256 of the per-question reply token (reply+q<token>@<reply domain>, lib/agents/questionTokens.js) so a landlord can answer by replying to the email; lib/agents/questionEmail.js handles the inbound side (sender must be the landlord, an approved reply sender or a test sender), classifies answer vs clarifier with Haiku, reads attachments and links into the knowledge base.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -2724,7 +2724,8 @@
           "student_told_at:timestamptz",
           "last_activity_at:timestamptz",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "reply_token_hash:text"
         ],
         "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), owner_id/answered_by->users (set null), first_thread_id->chat_threads (set null); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
       },

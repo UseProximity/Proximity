@@ -1258,9 +1258,11 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
  */
 export async function sendProxyLandlordQuestionEmail({
   to, name, listingLabel, question, context, queueUrl, kind = "proxy_question",
-  hasAccount = true, studentReply = null, reminderDay = null,
+  hasAccount = true, studentReply = null, reminderDay = null, replyTo = null,
 }) {
   const first = name ? String(name).split(" ")[0] : "";
+  // With a per-question reply address, answering the email answers the student.
+  const canReply = !!replyTo && hasAccount;
   const subject = reminderDay
     ? `Reminder: a student is waiting on an answer about ${listingLabel}`
     : studentReply
@@ -1275,7 +1277,7 @@ export async function sendProxyLandlordQuestionEmail({
     logAs: { kind },
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
-    replyTo: CHAT_FROM_ADDRESS,
+    replyTo: canReply ? replyTo : CHAT_FROM_ADDRESS,
     subject,
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
@@ -1284,6 +1286,7 @@ export async function sendProxyLandlordQuestionEmail({
         <p style="color:#666;font-size:12px;margin:0">${escapeHtml(context ?? "")}</p>
         ${proxyParagraphs([question])}
         ${studentReply ? `<p style="color:#666;font-size:12px;margin:12px 0 0">Their reply:</p>${proxyParagraphs([studentReply])}` : ""}
+        ${canReply ? `<p><strong>Reply to this email to answer.</strong> Attach a flyer or fee sheet if that is easier; Proxy reads it.</p>` : ""}
         <a href="${queueUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${hasAccount ? "Answer in your dashboard" : "Create an account to answer"}</a>
         ${hasAccount ? "" : `<p style="color:#666;font-size:12px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Sign up with it to see and answer questions from students.</p>`}
         <p style="color:#666;font-size:12px">Phone numbers, emails and links in an answer are removed before it reaches a student. Contact details are shared when a student books a tour.</p>

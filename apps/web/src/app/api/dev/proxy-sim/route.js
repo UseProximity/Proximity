@@ -17,6 +17,8 @@ import supabase from "@/lib/supabase";
 import { answerQuestion } from "@/lib/agents/questions";
 import { currentFacts, findOrCreateSource } from "@/lib/agents/store";
 import { synthesizeKnowledge } from "@/lib/agents/synthesize";
+import { handleQuestionEmail } from "@/lib/agents/questionEmail";
+import { questionReplyToken } from "@/lib/agents/questionTokens";
 
 const guard = () => process.env.NODE_ENV === "production";
 
@@ -39,6 +41,17 @@ export async function POST(req) {
     if (body.action === "facts") {
       const facts = await currentFacts(body.listingId);
       return NextResponse.json({ facts: facts.map((f) => ({ section: f.section, key: f.field_key, scope: f.scope_level, summary: f.summary, landlordSet: f.landlord_set, value: f.value })) });
+    }
+    if (body.action === "email") {
+      // A landlord's emailed reply, as the inbound processor would hand it over
+      // (already authenticated). from defaults to the question's owner.
+      const { data: q } = await supabase.from("listing_questions").select("id, owner_id, users:owner_id(email)").eq("id", body.questionId).maybeSingle();
+      if (!q) return NextResponse.json({ error: "no such question" }, { status: 404 });
+      const token = questionReplyToken({ questionId: q.id, ownerId: q.owner_id });
+      const parsed = { text: body.text ?? "", html: "", from: { value: [{ address: body.from ?? q.users?.email, name: "" }] }, headers: new Map() };
+      const log = [];
+      const result = await handleQuestionEmail({ parsed, fromEmail: String(body.from ?? q.users?.email).toLowerCase(), token, attachments: [], logId: null, finish: async (_id, f) => { log.push(f); } });
+      return NextResponse.json({ result, log });
     }
     if (body.action === "synthesize") {
       const source = await findOrCreateSource({ listingId: body.listingId, kind: "admin", label: `dev sim ${Date.now()}` });

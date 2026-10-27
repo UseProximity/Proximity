@@ -23,6 +23,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendProxyStudentEmail, sendProxyLandlordQuestionEmail } from "@/lib/email";
 import { ALERT_QUIET_MS } from "@/lib/chat/notifyEmail";
 import { PROXY_USER_ID, postProxyMessage } from "./threads";
+import { questionReplyAddress } from "./questionTokens";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -81,12 +82,15 @@ async function questionWithOwner(questionId) {
   return { q, owner: u, hasAccount, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
 }
 
+// Every landlord email about a question can be answered by replying to it.
+const replyTo = (r) => questionReplyAddress({ questionId: r.q.id, ownerId: r.q.owner_id });
+
 export async function notifyLandlordQuestion({ questionId }) {
   const r = await questionWithOwner(questionId);
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
-    kind: "proxy_question", hasAccount: r.hasAccount,
+    kind: "proxy_question", hasAccount: r.hasAccount, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
   return "sent";
@@ -99,7 +103,7 @@ export async function notifyLandlordStudentReply({ questionId }) {
     .order("created_at", { ascending: false }).limit(1);
   await sendProxyLandlordQuestionEmail({
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
-    kind: "proxy_question", hasAccount: r.hasAccount, studentReply: last?.[0]?.body ?? null,
+    kind: "proxy_question", hasAccount: r.hasAccount, studentReply: last?.[0]?.body ?? null, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
   return "sent";
@@ -110,7 +114,7 @@ export async function remindLandlord({ questionId, day }) {
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
-    kind: "proxy_reminder", hasAccount: r.hasAccount, reminderDay: day,
+    kind: "proxy_reminder", hasAccount: r.hasAccount, reminderDay: day, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
   return "sent";

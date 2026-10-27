@@ -28,6 +28,7 @@ import { parseStructured, SONNET } from "./model";
 import { currentFacts, setFact, retireFact } from "./store";
 import { buildProxyContext } from "./context";
 import { SECTIONS, UNCLAIMED_OWNER_ID } from "./sections";
+import { postCorrections } from "./corrections";
 
 const Operation = z.object({
   op: z.enum(["set", "retire"]),
@@ -148,7 +149,7 @@ export async function synthesizeKnowledge({
   });
   if (!parsed) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "model gave no result" };
 
-  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes };
+  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [] };
   for (const op of parsed.operations ?? []) {
     if (!SECTIONS.includes(op.section)) continue;
     const key = String(op.key ?? "").toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100);
@@ -169,6 +170,12 @@ export async function synthesizeKnowledge({
       cause, actorId, detail: { sourceKind },
     });
     if (r.held) result.held++; else if (r.changed) result.written++; else result.unchanged++;
+    // A fact that replaced an earlier one is a correction students may have
+    // been told the old value of.
+    if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary });
+  }
+  if (result.changes.length && cause !== "seed") {
+    postCorrections({ listingId, changes: result.changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return result;
 }
