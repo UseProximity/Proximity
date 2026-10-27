@@ -1,11 +1,16 @@
 "use client";
 
 /*
- * "Ask about this place": the Proxy conversation on a listing (PRD v3).
+ * "Ask": the Proxy conversation on a listing (PRD v3).
  *
  * One thread per listing per person, signed in or not. Proxy answers from the
  * listing's knowledge; what it cannot answer it sends to the landlord and
  * posts the answer back here. The landlord is never in this conversation.
+ *
+ * Layout (Wyatt, 2026-10-27): one line at the top says which lease the
+ * student is asking about (the one whose Contact they clicked, or the open
+ * unit's first offering) with Book a tour beside it; then one box that is
+ * just the input until the first message, and the conversation after.
  *
  * Message kinds, from the API:
  *   mine          the student's own messages
@@ -15,15 +20,10 @@
  *   proxy_relay   the landlord's answer, relayed by Proxy
  *   proxy_note    an update: a correction, or no answer yet
  *
- * The lease picker decides which owner a question goes to (contacts are per
- * lease). It is hidden when there is only one lease. A signed-out visitor
- * who has had a question sent on is offered a one-line email box to hear
- * back; that address is never shown to the landlord.
- *
  * The owner's "View as Student" preview and admins get test mode: real
  * answers, nothing logged or sent on.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 import { Send, Sparkles, Flag, CalendarDays } from "lucide-react";
@@ -37,18 +37,56 @@ function leaseChoices(listing) {
   for (const u of listing?.unitTypes ?? []) {
     const unitLabel = u.name || ((u.bedrooms ?? 0) === 0 ? "Studio" : `${u.bedrooms ?? "?"} bed / ${u.bathrooms ?? "?"} bath`);
     for (const l of u.leases ?? []) {
-      // Unit and price only: Proxy keeps names out of the conversation.
       out.push({ id: l.id, label: `${unitLabel}${l.rent ? ` at ${money(l.rent)}/mo` : ""}` });
     }
   }
   return out;
 }
 
-function Bubble({ msg, onReport }) {
+/* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
+function TypingBubble() {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50">
+        <Sparkles className="h-3 w-3 text-red-600" />
+      </div>
+      <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-3">
+        {[0, 150, 300].map((delay) => (
+          <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: `${delay}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/*
+ * A Proxy message types itself out, fast: a few characters per frame, so a
+ * paragraph lands in well under a second. Only messages that arrived in
+ * this session animate; history loads whole.
+ */
+function useTypeOut(text, animate) {
+  const [shown, setShown] = useState(animate ? 0 : text.length);
+  useEffect(() => {
+    if (!animate) { setShown(text.length); return; }
+    let i = 0;
+    let raf;
+    const step = () => {
+      i = Math.min(text.length, i + Math.max(3, Math.ceil(text.length / 60)));
+      setShown(i);
+      if (i < text.length) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [text, animate]);
+  return shown;
+}
+
+function Bubble({ msg, onReport, animate = false }) {
+  const shown = useTypeOut(msg.body ?? "", animate && !msg.isMine);
   if (msg.isMine) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-red-600 px-3.5 py-2.5 text-sm leading-relaxed text-white whitespace-pre-wrap">{msg.body}</div>
+        <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-red-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap">{msg.body}</div>
       </div>
     );
   }
@@ -59,34 +97,31 @@ function Bubble({ msg, onReport }) {
     : null;
   return (
     <div className="flex items-start gap-2">
-      <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-red-100 bg-red-50">
-        <Sparkles className="h-3.5 w-3.5 text-red-600" />
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50">
+        <Sparkles className="h-3 w-3 text-red-600" />
       </div>
       <div className="max-w-[85%]">
-        <div className="mb-0.5 flex items-center gap-2 text-[11px] text-gray-500">
-          <span className="font-semibold text-gray-700">Proxy</span>
-          {chip && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${chip[1]}`}>{chip[0]}</span>}
+        {chip && <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${chip[1]}`}>{chip[0]}</span>}
+        <div className={`rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${msg.type === "proxy_note" ? "bg-gray-50 text-gray-600" : "bg-gray-100 text-gray-900"}`}>
+          {(msg.body ?? "").slice(0, shown)}
         </div>
-        <div className={`rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${msg.type === "proxy_note" ? "bg-gray-50 text-gray-600" : "bg-gray-100 text-gray-900"}`}>
-          {msg.body}
-        </div>
-        <div className="mt-0.5 flex items-center gap-3 text-[11px] text-gray-400">
-          {msg.type === "proxy_answer" && msg.updatedAt && <span>Based on details updated {dateLabel(msg.updatedAt)}</span>}
-          {msg.type === "proxy_answer" && (
+        {(msg.type === "proxy_answer") && shown >= (msg.body ?? "").length && (
+          <div className="mt-0.5 flex items-center gap-3 text-[11px] text-gray-400">
+            {msg.updatedAt && <span>Based on details updated {dateLabel(msg.updatedAt)}</span>}
             <button type="button" onClick={() => onReport(msg)} className="inline-flex items-center gap-1 hover:text-gray-600">
               <Flag className="h-3 w-3" /> Report
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, preview = false }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false }) {
   const listingId = listing?._id;
-  const choices = useMemo(() => leaseChoices(listing), [listing]);
-  const [leaseId, setLeaseId] = useState(selectedLease?.id ?? null);
+  const choices = leaseChoices(listing);
+  const leaseId = selectedLease?.id ?? null;
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [testMode, setTestMode] = useState(false);
@@ -98,16 +133,17 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySaved, setNotifySaved] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
+  // Messages that arrived in this session type themselves out.
+  const [fresh, setFresh] = useState(() => new Set());
   const endRef = useRef(null);
-
-  useEffect(() => { if (selectedLease?.id) setLeaseId(selectedLease.id); }, [selectedLease?.id]);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!listingId) return;
     let cancelled = false;
     setLoading(true);
     fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
-      .then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) }))
+      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
       .then(({ ok, data }) => {
         if (cancelled) return;
         if (!ok) { setUnavailable(data?.error || "Proxy is not available on this listing yet."); return; }
@@ -143,8 +179,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         toast.error(data?.error || "Proxy could not answer just now.");
         return;
       }
-      setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...(data.messages ?? [])]);
-      // Wanting a tour opens the booking card right under the chat.
+      const incoming = data.messages ?? [];
+      setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
+      setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
       if (data.intent === "tour" && session?.user?.id) setBookingOpen(true);
     } catch {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
@@ -152,6 +189,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       toast.error("Proxy could not answer just now.");
     } finally {
       setSending(false);
+      inputRef.current?.focus();
     }
   }, [input, thread, sending, leaseId, session?.user?.id]);
 
@@ -176,6 +214,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
 
   const asked = messages.some((m) => m.type === "proxy_asked");
   const signedIn = !!session?.user?.id;
+  const started = messages.length > 0 || sending;
+  const aboutLabel = selectedLease
+    ? `${unitLabel ?? "this unit"}${selectedLease.rent ? ` at ${money(selectedLease.rent)}/mo` : ""}`
+    : unitLabel ?? "this place";
 
   if (unavailable) {
     return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
@@ -188,32 +230,59 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
           Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
         </div>
       )}
-      <p className="text-xs text-gray-500">
-        Proxy answers most questions instantly from this listing&apos;s details and passes the rest to the landlord. Answers are compiled from several sources and may be inaccurate; confirm anything important with the landlord before signing.
-      </p>
 
-      {choices.length > 1 && (
-        <label className="flex flex-col gap-1 text-xs text-gray-600">
-          Which lease are you asking about?
-          <select value={leaseId ?? ""} onChange={(e) => setLeaseId(e.target.value || null)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900">
-            <option value="">Not sure yet</option>
-            {choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-700">
+          Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
+        </p>
+        {!testMode && choices.length > 0 && !bookingOpen && (
+          signedIn ? (
+            <button type="button" onClick={() => setBookingOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
+              <CalendarDays className="h-3.5 w-3.5" /> Book a tour
+            </button>
+          ) : (
+            <button type="button" onClick={() => signIn()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
+              <CalendarDays className="h-3.5 w-3.5" /> Sign in to book a tour
+            </button>
+          )
+        )}
+      </div>
+
+      {bookingOpen && signedIn && (
+        <TourBooking listing={listing} leaseChoices={choices} initialLeaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} />
       )}
 
-      <div className="flex max-h-[420px] min-h-[160px] flex-col gap-3 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
-        {loading && <div className="py-6 text-center text-sm text-gray-400">Opening your conversation...</div>}
-        {!loading && messages.length === 0 && (
-          <div className="py-6 text-center text-sm text-gray-400">Ask anything about this place: fees, pets, parking, lease terms, move-in dates.</div>
-        )}
-        {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} />)}
-        {sending && (
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <Sparkles className="h-3.5 w-3.5 animate-pulse text-red-400" /> Proxy is looking that up...
+      <div className="rounded-xl border border-gray-200 bg-white">
+        {started && (
+          <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-3">
+            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} />)}
+            {sending && <TypingBubble />}
+            <div ref={endRef} />
           </div>
         )}
-        <div ref={endRef} />
+        {signInNeeded ? (
+          <div className="p-3 text-sm text-red-700">
+            Sign in to keep asking.{" "}
+            <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
+          </div>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 p-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              rows={started ? 1 : 2}
+              maxLength={2000}
+              placeholder={started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
+              disabled={loading || sending || !thread}
+              className="flex-1 resize-none rounded-lg border-0 px-2 py-2 text-sm focus:outline-none focus:ring-0"
+            />
+            <button type="submit" disabled={loading || sending || !input.trim()} className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-600 px-3 text-sm font-semibold text-white disabled:opacity-40">
+              <Send className="h-4 w-4" />
+            </button>
+          </form>
+        )}
       </div>
 
       {asked && !signedIn && !notifySaved && !testMode && (
@@ -224,44 +293,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
             <button type="button" onClick={saveNotify} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Notify me</button>
           </div>
         </div>
-      )}
-
-      {!testMode && choices.length > 0 && !unavailable && (
-        bookingOpen && signedIn ? (
-          <TourBooking listing={listing} leaseChoices={choices} initialLeaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} />
-        ) : (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
-            <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-red-600" /> Ready to see it in person?</span>
-            {signedIn ? (
-              <button type="button" onClick={() => setBookingOpen(true)} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Book a tour</button>
-            ) : (
-              <button type="button" onClick={() => signIn()} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Sign in to book a tour</button>
-            )}
-          </div>
-        )
-      )}
-
-      {signInNeeded ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          Sign in to keep asking.{" "}
-          <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
-        </div>
-      ) : (
-        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            rows={2}
-            maxLength={2000}
-            placeholder="Ask Proxy about this place"
-            disabled={loading || sending || !thread}
-            className="flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none"
-          />
-          <button type="submit" disabled={loading || sending || !input.trim()} className="inline-flex h-10 items-center gap-1 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
-            <Send className="h-4 w-4" /> Send
-          </button>
-        </form>
       )}
     </div>
   );

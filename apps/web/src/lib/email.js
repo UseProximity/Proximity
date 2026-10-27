@@ -1226,7 +1226,7 @@ function proxyParagraphs(messages) {
  * To a student who has left the listing page: Proxy answered, or relayed the
  * landlord's answer, or has no answer yet. Never names the landlord.
  */
-export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null }) {
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null }) {
   const first = name ? String(name).split(" ")[0] : "";
   const subject = kind === "proxy_relay"
     ? `The landlord answered your question about ${listingLabel}`
@@ -1247,7 +1247,7 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
         <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>
         ${emailFooter({ reason: "You are receiving this because you asked Proxy about a listing on Proximity." })}
       </div>`,
-  });
+  }, testEmailTo);
 }
 
 /*

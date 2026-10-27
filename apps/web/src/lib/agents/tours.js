@@ -90,12 +90,13 @@ async function resolveLandlord({ listingId, leaseId }) {
   return null;
 }
 
-export async function requestTour({ listingId, leaseId = null, studentId, slots, phone = null, proxyThreadId = null }) {
+export async function requestTour({ listingId, leaseId = null, studentId, slots, phone = null, email = null, proxyThreadId = null }) {
   const clean = validSlots(slots);
   if (!clean.length) return { error: "Pick at least one time that works for you.", status: 400 };
   const { data: student } = await supabase.from("users").select("id, email, phone").eq("id", studentId).maybeSingle();
   const phoneClean = String(phone ?? "").replace(/[^\d+() .-]/g, "").trim().slice(0, 30) || null;
-  if (!phoneClean && !student?.email) return { error: "Add a phone number or email so the landlord can reach you.", status: 400 };
+  const emailClean = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email ?? "").trim()) ? String(email).trim().toLowerCase() : null;
+  if (!phoneClean && !emailClean && !student?.email) return { error: "Add a phone number or email so the landlord can reach you.", status: 400 };
   const { data: owned } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", studentId).limit(1);
   if (owned?.length) return { error: "You cannot book a tour of your own listing.", status: 400 };
   const landlordId = await resolveLandlord({ listingId, leaseId });
@@ -104,6 +105,8 @@ export async function requestTour({ listingId, leaseId = null, studentId, slots,
   const { data: tour, error } = await supabase.from("tour_requests").insert({
     listing_id: listingId, lease_id: leaseId, student_id: studentId, landlord_id: landlordId,
     status: "requested", student_slots: clean, student_phone: phoneClean, proxy_thread_id: proxyThreadId,
+    // What the student typed; filled in with the account's details on confirmation.
+    student_contact: emailClean || phoneClean ? { email: emailClean, phone: phoneClean } : null,
   }).select(TOUR_SELECT).single();
   if (error) {
     if (error.code === "23505") return { error: "You already have an open tour request for this place.", status: 409 };
@@ -135,6 +138,7 @@ async function confirm(t, slot, byUserId) {
   const now = new Date().toISOString();
   const [studentContact, landlordContact] = await Promise.all([contactOf(t.student_id), contactOf(t.landlord_id)]);
   if (t.student_phone) studentContact.phone = t.student_phone;
+  if (t.student_contact?.email) studentContact.email = t.student_contact.email;
   const when = fmtSlot(slot);
   const label = t.listings?.title || t.listings?.address || "the listing";
 

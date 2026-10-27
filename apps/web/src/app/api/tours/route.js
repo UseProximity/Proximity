@@ -40,7 +40,7 @@ export async function POST(req) {
     if (body.pattern && typeof body.pattern === "object") await saveAvailability(user.id, body.pattern);
     const result = await requestTour({
       listingId: body.listingId, leaseId: UUID.test(body?.leaseId ?? "") ? body.leaseId : null, studentId: user.id,
-      slots: body.slots, phone: body.phone ?? null, proxyThreadId: UUID.test(body?.proxyThreadId ?? "") ? body.proxyThreadId : null,
+      slots: body.slots, phone: body.phone ?? null, email: body.email ?? null, proxyThreadId: UUID.test(body?.proxyThreadId ?? "") ? body.proxyThreadId : null,
     });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json(result);

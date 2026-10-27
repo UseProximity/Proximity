@@ -17,6 +17,7 @@ import { getThread, canAccessThread, shapeMessage } from "@/lib/agents/threads";
 import { handleStudentMessage } from "@/lib/agents/proxy";
 import { notifyStudentThread } from "@/lib/agents/notify";
 import { clientIp } from "@/lib/auth/loginThrottle";
+import { stagingEmailHeader } from "@/lib/outreach";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,7 +42,10 @@ export async function POST(req, { params }) {
     if (result.error) return NextResponse.json({ error: result.error, code: result.code ?? null }, { status: result.status ?? 400 });
 
     if (!avail.testMode && result.messages.some((m) => m.message_type === "proxy_answer" || m.message_type === "proxy_asked")) {
-      after(() => notifyStudentThread({ threadId: thread.id, kind: "proxy_answer" }));
+      // Off production the email is redirected to the tester's chosen inbox;
+      // captured here because after() runs once the request is gone.
+      const testEmailTo = stagingEmailHeader(req) ?? req.cookies?.get?.("staging_email_to")?.value ?? null;
+      after(() => notifyStudentThread({ threadId: thread.id, kind: "proxy_answer", testEmailTo }));
     }
     return NextResponse.json({
       messages: result.messages.map((m) => shapeMessage(m, { userId: actor.userId })),

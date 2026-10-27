@@ -44,7 +44,7 @@ async function threadRecipient(threadId) {
   return { thread: t, email, name, userId, listingLabel: t.listings?.title || t.listings?.address || "a listing" };
 }
 
-export async function notifyStudentThread({ threadId, kind = "proxy_answer", quietMs = ALERT_QUIET_MS }) {
+export async function notifyStudentThread({ threadId, kind = "proxy_answer", quietMs = ALERT_QUIET_MS, testEmailTo = null }) {
   try {
     const at = new Date();
     if (quietMs > 0) await sleep(quietMs);
@@ -62,7 +62,7 @@ export async function notifyStudentThread({ threadId, kind = "proxy_answer", qui
       to: r.email, name: r.name, kind, listingLabel: r.listingLabel,
       messages: msgs.map((m) => m.body),
       threadUrl: `${getBaseUrl()}/listings/${r.thread.listing_id}?listingTab=contact`,
-      threadId, userId: r.userId ?? null,
+      threadId, userId: r.userId ?? null, testEmailTo,
     });
     return "sent";
   } catch (err) {

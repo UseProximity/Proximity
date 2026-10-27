@@ -3,27 +3,31 @@
 /*
  * Book a tour, under the Proxy conversation (PRD v3, milestone 5).
  *
- * Signed in only. The student's weekly availability (saved on the account)
- * becomes real dates over the next 14 days; they untick the ones that don't
- * work, pick the lease, confirm a phone or email, and send. The card then
- * tracks the request: waiting, the landlord's proposed times to pick from,
- * or confirmed with the landlord's contact details and a link to the
- * conversation that opened.
+ * Signed in only. The student paints the hours they can tour over the next
+ * seven real dates, confirms a phone number, and sends. What they painted
+ * is also saved on their account as a weekday pattern and painted in for
+ * them next time (Wyatt, 2026-10-27). The card then tracks the request:
+ * waiting, the landlord's proposed times to pick from, or confirmed with
+ * the landlord's contact details and a link to the conversation.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDays, X } from "lucide-react";
-import { WeeklyGrid } from "./AvailabilityGrid";
-import { slotsFromPattern, fmtSlot, fmtDay, dayKey } from "@/lib/agents/tourTime";
+import { DateGrid, zoneAbbrev } from "./AvailabilityGrid";
+import { slotsFromPattern, fmtSlot, chicagoParts, DAYS } from "@/lib/agents/tourTime";
 
-function groupByDay(slots) {
-  const groups = new Map();
-  for (const s of slots) {
-    const k = dayKey(s);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(s);
+const GRID_DAYS = 7;
+
+/* The weekday pattern implied by a set of real-date slots. */
+function patternFromSlots(slots) {
+  const pattern = {};
+  for (const iso of slots) {
+    const p = chicagoParts(new Date(iso));
+    const day = DAYS.includes(p.weekday) ? p.weekday : null;
+    if (!day) continue;
+    pattern[day] = [...new Set([...(pattern[day] ?? []), p.h])].sort((a, b) => a - b);
   }
-  return [...groups.entries()];
+  return pattern;
 }
 
 function StatusCard({ tour, onCancel, onPick, busy }) {
@@ -65,13 +69,12 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
   const listingId = listing?._id;
   const [loading, setLoading] = useState(true);
   const [tour, setTour] = useState(null);
-  const [pattern, setPattern] = useState({});
+  const [selected, setSelected] = useState(() => new Set());
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState(null);
-  const [leaseId, setLeaseId] = useState(initialLeaseId ?? (leaseChoices.length === 1 ? leaseChoices[0].id : ""));
-  const [removed, setRemoved] = useState(() => new Set());
+  // The lease is the one the conversation is about (the panel's selection).
+  const leaseId = initialLeaseId ?? (leaseChoices.length === 1 ? leaseChoices[0].id : null);
   const [busy, setBusy] = useState(false);
-  const [editGrid, setEditGrid] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,10 +83,10 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
         fetch("/api/tours/availability").then((r) => r.json()),
         fetch(`/api/tours?listingId=${encodeURIComponent(listingId)}`).then((r) => r.json()),
       ]);
-      setPattern(a.pattern ?? {});
+      // Last time's hours, painted onto this week's dates.
+      setSelected(new Set(slotsFromPattern(a.pattern ?? {}, { days: GRID_DAYS })));
       setPhone(a.phone ?? "");
       setEmail(a.email ?? null);
-      setEditGrid(!Object.keys(a.pattern ?? {}).length);
       setTour(t.tour ?? null);
     } catch {
       toast.error("Could not load your availability.");
@@ -94,17 +97,14 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
 
   useEffect(() => { load(); }, [load]);
 
-  const slots = useMemo(() => slotsFromPattern(pattern).filter((s) => !removed.has(s)), [pattern, removed]);
-  const grouped = useMemo(() => groupByDay(slots), [slots]);
-
   const submit = async () => {
     if (busy) return;
-    if (leaseChoices.length > 1 && !leaseId) { toast.error("Pick which lease you want to tour."); return; }
+    const slots = [...selected].sort();
     if (!slots.length) { toast.error("Pick at least one time."); return; }
-    if (!phone.trim() && !email) { toast.error("Add a phone number so the landlord can reach you."); return; }
+    if (!phone.trim() && !String(email ?? "").trim()) { toast.error("Add a phone number or email so the landlord can reach you."); return; }
     setBusy(true);
     try {
-      const r = await fetch("/api/tours", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId: leaseId || null, slots, phone: phone.trim() || null, pattern, proxyThreadId }) });
+      const r = await fetch("/api/tours", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId: leaseId || null, slots, phone: phone.trim() || null, email: String(email ?? "").trim() || null, pattern: patternFromSlots(slots), proxyThreadId }) });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(data?.error || "Could not request the tour."); return; }
       setTour(data.tour);
@@ -141,53 +141,24 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
         <div className="flex items-center gap-2 font-semibold text-gray-900"><CalendarDays className="h-4 w-4 text-red-600" /> Book a tour</div>
         {onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="h-4 w-4" /></button>}
       </div>
-      <p className="mb-3 text-xs text-gray-500">Set the hours you can usually tour, untick any dates that don&apos;t work, and send. The landlord picks a time or proposes others. Your contact details are shared once a time is confirmed.</p>
-
-      {leaseChoices.length > 1 && (
-        <label className="mb-3 flex flex-col gap-1 text-xs text-gray-600">
-          Which lease?
-          <select value={leaseId} onChange={(e) => setLeaseId(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900">
-            <option value="">Choose a lease</option>
-            {leaseChoices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
-      )}
-
       <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="font-semibold text-gray-700">Your weekly availability</span>
-          {!editGrid && <button type="button" onClick={() => setEditGrid(true)} className="text-red-600 underline">Edit</button>}
-        </div>
-        {editGrid ? <WeeklyGrid pattern={pattern} onChange={(p) => { setPattern(p); setRemoved(new Set()); }} /> : <p className="text-xs text-gray-500">Saved on your account. {slots.length} time{slots.length === 1 ? "" : "s"} over the next two weeks.</p>}
+        <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} />
+        <p className="mt-1 text-[11px] text-gray-500">{selected.size} time{selected.size === 1 ? "" : "s"} selected ({zoneAbbrev()}).</p>
       </div>
 
-      {slots.length > 0 && (
-        <div className="mb-3 max-h-56 overflow-y-auto rounded-lg border border-gray-100 p-2">
-          <p className="mb-1 text-xs font-semibold text-gray-700">Times you&apos;ll offer (untick any that don&apos;t work)</p>
-          {grouped.map(([day, list]) => (
-            <div key={day} className="mb-1">
-              <div className="text-[11px] text-gray-500">{fmtDay(list[0])}</div>
-              <div className="flex flex-wrap gap-1">
-                {list.map((s) => (
-                  <label key={s} className="inline-flex items-center gap-1 rounded bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-700">
-                    <input type="checkbox" checked readOnly onClick={() => setRemoved((r) => new Set([...r, s]))} className="h-3 w-3" />
-                    {fmtSlot(s, { withDate: false })}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <label className="mb-3 flex flex-col gap-1 text-xs text-gray-600">
-        Phone number for the landlord{email ? " (your email is shared too)" : ""}
-        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(314) 555-0100" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900" />
-      </label>
-
-      <button type="button" disabled={busy || !slots.length} onClick={submit} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-        {busy ? "Sending..." : "Request a tour"}
-      </button>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-[9rem] flex-1 flex-col gap-1 text-xs text-gray-600">
+          Phone
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(314) 555-0100" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900" />
+        </label>
+        <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-xs text-gray-600">
+          Email
+          <input type="email" value={email ?? ""} onChange={(e) => setEmail(e.target.value)} placeholder="you@wustl.edu" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900" />
+        </label>
+        <button type="button" disabled={busy || !selected.size} onClick={submit} className="h-[34px] rounded-lg bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? "Sending..." : "Request a tour"}
+        </button>
+      </div>
     </div>
   );
 }

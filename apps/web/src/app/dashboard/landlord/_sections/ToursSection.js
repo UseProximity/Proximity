@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDays, CheckCircle2 } from "lucide-react";
-import { DatePicker } from "@/components/proxy/AvailabilityGrid";
+import { DateGrid, zoneAbbrev } from "@/components/proxy/AvailabilityGrid";
 import { fmtSlot } from "@/lib/agents/tourTime";
 
 function RequestCard({ t, onDone, viewAsId = null }) {
@@ -59,8 +59,8 @@ function RequestCard({ t, onDone, viewAsId = null }) {
       )}
       {proposing ? (
         <div className="mt-3 rounded-lg border border-gray-100 p-2">
-          <p className="mb-1 text-xs font-semibold text-gray-700">Pick as many times as you like (St. Louis time)</p>
-          <DatePicker selected={picked} onToggle={(iso) => setPicked((p) => { const n = new Set(p); if (n.has(iso)) n.delete(iso); else n.add(iso); return n; })} />
+          <p className="mb-1 text-xs font-semibold text-gray-700">Paint the times you can do ({zoneAbbrev()})</p>
+          <DateGrid selected={picked} onChange={setPicked} days={7} />
           <div className="mt-2 flex gap-2">
             <button type="button" disabled={busy || !picked.size} onClick={() => act({ action: "propose", slots: [...picked] })} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Send these times</button>
             <button type="button" onClick={() => setProposing(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Back</button>
