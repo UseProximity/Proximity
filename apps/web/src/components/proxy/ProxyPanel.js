@@ -46,6 +46,20 @@ import { useTour, TourButton, TourCard } from "./TourMarker";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
+
+// The listing page and the Messages overlay can mount a panel for the same
+// listing in the same moment; they share one open-thread request.
+const threadOpens = new Map();
+function openThread(listingId, leaseId) {
+  const key = `${listingId}:${leaseId ?? ""}`;
+  if (!threadOpens.has(key)) {
+    const p = fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
+      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .finally(() => threadOpens.delete(key));
+    threadOpens.set(key, p);
+  }
+  return threadOpens.get(key);
+}
 const dateLabel = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
 
 function leaseChoices(listing) {
@@ -195,8 +209,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     if (!listingId) return;
     let cancelled = false;
     setLoading(true);
-    fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
-      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+    openThread(listingId, leaseId)
       .then(({ ok, data }) => {
         if (cancelled) return;
         if (!ok) { setUnavailable(data?.error || "Proxy is not available on this listing yet."); return; }

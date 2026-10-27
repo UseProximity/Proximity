@@ -85,7 +85,7 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
             {thread.tour && (
               <span
                 title={thread.tour.status === "confirmed" ? "Tour confirmed" : thread.tour.status === "proposed" ? "Pick a tour time" : "Tour requested"}
-                className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${thread.tour.status === "confirmed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
               >
                 {thread.tour.status === "confirmed" ? <Check className="h-3 w-3" /> : <CalendarDays className="h-3 w-3" />}
               </span>

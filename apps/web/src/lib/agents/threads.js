@@ -71,7 +71,14 @@ export async function getOrCreateProxyThread({ listingId, userId = null, visitor
       lease_id: leaseId, subject,
     })
     .select(THREAD_COLS).single();
-  if (error) throw fail("thread create", error);
+  if (error) {
+    // Two panels opened the thread at once: the index kept the first, use it.
+    if (error.code === "23505") {
+      const winner = await findProxyThread({ listingId, userId, visitorId });
+      if (winner) return { thread: winner, created: false };
+    }
+    throw fail("thread create", error);
+  }
   const participants = [{ thread_id: thread.id, user_id: PROXY_USER_ID }];
   if (userId) participants.push({ thread_id: thread.id, user_id: userId });
   await supabase.from("chat_participants").upsert(participants, { onConflict: "thread_id,user_id", ignoreDuplicates: true });

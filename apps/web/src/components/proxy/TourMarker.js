@@ -3,10 +3,10 @@
 /*
  * The tour on a Proxy conversation (Wyatt, 2026-10-27): one chat per
  * listing, and the tour rides on it as a marker on the right. With no tour
- * it is the "Book a tour" button; once one is requested it shows the status
- * ("Tour requested", "Pick a time", the confirmed time) and clicking it
- * drops down the booking card with the details and the actions (pick a
- * time, cancel, request again).
+ * it is the "Request a tour" button; once one is requested it turns green
+ * with the status ("Tour requested", "Pick a time", the confirmed time) and
+ * clicking it drops down the card with the details and the actions (edit
+ * availability, pick a time, cancel, request again).
  *
  * useTour holds the tour; TourButton and TourCard render the two halves so
  * the Contact tab can put the button on its top line and the card below
@@ -47,7 +47,7 @@ export function TourButton({ tour, signedIn, open, onOpenChange }) {
   if (!signedIn) {
     return (
       <button type="button" onClick={() => signIn()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
-        <CalendarDays className="h-3.5 w-3.5" /> Sign in to book a tour
+        <CalendarDays className="h-3.5 w-3.5" /> Sign in to request a tour
       </button>
     );
   }
@@ -57,7 +57,7 @@ export function TourButton({ tour, signedIn, open, onOpenChange }) {
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
-        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${tour.status === "confirmed" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"
       >
         {tour.status === "confirmed" ? <Check className="h-3.5 w-3.5" /> : <CalendarDays className="h-3.5 w-3.5" />}
         {label}
@@ -67,7 +67,7 @@ export function TourButton({ tour, signedIn, open, onOpenChange }) {
   }
   return (
     <button type="button" onClick={() => onOpenChange(!open)} aria-expanded={open} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">
-      <CalendarDays className="h-3.5 w-3.5" /> Book a tour
+      <CalendarDays className="h-3.5 w-3.5" /> Request a tour
     </button>
   );
 }

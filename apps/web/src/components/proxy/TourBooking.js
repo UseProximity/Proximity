@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { CalendarDays, X } from "lucide-react";
+import { CalendarDays, Pencil, X } from "lucide-react";
 import { DateGrid, zoneAbbrev } from "./AvailabilityGrid";
 import { slotsFromPattern, fmtSlot, chicagoParts, DAYS } from "@/lib/agents/tourTime";
 
@@ -32,7 +32,7 @@ function patternFromSlots(slots) {
   return pattern;
 }
 
-function StatusCard({ tour, onCancel, onPick, busy }) {
+function StatusCard({ tour, onCancel, onPick, onEdit, busy }) {
   const open = ["requested", "proposed"].includes(tour.status);
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm">
@@ -58,11 +58,18 @@ function StatusCard({ tour, onCancel, onPick, busy }) {
           <p className="text-xs text-gray-500">Reach them by phone or email; they have your details too.</p>
         </div>
       )}
-      {(open || tour.status === "confirmed") && (
-        <button type="button" disabled={busy} onClick={onCancel} className="mt-3 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800">
-          <X className="h-3 w-3" /> Cancel this tour
-        </button>
-      )}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {open && (
+          <button type="button" disabled={busy} onClick={onEdit} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+            <Pencil className="h-3 w-3" /> Edit availability
+          </button>
+        )}
+        {(open || tour.status === "confirmed") && (
+          <button type="button" disabled={busy} onClick={onCancel} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800">
+            <X className="h-3 w-3" /> Cancel this tour
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -77,6 +84,8 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
   // The lease is the one the conversation is about (the panel's selection).
   const leaseId = initialLeaseId ?? (leaseChoices.length === 1 ? leaseChoices[0].id : null);
   const [busy, setBusy] = useState(false);
+  // Editing an open request: the grid shows the times already offered.
+  const [editing, setEditing] = useState(false);
   // The marker above learns about every change without re-running the load.
   const onChangeRef = useRef(onTourChange);
   onChangeRef.current = onTourChange;
@@ -121,6 +130,24 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
     }
   };
 
+  const update = async () => {
+    if (!tour || busy) return;
+    const slots = [...selected].sort();
+    if (!slots.length) { toast.error("Pick at least one time."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", slots, phone: phone.trim() || null, email: String(email ?? "").trim() || null }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { toast.error(data?.error || "Could not update your availability."); return; }
+      setTour(data.tour);
+      onChangeRef.current?.(data.tour);
+      setEditing(false);
+      toast.success("Availability updated. The landlord has your new times.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const act = async (action, slot = null) => {
     if (!tour || busy) return;
     setBusy(true);
@@ -146,15 +173,24 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
     );
   }
 
-  if (tour && ["requested", "proposed", "confirmed"].includes(tour.status)) {
-    return <StatusCard tour={tour} busy={busy} onCancel={() => act("cancel")} onPick={(s) => act("pick", s)} />;
+  const live = tour && ["requested", "proposed", "confirmed"].includes(tour.status);
+  if (live && !editing) {
+    return (
+      <StatusCard
+        tour={tour} busy={busy}
+        onCancel={() => act("cancel")} onPick={(s) => act("pick", s)}
+        onEdit={() => { setSelected(new Set(tour.studentSlots ?? [])); setEditing(true); }}
+      />
+    );
   }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm">
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 font-semibold text-gray-900"><CalendarDays className="h-4 w-4 text-red-600" /> Book a tour</div>
-        {onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="h-4 w-4" /></button>}
+        <div className="flex items-center gap-2 font-semibold text-gray-900"><CalendarDays className="h-4 w-4 text-red-600" /> {editing ? "Edit your availability" : "Request a tour"}</div>
+        {editing ? (
+          <button type="button" onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-800">Back</button>
+        ) : onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="h-4 w-4" /></button>}
       </div>
       <div className="mb-3">
         <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} />
@@ -170,8 +206,8 @@ export default function TourBooking({ listing, leaseChoices, initialLeaseId = nu
           Email
           <input type="email" value={email ?? ""} onChange={(e) => setEmail(e.target.value)} placeholder="you@wustl.edu" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-900" />
         </label>
-        <button type="button" disabled={busy || !selected.size} onClick={submit} className="h-[34px] rounded-lg bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
-          {busy ? "Sending..." : "Request a tour"}
+        <button type="button" disabled={busy || !selected.size} onClick={editing ? update : submit} className="h-[34px] rounded-lg bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? "Sending..." : editing ? "Update availability" : "Request a tour"}
         </button>
       </div>
     </div>

@@ -195,11 +195,30 @@ export async function landlordAct({ tourId, landlordId, action, slot = null, slo
   return { error: "Unknown action", status: 400 };
 }
 
-export async function studentAct({ tourId, studentId, action, slot = null }) {
+export async function studentAct({ tourId, studentId, action, slot = null, slots = [], phone = null, email = null }) {
   const t = await load(tourId);
   if (!t) return { error: "Tour request not found", status: 404 };
   if (t.student_id !== studentId) return { error: "Not your request", status: 403 };
   const now = new Date().toISOString();
+  if (action === "update") {
+    // New availability on an open request: the landlord gets the new times
+    // and anything they had proposed is withdrawn (Wyatt, 2026-10-27).
+    if (!["requested", "proposed"].includes(t.status)) return { error: "This request can no longer be changed", status: 409 };
+    const clean = validSlots(slots);
+    if (!clean.length) return { error: "Pick at least one time that works for you.", status: 400 };
+    const phoneClean = String(phone ?? "").replace(/[^\d+() .-]/g, "").trim().slice(0, 30) || t.student_phone || null;
+    const emailClean = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email ?? "").trim()) ? String(email).trim().toLowerCase() : t.student_contact?.email ?? null;
+    const { data: updated, error } = await supabase.from("tour_requests").update({
+      status: "requested", student_slots: clean, landlord_slots: [], student_phone: phoneClean,
+      student_contact: emailClean || phoneClean ? { email: emailClean, phone: phoneClean } : t.student_contact, last_activity_at: now,
+    }).eq("id", t.id).select(TOUR_SELECT).single();
+    if (error) throw fail("tour update", error);
+    if (t.proxy_thread_id) {
+      await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: `Got it, I've sent the landlord your updated times (${clean.length} option${clean.length === 1 ? "" : "s"}). I'll let you know when they confirm one.`, metadata: { tourId: t.id } });
+    }
+    notifyTourRequested({ tourId: t.id }).catch((err) => console.error("[tours] update alert failed:", err?.message ?? err));
+    return { tour: shape(updated, "student") };
+  }
   if (action === "pick") {
     if (t.status !== "proposed") return { error: "There is nothing to pick from yet", status: 409 };
     const iso = validSlots([slot])[0];
