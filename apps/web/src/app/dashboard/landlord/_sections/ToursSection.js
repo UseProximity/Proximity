@@ -14,7 +14,7 @@ import { CalendarDays, CheckCircle2 } from "lucide-react";
 import { DatePicker } from "@/components/proxy/AvailabilityGrid";
 import { fmtSlot } from "@/lib/agents/tourTime";
 
-function RequestCard({ t, onDone }) {
+function RequestCard({ t, onDone, viewAsId = null }) {
   const [proposing, setProposing] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -23,7 +23,8 @@ function RequestCard({ t, onDone }) {
     if (busy) return;
     setBusy(true);
     try {
-      const r = await fetch(`/api/landlord/tours/${t.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      const r = await fetch(`/api/landlord/tours/${t.id}${qs}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(data?.error || "Could not update the tour."); return; }
       toast.success(body.action === "confirm" ? "Tour confirmed. You both have each other's contact details now." : body.action === "propose" ? "Sent to the student." : "Cancelled.");
@@ -101,7 +102,7 @@ export default function ToursSection({ viewAsId = null }) {
       <p className="text-sm text-gray-600">Students book tours through Proxy with the times they can make. Confirm one or propose others. When a time is confirmed you get their phone or email, they get yours, and a conversation opens in Messages.</p>
       {open.length === 0 ? (
         <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-500"><CalendarDays className="h-5 w-5 text-gray-400" /> No open tour requests.</div>
-      ) : open.map((t) => <RequestCard key={t.id} t={t} onDone={load} />)}
+      ) : open.map((t) => <RequestCard key={t.id} t={t} onDone={load} viewAsId={viewAsId} />)}
       {confirmed.length > 0 && (
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-900">Upcoming tours</h3>

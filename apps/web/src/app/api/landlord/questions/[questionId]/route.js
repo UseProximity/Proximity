@@ -14,6 +14,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { answerQuestion } from "@/lib/agents/questions";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
 
 export async function POST(req, { params }) {
   const session = await auth();
@@ -22,8 +23,10 @@ export async function POST(req, { params }) {
     const { questionId } = await params;
     let body;
     try { body = await req.json(); } catch { body = {}; }
+    // A super "viewing as" a landlord answers as that landlord.
+    const landlordUserId = resolveDashboardUserId(session, new URL(req.url).searchParams);
     const result = await answerQuestion({
-      questionId, landlordUserId: session.user.id, body: String(body?.body ?? ""), done: body?.done !== false, via: "app",
+      questionId, landlordUserId, body: String(body?.body ?? ""), done: body?.done !== false, via: "app",
     });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json({

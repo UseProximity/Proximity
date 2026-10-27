@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { landlordAct } from "@/lib/agents/tours";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
 
 export async function POST(req, { params }) {
   const session = await auth();
@@ -19,7 +20,9 @@ export async function POST(req, { params }) {
     const { tourId } = await params;
     let body;
     try { body = await req.json(); } catch { body = {}; }
-    const result = await landlordAct({ tourId, landlordId: session.user.id, action: body?.action, slot: body?.slot ?? null, slots: body?.slots ?? [] });
+    // A super "viewing as" a landlord acts as that landlord.
+    const landlordId = resolveDashboardUserId(session, new URL(req.url).searchParams);
+    const result = await landlordAct({ tourId, landlordId, action: body?.action, slot: body?.slot ?? null, slots: body?.slots ?? [] });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json(result);
   } catch (err) {

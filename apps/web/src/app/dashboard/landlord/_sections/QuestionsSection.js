@@ -16,7 +16,7 @@ import { MessageCircleQuestion, CheckCircle2 } from "lucide-react";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
-function QuestionCard({ q, onDone }) {
+function QuestionCard({ q, onDone, viewAsId = null }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +25,8 @@ function QuestionCard({ q, onDone }) {
     if (!body || busy) return;
     setBusy(true);
     try {
-      const r = await fetch(`/api/landlord/questions/${q.id}`, {
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      const r = await fetch(`/api/landlord/questions/${q.id}${qs}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, done }),
       });
       const data = await r.json().catch(() => ({}));
@@ -119,7 +120,7 @@ export default function QuestionsSection({ viewAsId = null }) {
         byListing(open).map((g) => (
           <section key={g.title} className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900">{g.title} <span className="font-normal text-gray-500">({g.items.length} open)</span></h3>
-            {g.items.map((q) => <QuestionCard key={q.id} q={q} onDone={load} />)}
+            {g.items.map((q) => <QuestionCard key={q.id} q={q} onDone={load} viewAsId={viewAsId} />)}
           </section>
         ))
       )}
