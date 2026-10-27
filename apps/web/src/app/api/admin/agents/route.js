@@ -22,6 +22,8 @@ import supabase from "@/lib/supabase";
 import { seedListing, seedAll } from "@/lib/agents/seed";
 import { ensureAgent } from "@/lib/agents/store";
 import { overview } from "@/lib/agents/overview";
+import { runBackfill } from "@/lib/agents/backfill";
+import { runDigest } from "@/lib/agents/digest";
 
 async function requireTeam() {
   const session = await auth();
@@ -55,6 +57,13 @@ export async function POST(req) {
         ? await seedListing(body.listingId, { actorId: gate.userId })
         : await seedAll({ onlyUnseeded: !!body.onlyUnseeded });
       return NextResponse.json({ ok: true, result });
+    }
+    if (action === "backfill") {
+      // Read today's chat history into the agents (end of the project).
+      return NextResponse.json({ ok: true, result: await runBackfill({ limit: Number(body.limit) || 200, listingId: body.listingId ?? null }) });
+    }
+    if (action === "digest") {
+      return NextResponse.json({ ok: true, result: await runDigest({ email: body.send === true }) });
     }
     if (action === "status") {
       if (!["off", "pilot", "on"].includes(body.status) || !body.listingId) {

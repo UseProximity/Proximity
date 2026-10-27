@@ -111,7 +111,15 @@ export async function runTools({
       await log({ listingId, kind, model, usage, tag });
       return { final: stripEmDashes(finalBlock.input), text, usage, calls };
     }
-    if (resp.stop_reason !== "tool_use") break;
+    if (resp.stop_reason !== "tool_use") {
+      // It answered in prose instead of calling the final tool: one more
+      // round, with the final tool required, turns that prose into the
+      // structured result.
+      if (last || !resp.content.length) break;
+      convo.push({ role: "assistant", content: resp.content });
+      convo.push({ role: "user", content: `Now call ${finalTool} with that answer.` });
+      continue;
+    }
     convo.push({ role: "assistant", content: resp.content });
     const results = [];
     for (const block of resp.content) {

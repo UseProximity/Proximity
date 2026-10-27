@@ -52,6 +52,8 @@ export const KINDS = {
   tour_no_answer: ["chat", "Tour: no answer from the landlord"],
   proxy_question: ["landlords", "Question from a student (via Proxy)"],
   proxy_reminder: ["landlords", "Unanswered question reminder"],
+  agent_digest: ["team", "Agents daily digest"],
+  availability_gone: ["landlords", "Unit or listing gone from website"],
   source_sync_digest: ["team", "Website sync digest"],
   source_sync_failure: ["team", "Website sync failure"],
   import_cap_alert: ["team", "Website import cap reached"],

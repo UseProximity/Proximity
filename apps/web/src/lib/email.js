@@ -1320,3 +1320,28 @@ export async function sendTourEmail({ kind, to, name, subject, intro, lines = []
       </div>`,
   });
 }
+
+/*
+ * The per-listing agents' daily rollout digest, to the team: sections of
+ * label and value rows, each with an optional list and note.
+ */
+export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
+  const block = (s) => `
+    <h3 style="margin:18px 0 6px;color:#111;font-size:14px">${escapeHtml(s.title)}</h3>
+    <table style="border-collapse:collapse;font-size:13px">${(s.rows ?? []).map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#444">${escapeHtml(String(k))}</td><td style="padding:2px 0;font-weight:600">${escapeHtml(String(v))}</td></tr>`).join("")}</table>
+    ${s.note ? `<p style="margin:6px 0 2px;color:#666;font-size:12px">${escapeHtml(s.note)}</p>` : ""}
+    ${(s.list ?? []).length ? `<ul style="margin:4px 0 0 18px;padding:0;font-size:12px;color:#333">${s.list.map((l) => `<li style="margin:2px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}`;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "agent_digest" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Agents digest: ${day}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Per-listing agents, ${escapeHtml(day)}</h2>
+        ${(sections ?? []).map(block).join("")}
+        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin" style="color:#dc2626">Open the admin Agents tab</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer the per-listing agents on Proximity." })}
+      </div>`,
+  });
+}

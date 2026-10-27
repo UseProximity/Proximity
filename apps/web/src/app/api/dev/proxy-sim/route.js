@@ -60,6 +60,14 @@ export async function POST(req) {
       if (!t) return NextResponse.json({ error: "no such tour" }, { status: 404 });
       return NextResponse.json(await landlordAct({ tourId: body.tourId, landlordId: t.landlord_id, action: body.tourAction, slot: body.slot ?? null, slots: body.slots ?? [] }));
     }
+    if (body.action === "backfill") {
+      const { runBackfill } = await import("@/lib/agents/backfill");
+      return NextResponse.json(await runBackfill({ limit: Number(body.limit) || 50, listingId: body.listingId ?? null }));
+    }
+    if (body.action === "digest") {
+      const { runDigest } = await import("@/lib/agents/digest");
+      return NextResponse.json(await runDigest({ email: body.send === true }));
+    }
     if (body.action === "addurl") {
       // A landlord adds a website to a live listing, then the queued job runs inline.
       const { addUrl } = await import("@/lib/agents/sync");

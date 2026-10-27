@@ -1,11 +1,15 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T04:28:38.473Z",
-  "count": 210,
+  "_generated": "2026-10-27T04:37:11.321Z",
+  "count": 212,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
+    },
+    {
+      "file": "src/lib/agents/backfill.js",
+      "description": "The chat-history backfill (Wyatt, 2026-10-26): every landlord message and"
     },
     {
       "file": "src/lib/agents/compliance.js",
@@ -22,6 +26,10 @@
     {
       "file": "src/lib/agents/corrections.js",
       "description": "\"Students are told when an answer they received is later corrected\""
+    },
+    {
+      "file": "src/lib/agents/digest.js",
+      "description": "The rollout digest (PRD v3, \"Metrics and rollout digest\"): one email a day"
     },
     {
       "file": "src/lib/agents/flags.js",

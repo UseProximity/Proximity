@@ -203,7 +203,8 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     console.error("[proxy] model failed:", err?.message ?? err);
     result = null;
   }
-  const final = result?.final;
+  // Prose with no structured result still answers the student.
+  const final = result?.final ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false } : null);
 
   let outcome;
   let questionIds = [];
