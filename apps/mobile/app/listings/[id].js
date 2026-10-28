@@ -477,6 +477,13 @@ export default function ListingDetailScreen() {
   // contact address and no landlord account yet; that is never "mine".
   const isOwnListing = !!user?.id && listing.owner?._id === user.id;
   const canMessage = listing.owner?.canChat === true && !isOwnListing;
+  // Any stake in the listing, as the server counts it (POST /api/listingReport refuses
+  // these reports): the listing's landlord, or the owner of one of its live leases.
+  // Other co-owners are not in this response, so the server stays the final check.
+  const hasStake =
+    !!user?.id &&
+    (listing.owner?._id === user.id ||
+      (listing.unitTypes ?? []).some((unit) => (unit.leases ?? []).some((lease) => lease.ownerId === user.id)));
   const hasAmenities = listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0;
   // One chip per card that actually renders, in page order.
   const navSections = [
@@ -782,16 +789,18 @@ export default function ListingDetailScreen() {
               </View>
             ) : null}
 
-            <Pressable
-              onPress={handleReportListing}
-              accessibilityRole="button"
-              accessibilityLabel="Report listing"
-              hitSlop={8}
-              className="flex-row items-center justify-center gap-1.5 py-3 active:opacity-60"
-            >
-              <Flag size={14} color="#9ca3af" />
-              <Text className="text-sm text-gray-400">Report listing</Text>
-            </Pressable>
+            {hasStake ? null : (
+              <Pressable
+                onPress={handleReportListing}
+                accessibilityRole="button"
+                accessibilityLabel="Report listing"
+                hitSlop={8}
+                className="flex-row items-center justify-center gap-1.5 py-3 active:opacity-60"
+              >
+                <Flag size={14} color="#9ca3af" />
+                <Text className="text-sm text-gray-400">Report listing</Text>
+              </Pressable>
+            )}
           </View>
         </Animated.ScrollView>
 
