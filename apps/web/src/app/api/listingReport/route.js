@@ -3,7 +3,9 @@
  *
  * Reports a listing itself (its photos, text or contact details) for the team to look at.
  * Signed-in users only. The reported landlord is read from the listing here, never taken
- * from the client, and the reporter is not told who that is. A person cannot report a
+ * from the client (never the shared Proximity placeholder that stands in for a property
+ * with no landlord yet, so that account is not named in the report), and the reporter is
+ * not told who that is. A person cannot report a
  * listing they have a stake in. Reporting the same listing twice is a harmless no-op.
  *
  * Reports are a plain queue in listing_reports (service role only), like chat_reports and
@@ -16,6 +18,7 @@ import { LISTING_REPORT_REASONS, LISTING_REPORT_DETAILS_MAX } from "@proximity/s
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { hasStakeInListing } from "@/lib/listings/ownership";
+import { PROXIMITY_PLACEHOLDER_EMAIL } from "@/lib/listings/placeholderOwner";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,7 +56,7 @@ export async function POST(req) {
 
     const { data: listing, error: listingError } = await supabase
       .from("listings")
-      .select("id, deleted_at, listing_landlords(user_id, is_primary)")
+      .select("id, deleted_at, listing_landlords(user_id, is_primary, owner:users!user_id(id, email, is_system, deleted_at))")
       .eq("id", listingId)
       .maybeSingle();
     if (listingError) {
@@ -68,7 +71,18 @@ export async function POST(req) {
       return NextResponse.json({ error: "You can't report your own listing" }, { status: 400 });
     }
 
-    const landlords = listing.listing_landlords ?? [];
+    // Same eligibility as reviewReferral's getRealOwner: an account that exists, has an
+    // email, and is not the placeholder, a system account or a deleted one. No eligible
+    // landlord leaves it null.
+    const landlords = (listing.listing_landlords ?? []).filter(
+      (l) =>
+        l.user_id &&
+        l.owner?.id &&
+        l.owner.email &&
+        l.owner.email !== PROXIMITY_PLACEHOLDER_EMAIL &&
+        !l.owner.is_system &&
+        !l.owner.deleted_at
+    );
     const reportedUserId = (landlords.find((l) => l.is_primary) ?? landlords[0])?.user_id ?? null;
 
     const { error: insertError } = await supabase.from("listing_reports").insert({
