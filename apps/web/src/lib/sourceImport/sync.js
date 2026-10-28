@@ -140,7 +140,10 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     if (knowledge) {
       onStep("Reading the pages into knowledge");
       const flyers = snapshot.trace?.found?.flyers ?? [];
-      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...flyers], cause: "sync", actorId, force });
+      // Every page this listing already knows (found by earlier whole-site reads), plus the start page and flyers.
+      const { knownPageUrls } = await import("@/lib/agents/pages");
+      const known = await knownPageUrls(listing.id).catch(() => []);
+      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...flyers, ...known], cause: "sync", actorId, force, maxPages: 50 });
     }
     const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
     await supabase

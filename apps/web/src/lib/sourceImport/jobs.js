@@ -317,10 +317,15 @@ export async function runJob(jobId) {
       const item = await runSyncJob(job, { onStep });
       await supabase.from("listing_import_jobs").update({
         status: "done",
-        step: target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : `${item.applied.length} applied, ${item.held.length} held`,
+        step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : `${item.applied.length} applied, ${item.held.length} held`,
         progress: 100, finished_at: new Date().toISOString(),
         result: { mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds },
       }).eq("id", jobId);
+      // A landlord's sync goes on to read the whole site.
+      if (target.force && !target.knowledge) {
+        const { queueWholeSiteRead } = await import("@/lib/agents/sync");
+        await queueWholeSiteRead({ listingId: job.listing_id, userId: job.user_id, batchId: job.batch_id }).catch((e) => console.error("[source-import] whole-site read:", e?.message));
+      }
       const { data: freshSync } = await supabase.from("listing_import_jobs").select("*").eq("id", jobId).maybeSingle();
       return freshSync;
     }
@@ -390,6 +395,16 @@ export async function runJob(jobId) {
       })
       .eq("id", jobId);
     console.log(`[source-import] job ${jobId} done in ${Math.round((Date.now() - started) / 1000)}s: ${JSON.stringify(summary)}`);
+    // The new listing's knowledge fills in without a resync (Wyatt, 2026-10-27):
+    // what the import stored, the description, then the whole site.
+    try {
+      const { seedListing } = await import("@/lib/agents/seed");
+      await seedListing(listing.id);
+      const { queueWholeSiteRead } = await import("@/lib/agents/sync");
+      await queueWholeSiteRead({ listingId: listing.id, userId: job.user_id, batchId: job.batch_id });
+    } catch (e) {
+      console.error(`[source-import] knowledge after import failed for ${listing.id}:`, e?.message);
+    }
   } catch (err) {
     const code = err instanceof DraftFetchError ? err.code : null;
     const message = (code && FRIENDLY[code]) || (code ? FRIENDLY.unreachable : err?.message) || "Something went wrong reading this property.";
