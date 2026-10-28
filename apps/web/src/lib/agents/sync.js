@@ -26,7 +26,7 @@ const todayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "Ameri
 
 /* Already queued or running for this listing? Then do not queue another. */
 async function openSyncJob(listingId) {
-  const { data } = await supabase.from("listing_import_jobs").select("id, status").eq("listing_id", listingId)
+  const { data } = await supabase.from("listing_import_jobs").select("id, status, batch_id").eq("listing_id", listingId)
     .in("status", ["queued", "running"]).limit(5);
   return (data ?? []).find((j) => j) ?? null;
 }
@@ -47,7 +47,7 @@ export async function enqueueSync({ listingId, userId = null, batchId = null, pr
       url: url ?? m.source_url, levelUrl: url ? null : m.index_url, pastedUrl: url ?? m.index_url ?? m.source_url,
     },
     status: "queued", step: "Queued for sync", progress: 0,
-  }).select("id, status").single();
+  }).select("id, status, batch_id").single();
   if (error) return { error: error.message, status: 500 };
   return { job };
 }
@@ -72,6 +72,9 @@ export async function runDailyBatch({ limit = 500 } = {}) {
 export async function manualSync({ listingId, userId, isAdmin = false }) {
   if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
   const agent = await ensureAgent(listingId);
+  // A sync already waiting or running: hand it back without spending a sync.
+  const open = await openSyncJob(listingId);
+  if (open) return { job: open, already: true };
   if (!isAdmin) {
     const day = todayKey();
     const used = agent.manual_sync_day === day ? agent.manual_syncs_today : 0;

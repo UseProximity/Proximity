@@ -11,8 +11,11 @@
  * @auth landlord
  */
 export const dynamic = "force-dynamic";
+// The sync runs after the response, in this same function.
+export const maxDuration = 300;
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { runLanes } from "@/lib/sourceImport/jobs";
 import { auth } from "@/auth";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { addUrl } from "@/lib/agents/sync";
@@ -32,6 +35,7 @@ export async function POST(req, { params }) {
     if (!/^https?:\/\//i.test(url)) return NextResponse.json({ error: "Enter a full web address starting with http." }, { status: 400 });
     const r = await addUrl({ listingId, url, userId: session.user.id });
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
+    if (r.job?.batch_id) after(() => runLanes({ batchId: r.job.batch_id, lanes: 1 }));
     return NextResponse.json({ ok: true, job: r.job });
   } catch (err) {
     console.error("POST agent/url failed:", err);
