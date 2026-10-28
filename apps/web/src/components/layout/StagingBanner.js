@@ -33,8 +33,8 @@ export default async function StagingBanner() {
 
   const isLocal = env === "development";
   const className = isLocal
-    ? "w-full bg-slate-700 text-slate-100 text-center text-xs font-medium py-1 px-3"
-    : "w-full bg-amber-400 text-amber-950 text-center text-xs font-medium py-1 px-3";
+    ? "staging-banner w-full bg-slate-700 text-slate-100 text-center text-xs font-medium py-1 px-3"
+    : "staging-banner w-full bg-amber-400 text-amber-950 text-center text-xs font-medium py-1 px-3";
   const label = isLocal ? "🛠️ LOCALHOST" : "⚠️ STAGING";
 
   return (

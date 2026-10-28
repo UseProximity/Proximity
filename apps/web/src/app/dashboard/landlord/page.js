@@ -238,8 +238,10 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       )}
       {/* Desktop: the page is one screen tall under the site header; the
           sidebar stays put and only the content column scrolls (Wyatt,
-          2026-10-28). Mobile scrolls the window as before. */}
-      <div className="w-full min-h-screen bg-gray-50 font-sans md:flex md:h-[calc(100dvh-104px)] md:min-h-0 md:flex-col md:overflow-hidden">
+          2026-10-28). The site header is 105px with its border, plus 24px
+          for the test-environment banner off production, so the window
+          itself never scrolls. Mobile scrolls the window as before. */}
+      <div className="w-full min-h-screen bg-gray-50 font-sans md:flex md:h-[calc(100dvh-105px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-129px)] md:min-h-0 md:flex-col md:overflow-hidden">
         {isViewingAs && user && (
           <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
             <span>
@@ -273,7 +275,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
               sidebarOpen ? "translate-x-0" : "-translate-x-full"
             } md:translate-x-0 fixed md:static top-0 left-0 z-40 w-64 h-screen md:h-full bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
           >
-            <div className="h-16 px-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="sticky top-0 z-10 h-16 px-4 border-b border-gray-200 bg-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
                   P
