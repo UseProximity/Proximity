@@ -46,7 +46,6 @@ import {
   uploadChatAttachments,
 } from "../../src/lib/chatPhotos";
 import { pickChatPdfs } from "../../src/lib/chatPdf";
-import { isLandlord } from "@proximity/auth-core";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
 import { HeldRepliesBanner } from "../../src/components/chat/HeldRepliesBanner";
 import { ChatSheets } from "../../src/components/chat/ChatSheets";
@@ -588,8 +587,9 @@ export default function ChatThreadScreen() {
           {sendError}
         </ErrorMessage>
 
-        {/* Landlord only; the server is the authority on who may see or act on these. */}
-        {!unavailable && user && isLandlord(user.role) ? (
+        {/* Shown to whoever is signed in: the server decides from the thread (not the account
+            role, since a student can be the landlord of a sublet) and answers the other side empty. */}
+        {!unavailable && user ? (
           <HeldRepliesBanner threadId={threadId} onDelivered={loadLatest} />
         ) : null}
 

@@ -17,14 +17,24 @@ export function normalizeReplySenders(data) {
   };
 }
 
-// Runs the GET and returns its lists, or both empty when it fails: a failed load shows
-// nothing rather than leaving earlier data on screen.
+// Runs the GET and returns its lists, or null when it fails. A failure is not "nothing
+// held": callers keep what they already have rather than blanking the screen.
 export async function fetchReplySenders(get) {
   try {
     return normalizeReplySenders(await get());
   } catch {
-    return EMPTY_REPLY_SENDERS;
+    return null;
   }
+}
+
+// The lists without the one held reply / sender the server has just handled, so it
+// leaves the screen at once instead of waiting for a reload that may fail.
+export function withoutHeld(data, heldId) {
+  return { ...data, held: (data?.held ?? []).filter((h) => h.id !== heldId) };
+}
+
+export function withoutSender(data, senderId) {
+  return { ...data, senders: (data?.senders ?? []).filter((s) => s.id !== senderId) };
 }
 
 // Senders the landlord has approved (declined ones are not listed).
