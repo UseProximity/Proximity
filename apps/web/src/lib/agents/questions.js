@@ -135,6 +135,18 @@ export async function studentReplyToClarifier({ question, thread, body, userId =
   notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }
 
+/*
+ * The whole back-and-forth on a question, for the knowledge base: a final
+ * "that will work" only means something next to the landlord's earlier
+ * question and the student's reply (Wyatt, 2026-10-27).
+ */
+async function exchangeText(q, latest) {
+  const { data } = await supabase.from("listing_question_messages").select("sender, body").eq("question_id", q.id).order("created_at", { ascending: true });
+  const lines = (data ?? []).map((m) => `${m.sender === "landlord" ? "Landlord" : m.sender === "student" ? "Student" : "Proxy"}: ${m.body}`);
+  if (lines.length <= 1) return latest;
+  return `Conversation about this question, oldest first. Save what the landlord's answers establish, reading the final reply in light of the earlier messages.\n${lines.join("\n")}`;
+}
+
 async function waitersOf(questionId) {
   const { data } = await supabase.from("listing_question_waiters").select("id, thread_id, user_id, visitor_id, relayed_at").eq("question_id", questionId);
   return data ?? [];
@@ -256,7 +268,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
       const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
       const { data: primary } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", q.listing_id).eq("is_primary", true).maybeSingle();
       await synthesizeKnowledge({
-        listingId: q.listing_id, text: answerText, sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
+        listingId: q.listing_id, text: await exchangeText(q, answerText), sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
         cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question,
         ownerDefault: primary?.user_id && primary.user_id !== landlordUserId ? landlordUserId : null,
       });
@@ -296,7 +308,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   try {
     const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
     synthesis = await synthesizeKnowledge({
-      listingId: q.listing_id, text: screened.text, sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
+      listingId: q.listing_id, text: await exchangeText(q, screened.text), sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
       cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question, ownerDefault,
     });
   } catch (err) {
@@ -311,7 +323,9 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   }
   // Proxy rewords the landlord's own words, not the knowledge-base version,
   // so nothing the landlord did not say creeps into the relay.
-  const relayText = await proxyRelays({ question: q.question, answer: screened.text, listingId: q.listing_id });
+  const { data: prior } = await supabase.from("listing_question_messages").select("sender, body").eq("question_id", q.id).order("created_at", { ascending: true });
+  const earlier = (prior ?? []).slice(0, -1).map((m) => `${m.sender === "landlord" ? "Landlord" : "Student"}: ${m.body}`).join(" / ");
+  const relayText = await proxyRelays({ question: earlier ? `${q.question} (earlier: ${earlier})` : q.question, answer: screened.text, listingId: q.listing_id });
   await supabase.from("listing_questions").update({
     status: "answered", answer: screened.text, answered_by: landlordUserId, answered_at: now, pending_clarifier: false, last_activity_at: now,
   }).eq("id", q.id);
