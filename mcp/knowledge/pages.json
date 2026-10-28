@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-10-09T19:35:19.340Z",
-  "count": 43,
+  "_generated": "2026-10-28T03:36:34.751Z",
+  "count": 44,
   "pages": [
     {
       "path": "/",
@@ -18,6 +18,10 @@
     {
       "path": "/(legal)/privacy",
       "file": "src/app/(legal)/privacy/page.js"
+    },
+    {
+      "path": "/(legal)/support",
+      "file": "src/app/(legal)/support/page.js"
     },
     {
       "path": "/(legal)/terms",

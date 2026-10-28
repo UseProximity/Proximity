@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-24T19:51:35.602Z",
-  "count": 138,
+  "_generated": "2026-10-28T03:36:34.746Z",
+  "count": 139,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -321,6 +321,11 @@
     {
       "name": "LeaseOptions",
       "file": "src/components/listings/LeaseOptions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LeasePrefsControls",
+      "file": "src/components/listings/LeasePrefsControls.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

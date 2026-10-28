@@ -2455,12 +2455,15 @@ export default function ListingModalInfo({
                 )}
 
                 {/* Lease options for the unit on the open tab: one card per
-                    landlord, their offerings inside it, one Contact for all. */}
+                    landlord, their offerings inside it, one Contact for all.
+                    Narrowed by the student's saved move-in month and lease
+                    length, picked in its own header. */}
                 <div>
                   <LeaseOptions
                     leases={selectedUnitLeases}
                     loading={leasesLoading}
                     onContact={handleContactLease}
+                    preview={preview}
                   />
                 </div>
               </div>

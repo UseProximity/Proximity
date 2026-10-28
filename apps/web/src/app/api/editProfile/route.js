@@ -3,6 +3,7 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
+import { normalizeMoveIn, normalizeMonths } from "@/lib/listings/leaseFit";
 
 export async function PATCH(req) {
   try {
@@ -78,6 +79,26 @@ export async function PATCH(req) {
     if (body.graduationMonth !== undefined)
       allowedFields.graduation_month = body.graduationMonth ?? null;
 
+    // The student's move-in month and lease length, which every unit's lease
+    // options are narrowed by. null clears. A move-in date is stored as the
+    // first of its month: only the month means anything.
+    if (body.preferredMoveInDate !== undefined) {
+      const raw = body.preferredMoveInDate;
+      const moveIn = raw === null || raw === "" ? null : normalizeMoveIn(raw);
+      if (raw !== null && raw !== "" && !moveIn) {
+        return NextResponse.json({ error: "Invalid move-in month" }, { status: 400 });
+      }
+      allowedFields.preferred_move_in_date = moveIn;
+    }
+    if (body.preferredLeaseMonths !== undefined) {
+      const raw = body.preferredLeaseMonths;
+      const months = raw === null || raw === "" ? null : normalizeMonths(raw);
+      if (raw !== null && raw !== "" && months == null) {
+        return NextResponse.json({ error: "Invalid lease length" }, { status: 400 });
+      }
+      allowedFields.preferred_lease_months = months;
+    }
+
     // Only allow role changes if provided. Anything off the self-assignable
     // allowlist (super, admin, system, ...) requires the caller to be super.
     if (body.role !== undefined && body.role !== null) {
@@ -115,7 +136,7 @@ export async function PATCH(req) {
 
     const { data: updated, error: fetchError } = await supabase
       .from("users")
-      .select("name, company_name, birthday, gender, phone, description, roles!role_id(name)")
+      .select("name, company_name, birthday, gender, phone, description, preferred_move_in_date, preferred_lease_months, roles!role_id(name)")
       .eq("id", supabaseId)
       .single();
 
@@ -132,6 +153,8 @@ export async function PATCH(req) {
       ...rest,
       role: roles?.name ?? null,
       emailNotifications: rest.email_notifications !== false,
+      preferredMoveInDate: rest.preferred_move_in_date ?? null,
+      preferredLeaseMonths: rest.preferred_lease_months ?? null,
     });
   } catch (e) {
     console.error("PATCH /api/user/profile failed:", e);

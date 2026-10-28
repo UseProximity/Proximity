@@ -14,11 +14,22 @@
  * in for the owning account, or the contact email of an imported lease with no
  * account, neither of which reaches the browser). There is no
  * selection state here: every card is independently actionable.
+ *
+ * The list is narrowed by the student's move-in month and lease length
+ * (Wyatt, 2026-10-27), picked in the header and saved to their account so every
+ * unit opens already narrowed. Offerings that fit lead, cheapest first; the
+ * rest fold behind one link, closest first. When nothing fits, the closest
+ * options show straight away under a note saying why, so a unit never looks
+ * empty just because the dates are narrow. The fit rules live in
+ * lib/listings/leaseFit.js. This replaced the old "Sort by" select.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
+import { useLeasePreferences } from "@/context/LeasePreferencesContext";
+import { missReason, partitionLeases } from "@/lib/listings/leaseFit";
+import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
@@ -117,51 +128,11 @@ function DurationCell({ leaseTermMonths }) {
 }
 
 /*
- * How a renter can order a unit's offerings. Each puts unknowns (no price, no
- * start date, no stated term) last: an offering that hasn't said is not the
- * cheapest, soonest or shortest. Ties keep the order the leases arrived in,
- * which is cheapest first.
- */
-const lastIfNull = (fn) => (a, b) => {
-  const x = fn(a);
-  const y = fn(b);
-  if (x == null && y == null) return 0;
-  if (x == null) return 1;
-  if (y == null) return -1;
-  return x < y ? -1 : x > y ? 1 : 0;
-};
-
-const SORTS = {
-  price: { label: "Price", compare: lastIfNull((l) => l.rent) },
-  availability: {
-    label: "Availability",
-    // A date already past reads as "Now", so it sorts as today.
-    compare: lastIfNull((l) => {
-      if (!l.availableFrom) return null;
-      const day = String(l.availableFrom).slice(0, 10);
-      const today = new Date().toISOString().slice(0, 10);
-      return day < today ? today : day;
-    }),
-  },
-  duration: {
-    label: "Lease length",
-    // Shortest term on offer first; a lease flexible down to 4 months suits a
-    // renter looking for 4, whatever else it also allows.
-    compare: lastIfNull((l) => leaseTermList(l.leaseTermMonths)[0] ?? null),
-  },
-};
-
-// A stable sort by `compare`, falling back to arrival order (cheapest first).
-const stableSort = (items, compare) =>
-  items
-    .map((item, i) => ({ item, i }))
-    .sort((a, b) => compare(a.item, b.item) || a.i - b.i)
-    .map(({ item }) => item);
-
-/*
  * One card per landlord. The key is the server's; name and photo are taken
  * from whichever of their leases has them, which is all of them once the
  * landlord has saved a contact block, and the first one that does otherwise.
+ * Leases arrive already ordered, so cards come out ordered by their best
+ * lease and each card's leases keep that order.
  */
 function groupByLandlord(leases) {
   const groups = new Map();
@@ -198,7 +169,7 @@ function Cell({ label, children, className = "" }) {
   );
 }
 
-export default function LeaseOptions({ leases = [], loading = false, onContact }) {
+export default function LeaseOptions({ leases = [], loading = false, onContact, preview = false }) {
   /*
    * "Loading" and "none offered" are different answers and must not be confused:
    * the browse panel paints itself from the listing feed before the detail fetch
@@ -222,76 +193,143 @@ export default function LeaseOptions({ leases = [], loading = false, onContact }
     );
   }
 
-  return <LeaseList leases={leases} onContact={onContact} />;
+  return <LeaseList leases={leases} onContact={onContact} preview={preview} />;
 }
 
-function LeaseList({ leases, onContact }) {
-  const [sortBy, setSortBy] = useState("price");
+/*
+ * Open landlords in order until the next one would take the rows on show past
+ * OPEN_BUDGET; from there on every card starts folded. A card shows at most
+ * PAGE rows, so that is what it spends. The first landlord always opens, so the
+ * top option is never hidden.
+ */
+function withOpenBudget(groups) {
+  let spent = 0;
+  let budgetLeft = true;
+  return groups.map((g, i) => {
+    const cost = Math.min(g.leases.length, PAGE);
+    if (i > 0 && spent + cost > OPEN_BUDGET) budgetLeft = false;
+    const defaultOpen = budgetLeft;
+    if (defaultOpen) spent += cost;
+    return { ...g, defaultOpen };
+  });
+}
+
+// The line beside the pickers: how many offerings there are, or how many fit.
+function statusText({ total, landlords, active, fits }) {
+  if (!active) {
+    const count = total === 1 ? "1 lease option" : `${total} lease options`;
+    return landlords > 1 ? `${count} from ${landlords} landlords` : count;
+  }
+  if (fits === 0) return total === 1 ? "This option doesn't fit your dates" : `None of ${total} fit your dates`;
+  if (fits === total) return total === 1 ? "Fits your dates" : `All ${total} fit your dates`;
+  return `${fits} of ${total} fit your dates`;
+}
+
+function LeaseList({ leases, onContact, preview }) {
+  const shared = useLeasePreferences();
+  /*
+   * A landlord previewing their draft as a student can try the pickers, but
+   * nothing is saved: it is not their search.
+   */
+  const [previewPrefs, setPreviewPrefs] = useState(shared.prefs);
+  const prefs = preview ? previewPrefs : shared.prefs;
+  const setPrefs = preview ? (patch) => setPreviewPrefs((p) => ({ ...p, ...patch })) : shared.setPrefs;
+  const clear = preview ? () => setPreviewPrefs({ moveIn: null, months: null }) : shared.clear;
+
+  const [showMisses, setShowMisses] = useState(false);
+  // A different unit, or new dates, is a different list: fold the rest again.
+  useEffect(() => setShowMisses(false), [leases, prefs.moveIn, prefs.months]);
+
+  // A brief "Saved" after a change sticks to the account.
+  const [savedFlash, setSavedFlash] = useState(false);
+  useEffect(() => {
+    if (preview || shared.saveState !== "saved") return;
+    setSavedFlash(true);
+    const t = setTimeout(() => setSavedFlash(false), 2500);
+    return () => clearTimeout(t);
+  }, [shared.saveState, shared.prefs, preview]);
+
+  const { active, fits, misses, note } = useMemo(
+    () => partitionLeases(leases, prefs),
+    [leases, prefs]
+  );
+  const fitGroups = useMemo(() => withOpenBudget(groupByLandlord(fits)), [fits]);
+  const missGroups = useMemo(() => withOpenBudget(groupByLandlord(misses)), [misses]);
+  const landlords = useMemo(() => groupByLandlord(leases).length, [leases]);
+
+  // Nothing fits: the closest options are the answer, so they show unasked.
+  const missesOpen = !fits.length || showMisses;
+
+  return (
+    <div>
+      <div className="flex flex-col gap-2 px-4 pt-3 text-xs text-gray-500 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <p className="pt-1">
+          <span className={active ? "font-medium text-gray-700" : ""}>
+            {statusText({ total: leases.length, landlords, active, fits: fits.length })}
+          </span>
+          {savedFlash && <span className="ml-2 text-green-600">Saved to your account</span>}
+        </p>
+        <LeasePrefsControls value={prefs} onChange={setPrefs} onClear={clear} />
+      </div>
+
+      {fits.length > 0 && (
+        <GroupList
+          groups={fitGroups}
+          onContact={onContact}
+          summaryNoun={active ? "fit" : null}
+        />
+      )}
+
+      {misses.length > 0 && (
+        <div className={fits.length ? "border-t border-gray-100" : ""}>
+          {note && <p className="px-4 pt-3 text-xs text-amber-700">{note}</p>}
+          {fits.length > 0 && (
+            <div className="px-4 py-2.5">
+              <button
+                type="button"
+                onClick={() => setShowMisses((v) => !v)}
+                aria-expanded={showMisses}
+                className="flex items-center gap-1 rounded text-xs font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                {showMisses ? "Hide" : "Show"} {misses.length}{" "}
+                {misses.length === 1 ? "option that doesn't" : "options that don't"} fit your dates
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${showMisses ? "rotate-180" : ""}`}
+                />
+              </button>
+            </div>
+          )}
+          {missesOpen && (
+            <GroupList groups={missGroups} onContact={onContact} prefs={prefs} showReasons />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A list of landlord cards that opens on the first PAGE and grows on request.
+function GroupList({ groups, onContact, summaryNoun = null, prefs = null, showReasons = false }) {
   const [shown, setShown] = useState(PAGE);
 
   // A different unit's tab is a different list: start it from the top.
-  useEffect(() => setShown(PAGE), [leases]);
+  useEffect(() => setShown(PAGE), [groups]);
 
-  /*
-   * Sort inside each card, then sort the cards by their best option under the
-   * same rule: on "Price" the landlord with the cheapest lease comes first, and
-   * their cheapest lease heads their card.
-   */
-  const groups = useMemo(() => {
-    const { compare } = SORTS[sortBy];
-    const sortedWithin = groupByLandlord(leases).map((g) => ({
-      ...g,
-      leases: stableSort(g.leases, compare),
-    }));
-    const sorted = stableSort(sortedWithin, (a, b) => compare(a.leases[0], b.leases[0]));
-
-    /*
-     * Open landlords in order until the next one would take the rows on show
-     * past OPEN_BUDGET; from there on every card starts folded. A card shows at
-     * most PAGE rows, so that is what it spends. The first landlord always
-     * opens, so the top option is never hidden.
-     */
-    let spent = 0;
-    let budgetLeft = true;
-    return sorted.map((g, i) => {
-      const cost = Math.min(g.leases.length, PAGE);
-      if (i > 0 && spent + cost > OPEN_BUDGET) budgetLeft = false;
-      const defaultOpen = budgetLeft;
-      if (defaultOpen) spent += cost;
-      return { ...g, defaultOpen };
-    });
-  }, [leases, sortBy]);
   const visible = groups.slice(0, shown);
   const remaining = groups.length - visible.length;
 
   return (
-    <div>
-      {leases.length > 1 && (
-        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs text-gray-500">
-          <span>
-            {leases.length} lease options
-            {groups.length > 1 && ` from ${groups.length} landlords`}
-          </span>
-          <label className="flex items-center gap-1.5">
-            <span>Sort by</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-xs font-medium text-gray-700 focus:border-red-400 focus:outline-none"
-            >
-              {Object.entries(SORTS).map(([key, s]) => (
-                <option key={key} value={key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
+    <>
       <ul className="divide-y divide-gray-100">
         {visible.map((group) => (
-          <LandlordCard key={group.key} group={group} onContact={onContact} />
+          <LandlordCard
+            key={group.key}
+            group={group}
+            onContact={onContact}
+            summaryNoun={summaryNoun}
+            prefs={prefs}
+            showReasons={showReasons}
+          />
         ))}
       </ul>
 
@@ -318,7 +356,7 @@ function LeaseList({ leases, onContact }) {
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -331,17 +369,17 @@ function LeaseList({ leases, onContact }) {
  * request. Inside an open card, past the first PAGE options the rest grow on
  * request so one prolific landlord can't bury the others.
  *
- * Contact carries the landlord's best option under the current sort as the
- * lease the enquiry is about. The chat is routed to the landlord either way,
+ * Contact carries the landlord's best option (the closest fit to the student's
+ * dates, then the cheapest) as the lease the enquiry is about. The chat is routed to the landlord either way,
  * and every option in the card reaches the same person.
  */
-function LandlordCard({ group, onContact }) {
+function LandlordCard({ group, onContact, summaryNoun = null, prefs = null, showReasons = false }) {
   const { landlordName, landlordImage, leases, defaultOpen } = group;
   const single = leases.length === 1;
   const [open, setOpen] = useState(defaultOpen);
   const [shown, setShown] = useState(PAGE);
 
-  // A different unit's tab (or a new sort) is a different list: start it from the top.
+  // A different unit's tab (or new dates) is a different list: start it from the top.
   useEffect(() => {
     setOpen(defaultOpen);
     setShown(PAGE);
@@ -357,7 +395,12 @@ function LandlordCard({ group, onContact }) {
   const cheapest = priced.length
     ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
     : null;
-  const count = single ? "1 lease option" : `${leases.length} lease options`;
+  // "2 fit your dates" in the list of fits, "2 lease options" everywhere else.
+  const count = summaryNoun
+    ? `${leases.length} ${leases.length === 1 ? "fits" : "fit"} your dates`
+    : single
+    ? "1 lease option"
+    : `${leases.length} lease options`;
   const summary = cheapest
     ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
         cheapest.rentIsPerPerson ? "/person" : "/mo"
@@ -389,7 +432,7 @@ function LandlordCard({ group, onContact }) {
               />
             </button>
           ) : (
-            <p className="text-xs text-gray-500">1 lease option</p>
+            <p className="text-xs text-gray-500">{count}</p>
           )}
         </div>
         <button
@@ -408,7 +451,12 @@ function LandlordCard({ group, onContact }) {
           }`}
         >
           {visible.map((lease) => (
-            <LeaseRow key={lease.id} lease={lease} inset={!single} />
+            <LeaseRow
+              key={lease.id}
+              lease={lease}
+              inset={!single}
+              reason={showReasons && prefs ? missReason(lease, prefs) : null}
+            />
           ))}
         </ul>
       )}
@@ -446,7 +494,7 @@ function LandlordCard({ group, onContact }) {
  * they furnish it) lives behind the chevron. Who is offering it is said once,
  * on the card above, and so is how to reach them.
  */
-function LeaseRow({ lease, inset = false }) {
+function LeaseRow({ lease, inset = false, reason = null }) {
   const [open, setOpen] = useState(false);
   const details = [
     lease.furnished == null
@@ -513,6 +561,9 @@ function LeaseRow({ lease, inset = false }) {
           </button>
         )}
       </div>
+
+      {/* Why an offering outside the student's dates is outside them. */}
+      {reason && <p className="mt-1 text-[11px] text-amber-700">{reason}</p>}
 
       {open && hasDetails && (
         <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2.5">
