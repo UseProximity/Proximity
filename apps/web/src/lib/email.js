@@ -1300,13 +1300,14 @@ export async function sendProxyLandlordQuestionEmail({
  * confirmation (with a calendar file), cancellation, reminders. One shape,
  * the caller supplies the words.
  */
-export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null }) {
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null }) {
   const first = name ? String(name).split(" ")[0] : "";
   await sendMailSafe(transporter, {
-    logAs: { kind, userId },
+    logAs: { kind, userId, threadId },
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
-    replyTo: CHAT_FROM_ADDRESS,
+    // A reply goes into the direct chat when the email carries its reply address.
+    replyTo: replyTo || CHAT_FROM_ADDRESS,
     subject,
     ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }] } : {}),
     html: `

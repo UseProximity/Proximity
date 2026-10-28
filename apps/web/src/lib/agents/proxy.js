@@ -48,8 +48,8 @@ Rules:
 - Judgement questions (is the area safe, what are the neighbours like, is the landlord good, who lives here) are not facts about the building: say you cannot answer those and point to the listing's reviews.
 - Small talk ("thanks", "ok") gets one friendly line and no questions for the landlord.
 - A message that mixes questions: answer what you know, and put only the rest in unanswered_questions, each as one clear question in the student's words.
-- Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in. When the whole message is something you do not have, your reply is one plain sentence saying you do not have it yet (the asking is added after you). When part of it is answered, answer that part and end with one short sentence that you have asked the landlord about the rest and will let them know when they respond. Never tell the student to check or confirm with the landlord themselves.
-- If the student wants to tour, set intent "tour" and tell them they can request one with the Request a tour button above this chat (they need to be signed in); pick a lease first if the listing has several. Do not send a tour request to the landlord as a question.
+- Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in. When the whole message is something you do not have, your reply is one plain sentence saying you do not have it yet (the asking is added after you). When you answer what they asked but there is an obvious detail you do not have that they probably care about (they ask what kind of dryer and you know it is a top loader but not the brand), do NOT send anything yet: answer, then offer in one short sentence ("Want me to ask the landlord for the brand too?") and put that question in offered_question. When an offer is pending (see STATE) and the student says yes, put the offered question in unanswered_questions and say you have asked; if they say no or move on, drop it. When part of what they actually asked is unknown, answer the rest and end with one short sentence that you have asked the landlord about that part. Never tell the student to check or confirm with the landlord themselves.
+- If the student wants to tour, set intent "tour" and tell them to tap the calendar button next to Send to pick the times they can make it (the STATE says whether they are signed in; only when they are not, add that they need to sign in first). Do not send a tour request to the landlord as a question.
 - If the student wants to apply or negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "apply" or "negotiate" when that is what they want.
 - Nudge toward a tour only when nudge_allowed is true: one natural sentence built from a real fact about this place, never pushy, never in a reply that also says you are asking the landlord or that nothing is available. Report nudged: true when you did.
 - When the listing has no lease on offer (see availability), answer facts but do not offer to ask the landlord: say nothing is available right now and that they can browse similar places on Proximity.
@@ -96,8 +96,9 @@ const TOOLS = [
         intent: { type: "string", enum: ["question", "small_talk", "tour", "apply", "negotiate", "other_listing", "abuse"] },
         nudged: { type: "boolean" },
         clarifier_reply: { type: "boolean" },
+        offered_question: { type: "string", description: "A question you offered to ask the landlord and are waiting for a yes on, in the student's words. Empty when none." },
       },
-      required: ["reply", "answered_keys", "unanswered_questions", "intent", "nudged", "clarifier_reply"],
+      required: ["reply", "answered_keys", "unanswered_questions", "intent", "nudged", "clarifier_reply", "offered_question"],
     },
   },
 ];
@@ -185,6 +186,8 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     ctx.hasLiveLease ? "Availability: leases are on offer." : "Availability: nothing is on offer right now; do not send questions to the landlord.",
     canAsk ? "Questions you cannot answer will be sent to the landlord." : "Questions you cannot answer cannot be sent to the landlord right now; say you do not have that information.",
     `nudge_allowed: ${allowNudge}`,
+    userId ? "The student is signed in." : "The student is not signed in.",
+    thread.proxy_state?.offer ? `You offered to ask the landlord: "${thread.proxy_state.offer}". If the student agrees, send it.` : "No offer to ask the landlord is pending.",
     pending ? `A clarifying question from the landlord is pending: "${pending.clarifier}" (about: "${pending.question}").` : "No clarifying question is pending.",
   ].join("\n");
 
@@ -215,7 +218,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     result = null;
   }
   // Prose with no structured result still answers the student.
-  const final = result?.final ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false } : null);
+  const final = result?.final ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false, offered_question: "" } : null);
 
   let outcome;
   let questionIds = [];
@@ -276,6 +279,9 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
       : final.intent === "abuse" ? "declined"
       : "answered";
     if (final.nudged) await updateProxyState(thread.id, { lastNudgeTurn: studentTurns });
+    // An offer to ask the landlord waits for the student's yes on the next turn.
+    const offer = String(final.offered_question ?? "").trim();
+    if (offer || thread.proxy_state?.offer) await updateProxyState(thread.id, { offer: offer && !questionIds.length ? offer.slice(0, 300) : null });
   }
 
   await supabase.from("listing_agent_questions").insert({

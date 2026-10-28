@@ -89,3 +89,85 @@ export function slotsFromPattern(pattern, { from = new Date(), days = HORIZON_DA
   }
   return out;
 }
+
+/* ---- availability as ranges (Wyatt, 2026-10-27, round 6) --------------- */
+
+const shortHour = (h, min = 0) => {
+  const x = h % 12 === 0 ? 12 : h % 12;
+  return `${x}${min ? `:${String(min).padStart(2, "0")}` : ""}${h < 12 || h === 24 ? "am" : "pm"}`;
+};
+
+/*
+ * One-hour slots grouped into days of contiguous ranges:
+ * [{ key, weekday, label: "Sunday 10/28", ranges: [{ startH, endH }] }].
+ * A slot at hour h covers h to h+1.
+ */
+export function availabilityDays(slots) {
+  const byDay = new Map();
+  for (const iso of [...(slots ?? [])].sort()) {
+    const p = chicagoParts(new Date(iso));
+    const key = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+    if (!byDay.has(key)) {
+      const label = new Date(iso).toLocaleDateString("en-US", { timeZone: TZ, weekday: "long" }) + ` ${p.m}/${p.d}`;
+      byDay.set(key, { key, y: p.y, m: p.m, d: p.d, weekday: p.weekday, label, hours: [] });
+    }
+    byDay.get(key).hours.push(p.h);
+  }
+  return [...byDay.values()].map((day) => {
+    const hours = [...new Set(day.hours)].sort((a, b) => a - b);
+    const ranges = [];
+    for (const h of hours) {
+      const last = ranges[ranges.length - 1];
+      if (last && last.endH === h) last.endH = h + 1;
+      else ranges.push({ startH: h, endH: h + 1 });
+    }
+    return { key: day.key, y: day.y, m: day.m, d: day.d, weekday: day.weekday, label: day.label, ranges };
+  });
+}
+
+/* "Sunday 10/28 8am-2pm, 3pm-4pm" one line per day. */
+export function availabilityText(slots) {
+  return availabilityDays(slots)
+    .map((d) => `${d.label} ${d.ranges.map((r) => `${shortHour(r.startH)}-${shortHour(r.endH)}`).join(", ")}`)
+    .join("\n");
+}
+
+/* "2 day availability" for the chip in the chat input. */
+export function availabilitySummary(slots) {
+  const n = availabilityDays(slots).length;
+  return n ? `${n} day availability` : "";
+}
+
+/* "Sunday 10/28 at 2:30pm" for one instant. */
+export function fmtTourTime(iso) {
+  const date = new Date(iso);
+  const p = chicagoParts(date);
+  const min = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, minute: "2-digit" }).format(date));
+  const day = date.toLocaleDateString("en-US", { timeZone: TZ, weekday: "long" });
+  return `${day} ${p.m}/${p.d} at ${shortHour(p.h, min)}`;
+}
+
+/*
+ * A landlord's chosen start time on one of the student's days: "HH:MM"
+ * (24h, from <input type="time">). Valid when it falls inside one of that
+ * day's ranges and at least 10 minutes before the range ends. Returns
+ * { iso } or { error }.
+ */
+export function checkTourTime(slots, dayKeyValue, hhmm) {
+  const day = availabilityDays(slots).find((d) => d.key === dayKeyValue);
+  if (!day) return { error: "Pick one of the days the student offered." };
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? "").trim());
+  if (!m) return { error: "Enter a time like 2:30 PM." };
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return { error: "Enter a time like 2:30 PM." };
+  const t = h * 60 + min;
+  const fits = day.ranges.find((r) => t >= r.startH * 60 && t <= r.endH * 60 - 10);
+  if (!fits) {
+    const text = day.ranges.map((r) => `${shortHour(r.startH)}-${shortHour(r.endH)}`).join(", ");
+    return { error: `That's outside the student's times on ${day.label} (${text}). Pick a start at least 10 minutes before a window ends.` };
+  }
+  const iso = new Date(chicagoToUtc(day.y, day.m, day.d, h).getTime() + min * 60000).toISOString();
+  if (Date.parse(iso) < Date.now()) return { error: "That time has already passed." };
+  return { iso };
+}

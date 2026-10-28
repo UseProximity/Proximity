@@ -2,13 +2,16 @@
  * Emails for tour scheduling. Each one goes through lib/email.js, so off
  * production it is redirected or suppressed like every other email.
  *
- * The landlord sees the student's name from the request on; contact details
- * appear in the confirmation email only, for both sides, with a calendar
- * file attached.
+ * The landlord sees the student's name and availability (as plain ranges)
+ * from the request on. Contact details are never sent (Wyatt, 2026-10-27):
+ * once a tour is confirmed or the landlord reaches out, the two talk in the
+ * direct chat, and replying to these emails posts into that chat.
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendTourEmail } from "@/lib/email";
 import { postProxyMessage } from "./threads";
+import { availabilityText, fmtTourTime } from "./tourTime";
+import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 
 const TZ = "America/Chicago";
 const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -17,6 +20,9 @@ const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekd
 function studentUrl(r) {
   return r.t.proxy_thread_id ? `${getBaseUrl()}/?messages=1&thread=${r.t.proxy_thread_id}` : `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`;
 }
+
+const chatUrl = (threadId) => `${getBaseUrl()}/?messages=1&thread=${threadId}`;
+const rangeLines = (slots) => availabilityText((slots ?? []).filter((s) => Date.parse(s) > Date.now())).split("\n").filter(Boolean);
 
 async function loadTour(tourId) {
   const { data: t } = await supabase.from("tour_requests")
@@ -55,8 +61,8 @@ export async function notifyTourRequested({ tourId }) {
     kind: "tour_request", to: r.landlord.email, name: r.landlord.name,
     subject: `${r.student?.name || "A student"} wants to tour ${r.listingLabel}`,
     intro: `${r.student?.name || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
-    lines: (r.t.student_slots ?? []).slice(0, 12).map(fmt),
-    note: "Confirm one of these times in your dashboard, or propose others. Their contact details are shared with you when a time is confirmed.",
+    lines: rangeLines(r.t.student_slots),
+    note: "Pick a day and a start time inside their window in your dashboard, or message the student if none of it works.",
     ctaLabel: r.landlord.password_hash || r.landlord.google_account ? "Confirm a time" : "Create an account to confirm",
     ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`,
     userId: r.landlord.id,
@@ -64,16 +70,20 @@ export async function notifyTourRequested({ tourId }) {
   return "sent";
 }
 
+/* The landlord couldn't make the times and wrote to the student directly. */
 export async function notifyTourProposed({ tourId }) {
   const r = await loadTour(tourId);
-  if (!r || !canEmail(r.student)) return "no_recipient";
+  if (!r || !canEmail(r.student) || !r.t.thread_id) return "no_recipient";
+  const { data: first } = await supabase.from("chat_messages").select("body").eq("thread_id", r.t.thread_id).eq("sender_id", r.t.landlord_id)
+    .is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const replyTo = await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.student.id }).catch(() => null);
   await sendTourEmail({
     kind: "tour_proposal", to: r.student.email, name: r.student.name,
-    subject: `The landlord proposed other times for your tour of ${r.listingLabel}`,
-    intro: `The landlord can't make the times you offered for ${r.listingLabel}. They proposed:`,
-    lines: (r.t.landlord_slots ?? []).slice(0, 12).map(fmt),
-    note: "Pick one from the listing page or your dashboard, and you're booked.",
-    ctaLabel: "Pick a time", ctaUrl: `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`, userId: r.student.id,
+    subject: `The landlord at ${r.listingLabel} wrote to you about your tour`,
+    intro: `The landlord couldn't make the times you offered for ${r.listingLabel}, so they wrote to you directly:`,
+    lines: first?.body ? [first.body] : [],
+    note: replyTo ? "Reply to this email to answer them, or open the chat." : "Open the chat to answer them.",
+    ctaLabel: "Open the chat", ctaUrl: chatUrl(r.t.thread_id), userId: r.student.id, replyTo, threadId: r.t.thread_id,
   });
   return "sent";
 }
@@ -81,35 +91,27 @@ export async function notifyTourProposed({ tourId }) {
 export async function notifyTourConfirmed({ tourId }) {
   const r = await loadTour(tourId);
   if (!r) return "no_recipient";
-  const when = fmt(r.t.confirmed_slot);
-  const sc = r.t.student_contact ?? {};
-  const lc = r.t.landlord_contact ?? {};
+  const when = fmtTourTime(r.t.confirmed_slot);
   const file = {
     filename: "proximity-tour.ics", contentType: "text/calendar",
     content: ics({ uid: r.t.id, start: r.t.confirmed_slot, summary: `Tour: ${r.listingLabel}`, location: r.address, description: `Tour of ${r.listingLabel} booked on Proximity.` }),
   };
   const sent = [];
-  if (canEmail(r.student)) {
+  for (const [u, isStudent] of [[r.student, true], [r.landlord, false]]) {
+    if (!canEmail(u)) continue;
+    const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
     await sendTourEmail({
-      kind: "tour_confirmed", to: r.student.email, name: r.student.name,
-      subject: `Tour confirmed: ${r.listingLabel}, ${when}`,
-      intro: `You're booked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`,
-      lines: [`Landlord: ${[lc.name, lc.phone, lc.email].filter(Boolean).join(", ") || "see your dashboard"}`, `Address: ${r.address}`],
-      note: "Reach the landlord by phone or email to coordinate. Proxy is still there for questions about the place.",
-      ctaLabel: "Open the conversation", ctaUrl: studentUrl(r), attachment: file, userId: r.student.id,
+      kind: "tour_confirmed", to: u.email, name: u.name,
+      subject: isStudent ? `Tour confirmed: ${r.listingLabel}, ${when}` : `Tour confirmed: ${r.student?.name || "a student"}, ${when}`,
+      intro: isStudent
+        ? `You're booked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`
+        : `${r.student?.name || "A student"} is touring ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`,
+      lines: [`Address: ${r.address}`],
+      note: `You can message ${isStudent ? "the landlord" : "them"} in the chat${replyTo ? ", or just reply to this email" : ""}.`,
+      ctaLabel: "Open the chat", ctaUrl: r.t.thread_id ? chatUrl(r.t.thread_id) : (isStudent ? studentUrl(r) : `${getBaseUrl()}/dashboard/landlord?tab=tours`),
+      attachment: file, userId: u.id, replyTo, threadId: r.t.thread_id,
     });
-    sent.push("student");
-  }
-  if (canEmail(r.landlord)) {
-    await sendTourEmail({
-      kind: "tour_confirmed", to: r.landlord.email, name: r.landlord.name,
-      subject: `Tour confirmed: ${r.student?.name || "a student"} on ${when}`,
-      intro: `${r.student?.name || "A student"} is touring ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`,
-      lines: [`Reach them at: ${[sc.phone, sc.email].filter(Boolean).join(" or ") || "see your dashboard"}`],
-      note: "Reach them by phone or email to coordinate.",
-      ctaLabel: "Open your tours", ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`, attachment: file, userId: r.landlord.id,
-    });
-    sent.push("landlord");
+    sent.push(isStudent ? "student" : "landlord");
   }
   return sent.join(",") || "no_recipient";
 }
@@ -123,7 +125,7 @@ export async function notifyTourCancelled({ tourId, by }) {
     kind: "tour_cancelled", to: target.email, name: target.name,
     subject: `Tour request cancelled: ${r.listingLabel}`,
     intro: by === "student" ? `${r.student?.name || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
-    lines: [], note: by === "student" ? "" : "You can request again with other times from the listing page.",
+    lines: [], note: by === "student" ? "" : "You can send new times from the calendar button in the chat.",
     ctaLabel: by === "student" ? "Open your dashboard" : "Back to the listing",
     ctaUrl: by === "student" ? `${getBaseUrl()}/dashboard/landlord?tab=tours` : `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`,
     userId: target.id,
@@ -135,14 +137,16 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
   const r = await loadTour(tourId);
   if (!r) return "no_recipient";
   if (dayBefore) {
-    const when = fmt(r.t.confirmed_slot);
-    for (const [u, other] of [[r.student, r.t.landlord_contact], [r.landlord, r.t.student_contact]]) {
+    const when = fmtTourTime(r.t.confirmed_slot);
+    for (const u of [r.student, r.landlord]) {
       if (!canEmail(u)) continue;
+      const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
       await sendTourEmail({
         kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
-        lines: [`${u.id === r.student?.id ? "Landlord" : "Student"}: ${[other?.name, other?.phone, other?.email].filter(Boolean).join(", ")}`, `Address: ${r.address}`],
-        note: "", ctaLabel: u.id === r.student?.id ? "Open the conversation" : "Open your tours", ctaUrl: u.id === r.student?.id ? studentUrl(r) : `${getBaseUrl()}/dashboard/landlord?tab=tours`, userId: u.id,
+        lines: [`Address: ${r.address}`],
+        note: replyTo ? "Reply to this email to message the other side." : "",
+        ctaLabel: "Open the chat", ctaUrl: r.t.thread_id ? chatUrl(r.t.thread_id) : studentUrl(r), userId: u.id, replyTo, threadId: r.t.thread_id,
       });
     }
     return "sent";
@@ -151,8 +155,8 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
   await sendTourEmail({
     kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name,
     subject: `Reminder: ${r.student?.name || "a student"} is waiting to tour ${r.listingLabel}`,
-    intro: `${r.student?.name || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. Their times:`,
-    lines: (r.t.student_slots ?? []).filter((s) => Date.parse(s) > Date.now()).slice(0, 12).map(fmt),
+    intro: `${r.student?.name || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
+    lines: rangeLines(r.t.student_slots),
     note: "After five days Proxy will tell them there was no answer.",
     ctaLabel: "Confirm a time", ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`, userId: r.landlord.id,
   });

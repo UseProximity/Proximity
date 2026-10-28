@@ -3,26 +3,16 @@
 /*
  * A Proxy conversation inside the Messages overlay (Wyatt, 2026-10-27): the
  * same panel as the listing's Contact tab, under a header that names the
- * listing and links to it, with the tour marker on the right (its card
- * drops down from there). The listing is fetched here because the panel
- * needs its units and leases.
+ * listing and links to it. Tours are requested from the calendar button in
+ * the input, as on the listing. The listing is fetched here because the
+ * panel needs its units and leases.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import ProxyPanel from "@/components/proxy/ProxyPanel";
-import TourMarker from "@/components/proxy/TourMarker";
-
-function leaseChoices(listing) {
-  const out = [];
-  for (const u of listing?.unitTypes ?? []) {
-    const unitLabel = u.name || ((u.bedrooms ?? 0) === 0 ? "Studio" : `${u.bedrooms ?? "?"} bed / ${u.bathrooms ?? "?"} bath`);
-    for (const l of u.leases ?? []) out.push({ id: l.id, label: `${unitLabel}${l.rent ? ` at $${Number(l.rent).toLocaleString("en-US")}/mo` : ""}` });
-  }
-  return out;
-}
 
 function leaseOf(listing, leaseId) {
   for (const u of listing?.unitTypes ?? []) {
@@ -37,9 +27,7 @@ export default function ProxyThread({ thread, onBack }) {
   const { data: session } = useSession();
   const [listing, setListing] = useState(null);
   const [failed, setFailed] = useState(false);
-  const [tourOpen, setTourOpen] = useState(false);
   const listingId = thread?.listingId ?? null;
-  const choices = useMemo(() => leaseChoices(listing), [listing]);
 
   useEffect(() => {
     if (!listingId) return;
@@ -70,9 +58,6 @@ export default function ProxyThread({ thread, onBack }) {
           <Link href={`/listings/${listingId}?listingTab=contact`} className="block truncate text-sm font-semibold text-gray-900 hover:text-red-600 hover:underline" title={`View ${title}`}>{title}</Link>
           {address && <p className="truncate text-xs text-gray-400">{address}</p>}
         </div>
-        {listing && (
-          <TourMarker listing={listing} leaseChoices={choices} leaseId={lease?.id ?? null} proxyThreadId={thread?.threadId ?? null} signedIn={!!session?.user?.id} open={tourOpen} onOpenChange={setTourOpen} mode="popover" />
-        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {failed ? (
@@ -80,7 +65,7 @@ export default function ProxyThread({ thread, onBack }) {
         ) : !listing ? (
           <ChatSkeleton />
         ) : (
-          <ProxyPanel listing={listing} session={session} selectedLease={lease} unitLabel={unitLabel} active showTour={false} onTourIntent={() => setTourOpen(true)} />
+          <ProxyPanel listing={listing} session={session} selectedLease={lease} unitLabel={unitLabel} active />
         )}
       </div>
     </div>
