@@ -110,7 +110,8 @@ export async function askLandlord({ ctx, thread, messageId, questionText, leaseI
     { onConflict: "question_id,thread_id", ignoreDuplicates: true }
   );
   if (!match && ownerId) {
-    notifyLandlordQuestion({ questionId: row.id }).catch((err) => console.error("[proxy] landlord alert failed:", err?.message ?? err));
+    // Sent inside the request: on Vercel a background send dies when the response goes out.
+    await notifyLandlordQuestion({ questionId: row.id }).catch((err) => console.error("[proxy] landlord alert failed:", err?.message ?? err));
   }
   return row;
 }
@@ -132,7 +133,7 @@ export async function pendingClarifierFor(threadId) {
 export async function studentReplyToClarifier({ question, thread, body, userId = null }) {
   await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", thread_id: thread.id, user_id: userId, body: String(body).slice(0, 2000) });
   await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: new Date().toISOString() }).eq("id", question.id);
-  notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
+  await notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }
 
 /*
@@ -281,7 +282,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     for (const w of waiters) {
       if (heldB.has(w.thread_id)) continue;
       await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
-      notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
+      await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
   }
@@ -294,7 +295,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     for (const w of waiters) {
       if (heldC.has(w.thread_id)) continue; // waits for the login, released by the claim
       await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: asked, metadata: { questionId: q.id, clarifier: true, landlordAsked: screened.text } });
-      notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
+      await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "clarifier", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
   }
@@ -335,7 +336,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     if (held.has(w.thread_id)) continue; // waits for the login, released by the claim
     await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: relayText, metadata: { questionId: q.id } });
     await supabase.from("listing_question_waiters").update({ relayed_at: now }).eq("id", w.id);
-    notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay" }).catch(() => {});
+    await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     relayedTo++;
   }
   return { question: { ...q, status: "answered", answer: screened.text }, kind: "answer", relayedTo, synthesis, links, screened: screened.removed > 0 };

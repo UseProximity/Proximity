@@ -277,6 +277,6 @@ async function releaseHeld({ threadId, listingId }) {
       }
     }
   }
-  if (posted) notifyStudentThread({ threadId, kind: "proxy_relay" }).catch(() => {});
+  if (posted) await notifyStudentThread({ threadId, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
   await supabase.from("chat_threads").update({ proxy_state: {} }).eq("id", threadId).is("proxy_state", null);
 }
