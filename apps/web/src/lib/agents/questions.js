@@ -315,6 +315,26 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   } catch (err) {
     console.error("[proxy] synthesis failed:", err?.message ?? err);
   }
+  // Every answered question leaves something the landlord can see (Wyatt,
+  // 2026-10-27): when the answer set no general fact, it is kept as a
+  // question-and-answer pair, which Proxy also answers from.
+  if (!synthesis || (synthesis.written ?? 0) + (synthesis.unchanged ?? 0) + (synthesis.held ?? 0) === 0) {
+    try {
+      const { setFact } = await import("./store");
+      const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
+      const thread = (await exchangeText(q, screened.text)).split("\n").slice(1).join(" / ");
+      await setFact({
+        listingId: q.listing_id, section: "misc", fieldKey: `qa.${q.id.slice(0, 8)}`,
+        value: { question: q.question, answer: screened.text, exchange: thread || null },
+        summary: `Asked: ${q.question} Answer: ${screened.text}${thread && thread.includes("Student:") ? ` (in reply to: ${thread.slice(0, 300)})` : ""}`.slice(0, 600),
+        scopeLevel: ownerDefault ? "owner" : "property", scopeId: ownerDefault,
+        sourceId: source.id, sourceRef: `question:${q.id}`, landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, cause: "landlord_answer",
+      });
+      synthesis = { ...(synthesis ?? {}), written: 1, notes: "saved as a question-and-answer pair" };
+    } catch (err) {
+      console.error("[proxy] q&a save failed:", err?.message ?? err);
+    }
+  }
   // A link in the answer (a flyer, a fee page) is read into the knowledge
   // base too, from the text as written, since screening removes links.
   try {

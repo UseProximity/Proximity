@@ -20,7 +20,8 @@
  * property-level things, every owner their own leases, and a request in
  * plain language cannot widen that. An owner who claimed the listing in the
  * last 14 days, or a change that trips the fair-housing screen, goes to
- * admin instead of being applied.
+ * admin instead of being applied. (The 14-day new-owner hold was dropped
+ * on 2026-10-27; only the fair-housing screen holds a change now.)
  */
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
@@ -29,7 +30,7 @@ import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
 import { currentFacts, listSources, factHistory, setFact, recordEvent, findOrCreateSource } from "./store";
 import { synthesizeKnowledge } from "./synthesize";
-import { applyCoreChange, recentlyClaimed, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./coreWrites";
+import { applyCoreChange, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./coreWrites";
 import { fairHousingFlags } from "./compliance";
 import { agentSyncStatus } from "./sync";
 import { shortDate, UNCLAIMED_OWNER_ID } from "./sections";
@@ -142,7 +143,8 @@ export async function tellAgent({ listingId, userId, isAdmin = false, text }) {
   const body = String(text ?? "").trim().slice(0, 4000);
   if (!body) return { error: "Say something first." };
   const flags = fairHousingFlags(body);
-  const recent = !isAdmin && (await recentlyClaimed(userId, listingId));
+  // No new-owner hold on agent edits (Wyatt, 2026-10-27); the fair-housing screen stays.
+  const recent = false;
   if (flags.length || recent) {
     await recordEvent({ listingId, cause: "landlord_chat", status: "proposed", newValue: { text: body }, actorId: userId, detail: { adminReview: true, summary: body.slice(0, 200), flags, recentClaim: recent } });
     return { held: true, reason: flags.length ? `This mentions ${flags.join(", ")}, which fair-housing law restricts. The Proximity team will review it.` : "Your account is new, so changes are reviewed by the Proximity team for the first two weeks." };
@@ -253,7 +255,8 @@ export async function agentChat({ listingId, userId, isAdmin = false, message, h
 
 export async function confirmProposal({ listingId, userId, isAdmin = false, proposal }) {
   const ctx = await buildProxyContext(listingId);
-  const recent = !isAdmin && (await recentlyClaimed(userId, listingId));
+  // No new-owner hold on agent edits (Wyatt, 2026-10-27); the fair-housing screen stays.
+  const recent = false;
   const text = [...(proposal?.facts ?? []).map((f) => f.summary), ...(proposal?.coreChanges ?? []).map((c) => String(c.value))].join("\n");
   const flags = fairHousingFlags(text);
   const results = { applied: [], held: [], errors: [] };

@@ -174,7 +174,7 @@ export function MessagesProvider({ children }) {
 
   const loadMessages = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return [];
-    if (threadKindRef.current.get(threadId) === "proxy") return [];
+    if (String(threadKindRef.current.get(threadId) ?? "").startsWith("proxy")) return [];
 
     const inFlight = loadInFlightRef.current.get(threadId);
     if (inFlight) return inFlight;
@@ -238,7 +238,7 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
-    if (threadKindRef.current.get(threadId) === "proxy") {
+    if (String(threadKindRef.current.get(threadId) ?? "").startsWith("proxy")) {
       // ProxyThread's own fetch marks it read on the server; clear the badge here.
       setThreads((prev) => prev.map((t) => (t.threadId === threadId ? { ...t, hasUnread: false, unreadCount: 0 } : t)));
       return null;
@@ -626,7 +626,7 @@ export function MessagesProvider({ children }) {
       return;
     }
 
-    if (threadKindRef.current.get(activeThreadId) === "proxy") {
+    if (String(threadKindRef.current.get(activeThreadId) ?? "").startsWith("proxy")) {
       if (threadUnsubscribeRef.current) {
         threadUnsubscribeRef.current();
         threadUnsubscribeRef.current = null;
