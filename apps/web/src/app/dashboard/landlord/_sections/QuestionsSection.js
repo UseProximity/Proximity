@@ -3,10 +3,11 @@
 /*
  * Questions from students, as a chat per listing (Wyatt, 2026-10-27, round 6).
  *
- * Left: the listings Proxy has brought questions or tour requests on, with
- * how many are waiting. Right: that listing's Proxy chat (LandlordProxyChat),
- * where the landlord answers in one box. The same chat is in their Messages
- * (Proxy tab) and under the listing's Agent tab. A student is never named on
+ * Left: every listing, the ones with recent activity first, with how many
+ * questions and tour requests are waiting. Right: that listing's one chat
+ * (LandlordProxyChat), where the landlord answers students and talks to the
+ * listing's agent in one box. The same chat is in their Messages (Proxy tab)
+ * and the listing's Agent tab. A student is never named on
  * a question; phone numbers, emails and links are removed from anything
  * passed on.
  */
@@ -22,8 +23,8 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
 
   const load = useCallback(async () => {
     try {
-      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
-      const r = await fetch(`/api/landlord/proxy-chat${qs}`);
+      const qs = viewAsId ? `&viewAs=${encodeURIComponent(viewAsId)}` : "";
+      const r = await fetch(`/api/landlord/proxy-chat?all=1${qs}`);
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error || "Could not load questions");
       setListings(data.listings ?? []);
@@ -40,14 +41,15 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
   if (!listings.length) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-500">
-        <MessageCircleQuestion className="h-5 w-5 text-gray-400" /> No questions yet. Proxy answers students from what it knows and brings you only what it can&apos;t.
+        <MessageCircleQuestion className="h-5 w-5 text-gray-400" /> No listings yet. Once you add one, its chat with Proxy shows up here.
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-      <div className="space-y-1">
+    <div className="grid gap-4 md:grid-cols-[260px_1fr] md:items-start">
+      {/* Desktop: the list scrolls on its own so the chat stays in view. */}
+      <div className="space-y-1 md:max-h-[calc(100dvh-152px)] md:overflow-y-auto">
         {listings.map((l) => {
           const waiting = l.openQuestions + l.openTours;
           return (
@@ -62,14 +64,14 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
               </div>
               <div className="min-w-0 flex-1">
                 <p className={`truncate text-sm ${waiting ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>{l.title}</p>
-                <p className="truncate text-xs text-gray-500">{l.lastText}</p>
+                <p className="truncate text-xs text-gray-500">{l.lastText || "No messages yet"}</p>
               </div>
               {waiting > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting}</span>}
             </button>
           );
         })}
       </div>
-      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4">
+      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 md:sticky md:top-0">
         {active && <LandlordProxyChat key={active} listingId={active} viewAsId={viewAsId} onChanged={load} />}
       </div>
     </div>

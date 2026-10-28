@@ -4,16 +4,16 @@
  * The Agent tab on a property's dashboard page (PRD v3; laid out by Wyatt,
  * 2026-10-27, round 6).
  *
- *   main      a plain chat with the listing's agent: tell it something new,
- *             change what students see, or ask what it knows (every change
- *             is confirmed before it is saved)
+ *   main      the listing's one chat (LandlordProxyChat): students'
+ *             questions and tour requests, and the landlord's talk with the
+ *             agent (tell it something new, change what students see, ask
+ *             what it knows; every change is confirmed before it is saved)
  *   side      "+ Add source" (a file or a website) and the sources it reads
  *             from, with Sync now and how long a sync usually takes; a sync
  *             keeps running if the landlord leaves the page
  *   below     changes waiting on the landlord, what the agent knows (each
  *             fact with the exact page or document it came from, and a menu
- *             to edit or delete it), the listing's Proxy chat (questions and
- *             tour requests, answerable here), and the change history
+ *             to edit or delete it), and the change history
  *
  * Drafts have an agent too; Proxy answers students once the listing is
  * published. Every write goes through the agent routes, which check
@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Sparkles, RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, Send, FileText, Globe } from "lucide-react";
+import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, FileText, Globe } from "lucide-react";
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
@@ -45,90 +45,6 @@ function Panel({ title, icon = null, count = null, children, defaultOpen = true 
         {icon}{title}{count != null && <span className="font-normal text-gray-500">({count})</span>}
       </button>
       {open && <div className="mt-3">{children}</div>}
-    </div>
-  );
-}
-
-/* ---- the chat ----------------------------------------------------------- */
-
-function AgentChat({ listingId, onChanged }) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [proposal, setProposal] = useState(null);
-  const listRef = useRef(null);
-  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages.length, proposal, busy]);
-
-  const send = async () => {
-    const text = input.trim();
-    if (!text || busy) return;
-    setBusy(true);
-    setInput("");
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    setMessages((m) => [...m, { role: "user", content: text }]);
-    try {
-      const r = await post(`/api/landlord/listings/${listingId}/agent/chat`, { message: text, history });
-      setMessages((m) => [...m, { role: "assistant", content: r.reply }]);
-      setProposal(r.hasChanges ? r.proposal : null);
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirm = async () => {
-    if (!proposal || busy) return;
-    setBusy(true);
-    try {
-      const r = await post(`/api/landlord/listings/${listingId}/agent/chat`, { confirm: proposal });
-      const lines = [...(r.applied ?? []).map((a) => `Done: ${a}`), ...(r.held ?? []), ...(r.errors ?? []).map((e) => `Not done: ${e}`)];
-      setMessages((m) => [...m, { role: "assistant", content: lines.join("\n") || "Nothing to do." }]);
-      setProposal(null);
-      onChanged();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex h-full min-h-[360px] flex-col rounded-xl border border-gray-200 bg-white p-4">
-      <div ref={listRef} className="max-h-[420px] flex-1 space-y-2 overflow-y-auto pb-2">
-        {messages.length === 0 && (
-          <div className="flex items-start gap-2">
-            <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50"><Sparkles className="h-3 w-3 text-red-600" /></div>
-            <div className="max-w-[85%] rounded-2xl rounded-tl-md bg-gray-100 px-3.5 py-2 text-sm text-gray-900">
-              Hi, I&apos;m this listing&apos;s agent. Tell me something new (&quot;parking is $75 a month&quot;), change what students see (&quot;lower the 2-bed to $1,450&quot;), or ask what I know. I&apos;ll check with you before saving anything.
-            </div>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm ${m.role === "user" ? "rounded-br-md bg-red-600 text-white" : "rounded-tl-md bg-gray-100 text-gray-900"}`}>{m.content}</div>
-          </div>
-        ))}
-        {busy && <p className="text-xs text-gray-400">Thinking...</p>}
-        {proposal && (
-          <div className="rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm">
-            <p className="mb-2 font-semibold text-gray-900">Confirm these changes</p>
-            <ul className="mb-3 space-y-1">
-              {proposal.coreChanges.map((c, i) => <li key={`c${i}`} className={c.allowed === false || c.error ? "text-red-700" : "text-gray-800"}>{c.refLabel ?? c.ref}: {c.fieldLabel ?? c.field} to <strong>{String(c.value)}</strong>{c.error ? ` (${c.error})` : ""}</li>)}
-              {proposal.facts.map((f, i) => <li key={`f${i}`} className={f.allowed === false ? "text-red-700" : "text-gray-800"}>Save: {f.summary}</li>)}
-              {proposal.retireKeys.map((k) => <li key={k} className="text-gray-800">Remove: {k}</li>)}
-            </ul>
-            <div className="flex gap-2">
-              <button disabled={busy} onClick={confirm} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Confirm</button>
-              <button disabled={busy} onClick={() => setProposal(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-      <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 border-t border-gray-200 pt-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Tell your agent something, change a detail, or ask it a question" className="h-11 flex-1 rounded-xl border border-gray-300 px-3 text-sm" disabled={busy} />
-        <button type="submit" disabled={busy || !input.trim()} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40"><Send className="h-5 w-5" /></button>
-      </form>
     </div>
   );
 }
@@ -403,14 +319,13 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <span>Open questions: <strong>{data.openQuestions}</strong></span>
       </div>
       <div className="grid gap-4 md:grid-cols-[1fr_260px]">
-        <AgentChat listingId={listingId} onChanged={load} />
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} maxHeight="max-h-[520px] min-h-[300px]" onChanged={load} />
+        </div>
         <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />
-      <Panel title="Questions and tours from students">
-        <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} maxHeight="max-h-[480px]" onChanged={load} />
-      </Panel>
       <ChangeHistory listingId={listingId} history={data.history} onDone={load} />
     </div>
   );

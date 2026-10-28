@@ -336,6 +336,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleNavigation = (key) => {
+    // On desktop only the content column scrolls (page.js); on mobile, the window.
+    document.getElementById("landlord-dashboard-main")?.scrollTo({ top: 0, behavior: "smooth" });
     window.scrollTo({ top: 0, behavior: "smooth" });
     setActiveView(key);
     setSelectedProperty(null);

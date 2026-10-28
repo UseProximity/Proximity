@@ -7,9 +7,14 @@
  * listing's knowledge; what it cannot answer it sends to the landlord and
  * posts the answer back here. The landlord is never in this conversation.
  *
- * Layout (Wyatt, 2026-10-27, round 6): one line at the top says which lease
- * the student is asking about; the conversation sits straight in the
- * section (no box or border) with the input under it. Consecutive messages
+ * Layout (Wyatt, 2026-10-27, round 6; round 7, 2026-10-28): on the listing,
+ * one line at the top says which lease the student is asking about (not in
+ * the Messages popup, `showAbout`); the conversation sits straight in the
+ * section (no box or border). The input is always on screen: on the listing
+ * it renders into `inputSlot`, a bar pinned to the bottom of the listing
+ * (ListingModalInfo), and in the popup the panel fills its height (`fill`)
+ * with the input at the bottom. Sending or receiving a message scrolls the
+ * chat and the page around it to the very bottom. Consecutive messages
  * from the same side stack with one icon. Every tour control lives in the
  * input: the calendar button beside Send opens TourPicker, its choice
  * becomes a chip ("2 day availability"), and sending sends the request.
@@ -43,6 +48,7 @@
  * answers, nothing logged or sent on.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -172,7 +178,7 @@ function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, tourIntentSignal = 0 }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, tourIntentSignal = 0, showAbout = true, fill = false, inputSlot = null }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -258,11 +264,21 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   // A tour question opens the picker (from Proxy's reply, or the Messages header).
   useEffect(() => { if (tourIntentSignal && signedIn) setPickerOpen(true); }, [tourIntentSignal, signedIn]);
 
+  // The chat to its newest message, and whatever scrolls around it (the
+  // listing modal, or the page) all the way to the bottom.
   const scrollToEnd = useCallback((smooth = false) => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-    rootRef.current?.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
-  }, []);
+    let p = rootRef.current?.parentElement;
+    while (p && p !== document.body) {
+      const oy = getComputedStyle(p).overflowY;
+      if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) break;
+      p = p.parentElement;
+    }
+    const behavior = smooth ? "smooth" : "auto";
+    if (p && p !== document.body) p.scrollTo({ top: p.scrollHeight, behavior });
+    else if (!fill) window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
+  }, [fill]);
 
   // The conversation stays pinned to its newest message while an answer types out.
   useEffect(() => {
@@ -279,9 +295,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     if (!active || loading) return;
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-    const t = setTimeout(() => rootRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }), 180);
+    const t = setTimeout(() => scrollToEnd(true), 180);
     return () => clearTimeout(t);
-  }, [active, loading]);
+  }, [active, loading, scrollToEnd]);
 
   const sendTour = useCallback(async (slots) => {
     const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
@@ -375,35 +391,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const tourAllowed = !testMode && choices.length > 0;
   const sideOf = (m) => (m.isMine ? "me" : "proxy");
 
-  return (
-    <div ref={rootRef} className="flex flex-col gap-3">
-      {testMode && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
-        </div>
-      )}
-
-      <p className="text-sm text-gray-700">
-        Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
-      </p>
-
-      {loading && <ChatSkeleton rows={3} />}
-      {started && (
-        <div ref={listRef} className="flex max-h-[480px] flex-col overflow-y-auto">
-          {messages.map((m, i) => {
-            const first = i === 0 || sideOf(messages[i - 1]) !== sideOf(m);
-            const last = i === messages.length - 1 || sideOf(messages[i + 1]) !== sideOf(m);
-            return (
-              <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
-                <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />
-              </div>
-            );
-          })}
-          {sending && <div className="mt-3"><TypingBubble /></div>}
-        </div>
-      )}
-
-      {signInNeeded ? (
+  const inputBar = signInNeeded ? (
         <div className="text-sm text-red-700">
           Sign in to keep asking.{" "}
           <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
@@ -411,7 +399,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       ) : (
         <div className="relative">
           {pickerOpen && signedIn && tourAllowed && (
-            <div className="absolute bottom-full left-0 right-0 z-20 mb-2">
+            <div className="absolute bottom-full right-0 z-[100] mb-2 w-full max-w-md">
               <TourPicker
                 tour={tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null}
                 initial={tourSlots}
@@ -422,7 +410,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
               />
             </div>
           )}
-          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 border-t border-gray-200 pt-3">
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2">
             <div className="flex min-h-11 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400">
               {tourSlots && (
                 <span className="mb-1 inline-flex w-fit items-center gap-1 rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-semibold text-white">
@@ -453,9 +441,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
                 onClick={() => (signedIn ? setPickerOpen((o) => !o) : signIn())}
                 aria-label={signedIn ? "Pick tour times" : "Sign in to request a tour"}
                 title={signedIn ? "Request a tour" : "Sign in to request a tour"}
-                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${pickerOpen || tourSlots ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${pickerOpen || tourSlots ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 <CalendarDays className="h-5 w-5" />
+                Tour
               </button>
             )}
             <button type="submit" disabled={loading || sending || (!input.trim() && !tourSlots)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
@@ -463,7 +452,39 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
             </button>
           </form>
         </div>
+      );
+
+  return (
+    <div ref={rootRef} className={`flex flex-col gap-3 ${fill ? "h-full min-h-0" : ""}`}>
+      {testMode && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
+        </div>
       )}
+
+      {showAbout && (
+        <p className="text-sm text-gray-700">
+          Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
+        </p>
+      )}
+
+      {loading && <ChatSkeleton rows={3} />}
+      {started && (
+        <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
+          {messages.map((m, i) => {
+            const first = i === 0 || sideOf(messages[i - 1]) !== sideOf(m);
+            const last = i === messages.length - 1 || sideOf(messages[i + 1]) !== sideOf(m);
+            return (
+              <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+                <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />
+              </div>
+            );
+          })}
+          {sending && <div className="mt-3"><TypingBubble /></div>}
+        </div>
+      )}
+
+      {inputSlot ? (active ? createPortal(inputBar, inputSlot) : null) : <div className="shrink-0">{inputBar}</div>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { getBaseUrl, sendTourEmail } from "@/lib/email";
 import { postProxyMessage } from "./threads";
 import { availabilityText, fmtTourTime } from "./tourTime";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
+import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
 
 const TZ = "America/Chicago";
 const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -30,8 +31,8 @@ async function loadTour(tourId) {
     .eq("id", tourId).maybeSingle();
   if (!t) return null;
   const [student, landlord] = await Promise.all([
-    supabase.from("users").select("id, name, email, phone, email_notifications, password_hash, google_account, deleted_at").eq("id", t.student_id).maybeSingle(),
-    t.landlord_id ? supabase.from("users").select("id, name, email, phone, email_notifications, password_hash, google_account, deleted_at").eq("id", t.landlord_id).maybeSingle() : { data: null },
+    supabase.from("users").select(`id, name, email, phone, email_notifications, deleted_at, ${ACCOUNT_FIELDS}`).eq("id", t.student_id).maybeSingle(),
+    t.landlord_id ? supabase.from("users").select(`id, name, email, phone, email_notifications, deleted_at, ${ACCOUNT_FIELDS}`).eq("id", t.landlord_id).maybeSingle() : { data: null },
   ]);
   const unit = t.unit_leases?.listing_units;
   return {
@@ -63,7 +64,7 @@ export async function notifyTourRequested({ tourId }) {
     intro: `${r.student?.name || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
     lines: rangeLines(r.t.student_slots),
     note: "Pick a day and a start time inside their window in your dashboard, or message the student if none of it works.",
-    ctaLabel: r.landlord.password_hash || r.landlord.google_account ? "Confirm a time" : "Create an account to confirm",
+    ctaLabel: completedAccount(r.landlord) ? "Confirm a time" : "Create an account to confirm",
     ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`,
     userId: r.landlord.id,
   });

@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-28T04:10:32.102Z",
+  "_generated": "2026-10-28T17:57:05.374Z",
   "count": 215,
   "utils": [
     {
@@ -53,7 +53,7 @@
     },
     {
       "file": "src/lib/agents/landlordChat.js",
-      "description": "The landlord's Proxy chat, one per listing (Wyatt, 2026-10-27, round 6)."
+      "description": "The landlord's Proxy chat, one per listing (Wyatt, 2026-10-27, round 6;"
     },
     {
       "file": "src/lib/agents/limits.js",

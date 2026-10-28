@@ -1526,6 +1526,15 @@ export default function ListingModalInfo({
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
+  // The Proxy chat's input bar, pinned to the bottom of the listing while
+  // Contact is open (Wyatt, 2026-10-28): ProxyPanel renders into it.
+  const [proxyInputSlot, setProxyInputSlot] = useState(null);
+  // No floating Feedback button over a Contact tab (FeedbackWidget hides on this).
+  useEffect(() => {
+    if (activeTab !== "contact") return;
+    document.body.dataset.listingContact = "1";
+    return () => { delete document.body.dataset.listingContact; };
+  }, [activeTab]);
 
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
   // param so a reload or a shared link opens on Overview as usual.
@@ -2127,6 +2136,7 @@ export default function ListingModalInfo({
    * After every hook, never before. An early return above them would change
    * the hook order between the loading and loaded renders.
    */
+  const proxyContact = activeTab === "contact" && !!(listing?.agent?.live || preview);
   if (detailLoading) {
     return (
       <ListingDetailSkeleton compact={compact} excludeTabs={excludeTabs} />
@@ -2135,9 +2145,9 @@ export default function ListingModalInfo({
 
   return (
     <>
-      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}${proxyContact ? " listing-proxy-contact" : ""}`}>
         <div
-          className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
+          className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4" : "pt-8"} ${proxyContact ? "pb-0" : "pb-8"}`}
         >
           {/* ── Photo Grid ── */}
           <div
@@ -2489,7 +2499,7 @@ export default function ListingModalInfo({
             {/* ── Sticky Tab Bar ── */}
             <div
               id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm ${(activeTab === "contact" && (listing.agent?.live || preview)) ? "mb-0" : "mb-6"} -mx-4 ${
+              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm ${proxyContact ? "mb-0" : "mb-6"} -mx-4 ${
                 compact ? "top-[52px]" : "top-0 px-4"
               }`}
             >
@@ -2575,7 +2585,7 @@ export default function ListingModalInfo({
             </div>
 
             {/* ── Tab Content ── (the Proxy chat sits straight under the tab line, full width, no card) */}
-            <div className={(activeTab === "contact" && (listing.agent?.live || preview)) ? "bg-white -mx-4 px-6 pt-5 pb-6" : "bg-white rounded-xl shadow p-6"}>
+            <div className={proxyContact ? "bg-white -mx-4 px-6 pt-5 pb-4" : "bg-white rounded-xl shadow p-6"}>
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (
@@ -2637,6 +2647,7 @@ export default function ListingModalInfo({
                     unitLabel={selectedUnitName ?? sortedUnits[selectedUnitIdx]?.label ?? null}
                     preview={preview}
                     active={activeTab === "contact"}
+                    inputSlot={proxyInputSlot}
                   />
                 </div>
               )}
@@ -2656,6 +2667,9 @@ export default function ListingModalInfo({
                 />
               )}
             </div>
+            {proxyContact && (
+              <div ref={setProxyInputSlot} className="sticky bottom-0 z-40 -mx-4 border-t border-gray-100 bg-white px-6 pb-4 pt-3" />
+            )}
           </motion.div>
         </div>
       </div>

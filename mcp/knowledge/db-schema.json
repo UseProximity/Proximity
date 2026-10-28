@@ -2765,6 +2765,23 @@
         "notes": "pk id; check sender in (landlord, student, proxy), via in (app, email); fk question_id->listing_questions (cascade); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
       },
       {
+        "table": "landlord_agent_messages",
+        "status": "unreleased",
+        "description": "The landlord's saved conversation with a listing's agent, one thread per landlord per listing (round 7). Merged with that landlord's questions and tour requests into the one chat shown in the Agent tab, the Questions tab and Messages (lib/agents/landlordChat.js). A landlord message Proxy matched to an open question carries question_id (the answer itself is in listing_question_messages); an agent message can carry the proposal the landlord confirms, with proposal_status open | applied | cancelled.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "landlord_id:uuid",
+          "sender:text",
+          "body:text",
+          "question_id:uuid",
+          "proposal:jsonb",
+          "proposal_status:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; check sender in (landlord, agent), proposal_status in (open, applied, cancelled); fk listing_id->listings (cascade), landlord_id->users (cascade), question_id->listing_questions (set null); index (landlord_id, listing_id, created_at); RLS on, no policies. Migration 202610280003_landlord_agent_messages (dev applied 2026-10-28; prod pending, in the bundle)."
+      },
+      {
         "table": "listing_agent_questions",
         "status": "unreleased",
         "description": "The audit log of every student message Proxy handled: the question, Proxy's reply, the fact keys it drew on, the outcome (answered | asked_landlord | partly_answered | chit_chat | tour | unavailable | declined | failed | test), model and latency, asker (user_id or visitor_id), inquiry flag (false in test mode), reported_at from 'Report this answer'. Also the rate-limit ledger (lib/agents/limits.js). PII stripped at the 30-day purge.",

@@ -28,11 +28,15 @@ import { updateProxyState } from "./threads";
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
-export const completedAccount = (u) => !!u && !!(u.password_hash || u.google_account || u.apple_account);
+// A real account: a way to sign in, or a finished, verified profile (the dev
+// snapshot wipes passwords, so a long-standing landlord can show none).
+// Proxy's own incomplete accounts are neither.
+export const ACCOUNT_FIELDS = "password_hash, google_account, apple_account, email_verified, profile_complete";
+export const completedAccount = (u) => !!u && !!(u.password_hash || u.google_account || u.apple_account || (u.email_verified && u.profile_complete));
 
 async function userByEmail(email) {
   const { data } = await supabase.from("users")
-    .select("id, email, name, password_hash, google_account, apple_account, email_verified, deleted_at")
+    .select(`id, email, name, deleted_at, ${ACCOUNT_FIELDS}`)
     .ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(1).maybeSingle();
   return data ?? null;
 }

@@ -22,6 +22,7 @@
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendProxyStudentEmail, sendProxyLandlordQuestionEmail } from "@/lib/email";
+import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
 import { ALERT_QUIET_MS } from "@/lib/chat/notifyEmail";
 import { PROXY_USER_ID, postProxyMessage } from "./threads";
 import { questionReplyAddress } from "./questionTokens";
@@ -77,9 +78,9 @@ async function questionWithOwner(questionId) {
     .select("id, listing_id, owner_id, question, context, asked_count, created_at, reminder_1_at, reminder_3_at, listings!listing_id(title, address)")
     .eq("id", questionId).maybeSingle();
   if (!q?.owner_id) return null;
-  const { data: u } = await supabase.from("users").select("id, email, name, email_notifications, deleted_at, password_hash, google_account").eq("id", q.owner_id).maybeSingle();
+  const { data: u } = await supabase.from("users").select(`id, email, name, email_notifications, deleted_at, ${ACCOUNT_FIELDS}`).eq("id", q.owner_id).maybeSingle();
   if (!u?.email || u.deleted_at || u.email_notifications === false) return null;
-  const hasAccount = !!(u.password_hash || u.google_account);
+  const hasAccount = completedAccount(u);
   return { q, owner: u, hasAccount, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
 }
 

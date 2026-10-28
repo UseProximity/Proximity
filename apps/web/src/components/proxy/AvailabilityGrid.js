@@ -19,7 +19,7 @@ export function zoneAbbrev(date = new Date()) {
   return part?.value ?? "CT";
 }
 
-export function DateGrid({ selected, onChange, days = 7 }) {
+export function DateGrid({ selected, onChange, days = 7, scrollClass = "" }) {
   const list = upcomingDays({ days });
   const cells = list.map((day) => HOURS.map((h) => ({ iso: chicagoToUtc(day.y, day.m, day.d, h).toISOString(), h })));
   // The latest selection, so a fast drag never paints from a stale render.
@@ -59,9 +59,9 @@ export function DateGrid({ selected, onChange, days = 7 }) {
   };
 
   return (
-    <div className="select-none overflow-x-auto" onPointerMove={onPointerMove} style={{ touchAction: "none" }}>
+    <div className={`select-none overflow-x-auto ${scrollClass}`} onPointerMove={onPointerMove} style={{ touchAction: "none" }}>
       <table className="w-full table-fixed border-collapse text-[11px]">
-        <thead>
+        <thead className={scrollClass ? "sticky top-0 z-10 bg-white" : ""}>
           <tr>
             <th className="w-12" />
             {list.map((d) => (

@@ -95,13 +95,15 @@ export async function runTools({
   let text = "";
   for (let round = 0; round < maxRounds; round++) {
     const last = round === maxRounds - 1;
+    // Always "auto": the current models reject a forced tool_choice. A model
+    // that answers in prose is asked once more for the final tool (below);
+    // after the last round its text is returned instead.
     const resp = await client.messages.create({
       model,
       max_tokens: maxTokens,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       tools,
-      // On the last round the model must answer, so it is told to call the final tool.
-      tool_choice: last ? { type: "tool", name: finalTool } : { type: "auto" },
+      tool_choice: { type: "auto" },
       messages: convo,
     });
     addUsage(usage, resp.usage);
@@ -113,7 +115,7 @@ export async function runTools({
     }
     if (resp.stop_reason !== "tool_use") {
       // It answered in prose instead of calling the final tool: one more
-      // round, with the final tool required, turns that prose into the
+      // round, asking for the final tool, turns that prose into the
       // structured result.
       if (last || !resp.content.length) break;
       convo.push({ role: "assistant", content: resp.content });
