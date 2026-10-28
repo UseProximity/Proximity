@@ -35,7 +35,7 @@ export async function postCorrections({ listingId, changes }) {
       posted++;
       const { data: todays } = await supabase.from("sent_emails").select("id").eq("thread_id", threadId)
         .in("kind", ["proxy_answer", "proxy_relay", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);
-      if (!todays?.length) notifyStudentThread({ threadId, kind: "proxy_answer", quietMs: 0 }).catch(() => {});
+      if (!todays?.length) await notifyStudentThread({ threadId, kind: "proxy_answer", quietMs: 0 }).catch(() => {});
     }
   }
   return posted;

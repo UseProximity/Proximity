@@ -133,7 +133,7 @@ export async function tellStudentsNoAnswer({ questionId }) {
       body: `The landlord hasn't answered "${q.question}" yet. I'll post it here if they do. If you're still interested, you can ask to book a tour, or browse similar places on Proximity.`,
       metadata: { questionId: q.id, noAnswer: true },
     });
-    notifyStudentThread({ threadId: w.thread_id, kind: "proxy_no_answer", quietMs: 0 }).catch(() => {});
+    await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_no_answer", quietMs: 0 }).catch(() => {});
     n++;
   }
   return n;
