@@ -1458,7 +1458,7 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
 
           {/* Tab strip */}
           <div
-            className={`bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+            className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
               compact ? "" : "px-4"
             }`}
           >
@@ -1471,15 +1471,15 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </nav>
           </div>
 
-          {/* Tab body */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow p-6 space-y-3">
+          {/* Tab body: white edge to edge, like the loaded page. */}
+          <div className="-mx-4 -mb-8 min-h-[60vh] space-y-6 bg-white px-10 py-6">
+            <div className="space-y-3">
               <Bar className="h-5 w-40" />
               <Bar className="h-3 w-full" />
               <Bar className="h-3 w-full" />
               <Bar className="h-3 w-2/3" />
             </div>
-            <div className="bg-white rounded-xl shadow p-6">
+            <div>
               <Bar className="h-5 w-32 mb-4" />
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -2491,7 +2491,7 @@ export default function ListingModalInfo({
             {/* ── Sticky Tab Bar ── */}
             <div
               id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm -mx-4 ${
                 compact ? "top-[52px]" : "top-0 px-4"
               }`}
             >
@@ -2577,7 +2577,15 @@ export default function ListingModalInfo({
             </div>
 
             {/* ── Tab Content ── */}
-            <div className="bg-white rounded-xl shadow p-6">
+            {/* White from edge to edge under the tab bar, down to the bottom
+                of the page: no grey frame around a card (Wyatt, 2026-10-27).
+                The negative margins cancel the page padding; px-10 keeps the
+                text where the card's padding used to put it. */}
+            <div
+              className={`bg-white -mx-4 px-10 py-6 ${
+                compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"
+              }`}
+            >
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (
