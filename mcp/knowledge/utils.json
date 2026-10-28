@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-27T04:37:11.321Z",
-  "count": 212,
+  "_generated": "2026-10-28T01:54:49.009Z",
+  "count": 213,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -126,6 +126,10 @@
     {
       "file": "src/lib/agents/tourTime.js",
       "description": "Tour times, shared by the server and the browser (no server imports)."
+    },
+    {
+      "file": "src/lib/agents/visitorEmail.js",
+      "description": "A signed-out visitor's email, given in the chat (Wyatt, 2026-10-27)."
     },
     {
       "file": "src/lib/analytics/access.js",

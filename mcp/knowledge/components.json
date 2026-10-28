@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-27T04:28:38.460Z",
-  "count": 147,
+  "_generated": "2026-10-28T01:54:48.979Z",
+  "count": 150,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -144,6 +144,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ChatSkeleton",
+      "file": "src/components/chat/ChatSkeleton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ChatThreadList",
       "file": "src/components/chat/ChatThreadList.js",
       "description": "Inbox thread rows + empty state with Browse listings CTA"
@@ -176,6 +181,11 @@
     {
       "name": "ProximityAssistantTranscript",
       "file": "src/components/chat/ProximityAssistantTranscript.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProxyThread",
+      "file": "src/components/chat/ProxyThread.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -606,6 +616,11 @@
     {
       "name": "TourBooking",
       "file": "src/components/proxy/TourBooking.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourMarker",
+      "file": "src/components/proxy/TourMarker.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
