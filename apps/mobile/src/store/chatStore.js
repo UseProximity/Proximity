@@ -11,6 +11,8 @@
 // "sign in first" by setting needsAuth, without starting a chat.
 import { create } from "zustand";
 import apiClient from "../lib/apiClient";
+import { useAuthStore } from "./authStore";
+import { createTurnQueue } from "../lib/turnQueue";
 import { isNetworkError } from "../lib/apiError";
 import { ERROR_MESSAGES } from "../lib/errorMessages";
 import {
@@ -28,12 +30,13 @@ import {
 let epoch = 0;
 
 // Serializes every POST so a fast double-tap can never let the server see
-// out-of-order writes (mirrors ChatClient's postChain ref).
-let postChain = Promise.resolve();
-function enqueue(task) {
-  postChain = postChain.then(task, task);
-  return postChain;
-}
+// out-of-order writes (mirrors ChatClient's postChain ref). See lib/turnQueue.js for how
+// a task from a previous identity is skipped or told it is stale.
+const enqueue = createTurnQueue({
+  getEpoch: () => epoch,
+  isSignedIn: () => Boolean(useAuthStore.getState().user?.id),
+  onSignedOut: () => useChatStore.setState({ needsAuth: true, loading: false }),
+});
 
 function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
@@ -173,6 +176,13 @@ export const useChatStore = create((set, get) => ({
   },
 
   startFresh: async () => {
+    // Every way into a new chat passes here (init, and startOver from the error-state
+    // refresh), so this is where a signed-out user is stopped: the app has no anonymous
+    // flow, and the server would otherwise mint a visitor session for the request.
+    if (!useAuthStore.getState().user?.id) {
+      set({ needsAuth: true, loading: false });
+      return;
+    }
     set({ loading: true, error: null });
     const startedIn = epoch;
     try {
@@ -257,9 +267,10 @@ export const useChatStore = create((set, get) => ({
 
     const finalizing = !upcoming;
     const snapshot = { preferences: applied.preferences, weights: applied.weights };
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({ sessionId, answer, ...snapshot });
+        if (isStale()) return;
         if (finalizing) {
           set({
             preferences: data.preferences ?? get().preferences,
@@ -283,13 +294,14 @@ export const useChatStore = create((set, get) => ({
           });
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] answerQuestion failed:", err);
       } finally {
-        if (finalizing) set({ loading: false });
+        if (finalizing && !isStale()) set({ loading: false });
       }
     });
   },
@@ -300,7 +312,7 @@ export const useChatStore = create((set, get) => ({
       messages: [...state.messages, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }],
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({
           sessionId,
@@ -308,6 +320,7 @@ export const useChatStore = create((set, get) => ({
           preferences,
           weights,
         });
+        if (isStale()) return;
         set({
           recommendations: data.recommendations ?? get().recommendations,
           status: data.status ?? get().status,
@@ -324,13 +337,14 @@ export const useChatStore = create((set, get) => ({
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] tradeoff failed:", err);
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -403,9 +417,10 @@ export const useChatStore = create((set, get) => ({
       ),
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.contactOwners({ sessionId, listingIds, message, selectionLabel });
+        if (isStale()) return;
         set((state) => ({
           messages: [
             ...state.messages,
@@ -418,6 +433,7 @@ export const useChatStore = create((set, get) => ({
           ],
         }));
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
@@ -430,7 +446,7 @@ export const useChatStore = create((set, get) => ({
           ],
         }));
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -443,9 +459,10 @@ export const useChatStore = create((set, get) => ({
       messages: [...state.messages, { role: "user", content: text, ts: new Date().toISOString() }],
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({ sessionId, message: text, preferences, weights });
+        if (isStale()) return;
         set({
           recommendations: data.recommendations ?? get().recommendations,
           status: data.status ?? get().status,
@@ -483,13 +500,14 @@ export const useChatStore = create((set, get) => ({
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] sendMessage failed:", err);
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -506,10 +524,11 @@ export const useChatStore = create((set, get) => ({
       const descriptor = describeQuestion(QUESTION_BY_ID[questionId], rewound.preferences);
       const truncated = [...head, questionToMessage(descriptor, false)];
 
-      enqueue(() =>
+      enqueue((isStale) =>
         apiClient.matchmaking
           .rewind({ sessionId, transcript: truncated, preferences: rewound.preferences, weights: rewound.weights })
           .catch((err) => {
+            if (isStale()) return;
             if (err?.status === 401) {
               set({ needsAuth: true });
               return;
@@ -528,3 +547,13 @@ export const useChatStore = create((set, get) => ({
     });
   },
 }));
+
+// A different signed-in identity (sign out, sign in, or a direct switch) ends everything
+// still queued or in flight for the previous one, and clears its chat, at once and whether
+// or not the matchmaking screen has re-run its effect yet (it holds back while the new user
+// has not agreed to AI consent, and must not be left showing the old one's state or a
+// stuck spinner). Token refreshes and profile edits keep the same id, so they change
+// nothing. The screen's reinit() still restarts the chat once it is allowed to.
+useAuthStore.subscribe((state, previous) => {
+  if (state.user?.id !== previous.user?.id) useChatStore.getState().reset();
+});

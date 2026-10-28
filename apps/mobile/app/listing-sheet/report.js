@@ -2,7 +2,7 @@
 // "listing-sheet/report" screen in app/_layout.js) so iOS provides the swipe-down
 // dismissal. Opened from the listing detail screen with the listing id. Same shape as
 // the chat report sheet, plus an optional note. The reported landlord is not told.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,6 +19,16 @@ export default function ListingReportSheet() {
   const [details, setDetails] = useState("");
   const [sending, setSending] = useState(false);
 
+  // False once the sheet is gone (Cancel, or swiped down) while a report is still on its
+  // way: a late answer must not pop whatever screen is then on top, or set state here.
+  const isOpen = useRef(true);
+  useEffect(() => {
+    isOpen.current = true;
+    return () => {
+      isOpen.current = false;
+    };
+  }, []);
+
   const send = async (reason) => {
     setSending(true);
     Keyboard.dismiss();
@@ -26,12 +36,24 @@ export default function ListingReportSheet() {
     try {
       result = await apiClient.listings.reportListing(listingId, { reason: reason.value, details: details.trim() });
     } catch (err) {
+      // Dismissed while the request was out: the user walked away, so a failure is not
+      // announced (a success still is, below, since the report was filed).
+      if (!isOpen.current) return;
       setSending(false);
-      if (err?.status === 401) return; // session expired: the api client already signed out
+      if (err?.status === 401) {
+        // The api client has signed out (or nobody was signed in). Nothing was reported, so
+        // say so and offer sign in, as the listing screen does before opening this sheet.
+        router.back();
+        Alert.alert("Sign in to report", ERROR_MESSAGES.AUTH.SESSION_EXPIRED, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sign in", onPress: () => router.push("/(auth)/login") },
+        ]);
+        return;
+      }
       showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.REPORT_LISTING));
       return;
     }
-    router.back();
+    if (isOpen.current) router.back();
     if (result?.alreadyReported) {
       Alert.alert("Already reported", "You have already reported this listing.");
     } else {

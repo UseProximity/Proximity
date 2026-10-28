@@ -1429,7 +1429,7 @@
       {
         "table": "listing_reports",
         "status": "unreleased",
-        "description": "A signed-in user reporting a listing itself (its photos, text or contact details): one row per reporter and listing, with a reason from a fixed list (misleading_or_fake|scam_or_fraud|inappropriate_content|discriminatory|other) and an optional note of up to 500 characters. Written by POST /api/listingReport (the mobile app only, there is no web UI), deleted by reporter in /api/cron/purge-accounts. reported_user_id is the listing's primary landlord (else its first landlord) at report time, null when the listing has none. Nothing sets reviewed_at yet and no email or other notification is sent: the queue is read by hand. Migration 202610230001. Service role only.",
+        "description": "A signed-in user reporting a listing itself (its photos, text or contact details): one row per reporter and listing, with a reason from a fixed list (misleading_or_fake|scam_or_fraud|inappropriate_content|discriminatory|other) and an optional note of up to 500 characters. Written by POST /api/listingReport (the mobile app only, there is no web UI), deleted by reporter in /api/cron/purge-accounts. reported_user_id is the listing's primary real landlord (else its first) at report time, null when it has none; the shared Proximity placeholder, system and deleted accounts never count. Nothing sets reviewed_at yet and no email or other notification is sent: the queue is read by hand. Migration 202610230001. Service role only.",
         "columns": [
           "id:uuid",
           "reporter_id:uuid",

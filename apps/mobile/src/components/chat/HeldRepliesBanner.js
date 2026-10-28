@@ -16,6 +16,8 @@ import {
   fetchReplySenders,
   formatReceived,
   heldReplyWho,
+  withoutHeld,
+  withoutSender,
 } from "../../lib/heldReplies";
 
 // Above the composer, for the landlord only: emailed replies to this conversation from
@@ -104,13 +106,13 @@ export function HeldRepliesBanner({ threadId, onDelivered }) {
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
-    // A failed load comes back empty, so the banner hides silently rather than showing
-    // earlier data or an error.
+    // A failed load comes back null: keep the last good data and stay quiet. An empty
+    // success is a real answer and does replace it.
     const next = await fetchReplySenders(() => apiClient.chat.getReplySenders(threadId));
     // Only the newest request for the current thread may write, so a slow or failed
     // older one cannot clear or overwrite what a newer one loaded.
     if (activeThread.current !== threadId || seq !== loadSeq.current) return;
-    setData(next);
+    if (next) setData(next);
   }, [threadId]);
 
   // On first show and every time the screen regains focus.
@@ -126,6 +128,7 @@ export function HeldRepliesBanner({ threadId, onDelivered }) {
     try {
       const out = await apiClient.chat.decideReplySender(threadId, { heldId: held.id, decision, scope });
       if (activeThread.current !== threadId) return;
+      setData((current) => withoutHeld(current, held.id));
       if (decision === "decline") {
         setNote({ text: declinedNote(held.fromEmail) });
       } else {
@@ -155,6 +158,7 @@ export function HeldRepliesBanner({ threadId, onDelivered }) {
     setNote(null);
     try {
       await apiClient.chat.removeReplySender(id);
+      if (activeThread.current === threadId) setData((current) => withoutSender(current, id));
     } catch (err) {
       // Already gone (404) needs no message: the reload below drops it from the list.
       if (activeThread.current === threadId && err?.status !== 404) {
