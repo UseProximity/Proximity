@@ -17,7 +17,8 @@
  *
  * The list is narrowed by the student's move-in month and lease length
  * (Wyatt, 2026-10-27), picked in the header and saved to their account so every
- * unit opens already narrowed. Offerings that fit lead, cheapest first; the
+ * unit opens already narrowed (the pickers sit in the unit's name row, see
+ * useUnitLeasePrefs). Offerings that fit lead, cheapest first; the
  * rest fold behind one link, closest first. When nothing fits, the closest
  * options show straight away under a note saying why, so a unit never looks
  * empty just because the dates are narrow. The fit rules live in
@@ -29,7 +30,6 @@ import { ChevronDown } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 import { missReason, partitionLeases, prefsForUnit } from "@/lib/listings/leaseFit";
-import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
@@ -169,7 +169,27 @@ function Cell({ label, children, className = "" }) {
   );
 }
 
-export default function LeaseOptions({ leases = [], loading = false, onContact, preview = false }) {
+/*
+ * The move-in month and lease length as they apply to one unit, plus the
+ * setters the pickers call. Shared by the pickers (which sit in the unit's
+ * name row, in ListingModalInfo) and this list, so the listing calls it once
+ * and hands the result to both.
+ *
+ * A landlord previewing their draft as a student can try the pickers, but
+ * nothing is saved: it is not their search. A saved month or length this unit
+ * does not offer reads "Any" here (prefsForUnit).
+ */
+export function useUnitLeasePrefs(leases, preview = false) {
+  const shared = useLeasePreferences();
+  const [previewPrefs, setPreviewPrefs] = useState(shared.prefs);
+  const saved = preview ? previewPrefs : shared.prefs;
+  const prefs = useMemo(() => prefsForUnit(saved, leases), [saved, leases]);
+  const setPrefs = preview ? (patch) => setPreviewPrefs((p) => ({ ...p, ...patch })) : shared.setPrefs;
+  const clear = preview ? () => setPreviewPrefs({ moveIn: null, months: null }) : shared.clear;
+  return { prefs, setPrefs, clear };
+}
+
+export default function LeaseOptions({ leases = [], loading = false, onContact, prefs = null }) {
   /*
    * "Loading" and "none offered" are different answers and must not be confused:
    * the browse panel paints itself from the listing feed before the detail fetch
@@ -193,7 +213,9 @@ export default function LeaseOptions({ leases = [], loading = false, onContact, 
     );
   }
 
-  return <LeaseList leases={leases} onContact={onContact} preview={preview} />;
+  return (
+    <LeaseList leases={leases} onContact={onContact} prefs={prefs ?? { moveIn: null, months: null }} />
+  );
 }
 
 /*
@@ -214,42 +236,10 @@ function withOpenBudget(groups) {
   });
 }
 
-// The line beside the pickers: how many offerings there are, or how many fit.
-function statusText({ total, landlords, active, fits }) {
-  if (!active) {
-    const count = total === 1 ? "1 lease option" : `${total} lease options`;
-    return landlords > 1 ? `${count} from ${landlords} landlords` : count;
-  }
-  if (fits === 0) return total === 1 ? "This option doesn't fit your dates" : `None of ${total} fit your dates`;
-  if (fits === total) return total === 1 ? "Fits your dates" : `All ${total} fit your dates`;
-  return `${fits} of ${total} fit your dates`;
-}
-
-function LeaseList({ leases, onContact, preview }) {
-  const shared = useLeasePreferences();
-  /*
-   * A landlord previewing their draft as a student can try the pickers, but
-   * nothing is saved: it is not their search.
-   */
-  const [previewPrefs, setPreviewPrefs] = useState(shared.prefs);
-  const savedPrefs = preview ? previewPrefs : shared.prefs;
-  // Only what this unit offers: a saved month or length it lacks reads "Any".
-  const prefs = useMemo(() => prefsForUnit(savedPrefs, leases), [savedPrefs, leases]);
-  const setPrefs = preview ? (patch) => setPreviewPrefs((p) => ({ ...p, ...patch })) : shared.setPrefs;
-  const clear = preview ? () => setPreviewPrefs({ moveIn: null, months: null }) : shared.clear;
-
+function LeaseList({ leases, onContact, prefs }) {
   const [showMisses, setShowMisses] = useState(false);
   // A different unit, or new dates, is a different list: fold the rest again.
   useEffect(() => setShowMisses(false), [leases, prefs.moveIn, prefs.months]);
-
-  // A brief "Saved" after a change sticks to the account.
-  const [savedFlash, setSavedFlash] = useState(false);
-  useEffect(() => {
-    if (preview || shared.saveState !== "saved") return;
-    setSavedFlash(true);
-    const t = setTimeout(() => setSavedFlash(false), 2500);
-    return () => clearTimeout(t);
-  }, [shared.saveState, shared.prefs, preview]);
 
   const { active, fits, misses, note } = useMemo(
     () => partitionLeases(leases, prefs),
@@ -257,23 +247,12 @@ function LeaseList({ leases, onContact, preview }) {
   );
   const fitGroups = useMemo(() => withOpenBudget(groupByLandlord(fits)), [fits]);
   const missGroups = useMemo(() => withOpenBudget(groupByLandlord(misses)), [misses]);
-  const landlords = useMemo(() => groupByLandlord(leases).length, [leases]);
 
   // Nothing fits: the closest options are the answer, so they show unasked.
   const missesOpen = !fits.length || showMisses;
 
   return (
-    <div>
-      <div className="flex flex-col gap-2 px-4 pt-3 text-xs text-gray-500 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <p className="pt-1">
-          <span className={active ? "font-medium text-gray-700" : ""}>
-            {statusText({ total: leases.length, landlords, active, fits: fits.length })}
-          </span>
-          {savedFlash && <span className="ml-2 text-green-600">Saved to your account</span>}
-        </p>
-        <LeasePrefsControls value={prefs} onChange={setPrefs} onClear={clear} leases={leases} />
-      </div>
-
+    <div className="pt-1">
       {fits.length > 0 && (
         <GroupList
           groups={fitGroups}
