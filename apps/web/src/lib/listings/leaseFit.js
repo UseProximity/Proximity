@@ -103,6 +103,44 @@ export function leaseMonthOptions(saved = null) {
   return out;
 }
 
+/*
+ * The pickers on one unit offer only what that unit has: the months its leases
+ * start in and the lengths they are written for (Wyatt, 2026-10-27). A start
+ * already past counts as this month.
+ */
+export function unitMoveInOptions(leases, today = todayISO()) {
+  const thisMonth = `${today.slice(0, 7)}-01`;
+  const months = new Set();
+  for (const l of leases ?? []) {
+    if (!l?.availableFrom) continue;
+    const m = normalizeMoveIn(String(l.availableFrom).slice(0, 7));
+    if (m) months.add(m < thisMonth ? thisMonth : m);
+  }
+  return [...months].sort().map((value) => ({ value, label: moveInLabel(value) }));
+}
+
+export function unitLeaseMonthOptions(leases) {
+  const hint = { 10: " (academic year)", 12: " (full year)" };
+  return [...new Set((leases ?? []).flatMap(termsOf))]
+    .sort((a, b) => a - b)
+    .map((n) => ({ value: n, label: `${monthsLabel(n)}${hint[n] ?? ""}` }));
+}
+
+/*
+ * The student's saved answers as they apply to one unit. A saved month or
+ * length the unit does not offer is dropped for that unit, so its picker reads
+ * "Any" and the list is not narrowed on that axis (Wyatt, 2026-10-27). The
+ * saved value itself is untouched and still applies on units that offer it.
+ */
+export function prefsForUnit(prefs, leases, today = todayISO()) {
+  const moveIn = normalizeMoveIn(prefs?.moveIn);
+  const months = normalizeMonths(prefs?.months);
+  return {
+    moveIn: moveIn && unitMoveInOptions(leases, today).some((o) => o.value === moveIn) ? moveIn : null,
+    months: months && unitLeaseMonthOptions(leases).some((o) => o.value === months) ? months : null,
+  };
+}
+
 export const prefsActive = (prefs) => !!(normalizeMoveIn(prefs?.moveIn) || normalizeMonths(prefs?.months));
 
 const termsOf = (lease) =>

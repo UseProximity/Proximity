@@ -28,7 +28,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
-import { missReason, partitionLeases } from "@/lib/listings/leaseFit";
+import { missReason, partitionLeases, prefsForUnit } from "@/lib/listings/leaseFit";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 
 const money = (n) =>
@@ -232,7 +232,9 @@ function LeaseList({ leases, onContact, preview }) {
    * nothing is saved: it is not their search.
    */
   const [previewPrefs, setPreviewPrefs] = useState(shared.prefs);
-  const prefs = preview ? previewPrefs : shared.prefs;
+  const savedPrefs = preview ? previewPrefs : shared.prefs;
+  // Only what this unit offers: a saved month or length it lacks reads "Any".
+  const prefs = useMemo(() => prefsForUnit(savedPrefs, leases), [savedPrefs, leases]);
   const setPrefs = preview ? (patch) => setPreviewPrefs((p) => ({ ...p, ...patch })) : shared.setPrefs;
   const clear = preview ? () => setPreviewPrefs({ moveIn: null, months: null }) : shared.clear;
 
@@ -269,7 +271,7 @@ function LeaseList({ leases, onContact, preview }) {
           </span>
           {savedFlash && <span className="ml-2 text-green-600">Saved to your account</span>}
         </p>
-        <LeasePrefsControls value={prefs} onChange={setPrefs} onClear={clear} />
+        <LeasePrefsControls value={prefs} onChange={setPrefs} onClear={clear} leases={leases} />
       </div>
 
       {fits.length > 0 && (
@@ -445,16 +447,15 @@ function LandlordCard({ group, onContact, summaryNoun = null, prefs = null, show
       </div>
 
       {open && (
-        <ul
-          className={`mt-3 divide-y divide-gray-100 ${
-            single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
-          }`}
-        >
+        /*
+         * Several options read exactly like one: plain rows under the landlord,
+         * split by a hairline, no box around them (Wyatt, 2026-10-27).
+         */
+        <ul className="mt-2 divide-y divide-gray-100">
           {visible.map((lease) => (
             <LeaseRow
               key={lease.id}
               lease={lease}
-              inset={!single}
               reason={showReasons && prefs ? missReason(lease, prefs) : null}
             />
           ))}
@@ -494,7 +495,7 @@ function LandlordCard({ group, onContact, summaryNoun = null, prefs = null, show
  * they furnish it) lives behind the chevron. Who is offering it is said once,
  * on the card above, and so is how to reach them.
  */
-function LeaseRow({ lease, inset = false, reason = null }) {
+function LeaseRow({ lease, reason = null }) {
   const [open, setOpen] = useState(false);
   const details = [
     lease.furnished == null
@@ -504,7 +505,7 @@ function LeaseRow({ lease, inset = false, reason = null }) {
   const hasDetails = !!lease.description || details.length > 0;
 
   return (
-    <li className={inset ? "px-3 py-2.5" : "py-1"}>
+    <li className="py-2">
       <div className="flex items-center gap-3">
         <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <div className="min-w-0">

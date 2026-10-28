@@ -9,10 +9,21 @@
  * (the lease options save to the account straight away; the profile form waits
  * for its Save button). The option lists and the "has passed" rule come from
  * lib/listings/leaseFit.js.
+ *
+ * Given `leases` (one unit's offerings), the choices are only the months and
+ * lengths that unit actually has, and the caller passes values already
+ * filtered to them (prefsForUnit). Without them (the profile form) every month
+ * for two years and every length up to 24 is offered.
  */
 
 import { useMemo } from "react";
-import { leaseMonthOptions, moveInHasPassed, moveInOptions } from "@/lib/listings/leaseFit";
+import {
+  leaseMonthOptions,
+  moveInHasPassed,
+  moveInOptions,
+  unitLeaseMonthOptions,
+  unitMoveInOptions,
+} from "@/lib/listings/leaseFit";
 
 const SELECT = {
   compact:
@@ -26,11 +37,18 @@ export default function LeasePrefsControls({
   onClear,
   variant = "compact",
   idPrefix = "lease-prefs",
+  leases = null,
 }) {
   const moveIn = value?.moveIn ?? "";
   const months = value?.months ?? "";
-  const monthOpts = useMemo(() => moveInOptions(undefined, moveIn || null), [moveIn]);
-  const lengthOpts = useMemo(() => leaseMonthOptions(months || null), [months]);
+  const monthOpts = useMemo(
+    () => (leases ? unitMoveInOptions(leases) : moveInOptions(undefined, moveIn || null)),
+    [leases, moveIn]
+  );
+  const lengthOpts = useMemo(
+    () => (leases ? unitLeaseMonthOptions(leases) : leaseMonthOptions(months || null)),
+    [leases, months]
+  );
   const passed = moveInHasPassed(moveIn);
   const hasAny = !!(moveIn || months);
   const compact = variant === "compact";

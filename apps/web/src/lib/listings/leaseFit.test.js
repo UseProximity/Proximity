@@ -118,3 +118,18 @@ test("pickers offer 24 months ahead and keep a passed or long saved value", () =
   assert.equal(leaseMonthOptions().length, 24);
   assert.equal(leaseMonthOptions(36).at(-1).value, 36);
 });
+
+test("a unit's pickers offer only the months and lengths it has", async () => {
+  const { unitMoveInOptions, unitLeaseMonthOptions, prefsForUnit } = await import("./leaseFit.js");
+  const leases = [
+    lease("a", 1, "2026-04-01", [12]),
+    lease("b", 1, "2026-12-05", [10, 12]),
+    lease("c", 1, "2026-12-20", [15]),
+    lease("d", 1, null, []),
+  ];
+  assert.deepEqual(unitMoveInOptions(leases, TODAY).map((o) => o.label), ["Oct 2026", "Dec 2026"]);
+  assert.deepEqual(unitLeaseMonthOptions(leases).map((o) => o.value), [10, 12, 15]);
+  // A saved value this unit lacks is left unselected; one it has is kept.
+  assert.deepEqual(prefsForUnit({ moveIn: "2027-08-01", months: 12 }, leases, TODAY), { moveIn: null, months: 12 });
+  assert.deepEqual(prefsForUnit({ moveIn: "2026-12-01", months: 24 }, leases, TODAY), { moveIn: "2026-12-01", months: null });
+});
