@@ -273,7 +273,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   const sideOf = (i) => (i.kind === "agent" ? (i.sender === "landlord" ? "me" : "proxy") : i.kind === "reply" ? (i.sender === "landlord" ? "me" : "proxy") : "proxy");
 
   return (
-    <div className={`flex flex-col gap-3 ${fill ? "h-full min-h-0" : ""}`}>
+    <div className={`flex flex-col gap-3 ${fill ? "h-full min-h-0 flex-1" : ""}`}>
       <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : maxHeight}`}>
         {!items.some((i) => i.kind === "agent") && <div className="mb-3"><ProxyBubble>{INTRO}</ProxyBubble></div>}
         {items.map((i, n) => {

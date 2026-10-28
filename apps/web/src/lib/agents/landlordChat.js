@@ -20,7 +20,6 @@ import { listLandlordTours } from "./tours";
 import { parseStructured, HAIKU } from "./model";
 import { answerQuestion } from "./questions";
 import { agentChat, confirmProposal } from "./landlordAgent";
-import { getOwnedListings } from "@/lib/listings/ownership";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
 const OPEN_TOURS = ["requested", "proposed", "messaging"];
@@ -33,7 +32,7 @@ function leaseLabel(ul) {
 }
 
 /* Listings this landlord has Proxy activity on, with what is waiting. */
-export async function landlordProxyOverview(userId, { all = false } = {}) {
+export async function landlordProxyOverview(userId, { studentsOnly = false } = {}) {
   const [{ data: qs, error }, tours, { data: notes }] = await Promise.all([
     supabase.from("listing_questions").select("listing_id, status, pending_clarifier, question, created_at, last_activity_at, listings!listing_id(title, address, listing_images(url, sort_order))")
       .eq("owner_id", userId).in("status", ["open", "answered"]).order("last_activity_at", { ascending: false }).limit(500),
@@ -46,7 +45,7 @@ export async function landlordProxyOverview(userId, { all = false } = {}) {
   const touch = (listingId, title, address, images, at, text) => {
     if (!rows.has(listingId)) {
       const img = (images ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.url ?? null;
-      rows.set(listingId, { listingId, title: title || address || "Listing", address: address ?? null, image: img, openQuestions: 0, openTours: 0, lastAt: at, lastText: text });
+      rows.set(listingId, { listingId, title: title || address || "Listing", address: address ?? null, image: img, openQuestions: 0, openTours: 0, fromStudents: false, lastAt: at, lastText: text });
     }
     const r = rows.get(listingId);
     if (at > r.lastAt) { r.lastAt = at; r.lastText = text; }
@@ -54,24 +53,21 @@ export async function landlordProxyOverview(userId, { all = false } = {}) {
   };
   for (const q of qs ?? []) {
     const r = touch(q.listing_id, q.listings?.title, q.listings?.address, q.listings?.listing_images, q.last_activity_at ?? q.created_at, `A student asked: ${q.question}`);
+    r.fromStudents = true;
     if (q.status === "open" && !q.pending_clarifier) r.openQuestions++;
   }
   for (const t of tours) {
     const r = touch(t.listingId, t.listingTitle, t.listingAddress, null, t.lastActivityAt ?? t.createdAt, `${t.studentName} wants to tour`);
+    r.fromStudents = true;
     if (t.status === "requested") r.openTours++;
   }
   for (const m of notes ?? []) {
     touch(m.listing_id, m.listings?.title, m.listings?.address, m.listings?.listing_images, m.created_at, m.sender === "landlord" ? `You: ${m.body}` : m.body);
   }
-  // The Questions tab lists every listing, so the landlord can talk to any agent.
-  if (all) {
-    const missing = [...(await getOwnedListings(userId)).keys()].filter((id) => !rows.has(id));
-    if (missing.length) {
-      const { data: ls } = await supabase.from("listings").select("id, title, address, created_at, listing_images(url, sort_order)").in("id", missing);
-      for (const l of ls ?? []) touch(l.id, l.title, l.address, l.listing_images, "", "");
-    }
-  }
-  return [...rows.values()].sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1));
+  // The Questions tab shows only listings students have asked about or
+  // asked to tour (Wyatt, 2026-10-28). A listing's other talk with its agent
+  // stays in its Agent tab and in Messages.
+  return [...rows.values()].filter((r) => !studentsOnly || r.fromStudents).sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1));
 }
 
 /* What needs the landlord: open questions not waiting on a student, plus tour requests. */

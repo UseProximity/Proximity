@@ -6,7 +6,8 @@
  *                                               with their exchange, and tour
  *                                               requests, oldest first
  *
- * GET /api/landlord/proxy-chat?all=1           every listing, for the
+ * GET /api/landlord/proxy-chat?questions=1     listings students asked about
+ *                                               or asked to tour, for the
  *                                               Questions tab
  * POST /api/landlord/proxy-chat                one box for everything:
  *   { listingId, action: "route", text }       which open question, if any,
@@ -48,7 +49,7 @@ export async function GET(req) {
       if (!UUID.test(listingId)) return NextResponse.json({ error: "Bad listing" }, { status: 400 });
       return NextResponse.json(await landlordProxyTimeline(userId, listingId));
     }
-    const [listings, waiting] = await Promise.all([landlordProxyOverview(userId, { all: searchParams.get("all") === "1" }), landlordWaitingCount(userId)]);
+    const [listings, waiting] = await Promise.all([landlordProxyOverview(userId, { studentsOnly: searchParams.get("questions") === "1" }), landlordWaitingCount(userId)]);
     return NextResponse.json({ listings, waiting });
   } catch (err) {
     console.error("GET /api/landlord/proxy-chat failed:", err);

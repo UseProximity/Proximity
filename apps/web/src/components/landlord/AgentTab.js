@@ -319,8 +319,11 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <span>Open questions: <strong>{data.openQuestions}</strong></span>
       </div>
       <div className="grid gap-4 md:grid-cols-[1fr_260px]">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} maxHeight="max-h-[520px] min-h-[300px]" onChanged={load} />
+        {/* The chat takes the rest of the first screen, newest messages and
+            the input on its bottom edge in view; knowledge and history are
+            below it (Wyatt, 2026-10-28). */}
+        <div id="agent-chat-panel" className="flex h-[70dvh] min-h-[420px] min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 md:h-[calc(100dvh-319px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-343px)]">
+          <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} fill onChanged={load} />
         </div>
         <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} onChanged={load} />
       </div>
