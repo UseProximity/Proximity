@@ -48,7 +48,8 @@ export default function ModalListing({ isOpen, onClose, header = null, children 
           ×
         </button>
         {header}
-        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
+        {/* No bottom padding under a Proxy chat, whose input bar is pinned to the bottom. */}
+        <div className="w-full px-6 pb-6 has-[.listing-proxy-contact]:pb-0 overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

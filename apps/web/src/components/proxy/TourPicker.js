@@ -60,10 +60,11 @@ export default function TourPicker({ tour, initial = null, onAdd, onCancelTour, 
         <button type="button" onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-700"><X className="h-4 w-4" /></button>
       </div>
       {loading ? (
-        <div className="h-40 animate-pulse rounded-lg bg-gray-100" />
+        <div className="h-32 animate-pulse rounded-lg bg-gray-100" />
       ) : (
         <>
-          <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} />
+          {/* Short enough to stay clear of the listing's tab strip; the hours scroll under the dates. */}
+          <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} scrollClass="max-h-[min(34vh,260px)] overflow-y-auto" />
           <p className="mt-1 text-[11px] text-gray-500">Drag across the hours you can make it ({zoneAbbrev()}).</p>
         </>
       )}

@@ -1268,13 +1268,14 @@ export async function sendProxyLandlordQuestionEmail({
     : studentReply
       ? `The student replied about ${listingLabel}`
       : `A student has a question about ${listingLabel}`;
-  // Reads like a message from Proxy in a chat, not a form (Wyatt, 2026-10-27).
-  const said = reminderDay
-    ? `Just checking in: a student asked this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting on you.`
+  // One line from Proxy, the question in a box, then how to answer (Wyatt, 2026-10-28).
+  const hello = `${first ? `Hi ${escapeHtml(first)}, it's` : "It's"} Proxy, the assistant on ${escapeHtml(listingLabel)}.`;
+  const lead = reminderDay
+    ? `A student asked me this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting on you:`
     : studentReply
-      ? "The student got back to you:"
+      ? "The student got back to you about this question:"
       : "A student asked me something I don't know yet:";
-  const bubble = (text, mine = false) => `<div style="margin:6px 0;padding:10px 14px;border-radius:16px;${mine ? "background:#ef4444;color:#fff;margin-left:40px" : "background:#f3f4f6;color:#111;margin-right:40px"};white-space:pre-wrap;line-height:1.45">${escapeHtml(text)}</div>`;
+  const box = (text, label = null) => `<div style="margin:12px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;white-space:pre-wrap;line-height:1.45">${label ? `<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(label)}</div>` : ""}${escapeHtml(text)}</div>`;
   await sendMailSafe(transporter, {
     logAs: { kind },
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
@@ -1283,14 +1284,14 @@ export async function sendProxyLandlordQuestionEmail({
     subject,
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
-        <p style="margin:0 0 10px">${first ? `Hi ${escapeHtml(first)}, it's Proxy, the assistant on ${escapeHtml(listingLabel)}.` : `It's Proxy, the assistant on ${escapeHtml(listingLabel)}.`}</p>
-        ${bubble(said)}
-        ${bubble(`${question}${context ? `\n(${context})` : ""}`)}
-        ${studentReply ? bubble(studentReply) : ""}
-        <p style="margin:14px 0 6px">${canReply ? "<strong>Just reply to this email</strong> and I'll pass it on. If you need a detail from them first, ask it in your reply and I'll check with them. A flyer or fee sheet attached works too." : "Answer in Proximity and I'll pass it on."}</p>
-        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">${hasAccount ? "Open the chat in Proximity" : "Create an account to answer"}</a>
-        ${hasAccount ? "" : `<p style="color:#666;font-size:12px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Sign up with it to see and answer questions from students.</p>`}
-        <p style="color:#888;font-size:12px">Your answer is saved so you aren't asked again. Phone numbers, emails and links are removed before I pass anything on.</p>
+        <p style="margin:0">${hello} ${lead}</p>
+        ${box(`${question}${context ? `\n(${context})` : ""}`)}
+        ${studentReply ? box(studentReply, "Their reply") : ""}
+        ${hasAccount
+          ? `<p style="margin:14px 0 6px">${canReply ? "<strong>Reply to this email</strong> with your answer, or answer in the app. Either way I'll save it and pass it on to the student. If you need a detail from them first, just ask it and I'll check with them." : "Answer in the app and I'll save it and pass it on to the student."}</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Answer in the app</a>`
+          : `<p style="margin:14px 0 6px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Create an account with it to answer students' questions.</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Create an account to answer</a>`}
         ${emailFooter({ reason: "You are receiving this because you are the contact for a listing on Proximity." })}
       </div>`,
   });

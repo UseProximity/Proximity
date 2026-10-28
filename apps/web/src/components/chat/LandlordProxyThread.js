@@ -2,8 +2,9 @@
 
 /*
  * A landlord's Proxy chat for one listing, inside the Messages overlay
- * (Wyatt, 2026-10-27, round 6): the listing's questions and tour requests,
- * answered in one box. Same chat as the dashboard's Questions tab.
+ * (Wyatt, 2026-10-27, round 6): the listing's questions, tour requests and
+ * the landlord's talk with its agent, in one box pinned to the bottom. Same
+ * chat as the dashboard's Questions and Agent tabs.
  */
 import Link from "next/link";
 import ChatAvatar from "@/components/chat/ChatAvatar";
@@ -28,8 +29,8 @@ export default function LandlordProxyThread({ thread, onBack }) {
           {address && <p className="truncate text-xs text-gray-400">{address}</p>}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {thread?.listingId && <LandlordProxyChat listingId={thread.listingId} maxHeight="max-h-[52vh]" onChanged={() => refreshThreads().catch(() => {})} />}
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        {thread?.listingId && <LandlordProxyChat listingId={thread.listingId} fill onChanged={() => refreshThreads().catch(() => {})} />}
       </div>
     </div>
   );
