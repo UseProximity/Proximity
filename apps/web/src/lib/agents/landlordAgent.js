@@ -48,6 +48,8 @@ function sourceLabel(s) {
     case "pms": return "Property management system";
     case "admin": return `Proximity team: ${s.label ?? "curation"}`;
     case "chat_backfill": return "An earlier conversation";
+    case "description": return "Your listing description";
+    case "landlord_edit": return s.label ?? "Updated by you";
     default: return s.label ?? s.kind;
   }
 }
@@ -80,6 +82,8 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
       id: f.id, key: f.field_key, summary: f.summary, value: f.value, scope: { level: f.scope_level, label: scopeLabel(f) },
       source: sourceLabel(s), sourceKind: s?.kind ?? "site_data", sourceUrl: s?.url ?? null, stale: s?.last_status === "stale",
       landlordSet: f.landlord_set, confidence: f.confidence, updatedAt: f.observed_at, validUntil: f.valid_until,
+      // Who may edit or delete it: the property owner, or the owner of the lease it is about.
+      canEdit: owner || isAdmin || (f.scope_level === "lease" && myLeases.has(f.scope_id)) || (f.scope_level === "owner" && f.scope_id === userId),
     });
   }
 
@@ -401,4 +405,49 @@ export async function revertEvent({ listingId, userId, isAdmin = false, eventId 
   }
   await supabase.from("listing_fact_events").update({ status: "reverted", decided_by: userId, decided_at: new Date().toISOString() }).eq("id", eventId);
   return { ok: true };
+}
+
+/*
+ * Edit or delete one fact from the Agent tab's knowledge list (Wyatt,
+ * 2026-10-27). An edit rewrites the fact as the landlord's, with the source
+ * "Updated by you on Oct 28"; a delete retires it. Both are in the history
+ * and can be reverted.
+ */
+export async function editFact({ listingId, userId, isAdmin = false, factId, summary }) {
+  const text = String(summary ?? "").trim().slice(0, 600);
+  if (!text) return { error: "Write what it should say.", status: 400 };
+  const fact = await ownFact({ listingId, userId, isAdmin, factId });
+  if (fact.error) return fact;
+  const flags = fairHousingFlags(text);
+  if (flags.length && !isAdmin) {
+    await recordEvent({ listingId, cause: "landlord_edit", status: "proposed", newValue: { factId, summary: text }, actorId: userId, detail: { adminReview: true, summary: text.slice(0, 200), flags } });
+    return { held: true, reason: `Mentions ${flags.join(", ")}: sent to the Proximity team to review.` };
+  }
+  const label = `Updated by you on ${shortDate(new Date())}`;
+  const source = await findOrCreateSource({ listingId, kind: "landlord_edit", userId, label });
+  const r = await setFact({
+    listingId, section: fact.section, fieldKey: fact.field_key, value: { ...(fact.value ?? {}), text }, summary: text,
+    scopeLevel: fact.scope_level, scopeId: fact.scope_id, sourceId: source.id, sourceRef: `edit:${source.id}`,
+    landlordSet: true, setBy: userId, actorId: userId, cause: "landlord_edit", validFrom: fact.valid_from, validUntil: fact.valid_until,
+  });
+  return { ok: true, changed: r.changed };
+}
+
+export async function deleteFact({ listingId, userId, isAdmin = false, factId }) {
+  const fact = await ownFact({ listingId, userId, isAdmin, factId });
+  if (fact.error) return fact;
+  const { retireFact } = await import("./store");
+  await retireFact({ factId: fact.id, cause: "landlord_edit", actorId: userId, detail: { summary: `Deleted: ${fact.summary}`, oldSummary: fact.summary } });
+  return { ok: true };
+}
+
+async function ownFact({ listingId, userId, isAdmin, factId }) {
+  const { data: fact } = await supabase.from("listing_facts").select("*").eq("id", factId).eq("listing_id", listingId).eq("is_current", true).maybeSingle();
+  if (!fact) return { error: "That fact is gone or was changed already.", status: 404 };
+  if (fact.section === "core") return { error: "Change displayed details in the Listing tab or by telling the agent.", status: 400 };
+  if (isAdmin) return fact;
+  if (await isPropertyOwner(userId, listingId)) return fact;
+  if (fact.scope_level === "lease" && (await canManageLease(userId, fact.scope_id))?.ok) return fact;
+  if (fact.scope_level === "owner" && fact.scope_id === userId) return fact;
+  return { error: "Only the property owner can change this.", status: 403 };
 }

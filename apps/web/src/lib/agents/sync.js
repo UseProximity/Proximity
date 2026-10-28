@@ -111,9 +111,24 @@ export async function runSyncJob(job, { onStep = () => {} } = {}) {
   return item;
 }
 
+/*
+ * How long this listing's syncs usually take, from its last few (Wyatt,
+ * 2026-10-27): the median of their run times, or a default for a first run.
+ */
+async function syncEstimate(listingId, thorough) {
+  const { data } = await supabase.from("listing_import_jobs").select("result").eq("listing_id", listingId).eq("status", "done")
+    .not("result->seconds", "is", null).order("created_at", { ascending: false }).limit(5);
+  const secs = (data ?? []).map((j) => Number(j.result?.seconds)).filter((n) => n > 0).sort((a, b) => a - b);
+  if (!secs.length) return thorough ? 300 : 120;
+  return secs[Math.floor(secs.length / 2)];
+}
+
 export async function agentSyncStatus(listingId) {
   const [agent, m, job] = await Promise.all([getAgent(listingId), monitorFor(listingId), openSyncJob(listingId)]);
+  const { data: running } = job ? await supabase.from("listing_import_jobs").select("id, status, step, progress, created_at, updated_at").eq("id", job.id).maybeSingle() : { data: null };
   return {
+    estimateSeconds: await syncEstimate(listingId, true),
+    job: running ? { id: running.id, status: running.status, step: running.step, progress: running.progress, startedAt: running.created_at } : null,
     agent, hasSource: !!m, sourceUrl: m?.source_url ?? null, lastStatus: m?.last_status ?? null, lastCheckedAt: m?.last_checked_at ?? null, nextCheckAt: m?.next_check_at ?? null,
     failures: m?.consecutive_failures ?? 0, running: job ? { id: job.id, status: job.status } : null,
     manualLeft: agent ? Math.max(0, MANUAL_SYNCS_PER_DAY - (agent.manual_sync_day === todayKey() ? agent.manual_syncs_today : 0)) : MANUAL_SYNCS_PER_DAY,

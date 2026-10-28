@@ -25,6 +25,7 @@
  */
 import { z } from "zod";
 import { parseStructured, SONNET } from "./model";
+import supabase from "@/lib/supabase";
 import { currentFacts, setFact, retireFact } from "./store";
 import { buildProxyContext } from "./context";
 import { SECTIONS, UNCLAIMED_OWNER_ID } from "./sections";
@@ -116,7 +117,7 @@ function knowledgeIndex(facts) {
 export async function synthesizeKnowledge({
   listingId, text, sourceKind, sourceId = null, sourceRef = null, cause,
   landlordSet = false, setBy = null, actorId = null, ownerDefault = null,
-  question = null, observedAt = null,
+  question = null, observedAt = null, noRetire = false,
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty" };
@@ -134,6 +135,7 @@ export async function synthesizeKnowledge({
     page: "a page on the landlord's website or a listing portal",
     chat_backfill: "a message the landlord sent a student in an older conversation",
     admin: "a note from the Proximity team",
+    description: "the listing's own description and lease notes, as written on Proximity",
   }[sourceKind] ?? sourceKind;
 
   const user = [
@@ -149,6 +151,8 @@ export async function synthesizeKnowledge({
   });
   if (!parsed) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "model gave no result" };
 
+  const { data: protectedRows } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
+  const protectedSources = new Set((protectedRows ?? []).map((r) => r.id));
   const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [] };
   for (const op of parsed.operations ?? []) {
     if (!SECTIONS.includes(op.section)) continue;
@@ -157,8 +161,13 @@ export async function synthesizeKnowledge({
     let { scopeLevel, scopeId } = scopeRef(op.scope, ctx, owners);
     if (scopeLevel === "property" && ownerDefault) { scopeLevel = "owner"; scopeId = ownerDefault; }
     if (op.op === "retire") {
+      if (noRetire) continue;
       const target = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeId ?? null))
         ?? facts.find((f) => f.field_key === key && f.section === op.section);
+      // What the landlord set, or what their description said, is only
+      // removed by the landlord (Wyatt, 2026-10-27).
+      const landlordCause = ["landlord_chat", "landlord_statement", "landlord_answer", "landlord_edit"].includes(cause);
+      if (target && !landlordCause && (target.landlord_set || protectedSources.has(target.source_id))) { result.held++; continue; }
       if (target) { await retireFact({ factId: target.id, cause, actorId, detail: { excerpt: op.excerpt, sourceRef } }); result.retired++; }
       continue;
     }
