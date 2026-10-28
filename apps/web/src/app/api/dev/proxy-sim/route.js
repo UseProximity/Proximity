@@ -10,7 +10,7 @@
  * @auth public
  */
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
@@ -58,7 +58,7 @@ export async function POST(req) {
       // The landlord's side of a tour request, as its landlord.
       const { data: t } = await supabase.from("tour_requests").select("landlord_id").eq("id", body.tourId).maybeSingle();
       if (!t) return NextResponse.json({ error: "no such tour" }, { status: 404 });
-      return NextResponse.json(await landlordAct({ tourId: body.tourId, landlordId: t.landlord_id, action: body.tourAction, slot: body.slot ?? null, slots: body.slots ?? [] }));
+      return NextResponse.json(await landlordAct({ tourId: body.tourId, landlordId: t.landlord_id, action: body.tourAction, day: body.day ?? null, time: body.time ?? null, body: body.body ?? "" }));
     }
     if (body.action === "backfill") {
       const { runBackfill } = await import("@/lib/agents/backfill");
@@ -86,6 +86,12 @@ export async function POST(req) {
       if (!m) return NextResponse.json({ error: "no monitor for this listing" }, { status: 404 });
       const item = await syncMonitor(m, { force: body.force !== false, autoApply: body.propose ? false : null, email: false });
       return NextResponse.json({ ...item, applied: item.applied.map((c) => `${c.kind} ${c.field ?? ""} ${c.note ?? ""}`), held: item.held.map((c) => `${c.kind} ${c.field ?? ""} ${c.note ?? ""}`) });
+    }
+    if (body.action === "readsite") {
+      // The whole-site read, inline, for one listing.
+      const { readWholeSite } = await import("@/lib/agents/pages");
+      const { data: l } = await supabase.from("listings").select("source_url").eq("id", body.listingId).maybeSingle();
+      return NextResponse.json(await readWholeSite({ listingId: body.listingId, startUrl: body.url ?? l?.source_url, force: !!body.force, cause: "sync" }));
     }
     if (body.action === "synthesize") {
       const source = await findOrCreateSource({ listingId: body.listingId, kind: "admin", label: `dev sim ${Date.now()}` });

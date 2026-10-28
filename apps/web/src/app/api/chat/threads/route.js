@@ -21,6 +21,7 @@ import {
 } from "@/lib/chat/safety";
 import { annotateNoReply } from "@/lib/chat/followups";
 import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
+import { landlordProxyOverview } from "@/lib/agents/landlordChat";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -54,7 +55,15 @@ export async function GET(req) {
     // overlay. They never fail the inbox.
     await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
     const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
-    return NextResponse.json([...direct, ...proxy]);
+    // A landlord's Proxy chats, one per listing (questions and tour requests).
+    const asLandlord = await landlordProxyOverview(authUser.id).catch((err) => { console.error("GET /api/chat/threads landlord proxy rows:", err?.message ?? err); return []; });
+    const landlordRows = asLandlord.map((l) => ({
+      kind: "proxy_landlord", threadId: `lp-${l.listingId}`, listingId: l.listingId, listingTitle: l.title, listingAddress: l.address, listingImage: l.image,
+      listings: [], listingCount: 1, isInterestedUser: false, otherUserId: null, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
+      lastMessageBody: l.lastText, lastMessageType: "text", lastMessageAt: l.lastAt, lastMessageMine: false, updatedAt: l.lastAt,
+      unreadCount: l.openQuestions + l.openTours, hasUnread: l.openQuestions + l.openTours > 0,
+    }));
+    return NextResponse.json([...direct, ...proxy, ...landlordRows]);
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

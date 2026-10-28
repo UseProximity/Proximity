@@ -14,6 +14,7 @@ import { useMessages } from "@/context/MessagesContext";
 import ChatThreadList from "@/components/chat/ChatThreadList";
 import ChatTranscript from "@/components/chat/ChatTranscript";
 import ProxyThread from "@/components/chat/ProxyThread";
+import LandlordProxyThread from "@/components/chat/LandlordProxyThread";
 
 /**
  * @param {{ onBrowse?: () => void, className?: string }} [props]
@@ -36,8 +37,11 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
     () => threads.find((t) => t.threadId === activeThreadId) ?? null,
     [threads, activeThreadId]
   );
-  const direct = useMemo(() => threads.filter((t) => t.kind !== "proxy"), [threads]);
-  const proxy = useMemo(() => threads.filter((t) => t.kind === "proxy"), [threads]);
+  const isProxy = (t) => String(t.kind ?? "").startsWith("proxy");
+  const direct = useMemo(() => threads.filter((t) => !isProxy(t)), [threads]);
+  const proxy = useMemo(() => threads.filter(isProxy), [threads]);
+  // A landlord's direct conversations are with students.
+  const directLabel = direct.length && direct.every((t) => t.isInterestedUser === false) ? "Students" : "Landlords";
   const showLandlords = direct.length > 0;
   const [tab, setTab] = useState("landlords");
   // The Landlords tab exists only with a landlord conversation; an open
@@ -46,7 +50,7 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
     if (!showLandlords && tab === "landlords" && proxy.length > 0) setTab("proxy");
   }, [showLandlords, proxy.length, tab]);
   useEffect(() => {
-    if (activeThread) setTab(activeThread.kind === "proxy" ? "proxy" : "landlords");
+    if (activeThread) setTab(isProxy(activeThread) ? "proxy" : "landlords");
   }, [activeThread]);
   const shownThreads = tab === "proxy" ? proxy : direct;
   const unreadIn = (list) => list.reduce((n, t) => n + (typeof t.unreadCount === "number" ? t.unreadCount : t.hasUnread ? 1 : 0), 0);
@@ -91,7 +95,7 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
   );
   const tabs = (showLandlords || proxy.length > 0) ? (
     <div className="flex border-b border-gray-100">
-      {showLandlords && tabButton("landlords", "Landlords", unreadIn(direct))}
+      {showLandlords && tabButton("landlords", directLabel, unreadIn(direct))}
       {tabButton("proxy", "Proxy", unreadIn(proxy))}
     </div>
   ) : null;
@@ -112,7 +116,9 @@ export default function MessagesPanel({ onBrowse, className = "" }) {
   };
 
   const transcript = (onBack) =>
-    activeThread?.kind === "proxy" ? (
+    activeThread?.kind === "proxy_landlord" ? (
+      <LandlordProxyThread thread={activeThread} onBack={onBack} />
+    ) : activeThread?.kind === "proxy" ? (
       <ProxyThread thread={activeThread} onBack={onBack} />
     ) : (
       <ChatTranscript

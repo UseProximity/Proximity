@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
@@ -66,6 +66,19 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   // Properties opens into Live and Drafts. Open by default: the drafts count is
   // the thing a landlord should not have to go looking for.
   const [propertiesOpen, setPropertiesOpen] = useState(true);
+  // What is waiting on the landlord from Proxy (open questions and tour
+  // requests), shown as a count on the Questions tab; refreshed every minute.
+  const [waiting, setWaiting] = useState({ questions: 0, tours: 0 });
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      fetch(`/api/landlord/proxy-chat${qs}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!cancelled && d?.waiting) setWaiting(d.waiting); }).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [viewAsId, activeView]);
   const listings = user?.listings ?? [];
   const draftCount =
     listings.filter((l) => l.isDraft).length +
@@ -373,6 +386,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   >
                     <MessageCircleQuestion className="h-4 w-4" />
                     Questions
+                    {waiting.questions > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting.questions}</span>
+                    )}
                   </button>
                   <button
                     onClick={() => handleNavigation("tours")}
@@ -384,6 +400,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   >
                     <CalendarDays className="h-4 w-4" />
                     Tours
+                    {waiting.tours > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting.tours}</span>
+                    )}
                   </button>
                   {isLandlord && (
                   <button

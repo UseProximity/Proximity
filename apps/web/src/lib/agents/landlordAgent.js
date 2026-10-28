@@ -20,7 +20,8 @@
  * property-level things, every owner their own leases, and a request in
  * plain language cannot widen that. An owner who claimed the listing in the
  * last 14 days, or a change that trips the fair-housing screen, goes to
- * admin instead of being applied.
+ * admin instead of being applied. (The 14-day new-owner hold was dropped
+ * on 2026-10-27; only the fair-housing screen holds a change now.)
  */
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
@@ -29,7 +30,7 @@ import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
 import { currentFacts, listSources, factHistory, setFact, recordEvent, findOrCreateSource } from "./store";
 import { synthesizeKnowledge } from "./synthesize";
-import { applyCoreChange, recentlyClaimed, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./coreWrites";
+import { applyCoreChange, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./coreWrites";
 import { fairHousingFlags } from "./compliance";
 import { agentSyncStatus } from "./sync";
 import { shortDate, UNCLAIMED_OWNER_ID } from "./sections";
@@ -47,6 +48,8 @@ function sourceLabel(s) {
     case "pms": return "Property management system";
     case "admin": return `Proximity team: ${s.label ?? "curation"}`;
     case "chat_backfill": return "An earlier conversation";
+    case "description": return "Your listing description";
+    case "landlord_edit": return s.label ?? "Updated by you";
     default: return s.label ?? s.kind;
   }
 }
@@ -79,6 +82,8 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
       id: f.id, key: f.field_key, summary: f.summary, value: f.value, scope: { level: f.scope_level, label: scopeLabel(f) },
       source: sourceLabel(s), sourceKind: s?.kind ?? "site_data", sourceUrl: s?.url ?? null, stale: s?.last_status === "stale",
       landlordSet: f.landlord_set, confidence: f.confidence, updatedAt: f.observed_at, validUntil: f.valid_until,
+      // Who may edit or delete it: the property owner, or the owner of the lease it is about.
+      canEdit: owner || isAdmin || (f.scope_level === "lease" && myLeases.has(f.scope_id)) || (f.scope_level === "owner" && f.scope_id === userId),
     });
   }
 
@@ -142,7 +147,8 @@ export async function tellAgent({ listingId, userId, isAdmin = false, text }) {
   const body = String(text ?? "").trim().slice(0, 4000);
   if (!body) return { error: "Say something first." };
   const flags = fairHousingFlags(body);
-  const recent = !isAdmin && (await recentlyClaimed(userId, listingId));
+  // No new-owner hold on agent edits (Wyatt, 2026-10-27); the fair-housing screen stays.
+  const recent = false;
   if (flags.length || recent) {
     await recordEvent({ listingId, cause: "landlord_chat", status: "proposed", newValue: { text: body }, actorId: userId, detail: { adminReview: true, summary: body.slice(0, 200), flags, recentClaim: recent } });
     return { held: true, reason: flags.length ? `This mentions ${flags.join(", ")}, which fair-housing law restricts. The Proximity team will review it.` : "Your account is new, so changes are reviewed by the Proximity team for the first two weeks." };
@@ -253,7 +259,8 @@ export async function agentChat({ listingId, userId, isAdmin = false, message, h
 
 export async function confirmProposal({ listingId, userId, isAdmin = false, proposal }) {
   const ctx = await buildProxyContext(listingId);
-  const recent = !isAdmin && (await recentlyClaimed(userId, listingId));
+  // No new-owner hold on agent edits (Wyatt, 2026-10-27); the fair-housing screen stays.
+  const recent = false;
   const text = [...(proposal?.facts ?? []).map((f) => f.summary), ...(proposal?.coreChanges ?? []).map((c) => String(c.value))].join("\n");
   const flags = fairHousingFlags(text);
   const results = { applied: [], held: [], errors: [] };
@@ -398,4 +405,49 @@ export async function revertEvent({ listingId, userId, isAdmin = false, eventId 
   }
   await supabase.from("listing_fact_events").update({ status: "reverted", decided_by: userId, decided_at: new Date().toISOString() }).eq("id", eventId);
   return { ok: true };
+}
+
+/*
+ * Edit or delete one fact from the Agent tab's knowledge list (Wyatt,
+ * 2026-10-27). An edit rewrites the fact as the landlord's, with the source
+ * "Updated by you on Oct 28"; a delete retires it. Both are in the history
+ * and can be reverted.
+ */
+export async function editFact({ listingId, userId, isAdmin = false, factId, summary }) {
+  const text = String(summary ?? "").trim().slice(0, 600);
+  if (!text) return { error: "Write what it should say.", status: 400 };
+  const fact = await ownFact({ listingId, userId, isAdmin, factId });
+  if (fact.error) return fact;
+  const flags = fairHousingFlags(text);
+  if (flags.length && !isAdmin) {
+    await recordEvent({ listingId, cause: "landlord_edit", status: "proposed", newValue: { factId, summary: text }, actorId: userId, detail: { adminReview: true, summary: text.slice(0, 200), flags } });
+    return { held: true, reason: `Mentions ${flags.join(", ")}: sent to the Proximity team to review.` };
+  }
+  const label = `Updated by you on ${shortDate(new Date())}`;
+  const source = await findOrCreateSource({ listingId, kind: "landlord_edit", userId, label });
+  const r = await setFact({
+    listingId, section: fact.section, fieldKey: fact.field_key, value: { ...(fact.value ?? {}), text }, summary: text,
+    scopeLevel: fact.scope_level, scopeId: fact.scope_id, sourceId: source.id, sourceRef: `edit:${source.id}`,
+    landlordSet: true, setBy: userId, actorId: userId, cause: "landlord_edit", validFrom: fact.valid_from, validUntil: fact.valid_until,
+  });
+  return { ok: true, changed: r.changed };
+}
+
+export async function deleteFact({ listingId, userId, isAdmin = false, factId }) {
+  const fact = await ownFact({ listingId, userId, isAdmin, factId });
+  if (fact.error) return fact;
+  const { retireFact } = await import("./store");
+  await retireFact({ factId: fact.id, cause: "landlord_edit", actorId: userId, detail: { summary: `Deleted: ${fact.summary}`, oldSummary: fact.summary } });
+  return { ok: true };
+}
+
+async function ownFact({ listingId, userId, isAdmin, factId }) {
+  const { data: fact } = await supabase.from("listing_facts").select("*").eq("id", factId).eq("listing_id", listingId).eq("is_current", true).maybeSingle();
+  if (!fact) return { error: "That fact is gone or was changed already.", status: 404 };
+  if (fact.section === "core") return { error: "Change displayed details in the Listing tab or by telling the agent.", status: 400 };
+  if (isAdmin) return fact;
+  if (await isPropertyOwner(userId, listingId)) return fact;
+  if (fact.scope_level === "lease" && (await canManageLease(userId, fact.scope_id))?.ok) return fact;
+  if (fact.scope_level === "owner" && fact.scope_id === userId) return fact;
+  return { error: "Only the property owner can change this.", status: 403 };
 }

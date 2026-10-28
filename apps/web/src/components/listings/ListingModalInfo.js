@@ -38,7 +38,7 @@ import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
-import { ChevronLeft, ChevronRight} from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
@@ -2317,7 +2317,23 @@ export default function ListingModalInfo({
                   * see which unit the date actually applies to.
                   */}
               </div>
-              <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
+              <div className="shrink-0 w-full md:w-auto flex items-center gap-3 md:ml-auto">
+                {/* Ask Proxy (Wyatt, 2026-10-27): straight to the Contact tab with the cursor in the chat. */}
+                {(listing.agent?.live || preview) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("contact");
+                      setTimeout(() => {
+                        scrollIntoContainer(document.getElementById("listing-tabs"));
+                        window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
+                      }, 60);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    <Sparkles className="h-4 w-4" /> Ask Proxy
+                  </button>
+                )}
                 {/* Rating moved up from the removed stats bar. */}
                 {overallAvg ? (
                   <span className="inline-flex items-center gap-2">
@@ -2473,7 +2489,7 @@ export default function ListingModalInfo({
             {/* ── Sticky Tab Bar ── */}
             <div
               id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm ${(activeTab === "contact" && (listing.agent?.live || preview)) ? "mb-0" : "mb-6"} -mx-4 ${
                 compact ? "top-[52px]" : "top-0 px-4"
               }`}
             >
@@ -2558,8 +2574,8 @@ export default function ListingModalInfo({
               </nav>
             </div>
 
-            {/* ── Tab Content ── */}
-            <div className="bg-white rounded-xl shadow p-6">
+            {/* ── Tab Content ── (the Proxy chat sits straight under the tab line, full width, no card) */}
+            <div className={(activeTab === "contact" && (listing.agent?.live || preview)) ? "bg-white -mx-4 px-6 pt-5 pb-6" : "bg-white rounded-xl shadow p-6"}>
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (

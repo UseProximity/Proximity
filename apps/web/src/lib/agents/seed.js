@@ -10,6 +10,8 @@
  *   listing_concessions    -> specials.special.<id>, active and unexpired only
  *   listings.last_verified -> core.verified, so Proxy can say when the
  *                             displayed details were last checked
+ *   the description and lease notes -> facts read by the model, kept even
+ *                             when the text later changes (readDescriptions)
  *
  * Each row's last_verified_source becomes an 'admin' source (the team's hand
  * curation, with the note it left), so every seeded fact says where it came
@@ -132,8 +134,43 @@ export async function seedListing(listingId, { cause = "seed", actorId = null } 
     }));
   }
 
+  // The description and each lease's note become knowledge too (Wyatt,
+  // 2026-10-27). Read again only when the text changed (fingerprint on the
+  // source), and never retired by a change: what was said stays until the
+  // landlord deletes it.
+  try {
+    const desc = await readDescriptions({ listingId, cause, actorId });
+    counts.written = (counts.written ?? 0) + (desc.written ?? 0);
+  } catch (err) {
+    console.error("[agents] description read failed:", err?.message ?? err);
+  }
+
   await supabase.from("listing_agents").update({ seeded_at: new Date().toISOString() }).eq("listing_id", listingId);
   return counts;
+}
+
+async function readDescriptions({ listingId, cause, actorId }) {
+  const [{ data: l }, { data: units }] = await Promise.all([
+    supabase.from("listings").select("description").eq("id", listingId).maybeSingle(),
+    supabase.from("listing_units").select("name, unit_leases(description, deleted_at)").eq("listing_id", listingId).is("deleted_at", null),
+  ]);
+  const parts = [];
+  if (cleanText(l?.description ?? "")) parts.push(`Property description:\n${cleanText(l.description)}`);
+  for (const u of units ?? []) {
+    for (const ul of u.unit_leases ?? []) {
+      if (!ul.deleted_at && cleanText(ul.description ?? "")) parts.push(`Note on a listing for ${u.name || "a unit"}:\n${cleanText(ul.description)}`);
+    }
+  }
+  const text = parts.join("\n\n").slice(0, 12000);
+  if (!text) return { written: 0 };
+  const { createHash } = await import("crypto");
+  const fingerprint = createHash("sha256").update(text).digest("hex");
+  const source = await findOrCreateSource({ listingId, kind: "description", label: "Your listing description" });
+  if (source.last_fingerprint === fingerprint) return { written: 0, unchanged: true };
+  const { synthesizeKnowledge } = await import("./synthesize");
+  const r = await synthesizeKnowledge({ listingId, text, sourceKind: "description", sourceId: source.id, sourceRef: "description", cause, actorId, noRetire: true });
+  await supabase.from("listing_sources").update({ last_fingerprint: fingerprint, last_checked_at: new Date().toISOString(), last_status: "changed" }).eq("id", source.id);
+  return r;
 }
 
 /*

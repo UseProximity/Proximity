@@ -9,6 +9,7 @@ import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 import StudentTours from "@/components/proxy/StudentTours";
+import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
 
 function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -870,8 +871,9 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                     Congrats, you&apos;ve reached out to the leasing agent. Check your email and your Proximity messages for updates.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+                    {/* The same card as the main page and browse grid (Wyatt, 2026-10-27). */}
                     {contactedVisible.map((listing) => (
-                      <ListingCard key={listing._id} listing={listing} badge={<CheckBadge />} />
+                      <BrowseCard key={listing._id} listing={listing} session={session} onCardClick={(id) => router.push(`${window.location.pathname}?listing=${id}`)} />
                     ))}
                   </div>
                   {contactedPages > 1 && (

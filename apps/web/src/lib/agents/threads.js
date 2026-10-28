@@ -146,6 +146,8 @@ export function shapeMessage(m, { userId = null } = {}) {
     questionIds: m.metadata?.questionIds ?? [],
     questionId: m.metadata?.questionId ?? null,
     clarifier: !!m.metadata?.clarifier,
+    // A button under the message (a Proxy note pointing to the direct chat).
+    link: m.metadata?.link?.href && String(m.metadata.link.href).startsWith("/") ? { href: m.metadata.link.href, label: String(m.metadata.link.label ?? "Open").slice(0, 60) } : null,
   };
 }
 

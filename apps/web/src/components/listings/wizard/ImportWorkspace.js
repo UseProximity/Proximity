@@ -10,6 +10,7 @@ import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
+import ImportSources from "./ImportSources";
 import BackToTop from "@/components/ui/BackToTop";
 import useLeaveGuard, { sendWhileLeaving } from "@/lib/useLeaveGuard";
 
@@ -329,6 +330,8 @@ function ListingTab({ job, user, onPublished }) {
 
       {p.isDraft && <ImportGaps listing={p} />}
       {!p.isDraft && <Proposed listingId={p._id || p.id} proposed={data.proposed ?? []} flagged={data.flagged ?? []} onApplied={load} claimed={!!(job.target?.alreadyListed?.claimed || job.result?.tookOver)} />}
+
+      <ImportSources job={job} listingId={p._id || p.id} />
 
       <EditorOverview listing={p} canEdit={isPropertyOwner} onChanged={load} />
       <PropertyPhotoRow listing={p} isPropertyOwner={isPropertyOwner} onChanged={load} />

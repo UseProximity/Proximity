@@ -1,7 +1,7 @@
 /*
  * GET  /api/tours                 the signed-in student's tour requests
  *                                 (?listingId= narrows to the open one there)
- * POST /api/tours                 { listingId, leaseId?, slots, phone?, pattern?, proxyThreadId? }
+ * POST /api/tours                 { listingId, leaseId?, slots, proxyThreadId? }
  *                                 request a tour. Saves the pattern too when
  *                                 one is sent.
  *
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
-import { requestTour, listStudentTours, openTourFor, saveAvailability } from "@/lib/agents/tours";
+import { requestTour, listStudentTours, openTourFor } from "@/lib/agents/tours";
 import { agentsEnabled } from "@/lib/agents/flags";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,10 +37,9 @@ export async function POST(req) {
     let body;
     try { body = await req.json(); } catch { body = {}; }
     if (!UUID.test(body?.listingId ?? "")) return NextResponse.json({ error: "listingId is required" }, { status: 400 });
-    if (body.pattern && typeof body.pattern === "object") await saveAvailability(user.id, body.pattern);
     const result = await requestTour({
       listingId: body.listingId, leaseId: UUID.test(body?.leaseId ?? "") ? body.leaseId : null, studentId: user.id,
-      slots: body.slots, phone: body.phone ?? null, email: body.email ?? null, proxyThreadId: UUID.test(body?.proxyThreadId ?? "") ? body.proxyThreadId : null,
+      slots: body.slots, proxyThreadId: UUID.test(body?.proxyThreadId ?? "") ? body.proxyThreadId : null,
     });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json(result);

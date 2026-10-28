@@ -1,7 +1,9 @@
 /*
  * POST /api/landlord/tours/[tourId]
- *   { action: "confirm", slot }      confirm one of the student's times
- *   { action: "propose", slots }     propose other times
+ *   { action: "confirm", day, time }  confirm a start time ("HH:MM") on one of
+ *                                     the student's days, inside their window
+ *   { action: "message", body }       none of it works: write to the student
+ *                                     directly (opens the direct chat)
  *   { action: "cancel" }
  *
  * @auth landlord
@@ -22,7 +24,7 @@ export async function POST(req, { params }) {
     try { body = await req.json(); } catch { body = {}; }
     // A super "viewing as" a landlord acts as that landlord.
     const landlordId = resolveDashboardUserId(session, new URL(req.url).searchParams);
-    const result = await landlordAct({ tourId, landlordId, action: body?.action, slot: body?.slot ?? null, slots: body?.slots ?? [] });
+    const result = await landlordAct({ tourId, landlordId, action: body?.action, day: body?.day ?? null, time: body?.time ?? null, body: body?.body ?? "" });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json(result);
   } catch (err) {

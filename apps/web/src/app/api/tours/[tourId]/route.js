@@ -18,7 +18,7 @@ export async function POST(req, { params }) {
     const { tourId } = await params;
     let body;
     try { body = await req.json(); } catch { body = {}; }
-    const result = await studentAct({ tourId, studentId: user.id, action: body?.action, slot: body?.slot ?? null, slots: Array.isArray(body?.slots) ? body.slots : [], phone: body?.phone ?? null, email: body?.email ?? null });
+    const result = await studentAct({ tourId, studentId: user.id, action: body?.action, slots: Array.isArray(body?.slots) ? body.slots : [] });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
     return NextResponse.json(result);
   } catch (err) {

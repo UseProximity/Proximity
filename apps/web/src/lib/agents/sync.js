@@ -31,11 +31,16 @@ async function openSyncJob(listingId) {
   return (data ?? []).find((j) => j) ?? null;
 }
 
-export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false }) {
+export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false }) {
   const m = url ? null : await monitorFor(listingId);
-  if (!url && !m) return { error: "This listing has no website to sync from.", status: 409 };
+  if (!url && !m && !knowledge) return { error: "This listing has no website to sync from.", status: 409 };
   const existing = await openSyncJob(listingId);
   if (existing) return { job: existing, already: true };
+  if (knowledge && !url && !m) {
+    const { data: l } = await supabase.from("listings").select("source_url").eq("id", listingId).maybeSingle();
+    if (!l?.source_url) return { error: "This listing has no website to read.", status: 409 };
+    url = l.source_url;
+  }
   const { data: listing } = await supabase.from("listings").select("id, title, address").eq("id", listingId).maybeSingle();
   if (!listing) return { error: "Listing not found", status: 404 };
   const { data: job, error } = await supabase.from("listing_import_jobs").insert({
@@ -43,10 +48,11 @@ export async function enqueueSync({ listingId, userId = null, batchId = null, pr
     user_id: userId ?? PROXY_USER_ID,
     listing_id: listingId,
     target: {
-      sync: true, propose, force, name: listing.title, address: listing.address,
+      // knowledge: read the whole site into what Proxy knows, nothing else.
+      sync: true, knowledge, propose, force, name: listing.title, address: listing.address,
       url: url ?? m.source_url, levelUrl: url ? null : m.index_url, pastedUrl: url ?? m.index_url ?? m.source_url,
     },
-    status: "queued", step: "Queued for sync", progress: 0,
+    status: "queued", step: knowledge ? "Queued: reading the whole site" : "Queued for sync", progress: 0,
   }).select("id, status, batch_id").single();
   if (error) return { error: error.message, status: 500 };
   return { job };
@@ -98,22 +104,83 @@ export async function addUrl({ listingId, url, userId }) {
   return enqueueSync({ listingId, userId, propose: true, force: true });
 }
 
-/* Runs inside the import job runner for a job whose target.sync is true. */
+/*
+ * Runs inside the import job runner for a job whose target.sync is true.
+ * A landlord-triggered sync (force) reads the displayed fields here and
+ * then hands the whole-site read to a knowledge job of its own, so each
+ * fits one function run; the daily sync re-reads only the known pages.
+ */
 export async function runSyncJob(job, { onStep = () => {} } = {}) {
   const target = job.target ?? {};
+  const actorId = job.user_id === PROXY_USER_ID ? null : job.user_id;
+  if (target.knowledge) {
+    const { readWholeSite } = await import("./pages");
+    const m = await monitorFor(job.listing_id);
+    const totals = await readWholeSite({ listingId: job.listing_id, startUrl: target.url ?? m?.source_url, cause: "sync", actorId, force: !!target.force, onStep });
+    return { status: "knowledge", applied: [], held: [], pages: totals, seconds: totals.seconds, summary: null };
+  }
   const m = await monitorFor(job.listing_id);
   if (!m) throw new Error("This listing has no website to sync from.");
   const item = await syncMonitor(m, {
-    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false,
-    actorId: job.user_id === PROXY_USER_ID ? null : job.user_id,
+    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId,
+    // A landlord's sync reads the whole site next, in its own job.
+    knowledge: !target.force,
   });
   if (item.status === "failed") throw new Error(item.error);
   return item;
 }
 
+/*
+ * Queue the whole-site read and start it in a fresh function run. Used after
+ * an import and after a landlord's sync. On production the import-jobs cron
+ * would also pick it up; previews have no crons, so the runner is called.
+ */
+export async function queueWholeSiteRead({ listingId, userId = null, batchId = null }) {
+  const r = await enqueueSync({ listingId, userId, batchId, force: true, knowledge: true });
+  if (r.job?.batch_id && !r.already) await kickRunner(r.job.batch_id);
+  return r;
+}
+
+export async function kickRunner(batchId) {
+  if (!process.env.CRON_SECRET) return;
+  const { getBaseUrl } = await import("@/lib/email");
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    await fetch(`${getBaseUrl()}/api/landlord/import/run`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.CRON_SECRET}` },
+      body: JSON.stringify({ batchId }), signal: ctrl.signal,
+    });
+  } catch {
+    // Aborted after the runner accepted it, or it is down; the cron retries on production.
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/*
+ * How long this listing's syncs usually take, from its last few (Wyatt,
+ * 2026-10-27): the median of their run times, or a default for a first run.
+ */
+async function syncEstimate(listingId) {
+  // A landlord's sync is the structure read plus the whole-site read.
+  const { data } = await supabase.from("listing_import_jobs").select("result, target").eq("listing_id", listingId).eq("status", "done")
+    .not("result->seconds", "is", null).order("created_at", { ascending: false }).limit(12);
+  const median = (rows) => {
+    const secs = rows.map((j) => Number(j.result?.seconds)).filter((n) => n > 0).sort((x, y) => x - y);
+    return secs.length ? secs[Math.floor(secs.length / 2)] : null;
+  };
+  const read = median((data ?? []).filter((j) => !j.target?.knowledge)) ?? 120;
+  const site = median((data ?? []).filter((j) => j.target?.knowledge)) ?? 180;
+  return read + site;
+}
+
 export async function agentSyncStatus(listingId) {
   const [agent, m, job] = await Promise.all([getAgent(listingId), monitorFor(listingId), openSyncJob(listingId)]);
+  const { data: running } = job ? await supabase.from("listing_import_jobs").select("id, status, step, progress, created_at, updated_at").eq("id", job.id).maybeSingle() : { data: null };
   return {
+    estimateSeconds: await syncEstimate(listingId),
+    job: running ? { id: running.id, status: running.status, step: running.step, progress: running.progress, startedAt: running.created_at } : null,
     agent, hasSource: !!m, sourceUrl: m?.source_url ?? null, lastStatus: m?.last_status ?? null, lastCheckedAt: m?.last_checked_at ?? null, nextCheckAt: m?.next_check_at ?? null,
     failures: m?.consecutive_failures ?? 0, running: job ? { id: job.id, status: job.status } : null,
     manualLeft: agent ? Math.max(0, MANUAL_SYNCS_PER_DAY - (agent.manual_sync_day === todayKey() ? agent.manual_syncs_today : 0)) : MANUAL_SYNCS_PER_DAY,

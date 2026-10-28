@@ -7,10 +7,14 @@
  * listing's knowledge; what it cannot answer it sends to the landlord and
  * posts the answer back here. The landlord is never in this conversation.
  *
- * Layout (Wyatt, 2026-10-27): one line at the top says which lease the
- * student is asking about (the one whose Contact they clicked, or the open
- * unit's first offering) with Book a tour beside it; then one box that is
- * just the input until the first message, and the conversation after.
+ * Layout (Wyatt, 2026-10-27, round 6): one line at the top says which lease
+ * the student is asking about; the conversation sits straight in the
+ * section (no box or border) with the input under it. Consecutive messages
+ * from the same side stack with one icon. Every tour control lives in the
+ * input: the calendar button beside Send opens TourPicker, its choice
+ * becomes a chip ("2 day availability"), and sending sends the request.
+ * Panels open on the same thread (the listing page and the Messages popup)
+ * tell each other when something new arrives, so both stay in step.
  * The panel is mounted with the listing (hidden until the Contact tab) so
  * the thread is loaded before the student gets there; when the tab opens
  * the modal scrolls to the bottom of the panel, and the conversation stays
@@ -41,8 +45,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
-import { Send, Sparkles, Flag } from "lucide-react";
-import { useTour, TourButton, TourCard } from "./TourMarker";
+import Link from "next/link";
+import { Send, Sparkles, Flag, CalendarDays, X } from "lucide-react";
+import { useTour } from "./TourMarker";
+import TourPicker from "./TourPicker";
+import { availabilitySummary } from "@/lib/agents/tourTime";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
@@ -111,25 +118,48 @@ function useTypeOut(text, animate) {
   return shown;
 }
 
-function Bubble({ msg, onReport, animate = false }) {
+// Panels on the same thread hear about each other's new messages at once.
+const SYNC_EVENT = "proxy:thread-updated";
+const announce = (threadId, source) => {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { threadId, source } }));
+};
+
+/*
+ * One message. `first` and `last` place it in a run of messages from the
+ * same side: the Proxy icon shows once, on the first, and the corners
+ * between stacked bubbles are tighter so the run reads as one block.
+ */
+function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
   const shown = useTypeOut(msg.body ?? "", animate && !msg.isMine);
   if (msg.isMine) {
+    const corners = `rounded-2xl ${first ? "" : "rounded-tr-md"} ${last ? "rounded-br-md" : "rounded-br-md"}`;
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-red-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap">{msg.body}</div>
+        <div className={`max-w-[85%] ${corners} bg-red-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap`}>{msg.body}</div>
       </div>
     );
   }
+  const corners = `rounded-2xl ${first ? "rounded-tl-md" : "rounded-tl-md"} ${last ? "" : "rounded-bl-md"}`;
+  const done = shown >= (msg.body ?? "").length;
   return (
     <div className="flex items-start gap-2">
-      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50">
-        <Sparkles className="h-3 w-3 text-red-600" />
+      <div className="w-6 shrink-0">
+        {first && (
+          <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-50">
+            <Sparkles className="h-3 w-3 text-red-600" />
+          </div>
+        )}
       </div>
       <div className="max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-2 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">
+        <div className={`${corners} bg-gray-100 px-3.5 py-2 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap`}>
           {(msg.body ?? "").slice(0, shown)}
         </div>
-        {(msg.type === "proxy_answer") && shown >= (msg.body ?? "").length && (
+        {msg.link && done && (
+          <Link href={msg.link.href} className="mt-1.5 inline-flex items-center rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+            {msg.link.label}
+          </Link>
+        )}
+        {msg.type === "proxy_answer" && last && done && (
           <div className="mt-0.5 flex items-center gap-3 text-[11px] text-gray-400">
             {msg.updatedAt && <span>Based on details updated {dateLabel(msg.updatedAt)}</span>}
             <button type="button" onClick={() => onReport(msg)} className="inline-flex items-center gap-1 hover:text-gray-600">
@@ -142,7 +172,7 @@ function Bubble({ msg, onReport, animate = false }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, showTour = true, onTourIntent = null }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, tourIntentSignal = 0 }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -154,16 +184,18 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [signInNeeded, setSignInNeeded] = useState(false);
-  const [bookingOpen, setBookingOpen] = useState(false);
+  // Tour times waiting in the input as a chip, and whether the picker is open.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [tourSlots, setTourSlots] = useState(null);
+  const [tourBusy, setTourBusy] = useState(false);
   // Messages that arrived in this session type themselves out.
   const [fresh, setFresh] = useState(() => new Set());
-  const endRef = useRef(null);
   const inputRef = useRef(null);
   const rootRef = useRef(null);
   const listRef = useRef(null);
+  const selfId = useRef(Math.random().toString(36).slice(2));
   const signedIn = !!session?.user?.id;
   const started = messages.length > 0 || sending;
-  // The tour on this conversation (a marker on the top line, its card below).
   const { tour, setTour } = useTour(listingId, signedIn);
 
   useEffect(() => {
@@ -184,8 +216,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     // The thread is opened once per listing; the lease rides on each message.
   }, [listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll while on screen and visible: new messages (a landlord's reply) come
-  // in and type out, and the server marks the thread read.
+  // Pull new messages: on a timer while on screen, and at once when another
+  // panel on this thread says something arrived.
   const refresh = useCallback(async () => {
     if (!thread || typeof document === "undefined" || document.visibilityState !== "visible") return;
     try {
@@ -198,7 +230,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         const extra = incoming.filter((x) => !have.has(x.id));
         if (!extra.length) return m;
         setFresh((f) => new Set([...f, ...extra.filter((x) => x.fromProxy).map((x) => x.id)]));
-        return [...m, ...extra];
+        return [...m.filter((x) => !String(x.id).startsWith("temp-")), ...extra];
       });
     } catch {}
   }, [thread]);
@@ -209,20 +241,37 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return () => clearInterval(t);
   }, [active, thread, sending, refresh]);
 
-  // The conversation stays pinned to its newest message: the list's own
-  // scroll follows every change (an answer typing out grows the text node by
-  // node), and the modal keeps the bottom of the panel in view.
+  useEffect(() => {
+    if (!thread) return;
+    const on = (e) => { if (e.detail?.threadId === thread.id && e.detail?.source !== selfId.current) refresh(); };
+    window.addEventListener(SYNC_EVENT, on);
+    return () => window.removeEventListener(SYNC_EVENT, on);
+  }, [thread, refresh]);
+
+  // "Ask Proxy" on the listing header puts the cursor in this chat.
+  useEffect(() => {
+    const on = (e) => { if (e.detail?.listingId === listingId) setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250); };
+    window.addEventListener("proxy:focus-input", on);
+    return () => window.removeEventListener("proxy:focus-input", on);
+  }, [listingId]);
+
+  // A tour question opens the picker (from Proxy's reply, or the Messages header).
+  useEffect(() => { if (tourIntentSignal && signedIn) setPickerOpen(true); }, [tourIntentSignal, signedIn]);
+
+  const scrollToEnd = useCallback((smooth = false) => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    rootRef.current?.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  // The conversation stays pinned to its newest message while an answer types out.
   useEffect(() => {
     const el = listRef.current;
     if (!el || !active) return;
-    const pin = () => {
-      el.scrollTop = el.scrollHeight;
-      rootRef.current?.scrollIntoView({ block: "end" });
-    };
-    const obs = new MutationObserver(pin);
+    const obs = new MutationObserver(() => scrollToEnd(false));
     obs.observe(el, { childList: true, characterData: true, subtree: true });
     return () => obs.disconnect();
-  }, [active, started]);
+  }, [active, started, scrollToEnd]);
 
   // Opening the Contact tab glides to the bottom of the panel (the input),
   // after the modal's own jump to the tab strip has happened.
@@ -234,40 +283,76 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     return () => clearTimeout(t);
   }, [active, loading]);
 
+  const sendTour = useCallback(async (slots) => {
+    const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
+    const r = open
+      ? await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", slots }) })
+      : await fetch("/api/tours", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId: leaseId ?? (choices.length === 1 ? choices[0].id : null), slots, proxyThreadId: thread?.id ?? null }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || "Could not send your times.");
+    setTour(data.tour);
+  }, [tour, listingId, leaseId, choices, thread, setTour]);
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || !thread || sending) return;
+    if ((!text && !tourSlots) || !thread || sending) return;
     setSending(true);
     setInput("");
-    const temp = { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" };
-    setMessages((m) => [...m, temp]);
+    const slots = tourSlots;
+    setTourSlots(null);
+    const temp = text ? { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" } : null;
+    if (temp) setMessages((m) => [...m, temp]);
+    requestAnimationFrame(() => scrollToEnd(true));
     try {
-      const r = await fetch(`/api/proxy/threads/${thread.id}/messages`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: text, leaseId }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setMessages((m) => m.filter((x) => x.id !== temp.id));
-        setInput(text);
-        if (data?.code === "SIGN_IN") setSignInNeeded(true);
-        toast.error(data?.error || "Proxy could not answer just now.");
-        return;
+      if (slots) {
+        try { await sendTour(slots); } catch (err) { toast.error(err.message); setTourSlots(slots); }
       }
-      const incoming = data.messages ?? [];
-      setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
-      setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
-      if (data.intent === "tour" && session?.user?.id) { if (showTour) setBookingOpen(true); else onTourIntent?.(); }
-      // Seen on the page: no email for this answer.
-      if (active) refresh();
+      if (text) {
+        const r = await fetch(`/api/proxy/threads/${thread.id}/messages`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: text, leaseId }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setMessages((m) => m.filter((x) => x.id !== temp.id));
+          setInput(text);
+          if (data?.code === "SIGN_IN") setSignInNeeded(true);
+          toast.error(data?.error || "Proxy could not answer just now.");
+          return;
+        }
+        const incoming = data.messages ?? [];
+        setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
+        setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
+        if (data.intent === "tour" && signedIn) setPickerOpen(true);
+      }
+      // Seen on the page: no email for this answer. Other panels catch up too.
+      await refresh();
+      announce(thread.id, selfId.current);
     } catch {
-      setMessages((m) => m.filter((x) => x.id !== temp.id));
+      if (temp) setMessages((m) => m.filter((x) => x.id !== temp.id));
       setInput(text);
       toast.error("Proxy could not answer just now.");
     } finally {
       setSending(false);
+      requestAnimationFrame(() => scrollToEnd(true));
       inputRef.current?.focus();
     }
-  }, [input, thread, sending, leaseId, session?.user?.id, active, refresh, showTour, onTourIntent]);
+  }, [input, tourSlots, thread, sending, leaseId, signedIn, refresh, sendTour, scrollToEnd]);
+
+  const cancelTour = useCallback(async () => {
+    if (!tour) return;
+    setTourBusy(true);
+    try {
+      const r = await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { toast.error(data?.error || "Could not cancel."); return; }
+      setTour(null);
+      setPickerOpen(false);
+      await refresh();
+      announce(thread?.id, selfId.current);
+    } finally {
+      setTourBusy(false);
+    }
+  }, [tour, setTour, refresh, thread]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;
@@ -284,10 +369,11 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     : unitLabel ?? "this place";
 
   if (unavailable) {
-    return <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">{unavailable}</div>;
+    return <div className="py-4 text-sm text-gray-600">{unavailable}</div>;
   }
 
-  const tourShown = showTour && !testMode && choices.length > 0;
+  const tourAllowed = !testMode && choices.length > 0;
+  const sideOf = (m) => (m.isMine ? "me" : "proxy");
 
   return (
     <div ref={rootRef} className="flex flex-col gap-3">
@@ -297,51 +383,87 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-gray-700">
-          Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
-        </p>
-        {tourShown && <TourButton tour={tour} signedIn={signedIn} open={bookingOpen} onOpenChange={setBookingOpen} />}
-      </div>
+      <p className="text-sm text-gray-700">
+        Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
+      </p>
 
-      {tourShown && bookingOpen && signedIn && (
-        <TourCard listing={listing} leaseChoices={choices} leaseId={leaseId} proxyThreadId={thread?.id ?? null} onClose={() => setBookingOpen(false)} setTour={setTour} />
+      {loading && <ChatSkeleton rows={3} />}
+      {started && (
+        <div ref={listRef} className="flex max-h-[480px] flex-col overflow-y-auto">
+          {messages.map((m, i) => {
+            const first = i === 0 || sideOf(messages[i - 1]) !== sideOf(m);
+            const last = i === messages.length - 1 || sideOf(messages[i + 1]) !== sideOf(m);
+            return (
+              <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+                <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />
+              </div>
+            );
+          })}
+          {sending && <div className="mt-3"><TypingBubble /></div>}
+        </div>
       )}
 
-      <div className="rounded-2xl border-2 border-gray-300 bg-white shadow-md">
-        {loading && <ChatSkeleton rows={3} className="border-b border-gray-100 p-4" />}
-        {started && (
-          <div ref={listRef} className="flex max-h-[480px] flex-col gap-3 overflow-y-auto border-b border-gray-100 p-4">
-            {messages.map((m) => <Bubble key={m.id} msg={m} onReport={report} animate={fresh.has(m.id)} />)}
-            {sending && <TypingBubble />}
-            <div ref={endRef} />
-          </div>
-        )}
-        {signInNeeded ? (
-          <div className="p-3 text-sm text-red-700">
-            Sign in to keep asking.{" "}
-            <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
-          </div>
-        ) : (
-          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 p-3">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              rows={started ? 2 : 3}
-              maxLength={2000}
-              placeholder={started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
-              disabled={loading || sending || !thread}
-              className="flex-1 resize-none rounded-lg border-0 px-2 py-2 text-base focus:outline-none focus:ring-0"
-            />
-            <button type="submit" disabled={loading || sending || !input.trim()} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
+      {signInNeeded ? (
+        <div className="text-sm text-red-700">
+          Sign in to keep asking.{" "}
+          <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
+        </div>
+      ) : (
+        <div className="relative">
+          {pickerOpen && signedIn && tourAllowed && (
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-2">
+              <TourPicker
+                tour={tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null}
+                initial={tourSlots}
+                busy={tourBusy}
+                onAdd={(slots) => { setTourSlots(slots); setPickerOpen(false); inputRef.current?.focus(); }}
+                onCancelTour={cancelTour}
+                onClose={() => setPickerOpen(false)}
+              />
+            </div>
+          )}
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2 border-t border-gray-200 pt-3">
+            <div className="flex min-h-11 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400">
+              {tourSlots && (
+                <span className="mb-1 inline-flex w-fit items-center gap-1 rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-semibold text-white">
+                  <CalendarDays className="h-3 w-3" />
+                  <button type="button" onClick={() => setPickerOpen(true)} className="hover:underline">{availabilitySummary(tourSlots)}</button>
+                  <button type="button" onClick={() => setTourSlots(null)} aria-label="Remove availability" className="ml-0.5 opacity-70 hover:opacity-100"><X className="h-3 w-3" /></button>
+                </span>
+              )}
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                rows={1}
+                maxLength={2000}
+                placeholder={tourSlots ? "Add a note, or just send" : started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
+                disabled={loading || sending || !thread}
+                className="w-full resize-none border-0 bg-transparent p-0 py-1 text-base leading-6 focus:outline-none focus:ring-0"
+              />
+            </div>
+            {tourAllowed && (
+              <button
+                type="button"
+                onClick={() => (signedIn ? setPickerOpen((o) => !o) : signIn())}
+                aria-label={signedIn ? "Pick tour times" : "Sign in to request a tour"}
+                title={signedIn ? "Request a tour" : "Sign in to request a tour"}
+                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${pickerOpen || tourSlots ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+              >
+                <CalendarDays className="h-5 w-5" />
+              </button>
+            )}
+            <button type="submit" disabled={loading || sending || (!input.trim() && !tourSlots)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
               <Send className="h-5 w-5" />
             </button>
           </form>
-        )}
-      </div>
-
+        </div>
+      )}
     </div>
   );
 }

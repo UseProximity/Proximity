@@ -1,27 +1,34 @@
 /*
- * Tour scheduling (PRD v3, milestone 5; Wyatt, 2026-10-26).
+ * Tour scheduling (PRD v3, milestone 5; reworked by Wyatt, 2026-10-27, round 6).
  *
- * The student's account holds a weekly availability pattern (weekday and
- * one-hour blocks, 8am to 8pm, St. Louis time). A request turns the pattern
- * into real dates over the next 14 days, minus the ones the student unticks,
- * and goes to the owner of the lease. The landlord confirms one slot or
- * proposes any number of other slots, which go back to the student to pick
- * from, until one side confirms or cancels.
+ * The student paints the hours they can tour on the next seven real dates,
+ * from the calendar button in the Proxy chat input. The request posts their
+ * availability into the Proxy thread as plain ranges ("Sunday 11/1
+ * 8am-2pm, 3pm-4pm") and Proxy confirms it went to the landlord who holds
+ * the lease. The landlord either:
  *
- * On confirmation both sides get each other's name, email and phone, and an
- * contact details are exchanged (phone and email, in the confirmation and
- * by email); there is no second chat, the tour rides on the Proxy thread
- * (Wyatt, 2026-10-27). Proxy keeps answering there. Reminders: landlord at day 1 and 3, the student told on
- * day 5, and both reminded the day before a confirmed tour.
+ *   confirm   picks one of the student's days and types a start time; the
+ *             site checks it sits inside the student's window and at least
+ *             10 minutes before it ends
+ *   message   can't make it, and writes to the student instead
+ *
+ * Either way a direct student-landlord chat opens (one per student, listing
+ * and landlord; contact details and links are not stripped there), and
+ * Proxy tells the student in the Proxy thread with a link to it. Contact
+ * details are never handed over automatically. The landlord never joins
+ * the Proxy thread.
+ *
+ * Reminders: landlord at day 1 and 3, the student told on day 5, both
+ * reminded the day before a confirmed tour.
  */
 import supabase from "@/lib/supabase";
-import { postProxyMessage } from "./threads";
+import { postProxyMessage, postMessage } from "./threads";
 import { shortDate } from "./sections";
 import {
   notifyTourRequested, notifyTourProposed, notifyTourConfirmed, notifyTourCancelled, notifyTourReminder, notifyTourNoAnswer,
 } from "./tourNotify";
 
-import { fmtSlot, normalizePattern, slotsFromPattern } from "./tourTime";
+import { fmtSlot, normalizePattern, slotsFromPattern, availabilityText, availabilityDays, checkTourTime, fmtTourTime, chicagoParts, DAYS } from "./tourTime";
 
 export { fmtSlot, normalizePattern, slotsFromPattern };
 
@@ -67,8 +74,9 @@ function shape(t, viewer) {
     lease: unitLabel ? { unit: unitLabel, rent: t.unit_leases?.rent ?? null } : null,
     studentSlots: t.student_slots ?? [], landlordSlots: t.landlord_slots ?? [],
     confirmedSlot: t.confirmed_slot, confirmedAt: t.confirmed_at,
-    // Each side sees only the other side's details, and only once confirmed.
-    contact: t.status === "confirmed" ? (viewer === "student" ? t.landlord_contact : t.student_contact) : null,
+    availability: availabilityDays(t.student_slots ?? []),
+    availabilityText: availabilityText(t.student_slots ?? []),
+    confirmedText: t.confirmed_slot ? fmtTourTime(t.confirmed_slot) : null,
     threadId: t.thread_id, proxyThreadId: t.proxy_thread_id,
     cancelledByMe: viewer === "student" ? t.cancelled_by === t.student_id : t.cancelled_by === t.landlord_id,
     createdAt: t.created_at, lastActivityAt: t.last_activity_at,
@@ -90,13 +98,31 @@ async function resolveLandlord({ listingId, leaseId }) {
   return null;
 }
 
-export async function requestTour({ listingId, leaseId = null, studentId, slots, phone = null, email = null, proxyThreadId = null }) {
+/* The weekday pattern implied by real-date slots, saved for next time. */
+function patternFromSlots(slots) {
+  const pattern = {};
+  for (const iso of slots) {
+    const p = chicagoParts(new Date(iso));
+    if (!DAYS.includes(p.weekday)) continue;
+    pattern[p.weekday] = [...new Set([...(pattern[p.weekday] ?? []), p.h])].sort((x, y) => x - y);
+  }
+  return pattern;
+}
+
+async function postAvailability({ t, listingId, proxyThreadId, studentId, clean, updated = false }) {
+  if (!proxyThreadId) return;
+  const text = availabilityText(clean);
+  await postMessage({ threadId: proxyThreadId, listingId, senderId: studentId, type: "text", body: `${updated ? "Here's my updated availability for a tour:" : "I'd like to tour. Here's when I'm available:"}\n${text}`, metadata: { tourId: t.id, availability: true } });
+  await postProxyMessage({ threadId: proxyThreadId, listingId, type: "proxy_note",
+    body: updated
+      ? "Got it. I've sent the landlord your updated times and will let you know as soon as they pick one."
+      : "Got it. I've sent your availability to the landlord and will let you know as soon as they pick a time.",
+    metadata: { tourId: t.id } });
+}
+
+export async function requestTour({ listingId, leaseId = null, studentId, slots, proxyThreadId = null }) {
   const clean = validSlots(slots);
   if (!clean.length) return { error: "Pick at least one time that works for you.", status: 400 };
-  const { data: student } = await supabase.from("users").select("id, email, phone").eq("id", studentId).maybeSingle();
-  const phoneClean = String(phone ?? "").replace(/[^\d+() .-]/g, "").trim().slice(0, 30) || null;
-  const emailClean = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email ?? "").trim()) ? String(email).trim().toLowerCase() : null;
-  if (!phoneClean && !emailClean && !student?.email) return { error: "Add a phone number or email so the landlord can reach you.", status: 400 };
   const { data: owned } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", studentId).limit(1);
   if (owned?.length) return { error: "You cannot book a tour of your own listing.", status: 400 };
   const landlordId = await resolveLandlord({ listingId, leaseId });
@@ -104,21 +130,15 @@ export async function requestTour({ listingId, leaseId = null, studentId, slots,
 
   const { data: tour, error } = await supabase.from("tour_requests").insert({
     listing_id: listingId, lease_id: leaseId, student_id: studentId, landlord_id: landlordId,
-    status: "requested", student_slots: clean, student_phone: phoneClean, proxy_thread_id: proxyThreadId,
-    // What the student typed; filled in with the account's details on confirmation.
-    student_contact: emailClean || phoneClean ? { email: emailClean, phone: phoneClean } : null,
+    status: "requested", student_slots: clean, proxy_thread_id: proxyThreadId,
   }).select(TOUR_SELECT).single();
   if (error) {
-    if (error.code === "23505") return { error: "You already have an open tour request for this place.", status: 409 };
+    if (error.code === "23505") return { error: "You already have an open tour request here. Use the calendar button to change your times.", status: 409 };
     throw fail("tour create", error);
   }
-  if (phoneClean && student && (!student.phone || student.phone === "N/A")) {
-    await supabase.from("users").update({ phone: phoneClean }).eq("id", studentId);
-  }
-  if (proxyThreadId) {
-    await postProxyMessage({ threadId: proxyThreadId, listingId, type: "proxy_note", body: `Tour requested. I've sent the landlord your available times (${clean.length} option${clean.length === 1 ? "" : "s"} over the next two weeks). I'll let you know as soon as they confirm one.`, metadata: { tourId: tour.id } });
-  }
-  notifyTourRequested({ tourId: tour.id }).catch((err) => console.error("[tours] request alert failed:", err?.message ?? err));
+  await saveAvailability(studentId, patternFromSlots(clean)).catch(() => {});
+  await postAvailability({ t: tour, listingId, proxyThreadId, studentId, clean });
+  await notifyTourRequested({ tourId: tour.id }).catch((err) => console.error("[tours] request alert failed:", err?.message ?? err));
   return { tour: shape(tour, "student") };
 }
 
@@ -128,109 +148,114 @@ async function load(tourId) {
   return data ?? null;
 }
 
-async function contactOf(userId) {
-  const { data: u } = await supabase.from("users").select("name, email, phone").eq("id", userId).maybeSingle();
-  if (!u) return null;
-  return { name: u.name ?? null, email: u.email ?? null, phone: u.phone && u.phone !== "N/A" ? u.phone : null };
+/*
+ * The direct chat between the student and this landlord about this listing
+ * (the Landlords tab), opened by a confirmed tour or a landlord reaching
+ * out. Reused when one exists; contact details and links are allowed in it.
+ */
+async function openDirectThread(t) {
+  const { data: existing } = await supabase.from("chat_threads").select("id").eq("listing_id", t.listing_id)
+    .eq("landlord_id", t.landlord_id).eq("interested_user_id", t.student_id).is("deleted_at", null).limit(1).maybeSingle();
+  let threadId = existing?.id ?? null;
+  if (!threadId) {
+    const { data: typeId } = await supabase.rpc("fn_chat_direct_type_id");
+    const { data: created, error } = await supabase.from("chat_threads").insert({
+      thread_type_id: typeId, listing_id: t.listing_id, landlord_id: t.landlord_id, interested_user_id: t.student_id,
+      lease_id: t.lease_id, subject: t.listings?.title || t.listings?.address || "Listing inquiry", unrestricted: true,
+    }).select("id").single();
+    if (error) throw fail("direct thread", error);
+    threadId = created.id;
+    await supabase.from("chat_participants").upsert(
+      [{ thread_id: threadId, user_id: t.student_id }, { thread_id: threadId, user_id: t.landlord_id }],
+      { onConflict: "thread_id,user_id", ignoreDuplicates: true },
+    );
+  } else {
+    await supabase.from("chat_threads").update({ unrestricted: true }).eq("id", threadId);
+  }
+  return threadId;
 }
 
-async function confirm(t, slot, byUserId) {
-  const now = new Date().toISOString();
-  const [studentContact, landlordContact] = await Promise.all([contactOf(t.student_id), contactOf(t.landlord_id)]);
-  if (t.student_phone) studentContact.phone = t.student_phone;
-  if (t.student_contact?.email) studentContact.email = t.student_contact.email;
-  const when = fmtSlot(slot);
-  const label = t.listings?.title || t.listings?.address || "the listing";
+const chatLink = (threadId) => `/?messages=1&thread=${threadId}`;
 
-  // One chat per listing (Wyatt, 2026-10-27): no second thread opens. Both
-  // sides get each other's phone and email here and by email, and the tour
-  // sits on the Proxy conversation as a marker.
+async function confirm(t, iso, byUserId) {
+  const now = new Date().toISOString();
+  const when = fmtTourTime(iso);
+  const threadId = await openDirectThread(t);
   const { data: updated, error } = await supabase.from("tour_requests").update({
-    status: "confirmed", confirmed_slot: slot, confirmed_by: byUserId, confirmed_at: now, student_contact: studentContact, landlord_contact: landlordContact,
-    last_activity_at: now,
+    status: "confirmed", confirmed_slot: iso, confirmed_by: byUserId, confirmed_at: now, thread_id: threadId, last_activity_at: now,
   }).eq("id", t.id).select(TOUR_SELECT).single();
   if (error) throw fail("tour confirm", error);
+  await postMessage({ threadId, listingId: t.listing_id, senderId: t.landlord_id, type: "text", body: `Your tour is confirmed for ${when}. Message me here if anything changes.`, metadata: { tourId: t.id, confirmed: true } });
   if (t.proxy_thread_id) {
-    const reach = [landlordContact?.name, landlordContact?.phone, landlordContact?.email].filter(Boolean).join(", ");
     await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
-      body: `Your tour is confirmed for ${when}. The landlord has your phone and email, and here are theirs: ${reach || "see the tour above"}. Reach them directly to coordinate; I'm still here for any questions about the place.`,
-      metadata: { tourId: t.id, confirmed: true } });
+      body: `Your tour is confirmed for ${when}. The landlord can message you directly now, and you can reply to them there.`,
+      metadata: { tourId: t.id, confirmed: true, link: { href: chatLink(threadId), label: "Open the chat with the landlord" } } });
   }
-  notifyTourConfirmed({ tourId: t.id }).catch((err) => console.error("[tours] confirm alert failed:", err?.message ?? err));
+  await notifyTourConfirmed({ tourId: t.id }).catch((err) => console.error("[tours] confirm alert failed:", err?.message ?? err));
   return updated;
 }
 
-export async function landlordAct({ tourId, landlordId, action, slot = null, slots = [] }) {
+export async function landlordAct({ tourId, landlordId, action, day = null, time = null, body = "" }) {
   const t = await load(tourId);
   if (!t) return { error: "Tour request not found", status: 404 };
   if (t.landlord_id !== landlordId) return { error: "This request went to another landlord", status: 403 };
-  if (!["requested", "proposed"].includes(t.status)) return { error: "This request is no longer open", status: 409 };
+  if (!["requested", "proposed", "messaging"].includes(t.status)) return { error: "This request is no longer open", status: 409 };
   const now = new Date().toISOString();
   if (action === "confirm") {
-    const iso = validSlots([slot])[0];
-    if (!iso || !(t.student_slots ?? []).includes(iso)) return { error: "Pick one of the student's times, or propose others.", status: 400 };
-    const updated = await confirm(t, iso, landlordId);
+    const checked = checkTourTime(t.student_slots ?? [], day, time);
+    if (checked.error) return { error: checked.error, status: 400 };
+    const updated = await confirm(t, checked.iso, landlordId);
     return { tour: shape(updated, "landlord") };
   }
-  if (action === "propose") {
-    const clean = validSlots(slots);
-    if (!clean.length) return { error: "Pick at least one time to propose.", status: 400 };
-    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "proposed", landlord_slots: clean, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
-    if (error) throw fail("tour propose", error);
+  if (action === "message") {
+    const text = String(body ?? "").trim().slice(0, 4000);
+    if (!text) return { error: "Write a message to the student first.", status: 400 };
+    const threadId = await openDirectThread(t);
+    await postMessage({ threadId, listingId: t.listing_id, senderId: landlordId, type: "text", body: text, metadata: { tourId: t.id } });
+    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "messaging", thread_id: threadId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
+    if (error) throw fail("tour message", error);
     if (t.proxy_thread_id) {
       await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
-        body: `The landlord can't make the times you offered and proposed ${clean.length} other${clean.length === 1 ? "" : "s"}: ${clean.slice(0, 4).map((s) => fmtSlot(s)).join("; ")}${clean.length > 4 ? "; and more" : ""}. Pick one in your tour request below.`,
-        metadata: { tourId: t.id, proposed: true } });
+        body: "The landlord couldn't make those times, so they reached out to you directly to find one that works.",
+        metadata: { tourId: t.id, messaging: true, link: { href: chatLink(threadId), label: "Open the chat with the landlord" } } });
     }
-    notifyTourProposed({ tourId: t.id }).catch((err) => console.error("[tours] proposal alert failed:", err?.message ?? err));
-    return { tour: shape(updated, "landlord") };
+    await notifyTourProposed({ tourId: t.id }).catch((err) => console.error("[tours] message alert failed:", err?.message ?? err));
+    return { tour: shape(updated, "landlord"), threadId };
   }
   if (action === "cancel") {
     const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: landlordId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
     if (error) throw fail("tour cancel", error);
-    if (t.proxy_thread_id) await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: "The landlord cancelled your tour request. You can request again with other times, or look at similar places.", metadata: { tourId: t.id, cancelled: true } });
-    notifyTourCancelled({ tourId: t.id, by: "landlord" }).catch(() => {});
+    if (t.proxy_thread_id) await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: "The landlord cancelled your tour request. You can send new times from the calendar button, or look at similar places.", metadata: { tourId: t.id, cancelled: true } });
+    await notifyTourCancelled({ tourId: t.id, by: "landlord" }).catch(() => {});
     return { tour: shape(updated, "landlord") };
   }
   return { error: "Unknown action", status: 400 };
 }
 
-export async function studentAct({ tourId, studentId, action, slot = null, slots = [], phone = null, email = null }) {
+export async function studentAct({ tourId, studentId, action, slots = [] }) {
   const t = await load(tourId);
   if (!t) return { error: "Tour request not found", status: 404 };
   if (t.student_id !== studentId) return { error: "Not your request", status: 403 };
   const now = new Date().toISOString();
   if (action === "update") {
-    // New availability on an open request: the landlord gets the new times
-    // and anything they had proposed is withdrawn (Wyatt, 2026-10-27).
-    if (!["requested", "proposed"].includes(t.status)) return { error: "This request can no longer be changed", status: 409 };
+    if (!["requested", "proposed", "messaging"].includes(t.status)) return { error: "This request can no longer be changed", status: 409 };
     const clean = validSlots(slots);
     if (!clean.length) return { error: "Pick at least one time that works for you.", status: 400 };
-    const phoneClean = String(phone ?? "").replace(/[^\d+() .-]/g, "").trim().slice(0, 30) || t.student_phone || null;
-    const emailClean = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email ?? "").trim()) ? String(email).trim().toLowerCase() : t.student_contact?.email ?? null;
     const { data: updated, error } = await supabase.from("tour_requests").update({
-      status: "requested", student_slots: clean, landlord_slots: [], student_phone: phoneClean,
-      student_contact: emailClean || phoneClean ? { email: emailClean, phone: phoneClean } : t.student_contact, last_activity_at: now,
+      status: "requested", student_slots: clean, landlord_slots: [], last_activity_at: now,
     }).eq("id", t.id).select(TOUR_SELECT).single();
     if (error) throw fail("tour update", error);
-    if (t.proxy_thread_id) {
-      await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: `Got it, I've sent the landlord your updated times (${clean.length} option${clean.length === 1 ? "" : "s"}). I'll let you know when they confirm one.`, metadata: { tourId: t.id } });
-    }
-    notifyTourRequested({ tourId: t.id }).catch((err) => console.error("[tours] update alert failed:", err?.message ?? err));
-    return { tour: shape(updated, "student") };
-  }
-  if (action === "pick") {
-    if (t.status !== "proposed") return { error: "There is nothing to pick from yet", status: 409 };
-    const iso = validSlots([slot])[0];
-    if (!iso || !(t.landlord_slots ?? []).includes(iso)) return { error: "Pick one of the proposed times.", status: 400 };
-    const updated = await confirm(t, iso, studentId);
+    await saveAvailability(studentId, patternFromSlots(clean)).catch(() => {});
+    await postAvailability({ t, listingId: t.listing_id, proxyThreadId: t.proxy_thread_id, studentId, clean, updated: true });
+    await notifyTourRequested({ tourId: t.id }).catch((err) => console.error("[tours] update alert failed:", err?.message ?? err));
     return { tour: shape(updated, "student") };
   }
   if (action === "cancel") {
-    if (!["requested", "proposed", "confirmed"].includes(t.status)) return { error: "This request is already closed", status: 409 };
+    if (!["requested", "proposed", "messaging", "confirmed"].includes(t.status)) return { error: "This request is already closed", status: 409 };
     const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: studentId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
     if (error) throw fail("tour cancel", error);
-    notifyTourCancelled({ tourId: t.id, by: "student" }).catch(() => {});
+    if (t.proxy_thread_id) await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: "Your tour request is cancelled. Send new times from the calendar button whenever you're ready.", metadata: { tourId: t.id, cancelled: true } });
+    await notifyTourCancelled({ tourId: t.id, by: "student" }).catch(() => {});
     return { tour: shape(updated, "student") };
   }
   return { error: "Unknown action", status: 400 };
@@ -256,7 +281,7 @@ export async function listLandlordTours(landlordId) {
 /* Open request on this listing for this student, for the panel. */
 export async function openTourFor({ studentId, listingId }) {
   const { data } = await supabase.from("tour_requests").select(TOUR_SELECT).eq("student_id", studentId).eq("listing_id", listingId)
-    .in("status", ["requested", "proposed", "confirmed"]).order("created_at", { ascending: false }).limit(1);
+    .in("status", ["requested", "proposed", "messaging", "confirmed"]).order("created_at", { ascending: false }).limit(1);
   return data?.[0] ? shape(data[0], "student") : null;
 }
 
