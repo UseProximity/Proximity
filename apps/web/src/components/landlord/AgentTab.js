@@ -310,7 +310,7 @@ function FactRow({ listingId, f, onChanged }) {
       </div>
       {f.canEdit && !editing && (
         <div className="relative shrink-0">
-          <button type="button" onClick={() => setMenu((m) => !m)} aria-label="More" className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><MoreHorizontal className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setMenu((m) => !m)} aria-label="Fact options" className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><MoreHorizontal className="h-4 w-4" /></button>
           {menu && (
             <div className="absolute right-0 z-10 mt-1 w-28 rounded-lg border border-gray-200 bg-white p-1 shadow-lg" onMouseLeave={() => setMenu(false)}>
               <button type="button" onClick={() => { setMenu(false); setEditing(true); }} className="block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-gray-50">Edit</button>

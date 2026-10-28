@@ -131,6 +131,9 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   // Three batches at a time keeps a 50-page site to a couple of minutes.
   for (let i = 0; i < batches.length; i += 3) await Promise.all(batches.slice(i, i + 3).map(runBatch));
   totals.seconds = Math.round((Date.now() - started) / 1000);
+  const now = new Date().toISOString();
+  await supabase.from("listing_source_monitors").update({ last_checked_at: now }).eq("listing_id", listingId);
+  await supabase.from("listing_agents").update({ last_sync_at: now }).eq("listing_id", listingId);
   return totals;
 }
 
