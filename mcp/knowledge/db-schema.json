@@ -1427,6 +1427,22 @@
         }
       },
       {
+        "table": "listing_reports",
+        "status": "unreleased",
+        "description": "A signed-in user reporting a listing itself (its photos, text or contact details): one row per reporter and listing, with a reason from a fixed list (misleading_or_fake|scam_or_fraud|inappropriate_content|discriminatory|other) and an optional note of up to 500 characters. Written by POST /api/listingReport (the mobile app only, there is no web UI), deleted by reporter in /api/cron/purge-accounts. reported_user_id is the listing's primary real landlord (else its first) at report time, null when it has none; the shared Proximity placeholder, system and deleted accounts never count. Nothing sets reviewed_at yet and no email or other notification is sent: the queue is read by hand. Migration 202610230001. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "listing_id:uuid",
+          "reported_user_id:uuid",
+          "reason:text",
+          "details:text",
+          "created_at:timestamptz",
+          "reviewed_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk reporter_id->users.id (cascade); listing_id->listings.id (cascade); reported_user_id->users.id (set null); unique index listing_reports_one_per_reporter (reporter_id, listing_id); partial index idx_listing_reports_pending (created_at desc) where reviewed_at is null; check reason in (misleading_or_fake,scam_or_fraud,inappropriate_content,discriminatory,other) | details is null or <= 500 chars; rls: service role only (no policies), all privileges revoked from PUBLIC, anon and authenticated"
+      },
+      {
         "table": "listing_review_replies",
         "status": "active",
         "description": "Landlord replies to reviews, one per review. Written by /api/replyReview (POST, PATCH, DELETE: author only). Hard-deleted so the landlord can reply again; action_log keeps a copy. Inserts were blocked by the write-RPC allowlist until migration 202610220001, so 0 rows in prod before 2026-10-22.",
@@ -3056,7 +3072,7 @@
           "trg_keep_published (published_at is one-way)"
         ]
       },
-      "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."
+      "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, listing_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."
     },
     "webhooks": [
       {
@@ -3108,6 +3124,7 @@
         "lease_checks",
         "listing_metrics_daily",
         "listing_notification_events",
+        "listing_reports",
         "listing_source_events",
         "listing_source_monitors",
         "listing_source_snapshots",

@@ -18,6 +18,14 @@ export function createListingsResource(client) {
         method: "POST",
         body: JSON.stringify({ reviewId }),
       }),
+    // Reports a listing itself (needs a bearer token). `reason` is one of
+    // LISTING_REPORT_REASONS' values (@proximity/shared). The answer is
+    // { ok, alreadyReported? }.
+    reportListing: (listingId, { reason, details }) =>
+      client.request("/api/listingReport", {
+        method: "POST",
+        body: JSON.stringify({ listingId, reason, details: details || undefined }),
+      }),
     blockReviewAuthor: (reviewId) =>
       client.request("/api/userBlock", {
         method: "POST",

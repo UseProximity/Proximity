@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** October 16, 2026
+**Last updated:** October 23, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -86,10 +86,13 @@ Android app offer email and password or Google.
 - **Reports and blocks**: if you report a review, we record which review you reported,
   who wrote it, and when. If you report a conversation or a message in chat, we record
   who you reported, the reason you chose, which conversation it was, and when, plus the
-  first 500 characters of the message if you reported a specific one. If you block a
-  user, we record that you blocked them and when, hide that user's reviews from you, and
-  remove your conversation with them from your inbox. None of this is shown to the person
-  reported or blocked. To remove a block, email info@useproximity.org.
+  first 500 characters of the message if you reported a specific one. If you report a
+  listing (in the mobile apps), we record which listing you reported, the landlord
+  associated with it where it has one, the reason you chose, any note you chose to add,
+  and when. If you block a user, we record that you blocked them and when, hide that
+  user's reviews from you, and remove your conversation with them from your inbox. None of
+  this is shown to the person reported or blocked. To remove a block, email
+  info@useproximity.org.
 - **Listings** (landlords and subletters): property title, street address, city, state,
   ZIP code, coordinates, description, rent, bedrooms, bathrooms, area, unit and lease
   details, amenities, utilities, move-in dates, lease terms, and whether the property is
@@ -298,7 +301,7 @@ another, replying to say so is enough.
 | **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
 | **Analyze a lease you upload** | Produce the Lease Check flags and summary. |
 | **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one. |
-| **Safety, integrity, and support** | Apply eligibility rules (only students at a school we serve may leave reviews, and we use your date of birth to check eligibility on listings restricted to residents 21 or older); investigate abuse and fraud; respond to your questions. |
+| **Safety, integrity, and support** | Apply eligibility rules (only students at a school we serve may leave reviews, and we use your date of birth to check eligibility on listings restricted to residents 21 or older); investigate abuse and fraud, including looking at reports; respond to your questions. |
 | **Improve the Services** | Understand which pages and listings are used; act on feedback and bug reports. |
 | **Business operations** | Maintain a record of new accounts and listings for onboarding and support; keep a record of the introductions we make and the leases they lead to; once commissions take effect (Terms §1), bill landlords who pay one. |
 | **Legal** | Comply with applicable law and enforce our Terms. |
