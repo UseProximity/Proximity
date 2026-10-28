@@ -10,8 +10,11 @@
  * @auth landlord
  */
 export const dynamic = "force-dynamic";
+// The sync runs after the response, in this same function.
+export const maxDuration = 300;
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { runLanes } from "@/lib/sourceImport/jobs";
 import { auth } from "@/auth";
 import { hasStakeInListing } from "@/lib/listings/ownership";
 import { manualSync, agentSyncStatus } from "@/lib/agents/sync";
@@ -45,6 +48,9 @@ export async function POST(_req, { params }) {
   try {
     const r = await manualSync({ listingId, userId: g.userId, isAdmin: g.isAdmin });
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
+    // Start it now rather than waiting for the import-jobs cron, which only
+    // runs on production (previews and local never pick a queued job up).
+    if (r.job?.batch_id) after(() => runLanes({ batchId: r.job.batch_id, lanes: 1 }));
     return NextResponse.json({ ok: true, job: r.job, already: !!r.already });
   } catch (err) {
     console.error("POST agent/sync failed:", err);
