@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-28T01:54:48.979Z",
-  "count": 150,
+  "_generated": "2026-10-28T04:10:32.090Z",
+  "count": 154,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -169,6 +169,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "LandlordProxyThread",
+      "file": "src/components/chat/LandlordProxyThread.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
@@ -251,6 +256,11 @@
     {
       "name": "AgentTab",
       "file": "src/components/landlord/AgentTab.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordProxyChat",
+      "file": "src/components/landlord/LandlordProxyChat.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -509,6 +519,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ImportSources",
+      "file": "src/components/listings/wizard/ImportSources.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ImportWorkspace",
       "file": "src/components/listings/wizard/ImportWorkspace.js",
       "description": "No description. Run generate after adding a description above."
@@ -621,6 +636,11 @@
     {
       "name": "TourMarker",
       "file": "src/components/proxy/TourMarker.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourPicker",
+      "file": "src/components/proxy/TourPicker.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
