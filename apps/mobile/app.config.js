@@ -139,7 +139,7 @@ module.exports = {
         "android.permission.USE_FINGERPRINT",
       ],
       adaptiveIcon: {
-        backgroundColor: "#e23a2f",
+        backgroundColor: "#ffffff",
         foregroundImage: "./assets/android-icon-foreground.png",
         backgroundImage: "./assets/android-icon-background.png",
         monochromeImage: "./assets/android-icon-monochrome.png",
