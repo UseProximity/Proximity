@@ -11,10 +11,12 @@
  *                                               Questions tab
  * POST /api/landlord/proxy-chat                one box for everything:
  *   { listingId, action: "route", text }       which open question, if any,
- *                                               the message answers
- *   { listingId, action: "send", text, questionId }
- *                                               send it there, or to the
- *                                               agent when questionId is null
+ *                                               the message answers, and
+ *                                               whether Proxy is sure
+ *   { listingId, action: "send", text, questionId | tourId }
+ *                                               send it to that card (a tour
+ *                                               reply goes to the direct
+ *                                               chat), or to the agent
  *   { listingId, action: "decide", messageId, confirm }
  *                                               confirm or cancel the changes
  *                                               the agent proposed
@@ -73,7 +75,8 @@ export async function POST(req) {
     }
     if (body.action === "send") {
       const questionId = body.questionId && UUID.test(String(body.questionId)) ? String(body.questionId) : null;
-      const r = await sendLandlordMessage({ userId, isAdmin, listingId, text: body.text, questionId });
+      const tourId = !questionId && body.tourId && UUID.test(String(body.tourId)) ? String(body.tourId) : null;
+      const r = await sendLandlordMessage({ userId, isAdmin, listingId, text: body.text, questionId, tourId });
       if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
       return NextResponse.json(r);
     }
