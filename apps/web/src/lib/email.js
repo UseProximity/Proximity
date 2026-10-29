@@ -274,6 +274,11 @@ function chatTimeLabels(list) {
  * person ("Angela Clayton via Proximity") on our own address, or just
  * "Proximity" for an account with no name.
  *
+ * Sent through SES, that address is the private reply+token address itself,
+ * not info@ (Wyatt, 2026-10-29). A forward keeps only the From line, so a
+ * colleague answering a forwarded alert used to reach the shared inbox instead
+ * of the conversation. CHAT_FROM_REPLY_ADDRESS=0 goes back to info@.
+ *
  * With a replyTo (the private reply+token address) the email says it can be
  * answered directly. Without one, or when it falls back to Gmail, it only
  * points to the app, since a reply would land in the shared inbox instead.
@@ -417,7 +422,8 @@ export async function sendChatMessageEmail({
   const headers = chain.length > 0
     ? { References: chain.join(" "), "In-Reply-To": chain[chain.length - 1] }
     : undefined;
-  const from = { name: fromName, address: CHAT_FROM_ADDRESS };
+  const fromAddress = replyTo && process.env.CHAT_FROM_REPLY_ADDRESS !== "0" ? replyTo : CHAT_FROM_ADDRESS;
+  const from = { name: fromName, address: fromAddress };
 
   let sesError = null;
   if (sesTransporter && replyTo) {
