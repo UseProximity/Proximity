@@ -25,7 +25,7 @@ import supabase from "@/lib/supabase";
 import { postProxyMessage, postMessage } from "./threads";
 import { shortDate } from "./sections";
 import {
-  notifyTourRequested, notifyTourProposed, notifyTourConfirmed, notifyTourCancelled, notifyTourReminder, notifyTourNoAnswer,
+  notifyTourRequested, notifyTourProposed, notifyTourConfirmed, notifyTourCancelled, notifyTourReminder, notifyTourNoAnswer, nameShown,
 } from "./tourNotify";
 
 import { fmtSlot, normalizePattern, slotsFromPattern, availabilityText, availabilityDays, checkTourTime, fmtTourTime, chicagoParts, DAYS } from "./tourTime";
@@ -278,9 +278,10 @@ export async function listLandlordTours(landlordId) {
   const ids = (data ?? []).map((t) => t.student_id);
   const { data: students } = ids.length ? await supabase.from("users").select("id, name").in("id", ids) : { data: [] };
   const names = new Map((students ?? []).map((s) => [s.id, s.name]));
-  // The landlord sees the student's name from the request on (PRD: name and
-  // slots at request, contact details on confirmation).
-  return (data ?? []).map((t) => ({ ...shape(t, "landlord"), studentName: names.get(t.student_id) ?? "A student" }));
+  return (data ?? []).map((t) => {
+    const shown = nameShown(t);
+    return { ...shape(t, "landlord"), studentName: (shown && names.get(t.student_id)) || "A student", studentNamed: shown && !!names.get(t.student_id) };
+  });
 }
 
 /* Open request on this listing for this student, for the panel. */

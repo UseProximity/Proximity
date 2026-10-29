@@ -3,8 +3,9 @@
 /*
  * Tour requests, for landlords (PRD v3; reworked 2026-10-27, round 6).
  *
- * Each request shows the student's name, the lease and their availability
- * as plain ranges. Pick one of their days and type a start time inside a
+ * Each request shows the lease and the student's availability as plain
+ * ranges; the student's name only once the tour is confirmed or a direct
+ * chat opens (Wyatt, 2026-10-29). Pick one of their days and type a start time inside a
  * window, or write to them directly when none of it works; either opens a
  * direct chat in Messages. Contact details are never handed over; the two
  * sides can share them in that chat. The same request also appears in the

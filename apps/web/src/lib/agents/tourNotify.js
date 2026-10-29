@@ -37,11 +37,20 @@ async function loadTour(tourId) {
   const unit = t.unit_leases?.listing_units;
   return {
     t, student: student.data, landlord: landlord.data,
+    // What the landlord may call the student: their name only once it is shown.
+    studentLabel: (nameShown(t) && student.data?.name) || null,
     listingLabel: t.listings?.title || t.listings?.address || "the listing",
     address: t.listings?.address ?? "",
     leaseLabel: unit ? `${unit.name || `${unit.bedrooms ?? "?"} bed, ${unit.bathrooms ?? "?"} bath`}${t.unit_leases?.rent ? ` at $${Number(t.unit_leases.rent).toLocaleString("en-US")}/mo` : ""}` : null,
   };
 }
+
+/*
+ * Whether the landlord may see who the student is (Wyatt, 2026-10-29): only
+ * once the tour is confirmed or the two are put in touch in a direct chat.
+ * Until then the student is "A student", in the app and in emails.
+ */
+export const nameShown = (t) => !!t.thread_id || ["confirmed", "messaging"].includes(t.status);
 
 const canEmail = (u) => u && u.email && !u.deleted_at && u.email_notifications !== false;
 
@@ -60,8 +69,8 @@ export async function notifyTourRequested({ tourId }) {
   if (!r || !canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
     kind: "tour_request", to: r.landlord.email, name: r.landlord.name,
-    subject: `${r.student?.name || "A student"} wants to tour ${r.listingLabel}`,
-    intro: `${r.student?.name || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
+    subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
+    intro: `${r.studentLabel || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
     lines: rangeLines(r.t.student_slots),
     note: "Pick a day and a start time inside their window in your dashboard, or message the student if none of it works.",
     ctaLabel: completedAccount(r.landlord) ? "Confirm a time" : "Create an account to confirm",
@@ -125,7 +134,7 @@ export async function notifyTourCancelled({ tourId, by }) {
   await sendTourEmail({
     kind: "tour_cancelled", to: target.email, name: target.name,
     subject: `Tour request cancelled: ${r.listingLabel}`,
-    intro: by === "student" ? `${r.student?.name || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
+    intro: by === "student" ? `${r.studentLabel || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
     lines: [], note: by === "student" ? "" : "You can send new times from the calendar button in the chat.",
     ctaLabel: by === "student" ? "Open your dashboard" : "Back to the listing",
     ctaUrl: by === "student" ? `${getBaseUrl()}/dashboard/landlord?tab=tours` : `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`,
@@ -155,8 +164,8 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
   if (!canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
     kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name,
-    subject: `Reminder: ${r.student?.name || "a student"} is waiting to tour ${r.listingLabel}`,
-    intro: `${r.student?.name || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
+    subject: `Reminder: ${r.studentLabel || "a student"} is waiting to tour ${r.listingLabel}`,
+    intro: `${r.studentLabel || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
     lines: rangeLines(r.t.student_slots),
     note: "After five days Proxy will tell them there was no answer.",
     ctaLabel: "Confirm a time", ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`, userId: r.landlord.id,
