@@ -10,7 +10,7 @@
  *                              is always emailed. A signed-out visitor is
  *                              emailed only if they left an address.
  *   notifyLandlordQuestion     a landlord gets one email per new question,
- *                              with the context line and a link to their
+ *                              naming the listing, with a link to their
  *                              queue. Never the student's name.
  *   notifyLandlordStudentReply the student answered a clarifying question.
  *   remindLandlord             day 1 and day 3 reminders (cron).
@@ -91,7 +91,7 @@ export async function notifyLandlordQuestion({ questionId }) {
   const r = await questionWithOwner(questionId);
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
+    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
@@ -104,7 +104,7 @@ export async function notifyLandlordStudentReply({ questionId }) {
   const { data: last } = await supabase.from("listing_question_messages").select("body").eq("question_id", questionId).eq("sender", "student")
     .order("created_at", { ascending: false }).limit(1);
   await sendProxyLandlordQuestionEmail({
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
+    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, studentReply: last?.[0]?.body ?? null, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
@@ -115,7 +115,7 @@ export async function remindLandlord({ questionId, day }) {
   const r = await questionWithOwner(questionId);
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question, context: r.q.context,
+    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_reminder", hasAccount: r.hasAccount, reminderDay: day, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });

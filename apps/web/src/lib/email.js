@@ -1253,11 +1253,11 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
 /*
  * To a landlord: a student's question Proxy could not answer (or a reminder,
  * or the student's reply to a clarifying question). The student is never
- * named; the context line says which lease and whether they were signed in.
+ * named, and the question names the listing, not a lease (2026-10-29).
  * A contact with no account yet is asked to create one to answer.
  */
 export async function sendProxyLandlordQuestionEmail({
-  to, name, listingLabel, question, context, queueUrl, kind = "proxy_question",
+  to, name, listingLabel, question, queueUrl, kind = "proxy_question",
   hasAccount = true, studentReply = null, reminderDay = null, replyTo = null,
 }) {
   const first = name ? String(name).split(" ")[0] : "";
@@ -1285,7 +1285,7 @@ export async function sendProxyLandlordQuestionEmail({
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
         <p style="margin:0">${hello} ${lead}</p>
-        ${box(`${question}${context ? `\n(${context})` : ""}`)}
+        ${box(question)}
         ${studentReply ? box(studentReply, "Their reply") : ""}
         ${hasAccount
           ? `<p style="margin:14px 0 6px">${canReply ? "<strong>Reply to this email</strong> with your answer, or answer in the app. Either way I'll save it and pass it on to the student. If you need a detail from them first, just ask it and I'll check with them." : "Answer in the app and I'll save it and pass it on to the student."}</p>

@@ -7,10 +7,10 @@
  * listing's knowledge; what it cannot answer it sends to the landlord and
  * posts the answer back here. The landlord is never in this conversation.
  *
- * Layout (Wyatt, 2026-10-27, round 6; round 7, 2026-10-28): on the listing,
- * one line at the top says which lease the student is asking about (not in
- * the Messages popup, `showAbout`); the conversation sits straight in the
- * section (no box or border). The input is always on screen: on the listing
+ * Layout (Wyatt, 2026-10-27, round 6; round 7, 2026-10-28; 2026-10-29): the
+ * chat is about the whole listing, so no lease is named above it; the
+ * conversation sits straight in the section (no box or border). An empty
+ * chat opens with Proxy typing a greeting. The input is always on screen: on the listing
  * it renders into `inputSlot`, a bar pinned to the bottom of the listing
  * (ListingModalInfo), and in the popup the panel fills its height (`fill`)
  * with the input at the bottom. Sending or receiving a message scrolls the
@@ -55,7 +55,7 @@ import Link from "next/link";
 import { Send, Sparkles, Flag, CalendarDays, X } from "lucide-react";
 import { useTour } from "./TourMarker";
 import TourPicker from "./TourPicker";
-import { availabilitySummary } from "@/lib/agents/tourTime";
+import { availabilitySummary, availabilityText } from "@/lib/agents/tourTime";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
@@ -85,6 +85,10 @@ function leaseChoices(listing) {
   }
   return out;
 }
+
+// What Proxy says the first time a student opens a listing's chat (Wyatt,
+// 2026-10-29). Shown, not saved: no thread fills up for someone who only looked.
+const GREETING = "Hey, I'm Proxy. Ask me anything about this listing, or tap Tour and I'll get you in touch with the landlord.";
 
 /* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
 function TypingBubble() {
@@ -178,7 +182,7 @@ function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, unitLabel = null, preview = false, active = true, tourIntentSignal = 0, showAbout = true, fill = false, inputSlot = null }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -202,6 +206,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
   const selfId = useRef(Math.random().toString(36).slice(2));
   const signedIn = !!session?.user?.id;
   const started = messages.length > 0 || sending;
+  const greet = !loading && !!thread && !started;
   const { tour, setTour } = useTour(listingId, signedIn);
 
   useEffect(() => {
@@ -317,11 +322,16 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
     const slots = tourSlots;
     setTourSlots(null);
     const temp = text ? { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" } : null;
-    if (temp) setMessages((m) => [...m, temp]);
+    // The schedule shows at once, worded as it will be saved (lib/agents/tours.js).
+    const updating = tour && ["requested", "proposed", "messaging"].includes(tour.status);
+    const tempTour = slots ? { id: `temp-tour-${Date.now()}`, body: `${updating ? "Here's my updated availability for a tour:" : "I'd like to tour. Here's when I'm available:"}\n${availabilityText(slots)}`, isMine: true, type: "text" } : null;
+    const temps = [tempTour, temp].filter(Boolean);
+    const tempIds = new Set(temps.map((x) => x.id));
+    if (temps.length) setMessages((m) => [...m, ...temps]);
     requestAnimationFrame(() => scrollToEnd(true));
     try {
       if (slots) {
-        try { await sendTour(slots); } catch (err) { toast.error(err.message); setTourSlots(slots); }
+        try { await sendTour(slots); } catch (err) { toast.error(err.message); setTourSlots(slots); setMessages((m) => m.filter((x) => x.id !== tempTour.id)); }
       }
       if (text) {
         const r = await fetch(`/api/proxy/threads/${thread.id}/messages`, {
@@ -337,14 +347,14 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         }
         const incoming = data.messages ?? [];
         setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
-        setMessages((m) => [...m.filter((x) => x.id !== temp.id), ...incoming]);
+        setMessages((m) => [...m.filter((x) => !tempIds.has(x.id)), ...incoming]);
         if (data.intent === "tour" && signedIn) setPickerOpen(true);
       }
       // Seen on the page: no email for this answer. Other panels catch up too.
       await refresh();
       announce(thread.id, selfId.current);
     } catch {
-      if (temp) setMessages((m) => m.filter((x) => x.id !== temp.id));
+      if (temps.length) setMessages((m) => m.filter((x) => !tempIds.has(x.id)));
       setInput(text);
       toast.error("Proxy could not answer just now.");
     } finally {
@@ -352,7 +362,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       requestAnimationFrame(() => scrollToEnd(true));
       inputRef.current?.focus();
     }
-  }, [input, tourSlots, thread, sending, leaseId, signedIn, refresh, sendTour, scrollToEnd]);
+  }, [input, tourSlots, tour, thread, sending, leaseId, signedIn, refresh, sendTour, scrollToEnd]);
 
   const cancelTour = useCallback(async () => {
     if (!tour) return;
@@ -379,10 +389,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
       toast.error("Could not send the report.");
     }
   }, [thread]);
-
-  const aboutLabel = selectedLease
-    ? `${unitLabel ?? "this unit"}${selectedLease.rent ? ` at ${money(selectedLease.rent)}/mo` : ""}`
-    : unitLabel ?? "this place";
 
   if (unavailable) {
     return <div className="py-4 text-sm text-gray-600">{unavailable}</div>;
@@ -462,13 +468,12 @@ export default function ProxyPanel({ listing, session, selectedLease = null, uni
         </div>
       )}
 
-      {showAbout && (
-        <p className="text-sm text-gray-700">
-          Asking about <span className="font-semibold text-gray-900">{aboutLabel}</span>
-        </p>
-      )}
-
       {loading && <ChatSkeleton rows={3} />}
+      {greet && (
+        <div className={`flex flex-col ${fill ? "min-h-0 flex-1 justify-end" : ""}`}>
+          <Bubble msg={{ id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" }} animate />
+        </div>
+      )}
       {started && (
         <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
           {messages.map((m, i) => {

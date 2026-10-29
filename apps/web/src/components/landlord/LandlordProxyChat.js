@@ -7,11 +7,14 @@
  * landlord's follow-ups, tour requests with the student's availability, and
  * the listing agent's replies. The landlord's own messages on the right.
  *
- * One box. Proxy guesses whether a message answers an open question or is
- * for the agent (an update, a change, a question about the listing), and
- * the guess shows under the message for a few seconds with Undo and a
- * switch before it is sent. "Reply" under a question aims the box at it
- * without a guess. Changes the agent proposes are confirmed in place.
+ * One box. The landlord's message shows at once with Proxy typing under it
+ * (Wyatt, 2026-10-29); for a few seconds a small Undo can pull it back, then
+ * it goes. Proxy works out whether it answers (or asks back about) an open
+ * question or is for the agent (an update, a change, a question about the
+ * listing), and its reply says what it did. "Reply" under a question aims
+ * the box at it without a guess. Changes the agent proposes are confirmed in
+ * place. When something new arrives while the chat is open, Proxy "types"
+ * for a moment first, so the landlord sees it coming.
  *
  * A tour request carries its own controls: pick one of the student's days
  * and type a start time (checked against their window), or write to the
@@ -40,6 +43,17 @@ function ProxyBubble({ children, first = true, footer = null }) {
         {footer}
       </div>
     </div>
+  );
+}
+
+/* Proxy typing: three bouncing dots in a Proxy bubble. */
+function TypingBubble({ first = true }) {
+  return (
+    <ProxyBubble first={first}>
+      <span className="flex items-center gap-1 py-1">
+        {[0, 150, 300].map((d) => <span key={d} className={`h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 ${d === 150 ? "[animation-delay:150ms]" : d === 300 ? "[animation-delay:300ms]" : ""}`} />)}
+      </span>
+    </ProxyBubble>
   );
 }
 
@@ -127,6 +141,10 @@ export function TourItem({ tour, viewAsId, onDone }) {
 const HOLD_MS = 5000;
 const INTRO = "Hi, I'm this listing's agent. Students' questions and tour requests show up here, and you can answer them right in this box. You can also tell me something new (\"parking is $75 a month\"), change what students see (\"lower the 2-bed to $1,450\"), or ask what I know. I check with you before changing anything.";
 
+// Which side of the chat an item sits on, and a stable key to spot new ones.
+const sideOf = (i) => ((i.kind === "agent" || i.kind === "reply") && i.sender === "landlord" ? "me" : "proxy");
+const itemKey = (i) => `${i.kind}:${i.id}`;
+
 function QuestionItem({ item, targeted, onTarget }) {
   return (
     <ProxyBubble footer={item.status === "open" ? (
@@ -134,7 +152,7 @@ function QuestionItem({ item, targeted, onTarget }) {
         {targeted ? "Replying to this" : "Reply"}
       </button>
     ) : null}>
-      {`A student asked${item.lease ? ` about ${item.lease}` : ""}${item.askedCount > 1 ? ` (${item.askedCount} students so far)` : ""}:\n${item.question}`}
+      {`A student asked about ${item.listingTitle}${item.askedCount > 1 ? ` (${item.askedCount} students so far)` : ""}:\n${item.question}`}
     </ProxyBubble>
   );
 }
@@ -166,25 +184,41 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   // A message waiting out its Undo window: { text, questionId, question, left }
   const [pending, setPending] = useState(null);
   const [working, setWorking] = useState(false);
+  // What the landlord just sent, shown until the saved copy comes back.
+  const [sent, setSent] = useState(null);
+  // Something new from Proxy arrived on its own: dots first, then the message.
+  const [incoming, setIncoming] = useState(false);
+  const seenRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const timerRef = useRef(null);
   const qs = viewAsId ? `&viewAs=${encodeURIComponent(viewAsId)}` : "";
   const v = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
 
-  const load = useCallback(async () => {
+  // `quiet`: a background check. New messages from the other side wait
+  // behind the typing dots for a moment instead of popping in.
+  const load = useCallback(async ({ quiet = false } = {}) => {
     try {
       const r = await fetch(`/api/landlord/proxy-chat?listingId=${encodeURIComponent(listingId)}${qs}`);
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error || "Could not load");
+      const keys = (d.items ?? []).map(itemKey);
+      const seen = seenRef.current;
+      const fresh = quiet && seen ? (d.items ?? []).filter((i) => !seen.has(itemKey(i)) && sideOf(i) === "proxy") : [];
+      seenRef.current = new Set(keys);
+      if (fresh.length) {
+        setIncoming(true);
+        await new Promise((res) => setTimeout(res, 1400));
+        setIncoming(false);
+      }
       setData(d);
       setError(null);
     } catch (err) { setError(err.message); }
   }, [listingId, qs]);
 
-  useEffect(() => { setData(null); setTarget(null); load(); }, [load]);
+  useEffect(() => { setData(null); setTarget(null); seenRef.current = null; load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 20000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") load({ quiet: true }); }, 8000);
     return () => clearInterval(t);
   }, [load]);
   useEffect(() => () => clearInterval(timerRef.current), []);
@@ -202,21 +236,21 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [data, pending, working]);
+  }, [data, pending, working, sent, incoming]);
 
   const commit = useCallback(async (p) => {
     clearInterval(timerRef.current);
     setPending(null);
+    setSent(p.text);
     setWorking(true);
     try {
-      const d = await post({ action: "send", text: p.text, questionId: p.questionId });
-      if (d.screened) toast("Contact details were removed before Proxy passed it on.", { icon: "ℹ️" });
+      await post({ action: "send", text: p.text, questionId: p.questionId });
       await load();
       onChanged?.();
     } catch (err) {
       toast.error(err.message);
       setText(p.text);
-    } finally { setWorking(false); }
+    } finally { setWorking(false); setSent(null); }
   }, [post, load, onChanged]);
 
   const hold = useCallback((p) => {
@@ -237,10 +271,13 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
     if (inputRef.current) inputRef.current.style.height = "auto";
     if (aimed) { setTarget(null); hold({ text: body, questionId: aimed.id, question: aimed.question }); return; }
     if (!open.length) { commit({ text: body, questionId: null }); return; }
+    // The message shows (with Proxy typing) while Proxy works out where it goes.
+    setSent(body);
     setWorking(true);
     let guess = { questionId: null };
     try { guess = await post({ action: "route", text: body }); } catch { /* falls back to the agent */ }
     setWorking(false);
+    setSent(null);
     hold({ text: body, questionId: guess.questionId ?? null, question: guess.question ?? null });
   };
 
@@ -249,12 +286,6 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
     if (pending) setText(pending.text);
     setPending(null);
     setTimeout(() => inputRef.current?.focus(), 0);
-  };
-  const flip = () => {
-    if (!pending) return;
-    if (pending.questionId) hold({ text: pending.text, questionId: null, question: null });
-    else if (open.length === 1) hold({ text: pending.text, questionId: open[0].id, question: open[0].question });
-    else { undo(); toast("Click Reply under the question this answers, then send.", { icon: "ℹ️" }); }
   };
 
   const decide = async (messageId, confirm) => {
@@ -270,7 +301,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   if (!data) return <ChatSkeleton rows={4} />;
 
   const items = data.items;
-  const sideOf = (i) => (i.kind === "agent" ? (i.sender === "landlord" ? "me" : "proxy") : i.kind === "reply" ? (i.sender === "landlord" ? "me" : "proxy") : "proxy");
+  const lastSide = items.length ? sideOf(items[items.length - 1]) : null;
 
   return (
     <div className={`flex flex-col gap-3 ${fill ? "h-full min-h-0 flex-1" : ""}`}>
@@ -298,24 +329,17 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
             </div>
           );
         })}
-        {pending && (
-          <div className="mt-3">
-            <MyBubble>{pending.text}</MyBubble>
-            <p className="mt-1 text-right text-[11px] text-gray-500">
-              {pending.questionId ? `Sending to the student who asked "${pending.question}"` : "Sending to your agent, not to a student"} in {pending.left}s ·{" "}
-              <button type="button" onClick={undo} className="font-semibold text-gray-800 underline">Undo</button>
-              {(pending.questionId || open.length > 0) && (
-                <>
-                  {" · "}
-                  <button type="button" onClick={flip} className="font-semibold text-gray-800 underline">{pending.questionId ? "It's for my agent" : "It answers a question"}</button>
-                </>
-              )}
-              {" · "}
-              <button type="button" onClick={() => commit(pending)} className="font-semibold text-red-600 underline">Send now</button>
-            </p>
+        {(pending || sent) && (
+          <div className={lastSide === "me" ? "mt-1" : "mt-3"}>
+            <MyBubble>{pending ? pending.text : sent}</MyBubble>
+            {pending && (
+              <p className="mt-0.5 text-right text-[11px] text-gray-400">
+                <button type="button" onClick={undo} className="font-semibold text-gray-500 hover:text-gray-800">Undo</button> ({pending.left}s)
+              </p>
+            )}
           </div>
         )}
-        {working && <p className="mt-2 pl-8 text-xs text-gray-400">Proxy is working on it...</p>}
+        {(pending || sent || working || incoming) && <div className="mt-3"><TypingBubble /></div>}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex shrink-0 items-end gap-2">
         <div className="flex min-h-11 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400">

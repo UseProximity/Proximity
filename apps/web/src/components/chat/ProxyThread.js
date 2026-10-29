@@ -4,8 +4,7 @@
  * A Proxy conversation inside the Messages overlay (Wyatt, 2026-10-27): the
  * same panel as the listing's Contact tab, under a header that names the
  * listing and links to it. Tours are requested from the calendar button in
- * the input, as on the listing. No "Asking about" line here, and the input
- * stays pinned to the bottom while the conversation scrolls (round 7). The
+ * the input, as on the listing. The input stays pinned to the bottom while the conversation scrolls (round 7). The
  * listing is fetched here because the panel needs its units and leases.
  */
 import { useEffect, useState } from "react";
@@ -44,7 +43,7 @@ export default function ProxyThread({ thread, onBack }) {
 
   const title = thread?.listingTitle?.trim() || thread?.listingAddress?.trim() || "Conversation";
   const address = thread?.listingTitle?.trim() && thread?.listingAddress?.trim() !== thread?.listingTitle?.trim() ? thread?.listingAddress : "";
-  const { lease, unitLabel } = leaseOf(listing, thread?.leaseId);
+  const { lease } = leaseOf(listing, thread?.leaseId);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -66,7 +65,7 @@ export default function ProxyThread({ thread, onBack }) {
         ) : !listing ? (
           <ChatSkeleton />
         ) : (
-          <ProxyPanel listing={listing} session={session} selectedLease={lease} unitLabel={unitLabel} active fill showAbout={false} />
+          <ProxyPanel listing={listing} session={session} selectedLease={lease} active fill />
         )}
       </div>
     </div>
