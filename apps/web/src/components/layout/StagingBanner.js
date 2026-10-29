@@ -4,14 +4,21 @@
  * visible — amber on staging (APP_ENV=staging), slate on localhost (development). It shows when
  * the data snapshot was taken (read from app_metadata in the dev DB, which the snapshot script
  * stamps on each run). Renders nothing on production, so it's safe to mount unconditionally in
- * the root layout.
+ * the root layout. A Hide button on the right hides it in that browser for
+ * 30 days (StagingBannerBar sets the cookie read here).
  */
+import { cookies } from "next/headers";
 import { appEnv } from "@/lib/appEnv";
 import supabase from "@/lib/supabase";
+import StagingBannerBar from "./StagingBannerBar";
+
+// Set by the Hide button in StagingBannerBar.
+const HIDE_COOKIE = "hide_env_banner";
 
 export default async function StagingBanner() {
   const env = appEnv();
   if (env === "production") return null;
+  if ((await cookies()).get(HIDE_COOKIE)?.value === "1") return null;
 
   let dateStr = "unknown date";
   try {
@@ -38,8 +45,8 @@ export default async function StagingBanner() {
   const label = isLocal ? "🛠️ LOCALHOST" : "⚠️ STAGING";
 
   return (
-    <div className={className}>
+    <StagingBannerBar className={className}>
       {label} — data snapshot from {dateStr}. Changes here don’t affect production.
-    </div>
+    </StagingBannerBar>
   );
 }
