@@ -29,6 +29,14 @@ export function createMatchmakingResource(client) {
         body: JSON.stringify({ sessionId, action: "contact_owners", listingIds, message, selectionLabel }),
       }),
 
+    // The widening turn that follows a sendTurn reply with `pendingRelax: true`: loosens
+    // the filters and returns the new matches.
+    relaxRetry: ({ sessionId }) =>
+      client.request("/api/matchmaking/chat", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, action: "relax_retry" }),
+      }),
+
     // Panel-driven preference/weight edits outside the chat turn flow.
     updateSession: ({ sessionId, patch, weights }) =>
       client.request("/api/matchmaking/chat", {

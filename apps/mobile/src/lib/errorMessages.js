@@ -188,6 +188,7 @@ export const ERROR_MESSAGES = {
     LISTING_LOAD: "Couldn't load this listing.",
     // Said by Proxy in the conversation, in its own voice.
     CONTACT: "I couldn't reach out just now, please try again in a bit.",
+    TURN: "I couldn't get that through just now, please try again in a bit.",
   },
 };
 
