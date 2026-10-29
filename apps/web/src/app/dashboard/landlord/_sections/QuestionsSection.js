@@ -3,8 +3,9 @@
 /*
  * Questions from students, as a chat per listing (Wyatt, 2026-10-27, round 6).
  *
- * Left: every listing, the ones with recent activity first, with how many
- * questions and tour requests are waiting. Right: that listing's one chat
+ * Left: one row per listing students have asked about (every unit's
+ * questions together), recent activity first, with how many questions and
+ * tour requests are waiting. Right: that listing's one chat
  * (LandlordProxyChat), where the landlord answers students and talks to the
  * listing's agent in one box. The same chat is in their Messages (Proxy tab)
  * and the listing's Agent tab. A student is never named on
@@ -24,7 +25,7 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
   const load = useCallback(async () => {
     try {
       const qs = viewAsId ? `&viewAs=${encodeURIComponent(viewAsId)}` : "";
-      const r = await fetch(`/api/landlord/proxy-chat?all=1${qs}`);
+      const r = await fetch(`/api/landlord/proxy-chat?questions=1${qs}`);
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error || "Could not load questions");
       setListings(data.listings ?? []);
@@ -41,15 +42,19 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
   if (!listings.length) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-500">
-        <MessageCircleQuestion className="h-5 w-5 text-gray-400" /> No listings yet. Once you add one, its chat with Proxy shows up here.
+        <MessageCircleQuestion className="h-5 w-5 text-gray-400" /> No questions yet. When a student asks Proxy something it can&apos;t answer, the listing shows up here.
       </div>
     );
   }
 
+  // One white panel filling the content area under the site header (Wyatt,
+  // 2026-10-28): listings on the left, the chat on the right with its input
+  // on the bottom edge. Only the list and the messages scroll; the page does
+  // not. The heights match the dashboard's (105px header, 24px test banner,
+  // 3rem of padding).
   return (
-    <div className="grid gap-4 md:grid-cols-[260px_1fr] md:items-start">
-      {/* Desktop: the list scrolls on its own so the chat stays in view. */}
-      <div className="space-y-1 md:max-h-[calc(100dvh-152px)] md:overflow-y-auto">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white md:grid md:h-[calc(100dvh-105px-3rem)] md:grid-cols-[260px_1fr] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-129px-3rem)]">
+      <div className="max-h-64 space-y-1 overflow-y-auto border-b border-gray-200 p-2 md:max-h-none md:border-b-0 md:border-r">
         {listings.map((l) => {
           const waiting = l.openQuestions + l.openTours;
           return (
@@ -71,8 +76,8 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
           );
         })}
       </div>
-      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 md:sticky md:top-0">
-        {active && <LandlordProxyChat key={active} listingId={active} viewAsId={viewAsId} onChanged={load} />}
+      <div className="flex h-[70dvh] min-h-0 min-w-0 flex-col p-4 md:h-auto">
+        {active && <LandlordProxyChat key={active} listingId={active} viewAsId={viewAsId} fill onChanged={load} />}
       </div>
     </div>
   );

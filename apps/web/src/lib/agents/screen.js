@@ -12,8 +12,18 @@
  *                         (Wyatt, 2026-10-26: contact details reach a student
  *                         only through a confirmed tour). The leasing office
  *                         address is a fact, not contact information, and is
- *                         left alone.
+ *                         left alone. They are dropped without a marker
+ *                         (2026-10-29): the other side never sees "[contact
+ *                         details removed]"; Proxy tells the sender instead
+ *                         (CONTACT_NOTE).
+ *   screenStudentText     the same, for what a student asks to be passed on.
  */
+
+// What Proxy tells whoever tried to pass contact details along (Wyatt, 2026-10-29).
+export const CONTACT_NOTE = {
+  student: "Just so you know, I can't pass contact details along. If you'd like to get in touch with the landlord, book a tour with the Tour button and I'll connect you.",
+  landlord: "I left out the contact details, since I can't pass those along. If the student is interested in the listing, you'll be put in touch once they book a tour. Until then, any other questions go through me.",
+};
 
 export const STUDENT_MAX = 2000;
 export const LANDLORD_MAX = 4000;
@@ -29,7 +39,7 @@ export function sanitizeStudentText(text) {
     .slice(0, STUDENT_MAX);
 }
 
-const REMOVED = "[contact details removed]";
+const REMOVED = "\u0000";
 const EMAIL = /[a-z0-9._%+-]+\s*(?:@|\(at\)|\[at\])\s*[a-z0-9.-]+\s*(?:\.|\(dot\)|\[dot\])\s*[a-z]{2,}/gi;
 // Seven or more digits with the usual separators: a phone number in any format.
 const PHONE = /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
@@ -56,7 +66,21 @@ export function screenLandlordText(text) {
   strip(PHONE);
   strip(HANDLE);
   strip(PLATFORM_LINE);
-  out = out.replace(new RegExp(`(?:\\[contact details removed\\][\\s,;:]*){2,}`, "g"), `${REMOVED} `).replace(/\s{2,}/g, " ").trim();
-  const words = out.replace(/\[contact details removed\]/g, "").trim().split(/\s+/).filter(Boolean);
+  // Drop the gaps, then the words left dangling in front of them ("call me at").
+  out = out
+    .replace(/[ \t]*\u0000(?:[\s,;:/|-]*\u0000)*/g, "\u0000")
+    .replace(/(?:\b(?:or|and)\s+)?\b(?:call|text|email|e-mail|reach|contact|message|dm|find|follow|visit|see|check out|go to)(?:\s+(?:me|us|them))?(?:\s+(?:at|on|via))?\s*:?\s*\u0000/gi, "\u0000")
+    .replace(/\s*\(\s*\u0000\s*\)/g, "")
+    .replace(/\s*\u0000\s*([.,;:!?])?/g, (m, p) => (p && p !== "," ? p : " "))
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/([.,;:!?]){2,}/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[,;:\s]+$/g, "")
+    .trim();
+  const words = out.split(/\s+/).filter(Boolean);
   return { text: out, removed, onlyContact: removed > 0 && words.length < 3, original };
+}
+
+export function screenStudentText(text) {
+  return screenLandlordText(text);
 }

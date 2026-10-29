@@ -2644,7 +2644,6 @@ export default function ListingModalInfo({
                     listing={listing}
                     session={session}
                     selectedLease={selectedLease}
-                    unitLabel={selectedUnitName ?? sortedUnits[selectedUnitIdx]?.label ?? null}
                     preview={preview}
                     active={activeTab === "contact"}
                     inputSlot={proxyInputSlot}
@@ -2668,7 +2667,7 @@ export default function ListingModalInfo({
               )}
             </div>
             {proxyContact && (
-              <div ref={setProxyInputSlot} className="sticky bottom-0 z-40 -mx-4 border-t border-gray-100 bg-white px-6 pb-4 pt-3" />
+              <div ref={setProxyInputSlot} className="sticky bottom-0 z-40 -mx-4 border-t border-gray-100 bg-white px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3" />
             )}
           </motion.div>
         </div>

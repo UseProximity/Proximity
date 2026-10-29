@@ -25,7 +25,7 @@ import supabase from "@/lib/supabase";
 import { z } from "zod";
 import { parseStructured, HAIKU } from "./model";
 import { postProxyMessage } from "./threads";
-import { screenLandlordText } from "./screen";
+import { screenLandlordText, screenStudentText } from "./screen";
 import { synthesizeKnowledge } from "./synthesize";
 import { findOrCreateSource } from "./store";
 import { notifyLandlordQuestion, notifyLandlordStudentReply, notifyStudentThread } from "./notify";
@@ -85,7 +85,8 @@ async function findOpenMatch({ listingId, ownerId, leaseId, questionText, normal
 
 export async function askLandlord({ ctx, thread, messageId, questionText, leaseId = null, askerUserId = null, visitorId = null }) {
   const listingId = ctx.listingId;
-  const question = String(questionText ?? "").trim().slice(0, 1000);
+  // Contact details never reach the landlord (Wyatt, 2026-10-29); Proxy tells the student.
+  const question = screenStudentText(String(questionText ?? "").trim()).text.slice(0, 1000);
   if (!question) return null;
   const ownerId = await resolveOwner({ ctx, leaseId });
   const normalized = normalizeQuestion(question);
@@ -131,7 +132,8 @@ export async function pendingClarifierFor(threadId) {
 }
 
 export async function studentReplyToClarifier({ question, thread, body, userId = null }) {
-  await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", thread_id: thread.id, user_id: userId, body: String(body).slice(0, 2000) });
+  const screened = screenStudentText(body);
+  await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", thread_id: thread.id, user_id: userId, body: (screened.text || "(The student sent only contact details, which Proxy does not pass on.)").slice(0, 2000), raw_body: screened.removed ? screened.original : null, screened: screened.removed > 0 });
   await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: new Date().toISOString() }).eq("id", question.id);
   await notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }

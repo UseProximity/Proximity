@@ -27,7 +27,7 @@ import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
 import { currentFacts } from "./store";
 import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_USER_ID } from "./threads";
-import { sanitizeStudentText } from "./screen";
+import { sanitizeStudentText, screenStudentText, CONTACT_NOTE } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
 import { askLandlord, pendingClarifierFor, studentReplyToClarifier } from "./questions";
 import { handleVisitorEmail, askedLine } from "./visitorEmail";
@@ -282,6 +282,12 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     // An offer to ask the landlord waits for the student's yes on the next turn.
     const offer = String(final.offered_question ?? "").trim();
     if (offer || thread.proxy_state?.offer) await updateProxyState(thread.id, { offer: offer && !questionIds.length ? offer.slice(0, 300) : null });
+  }
+
+  // Contact details in what went to the landlord were left out; say so (Wyatt, 2026-10-29).
+  const relayed = questionIds.length > 0 || !!(pending && final?.clarifier_reply);
+  if (relayed && screenStudentText(text).removed > 0) {
+    out.push(await postProxyMessage({ threadId: thread.id, listingId, body: CONTACT_NOTE.student, type: "proxy_note", metadata: { contactNote: true } }));
   }
 
   await supabase.from("listing_agent_questions").insert({
