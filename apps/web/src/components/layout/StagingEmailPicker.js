@@ -3,7 +3,8 @@
  * anyone choose which inbox receives every outbound email here — they're redirected there by
  * sendMailSafe (via the `staging_email_to` cookie) instead of reaching real users. Type any
  * address; there is deliberately no list to pick from, so no one's email is shown to people
- * testing here (partners included). Auto-opens when unset; reopenable from the pill. `env` is resolved server-side in the layout, so it renders only
+ * testing here (partners included). Auto-opens when unset; reopenable from the pill, which
+ * sits as a small dot until hovered. `env` is resolved server-side in the layout, so it renders only
  * off production (never leaks onto the real site).
  */
 "use client";
@@ -47,11 +48,15 @@ export default function StagingEmailPicker({ env }) {
 
   return (
     <>
+      {/* A small amber dot until hovered or focused, then the full pill (Wyatt, 2026-10-29). */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-3 left-3 z-[60] rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-amber-950 shadow-md hover:bg-amber-400"
+        aria-label={`Test emails go to ${current || "nowhere (not set)"}. Change`}
+        className="group fixed bottom-3 left-3 z-[60] inline-flex items-center rounded-full bg-amber-500 p-1.5 text-xs font-medium text-amber-950 shadow-md transition-all duration-200 hover:bg-amber-400 hover:px-3 focus-visible:px-3"
       >
-        📧 Test emails → {current || "not set"}
+        <span className="block max-h-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-h-6 group-hover:max-w-xs group-hover:opacity-100 group-focus-visible:max-h-6 group-focus-visible:max-w-xs group-focus-visible:opacity-100">
+          📧 Test emails → {current || "not set"}
+        </span>
       </button>
 
       {open && (
