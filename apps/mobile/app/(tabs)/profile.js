@@ -201,32 +201,27 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats: Saved Listings is a student-facing concept; landlords have
-            their own My Listings tab instead, so this card (and its link to
-            the Saved tab) is hidden for them rather than pointing at a tab
-            that's no longer in their tab bar. */}
-        {!isLandlord(user.role) && (
-          <Pressable
-            onPress={() => router.push("/(tabs)/saved")}
-            className="bg-white rounded-2xl border border-gray-200 p-4 mb-6"
-          >
-            <View className="flex-row items-center justify-between">
-              <View>
-                <Text className="text-2xl font-bold text-gray-900">
-                  {savedListings.length}
-                </Text>
-                <Text className="text-sm text-gray-500 mt-0.5">
-                  Saved Listings
-                </Text>
-              </View>
-              <ChevronRight
-                size={18}
-                color={colors.textMuted}
-                strokeWidth={2}
-              />
+        {/* Stats: Saved Listings links to the Saved tab, which every role has. */}
+        <Pressable
+          onPress={() => router.push("/(tabs)/saved")}
+          className="bg-white rounded-2xl border border-gray-200 p-4 mb-6"
+        >
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text className="text-2xl font-bold text-gray-900">
+                {savedListings.length}
+              </Text>
+              <Text className="text-sm text-gray-500 mt-0.5">
+                Saved Listings
+              </Text>
             </View>
-          </Pressable>
-        )}
+            <ChevronRight
+              size={18}
+              color={colors.textMuted}
+              strokeWidth={2}
+            />
+          </View>
+        </Pressable>
 
         {/* Landlords (and admins, matching Add Listing's own role gate) start a
             new property listing from here; the wizard lives at /listings/add. */}

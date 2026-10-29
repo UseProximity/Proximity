@@ -74,6 +74,8 @@ export const ERROR_MESSAGES = {
     FAVORITE: "Couldn't update your saved listings. Please try again.",
     MESSAGE_SEND: "Couldn't send your message. Please try again.",
     REPORT_REVIEW: "Couldn't send your report. Please try again.",
+    REPORT_LISTING: "Couldn't send your report. Please try again.",
+    REPORT_OWN_LISTING: "You can't report your own listing.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
@@ -145,6 +147,10 @@ export const ERROR_MESSAGES = {
     FILE_NAME_LONG: "A file name is too long. Rename the file and try again.",
     RATE_LIMIT: "You're sending messages too quickly. Please wait a moment and try again.",
     NOT_FOUND: "This conversation couldn't be found.",
+    // Landlord's held email replies (HeldRepliesBanner).
+    REPLY_DECIDE: "Something went wrong. Please try again.",
+    REPLY_REMOVE: "Couldn't remove that sender. Please try again.",
+    REPLY_NOT_WAITING: "That reply is no longer waiting. It may already have been handled.",
     BLOCK: "Couldn't block this user. Please try again.",
     REPORT: "Couldn't send your report. Please try again.",
     REPORT_OWN: "You can't report your own message.",
@@ -240,6 +246,7 @@ export const SERVER_ERRORS = {
   "Choose a reason for your report": E.CHAT.REPORT_REASON,
   "You have sent a lot of messages in a short time. Try again shortly.": E.CHAT.RATE_LIMIT,
   [E.CHAT.UNAVAILABLE]: E.CHAT.UNAVAILABLE,
+  "That reply is no longer waiting": E.CHAT.REPLY_NOT_WAITING,
   // Answers to the chat send, start and attachment routes.
   PASSWORD_REQUIRED: E.CHAT.PASSWORD_REQUIRED, // body.code, not text
   "listing not found": E.LISTINGS.NOT_FOUND,
@@ -261,6 +268,7 @@ export const SERVER_ERRORS = {
   "You have a lease at this property but don't own the property record, so you can't edit it. Edit your own lease instead.":
     E.LISTINGS.NOT_OWNER,
   "You can't report your own review": E.LISTINGS.REPORT_OWN_REVIEW,
+  "You can't report your own listing": E.LISTINGS.REPORT_OWN_LISTING,
   "Review not found": E.LISTINGS.REVIEW_NOT_FOUND,
   "You can't block yourself": E.LISTINGS.BLOCK_SELF,
   "This reviewer can't be blocked": E.LISTINGS.BLOCK_UNAVAILABLE,

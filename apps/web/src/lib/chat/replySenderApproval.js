@@ -122,8 +122,26 @@ export async function deliverHeld(rows) {
  */
 export async function decideSender({ db = supabase, landlordId, email, scope = "address", decision, decidedBy, via, rerun = true }) {
   const address = normalizeEmail(email);
-  if (!landlordId || !address) return { ok: false, error: "Invalid sender" };
   if (decision !== "approve" && decision !== "decline") return { ok: false, error: "Invalid decision" };
+  // A held reply can carry an address that is not a usable pattern. It can never be
+  // approved, but it must still be declinable or it would sit held for good. There is no
+  // rule to remember for it, so the replies from that exact string are just dropped.
+  const raw = String(email ?? "").trim().toLowerCase();
+  if (landlordId && !address && decision === "decline" && raw) {
+    const { data, error } = await db
+      .from("chat_inbound_emails")
+      .update({ status: "wrong_sender", reason: "declined by landlord" })
+      .eq("user_id", landlordId)
+      .eq("from_email", raw)
+      .eq("status", "held")
+      .select("id");
+    if (error) throw error;
+    // Nothing held to decline (already handled, or not a held reply): there is no rule to
+    // save either, so this is not a success.
+    if (!(data ?? []).length) return { ok: false, error: "That reply is no longer waiting" };
+    return { ok: true, pattern: null, claimed: [] };
+  }
+  if (!landlordId || !address) return { ok: false, error: "Invalid sender" };
   const pattern = decision === "decline" ? address : patternFor(address, scope);
   if (!pattern) return { ok: false, error: "That domain is shared by many people, so only this exact address can be approved" };
 

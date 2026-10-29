@@ -889,6 +889,7 @@
         "review_reports",
         "review_reply_reports",
         "chat_reports",
+        "listing_reports",
         "review_invites",
         "users"
       ],
@@ -1598,6 +1599,21 @@
       },
       "tables": [],
       "file": "src/app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listingReport",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listings",
+        "listing_reports"
+      ],
+      "file": "src/app/api/listingReport/route.js"
     },
     {
       "path": "/api/listings",

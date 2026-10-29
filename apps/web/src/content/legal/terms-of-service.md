@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** October 16, 2026
+**Last updated:** October 23, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -330,7 +330,7 @@ QR code or barcode. We may record refused and flagged messages and files, as Pri
 do not guarantee that every message or file will be checked or that every violation will be
 caught.
 
-**Reporting and blocking.** You can report a review of a listing or a conversation, and
+**Reporting and blocking.** You can report a listing, a review of a listing, or a conversation, and
 block another user, from within the Services. We may act on a report as these Terms
 allow, but we do not promise a response time or outcome. Blocking changes what you can
 see and send in relation to that person; it does not remove content that is already
@@ -356,6 +356,7 @@ You agree not to:
   terms, or share contact details, links, or social handles in messages for that purpose.
   We may flag, remove, or stop delivering messages that do this, and may limit your access
   to messaging if it continues;
+- file reports you know to be false, or use reporting to harass or retaliate against someone;
 - harass, threaten, stalk, or endanger anyone;
 - upload malware, or interfere with or overload the Services; or
 - use the Services for anything unlawful, or to help anyone else do any of the above.
