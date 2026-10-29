@@ -47,6 +47,57 @@ function questionToMessage(q, animate = false) {
 // starts with fresh local state.
 export const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
 
+// Proxy's standalone remark (data.note) shown just before the next question, as its own
+// bubble so it never gets mixed into the question text.
+function noteMessage(note) {
+  return { role: "assistant", content: note, ts: new Date().toISOString(), animate: true };
+}
+
+// Appends the question a response asks next, with its note ahead of it. Does nothing when
+// that question is already the latest message (the optimistic local copy).
+function withNextQuestion(messages, data) {
+  if (qKey(messages[messages.length - 1]?.question) === qKey(data.nextQuestion)) return messages;
+  return [
+    ...messages,
+    ...(data.note ? [noteMessage(data.note)] : []),
+    questionToMessage(data.nextQuestion, true),
+  ];
+}
+
+// A mid-script answer shows its next question from the local script straight away, so a
+// note on the server's reply (e.g. the big-group heads-up) is slotted in before that
+// question when it arrives.
+function withNoteBeforeQuestion(messages, data) {
+  if (!data.note || !data.nextQuestion) return messages;
+  if (messages.some((m) => m.role === "assistant" && m.content === data.note)) return messages;
+  const at = messages.map((m) => qKey(m.question)).lastIndexOf(qKey(data.nextQuestion));
+  if (at < 0) return messages;
+  return [...messages.slice(0, at), noteMessage(data.note), ...messages.slice(at)];
+}
+
+// Says so when a turn fails, instead of leaving the student waiting for a reply that is
+// not coming. `retryQuestion` is the question the failed turn consumed: it is asked again
+// after the message so the answer controls come back. Without one, a question that is
+// already the latest message stays last, so it keeps its controls.
+function reportTurnFailure(retryQuestion) {
+  const failure = {
+    role: "assistant",
+    content: ERROR_MESSAGES.MATCHMAKING.TURN,
+    ts: new Date().toISOString(),
+    animate: true,
+  };
+  useChatStore.setState((state) => {
+    const last = state.messages[state.messages.length - 1];
+    if (retryQuestion) return { messages: [...state.messages, failure, questionToMessage(retryQuestion, false)] };
+    if (last?.question) return { messages: [...state.messages.slice(0, -1), failure, last] };
+    return { messages: [...state.messages, failure] };
+  });
+}
+
+// A saved question the current script can still ask as it was saved. Server-written
+// tradeoff questions (the narrowing and commute turns) are not in the script.
+const isCurrentQuestion = (q) => q.kind === "tradeoff" || QUESTION_BY_ID[q.id]?.kind === q.kind;
+
 function inlineRecsMessage(data) {
   return {
     role: "assistant",
@@ -129,7 +180,13 @@ export const useChatStore = create((set, get) => ({
           session.status !== "recommendations_ready" &&
           serverMessages.length > 0 &&
           !serverMessages.some((m) => m.question);
-        if (isStaleOldChat) {
+        // A session saved under an older script can be waiting on a question that no longer
+        // exists (name_confirm, program, grad_year) or changed shape (lease_term was
+        // multi-select), which the app cannot render or the server cannot take. Restart too.
+        const pendingQuestion = serverMessages[serverMessages.length - 1]?.question;
+        const isStaleScript =
+          session.status !== "recommendations_ready" && pendingQuestion && !isCurrentQuestion(pendingQuestion);
+        if (isStaleOldChat || isStaleScript) {
           await get().startFresh();
           return;
         }
@@ -266,6 +323,8 @@ export const useChatStore = create((set, get) => ({
     });
 
     const finalizing = !upcoming;
+    // The question this answer consumed; asked again if the final turn fails.
+    const retryQuestion = finalizing ? get().messages.findLast((m) => m.question)?.question : null;
     const snapshot = { preferences: applied.preferences, weights: applied.weights };
     enqueue(async (isStale) => {
       try {
@@ -279,19 +338,18 @@ export const useChatStore = create((set, get) => ({
             status: data.status ?? get().status,
           });
           if (data.nextQuestion) {
-            set((state) =>
-              qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-                ? {}
-                : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-            );
+            set((state) => ({ messages: withNextQuestion(state.messages, data) }));
           } else if (data.recommendations?.length) {
             get()._appendRecsWithContact(data);
           }
-        } else if (data.recommendations || data.status) {
-          set({
-            recommendations: data.recommendations ?? get().recommendations,
-            status: data.status ?? get().status,
-          });
+        } else {
+          if (data.recommendations || data.status) {
+            set({
+              recommendations: data.recommendations ?? get().recommendations,
+              status: data.status ?? get().status,
+            });
+          }
+          if (data.note) set((state) => ({ messages: withNoteBeforeQuestion(state.messages, data) }));
         }
       } catch (err) {
         if (isStale()) return;
@@ -300,6 +358,7 @@ export const useChatStore = create((set, get) => ({
           return;
         }
         console.error("[chatStore] answerQuestion failed:", err);
+        reportTurnFailure(retryQuestion);
       } finally {
         if (finalizing && !isStale()) set({ loading: false });
       }
@@ -308,6 +367,8 @@ export const useChatStore = create((set, get) => ({
 
   _answerTradeoff: (answer) => {
     const { sessionId, preferences, weights } = get();
+    // The tradeoff question this answer consumed; asked again if the turn fails.
+    const retryQuestion = get().messages.findLast((m) => m.question)?.question;
     set((state) => ({
       messages: [...state.messages, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }],
       loading: true,
@@ -328,11 +389,7 @@ export const useChatStore = create((set, get) => ({
           weights: data.weights ?? get().weights,
         });
         if (data.nextQuestion) {
-          set((state) =>
-            qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-              ? {}
-              : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-          );
+          set((state) => ({ messages: withNextQuestion(state.messages, data) }));
         } else if (data.recommendations?.length) {
           get()._appendRecsWithContact(data);
         }
@@ -343,6 +400,7 @@ export const useChatStore = create((set, get) => ({
           return;
         }
         console.error("[chatStore] tradeoff failed:", err);
+        reportTurnFailure(retryQuestion);
       } finally {
         if (!isStale()) set({ loading: false });
       }
@@ -470,7 +528,34 @@ export const useChatStore = create((set, get) => ({
           weights: data.weights ?? get().weights,
         });
         if (data.mode === "agent") {
-          if (data.reranked && data.recommendations?.length) {
+          if (data.pendingRelax) {
+            // The re-rank found nothing new: this reply only announces that the search is
+            // being widened. Run the widening turn now (the typing row stays up meanwhile).
+            set((state) => ({
+              messages: [
+                ...state.messages,
+                { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString(), animate: true },
+              ],
+            }));
+            const widened = await apiClient.matchmaking.relaxRetry({ sessionId });
+            if (isStale()) return;
+            set({
+              recommendations: widened.recommendations ?? get().recommendations,
+              status: widened.status ?? get().status,
+              preferences: widened.preferences ?? get().preferences,
+              weights: widened.weights ?? get().weights,
+            });
+            if (widened.reranked && widened.recommendations?.length) {
+              get()._appendRecsWithContact(widened);
+            } else if (widened.assistantMessage) {
+              set((state) => ({
+                messages: [
+                  ...state.messages,
+                  { role: "assistant", content: widened.assistantMessage, ts: new Date().toISOString(), animate: true },
+                ],
+              }));
+            }
+          } else if (data.reranked && data.recommendations?.length) {
             get()._appendRecsWithContact(data);
           } else if (data.draft?.listingIds?.length) {
             set((state) => ({
@@ -491,11 +576,7 @@ export const useChatStore = create((set, get) => ({
             }));
           }
         } else if (data.nextQuestion) {
-          set((state) =>
-            qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-              ? {}
-              : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-          );
+          set((state) => ({ messages: withNextQuestion(state.messages, data) }));
         } else if (data.recommendations?.length) {
           get()._appendRecsWithContact(data);
         }
@@ -506,6 +587,7 @@ export const useChatStore = create((set, get) => ({
           return;
         }
         console.error("[chatStore] sendMessage failed:", err);
+        reportTurnFailure(null);
       } finally {
         if (!isStale()) set({ loading: false });
       }
@@ -515,6 +597,9 @@ export const useChatStore = create((set, get) => ({
   // Edit a past answer: rewind prefs/weights to before that question, truncate
   // the transcript back to it, and re-ask it. The user continues forward from there.
   editAnswer: (questionId) => {
+    // Answers from an older script or the narrowing turns ("tradeoff") have no question
+    // in the script to re-ask.
+    if (!QUESTION_BY_ID[questionId]) return;
     const { preferences, sessionId } = get();
     const rewound = rewindTo(preferences, questionId);
 
