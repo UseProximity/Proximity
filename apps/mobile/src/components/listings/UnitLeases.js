@@ -3,8 +3,10 @@
 // unit, the open unit's identity, then one card per landlord with every lease
 // they offer on it. The ordering, labels and grouping come from
 // @proximity/shared (formatters/leases.js), ported from the web.
-import { useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as WebBrowser from "expo-web-browser";
 import { Bath, BedDouble, ChevronDown, ChevronUp, LayoutGrid, Ruler, X } from "lucide-react-native";
 import {
   LEASE_SORTS,
@@ -17,10 +19,75 @@ import {
   leaseTypeLabel,
 } from "@proximity/shared";
 import { ChatAvatar } from "../chat/ChatAvatar";
+import { Button } from "../ui/Button";
+import { ERROR_MESSAGES } from "../../lib/errorMessages";
+import { showError } from "../../lib/showError";
 import { colors, shadows } from "../../theme/tokens";
 
 // A long list of landlords opens on the first few and grows on request.
 const PAGE = 5;
+
+// The open floor plan: a white panel on the dark backdrop (so a transparent plan stays
+// readable), sized in pixels like the chat photo viewer. A PDF, or an image that fails
+// to load, cannot be shown here, so it hands the file to `onOpenBrowser` instead.
+// Mounted only while open, so its load state starts fresh each time.
+function FloorPlanViewer({ url, onClose, onOpenBrowser }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [status, setStatus] = useState("loading");
+  const unsupported = /\.pdf($|\?)/i.test(url) || status === "error";
+  // Leaves room below the close button (top inset + 8 + 40) and above the bottom inset.
+  const panelW = width - 32;
+  const panelH = height - insets.top - insets.bottom - 72;
+
+  return (
+    <Pressable
+      className="flex-1 bg-black/80 items-center justify-end"
+      style={{ paddingBottom: insets.bottom + 16 }}
+      onPress={onClose}
+    >
+      <Pressable
+        className="bg-white rounded-2xl overflow-hidden items-center justify-center"
+        style={{ width: panelW, height: panelH }}
+      >
+        {unsupported ? (
+          <View className="items-center px-6">
+            <Text className="text-sm text-gray-700 text-center mb-4">
+              {status === "error" ? ERROR_MESSAGES.LISTINGS.FLOOR_PLAN_LOAD : "This floor plan is a PDF."}
+            </Text>
+            <Button onPress={() => onOpenBrowser(url)}>View floor plan</Button>
+          </View>
+        ) : (
+          <>
+            <Image
+              source={{ uri: url }}
+              resizeMode="contain"
+              resizeMethod="resize"
+              style={{ width: panelW, height: panelH }}
+              onLoad={() => setStatus("loaded")}
+              onError={() => setStatus("error")}
+            />
+            {status === "loading" ? (
+              <View className="absolute inset-0 items-center justify-center">
+                <ActivityIndicator size="large" />
+              </View>
+            ) : null}
+          </>
+        )}
+      </Pressable>
+      <Pressable
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close floor plan"
+        hitSlop={8}
+        className="absolute right-4 w-10 h-10 rounded-full bg-black/50 items-center justify-center"
+        style={{ top: insets.top + 8 }}
+      >
+        <X size={20} color="#ffffff" />
+      </Pressable>
+    </Pressable>
+  );
+}
 
 function Cell({ label, children }) {
   return (
@@ -259,6 +326,11 @@ function LeaseList({ leases, onContact }) {
 // the landlord cannot be messaged, which hides the Contact buttons.
 export function UnitLeases({ tabs, selectedIdx, onSelectIdx, onContact }) {
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
+  // iOS cannot present a browser sheet over an open Modal, so "View floor plan" closes the
+  // viewer first and the sheet opens once it has gone: from the Modal's onDismiss on iOS,
+  // which Android never calls, so there it follows after a short delay. On iOS that timer
+  // is only a safety net, as onDismiss normally opens the sheet first.
+  const pendingUrl = useRef(null);
   if (!tabs.length) return null;
 
   const selected = tabs[selectedIdx] ?? tabs[0];
@@ -267,6 +339,17 @@ export function UnitLeases({ tabs, selectedIdx, onSelectIdx, onContact }) {
   // offer. They read differently.
   const loading = unit.leases === undefined;
   const leases = unit.leases ?? [];
+
+  const openPending = () => {
+    const url = pendingUrl.current;
+    pendingUrl.current = null;
+    if (url) WebBrowser.openBrowserAsync(url).catch(() => showError(ERROR_MESSAGES.LISTINGS.FLOOR_PLAN_OPEN));
+  };
+  const openInBrowser = (url) => {
+    pendingUrl.current = url;
+    setFloorPlanOpen(false);
+    setTimeout(openPending, Platform.OS === "ios" ? 1000 : 350);
+  };
 
   return (
     <View className="bg-white rounded-2xl border border-gray-50 overflow-hidden" style={shadows.subtle}>
@@ -331,19 +414,21 @@ export function UnitLeases({ tabs, selectedIdx, onSelectIdx, onContact }) {
         <LeaseList key={unit.id ?? selectedIdx} leases={leases} onContact={onContact} />
       )}
 
-      <Modal visible={floorPlanOpen} transparent animationType="fade" onRequestClose={() => setFloorPlanOpen(false)}>
-        <Pressable className="flex-1 bg-black/80 items-center justify-center p-4" onPress={() => setFloorPlanOpen(false)}>
-          <Image source={{ uri: unit.floorPlanImageUrl }} resizeMode="contain" style={{ width: "100%", height: "80%" }} />
-          <Pressable
-            onPress={() => setFloorPlanOpen(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close floor plan"
-            hitSlop={8}
-            className="absolute top-12 right-4 w-10 h-10 rounded-full bg-black/50 items-center justify-center"
-          >
-            <X size={20} color="#ffffff" />
-          </Pressable>
-        </Pressable>
+      <Modal
+        visible={floorPlanOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFloorPlanOpen(false)}
+        onDismiss={openPending}
+      >
+        {floorPlanOpen && unit.floorPlanImageUrl ? (
+          <FloorPlanViewer
+            key={unit.id ?? selectedIdx}
+            url={unit.floorPlanImageUrl}
+            onClose={() => setFloorPlanOpen(false)}
+            onOpenBrowser={openInBrowser}
+          />
+        ) : null}
       </Modal>
     </View>
   );
