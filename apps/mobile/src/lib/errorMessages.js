@@ -76,6 +76,8 @@ export const ERROR_MESSAGES = {
     REPORT_REVIEW: "Couldn't send your report. Please try again.",
     REPORT_LISTING: "Couldn't send your report. Please try again.",
     REPORT_OWN_LISTING: "You can't report your own listing.",
+    FLOOR_PLAN_LOAD: "Couldn't show this floor plan here.",
+    FLOOR_PLAN_OPEN: "Couldn't open this floor plan. Please try again.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
