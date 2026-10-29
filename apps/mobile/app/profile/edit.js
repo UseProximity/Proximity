@@ -24,7 +24,6 @@ export default function EditProfileScreen() {
   const { user } = useAuth();
 
   const [name, setName] = useState(user?.name || "");
-  const [email, setEmail] = useState(user?.email || "");
   const [graduationYear, setGraduationYear] = useState(user?.graduationYear?.toString() || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -40,16 +39,6 @@ export default function EditProfileScreen() {
       return;
     }
 
-    if (!email.trim()) {
-      setError(ERROR_MESSAGES.PROFILE.EMAIL_REQUIRED);
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError(ERROR_MESSAGES.PROFILE.EMAIL_INVALID);
-      return;
-    }
-
     if (isStudent && graduationYear && !/^\d{4}$/.test(graduationYear)) {
       setError(ERROR_MESSAGES.PROFILE.GRAD_YEAR);
       return;
@@ -58,9 +47,9 @@ export default function EditProfileScreen() {
     setSaving(true);
 
     try {
+      // The email is read-only here and deliberately never sent.
       const updateData = {
         name: name.trim(),
-        email: email.trim(),
       };
 
       if (isStudent && graduationYear) {
@@ -126,17 +115,17 @@ export default function EditProfileScreen() {
           {/* Email */}
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              className="h-12 border border-gray-200 rounded-xl px-4 text-base"
-              editable={!saving}
-            />
+            <View
+              accessible
+              accessibilityLabel={`Email, ${user?.email || "not set"}, read only`}
+              className="h-12 justify-center bg-gray-50 border border-gray-200 rounded-xl px-4"
+            >
+              <Text className="text-base text-gray-500" numberOfLines={1}>
+                {user?.email}
+              </Text>
+            </View>
             <Text className="text-xs text-gray-500 mt-1">
-              Changing your email will require re-verification
+              Your email can't be changed here. Contact support if you need to update it.
             </Text>
           </View>
 

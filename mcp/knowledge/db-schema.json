@@ -1427,6 +1427,22 @@
         }
       },
       {
+        "table": "listing_reports",
+        "status": "unreleased",
+        "description": "A signed-in user reporting a listing itself (its photos, text or contact details): one row per reporter and listing, with a reason from a fixed list (misleading_or_fake|scam_or_fraud|inappropriate_content|discriminatory|other) and an optional note of up to 500 characters. Written by POST /api/listingReport (the mobile app only, there is no web UI), deleted by reporter in /api/cron/purge-accounts. reported_user_id is the listing's primary real landlord (else its first) at report time, null when it has none; the shared Proximity placeholder, system and deleted accounts never count. Nothing sets reviewed_at yet and no email or other notification is sent: the queue is read by hand. Migration 202610230001. Service role only.",
+        "columns": [
+          "id:uuid",
+          "reporter_id:uuid",
+          "listing_id:uuid",
+          "reported_user_id:uuid",
+          "reason:text",
+          "details:text",
+          "created_at:timestamptz",
+          "reviewed_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk reporter_id->users.id (cascade); listing_id->listings.id (cascade); reported_user_id->users.id (set null); unique index listing_reports_one_per_reporter (reporter_id, listing_id); partial index idx_listing_reports_pending (created_at desc) where reviewed_at is null; check reason in (misleading_or_fake,scam_or_fraud,inappropriate_content,discriminatory,other) | details is null or <= 500 chars; rls: service role only (no policies), all privileges revoked from PUBLIC, anon and authenticated"
+      },
+      {
         "table": "listing_review_replies",
         "status": "active",
         "description": "Landlord replies to reviews, one per review. Written by /api/replyReview (POST, PATCH, DELETE: author only). Hard-deleted so the landlord can reply again; action_log keeps a copy. Inserts were blocked by the write-RPC allowlist until migration 202610220001, so 0 rows in prod before 2026-10-22.",
@@ -2416,7 +2432,7 @@
       {
         "table": "users",
         "status": "active",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2452,7 +2468,9 @@
           "profile_setup_link_hashes:text[]",
           "profile_setup_expires_at:timestamptz",
           "apple_refresh_token:text",
-          "company_name:text"
+          "company_name:text",
+          "preferred_move_in_date:date",
+          "preferred_lease_months:int4"
         ],
         "dev_only_columns": [
           "apple_refresh_token",
@@ -3056,7 +3074,7 @@
           "trg_keep_published (published_at is one-way)"
         ]
       },
-      "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."
+      "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, listing_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."
     },
     "webhooks": [
       {
@@ -3108,6 +3126,7 @@
         "lease_checks",
         "listing_metrics_daily",
         "listing_notification_events",
+        "listing_reports",
         "listing_source_events",
         "listing_source_monitors",
         "listing_source_snapshots",

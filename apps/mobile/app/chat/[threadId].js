@@ -47,6 +47,7 @@ import {
 } from "../../src/lib/chatPhotos";
 import { pickChatPdfs } from "../../src/lib/chatPdf";
 import { MessageBubble } from "../../src/components/chat/MessageBubble";
+import { HeldRepliesBanner } from "../../src/components/chat/HeldRepliesBanner";
 import { ChatSheets } from "../../src/components/chat/ChatSheets";
 import { ChatPhotoViewer } from "../../src/components/chat/ChatPhotoViewer";
 import { SendButton } from "../../src/components/ui/SendButton";
@@ -585,6 +586,12 @@ export default function ChatThreadScreen() {
         <ErrorMessage compact className="mx-4 mb-2">
           {sendError}
         </ErrorMessage>
+
+        {/* Shown to whoever is signed in: the server decides from the thread (not the account
+            role, since a student can be the landlord of a sublet) and answers the other side empty. */}
+        {!unavailable && user ? (
+          <HeldRepliesBanner threadId={threadId} onDelivered={loadLatest} />
+        ) : null}
 
         {unavailable ? (
           <View className="border-t border-gray-100 bg-white px-4 py-4 items-center">
