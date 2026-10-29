@@ -126,7 +126,7 @@ export async function remindLandlord({ questionId, day }) {
 export async function tellStudentsNoAnswer({ questionId }) {
   const { data: q } = await supabase.from("listing_questions").select("id, listing_id, question").eq("id", questionId).maybeSingle();
   if (!q) return 0;
-  const { data: waiters } = await supabase.from("listing_question_waiters").select("thread_id").eq("question_id", questionId);
+  const { data: waiters } = await supabase.from("listing_question_waiters").select("thread_id").eq("question_id", questionId).is("relayed_at", null);
   let n = 0;
   for (const w of waiters ?? []) {
     await postProxyMessage({

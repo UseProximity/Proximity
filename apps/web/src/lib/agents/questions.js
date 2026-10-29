@@ -17,6 +17,9 @@
  *                  is saved, Wyatt 2026-10-26) and relayed to every waiting
  *                  thread in Proxy's own words.
  * studentReplyToClarifier   the student's side of that exchange.
+ * A student who follows up on a question their thread already asked reopens
+ * that question (one card per question, Wyatt 2026-10-29): only the threads
+ * still waiting (relayed_at null) hear what the landlord says next.
  *
  * Nothing here ever shows a landlord who asked. The context line is the
  * lease and whether the asker was signed in.
@@ -83,11 +86,53 @@ async function findOpenMatch({ listingId, ownerId, leaseId, questionText, normal
   }
 }
 
+const FollowUp = z.object({
+  match: z.number().int().describe("The number of the earlier question the new one follows up on, or 0 when it is about something else."),
+});
+
+/* An earlier question from this same thread that the new one continues, if any. */
+async function findFollowUp({ listingId, threadId, questionText }) {
+  const { data: waits } = await supabase.from("listing_question_waiters").select("question_id").eq("thread_id", threadId).limit(30);
+  const ids = (waits ?? []).map((w) => w.question_id);
+  if (!ids.length) return null;
+  const { data: mine } = await supabase.from("listing_questions").select("id, question, answer, status, owner_id, asked_count")
+    .in("id", ids).eq("listing_id", listingId).in("status", ["open", "answered"]).order("last_activity_at", { ascending: false }).limit(8);
+  if (!mine?.length) return null;
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, listingId, kind: "followup", tag: "question-followup", maxTokens: 100,
+      system: "A student is asking a rental listing's landlord a question through Proxy. Decide whether the new question follows up on one of the student's earlier questions: it continues the same topic, asking for more about the same thing (\"is there laundry?\" then \"what brand is the washer?\"), or pushes back on the answer. A question about a different topic is not a follow-up, even if it is about the same unit.",
+      messages: [{ role: "user", content: `The student's earlier questions:\n${mine.map((q, i) => `${i + 1}. ${q.question}${q.answer ? ` (answered: ${q.answer.slice(0, 200)})` : ""}`).join("\n")}\n\nNew question: "${questionText}"` }],
+      schema: FollowUp,
+    });
+    const idx = Number(parsed?.match) || 0;
+    return idx > 0 && idx <= mine.length ? mine[idx - 1] : null;
+  } catch (err) {
+    console.error("[proxy] follow-up check failed:", err?.message ?? err);
+    return null;
+  }
+}
+
+/* The follow-up goes into the earlier question's card, which opens again for this thread. */
+async function reopenWithFollowUp({ q, thread, text, userId }) {
+  const now = new Date().toISOString();
+  await supabase.from("listing_question_messages").insert({ question_id: q.id, sender: "student", kind: "followup", thread_id: thread.id, user_id: userId, body: text.slice(0, 2000) });
+  await supabase.from("listing_questions").update({ status: "open", pending_clarifier: false, last_activity_at: now }).eq("id", q.id);
+  await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id).eq("thread_id", thread.id);
+  if (q.owner_id) await notifyLandlordStudentReply({ questionId: q.id }).catch((err) => console.error("[proxy] follow-up alert failed:", err?.message ?? err));
+}
+
 export async function askLandlord({ ctx, thread, messageId, questionText, leaseId = null, askerUserId = null, visitorId = null }) {
   const listingId = ctx.listingId;
   // Contact details never reach the landlord (Wyatt, 2026-10-29); Proxy tells the student.
   const question = screenStudentText(String(questionText ?? "").trim()).text.slice(0, 1000);
   if (!question) return null;
+  // Same thread, same topic: the earlier card again, always (Wyatt, 2026-10-29).
+  const followed = thread?.id ? await findFollowUp({ listingId, threadId: thread.id, questionText: question }) : null;
+  if (followed) {
+    await reopenWithFollowUp({ q: followed, thread, text: question, userId: askerUserId });
+    return followed;
+  }
   const ownerId = await resolveOwner({ ctx, leaseId });
   const normalized = normalizeQuestion(question);
   const lease = leaseId ? ctx.leases.find((l) => l.id === leaseId) : null;
@@ -117,23 +162,32 @@ export async function askLandlord({ ctx, thread, messageId, questionText, leaseI
   return row;
 }
 
-/* The clarifying question waiting on this thread's student, if any. */
+/*
+ * The clarifying question waiting on this thread's student, if any: an open
+ * question this thread still waits on, where the landlord wrote after this
+ * student last did. Worked out per thread, so when several students were
+ * asked, each one's reply counts, not only the first (2026-10-29).
+ */
 export async function pendingClarifierFor(threadId) {
-  const { data: waits } = await supabase.from("listing_question_waiters").select("question_id").eq("thread_id", threadId).limit(20);
+  const { data: waits } = await supabase.from("listing_question_waiters").select("question_id").eq("thread_id", threadId).is("relayed_at", null).limit(20);
   const ids = (waits ?? []).map((w) => w.question_id);
   if (!ids.length) return null;
-  const { data: qs } = await supabase.from("listing_questions").select("*").in("id", ids).eq("status", "open").eq("pending_clarifier", true)
-    .order("last_activity_at", { ascending: false }).limit(1);
-  const q = qs?.[0];
-  if (!q) return null;
-  const { data: msgs } = await supabase.from("listing_question_messages").select("body").eq("question_id", q.id).eq("sender", "landlord")
-    .order("created_at", { ascending: false }).limit(1);
-  return { ...q, clarifier: msgs?.[0]?.body ?? "" };
+  const { data: qs } = await supabase.from("listing_questions").select("*").in("id", ids).eq("status", "open").order("last_activity_at", { ascending: false }).limit(5);
+  if (!qs?.length) return null;
+  const { data: msgs } = await supabase.from("listing_question_messages").select("question_id, sender, thread_id, body, created_at")
+    .in("question_id", qs.map((q) => q.id)).order("created_at", { ascending: true });
+  for (const q of qs) {
+    const ms = (msgs ?? []).filter((m) => m.question_id === q.id);
+    const asked = ms.filter((m) => m.sender === "landlord").pop();
+    const mine = ms.filter((m) => m.sender === "student" && m.thread_id === threadId).pop();
+    if (asked && (!mine || mine.created_at < asked.created_at)) return { ...q, clarifier: asked.body };
+  }
+  return null;
 }
 
 export async function studentReplyToClarifier({ question, thread, body, userId = null }) {
   const screened = screenStudentText(body);
-  await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", thread_id: thread.id, user_id: userId, body: (screened.text || "(The student sent only contact details, which Proxy does not pass on.)").slice(0, 2000), raw_body: screened.removed ? screened.original : null, screened: screened.removed > 0 });
+  await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", kind: "reply", thread_id: thread.id, user_id: userId, body: (screened.text || "(The student sent only contact details, which Proxy does not pass on.)").slice(0, 2000), raw_body: screened.removed ? screened.original : null, screened: screened.removed > 0 });
   await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: new Date().toISOString() }).eq("id", question.id);
   await notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }
@@ -241,7 +295,10 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   if (error) throw fail("question", error);
   if (!q) return { error: "Question not found", status: 404 };
   if (q.owner_id && q.owner_id !== landlordUserId) return { error: "This question was sent to another landlord", status: 403 };
-  if (q.status !== "open") return { error: "This question is already closed", status: 409 };
+  if (!["open", "answered"].includes(q.status)) return { error: "This question is already closed", status: 409 };
+  // Writing on an answered card (a correction, an extra detail) reaches
+  // everyone who asked it, so they all wait for this reply again.
+  if (q.status === "answered") await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id);
 
   const screened = screenLandlordText(body);
   if (!screened.text) return { error: "Write an answer first.", status: 400 };
@@ -258,7 +315,8 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     question_id: q.id, sender: "landlord", user_id: landlordUserId, body: screened.text, raw_body: screened.removed ? screened.original : null,
     screened: screened.removed > 0, via,
   });
-  const waiters = await waitersOf(q.id);
+  // Only the students still waiting: one who followed up hears the reply, the others already have their answer.
+  const waiters = (await waitersOf(q.id)).filter((w) => !w.relayed_at);
   const now = new Date().toISOString();
 
   // An answer with a follow-up question (Wyatt, 2026-10-27): the student gets
@@ -278,7 +336,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     } catch (err) {
       console.error("[proxy] synthesis failed:", err?.message ?? err);
     }
-    await supabase.from("listing_questions").update({ pending_clarifier: true, answer: answerText, last_activity_at: now }).eq("id", q.id);
+    await supabase.from("listing_questions").update({ status: "open", pending_clarifier: true, answer: answerText, last_activity_at: now }).eq("id", q.id);
     const combined = await proxyRelays({ question: q.question, answer: answerText, followUp, listingId: q.listing_id });
     const heldB = await heldThreadIds(waiters.map((w) => w.thread_id));
     for (const w of waiters) {
@@ -290,7 +348,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   }
 
   if (!done) {
-    await supabase.from("listing_questions").update({ pending_clarifier: true, last_activity_at: now }).eq("id", q.id);
+    await supabase.from("listing_questions").update({ status: "open", pending_clarifier: true, last_activity_at: now }).eq("id", q.id);
     // Proxy asks the landlord's question in turn, in its own words, and says whose it is.
     const asked = await proxyAsksClarifier({ question: q.question, clarifier: screened.text, listingId: q.listing_id });
     const heldC = await heldThreadIds(waiters.map((w) => w.thread_id));

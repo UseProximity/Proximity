@@ -2,21 +2,24 @@
  * The landlord's Proxy chat, one per listing (Wyatt, 2026-10-27, round 6;
  * one all-purpose thread since round 7, 2026-10-28).
  *
- * In time order: each question Proxy sent this landlord with its
- * back-and-forth, each tour request on the listing, and the landlord's own
- * conversation with the listing's agent (landlord_agent_messages). The
- * landlord writes in one box. Proxy first works out whether the message
- * answers an open question (routeLandlordMessage); the client shows that
- * guess for a few seconds with an Undo, then sends it either to the question
- * (answerQuestion: an answer, a question back, or both) or to the agent
- * (agentChat: a reply, maybe with changes to confirm). Shown in the Agent
- * tab, the Questions tab and the landlord's Messages (Proxy tab).
+ * Cards since 2026-10-29 (Wyatt): each question is one card holding its
+ * whole back-and-forth, each tour request another, and the landlord's own
+ * conversation with the listing's agent (landlord_agent_messages) runs
+ * between them. A card sits at its latest activity, so whatever just
+ * happened is at the bottom. The landlord writes in one box, aimed at a card
+ * with its Reply button; otherwise Proxy guesses the card
+ * (routeLandlordMessage) and the landlord confirms it with a click. Then it
+ * goes to the question (answerQuestion: an answer, a question back, or
+ * both), the tour (a message in the direct chat), or the agent (agentChat: a
+ * reply, maybe with changes to confirm). Shown in the Agent tab, the
+ * Questions tab and the landlord's Messages (Proxy tab).
  *
- * Never the student's name on questions; tours carry the name, as before.
+ * Never the student's name on questions, even when several students asked
+ * (they read "One student" and "Another student"); tours carry the name.
  */
 import supabase from "@/lib/supabase";
 import { z } from "zod";
-import { listLandlordTours } from "./tours";
+import { listLandlordTours, landlordAct } from "./tours";
 import { parseStructured, HAIKU } from "./model";
 import { answerQuestion } from "./questions";
 import { agentChat, confirmProposal } from "./landlordAgent";
@@ -31,9 +34,10 @@ const OPEN_TOURS = ["requested", "proposed", "messaging"];
  * Worked out from the exchange, so emailed replies read the same.
  */
 const ACK = {
-  answered: "Got it. I passed that along to the student and saved it, so I can answer this myself next time.",
-  asked: "I asked the student. I'll pass their reply along here.",
-  passed: "Passed that along to the student.",
+  answered: "Passed along and saved, so I can answer this myself next time.",
+  asked: "I asked the student. Their reply will show up here.",
+  askedSeveral: "I asked the students. Their replies will show up here.",
+  passed: "Passed along.",
 };
 
 /* Listings this landlord has Proxy activity on, with what is waiting. */
@@ -84,63 +88,78 @@ export async function landlordWaitingCount(userId) {
   return { questions: q ?? 0, tours: t ?? 0, total: (q ?? 0) + (t ?? 0) };
 }
 
-/* One listing's chat: questions with their exchange, and tours, oldest first. */
+/*
+ * One listing's chat, oldest first: question cards with their exchange, tour
+ * cards, and the agent talk. A card's place is its latest activity.
+ */
 export async function landlordProxyTimeline(userId, listingId) {
   const [{ data: listing }, { data: qs, error }, tours, { data: notes }] = await Promise.all([
     supabase.from("listings").select("id, title, address").eq("id", listingId).maybeSingle(),
     supabase.from("listing_questions").select("id, status, question, asked_count, answer, answered_at, pending_clarifier, created_at, last_activity_at")
       .eq("owner_id", userId).eq("listing_id", listingId).in("status", ["open", "answered"]).order("created_at", { ascending: true }).limit(200),
     listLandlordTours(userId),
-    supabase.from("landlord_agent_messages").select("id, sender, body, question_id, proposal, proposal_status, created_at")
+    supabase.from("landlord_agent_messages").select("id, sender, body, question_id, tour_id, proposal, proposal_status, created_at")
       .eq("landlord_id", userId).eq("listing_id", listingId).order("created_at", { ascending: true }).limit(300),
   ]);
   if (error) throw fail("landlord timeline", error);
   const ids = (qs ?? []).map((q) => q.id);
   const { data: msgs } = ids.length
-    ? await supabase.from("listing_question_messages").select("question_id, sender, body, raw_body, screened, via, created_at").in("question_id", ids).order("created_at", { ascending: true })
+    ? await supabase.from("listing_question_messages").select("question_id, sender, kind, thread_id, body, raw_body, screened, via, created_at").in("question_id", ids).order("created_at", { ascending: true })
     : { data: [] };
   const byQ = new Map();
   for (const m of msgs ?? []) { if (!byQ.has(m.question_id)) byQ.set(m.question_id, []); byQ.get(m.question_id).push(m); }
-  // Questions are about the whole listing, so they name the listing, not a lease (2026-10-29).
-  const listingTitle = listing ? listing.title || listing.address || "this listing" : "this listing";
+  const latest = (...ats) => ats.filter(Boolean).sort().pop();
+
+  const questionCard = (q) => {
+    const ms = byQ.get(q.id) ?? [];
+    // Students stay anonymous; with more than one in the card they read
+    // "One student" and "Another student" (Wyatt, 2026-10-29).
+    const threads = [...new Set(ms.filter((m) => m.sender === "student" && m.thread_id).map((m) => m.thread_id))];
+    const several = (q.asked_count ?? 1) > 1 || threads.length > 1;
+    const who = (m) => (!several ? "The student" : threads.indexOf(m.thread_id) <= 0 ? "One student" : "Another student");
+    const lastMine = ms.map((m) => m.sender).lastIndexOf("landlord");
+    const exchange = ms.map((m, i) => {
+      if (m.sender !== "landlord") {
+        return { id: `${q.id}:${i}`, from: "student", label: who(m), followup: m.kind === "followup", body: m.body, at: m.created_at };
+      }
+      // Under the landlord's own words, a line on what Proxy did with them.
+      const studentNext = ms.slice(i + 1).some((x) => x.sender === "student" && x.kind !== "followup");
+      const asked = several ? ACK.askedSeveral : ACK.asked;
+      const ack = studentNext ? asked
+        : i === lastMine && q.status === "answered" ? ACK.answered
+        : i === lastMine && q.pending_clarifier ? asked
+        : ACK.passed;
+      return { id: `${q.id}:${i}`, from: "you", body: m.raw_body || m.body, via: m.via, note: m.screened ? `${ack} ${CONTACT_NOTE.landlord}` : ack, at: m.created_at };
+    });
+    const state = q.status === "answered" ? "answered" : q.pending_clarifier ? "waiting" : "needs_you";
+    return {
+      kind: "question", id: q.id, at: latest(q.created_at, q.last_activity_at, ms[ms.length - 1]?.created_at), askedAt: q.created_at,
+      status: q.status, state, question: q.question, askedCount: q.asked_count, answer: q.answer, exchange,
+    };
+  };
+
+  const tourNotes = new Map();
+  for (const m of notes ?? []) if (m.tour_id) { if (!tourNotes.has(m.tour_id)) tourNotes.set(m.tour_id, []); tourNotes.get(m.tour_id).push(m); }
+  const tourCard = (t) => {
+    const mine = (tourNotes.get(t.id) ?? []).filter((m) => m.sender === "landlord").map((m) => ({ id: m.id, from: "you", body: m.body, note: "Sent to them in your direct chat.", at: m.created_at }));
+    const state = t.status === "requested" || t.status === "proposed" ? "needs_you" : t.status === "messaging" ? "waiting" : t.status === "confirmed" ? "confirmed" : "closed";
+    return { kind: "tour", id: t.id, at: latest(t.createdAt, t.lastActivityAt, mine[mine.length - 1]?.at), state, tour: t, exchange: mine };
+  };
+
   const items = [
-    ...(qs ?? []).map((q) => ({
-      kind: "question", id: q.id, at: q.created_at, status: q.status, question: q.question, listingTitle,
-      askedCount: q.asked_count, pendingClarifier: q.pending_clarifier, answer: q.answer, answeredAt: q.answered_at,
-    })),
-    // Each reply sits where it was sent, so the thread reads top to bottom.
-    // The landlord sees what they wrote; after it, Proxy says what it did.
-    ...(qs ?? []).flatMap((q) => {
-      const ms = byQ.get(q.id) ?? [];
-      const lastMine = ms.map((m) => m.sender).lastIndexOf("landlord");
-      return ms.flatMap((m, i) => {
-        const mine = m.sender === "landlord";
-        const reply = {
-          kind: "reply", id: `${q.id}:${i}`, at: m.created_at, questionId: q.id, question: q.question, sender: m.sender,
-          body: mine ? m.raw_body || m.body : m.body, via: m.via,
-        };
-        if (!mine) return [reply];
-        const studentNext = ms.slice(i + 1).some((x) => x.sender === "student");
-        const ack = studentNext ? ACK.asked
-          : i === lastMine && q.status === "answered" ? ACK.answered
-          : i === lastMine && q.pending_clarifier ? ACK.asked
-          : ACK.passed;
-        const at = new Date(new Date(m.created_at).getTime() + 1).toISOString();
-        return [reply, { kind: "agent", id: `ack:${q.id}:${i}`, at, sender: "agent", body: m.screened ? `${ack} ${CONTACT_NOTE.landlord}` : ack, proposal: null, proposalStatus: null }];
-      });
-    }),
-    ...tours.filter((t) => t.listingId === listingId).map((t) => ({ kind: "tour", id: t.id, at: t.createdAt, tour: t })),
-    // A landlord message that answered a question shows inside that question.
-    ...(notes ?? []).filter((m) => !(m.sender === "landlord" && m.question_id)).map((m) => ({
+    ...(qs ?? []).map(questionCard),
+    ...tours.filter((t) => t.listingId === listingId).map(tourCard),
+    // What the landlord wrote on a card shows inside that card.
+    ...(notes ?? []).filter((m) => !(m.sender === "landlord" && (m.question_id || m.tour_id))).map((m) => ({
       kind: "agent", id: m.id, at: m.created_at, sender: m.sender, body: m.body,
       proposal: m.proposal_status === "open" ? m.proposal : null, proposalStatus: m.proposal_status,
     })),
   ].sort((a, b) => (a.at < b.at ? -1 : 1));
-  const open = items.filter((i) => i.kind === "question" && i.status === "open");
   return {
     listing: listing ? { id: listing.id, title: listing.title || listing.address || "Listing", address: listing.address } : null,
     items,
-    openQuestions: open.length,
+    needsYou: items.filter((i) => i.state === "needs_you").length,
+    openQuestions: items.filter((i) => i.kind === "question" && i.status === "open").length,
     openTours: items.filter((i) => i.kind === "tour" && OPEN_TOURS.includes(i.tour.status)).length,
   };
 }
@@ -149,18 +168,21 @@ export async function landlordProxyTimeline(userId, listingId) {
 
 const Route = z.object({
   question_number: z.number().int().describe("The number of the open question this message answers or replies to, or 0 when it answers none of them (a general update, an instruction, or a question for the agent)."),
+  sure: z.boolean().describe("True only when the message plainly fits that choice and no other open question. False when it could fit more than one, or it is unclear whether it is meant for a student or for Proxy."),
 });
 
 /*
- * Which open question, if any, a landlord's message is aimed at. Fast (Haiku)
- * so the client can show the guess with an Undo before anything is sent.
+ * Which open question, if any, a landlord's message is aimed at, and whether
+ * Proxy is sure. Fast (Haiku): the client asks the landlord to confirm the
+ * guess with a click, or to pick the question when Proxy is unsure (Wyatt,
+ * 2026-10-29). Only a sure "not for a student" goes straight to the agent.
  */
 export async function routeLandlordMessage({ userId, listingId, text }) {
   const body = String(text ?? "").trim();
-  if (!body) return { questionId: null };
+  if (!body) return { questionId: null, sure: true };
   const { data: open } = await supabase.from("listing_questions").select("id, question, created_at")
     .eq("owner_id", userId).eq("listing_id", listingId).eq("status", "open").order("created_at", { ascending: true }).limit(20);
-  if (!open?.length) return { questionId: null };
+  if (!open?.length) return { questionId: null, sure: true };
   // Recent agent talk, so "yes" after the agent asked something stays with the agent.
   const { data: last } = await supabase.from("landlord_agent_messages").select("sender, body, created_at")
     .eq("landlord_id", userId).eq("listing_id", listingId).order("created_at", { ascending: false }).limit(2);
@@ -174,14 +196,16 @@ export async function routeLandlordMessage({ userId, listingId, text }) {
         "It is for a student when it answers an open question (even partly, even in a word like \"yes\" or \"no\" right after that question), or when it asks something back that only the student could answer: about their situation, belongings, plans, needs or preferences (\"what kind of charger is it?\", \"how big is the dog?\", \"when do you want to move in?\"). A question back is usually about the most recent open question unless it clearly fits another.",
         "It is for Proxy, not a student, when it changes or adds listing details (\"raise the rent by $50\", \"parking is now $40\"), asks what Proxy knows or has on file (\"what do you have on parking?\"), or replies to something Proxy itself just asked the landlord.",
         "When it fits no open question, answer 0.",
+        "Say whether you are sure. Short replies (\"yes\", \"next week\", \"$50\") with more than one open question, or a message that could be either a student's answer or a note for Proxy, are not sure.",
       ].join(" "),
       messages: [{ role: "user", content: `Open student questions:\n${open.map((q, i) => `${i + 1}. ${q.question}${i === open.length - 1 ? " (most recent)" : ""}`).join("\n")}${lastAgent && (!last[0] || last[0].sender === "agent") ? `\n\nThe agent's last message to the landlord: "${lastAgent.body.slice(0, 500)}"` : ""}\n\nThe landlord's new message:\n"""\n${body.slice(0, 2000)}\n"""` }],
       schema: Route,
     });
     const q = open[(parsed?.question_number ?? 0) - 1];
-    return q ? { questionId: q.id, question: q.question } : { questionId: null };
+    const sure = parsed?.sure === true;
+    return q ? { questionId: q.id, question: q.question, sure } : { questionId: null, sure };
   } catch {
-    return { questionId: null };
+    return { questionId: null, sure: false };
   }
 }
 
@@ -191,9 +215,16 @@ const note = (userId, listingId, row) => supabase.from("landlord_agent_messages"
  * Send what the landlord wrote: to the question it was aimed at, or to the
  * agent. Either way it is saved, so the chat reads the same everywhere.
  */
-export async function sendLandlordMessage({ userId, isAdmin = false, listingId, text, questionId = null }) {
+export async function sendLandlordMessage({ userId, isAdmin = false, listingId, text, questionId = null, tourId = null }) {
   const body = String(text ?? "").trim().slice(0, 4000);
   if (!body) return { error: "Say something first." };
+  if (tourId) {
+    // A reply on a tour card goes to the student in their direct chat; a copy stays on the card.
+    const r = await landlordAct({ tourId, landlordId: userId, action: "message", body });
+    if (r.error) return { error: r.error, status: r.status };
+    await note(userId, listingId, { sender: "landlord", body, tour_id: tourId });
+    return { kind: "tour", threadId: r.threadId };
+  }
   if (questionId) {
     // Nothing but contact details: nothing to pass on. Proxy says why, in the chat.
     if (screenLandlordText(body).onlyContact) {
@@ -206,9 +237,9 @@ export async function sendLandlordMessage({ userId, isAdmin = false, listingId, 
     await note(userId, listingId, { sender: "landlord", body, question_id: questionId });
     return { kind: "question", replyKind: r.kind, status: r.question.status, screened: r.screened, relayedTo: r.relayedTo };
   }
-  const { data: past } = await supabase.from("landlord_agent_messages").select("sender, body, question_id")
+  const { data: past } = await supabase.from("landlord_agent_messages").select("sender, body, question_id, tour_id")
     .eq("landlord_id", userId).eq("listing_id", listingId).order("created_at", { ascending: false }).limit(12);
-  const history = (past ?? []).reverse().filter((m) => !m.question_id).map((m) => ({ role: m.sender === "agent" ? "assistant" : "user", content: m.body }));
+  const history = (past ?? []).reverse().filter((m) => !m.question_id && !m.tour_id).map((m) => ({ role: m.sender === "agent" ? "assistant" : "user", content: m.body }));
   const r = await agentChat({ listingId, userId, isAdmin, message: body, history });
   if (r.error) return { error: r.error };
   await note(userId, listingId, { sender: "landlord", body });

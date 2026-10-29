@@ -199,7 +199,9 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
   const t = await load(tourId);
   if (!t) return { error: "Tour request not found", status: 404 };
   if (t.landlord_id !== landlordId) return { error: "This request went to another landlord", status: 403 };
-  if (!["requested", "proposed", "messaging"].includes(t.status)) return { error: "This request is no longer open", status: 409 };
+  // A confirmed tour can still be written about (the Reply on its card), straight into the direct chat.
+  const writable = action === "message" && t.status === "confirmed";
+  if (!writable && !["requested", "proposed", "messaging"].includes(t.status)) return { error: "This request is no longer open", status: 409 };
   const now = new Date().toISOString();
   if (action === "confirm") {
     const checked = checkTourTime(t.student_slots ?? [], day, time);
@@ -212,11 +214,14 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
     if (!text) return { error: "Write a message to the student first.", status: 400 };
     const threadId = await openDirectThread(t);
     await postMessage({ threadId, listingId: t.listing_id, senderId: landlordId, type: "text", body: text, metadata: { tourId: t.id } });
-    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "messaging", thread_id: threadId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
+    // Already talking (or confirmed): the message is all; the student heard the rest the first time.
+    const first = !["messaging", "confirmed"].includes(t.status);
+    const { data: updated, error } = await supabase.from("tour_requests").update({ status: first ? "messaging" : t.status, thread_id: threadId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
     if (error) throw fail("tour message", error);
+    if (!first) return { tour: shape(updated, "landlord"), threadId };
     if (t.proxy_thread_id) {
       await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
-        body: "The landlord couldn't make those times, so they reached out to you directly to find one that works.",
+        body: "The landlord messaged you directly about your tour. You can reply to them there.",
         metadata: { tourId: t.id, messaging: true, link: { href: chatLink(threadId), label: "Open the chat with the landlord" } } });
     }
     await notifyTourProposed({ tourId: t.id }).catch((err) => console.error("[tours] message alert failed:", err?.message ?? err));
