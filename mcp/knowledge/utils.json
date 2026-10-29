@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-26T10:49:59.086Z",
-  "count": 159,
+  "_generated": "2026-10-28T03:36:34.772Z",
+  "count": 161,
   "utils": [
     {
       "file": "src/lib/analytics/access.js",
@@ -350,6 +350,14 @@
     {
       "file": "src/lib/listings/leaseDescription.js",
       "description": "A lease's blurb: the one or two sentences a landlord adds about THEIR offering"
+    },
+    {
+      "file": "src/lib/listings/leaseFit.js",
+      "description": "Does an offering fit the student's move-in month and lease length?"
+    },
+    {
+      "file": "src/lib/listings/leaseFit.test.js",
+      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/listings/listingSelect.js",

@@ -2432,7 +2432,7 @@
       {
         "table": "users",
         "status": "active",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.]",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2468,7 +2468,9 @@
           "profile_setup_link_hashes:text[]",
           "profile_setup_expires_at:timestamptz",
           "apple_refresh_token:text",
-          "company_name:text"
+          "company_name:text",
+          "preferred_move_in_date:date",
+          "preferred_lease_months:int4"
         ],
         "dev_only_columns": [
           "apple_refresh_token",
