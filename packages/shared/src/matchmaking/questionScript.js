@@ -1,46 +1,35 @@
-// Ported verbatim from apps/web/src/lib/matchmaking/questionScript.js. Pure
-// JS, no DOM/React/Node deps, so it can drive the identical scripted-question
-// flow on both web and mobile. Keep in sync with the web copy; the two must
-// describe exactly the same conversation for /api/matchmaking/chat's stored
-// preferences shape to stay valid across clients.
-//
+// Mirror of apps/web/src/lib/matchmaking/questionScript.js. Keep identical to the web
+// copy (same plan, ids, kinds, options, prompts): the server sends the first
+// question and ranks from the preferences this script produces, so any drift
+// makes the app ask questions the server does not know about.
 // The matchmaking question flow is a FIXED, deterministic script. Each entry is
-// rendered instantly client-side as tappable option chips; no LLM decides what
+// rendered instantly client-side as tappable option chips, no LLM decides what
 // to ask. `prompt` is the exact phrasing shown; `field` is the canonical
-// preference key (a few questions write to multiple keys; see isAnswered).
+// preference key (a few questions write to multiple keys, see isAnswered).
 export const QUESTION_PLAN = [
-  {
-    id: "name_confirm",
-    field: "name",
-    kind: "confirm_or_replace",
-    prompt:
-      "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
-  },
-  {
-    id: "program",
-    field: "program",
-    kind: "choice",
-    prompt: "Which program are you in?",
-    options: ["Undergrad", "Grad", "Med", "Law", "Business", "Other"],
-  },
-  {
-    // Asked instead of "what year" so it stays unambiguous when we test/launch
-    // over the summer (when "rising junior" vs "junior" is unclear) and tells us
-    // how long this student stays a warm lead. Not used by the ranker.
-    id: "grad_year",
-    field: "grad_year",
-    kind: "choice",
-    prompt: "When do you graduate?",
-    options: ["2026", "2027", "2028", "2029", "2030+"],
-  },
   {
     id: "group_size",
     field: "group_size",
     kind: "choice",
-    prompt: "How many people are you planning to live with (including you)?",
-    // Tappable count cards; "6+" submits "6+" (parseGroupRange reads it as "at
-    // least 6"). answerToLabel renders the pick as "3 people" / "1 person".
-    options: ["1", "2", "3", "4", "5", "6+"],
+    // The opener. The chat used to begin by confirming the student's name; that
+    // question is gone (Wyatt, 2026-10-20), so Proxy introduces itself here and
+    // goes straight into the first real question. A signed-in student's first
+    // name is still stored on the session from their account (for the owner
+    // email draft and the ranking payload); a signed-out visitor has none.
+    prompt:
+      "Hi, I'm Proxy, your personal housing matchmaker. Let's find your place. How many people are you planning to live with, including yourself?",
+    // Tappable count cards, ascending from 0 bedrooms. Every count is EXACT: tap
+    // 2 and you get 2-bedroom places, never a 3-bed you'd be paying an extra room
+    // for. "Studio" means one person in a 0-bedroom unit and matches ONLY studios.
+    // No single unit on the market has 5+ bedrooms, so "5+" needs real numbers to
+    // match a flush combination of units (see expandCount): tapping it swaps the
+    // chip row for MIN and MAX fields, and the student submits "6" or "5-7".
+    // answerToLabel renders the pick as "Studio" / "1 person" / "5-7 people".
+    options: ["Studio", "1", "2", "3", "4", "5+"],
+    expandCount: true,
+    // A headcount is a closed set, there is no sensible free-text answer, so no
+    // "Something else…" escape hatch on this one.
+    noOther: true,
     allowUnsure: true,
   },
   {
@@ -61,8 +50,11 @@ export const QUESTION_PLAN = [
   {
     id: "lease_term",
     field: "lease_term",
-    kind: "multi",
-    prompt: "What lease length works for you? Pick all that fit.",
+    // Single-select: a student signs one lease, so this is a decision rather than
+    // a shortlist. (leaseTestsFor accepts a scalar or an array, so sessions
+    // answered before this change still rank correctly.)
+    kind: "choice",
+    prompt: "What lease length works for you?",
     options: ["Semester only", "Academic year (~10 months)", "Full year only"],
     allowUnsure: true,
   },
@@ -86,13 +78,13 @@ export const QUESTION_PLAN = [
   {
     id: "priorities",
     // Multi-select: the student taps everything that matters to them. Tap order
-    // deliberately does NOT matter: every stated priority weighs the same
+    // deliberately does NOT matter, every stated priority weighs the same
     // (binary weights, see applyAnswer). The single headline anchor comes from
     // the top_priority follow-up below. The real fine-grained narrowing happens
     // via the listing-aware "Would you X for Y?" tradeoffs (see narrowing.js).
     field: "priorities",
     kind: "multi",
-    prompt: "What matters most in your place? Tap everything that fits.",
+    prompt: "What are you looking for in a home? Tap all that matter to you.",
     options: ["Close to campus", "Good value", "Great reviews", "Amenities", "Quiet/study", "Social/parties", "Close to other WashU students"],
     allowUnsure: true,
   },
@@ -104,7 +96,7 @@ export const QUESTION_PLAN = [
     // anchor. Options are the student's own picks (see describeQuestion).
     field: "top_priority",
     kind: "choice",
-    prompt: "Of those, which single one matters most?",
+    prompt: "Of those priorities, which one matters most?",
     options: null, // filled from preferences.priorities at render time
     optionsFromPriorities: true,
     allowUnsure: true,
@@ -132,6 +124,8 @@ export const MAX_TRADEOFFS = 4;
 export function peopleLabel(value) {
   const s = String(value ?? "").trim();
   if (!s || s === "No preference") return s;
+  // "Studio" is a place, not a headcount, it reads for itself.
+  if (/^studio$/i.test(s)) return "Studio";
   const n = parseInt(s.replace(/\+/g, ""), 10);
   return `${s} ${n === 1 ? "person" : "people"}`;
 }
@@ -142,7 +136,7 @@ export const QUESTION_BY_ID = Object.fromEntries(QUESTION_PLAN.map((q) => [q.id,
 // BINARY by design: a stated preference weighs 1, no preference weighs 0. The
 // relative importance between dimensions is decided downstream (headline anchor
 // + the ranking LLM), never by hand-tuned magnitudes here. Note `furnished` is
-// its own dimension backed by listings.furnished; it is NOT an amenity.
+// its own dimension backed by listings.furnished, it is NOT an amenity.
 export const WEIGHT_MAP = {
   budget:     { budget: 1 },
   area:       { neighborhood: 1 },
@@ -151,7 +145,7 @@ export const WEIGHT_MAP = {
 };
 
 // Each priority label maps to the weight dimensions it implies. Every stated
-// priority gets the same binary weight of 1 (see applyAnswer); the headline
+// priority gets the same binary weight of 1 (see applyAnswer), the headline
 // anchor (top_priority) is what differentiates emphasis, not magnitudes.
 export const PRIORITY_WEIGHTS = {
   "Close to campus": ["walkability", "location"],
@@ -174,10 +168,6 @@ const isFilled = (v) =>
 export function isAnswered(question, preferences) {
   const p = preferences ?? {};
   switch (question.id) {
-    // `name` is pre-filled at session creation, so gate on an explicit
-    // confirmation flag: we always want to ask/confirm it first.
-    case "name_confirm":
-      return !!p._name_confirmed;
     // Budget can be answered with a number or marked unsure (no cap).
     case "budget":
       return isFilled(p.budget_max) || !!p._budget_unsure;
@@ -186,7 +176,7 @@ export function isAnswered(question, preferences) {
     case "priorities":
       return isFilled(p.priorities) || !!p._priorities_unsure;
     // Conditional: only asked when 2+ priorities were picked (with 0–1 there is
-    // nothing to choose between: the single pick IS the anchor). "Not sure"
+    // nothing to choose between, the single pick IS the anchor). "Not sure"
     // stores "No preference", which isFilled treats as answered.
     case "top_priority":
       return (p.priorities?.length ?? 0) < 2 || isFilled(p.top_priority);
