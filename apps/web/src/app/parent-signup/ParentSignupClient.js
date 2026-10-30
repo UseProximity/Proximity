@@ -73,11 +73,6 @@ export default function ParentSignupClient() {
               <h1 className="mt-4 text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">
                 The WashU housing guide for parents
               </h1>
-              <p className="mt-3 text-sm leading-6 text-gray-600 sm:text-base">
-                Your student is about to choose their first apartment. Get what you need to know,
-                sent straight to your inbox.
-              </p>
-
               <ul className="mt-5 space-y-2.5">
                 {POINTS.map((point) => (
                   <li key={point} className="flex items-start gap-2.5 text-sm text-gray-700">
