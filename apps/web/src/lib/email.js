@@ -950,6 +950,80 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
   });
 }
 
+/*
+ * The WashU parent housing guide, sent to whoever asks for it on /parent-signup.
+ *
+ * Goes through the Gmail transporter so it comes from info@useproximity.org like
+ * the rest of our account mail (Wyatt, 2026-10-30). The highlights are a short
+ * teaser of the guide page, not a copy of it: the page stays the one place the
+ * guide is kept up to date. Anyone can type any address into the form, so the
+ * email asks nothing of the reader and links only to the public guide.
+ */
+export async function sendParentGuideEmail({ email, firstName, baseUrl, req }) {
+  const greetingName = firstName ? escapeHtml(String(firstName).split(" ")[0]) : "";
+  const guideUrl = `${baseUrl}/guides/washu-parent-guide`;
+
+  const highlights = [
+    ["First and second years live on campus.", "WashU requires it, so the real decision starts in sophomore spring."],
+    ["Off-campus can save $7,000+ a year.", "On-campus runs up to $19,500. Students off campus report $800 to $1,000 a month."],
+    ["There are four kinds of off-campus housing.", "Loop walk-ups, Delmar apartments, CWE and Clayton complexes, and houses. Each trades price, space and distance differently."],
+    ["Reviews matter more than listings.", "Most students sign without hearing from anyone who has lived there. Verified student reviews close that gap."],
+  ];
+
+  const highlightsHtml = highlights
+    .map(
+      ([title, body]) => `
+        <tr>
+          <td style="padding:0 0 14px;vertical-align:top;width:22px;color:#ef4444;font-weight:700;font-size:15px">&#10003;</td>
+          <td style="padding:0 0 14px;font-size:15px;line-height:1.55;color:#333">
+            <strong style="color:#111">${title}</strong> ${body}
+          </td>
+        </tr>`
+    )
+    .join("");
+
+  await sendMailSafe(
+    transporter,
+    {
+      logAs: { kind: "parent_guide" },
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      replyTo: OPT_OUT_INBOX,
+      subject: "Your WashU parent housing guide",
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111">
+          <h2 style="color:#111;font-size:22px;line-height:1.3;margin:0 0 12px">
+            ${greetingName ? `Hi ${greetingName}, here` : "Here"} is your WashU housing guide.
+          </h2>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 20px">
+            Everything families should know before their student signs a lease near WashU,
+            from dorm rules to what off-campus really costs.
+          </p>
+          <a href="${guideUrl}"
+             style="display:inline-block;margin:0 0 24px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+            Read the full guide
+          </a>
+          <p style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#ef4444;margin:0 0 12px">
+            The short version
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
+            ${highlightsHtml}
+          </table>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:8px 0 0">
+            When your student starts looking, they can browse vetted listings and read reviews
+            from other WashU students at <a href="${baseUrl}" style="color:#ef4444">useproximity.org</a>.
+          </p>
+          ${emailFooter({
+            reason: "You are receiving this because this address asked for the WashU parent guide on Proximity.",
+            commercial: true,
+          })}
+        </div>
+      `,
+    },
+    req
+  );
+}
+
 // Any value a user typed gets escaped (lib/escapeHtml) before it is interpolated into
 // an email body. Chat matters most: a message is typed by one user and rendered in
 // another user's inbox, so escaping is what stops a body from smuggling markup into it.
