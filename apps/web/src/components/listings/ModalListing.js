@@ -43,7 +43,7 @@ export default function ModalListing({ isOpen, onClose, header = null, children 
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 z-40 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>

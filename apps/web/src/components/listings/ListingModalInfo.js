@@ -54,6 +54,14 @@ function defaultListingInquiry(ownerName) {
     : "Hi, I'm interested in this listing.";
 }
 
+// The nearest ancestor that scrolls vertically, or null when the window does.
+// Shared with ListDetailPanel so both find the same container.
+export function scrollParent(el) {
+  let root = el?.parentElement;
+  while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
+  return root ?? null;
+}
+
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
 function scrollIntoContainer(el) {
@@ -1482,6 +1490,8 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  // Called with true/false as the title and tabs stick to the top and let go.
+  onHeadStuck = null,
   /*
    * The owner looking at their own listing through the dashboard's "View as
    * Student" (GlobalListingModal with ?preview=1). Everything renders as a
@@ -1505,11 +1515,13 @@ export default function ListingModalInfo({
    */
   const headSentinelRef = useRef(null);
   const [headStuck, setHeadStuck] = useState(false);
+  // The browse panel's sliding pills follow the same stuck state (one listener).
+  const onHeadStuckRef = useRef(onHeadStuck);
+  onHeadStuckRef.current = onHeadStuck;
   useEffect(() => {
     const el = headSentinelRef.current;
     if (!el) return;
-    let root = el.parentElement;
-    while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
+    const root = scrollParent(el);
     const target = root ?? window;
     let stuck = false;
     const onScroll = () => {
@@ -1519,6 +1531,7 @@ export default function ListingModalInfo({
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
       else return;
       setHeadStuck(stuck);
+      onHeadStuckRef.current?.(stuck);
     };
     onScroll();
     target.addEventListener("scroll", onScroll, { passive: true });
@@ -1618,7 +1631,7 @@ export default function ListingModalInfo({
    */
   const visitBeds = useMemo(() => {
     const target = initialUnitId ? (listing.unitTypes ?? []).find((u) => u.id === initialUnitId) : null;
-    return target ? target.bedrooms ?? 0 : null;
+    return target ? target.bedrooms ?? null : null;
   }, [initialUnitId, listing.unitTypes]);
 
   /*
@@ -1729,10 +1742,12 @@ export default function ListingModalInfo({
      * who holds the unit and reaching whoever happens to be primary.
      */
     setActiveTab("contact");
-    setTimeout(
-      () => scrollIntoContainer(document.getElementById("listing-head")),
-      50
-    );
+    /*
+     * To the sentinel just above the header, not the header: once stuck the
+     * header is already at the top, so scrolling to it went nowhere and left
+     * the student partway down the Contact tab.
+     */
+    setTimeout(() => scrollIntoContainer(headSentinelRef.current), 50);
   };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
@@ -2023,10 +2038,13 @@ export default function ListingModalInfo({
                   )}
                 </div>
               )}
-              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
+              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header.
+                  The photo runs to the modal's corner on phones and on a single
+                  photo, where the close button sits, so the heart steps left of
+                  it there. */}
               {!compact && !preview && (
                 <div
-                  className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />

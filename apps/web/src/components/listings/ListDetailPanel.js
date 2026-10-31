@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import ListingModalInfo from "@/components/listings/ListingModalInfo";
+import ListingModalInfo, { scrollParent } from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
 
 export default function ListDetailPanel({
@@ -14,7 +14,7 @@ export default function ListDetailPanel({
   detailLoading = false,
 }) {
   const { data: session } = useSession();
-  const pills = usePills();
+  const pills = usePills(detailLoading);
 
   return (
     <div ref={pills.ref} className="relative">
@@ -53,6 +53,7 @@ export default function ListDetailPanel({
         compact={true}
         initialUnitId={initialUnitId}
         detailLoading={detailLoading}
+        onHeadStuck={pills.setStuck}
       />
     </div>
   );
@@ -91,24 +92,32 @@ function Pills({ onBack, listingId }) {
  * own pills may show: true until the copy first slides in, then false until
  * the top is reached again. The panel scrolls inside its
  * column, not the window, so this listens on the nearest scrolling ancestor.
+ *
+ * Whether the title and tabs are stuck comes from ListingModalInfo, which
+ * already tracks it (setStuck is its onHeadStuck). Their height is watched
+ * with a ResizeObserver, so it follows the header while it compacts instead
+ * of being measured on every scroll.
  */
-function usePills() {
+function usePills(detailLoading) {
   const ref = useRef(null);
   const [mode, setMode] = useState("off");
   const [stuck, setStuck] = useState(false);
   const [original, setOriginal] = useState(true);
   useEffect(() => {
-    let el = ref.current?.parentElement;
-    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    const head = ref.current?.querySelector("#listing-head");
+    if (!head) return;
+    const observer = new ResizeObserver(() =>
+      ref.current?.style.setProperty("--listing-head", `${head.offsetHeight}px`)
+    );
+    observer.observe(head);
+    return () => observer.disconnect();
+  }, [detailLoading]);
+  useEffect(() => {
+    const el = scrollParent(ref.current);
     if (!el) return;
     let last = el.scrollTop;
     const onScroll = () => {
       const top = el.scrollTop;
-      const head = el.querySelector("#listing-head");
-      if (head) {
-        ref.current?.style.setProperty("--listing-head", `${head.offsetHeight}px`);
-        setStuck(head.getBoundingClientRect().top - el.getBoundingClientRect().top <= 1);
-      }
       if (top <= 0) {
         setMode("off");
         setOriginal(true);
@@ -121,5 +130,5 @@ function usePills() {
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
-  return { ref, mode, stuck, original };
+  return { ref, mode, stuck, setStuck, original };
 }
