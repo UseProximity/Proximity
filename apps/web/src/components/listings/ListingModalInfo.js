@@ -1491,6 +1491,23 @@ export default function ListingModalInfo({
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("pricing");
 
+  // True once the header has stuck to the top: the sentinel just above it has
+  // scrolled up out of the panel or modal it scrolls in.
+  const headSentinelRef = useRef(null);
+  const [headStuck, setHeadStuck] = useState(false);
+  useEffect(() => {
+    const el = headSentinelRef.current;
+    if (!el) return;
+    let root = el.parentElement;
+    while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
+    const io = new IntersectionObserver(
+      ([e]) => setHeadStuck(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
+      { root: root ?? null }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [detailLoading]);
+
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
   // param so a reload or a shared link opens on Pricing as usual.
   useEffect(() => {
@@ -2087,17 +2104,36 @@ export default function ListingModalInfo({
               </div>
             )}
             {/* ── Sticky header ── The title, address and rating stick with
-                the tabs as one block (Wyatt, 2026-10-31). */}
+                the tabs as one block (Wyatt, 2026-10-31). Once stuck it
+                compacts: a smaller title, no address, the rating cut to the
+                title's height. The sentinel just above it says when. */}
+            <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
             <div id="listing-head" className="sticky top-0 z-30">
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
-              <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+              <div
+                className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
+                  headStuck
+                    ? "py-2.5 flex-row items-center justify-between gap-4"
+                    : "pt-6 pb-4 flex-col md:flex-row md:justify-between md:items-center gap-4"
+                }`}
+              >
                 {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
-                <div className="min-w-0 w-full md:w-auto md:flex-1">
-                  <h1 className="truncate text-[19px] sm:text-[27px] font-bold text-gray-900 leading-snug">
+                <div className={`min-w-0 md:flex-1 ${headStuck ? "flex-1" : "w-full md:w-auto"}`}>
+                  <h1
+                    className={`truncate font-bold text-gray-900 leading-snug transition-all duration-200 ${
+                      headStuck ? "text-lg sm:text-xl" : "text-[19px] sm:text-[27px]"
+                    }`}
+                  >
                     {listing.title || street}
                   </h1>
                   {cityStateZip && (
-                    <p className="truncate text-gray-500 text-[15px] sm:text-base mt-0.5">{cityStateZip}</p>
+                    <p
+                      className={`truncate text-gray-500 text-[15px] sm:text-base overflow-hidden transition-all duration-200 ${
+                        headStuck ? "max-h-0 opacity-0" : "max-h-8 mt-0.5 opacity-100"
+                      }`}
+                    >
+                      {cityStateZip}
+                    </p>
                   )}
                   {/*
                     * No property-level "Available <date>" pill here on purpose.
@@ -2110,23 +2146,28 @@ export default function ListingModalInfo({
                     * see which unit the date actually applies to.
                     */}
                 </div>
-                <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
-                  {/* Rating moved up from the removed stats bar. */}
+                <div className={`shrink-0 flex items-center gap-2 md:ml-auto ${headStuck ? "" : "w-full md:w-auto"}`}>
+                  {/* Rating moved up from the removed stats bar. Stuck, it is
+                      cut to the title's height. */}
                   {overallAvg ? (
-                    <span className="inline-flex items-center gap-2">
+                    <span className={`inline-flex items-center ${headStuck ? "gap-1" : "gap-2"}`}>
                       <Star
-                        className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400"
+                        className={`shrink-0 fill-amber-400 text-amber-400 ${headStuck ? "h-5 w-5" : "h-8 w-8"}`}
                         aria-hidden="true"
                       />
-                      <span className="text-2xl font-semibold leading-none text-gray-900">
+                      <span
+                        className={`font-semibold leading-none text-gray-900 ${headStuck ? "text-lg" : "text-2xl"}`}
+                      >
                         {overallAvg}
                       </span>
-                      <span className="text-md text-gray-500">
+                      <span className={`text-gray-500 ${headStuck ? "text-sm" : "text-md"}`}>
                         ({reviewCount})
                       </span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center h-9 text-sm text-gray-400">
+                    <span
+                      className={`inline-flex items-center text-gray-400 ${headStuck ? "h-7 text-xs" : "h-9 text-sm"}`}
+                    >
                       No reviews yet
                     </span>
                   )}
