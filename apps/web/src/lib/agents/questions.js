@@ -204,6 +204,38 @@ async function exchangeText(q, latest) {
   return `Conversation about this question, oldest first. Save what the landlord's answers establish, reading the final reply in light of the earlier messages.\n${lines.join("\n")}`;
 }
 
+const QaContext = z.object({
+  needs_context: z.boolean().describe("True only if the landlord's answer cannot be understood from the question alone."),
+  context: z.string().describe("If needs_context: one short sentence saying what the student added that the answer responds to, e.g. 'the student asked about a cat'. No names, emails, phone numbers, addresses, schools, dates of birth or anything else that identifies the student. Otherwise empty."),
+});
+
+/*
+ * A saved question-and-answer pair is public (Proxy answers from it and the
+ * facts API shows it), so the student's own replies never go in (PR #365
+ * review). When the answer only makes sense with what the student said, a
+ * one-sentence summary of that, stripped of anything identifying, is kept
+ * (Wyatt, 2026-10-31).
+ */
+async function qaContext(q, answer) {
+  const { data } = await supabase.from("listing_question_messages").select("sender, body").eq("question_id", q.id).order("created_at", { ascending: true });
+  const studentLines = (data ?? []).filter((m) => m.sender === "student").map((m) => m.body);
+  if (!studentLines.length) return null;
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, maxTokens: 300, listingId: q.listing_id, kind: "qa_context", tag: "qa-context",
+      system: "You prepare a landlord's answer to be saved as a public question-and-answer pair about a rental listing. Decide whether the answer needs what the student said to make sense, and if so summarise that in one short sentence with nothing that identifies the student.",
+      messages: [{ role: "user", content: `Question: ${q.question}\nStudent's replies:\n${studentLines.join("\n").slice(0, 3000)}\nLandlord's answer: ${answer}` }],
+      schema: QaContext,
+    });
+    if (!parsed?.needs_context) return null;
+    // Belt and braces: the student screen strips contact details the model left in.
+    const clean = screenStudentText(String(parsed.context ?? "")).text.trim().slice(0, 200);
+    return clean || null;
+  } catch {
+    return null;
+  }
+}
+
 async function waitersOf(questionId) {
   const { data } = await supabase.from("listing_question_waiters").select("id, thread_id, user_id, visitor_id, relayed_at").eq("question_id", questionId);
   return data ?? [];
@@ -382,11 +414,11 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     try {
       const { setFact } = await import("./store");
       const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
-      const thread = (await exchangeText(q, screened.text)).split("\n").slice(1).join(" / ");
+      const context = await qaContext(q, screened.text);
       await setFact({
         listingId: q.listing_id, section: "misc", fieldKey: `qa.${q.id.slice(0, 8)}`,
-        value: { question: q.question, answer: screened.text, exchange: thread || null },
-        summary: `Asked: ${q.question} Answer: ${screened.text}${thread && thread.includes("Student:") ? ` (in reply to: ${thread.slice(0, 300)})` : ""}`.slice(0, 600),
+        value: { question: q.question, answer: screened.text, ...(context ? { context } : {}) },
+        summary: `Asked: ${q.question}${context ? ` (${context})` : ""} Answer: ${screened.text}`.slice(0, 600),
         scopeLevel: ownerDefault ? "owner" : "property", scopeId: ownerDefault,
         sourceId: source.id, sourceRef: `question:${q.id}`, landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, cause: "landlord_answer",
       });
