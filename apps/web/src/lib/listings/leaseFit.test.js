@@ -19,6 +19,7 @@ import {
   listingMatches,
   unitMoveInOptions,
   sortPlans,
+  sortLandlords,
 } from "./leaseFit.js";
 
 const TODAY = "2026-10-27";
@@ -208,4 +209,42 @@ test("sortPlans orders by price and by size, nulls last", () => {
   assert.equal(names(sortPlans([A, B, C], "area-desc")), "CAB");
   assert.equal(names(sortPlans([A, B, C], "area-asc")), "ACB");
   assert.equal(names(sortPlans([A, B, C], "match")), "ABC");
+});
+
+test("price sorts rank on whole-apartment rent, not the stated price", () => {
+  // $900/person in a 4 bed is $3,600 for the apartment; the 2 bed is $1,600.
+  const four = { unit: { name: "F", area: null }, leases: [{ rent: 900, unitRent: 3600 }] };
+  const two = { unit: { name: "T", area: null }, leases: [{ rent: 1600, unitRent: 1600 }] };
+  assert.deepEqual(sortPlans([four, two], "price-asc").map((p) => p.unit.name), ["T", "F"]);
+  // Without unitRent (older data) the stated rent is used.
+  const old = { unit: { name: "O", area: null }, leases: [{ rent: 1000 }] };
+  assert.deepEqual(sortPlans([two, old], "price-asc").map((p) => p.unit.name), ["O", "T"]);
+});
+
+test("landlords follow the sort: best plan first, then all of theirs", () => {
+  const plan = (name, area, rent) => ({ unit: { name, area }, leases: [{ rent }] });
+  // A has 1200 and 500 sq ft, B has 900.
+  const A = { key: "A", plans: [plan("A1", 500, 900), plan("A2", 1200, 2000)] };
+  const B = { key: "B", plans: [plan("B1", 900, 800)] };
+  const order = (gs) => gs.map((g) => `${g.key}:${g.plans.map((p) => p.unit.name).join(",")}`).join(" ");
+  assert.equal(order(sortLandlords([A, B], "area-desc")), "A:A2,A1 B:B1");
+  assert.equal(order(sortLandlords([A, B], "area-asc")), "A:A1,A2 B:B1");
+  // Cheapest lease is B's $800, so B leads, then A cheapest first.
+  assert.equal(order(sortLandlords([A, B], "price-asc")), "B:B1 A:A1,A2");
+  assert.equal(order(sortLandlords([A, B], "price-desc")), "A:A2,A1 B:B1");
+  assert.equal(sortLandlords([A, B], "match")[0].key, "A");
+});
+
+test("a saved move-in month with no start in it shows the latest start before it", () => {
+  // Sep 2027 fits the Aug 2027 lease, so the dropdown reads Aug 2027, not Any.
+  assert.deepEqual(listingPrefs(OFFERS, { beds: 2, moveIn: "2027-09-01" }, TODAY), { beds: 2, moveIn: "2027-08-01", months: null });
+  // Earlier than every start: nothing fits, so Any.
+  assert.equal(listingPrefs(OFFERS, { beds: 0, moveIn: "2026-11-01" }, TODAY).moveIn, null);
+});
+
+test("a unit with no bedroom count is not a studio and stays under any size", () => {
+  const offers = listingOfferings([...UNITS, { id: "unknown", bedrooms: null, leases: [lease("u1", 1000, null, [12])] }]);
+  assert.deepEqual(vals(listingChoices(offers, {}, TODAY).beds), [0, 2]);
+  assert.ok(listingMatches(offers, { beds: 2 }, TODAY).some((g) => g.unit.id === "unknown"));
+  assert.ok(listingMatches(offers, { beds: 0 }, TODAY).some((g) => g.unit.id === "unknown"));
 });

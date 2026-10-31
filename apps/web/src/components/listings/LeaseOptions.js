@@ -29,7 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, LayoutGrid } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
-import { LEASE_SORTS, compareLeases, listingChoices, listingMatches, listingOfferings, listingPrefs, sortPlans, stableSort } from "@/lib/listings/leaseFit";
+import { LEASE_SORTS, compareLeases, listingChoices, listingMatches, listingOfferings, listingPrefs, sortLandlords, sortPlans, sortRent, stableSort } from "@/lib/listings/leaseFit";
 
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
@@ -130,10 +130,11 @@ function DurationCell({ leaseTermMonths }) {
 /*
  * One card per landlord, holding each matching floor plan of theirs with its
  * leases. The key is the server's; name and photo are taken from whichever of
- * their leases has them. Plans and leases arrive in the chosen sort order and
- * keep it. On Best match, landlords are ordered by their best lease, so the
- * closest fit to the student's picks comes first; on any other sort, by their
- * first plan in that order.
+ * their leases has them. On Best match, landlords are ordered by their best
+ * lease, so the closest fit to the student's picks comes first. On any other
+ * sort, each landlord's plans are put in that order and the landlord with the
+ * best plan under it comes first, then all of theirs, then the next
+ * (sortLandlords).
  */
 function groupByLandlord(plans, prefs, sort) {
   const groups = new Map();
@@ -158,7 +159,7 @@ function groupByLandlord(plans, prefs, sort) {
     }
   }
   const landlords = [...groups.values()];
-  return sort === "match" ? stableSort(landlords, (a, b) => compareLeases(a.best, b.best, prefs)) : landlords;
+  return sort === "match" ? stableSort(landlords, (a, b) => compareLeases(a.best, b.best, prefs)) : sortLandlords(landlords, sort);
 }
 
 /*
@@ -237,12 +238,15 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
     return LEASE_SORTS.filter((o) => sized || !o.value.startsWith("area"));
   }, [groups]);
 
-  // Picking changes the saved prefs as they stand here: what reads "Any" on
-  // this listing is saved as Any, so the sentence and the account agree.
+  /*
+   * Picking saves only the dropdown that changed. A saved pick this listing
+   * can't offer reads "Any" here but stays on the account for every other
+   * listing, so changing the length here never erases a saved 3 bed.
+   */
   const setPrefs = (patch) => {
     if ("beds" in patch) setVisit(null);
-    if (preview) setPreviewPrefs({ ...prefs, ...patch });
-    else shared.setPrefs({ ...prefs, ...patch });
+    if (preview) setPreviewPrefs((p) => ({ ...p, ...patch }));
+    else shared.setPrefs(patch);
   };
   const clear = () => {
     setVisit(null);
@@ -312,10 +316,10 @@ export default function LeaseOptions({ groups = [], prefs = null, sort = "match"
 // "Jade · 2 bed / 2 bath · 793 sq ft · Floor plan". Beds and baths are always
 // said: with no tabs, this is the only place they appear.
 function PlanHeader({ unit, onFloorPlan }) {
-  const studio = (unit.bedrooms ?? 0) === 0;
-  const size = studio
+  // An unknown bedroom count says so; it is not a studio.
+  const size = unit.bedrooms === 0
     ? "Studio"
-    : `${unit.bedrooms} bed / ${unit.bathrooms ?? "?"} bath`;
+    : `${unit.bedrooms ?? "?"} bed / ${unit.bathrooms ?? "?"} bath`;
   const parts = [
     unit.name ? <span key="n" className="font-semibold text-gray-900">{unit.name}</span> : null,
     <span key="s" className={unit.name ? "" : "font-semibold text-gray-900"}>{size}</span>,
@@ -359,9 +363,10 @@ function LandlordCard({ group, onContact, onFloorPlan }) {
   const leases = plans.flatMap((p) => p.leases);
   const single = leases.length === 1;
 
-  const priced = leases.filter((l) => l.rent != null);
+  // Cheapest by whole-apartment rent (sortRent), shown as the landlord priced it.
+  const priced = leases.filter((l) => sortRent(l) != null);
   const cheapest = priced.length
-    ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
+    ? priced.reduce((a, b) => (sortRent(b) < sortRent(a) ? b : a))
     : null;
   const count = single ? "1 lease option" : `${leases.length} lease options`;
   const planCount = plans.length > 1 ? `${plans.length} floor plans · ` : "";

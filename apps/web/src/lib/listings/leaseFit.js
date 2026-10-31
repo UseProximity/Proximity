@@ -217,12 +217,22 @@ export function leaseFit(lease, prefs, today = todayISO()) {
 
 const KIND_RANK = { exact: 0, unknown: 1, miss: 2 };
 
+/*
+ * The rent leases are ranked on: the whole apartment's monthly rent
+ * (unitRent, worked out server-side in shapeLeases), so a $900/person 4 bed
+ * ($3,600) does not rank as cheaper than a $1,600 2 bed. The price a renter
+ * sees is still the one the landlord set. Falls back to the stated rent.
+ */
+export const sortRent = (lease) => lease?.unitRent ?? lease?.rent ?? null;
+
 // Unpriced last, like everywhere else on the listing.
 const byPrice = (a, b) => {
-  if (a.rent == null && b.rent == null) return 0;
-  if (a.rent == null) return 1;
-  if (b.rent == null) return -1;
-  return a.rent - b.rent;
+  const ra = sortRent(a);
+  const rb = sortRent(b);
+  if (ra == null && rb == null) return 0;
+  if (ra == null) return 1;
+  if (rb == null) return -1;
+  return ra - rb;
 };
 
 /*
@@ -334,10 +344,15 @@ export function stableSort(items, compare) {
  *   - Unstated dates and lengths still fit, ranked after exact ones, as above.
  */
 
-// Every lease on the listing, with the unit it belongs to.
+/*
+ * Every lease on the listing, with the unit it belongs to. A unit with no
+ * bedroom count is unknown on beds, not a studio: it is never offered as a
+ * size, and it stays in the list whatever size is picked, like an unstated
+ * date or length.
+ */
 export function listingOfferings(units) {
   return (units ?? []).flatMap((unit) =>
-    (unit?.leases ?? []).map((lease) => ({ lease, unit, beds: unit.bedrooms ?? 0 }))
+    (unit?.leases ?? []).map((lease) => ({ lease, unit, beds: unit.bedrooms ?? null }))
   );
 }
 
@@ -350,7 +365,7 @@ function liveMoveIn(moveIn, today) {
 
 function offeringFits(o, prefs, today) {
   const beds = normalizeBeds(prefs?.beds);
-  if (beds != null && o.beds !== beds) return false;
+  if (beds != null && o.beds != null && o.beds !== beds) return false;
   return leaseFit(o.lease, prefs, today).kind !== "miss";
 }
 
@@ -359,7 +374,7 @@ export function listingChoices(offerings, prefs, today = todayISO()) {
   const p = { beds: normalizeBeds(prefs?.beds), moveIn: liveMoveIn(prefs?.moveIn, today), months: normalizeMonths(prefs?.months) };
   const where = (patch) => offerings.filter((o) => offeringFits(o, { ...p, ...patch }, today));
   return {
-    beds: [...new Set(where({ beds: null }).map((o) => o.beds))]
+    beds: [...new Set(where({ beds: null }).map((o) => o.beds).filter((n) => n != null))]
       .sort((a, b) => a - b)
       .map((n) => ({ value: n, label: bedsLabel(n) })),
     // Plain lengths: the "(full year)" hints make the sentence's select too wide.
@@ -378,8 +393,15 @@ export function listingPrefs(offerings, saved, today = todayISO()) {
   beds = has(listingChoices(offerings, {}, today).beds, beds) ? beds : null;
   let months = normalizeMonths(saved?.months);
   months = has(listingChoices(offerings, { beds }, today).months, months) ? months : null;
+  /*
+   * A lease fits a move-in month when it starts by the end of it, so a saved
+   * Sep fits leases starting in Aug. When no lease starts in the saved month
+   * itself, the latest start month before it shows the same leases and is the
+   * one the dropdown can say.
+   */
   let moveIn = liveMoveIn(saved?.moveIn, today);
-  moveIn = has(listingChoices(offerings, { beds, months }, today).moveIn, moveIn) ? moveIn : null;
+  const starts = listingChoices(offerings, { beds, months }, today).moveIn;
+  moveIn = moveIn ? starts.filter((o) => o.value <= moveIn).at(-1)?.value ?? null : null;
   return { beds, moveIn, months };
 }
 
@@ -403,9 +425,9 @@ export function listingMatches(offerings, prefs, today = todayISO()) {
 
 /*
  * "Sort by" on a listing (Wyatt, 2026-10-31). Best match is the order above.
- * Price sorts leases by rent, then floor plans by their first lease; size sorts
- * floor plans by square feet. Unpriced leases and unmeasured plans go last
- * either way.
+ * Price sorts leases by rent (whole-apartment, see sortRent), then floor plans
+ * by their first lease; size sorts floor plans by square feet. Unpriced leases
+ * and unmeasured plans go last either way.
  */
 export const LEASE_SORTS = [
   { value: "match", label: "Best match" },
@@ -422,17 +444,36 @@ const lastIfNull = (a, b, dir) => {
   return dir * (a - b);
 };
 
+const planArea = (p) => (p.unit?.area == null ? null : Number(p.unit.area));
+
+// A floor plan's place under a sort: its first lease's rent, or its size.
+const PLAN_KEYS = {
+  "price-asc": { dir: 1, key: (p) => sortRent(p.leases[0]) },
+  "price-desc": { dir: -1, key: (p) => sortRent(p.leases[0]) },
+  "area-desc": { dir: -1, key: planArea },
+  "area-asc": { dir: 1, key: planArea },
+};
+
 // [{unit, leases}] from listingMatches, put in the chosen order.
 export function sortPlans(plans, sort) {
-  if (sort === "price-asc" || sort === "price-desc") {
-    const dir = sort === "price-asc" ? 1 : -1;
-    const sorted = plans.map((p) => ({ ...p, leases: stableSort(p.leases, (a, b) => lastIfNull(a.rent, b.rent, dir)) }));
-    return stableSort(sorted, (a, b) => lastIfNull(a.leases[0]?.rent, b.leases[0]?.rent, dir));
-  }
-  if (sort === "area-asc" || sort === "area-desc") {
-    const dir = sort === "area-asc" ? 1 : -1;
-    const area = (p) => (p.unit?.area == null ? null : Number(p.unit.area));
-    return stableSort(plans, (a, b) => lastIfNull(area(a), area(b), dir));
-  }
-  return plans;
+  const s = PLAN_KEYS[sort];
+  if (!s) return plans;
+  const sorted = sort.startsWith("price")
+    ? plans.map((p) => ({ ...p, leases: stableSort(p.leases, (a, b) => lastIfNull(sortRent(a), sortRent(b), s.dir)) }))
+    : plans;
+  return stableSort(sorted, (a, b) => lastIfNull(s.key(a), s.key(b), s.dir));
+}
+
+/*
+ * Landlords under a sort other than Best match (Wyatt, 2026-10-31): each
+ * landlord's own plans and leases in the sort's order, and the landlords by
+ * their best plan, so on "Price: low to high" whoever has the cheapest lease
+ * comes first with everything of theirs, then the next. `groups` are
+ * [{ plans: [{unit, leases}] }]; ties keep the order given.
+ */
+export function sortLandlords(groups, sort) {
+  const s = PLAN_KEYS[sort];
+  if (!s) return groups;
+  const sorted = groups.map((g) => ({ ...g, plans: sortPlans(g.plans, sort) }));
+  return stableSort(sorted, (a, b) => lastIfNull(s.key(a.plans[0]), s.key(b.plans[0]), s.dir));
 }
