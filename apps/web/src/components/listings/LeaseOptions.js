@@ -1,17 +1,17 @@
 "use client";
 
 /*
- * The listing's lease options, grouped by floor plan (Wyatt, 2026-10-30).
- * There are no unit tabs: the student says "I want a [beds] for [length]
- * starting [month]" above this list (LeasePrefsControls), and every matching
- * lease shows under the floor plan it is on. Each plan says its name, beds and
- * baths, size and floor plan, then its landlords.
+ * The listing's lease options (Wyatt, 2026-10-30). There are no unit tabs:
+ * the student says "I want a [beds] for [length] starting [month]" above this
+ * list (LeasePrefsControls), and every matching lease shows as landlord, then
+ * floor plan, then leases (Wyatt, 2026-10-31). A landlord with three matching
+ * plans is said once, with each plan (name, beds and baths, size, floor plan)
+ * and its leases underneath.
  *
  * A unit is a physical place; a lease is one landlord's offering on it. Several
  * landlords can offer the same unit, so a renter is choosing between people as
  * much as between terms. The list is therefore one card per landlord: who they
- * are and one Contact, with every option they offer on this unit inside the
- * card. A landlord with three leases here is one person to talk to, not three
+ * are and one Contact, with every option they offer inside the card. A landlord with three leases here is one person to talk to, not three
  * buttons that all reach the same inbox.
  *
  * Who counts as "one landlord" is decided server-side (landlordKey, standing
@@ -29,7 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, LayoutGrid } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
-import { listingChoices, listingMatches, listingOfferings, listingPrefs } from "@/lib/listings/leaseFit";
+import { LEASE_SORTS, compareLeases, listingChoices, listingMatches, listingOfferings, listingPrefs, sortPlans, stableSort } from "@/lib/listings/leaseFit";
 
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
@@ -128,35 +128,66 @@ function DurationCell({ leaseTermMonths }) {
 }
 
 /*
- * One card per landlord. The key is the server's; name and photo are taken
- * from whichever of their leases has them, which is all of them once the
- * landlord has saved a contact block, and the first one that does otherwise.
- * Leases arrive already ordered, so cards come out ordered by their best
- * lease and each card's leases keep that order.
+ * One card per landlord, holding each matching floor plan of theirs with its
+ * leases. The key is the server's; name and photo are taken from whichever of
+ * their leases has them. Plans and leases arrive in the chosen sort order and
+ * keep it. On Best match, landlords are ordered by their best lease, so the
+ * closest fit to the student's picks comes first; on any other sort, by their
+ * first plan in that order.
  */
-function groupByLandlord(leases) {
+function groupByLandlord(plans, prefs, sort) {
   const groups = new Map();
-  for (const lease of leases) {
-    const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
-    let g = groups.get(key);
-    if (!g) {
-      g = { key, landlordName: null, landlordImage: null, leases: [] };
-      groups.set(key, g);
+  for (const { unit, leases } of plans) {
+    for (const lease of leases) {
+      const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, landlordName: null, landlordImage: null, plans: [], byUnit: new Map(), best: lease };
+        groups.set(key, g);
+      }
+      let plan = g.byUnit.get(unit);
+      if (!plan) {
+        plan = { unit, leases: [] };
+        g.byUnit.set(unit, plan);
+        g.plans.push(plan);
+      }
+      plan.leases.push(lease);
+      if (compareLeases(lease, g.best, prefs) < 0) g.best = lease;
+      if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
+      if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
     }
-    g.leases.push(lease);
-    if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
-    if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
   }
-  return [...groups.values()];
+  const landlords = [...groups.values()];
+  return sort === "match" ? stableSort(landlords, (a, b) => compareLeases(a.best, b.best, prefs)) : landlords;
 }
 
-// A long list (of landlords, or of one landlord's options) pushes the rest of
-// the listing out of reach, so it opens on the first few and grows on request.
-const PAGE = 5;
+/*
+ * The list opens on the first LEASES_SHOWN leases in order, across every
+ * landlord and floor plan, and folds the rest behind one "Show N more leases".
+ * A plan or landlord with none of those first leases waits behind the fold
+ * too. When only one or two would be folded it shows them all, since a fold
+ * that hides two rows costs more than it saves (Wyatt, 2026-10-31).
+ */
+const LEASES_SHOWN = 4;
+const LEASES_UNFOLDED = 6;
 
-// How many lease rows open on their own across every landlord on a unit. Past
-// this, landlords start folded so a busy unit still fits on a screen.
-const OPEN_BUDGET = 10;
+// The landlords cut down to their first `limit` leases in order.
+function firstLeases(landlords, limit) {
+  let left = limit;
+  const out = [];
+  for (const g of landlords) {
+    if (left <= 0) break;
+    const plans = [];
+    for (const plan of g.plans) {
+      if (left <= 0) break;
+      const leases = plan.leases.slice(0, left);
+      left -= leases.length;
+      plans.push({ ...plan, leases });
+    }
+    out.push({ ...g, shownPlans: plans });
+  }
+  return out;
+}
 
 function Cell({ label, children, className = "" }) {
   return (
@@ -202,6 +233,16 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
   }, [offerings]);
   const groups = useMemo(() => listingMatches(offerings, prefs), [offerings, prefs]);
 
+  // Sort is for this visit only, not saved. Size sorts are offered only when a
+  // matching plan has a size, and no sort at all for a single lease.
+  const [sort, setSort] = useState("match");
+  const sorts = useMemo(() => {
+    const leaseCount = groups.reduce((n, g) => n + g.leases.length, 0);
+    if (leaseCount < 2) return [];
+    const sized = groups.some((g) => g.unit?.area != null);
+    return LEASE_SORTS.filter((o) => sized || !o.value.startsWith("area"));
+  }, [groups]);
+
   // Picking changes the saved prefs as they stand here: what reads "Any" on
   // this listing is saved as Any, so the sentence and the account agree.
   const setPrefs = (patch) => {
@@ -214,15 +255,22 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
     if (preview) setPreviewPrefs({ beds: null, moveIn: null, months: null });
     else shared.clear();
   };
-  return { prefs, choices, only, groups, setPrefs, clear };
+  return { prefs, choices, only, groups, setPrefs, clear, sort, sorts, setSort };
 }
 
-// Floor plans open a few at a time; a big building has dozens.
-const PLAN_PAGE = 4;
+export default function LeaseOptions({ groups = [], prefs = null, sort = "match", loading = false, empty = false, onContact, onFloorPlan }) {
+  const landlords = useMemo(() => groupByLandlord(sortPlans(groups, sort), prefs, sort), [groups, prefs, sort]);
+  const total = useMemo(() => groups.reduce((n, g) => n + g.leases.length, 0), [groups]);
+  const [expanded, setExpanded] = useState(false);
+  // Different picks or a different sort are a different list: fold it again.
+  useEffect(() => setExpanded(false), [groups, sort]);
 
-export default function LeaseOptions({ groups = [], loading = false, empty = false, onContact, onFloorPlan }) {
-  const [shown, setShown] = useState(PLAN_PAGE);
-  useEffect(() => setShown(PLAN_PAGE), [groups]);
+  const folded = total > LEASES_UNFOLDED;
+  const visible = useMemo(
+    () => (folded && !expanded ? firstLeases(landlords, LEASES_SHOWN) : landlords.map((g) => ({ ...g, shownPlans: g.plans }))),
+    [landlords, folded, expanded]
+  );
+  const hidden = total - LEASES_SHOWN;
 
   /*
    * "Loading" and "none offered" are different answers and must not be confused:
@@ -239,54 +287,31 @@ export default function LeaseOptions({ groups = [], loading = false, empty = fal
     );
   }
 
-  if (empty || !groups.length) {
+  if (empty || !landlords.length) {
     return <p className="px-4 py-4 text-xs text-gray-500">No lease is currently being offered here.</p>;
   }
 
-  const visible = groups.slice(0, shown);
-  const remaining = groups.length - visible.length;
-
   return (
-    <div>
-      {visible.map(({ unit, leases }) => (
-        <PlanSection key={unit.id ?? unit.name} unit={unit} leases={leases} onContact={onContact} onFloorPlan={onFloorPlan} />
-      ))}
-      {groups.length > PLAN_PAGE && (
-        <div className="flex items-center justify-center gap-4 border-t border-gray-100 px-4 py-2.5">
-          {remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => setShown((n) => n + PLAN_PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show {Math.min(PLAN_PAGE, remaining)} more floor {Math.min(PLAN_PAGE, remaining) === 1 ? "plan" : "plans"}
-              <span className="font-normal text-gray-400"> ({remaining} left)</span>
-            </button>
-          )}
-          {shown > PLAN_PAGE && (
-            <button
-              type="button"
-              onClick={() => setShown(PLAN_PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show less
-            </button>
-          )}
+    <>
+      <ul className="divide-y divide-gray-100 border-t border-gray-100">
+        {visible.map((group) => (
+          <LandlordCard key={group.key} group={group} onContact={onContact} onFloorPlan={onFloorPlan} />
+        ))}
+      </ul>
+      {folded && (
+        <div className="flex items-center justify-center border-t border-gray-100 px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            {expanded ? "Show less" : `Show ${hidden} more ${hidden === 1 ? "lease" : "leases"}`}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
         </div>
       )}
-    </div>
-  );
-}
-
-// One floor plan: what it is, then its landlords. Memoized so the cards keep
-// their open state until the matching leases actually change.
-function PlanSection({ unit, leases, onContact, onFloorPlan }) {
-  const groups = useMemo(() => withOpenBudget(groupByLandlord(leases)), [leases]);
-  return (
-    <section className="border-t border-gray-100">
-      <PlanHeader unit={unit} onFloorPlan={onFloorPlan} />
-      <GroupList groups={groups} onContact={onContact} />
-    </section>
+    </>
   );
 }
 
@@ -314,7 +339,7 @@ function PlanHeader({ unit, onFloorPlan }) {
     ) : null,
   ].filter(Boolean);
   return (
-    <p className="flex flex-wrap items-baseline px-4 pt-3 text-xs text-gray-500">
+    <p className="flex flex-wrap items-baseline text-xs text-gray-500">
       {parts.map((p, i) => (
         <span key={i} className="inline-flex items-baseline">
           {i > 0 && <span className="mx-1.5 text-gray-300">·</span>}
@@ -326,113 +351,33 @@ function PlanHeader({ unit, onFloorPlan }) {
 }
 
 /*
- * Open landlords in order until the next one would take the rows on show past
- * OPEN_BUDGET; from there on every card starts folded. A card shows at most
- * PAGE rows, so that is what it spends. The first landlord always opens, so the
- * top option is never hidden.
- */
-function withOpenBudget(groups) {
-  let spent = 0;
-  let budgetLeft = true;
-  return groups.map((g, i) => {
-    const cost = Math.min(g.leases.length, PAGE);
-    if (i > 0 && spent + cost > OPEN_BUDGET) budgetLeft = false;
-    const defaultOpen = budgetLeft;
-    if (defaultOpen) spent += cost;
-    return { ...g, defaultOpen };
-  });
-}
-
-// A list of landlord cards that opens on the first PAGE and grows on request.
-function GroupList({ groups, onContact }) {
-  const [shown, setShown] = useState(PAGE);
-
-  // Different picks are a different list: start it from the top.
-  useEffect(() => setShown(PAGE), [groups]);
-
-  const visible = groups.slice(0, shown);
-  const remaining = groups.length - visible.length;
-
-  return (
-    <>
-      <ul className="divide-y divide-gray-100">
-        {visible.map((group) => (
-          <LandlordCard
-            key={group.key}
-            group={group}
-            onContact={onContact}
-          />
-        ))}
-      </ul>
-
-      {groups.length > PAGE && (
-        <div className="flex items-center justify-center gap-4 border-t border-gray-100 px-4 py-2.5">
-          {remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => setShown((n) => n + PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show {Math.min(PAGE, remaining)} more
-              <span className="font-normal text-gray-400"> ({remaining} left)</span>
-            </button>
-          )}
-          {shown > PAGE && (
-            <button
-              type="button"
-              onClick={() => setShown(PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show less
-            </button>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-/*
- * One landlord on this unit: who they are, one Contact, and their options.
+ * One landlord: who they are, one Contact, then each floor plan of theirs that
+ * matches with its options underneath (Wyatt, 2026-10-31). The line under the
+ * name counts everything they offer here ("2 floor plans · 3 lease options
+ * from $900/mo"), including what waits behind the list's fold.
  *
- * The first landlords open with every option showing, so a renter can compare
- * terms without clicking in; once OPEN_BUDGET rows are on show, the rest start
- * folded to a one-line summary ("3 lease options from $900/mo") that opens on
- * request. Inside an open card, past the first PAGE options the rest grow on
- * request so one prolific landlord can't bury the others.
- *
- * Contact carries the landlord's best option (the closest fit to the student's
- * dates, then the cheapest) as the lease the enquiry is about. The chat is routed to the landlord either way,
- * and every option in the card reaches the same person.
+ * Contact carries the landlord's best option across their plans (the closest
+ * fit to the student's picks, then the cheapest) as the lease the enquiry is
+ * about. The chat is routed to the landlord either way.
  */
-function LandlordCard({ group, onContact }) {
-  const { landlordName, landlordImage, leases, defaultOpen } = group;
+function LandlordCard({ group, onContact, onFloorPlan }) {
+  const { landlordName, landlordImage, plans, shownPlans, best } = group;
+  const leases = plans.flatMap((p) => p.leases);
   const single = leases.length === 1;
-  const [open, setOpen] = useState(defaultOpen);
-  const [shown, setShown] = useState(PAGE);
-
-  // Different picks are a different list: start it from the top.
-  useEffect(() => {
-    setOpen(defaultOpen);
-    setShown(PAGE);
-  }, [leases, defaultOpen]);
-
-  // A lone option that opened on its own has nothing to fold away.
-  const toggleable = !(single && defaultOpen);
-
-  const visible = leases.slice(0, shown);
-  const remaining = leases.length - visible.length;
 
   const priced = leases.filter((l) => l.rent != null);
   const cheapest = priced.length
     ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
     : null;
   const count = single ? "1 lease option" : `${leases.length} lease options`;
-  const summary = cheapest
-    ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
-        cheapest.rentIsPerPerson ? "/person" : "/mo"
-      }`
-    : count;
+  const planCount = plans.length > 1 ? `${plans.length} floor plans · ` : "";
+  const summary = `${planCount}${
+    cheapest
+      ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
+          cheapest.rentIsPerPerson ? "/person" : "/mo"
+        }`
+      : count
+  }`;
 
   return (
     <li className="px-4 py-3">
@@ -446,67 +391,46 @@ function LandlordCard({ group, onContact }) {
           <p className="truncate text-sm font-semibold text-gray-900">
             {landlordName ?? "Landlord"}
           </p>
-          {toggleable ? (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              className="flex items-center gap-0.5 rounded text-left text-xs text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <span className="truncate">{summary}</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-              />
-            </button>
-          ) : (
-            <p className="text-xs text-gray-500">{count}</p>
-          )}
+          <p className="truncate text-xs text-gray-500">{summary}</p>
         </div>
         <button
           type="button"
-          onClick={() => onContact?.(leases[0])}
+          onClick={() => onContact?.(best)}
           className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 sm:w-[130px]"
         >
           Contact
         </button>
       </div>
 
-      {open && (
-        /*
-         * Several options read exactly like one: plain rows under the landlord,
-         * split by a hairline, no box around them (Wyatt, 2026-10-27).
-         */
-        <ul className="mt-2 divide-y divide-gray-100">
-          {visible.map((lease) => (
-            <LeaseRow key={lease.id} lease={lease} />
-          ))}
-        </ul>
-      )}
-
-      {open && leases.length > PAGE && (
-        <div className="mt-1.5 flex items-center justify-center gap-4">
-          {remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => setShown((n) => n + PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show {Math.min(PAGE, remaining)} more
-              <span className="font-normal text-gray-400"> ({remaining} left)</span>
-            </button>
-          )}
-          {shown > PAGE && (
-            <button
-              type="button"
-              onClick={() => setShown(PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show less
-            </button>
-          )}
-        </div>
-      )}
+      <div className="mt-3 space-y-3">
+        {shownPlans.map((plan) => (
+          <PlanBlock
+            key={plan.unit.id ?? plan.unit.name}
+            unit={plan.unit}
+            leases={plan.leases}
+            onFloorPlan={onFloorPlan}
+          />
+        ))}
+      </div>
     </li>
+  );
+}
+
+/*
+ * One floor plan under a landlord: what it is, then their options on it as
+ * plain rows split by a hairline, no box around them (Wyatt, 2026-10-27).
+ */
+function PlanBlock({ unit, leases, onFloorPlan }) {
+  return (
+    <div>
+      <PlanHeader unit={unit} onFloorPlan={onFloorPlan} />
+      {/* Leases sit a step in from their plan, so the plan reads as their heading (Wyatt, 2026-10-31). */}
+      <ul className="mt-1 divide-y divide-gray-100 pl-2 sm:pl-6">
+        {leases.map((lease) => (
+          <LeaseRow key={lease.id} lease={lease} />
+        ))}
+      </ul>
+    </div>
   );
 }
 

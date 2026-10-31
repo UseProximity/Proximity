@@ -17,6 +17,8 @@ import {
   listingChoices,
   listingPrefs,
   listingMatches,
+  unitMoveInOptions,
+  sortPlans,
 } from "./leaseFit.js";
 
 const TODAY = "2026-10-27";
@@ -132,7 +134,7 @@ test("a unit's pickers offer only the months and lengths it has", async () => {
     lease("c", 1, "2026-12-20", [15]),
     lease("d", 1, null, []),
   ];
-  assert.deepEqual(unitMoveInOptions(leases, TODAY).map((o) => o.label), ["Oct 2026", "Dec 2026"]);
+  assert.deepEqual(unitMoveInOptions(leases, TODAY).map((o) => o.label), ["Now", "Dec 2026"]);
   assert.deepEqual(unitLeaseMonthOptions(leases).map((o) => o.value), [10, 12, 15]);
   // A saved value this unit lacks is left unselected; one it has is kept.
   assert.deepEqual(prefsForUnit({ moveIn: "2027-08-01", months: 12 }, leases, TODAY), { moveIn: null, months: 12 });
@@ -184,4 +186,26 @@ test("matches are grouped by floor plan, unknown dates kept after exact ones", (
   assert.deepEqual(m[0].leases.map((l) => l.id), ["j1"]);
   assert.deepEqual(m[1].leases.map((l) => l.id), ["o1"]);
   assert.equal(listingMatches(OFFERS, {}, TODAY).length, 3);
+});
+
+test("a lease already started reads Now in the starting choices", () => {
+  const started = { id: "a", rent: 1, availableFrom: "2026-09-01", leaseTermMonths: [12] };
+  const later = { id: "b", rent: 1, availableFrom: "2026-12-01", leaseTermMonths: [12] };
+  const opts = unitMoveInOptions([started, later], "2026-10-31");
+  assert.deepEqual(opts.map((o) => o.label), ["Now", "Dec 2026"]);
+  // Later this month is not "Now" yet.
+  assert.equal(unitMoveInOptions([{ availableFrom: "2026-10-31" }], "2026-10-20")[0].label, "Oct 2026");
+});
+
+test("sortPlans orders by price and by size, nulls last", () => {
+  const A = { unit: { name: "A", area: 800 }, leases: [{ rent: 2000 }, { rent: 1500 }] };
+  const B = { unit: { name: "B", area: null }, leases: [{ rent: 1200 }] };
+  const C = { unit: { name: "C", area: 1000 }, leases: [{ rent: null }] };
+  const names = (ps) => ps.map((p) => p.unit.name).join("");
+  assert.equal(names(sortPlans([A, B, C], "price-asc")), "BAC");
+  assert.deepEqual(sortPlans([A], "price-asc")[0].leases.map((l) => l.rent), [1500, 2000]);
+  assert.equal(names(sortPlans([A, B, C], "price-desc")), "ABC");
+  assert.equal(names(sortPlans([A, B, C], "area-desc")), "CAB");
+  assert.equal(names(sortPlans([A, B, C], "area-asc")), "ACB");
+  assert.equal(names(sortPlans([A, B, C], "match")), "ABC");
 });

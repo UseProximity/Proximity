@@ -2152,6 +2152,9 @@ export default function ListingModalInfo({
                       choices={leaseView.choices}
                       only={leaseView.only}
                       count={matchingLeases.length}
+                      sort={leaseView.sort}
+                      sorts={leaseView.sorts}
+                      onSort={leaseView.setSort}
                       onChange={leaseView.setPrefs}
                       onClear={leaseView.clear}
                     />
@@ -2159,6 +2162,8 @@ export default function ListingModalInfo({
                 )}
                 <LeaseOptions
                   groups={leaseView.groups}
+                  prefs={leaseView.prefs}
+                  sort={leaseView.sort}
                   loading={leasesLoading}
                   empty={!hasLeases}
                   onContact={handleContactLease}

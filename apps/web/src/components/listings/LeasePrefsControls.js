@@ -20,12 +20,23 @@
  */
 
 import { useMemo } from "react";
+import { ChevronDown } from "lucide-react";
 import { leaseMonthOptions, moveInHasPassed, moveInOptions } from "@/lib/listings/leaseFit";
 
 const FORM_SELECT =
   "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400";
+// The sentence's dropdowns and "Sort by" share one look (Wyatt, 2026-10-31).
+// The browser's own arrow sits flush with the edge and gets clipped, so it is
+// hidden and SelectChevron draws one inside the right padding instead.
 const SENTENCE_SELECT =
-  "max-w-full cursor-pointer rounded-lg border border-red-200 bg-red-50 py-1 pl-2 pr-7 text-sm font-semibold text-red-700 hover:bg-red-100 focus:border-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400";
+  "max-w-full cursor-pointer appearance-none rounded-lg border border-gray-200 bg-white py-1 pl-2 pr-7 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400";
+
+const SelectChevron = () => (
+  <ChevronDown
+    aria-hidden="true"
+    className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500"
+  />
+);
 
 const FORM_BEDS = [0, 1, 2, 3, 4, 5, 6].map((n) => ({ value: n, label: n === 0 ? "Studio" : `${n} bed` }));
 
@@ -56,6 +67,9 @@ export default function LeasePrefsControls({
   choices = null,
   only = null,
   count = null,
+  sort = null,
+  sorts = null,
+  onSort = null,
 }) {
   const hasAny = value?.beds != null || !!value?.moveIn || !!value?.months;
 
@@ -73,7 +87,7 @@ export default function LeasePrefsControls({
     only?.[key] || (value?.[key] == null && !choices?.[key]?.length) ? (
       <span className="font-semibold text-gray-900">{only?.[key]?.label ?? any}</span>
     ) : (
-      <label htmlFor={`${idPrefix}-${key}`} className="inline-flex max-w-full">
+      <label htmlFor={`${idPrefix}-${key}`} className="relative inline-flex max-w-full">
         <span className="sr-only">{label}</span>
         <Select
           id={`${idPrefix}-${key}`}
@@ -84,6 +98,7 @@ export default function LeasePrefsControls({
           className={SENTENCE_SELECT}
           number={number}
         />
+        <SelectChevron />
       </label>
     );
 
@@ -96,8 +111,29 @@ export default function LeasePrefsControls({
       {part("months", "Lease length", "any length", true)}
       <span>starting</span>
       {part("moveIn", "Move-in month", "any time")}
-      {(count != null || (hasAny && onClear)) && (
-        <span className="flex items-center gap-3 text-xs text-gray-500 sm:ml-auto">
+      {(count != null || (hasAny && onClear) || sorts?.length > 0) && (
+        <span className="flex flex-wrap items-center gap-3 text-xs text-gray-500 sm:ml-auto">
+          {/* Sort is for this visit only (Wyatt, 2026-10-31). */}
+          {sorts?.length > 0 && onSort && (
+            <label htmlFor={`${idPrefix}-sort`} className="flex items-center gap-1.5">
+              Sort by
+              <span className="relative inline-flex">
+                <select
+                  id={`${idPrefix}-sort`}
+                  value={sort ?? sorts[0].value}
+                  onChange={(e) => onSort(e.target.value)}
+                  className={SENTENCE_SELECT}
+                >
+                  {sorts.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <SelectChevron />
+              </span>
+            </label>
+          )}
           {count != null && <span>{count === 1 ? "1 lease" : `${count} leases`}</span>}
           {hasAny && onClear && (
             <button

@@ -121,12 +121,18 @@ export function leaseMonthOptions(saved = null) {
 export function unitMoveInOptions(leases, today = todayISO()) {
   const thisMonth = `${today.slice(0, 7)}-01`;
   const months = new Set();
+  let started = false;
   for (const l of leases ?? []) {
     if (!l?.availableFrom) continue;
     const m = normalizeMoveIn(String(l.availableFrom).slice(0, 7));
-    if (m) months.add(m < thisMonth ? thisMonth : m);
+    if (!m) continue;
+    months.add(m < thisMonth ? thisMonth : m);
+    if (String(l.availableFrom).slice(0, 10) <= today) started = true;
   }
-  return [...months].sort().map((value) => ({ value, label: moveInLabel(value) }));
+  // A lease that has already started is available "Now", not "Oct 2026" (Wyatt, 2026-10-31).
+  return [...months]
+    .sort()
+    .map((value) => ({ value, label: started && value === thisMonth ? "Now" : moveInLabel(value) }));
 }
 
 export function unitLeaseMonthOptions(leases) {
@@ -393,4 +399,40 @@ export function listingMatches(offerings, prefs, today = todayISO()) {
     unit,
     leases: stableSort(leases, (a, b) => compareLeases(a, b, prefs, today)),
   }));
+}
+
+/*
+ * "Sort by" on a listing (Wyatt, 2026-10-31). Best match is the order above.
+ * Price sorts leases by rent, then floor plans by their first lease; size sorts
+ * floor plans by square feet. Unpriced leases and unmeasured plans go last
+ * either way.
+ */
+export const LEASE_SORTS = [
+  { value: "match", label: "Best match" },
+  { value: "price-asc", label: "Price: low to high" },
+  { value: "price-desc", label: "Price: high to low" },
+  { value: "area-desc", label: "Sq ft: largest" },
+  { value: "area-asc", label: "Sq ft: smallest" },
+];
+
+const lastIfNull = (a, b, dir) => {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return dir * (a - b);
+};
+
+// [{unit, leases}] from listingMatches, put in the chosen order.
+export function sortPlans(plans, sort) {
+  if (sort === "price-asc" || sort === "price-desc") {
+    const dir = sort === "price-asc" ? 1 : -1;
+    const sorted = plans.map((p) => ({ ...p, leases: stableSort(p.leases, (a, b) => lastIfNull(a.rent, b.rent, dir)) }));
+    return stableSort(sorted, (a, b) => lastIfNull(a.leases[0]?.rent, b.leases[0]?.rent, dir));
+  }
+  if (sort === "area-asc" || sort === "area-desc") {
+    const dir = sort === "area-asc" ? 1 : -1;
+    const area = (p) => (p.unit?.area == null ? null : Number(p.unit.area));
+    return stableSort(plans, (a, b) => lastIfNull(area(a), area(b), dir));
+  }
+  return plans;
 }
