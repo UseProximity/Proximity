@@ -12,7 +12,7 @@
  * simply continues. Agents stay switched off for students throughout.
  */
 import supabase from "@/lib/supabase";
-import { seedAll } from "./seed";
+import { seedListing } from "./seed";
 
 // Reading a description into facts is one Sonnet call, roughly 1 cent.
 const DESCRIPTION_CENTS = 1;
@@ -99,9 +99,36 @@ export async function transferReport() {
   };
 }
 
-/* One batch of seeding, unseeded listings only. `remaining` > 0: call again. */
-export async function seedBatch({ limit = 15 } = {}) {
-  const result = await seedAll({ onlyUnseeded: true, limit, concurrency: 5 });
-  const { totals } = await transferReport();
-  return { ...result, remaining: totals.unseeded };
+/*
+ * One batch of a full seeding pass. `since` is when the pass started: every
+ * published listing not seeded since then is (re)seeded, so a pass covers
+ * listings seeded before description reading existed, and a stopped pass
+ * continues where it was. Seeding is idempotent; a description already read
+ * is not read (or paid for) again. `remaining` > 0: call again.
+ */
+export async function seedBatch({ since, limit = 15, concurrency = 5 } = {}) {
+  const cutoff = since ? new Date(since).toISOString() : new Date(0).toISOString();
+  const [listings, agents] = await Promise.all([
+    all("listings", "id", (q) => q.not("published_at", "is", null).is("deleted_at", null).order("created_at", { ascending: true })),
+    all("listing_agents", "listing_id, seeded_at"),
+  ]);
+  const seededAt = new Map(agents.map((a) => [a.listing_id, a.seeded_at]));
+  const todo = listings.map((l) => l.id).filter((id) => !seededAt.get(id) || seededAt.get(id) < cutoff);
+  const batch = todo.slice(0, limit);
+  const out = { listings: 0, written: 0, unchanged: 0, held: 0, failed: [] };
+  let next = 0;
+  async function worker() {
+    while (next < batch.length) {
+      const id = batch[next++];
+      try {
+        const c = await seedListing(id);
+        if (c.skipped) continue;
+        out.listings++; out.written += c.written; out.unchanged += c.unchanged; out.held += c.held;
+      } catch (err) {
+        out.failed.push({ listingId: id, error: String(err?.message ?? err).slice(0, 200) });
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, batch.length || 1) }, worker));
+  return { ...out, remaining: todo.length - batch.length };
 }

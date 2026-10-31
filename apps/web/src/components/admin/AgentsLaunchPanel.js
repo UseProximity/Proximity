@@ -83,7 +83,9 @@ export default function AgentsLaunchPanel({ onChanged }) {
     }
   };
 
-  const seedAll = () => loop("seed", { action: "seedBatch", limit: 15 },
+  // A full pass: every listing not seeded since the click, so listings seeded
+  // before descriptions were read get them read now.
+  const seedAll = () => loop("seed", { action: "seedBatch", limit: 15, since: new Date().toISOString() },
     (r, t) => `Seeded ${r.listings} in batch ${t.batches}; ${r.remaining} left${t.failed ? `; ${t.failed} failed` : ""}`,
     (r) => r.listings + (r.failed?.length ?? 0));
   const backfill = () => loop("backfill", { action: "backfill", maxRead: 12 },

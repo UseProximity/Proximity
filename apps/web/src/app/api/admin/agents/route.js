@@ -11,7 +11,8 @@
  *                  Launch (Wyatt, 2026-10-31), each a batch the admin page
  *                  repeats while `remaining` > 0:
  *                  { action: "transferReport" }      what every listing has
- *                  { action: "seedBatch", limit? }   seed unseeded listings
+ *                  { action: "seedBatch", since?, limit? }  a full seeding
+ *                                                   pass started at `since`
  *                  { action: "backfill", maxRead? }  read old landlord chats
  *                  { action: "discover", limit?, redo?, listingId?, dryRun? }
  *                                                    search for sources of truth
@@ -78,7 +79,7 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, result: await transferReport() });
     }
     if (action === "seedBatch") {
-      return NextResponse.json({ ok: true, result: await seedBatch({ limit: Math.min(Number(body.limit) || 15, 40) }) });
+      return NextResponse.json({ ok: true, result: await seedBatch({ since: body.since ?? null, limit: Math.min(Number(body.limit) || 15, 40) }) });
     }
     if (action === "discover") {
       const result = await discoverBatch({
