@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-29T21:01:25.630Z",
-  "count": 89,
+  "_generated": "2026-10-31T06:57:34.705Z",
+  "count": 92,
   "envVars": [
     {
       "name": "AIRTABLE_API_KEY",
@@ -341,6 +341,18 @@
     },
     {
       "name": "STAGING_EMAIL_ALLOWLIST",
+      "public": false
+    },
+    {
+      "name": "STRIPE_PUBLISHABLE_KEY",
+      "public": false
+    },
+    {
+      "name": "STRIPE_SECRET_KEY",
+      "public": false
+    },
+    {
+      "name": "STRIPE_WEBHOOK_SECRET",
       "public": false
     },
     {

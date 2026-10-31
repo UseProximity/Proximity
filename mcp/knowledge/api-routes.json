@@ -2084,6 +2084,20 @@
       },
       "tables": [],
       "file": "src/app/api/webhooks/new-user/route.js"
+    },
+    {
+      "path": "/api/webhooks/stripe",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "stripe_webhook_events"
+      ],
+      "file": "src/app/api/webhooks/stripe/route.js"
     }
   ]
 }
