@@ -42,6 +42,16 @@ export function normalizeMoveIn(value) {
   return `${m[1]}-${m[2]}-01`;
 }
 
+// 0 (a studio) to 20 bedrooms, or null.
+export function normalizeBeds(value) {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 20 ? n : null;
+}
+
+// 0 -> "studio", 2 -> "2 bed".
+export const bedsLabel = (n) => (n === 0 ? "studio" : `${n} bed`);
+
 // A whole number of months between 1 and 60, or null.
 export function normalizeMonths(value) {
   if (value === "" || value == null) return null;
@@ -301,4 +311,86 @@ export function stableSort(items, compare) {
     .map((item, i) => ({ item, i }))
     .sort((a, b) => compare(a.item, b.item) || a.i - b.i)
     .map(({ item }) => item);
+}
+
+/*
+ * The whole listing at once (Wyatt, 2026-10-30). The unit tabs are gone: a
+ * student says "I want a [beds] for [length] starting [month]" and sees every
+ * matching lease, grouped by floor plan.
+ *
+ * Preferences here carry a third axis, beds: { beds, moveIn, months }.
+ *
+ *   - Each dropdown offers only what exists at this listing given the other two
+ *     picks, so a pick can never lead to an empty list.
+ *   - The saved picks apply in order beds, then length, then move-in. A saved
+ *     pick that would leave nothing here (no 3 bed at all, or no 12 month 2
+ *     bed) reads "Any" on this listing; the saved value itself is untouched.
+ *   - Unstated dates and lengths still fit, ranked after exact ones, as above.
+ */
+
+// Every lease on the listing, with the unit it belongs to.
+export function listingOfferings(units) {
+  return (units ?? []).flatMap((unit) =>
+    (unit?.leases ?? []).map((lease) => ({ lease, unit, beds: unit.bedrooms ?? 0 }))
+  );
+}
+
+// A passed month means "as soon as possible", which is this month.
+function liveMoveIn(moveIn, today) {
+  const iso = normalizeMoveIn(moveIn);
+  if (!iso) return null;
+  return moveInHasPassed(iso, today) ? `${today.slice(0, 7)}-01` : iso;
+}
+
+function offeringFits(o, prefs, today) {
+  const beds = normalizeBeds(prefs?.beds);
+  if (beds != null && o.beds !== beds) return false;
+  return leaseFit(o.lease, prefs, today).kind !== "miss";
+}
+
+// The values each dropdown may offer, given the other two picks.
+export function listingChoices(offerings, prefs, today = todayISO()) {
+  const p = { beds: normalizeBeds(prefs?.beds), moveIn: liveMoveIn(prefs?.moveIn, today), months: normalizeMonths(prefs?.months) };
+  const where = (patch) => offerings.filter((o) => offeringFits(o, { ...p, ...patch }, today));
+  return {
+    beds: [...new Set(where({ beds: null }).map((o) => o.beds))]
+      .sort((a, b) => a - b)
+      .map((n) => ({ value: n, label: `a ${bedsLabel(n)}` })),
+    // Plain lengths: the "(full year)" hints make the sentence's select too wide.
+    months: unitLeaseMonthOptions(where({ months: null }).map((o) => o.lease)).map((o) => ({
+      value: o.value,
+      label: monthsLabel(o.value),
+    })),
+    moveIn: unitMoveInOptions(where({ moveIn: null }).map((o) => o.lease), today),
+  };
+}
+
+// The saved picks as they apply to this listing, in priority order.
+export function listingPrefs(offerings, saved, today = todayISO()) {
+  const has = (opts, v) => v != null && opts.some((o) => o.value === v);
+  let beds = normalizeBeds(saved?.beds);
+  beds = has(listingChoices(offerings, {}, today).beds, beds) ? beds : null;
+  let months = normalizeMonths(saved?.months);
+  months = has(listingChoices(offerings, { beds }, today).months, months) ? months : null;
+  let moveIn = liveMoveIn(saved?.moveIn, today);
+  moveIn = has(listingChoices(offerings, { beds, months }, today).moveIn, moveIn) ? moveIn : null;
+  return { beds, moveIn, months };
+}
+
+/*
+ * The matching leases, one entry per floor plan that has any, in the order the
+ * units were given (the landlord's). Inside a plan: exact fits, then fits with
+ * an unknown, cheapest first.
+ */
+export function listingMatches(offerings, prefs, today = todayISO()) {
+  const byUnit = new Map();
+  for (const o of offerings) {
+    if (!offeringFits(o, prefs, today)) continue;
+    if (!byUnit.has(o.unit)) byUnit.set(o.unit, []);
+    byUnit.get(o.unit).push(o.lease);
+  }
+  return [...byUnit.entries()].map(([unit, leases]) => ({
+    unit,
+    leases: stableSort(leases, (a, b) => compareLeases(a, b, prefs, today)),
+  }));
 }

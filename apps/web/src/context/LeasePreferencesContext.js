@@ -1,31 +1,32 @@
 /*
- * The student's move-in month and lease length, shared by every unit's lease
- * options and the profile form. Picked once, they narrow every listing.
+ * The student's bed count, move-in month and lease length, shared by every
+ * listing's lease options and the profile form. Picked once, they narrow every
+ * listing.
  *
- * Signed in, the values live on the account (users.preferred_move_in_date /
- * preferred_lease_months): read once per sign-in from
+ * Signed in, the values live on the account (users.preferred_beds /
+ * preferred_move_in_date / preferred_lease_months): read once per sign-in from
  * /api/account/lease-preferences, written through PATCH /api/editProfile.
  * Signed out, they live in this browser's localStorage so the pickers still
  * work. On sign-in, values picked while signed out are moved onto the account
  * once, but only when the account has none: the account always wins.
  *
  * Consumed via useLeasePreferences(): { prefs, loaded, signedIn, saveState,
- * setPrefs, clear, hydrate }. prefs is { moveIn: "YYYY-MM-01" | null,
- * months: number | null }.
+ * setPrefs, clear, hydrate }. prefs is { beds: number | null (0 is a studio),
+ * moveIn: "YYYY-MM-01" | null, months: number | null }.
  */
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { normalizeMoveIn, normalizeMonths } from "@/lib/listings/leaseFit";
+import { normalizeBeds, normalizeMoveIn, normalizeMonths } from "@/lib/listings/leaseFit";
 import { trackEvent } from "@/utils/analytics";
 
 const STORAGE_KEY = "prx_lease_prefs";
-const EMPTY = { moveIn: null, months: null };
+const EMPTY = { beds: null, moveIn: null, months: null };
 const SAVE_DELAY_MS = 500;
 
-const clean = (p) => ({ moveIn: normalizeMoveIn(p?.moveIn), months: normalizeMonths(p?.months) });
-const isEmpty = (p) => !p.moveIn && !p.months;
+const clean = (p) => ({ beds: normalizeBeds(p?.beds), moveIn: normalizeMoveIn(p?.moveIn), months: normalizeMonths(p?.months) });
+const isEmpty = (p) => p.beds == null && !p.moveIn && !p.months;
 
 function readLocal() {
   try {
@@ -46,7 +47,7 @@ async function saveToAccount(p) {
   const res = await fetch("/api/editProfile", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ preferredMoveInDate: p.moveIn, preferredLeaseMonths: p.months }),
+    body: JSON.stringify({ preferredBeds: p.beds, preferredMoveInDate: p.moveIn, preferredLeaseMonths: p.months }),
   });
   if (!res.ok) throw new Error("save failed");
 }
@@ -142,6 +143,7 @@ export function LeasePreferencesProvider({ children }) {
       setState(next);
       persist(next);
       trackEvent(isEmpty(next) ? "Lease Preferences Cleared" : "Lease Preferences Set", {
+        beds: next.beds ?? "",
         moveIn: next.moveIn ?? "",
         months: next.months ?? "",
         signedIn: !!userId,

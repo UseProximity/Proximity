@@ -13,7 +13,6 @@ import {
   Car,
   FileText,
   Star,
-  LayoutGrid,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -21,7 +20,7 @@ import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
-import LeaseOptions, { useUnitLeasePrefs } from "@/components/listings/LeaseOptions";
+import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
@@ -1310,31 +1309,6 @@ function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-/*
- * "View floor plan", beside the unit's beds and baths.
- *
- * Renders nothing when the unit has no plan, which is most of them — an
- * always-present link to a missing diagram is worse than no link. The plan
- * opens in place rather than navigating away, with the original a click further
- * on for anyone who wants to keep it.
- */
-function FloorPlanLink({ url, onOpen, separator = true }) {
-  if (!url) return null;
-  return (
-    <>
-      {separator && <span className="mx-1.5 text-gray-300">·</span>}
-      <button
-        type="button"
-        onClick={onOpen}
-        className="inline-flex items-center gap-1 text-gray-500 underline-offset-2 transition hover:text-gray-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-      >
-        <LayoutGrid className="h-3 w-3" />
-        View floor plan
-      </button>
-    </>
-  );
-}
-
 function FloorPlanViewer({ url, unitName, onClose }) {
   return (
     <div
@@ -1599,121 +1573,59 @@ export default function ListingModalInfo({
     if (img?.complete && img.naturalWidth > 0) setHeroImageLoaded(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Unit selector — sorted ascending by beds, then baths, then disambiguation index
-  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
-  const [floorPlanOpen, setFloorPlanOpen] = useState(false);
-
-  // sortedUnits: [{origIdx, label}] in the landlord's order (see utils/unitOrder),
-  // falling back to beds then baths for units never placed, then dup number.
-  // Studios (0 beds) are labelled "Studio".
-  const sortedUnits = useMemo(() => {
-    const units = (listing.unitTypes ?? []).filter(
-      (u) => u.available !== false
-    );
-    const isStudio = (u) => (u.bedrooms ?? 0) === 0;
-
-    /*
-     * No deduplication. Two units that look identical are two apartments: a
-     * building with ten matching studios has ten of them, and each carries its
-     * own offering from possibly a different landlord.
-     *
-     * This used to collapse units matching on beds, baths, rent and area, which
-     * was written when a "unit" meant a floor-plan type. Under the property →
-     * unit → lease model it hid real inventory — and would have hidden one
-     * landlord's live offering behind another's identical-looking one.
-     */
-    const deduped = units;
-
-    // Build base labels in original order for stable disambiguation numbering.
-    // Each entry has a full label ("2 Bed / 1 Bath") and a short label
-    // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
-    // Tabs always say beds/baths, even on named units: that is what a student
-    // is choosing between. The name is shown under the strip once the tab is open.
-    const baseLabelOf = deduped.map((u) => {
-      if (isStudio(u)) return { full: "Studio", short: "Studio" };
-      const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
-      const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
-      return {
-        full: `${beds} Bed / ${baths} Bath`,
-        short: `${beds} Br / ${baths} Ba`,
-      };
-    });
-    const counts = {};
-    for (const { full } of baseLabelOf) counts[full] = (counts[full] || 0) + 1;
-    const counters = {};
-    const labels = baseLabelOf.map(({ full, short }) => {
-      if (counts[full] > 1) {
-        counters[full] = (counters[full] || 0) + 1;
-        const n = counters[full];
-        return {
-          base: full,
-          num: n,
-          label: `${full} (${n})`,
-          shortLabel: `${short} (${n})`,
-        };
-      }
-      return { base: full, num: 0, label: full, shortLabel: short };
-    });
-    return deduped
-      .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
-      .sort((a, b) => compareUnits(a.unit, b.unit) || a.num - b.num);
-  }, [listing.unitTypes]);
+  const [floorPlanUnit, setFloorPlanUnit] = useState(null);
 
   /*
-   * Open on the unit the renter's filters actually matched rather than the
-   * cheapest-by-bedroom default. Runs as an effect because sortedUnits is
-   * derived, and re-runs when the detail fetch replaces the browse-feed listing
-   * (the feed paints first, so the unit may not be resolvable on first render).
+   * The units on offer, in the landlord's order (see utils/unitOrder), falling
+   * back to beds then baths for units never placed.
    *
-   * Dedup above can collapse the matched unit into an identical twin, so fall
-   * back to the twin's tab — same beds/baths/rent, so it is the same answer.
+   * No deduplication. Two units that look identical are two apartments: a
+   * building with ten matching studios has ten of them, and each carries its
+   * own offering from possibly a different landlord.
    */
-  useEffect(() => {
-    if (!initialUnitId) return;
-    let idx = sortedUnits.findIndex((s) => s.unit.id === initialUnitId);
-    if (idx < 0) {
-      const target = (listing.unitTypes ?? []).find((u) => u.id === initialUnitId);
-      if (target) {
-        idx = sortedUnits.findIndex(
-          (s) =>
-            s.unit.bedrooms === target.bedrooms &&
-            s.unit.bathrooms === target.bathrooms
-        );
-      }
-    }
-    if (idx >= 0) setSelectedUnitIdx(idx);
-  }, [initialUnitId, sortedUnits, listing.unitTypes]);
-
-  const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
-
-  useEffect(() => {
-    // The plan belongs to one apartment; switching tabs makes it the wrong one.
-    setFloorPlanOpen(false);
-  }, [selectedUnitIdx]);
+  const sortedUnits = useMemo(
+    () => (listing.unitTypes ?? []).filter((u) => u.available !== false).sort(compareUnits),
+    [listing.unitTypes]
+  );
 
   /*
-   * Leases on the unit whose tab is open. A unit can carry several competing
-   * offerings, so each row is independently contactable — there is no "selected"
-   * lease in the browse view.
+   * A renter who arrives from a filtered browse search opens on the size of the
+   * unit their filters matched, for this visit only (Wyatt, 2026-10-30).
    */
-  const selectedUnitLeases = useMemo(
-    () => selectedUnit?.leases ?? [],
-    [selectedUnit]
-  );
+  const visitBeds = useMemo(() => {
+    const target = initialUnitId ? (listing.unitTypes ?? []).find((u) => u.id === initialUnitId) : null;
+    return target ? target.bedrooms ?? 0 : null;
+  }, [initialUnitId, listing.unitTypes]);
+
+  /*
+   * "I want a [beds] for [length] starting [month]" (Wyatt, 2026-10-30): the
+   * student's saved picks as they apply here, what each dropdown offers, and
+   * the matching leases grouped by floor plan. Replaced the unit tabs.
+   */
+  const leaseView = useListingLeasePrefs(sortedUnits, preview, visitBeds);
 
   /*
    * The browse panel paints itself from the listing feed before the detail fetch
    * resolves, and that feed carries no leases at all. An ABSENT `leases` key
    * therefore means "not loaded yet", while an empty array means "genuinely none
    * on offer" — getListing always sets one. Conflating them would tell a reader a
-   * unit has no lease when it simply hasn't arrived.
+   * listing has no lease when it simply hasn't arrived.
    */
-  const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
+  const leasesLoading = sortedUnits.some((u) => u.leases === undefined);
+  const hasLeases = sortedUnits.some((u) => u.leases?.length);
 
-  // The student's move-in month and lease length as they apply to this unit.
-  // The pickers sit in the unit's name row; the lease list below reads the same.
-  const leasePrefs = useUnitLeasePrefs(selectedUnitLeases, preview);
-  const showLeasePickers = !leasesLoading && selectedUnitLeases.length > 0;
+  // Every lease the picks match, best first within each floor plan.
+  const matchingLeases = useMemo(
+    () => leaseView.groups.flatMap((g) => g.leases),
+    [leaseView.groups]
+  );
+
+  /*
+   * The unit whose photos lead: only when the picks narrow the listing to a
+   * single floor plan. Otherwise the property's own photos show.
+   */
+  const selectedUnit = leaseView.groups.length === 1 ? leaseView.groups[0].unit : null;
+  const selectedUnitName = selectedUnit?.name ?? null;
 
   /*
    * Sending an enquiry opens the conversation, it does not leave a receipt on
@@ -1735,32 +1647,20 @@ export default function ListingModalInfo({
 
   /*
    * Which lease the contact form is about. Set by the Contact button on a lease
-   * row; falls back to the open unit's first offering when the Contact tab is
+   * row; falls back to the best matching offering when the Contact tab is
    * reached from the tab strip instead.
    */
   const [selectedLeaseId, setSelectedLeaseId] = useState(null);
   useEffect(() => {
     setSelectedLeaseId((current) =>
-      current && selectedUnitLeases.some((l) => l.id === current)
+      current && matchingLeases.some((l) => l.id === current)
         ? current
-        : selectedUnitLeases[0]?.id ?? null
+        : matchingLeases[0]?.id ?? null
     );
-  }, [selectedUnitLeases]);
+  }, [matchingLeases]);
 
   const selectedLease =
-    selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
-
-  /*
-   * Name of the open unit, or null when it has none: an unnamed unit gets no
-   * invented label. Beds and baths are not repeated here, the tab says them.
-   */
-  const selectedUnitName = selectedUnit?.name ?? null;
-
-  // Only when it is known: "? sq ft" is worse than saying nothing.
-  const selectedUnitArea =
-    selectedUnit?.area != null
-      ? `${Number(selectedUnit.area).toLocaleString()} sq ft`
-      : null;
+    matchingLeases.find((l) => l.id === selectedLeaseId) ?? null;
 
   /*
    * Whether to offer furniture rental. Reads unit_leases.furnished — the
@@ -1768,8 +1668,8 @@ export default function ListingModalInfo({
    * property-level listings.furnished is only a fallback for units whose leases
    * haven't loaded.
    */
-  const showFurnishCta = selectedUnitLeases.length
-    ? selectedUnitLeases.some((l) => !l.furnished)
+  const showFurnishCta = matchingLeases.length
+    ? matchingLeases.some((l) => !l.furnished)
     : !listing.furnished;
 
   /*
@@ -1809,111 +1709,6 @@ export default function ListingModalInfo({
       () => scrollIntoContainer(document.getElementById("listing-tabs")),
       50
     );
-  };
-
-  // When the unit tabs don't all fit, the selector overflows horizontally and
-  // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
-  // full-label row so the decision never feeds back into its own measurement.
-  const unitTrackRef = useRef(null);
-  const unitMeasureRef = useRef(null);
-  const [unitsScroll, setUnitsScroll] = useState(false);
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    const measure = unitMeasureRef.current;
-    if (!track || !measure) return;
-    const check = () =>
-      setUnitsScroll(measure.scrollWidth > track.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, [sortedUnits]);
-
-  /*
-   * The overflowing strip does not scroll by hand (no swipe, wheel or
-   * scrollbar). Arrows page it instead, and each one only shows while there
-   * are tabs hidden on its side, so the left arrow appears after the first
-   * click and the right one goes away at the end.
-   */
-  const [unitsCanLeft, setUnitsCanLeft] = useState(false);
-  const [unitsCanRight, setUnitsCanRight] = useState(false);
-  const updateUnitArrows = () => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    setUnitsCanLeft(track.scrollLeft > 1);
-    setUnitsCanRight(
-      track.scrollLeft + track.clientWidth < track.scrollWidth - 1
-    );
-  };
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    updateUnitArrows();
-    const ro = new ResizeObserver(updateUnitArrows);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, [sortedUnits, unitsScroll]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pages by most of the visible width, leaving some overlap so the reader
-  // keeps their place.
-  const pageUnits = (dir) => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    track.scrollBy({ left: dir * track.clientWidth * 0.8, behavior: "smooth" });
-  };
-
-  /*
-   * Keeps the open tab in view: a tab opened from a filter match can sit
-   * off-screen. Scrolls only the strip, never the page around it, and clears
-   * the arrows so they never cover the tab. A jump lines its tab up at the
-   * start of the strip so the rest of that bed count follows it.
-   */
-  const UNIT_ARROW_WIDTH = 36;
-  const unitAlignStartRef = useRef(false);
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    const tab = track?.children[selectedUnitIdx];
-    if (!track || !tab) return;
-    const alignStart = unitAlignStartRef.current;
-    unitAlignStartRef.current = false;
-    if (alignStart || tab.offsetLeft < track.scrollLeft + UNIT_ARROW_WIDTH) {
-      track.scrollTo({
-        left: tab.offsetLeft - (tab.offsetLeft > 0 ? UNIT_ARROW_WIDTH : 0),
-        behavior: "smooth",
-      });
-    } else if (
-      tab.offsetLeft + tab.offsetWidth >
-      track.scrollLeft + track.clientWidth - UNIT_ARROW_WIDTH
-    ) {
-      track.scrollTo({
-        left:
-          tab.offsetLeft + tab.offsetWidth - track.clientWidth + UNIT_ARROW_WIDTH,
-        behavior: "smooth",
-      });
-    }
-  }, [selectedUnitIdx, unitsScroll]);
-
-  // "Jump to" links: one per bed count, opening the first unit with it. Only
-  // worth showing when the tabs overflow and there is more than one count.
-  const unitBedJumps = useMemo(() => {
-    const firstIdxByBeds = new Map();
-    sortedUnits.forEach(({ unit }, idx) => {
-      const beds = unit.bedrooms ?? 0;
-      if (!firstIdxByBeds.has(beds)) firstIdxByBeds.set(beds, idx);
-    });
-    return [...firstIdxByBeds.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([beds, idx]) => ({
-        beds,
-        idx,
-        label: beds === 0 ? "Studio" : `${beds} Bed`,
-      }));
-  }, [sortedUnits]);
-  const showUnitJumps = unitsScroll && unitBedJumps.length > 1;
-  const selectedUnitBeds = selectedUnit ? selectedUnit.bedrooms ?? 0 : null;
-  const jumpToBeds = (idx) => {
-    unitAlignStartRef.current = true;
-    setSelectedUnitIdx(idx);
   };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
@@ -2345,146 +2140,30 @@ export default function ListingModalInfo({
               </div>
             </div>
 
-            {/* ── Unit Selector ── */}
+            {/* ── Leases ── "I want a [beds] for [length] starting [month]",
+                then every matching lease under its floor plan (Wyatt,
+                2026-10-30). Replaced the unit tabs. */}
             {sortedUnits.length > 0 && (
-              <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div className="relative">
-                  <div
-                    ref={unitTrackRef}
-                    onScroll={updateUnitArrows}
-                    className="flex w-full overflow-x-hidden"
-                  >
-                    {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
-                      <button
-                        key={origIdx}
-                        type="button"
-                        onClick={() => setSelectedUnitIdx(sortedIdx)}
-                        className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
-                          selectedUnitIdx === sortedIdx
-                            ? "bg-red-600 text-white border-red-600"
-                            : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                        }`}
-                      >
-                        {unitsScroll ? shortLabel : label}
-                      </button>
-                    ))}
-                  </div>
-                  {unitsCanLeft && (
-                    <button
-                      type="button"
-                      onClick={() => pageUnits(-1)}
-                      aria-label="Show previous units"
-                      className="absolute left-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                  )}
-                  {unitsCanRight && (
-                    <button
-                      type="button"
-                      onClick={() => pageUnits(1)}
-                      aria-label="Show more units"
-                      className="absolute right-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-                {/* Hidden full-label row used only to measure natural width */}
-                <div
-                  ref={unitMeasureRef}
-                  aria-hidden="true"
-                  className="absolute top-0 left-0 flex invisible pointer-events-none"
-                >
-                  {sortedUnits.map(({ origIdx, label }) => (
-                    <span
-                      key={origIdx}
-                      className="whitespace-nowrap py-2.5 px-3 text-sm font-semibold"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Identity of the unit on the open tab. The tab label is only
-                    the floor plan ("2 Bed / 1 Bath"), which does not say WHICH
-                    unit, so the real identity ("Apt 1W") is stated here, above
-                    the offerings on it. */}
-                {/* One line: name, size and floor plan on the left, "Jump to"
-                    on the right. Skipped entirely when there is none of it. */}
-                {/* The move-in and lease length pickers share this row, on
-                    the right, away from the unit's own details. */}
-                {(selectedUnitName ||
-                  selectedUnitArea ||
-                  selectedUnit?.floorPlanImageUrl ||
-                  showUnitJumps ||
-                  showLeasePickers) && (
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 px-4 pt-3">
-                    <p className="flex flex-wrap items-baseline text-xs text-gray-500">
-                      {selectedUnitName && (
-                        <span className="text-sm font-semibold text-gray-900">
-                          {selectedUnitName}
-                        </span>
-                      )}
-                      {selectedUnitArea && (
-                        <>
-                          {selectedUnitName && (
-                            <span className="mx-1.5 text-gray-300">·</span>
-                          )}
-                          {selectedUnitArea}
-                        </>
-                      )}
-                      <FloorPlanLink
-                        url={selectedUnit?.floorPlanImageUrl}
-                        onOpen={() => setFloorPlanOpen(true)}
-                        separator={Boolean(selectedUnitName || selectedUnitArea)}
-                      />
-                    </p>
-                    {showLeasePickers && (
-                      <div className="w-full text-xs text-gray-500 sm:ml-auto sm:w-auto">
-                        <LeasePrefsControls
-                          value={leasePrefs.prefs}
-                          onChange={leasePrefs.setPrefs}
-                          onClear={leasePrefs.clear}
-                          leases={selectedUnitLeases}
-                        />
-                      </div>
-                    )}
-                    {showUnitJumps && (
-                      <div className={`flex items-baseline gap-3 text-xs ${showLeasePickers ? "" : "ml-auto"}`}>
-                        <span className="text-gray-500">Jump to:</span>
-                        {unitBedJumps.map(({ beds, idx, label }) => (
-                          <button
-                            key={beds}
-                            type="button"
-                            onClick={() => jumpToBeds(idx)}
-                            aria-current={selectedUnitBeds === beds ? "true" : undefined}
-                            className={`font-medium underline underline-offset-2 transition ${
-                              selectedUnitBeds === beds
-                                ? "text-red-600"
-                                : "text-gray-500 hover:text-gray-700"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+              <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
+                {!leasesLoading && hasLeases && (
+                  <div className="px-4 py-3">
+                    <LeasePrefsControls
+                      value={leaseView.prefs}
+                      choices={leaseView.choices}
+                      only={leaseView.only}
+                      count={matchingLeases.length}
+                      onChange={leaseView.setPrefs}
+                      onClear={leaseView.clear}
+                    />
                   </div>
                 )}
-
-                {/* Lease options for the unit on the open tab: one card per
-                    landlord, their offerings inside it, one Contact for all.
-                    Narrowed by the student's saved move-in month and lease
-                    length, picked in its own header. */}
-                <div>
-                  <LeaseOptions
-                    leases={selectedUnitLeases}
-                    loading={leasesLoading}
-                    onContact={handleContactLease}
-                    prefs={leasePrefs.prefs}
-                  />
-                </div>
+                <LeaseOptions
+                  groups={leaseView.groups}
+                  loading={leasesLoading}
+                  empty={!hasLeases}
+                  onContact={handleContactLease}
+                  onFloorPlan={setFloorPlanUnit}
+                />
               </div>
             )}
 
@@ -2660,11 +2339,11 @@ export default function ListingModalInfo({
       )}
 
       {/* ── Floor plan ── */}
-      {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (
+      {floorPlanUnit?.floorPlanImageUrl && (
         <FloorPlanViewer
-          url={selectedUnit.floorPlanImageUrl}
-          unitName={selectedUnitName}
-          onClose={() => setFloorPlanOpen(false)}
+          url={floorPlanUnit.floorPlanImageUrl}
+          unitName={floorPlanUnit.name ?? null}
+          onClose={() => setFloorPlanUnit(null)}
         />
       )}
 

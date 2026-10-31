@@ -93,7 +93,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const router = useRouter();
   const initialRole = (user.role || "student").toLowerCase();
   /*
-   * Move-in month and lease length. Seeded from the shared copy, which already
+   * Bed count, move-in month and lease length. Seeded from the shared copy, which already
    * holds any change made on a listing this visit, and falling back to the
    * dashboard payload until that copy has loaded.
    */
@@ -101,7 +101,11 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const [housing, setHousing] = useState(
     leasePrefs.loaded
       ? leasePrefs.prefs
-      : { moveIn: user.preferredMoveInDate ?? null, months: user.preferredLeaseMonths ?? null }
+      : {
+          beds: user.preferredBeds ?? null,
+          moveIn: user.preferredMoveInDate ?? null,
+          months: user.preferredLeaseMonths ?? null,
+        }
   );
   const [form, setForm] = useState({
     name: user.name || "",
@@ -171,6 +175,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
           birthday: form.birthday || undefined,
           preferredMoveInDate: housing.moveIn ?? null,
           preferredLeaseMonths: housing.months ?? null,
+          preferredBeds: housing.beds ?? null,
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -180,7 +185,11 @@ function EditProfileModal({ user, onClose, onSaved }) {
       }
       const updated = await res.json();
       // Every listing's lease options read the shared copy: bring it up to date.
-      leasePrefs.hydrate({ moveIn: updated.preferredMoveInDate, months: updated.preferredLeaseMonths });
+      leasePrefs.hydrate({
+        beds: updated.preferredBeds,
+        moveIn: updated.preferredMoveInDate,
+        months: updated.preferredLeaseMonths,
+      });
       onSaved(updated);
 
       // If role changed, push the new role into the JWT and route them to
@@ -323,15 +332,15 @@ function EditProfileModal({ user, onClose, onSaved }) {
             <div className="rounded-lg border border-gray-200 px-3 py-3">
               <p className="text-sm font-semibold text-gray-800">Housing search</p>
               <p className="text-xs text-gray-500 mt-0.5 mb-2">
-                When you want to move in and for how long. Every listing shows the
-                lease options that fit first.
+                What size, when you want to move in and for how long. Every listing
+                opens on the leases that fit.
               </p>
               <LeasePrefsControls
                 variant="form"
                 idPrefix="profile-lease-prefs"
                 value={housing}
                 onChange={(patch) => setHousing((prev) => ({ ...prev, ...patch }))}
-                onClear={() => setHousing({ moveIn: null, months: null })}
+                onClear={() => setHousing({ beds: null, moveIn: null, months: null })}
               />
             </div>
           )}
@@ -560,6 +569,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     description: dbUser?.description ?? null,
     preferredMoveInDate: dbUser?.preferredMoveInDate ?? null,
     preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? null,
+    preferredBeds: dbUser?.preferredBeds ?? null,
   };
 
   const contacted = user.contacted;
@@ -1090,6 +1100,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               description: updated.description,
               preferredMoveInDate: updated.preferredMoveInDate,
               preferredLeaseMonths: updated.preferredLeaseMonths,
+              preferredBeds: updated.preferredBeds,
             }));
           }}
         />
