@@ -469,8 +469,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       )}
 
       {loading && <ChatSkeleton rows={3} />}
+      {/* Before the first question the greeting sits at the top with room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30). */}
       {greet && (
-        <div className={`flex flex-col ${fill ? "min-h-0 flex-1 justify-end" : ""}`}>
+        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-56"}`}>
           <Bubble msg={{ id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" }} animate />
         </div>
       )}
