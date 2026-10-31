@@ -255,8 +255,24 @@ export async function agentChat({ listingId, userId, isAdmin = false, message, h
     if (c.target !== "lease" && !owner) allowed = false;
     coreChanges.push({ target: c.target, id: ref.id, refLabel: ref.label, field: c.field, fieldLabel: spec.label, value: c.value, allowed, error: allowed ? null : "You cannot change this; only the property owner can." });
   }
+  // Shown in the diff only; confirmProposal re-checks every change itself.
   const factsOut = (p.facts ?? []).map((f) => ({ ...f, allowed: owner || /^(lease:|owner:)/i.test(f.scope ?? "") }));
   return { reply: p.reply, proposal: { coreChanges, facts: factsOut, retireKeys: p.retire_keys ?? [] }, hasChanges: coreChanges.length + factsOut.length + (p.retire_keys ?? []).length > 0 };
+}
+
+/*
+ * The proposal comes back from the browser, so nothing in it is trusted
+ * (PR #365 review): every change is re-checked here against who is
+ * confirming. Core changes go through applyCoreChange's own lease and owner
+ * checks; a fact lands only in a scope the caller controls (a co-owner's
+ * property-level fact becomes their own owner-scoped one); a removal only
+ * touches facts in a scope the caller controls.
+ */
+async function controlsScope({ scopeLevel, scopeId, userId, owner, isAdmin }) {
+  if (isAdmin) return true;
+  if (scopeLevel === "lease") return (await canManageLease(userId, scopeId))?.ok === true;
+  if (scopeLevel === "owner") return scopeId === userId; // one owner's own facts, not a co-owner's
+  return owner; // property, unit
 }
 
 export async function confirmProposal({ listingId, userId, isAdmin = false, proposal }) {
@@ -272,7 +288,7 @@ export async function confirmProposal({ listingId, userId, isAdmin = false, prop
     return results;
   }
   for (const c of proposal?.coreChanges ?? []) {
-    if (c.allowed === false || c.error) { results.errors.push(c.error ?? "not allowed"); continue; }
+    if (c.error) { results.errors.push(String(c.error)); continue; }
     const r = await applyCoreChange({ listingId, userId, isAdmin, change: { target: c.target, id: c.id, field: c.field, value: c.value } });
     if (r.error) results.errors.push(r.error); else results.applied.push(r.label);
   }
@@ -281,9 +297,12 @@ export async function confirmProposal({ listingId, userId, isAdmin = false, prop
     ? await findOrCreateSource({ listingId, kind: "landlord_statement", userId, label: `Agent chat ${shortDate(new Date())}` })
     : null;
   for (const f of proposal?.facts ?? []) {
-    if (f.allowed === false) { results.errors.push(`Only the property owner can set ${f.key}.`); continue; }
     try {
-      const scope = resolveScope(f.scope, ctx, owner ? null : userId);
+      let scope = resolveScope(f.scope, ctx, owner ? null : userId);
+      if (!(await controlsScope({ ...scope, userId, owner, isAdmin }))) {
+        if (owner) { results.errors.push(`You cannot set ${f.key} there.`); continue; }
+        scope = { scopeLevel: "owner", scopeId: userId };
+      }
       const r = await setFact({
         listingId, section: f.section, fieldKey: String(f.key).toLowerCase().replace(/[^a-z0-9_.-]+/g, "-"), value: safeJson(f.value_json), summary: f.summary,
         scopeLevel: scope.scopeLevel, scopeId: scope.scopeId, sourceId: source.id, sourceRef: `statement:${source.id}`, landlordSet: true, setBy: userId, actorId: userId,
@@ -296,8 +315,15 @@ export async function confirmProposal({ listingId, userId, isAdmin = false, prop
   }
   const facts = await currentFacts(listingId);
   for (const key of proposal?.retireKeys ?? []) {
-    const target = facts.find((f) => f.field_key === key && f.section !== "core");
-    if (!target) continue;
+    const candidates = facts.filter((f) => f.field_key === key && f.section !== "core");
+    let target = null;
+    for (const f of candidates) {
+      if (await controlsScope({ scopeLevel: f.scope_level, scopeId: f.scope_id, userId, owner, isAdmin })) { target = f; break; }
+    }
+    if (!target) {
+      if (candidates.length) results.errors.push(`You cannot remove ${key}; another owner set it.`);
+      continue;
+    }
     const { retireFact } = await import("./store");
     await retireFact({ factId: target.id, cause: "landlord_chat", actorId: userId });
     results.applied.push(`Removed: ${target.summary}`);
