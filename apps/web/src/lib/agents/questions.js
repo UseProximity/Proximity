@@ -114,10 +114,14 @@ async function findFollowUp({ listingId, threadId, questionText }) {
 }
 
 /* The follow-up goes into the earlier question's card, which opens again for this thread. */
+// The landlord's turn starts (again): reminders and the day-5 note restart.
+const LANDLORD_TURN = (now) => ({ asked_at: now, reminder_1_at: null, reminder_3_at: null, student_told_at: null });
+
 async function reopenWithFollowUp({ q, thread, text, userId }) {
   const now = new Date().toISOString();
   await supabase.from("listing_question_messages").insert({ question_id: q.id, sender: "student", kind: "followup", thread_id: thread.id, user_id: userId, body: text.slice(0, 2000) });
-  await supabase.from("listing_questions").update({ status: "open", pending_clarifier: false, last_activity_at: now }).eq("id", q.id);
+  // Back to the landlord: reminders count again from now.
+  await supabase.from("listing_questions").update({ status: "open", pending_clarifier: false, last_activity_at: now, ...LANDLORD_TURN(now) }).eq("id", q.id);
   await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id).eq("thread_id", thread.id);
   if (q.owner_id) await notifyLandlordStudentReply({ questionId: q.id }).catch((err) => console.error("[proxy] follow-up alert failed:", err?.message ?? err));
 }
@@ -188,7 +192,8 @@ export async function pendingClarifierFor(threadId) {
 export async function studentReplyToClarifier({ question, thread, body, userId = null }) {
   const screened = screenStudentText(body);
   await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", kind: "reply", thread_id: thread.id, user_id: userId, body: (screened.text || "(The student sent only contact details, which Proxy does not pass on.)").slice(0, 2000), raw_body: screened.removed ? screened.original : null, screened: screened.removed > 0 });
-  await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: new Date().toISOString() }).eq("id", question.id);
+  const now = new Date().toISOString();
+  await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: now, ...LANDLORD_TURN(now) }).eq("id", question.id);
   await notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }
 
