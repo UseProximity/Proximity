@@ -777,14 +777,15 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 export async function applyEvents({ listingId, eventIds, userId, verdictBy = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
-  const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied").in("id", eventIds).eq("listing_id", listingId);
+  const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied, status").in("id", eventIds).eq("listing_id", listingId);
   // New floor plans join in layout order, unless the landlord arranged the
   // tabs by hand, in which case they go at the end as before.
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
   for (const e of events ?? []) {
-    if (e.applied || e.detail?.op === "none") continue;
+    // A dismissed change stays dismissed (PR #365 review).
+    if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
       const note = await executeChange(change, { state, userId: userId ?? primaryOwner(state) });
@@ -799,5 +800,5 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
 }
 
 export async function rejectEvents({ listingId, eventIds, verdictBy = null }) {
-  await supabase.from("listing_source_events").update({ status: "rejected", verdict: "rejected", verdict_by: verdictBy, verdict_at: new Date().toISOString() }).in("id", eventIds).eq("listing_id", listingId);
+  await supabase.from("listing_source_events").update({ status: "rejected", verdict: "rejected", verdict_by: verdictBy, verdict_at: new Date().toISOString() }).in("id", eventIds).eq("listing_id", listingId).eq("applied", false);
 }
