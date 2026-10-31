@@ -14,8 +14,9 @@
 import supabase from "@/lib/supabase";
 import { seedListing } from "./seed";
 
-// Reading a description into facts is one Sonnet call, roughly 1 cent.
-const DESCRIPTION_CENTS = 1;
+// Reading a description into facts is a Sonnet call or two: the dev run
+// (2026-10-31) cost $4.63 for 224 calls over 252 listings, about 2 cents each.
+const DESCRIPTION_CENTS = 2;
 
 async function all(table, select, build = (q) => q) {
   const out = [];
@@ -36,6 +37,9 @@ export async function transferReport() {
     all("unit_leases", "unit_id, sublease, unavailable, owner_id, contact_email", (q) => q.is("deleted_at", null)),
     all("listing_sources", "listing_id", (q) => q.eq("kind", "chat_backfill")),
   ]);
+  const { data: readDescriptions } = await supabase
+    .from("listing_sources").select("listing_id").eq("kind", "description").not("last_fingerprint", "is", null).limit(20000);
+  const descriptionRead = new Set((readDescriptions ?? []).map((r) => r.listing_id));
 
   const agentBy = new Map(agents.map((a) => [a.listing_id, a]));
   const factCount = new Map();
@@ -73,6 +77,7 @@ export async function transferReport() {
       chatsRead: chats.get(l.id) ?? 0,
       sourcesSearched: !!a?.sources_searched_at,
       hasDescription: !!String(l.description ?? "").trim(),
+      descriptionRead: descriptionRead.has(l.id),
       flags,
     };
   });
@@ -87,7 +92,8 @@ export async function transferReport() {
       withFacts: rows.filter((r) => r.facts > 0).length,
       facts: facts.length,
       sourcesSearched: rows.filter((r) => r.sourcesSearched).length,
-      estimatedSeedCostCents: unseeded.filter((r) => r.hasDescription).length * DESCRIPTION_CENTS,
+      // A pass reads only descriptions never read before.
+      estimatedSeedCostCents: rows.filter((r) => r.hasDescription && !r.descriptionRead).length * DESCRIPTION_CENTS,
       flagged: {
         noLiveLease: count("no live lease"),
         noContact: count("no one to send questions to"),

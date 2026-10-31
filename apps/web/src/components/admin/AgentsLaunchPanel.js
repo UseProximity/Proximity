@@ -130,7 +130,7 @@ export default function AgentsLaunchPanel({ onChanged }) {
         </p>
         <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Tile label="Published listings" value={t.listings} />
-          <Tile label="Seeded" value={t.seeded} note={t.unseeded ? `${t.unseeded} to go, ~$${(t.estimatedSeedCostCents / 100).toFixed(2)}` : "all done"} />
+          <Tile label="Seeded" value={t.seeded} note={[t.unseeded ? `${t.unseeded} to go` : null, t.estimatedSeedCostCents ? `a pass costs ~$${(t.estimatedSeedCostCents / 100).toFixed(2)}` : "descriptions all read"].filter(Boolean).join(", ")} />
           <Tile label="With facts" value={t.withFacts} note={`${t.facts} facts`} />
           <Tile label="No live lease" value={t.flagged.noLiveLease} note="students can't contact" />
           <Tile label="No one to ask" value={t.flagged.noContact} note="questions can't be routed" />
