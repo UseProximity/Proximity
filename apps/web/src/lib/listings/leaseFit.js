@@ -355,7 +355,7 @@ export function listingChoices(offerings, prefs, today = todayISO()) {
   return {
     beds: [...new Set(where({ beds: null }).map((o) => o.beds))]
       .sort((a, b) => a - b)
-      .map((n) => ({ value: n, label: `a ${bedsLabel(n)}` })),
+      .map((n) => ({ value: n, label: bedsLabel(n) })),
     // Plain lengths: the "(full year)" hints make the sentence's select too wide.
     months: unitLeaseMonthOptions(where({ months: null }).map((o) => o.lease)).map((o) => ({
       value: o.value,

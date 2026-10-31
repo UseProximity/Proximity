@@ -89,7 +89,8 @@ export default function LeasePrefsControls({
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-gray-700">
-      <span>I want</span>
+      {/* "I want a [3 bed]", but "I want [any size]" (Wyatt, 2026-10-30). */}
+      <span>{value?.beds != null || only?.beds ? "I want a" : "I want"}</span>
       {part("beds", "Size", "any size", true)}
       <span>for</span>
       {part("months", "Lease length", "any length", true)}
