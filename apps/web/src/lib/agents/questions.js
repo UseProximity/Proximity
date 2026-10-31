@@ -322,6 +322,30 @@ export async function proxyAsksClarifier({ question, clarifier, listingId }) {
  * student; null = let classifyReply decide from the text.
  * Returns { question, kind, relayedTo, synthesis, screened }.
  */
+/*
+ * A landlord reply that neither answers nor asks the student anything ("let
+ * me check and get back to you", an out-of-office): kept on the card, but not
+ * saved as knowledge, not relayed as an answer and not closing the question,
+ * so reminders keep running and the real answer is still accepted. Each
+ * waiting student hears once that the landlord is looking into it (PR #365
+ * review, Wyatt 2026-10-31).
+ */
+export async function holdingReply({ q, landlordUserId, text, via = "app" }) {
+  await supabase.from("listing_question_messages").insert({ question_id: q.id, sender: "landlord", user_id: landlordUserId, body: text, via });
+  const waiters = (await waitersOf(q.id)).filter((w) => !w.relayed_at && w.thread_id);
+  let told = 0;
+  for (const w of waiters) {
+    const { count } = await supabase.from("chat_messages").select("id", { count: "exact", head: true })
+      .eq("thread_id", w.thread_id).eq("metadata->>holdingFor", q.id);
+    if (count) continue;
+    await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_note",
+      body: "The landlord has seen your question and is looking into it. I'll pass on their answer as soon as it comes in.",
+      metadata: { holdingFor: q.id } });
+    told++;
+  }
+  return { ok: true, holding: true, relayedTo: told };
+}
+
 export async function answerQuestion({ questionId, landlordUserId, body, done = null, via = "app" }) {
   const { data: q, error } = await supabase.from("listing_questions").select("*").eq("id", questionId).maybeSingle();
   if (error) throw fail("question", error);
@@ -340,6 +364,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   let both = null;
   if (done == null) {
     const c = await classifyReply({ question: q.question, text: screened.text, listingId: q.listing_id });
+    if (c.kind === "other") return holdingReply({ q, landlordUserId, text: screened.text, via });
     done = c.kind !== "clarifier";
     if (c.kind === "both" && c.answerPart && c.questionPart) both = c;
   }
