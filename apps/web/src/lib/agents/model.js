@@ -16,6 +16,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { recordUsage } from "./store";
+import { checkBudget } from "./budget";
 
 export const HAIKU = "claude-haiku-5-5";
 export const SONNET = "claude-sonnet-5-5";
@@ -67,6 +68,7 @@ export function stripEmDashes(value) {
 }
 
 export async function parseStructured({ model = SONNET, system, messages, schema, maxTokens = 2000, tag, listingId = null, kind = "parse" }) {
+  await checkBudget({ listingId, kind });
   const response = await getClient().messages.parse({
     model,
     max_tokens: maxTokens,
@@ -88,6 +90,7 @@ export async function runTools({
   model = SONNET, system, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
   tag, listingId = null, kind = "tools", finalTool = "final",
 }) {
+  await checkBudget({ listingId, kind });
   const client = getClient();
   const convo = [...messages];
   const usage = {};
