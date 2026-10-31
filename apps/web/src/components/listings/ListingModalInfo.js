@@ -1696,7 +1696,7 @@ export default function ListingModalInfo({
      */
     setActiveTab("contact");
     setTimeout(
-      () => scrollIntoContainer(document.getElementById("listing-tabs")),
+      () => scrollIntoContainer(document.getElementById("listing-head")),
       50
     );
   };
@@ -2086,136 +2086,140 @@ export default function ListingModalInfo({
                 </span>
               </div>
             )}
-            {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
-            <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-              {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
-              <div className="min-w-0 w-full md:w-auto md:flex-1">
-                <h1 className="truncate text-[19px] sm:text-[27px] font-bold text-gray-900 leading-snug">
-                  {listing.title || street}
-                </h1>
-                {cityStateZip && (
-                  <p className="truncate text-gray-500 text-[15px] sm:text-base mt-0.5">{cityStateZip}</p>
-                )}
-                {/*
-                  * No property-level "Available <date>" pill here on purpose.
-                  * It used to read from listing.availableFrom, a rollup that
-                  * only the browse feed computes — so opening a listing showed
-                  * the pill for the split second the panel held feed data, then
-                  * dropped it the moment the detail fetch replaced that object.
-                  * A move-in date belongs to one offering anyway, not to the
-                  * building: LeaseOptions shows it per lease, where a renter can
-                  * see which unit the date actually applies to.
-                  */}
-              </div>
-              <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
-                {/* Rating moved up from the removed stats bar. */}
-                {overallAvg ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Star
-                      className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400"
-                      aria-hidden="true"
-                    />
-                    <span className="text-2xl font-semibold leading-none text-gray-900">
-                      {overallAvg}
+            {/* ── Sticky header ── The title, address and rating stick with
+                the tabs as one block (Wyatt, 2026-10-31). */}
+            <div id="listing-head" className="sticky top-0 z-30">
+              {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
+              <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
+                <div className="min-w-0 w-full md:w-auto md:flex-1">
+                  <h1 className="truncate text-[19px] sm:text-[27px] font-bold text-gray-900 leading-snug">
+                    {listing.title || street}
+                  </h1>
+                  {cityStateZip && (
+                    <p className="truncate text-gray-500 text-[15px] sm:text-base mt-0.5">{cityStateZip}</p>
+                  )}
+                  {/*
+                    * No property-level "Available <date>" pill here on purpose.
+                    * It used to read from listing.availableFrom, a rollup that
+                    * only the browse feed computes — so opening a listing showed
+                    * the pill for the split second the panel held feed data, then
+                    * dropped it the moment the detail fetch replaced that object.
+                    * A move-in date belongs to one offering anyway, not to the
+                    * building: LeaseOptions shows it per lease, where a renter can
+                    * see which unit the date actually applies to.
+                    */}
+                </div>
+                <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
+                  {/* Rating moved up from the removed stats bar. */}
+                  {overallAvg ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Star
+                        className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400"
+                        aria-hidden="true"
+                      />
+                      <span className="text-2xl font-semibold leading-none text-gray-900">
+                        {overallAvg}
+                      </span>
+                      <span className="text-md text-gray-500">
+                        ({reviewCount})
+                      </span>
                     </span>
-                    <span className="text-md text-gray-500">
-                      ({reviewCount})
+                  ) : (
+                    <span className="inline-flex items-center h-9 text-sm text-gray-400">
+                      No reviews yet
                     </span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center h-9 text-sm text-gray-400">
-                    No reviews yet
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* ── Sticky Tab Bar ── */}
-            <div
-              id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                compact ? "top-0" : "top-0 px-4"
-              }`}
-            >
-              {/* Three-column row so the tabs stay optically centred no matter
-                  how wide the right-hand action is. */}
-              <nav className="flex items-stretch max-w-7xl mx-auto">
-                <div className="flex-1" aria-hidden="true" />
-
-                <div className="flex overflow-x-auto scrollbar-hidden">
-                  {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
-                    (tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-                          activeTab === tab.id
-                            ? "text-red-600 border-red-600"
-                            : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    )
                   )}
                 </div>
+              </div>
 
-                {/* Furniture rental, styled as a tab so it reads as part of this
-                    row. It only appears against an UNFURNISHED offering —
-                    furnished belongs to the lease now, not the building, so this
-                    asks whether any live offering on the open unit is
-                    unfurnished, falling back to listings.furnished when none has
-                    loaded. */}
-                {/* Opaque and padded so that when the tab strip scrolls under it
-                    on a narrow screen, the last tab is clipped cleanly instead of
-                    appearing to run into the button. */}
-                <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
-                  {/* Joining this property's waitlist happens on the landlord's
-                      own form, so the link hops through our API first: that
-                      redirect is the only place a click can still be recorded
-                      before the browser leaves for a domain we can't see into. */}
-                  {waitlist && !preview &&
-                    (session ? (
+              {/* ── Tab Bar ── */}
+              <div
+                id="listing-tabs"
+                className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
+                  compact ? "" : "px-4"
+                }`}
+              >
+                {/* Three-column row so the tabs stay optically centred no matter
+                    how wide the right-hand action is. */}
+                <nav className="flex items-stretch max-w-7xl mx-auto">
+                  <div className="flex-1" aria-hidden="true" />
+
+                  <div className="flex overflow-x-auto scrollbar-hidden">
+                    {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
+                      (tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                            activeTab === tab.id
+                              ? "text-red-600 border-red-600"
+                              : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  {/* Furniture rental, styled as a tab so it reads as part of this
+                      row. It only appears against an UNFURNISHED offering —
+                      furnished belongs to the lease now, not the building, so this
+                      asks whether any live offering on the open unit is
+                      unfurnished, falling back to listings.furnished when none has
+                      loaded. */}
+                  {/* Opaque and padded so that when the tab strip scrolls under it
+                      on a narrow screen, the last tab is clipped cleanly instead of
+                      appearing to run into the button. */}
+                  <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
+                    {/* Joining this property's waitlist happens on the landlord's
+                        own form, so the link hops through our API first: that
+                        redirect is the only place a click can still be recorded
+                        before the browser leaves for a domain we can't see into. */}
+                    {waitlist && !preview &&
+                      (session ? (
+                        <a
+                          href={`/api/waitlist/${listing._id}`}
+                          target="_blank"
+                          /* No "noreferrer": the first hop is our own API route,
+                             and stripping the header there blinds the click log to
+                             which page the student was on. */
+                          rel="noopener nofollow"
+                          onClick={() => trackWaitlistClick()}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            trackWaitlistClick();
+                            setWaitlistOpen(true);
+                          }}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </button>
+                      ))}
+                    {showFurnishCta && (
                       <a
-                        href={`/api/waitlist/${listing._id}`}
+                        href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
-                        /* No "noreferrer": the first hop is our own API route,
-                           and stripping the header there blinds the click log to
-                           which page the student was on. */
-                        rel="noopener nofollow"
-                        onClick={() => trackWaitlistClick()}
-                        className={waitlistButtonClass}
+                        rel="noopener noreferrer sponsored nofollow"
+                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
                       >
-                        {waitlist.label}
+                        Furnish This Property
                       </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          trackWaitlistClick();
-                          setWaitlistOpen(true);
-                        }}
-                        className={waitlistButtonClass}
-                      >
-                        {waitlist.label}
-                      </button>
-                    ))}
-                  {showFurnishCta && (
-                    <a
-                      href="https://cort.sjv.io/zzb9y0"
-                      target="_blank"
-                      rel="noopener noreferrer sponsored nofollow"
-                      className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
-                    >
-                      Furnish This Property
-                    </a>
-                  )}
-                  {tabBarAction && (
-                    <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
-                  )}
-                </div>
-              </nav>
+                    )}
+                    {tabBarAction && (
+                      <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                    )}
+                  </div>
+                </nav>
+              </div>
             </div>
 
             {/* ── Tab Content ── */}

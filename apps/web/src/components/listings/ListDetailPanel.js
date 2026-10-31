@@ -22,12 +22,14 @@ export default function ListDetailPanel({
         * White pills over the photos instead of a bar above them (Wyatt,
         * 2026-10-31). At the top they are part of the page and scroll off
         * with the photos. From anywhere further down, a scroll up slides a
-        * copy down from the top and a scroll down slides it away again. When
-        * the tabs are stuck to the top the copy comes in just under them
-        * (top-12 clears the tabs) so it never covers them.
+        * copy down from the top and a scroll down slides it away again. Only
+        * one set ever shows: once the copy has come in, the page's own pills
+        * stay hidden until the panel is back at the very top. When the title
+        * and tabs are stuck to the top the copy comes in just under them
+        * (--listing-head is their height) so it never covers them.
         */}
       <div
-        className={`sticky z-40 h-0 ${pills.stuck ? "top-12" : "top-0"} ${
+        className={`sticky z-40 h-0 ${pills.stuck ? "top-[var(--listing-head)]" : "top-0"} ${
           pills.mode === "off" ? "hidden" : ""
         }`}
       >
@@ -41,7 +43,7 @@ export default function ListDetailPanel({
           <Pills onBack={onBack} listingId={listing._id} />
         </div>
       </div>
-      <div className="absolute inset-x-0 top-0 z-30">
+      <div className={`absolute inset-x-0 top-0 z-30 ${pills.original ? "" : "invisible"}`}>
         <Pills onBack={onBack} listingId={listing._id} />
       </div>
       <ListingModalInfo
@@ -85,13 +87,16 @@ function Pills({ onBack, listingId }) {
 /*
  * The sliding copy's state: "off" at the very top, where the page's own pills
  * are in place; "shown" while scrolling up; "hidden" (parked above the top,
- * ready to slide in) while scrolling down. The panel scrolls inside its
+ * ready to slide in) while scrolling down. `original` is whether the page's
+ * own pills may show: true until the copy first slides in, then false until
+ * the top is reached again. The panel scrolls inside its
  * column, not the window, so this listens on the nearest scrolling ancestor.
  */
 function usePills() {
   const ref = useRef(null);
   const [mode, setMode] = useState("off");
   const [stuck, setStuck] = useState(false);
+  const [original, setOriginal] = useState(true);
   useEffect(() => {
     let el = ref.current?.parentElement;
     while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
@@ -99,15 +104,22 @@ function usePills() {
     let last = el.scrollTop;
     const onScroll = () => {
       const top = el.scrollTop;
-      const tabs = el.querySelector("#listing-tabs");
-      setStuck(!!tabs && tabs.getBoundingClientRect().top - el.getBoundingClientRect().top <= 1);
-      if (top <= 0) setMode("off");
-      else if (top < last) setMode("shown");
-      else if (top > last) setMode("hidden");
+      const head = el.querySelector("#listing-head");
+      if (head) {
+        ref.current?.style.setProperty("--listing-head", `${head.offsetHeight}px`);
+        setStuck(head.getBoundingClientRect().top - el.getBoundingClientRect().top <= 1);
+      }
+      if (top <= 0) {
+        setMode("off");
+        setOriginal(true);
+      } else if (top < last) {
+        setMode("shown");
+        setOriginal(false);
+      } else if (top > last) setMode("hidden");
       last = top;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
-  return { ref, mode, stuck };
+  return { ref, mode, stuck, original };
 }
