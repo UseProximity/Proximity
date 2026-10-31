@@ -185,6 +185,29 @@ insert into app_metadata (key, value, updated_at)
 values ('snapshot_taken_at', now()::text, now())
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
+-- Prod holds live-mode Stripe ids. Dev and staging use sandbox keys, which reject them, so strip
+-- every one (customer, payment method, invoice, invoice item, dispute, webhook event). Rows whose
+-- Stripe id is the whole point (payment methods, disputes, events) are deleted rather than nulled.
+-- This runs before step 6, so partner sandbox rows put back there keep their own sandbox ids.
+-- Guarded per table so a snapshot still works before the billing migration reaches prod.
+do $$
+begin
+  if to_regclass('public.charges') is not null then
+    update public.charges set stripe_invoice_item_id = null where stripe_invoice_item_id is not null;
+  end if;
+  if to_regclass('public.billing_invoices') is not null then
+    update public.billing_invoices
+       set stripe_invoice_id = null, hosted_invoice_url = null, invoice_pdf_url = null
+     where stripe_invoice_id is not null or hosted_invoice_url is not null or invoice_pdf_url is not null;
+  end if;
+  if to_regclass('public.billing_accounts') is not null then
+    update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
+  end if;
+  if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
+  if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
+  if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
+end $$;
+
 notify pgrst, 'reload schema';
 SQL
 

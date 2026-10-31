@@ -317,7 +317,7 @@
         "columns": [
           "id:uuid",
           "created_at:timestamptz",
-          "category:text (chat|account|reviews|landlords|team|other)",
+          "category:text (chat|account|reviews|landlords|billing|team|other)",
           "kind:text",
           "to_email:text",
           "cc:text",
@@ -335,7 +335,195 @@
           "thread_id:uuid",
           "user_id:uuid"
         ],
-        "notes": "Migration 202610260001 (dev applied 2026-10-24; prod pending). pk id; no fks (the record outlives threads and users); indexes on created_at, (category, created_at), (status, created_at), provider_message_id; rls: service role only (no policies)"
+        "notes": "Migration 202610260001 (dev applied 2026-10-24; prod pending). Category gains 'billing' with 202610310002 (not yet applied). pk id; no fks (the record outlives threads and users); indexes on created_at, (category, created_at), (status, created_at), provider_message_id; rls: service role only (no policies)"
+      },
+      {
+        "table": "billing_settings",
+        "status": "unreleased",
+        "description": "Key/value switches for in-app payments. Seeded with agreement_required=false so the agreement requirement does not block listing creation at launch.",
+        "columns": [
+          "key:text",
+          "value:jsonb",
+          "updated_at:timestamptz",
+          "updated_by:uuid"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk key; fk updated_by->users.id (set null); rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_accounts",
+        "status": "unreleased",
+        "description": "One row per landlord user holding their Stripe Customer id. Created lazily the first time a landlord opens payment setup.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "stripe_customer_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (user_id); unique (stripe_customer_id); fk user_id->users.id (restrict). The snapshot script nulls stripe_customer_id on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "payment_methods",
+        "status": "unreleased",
+        "description": "A landlord's Stripe payment methods: Stripe id plus display fields only (brand, last4, expiry, bank name). Never raw card or bank details. Status verifying|active|expired|failed drives the prompts on the payments dashboard.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "stripe_payment_method_id:text",
+          "type:text (us_bank_account|card)",
+          "status:text (verifying|active|expired|failed)",
+          "is_default:bool",
+          "brand:text",
+          "last4:text",
+          "exp_month:int4",
+          "exp_year:int4",
+          "bank_name:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charges",
+        "status": "unreleased",
+        "description": "One chargeable event, owned by a landlord user (never a listing). Lifecycle unconfirmed -> pending (admin confirms, 7 day review) -> approved -> invoiced -> paid, with contested and voided side exits; transitions are enforced by trg_charges_enforce_transition and written through rpc_transition_charge. trigger_type and trigger_ref come from the separate Triggering project; is_test marks charges made by the admin test tool. Money is integer cents.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "amount_cents:int4",
+          "description:text",
+          "trigger_type:text",
+          "trigger_ref:text",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "student_id:uuid",
+          "created_by_type:text (system|admin)",
+          "created_by_id:uuid",
+          "is_test:bool",
+          "status:text (unconfirmed|pending|approved|invoiced|paid|contested|voided)",
+          "pending_at:timestamptz",
+          "approved_at:timestamptz",
+          "contested_at:timestamptz",
+          "contest_reason:text",
+          "resolved_at:timestamptz",
+          "resolved_by_id:uuid",
+          "resolution_note:text",
+          "voided_at:timestamptz",
+          "invoiced_at:timestamptz",
+          "paid_at:timestamptz",
+          "invoice_id:uuid",
+          "stripe_invoice_item_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk landlord_id->users.id (restrict); listing_id->listings.id, lease_id->unit_leases.id, student_id->users.id, created_by_id->users.id, resolved_by_id->users.id (all set null); invoice_id->billing_invoices.id (set null); unique (stripe_invoice_item_id); check amount_cents > 0; check invoiced/paid rows carry an invoice reference; indexes for the review clock (pending_at where pending), billing run (landlord where approved and not invoiced) and admin queue. Audited by fn_action_log; updated_at by fn_set_updated_at. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charge_status_history",
+        "status": "unreleased",
+        "description": "Append-only record of every charge status change: from, to, actor (landlord|admin|system) and note. Written only by rpc_transition_charge, in the same transaction as the status update.",
+        "columns": [
+          "id:uuid",
+          "charge_id:uuid",
+          "from_status:text",
+          "to_status:text",
+          "actor_type:text (landlord|admin|system)",
+          "actor_user_id:uuid",
+          "note:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); actor_user_id->users.id (set null); check actor_user_id present unless actor_type is system; index (charge_id, created_at). rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_invoices",
+        "status": "unreleased",
+        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) starts the 30 day overdue clock; processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "billing_period:date",
+          "stripe_invoice_id:text",
+          "status:text (open|processing|paid|failed|void|uncollectible)",
+          "total_cents:int4",
+          "invoice_date:timestamptz",
+          "hosted_invoice_url:text",
+          "invoice_pdf_url:text",
+          "processing_started_at:timestamptz",
+          "paid_at:timestamptz",
+          "failed_at:timestamptz",
+          "last_failure_message:text",
+          "disputed:bool",
+          "overdue_actioned_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (landlord_id, billing_period); unique (stripe_invoice_id); fk landlord_id->users.id (restrict); partial index on invoice_date where status in (open, processing, failed). The snapshot script nulls the Stripe id and URLs on dev. Audited by fn_action_log. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charge_adjustments",
+        "status": "unreleased",
+        "description": "A refund or credit that corrects a Paid charge. The original charge is never edited; the correction is recorded here, linked to it.",
+        "columns": [
+          "id:uuid",
+          "charge_id:uuid",
+          "kind:text (refund|credit)",
+          "amount_cents:int4",
+          "reason:text",
+          "stripe_refund_id:text",
+          "created_by_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); created_by_id->users.id (set null); unique (stripe_refund_id). rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_disputes",
+        "status": "unreleased",
+        "description": "Stripe chargebacks received through the dispute webhooks, linked to the invoice they hit. Shown in the admin review view.",
+        "columns": [
+          "id:uuid",
+          "invoice_id:uuid",
+          "stripe_dispute_id:text",
+          "amount_cents:int4",
+          "reason:text",
+          "status:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_dispute_id); fk invoice_id->billing_invoices.id (set null). The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "landlord_agreements",
+        "status": "unreleased",
+        "description": "Commission agreement scaffolding: version, status (not_sent|sent|signed|voided), signer, and a reference to the signed file. provider and provider_envelope_id stay empty until an e-signature provider is chosen. The listing gate reads status only.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "version:text",
+          "status:text (not_sent|sent|signed|voided)",
+          "signed_at:timestamptz",
+          "signer_name:text",
+          "signed_file_key:text",
+          "provider:text",
+          "provider_envelope_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk user_id->users.id (restrict); partial unique (user_id) where status <> voided; check signed rows have signed_at. Audited by fn_action_log. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "stripe_webhook_events",
+        "status": "unreleased",
+        "description": "Stripe event ids already seen, so webhook handling is idempotent. A row is claimed on first sight and stamped processed_at when handled; a row with processed_at null is retried when Stripe redelivers.",
+        "columns": [
+          "stripe_event_id:text",
+          "type:text",
+          "livemode:bool",
+          "received_at:timestamptz",
+          "processed_at:timestamptz",
+          "error:text"
+        ],
+        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk stripe_event_id; partial index on received_at where processed_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "landlord_reply_senders",
@@ -2541,6 +2729,16 @@
       }
     ],
     "functions": [
+      {
+        "name": "rpc_transition_charge",
+        "kind": "rpc",
+        "args": "p_charge_id uuid, p_expected_from text, p_to text, p_actor_type text, p_actor_user_id uuid, p_note text, p_invoice_id uuid, p_stripe_invoice_item_id text",
+        "touches": "charges, charge_status_history",
+        "called_from": "not yet called (billing library lands in a later phase of feat/in-app-payments)",
+        "defined_in": "supabase/migrations/202610310001_billing_core.sql",
+        "description": "Moves a charge to a new status and records the actor in charge_status_history in one transaction. Locks the row and compares p_expected_from, so a landlord approving while the review cron runs cannot both win. Raises charge_not_found, charge_status_changed, charge_note_required or charge_actor_required; illegal transitions raise a check_violation from trg_charges_enforce_transition. SECURITY INVOKER; execute is service_role only.",
+        "dev_note": "Not yet applied to dev or prod."
+      },
       {
         "name": "rpc_create_listing",
         "kind": "rpc",
