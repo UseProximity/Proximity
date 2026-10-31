@@ -1256,6 +1256,28 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
 }
 
 /*
+ * To a signed-out visitor who gave Proxy their email: confirm it is theirs
+ * before anything else is sent there (PR #365 review). Nothing about the
+ * listing's answers is in this email.
+ */
+export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, threadId = null, testEmailTo = null }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "proxy_confirm_email", threadId },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: "Confirm your email for Proxy",
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>Hi,</p>
+        <p>Someone asked Proxy to email this address when the landlord answers a question about <strong>${escapeHtml(listingLabel)}</strong> on Proximity. If that was you, confirm below and the answer will be emailed here.</p>
+        <a href="${confirmUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Confirm my email</a>
+        <p style="color:#666;font-size:12px">If it wasn't you, ignore this email and nothing more will be sent. The link works for 2 days.</p>
+        ${emailFooter({ reason: "You are receiving this because this address was given to Proxy on Proximity." })}
+      </div>`,
+  }, testEmailTo);
+}
+
+/*
  * To a landlord: a student's question Proxy could not answer (or a reminder,
  * or the student's reply to a clarifying question). The student is never
  * named, and the question names the listing, not a lease (2026-10-29).

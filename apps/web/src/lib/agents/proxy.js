@@ -145,7 +145,7 @@ async function countInquiry({ listingId, userId }) {
  */
 export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false }) {
   const started = Date.now();
-  const text = sanitizeStudentText(body);
+  let text = sanitizeStudentText(body);
   if (!text) return { error: "Say something first.", status: 400 };
   const listingId = thread.listing_id;
 
@@ -172,7 +172,11 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     const given = await handleVisitorEmail({ thread, text });
     if (given) {
       out.push(await postProxyMessage({ threadId: thread.id, listingId, body: given.reply, type: "proxy_note", metadata: { notifyEmail: true } }));
-      return { messages: out, outcome: given.held ? "account_exists" : "notify_email", intent: "notify_email", questionIds: [] };
+      // "rent? me@x.com": the address is handled, and the question still answered.
+      if (!given.question) return { messages: out, outcome: given.held ? "account_exists" : "notify_email", intent: "notify_email", questionIds: [] };
+      text = given.question;
+      const { data: fresh } = await supabase.from("chat_threads").select("proxy_state").eq("id", thread.id).maybeSingle();
+      thread.proxy_state = fresh?.proxy_state ?? thread.proxy_state;
     }
   }
   const facts = await currentFacts(listingId);
