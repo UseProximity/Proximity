@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -31,6 +32,8 @@ export default function PropertyAnalyticsSection({
   currentUserEmail,
 }) {
   const router = useRouter();
+  // The Agent tab and the "Inquiries" wording wait for the agents switch.
+  const agentsOn = useAgentsEnabled();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
   const [contactTotals, setContactTotals] = useState({});
   // Two tabs (Wyatt, 2026-10-27): the listing itself, and its agent. Drafts
@@ -193,6 +196,7 @@ export default function PropertyAnalyticsSection({
         )
       )}
 
+      {agentsOn && (
       <div className="flex gap-1 border-b border-gray-200">
         {[["listing", "Listing"], ["agent", "Agent"]].map(([key, label]) => (
           <button
@@ -205,8 +209,9 @@ export default function PropertyAnalyticsSection({
           </button>
         ))}
       </div>
+      )}
 
-      {pageTab === "agent" ? (
+      {agentsOn && pageTab === "agent" ? (
         <AgentTab listingId={listingId} viewAsId={viewAsId} isDraft={!!p.isDraft} />
       ) : (
       <>
@@ -239,7 +244,7 @@ export default function PropertyAnalyticsSection({
             icon: <Star className="h-4 w-4 text-yellow-500" />,
           },
           {
-            label: "Inquiries",
+            label: agentsOn ? "Inquiries" : "Contacts",
             value: totalContacts,
             icon: <MessageSquare className="h-4 w-4 text-blue-500" />,
           },
