@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
-import { PencilLine, Globe } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
+import ImportWorkspace from "@/components/listings/wizard/ImportWorkspace";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
+import useLeaveGuard, { sendWhileLeaving } from "@/lib/useLeaveGuard";
 
 /*
  * Full-page "Add Listing" for landlords (and super).
  *
- * Two paths now. Typing a listing in by hand goes through AddListingFlow, which
+ * Two paths. Typing a listing in by hand goes through AddListingFlow, which
  * asks the address first and only asks for what that answer doesn't already
  * tell us — so adding one apartment to a building already on the site skips
  * re-describing the building.
@@ -36,10 +40,31 @@ export default function AddListingPage() {
   /*
    * Which path they picked lives in the URL rather than in state, so Back from
    * the flow lands on the fork instead of leaving the page entirely.
-   * "manual" is the new flow, "assisted" the old wizard.
+   * "manual" is the new flow, "assisted" the old wizard. `site` carries the
+   * address typed on the fork so the import starts on arrival rather than
+   * making them type it again.
    */
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
+  /*
+   * The pasted address is read from the URL once and then taken out of it.
+   * Left in, every visit to this history entry re-ran the AI read: publishing
+   * sends the landlord to their dashboard, and pressing Back from there
+   * started the whole import again instead of returning to this page.
+   */
+  // Read whenever one arrives, not only on first load: "Find properties" on
+  // the start screen navigates within this same page, so it never remounts.
+  const siteParam = searchParams.get("site") ?? "";
+  const [keptSite, setSite] = useState(siteParam);
+  // The URL's copy on the first render (the import mounts then and reads it
+  // once), the remembered copy after it has been taken out of the URL.
+  const site = siteParam || keptSite;
+  useEffect(() => {
+    if (!siteParam || startedRef.current) return;
+    setSite(siteParam);
+    router.replace(`/add-listing?mode=${mode ?? "assisted"}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteParam]);
   const setMode = (m) => router.push(m ? `/add-listing?mode=${m}` : "/add-listing");
 
   /*
@@ -55,11 +80,93 @@ export default function AddListingPage() {
       .finally(() => setReady(true));
   }, [profileComplete]);
 
+  /*
+   * A multi-property import in progress lives in the database (one draft and
+   * one background job per ticked property), so the batch id in the URL is
+   * all the page needs: reloading, or coming back tomorrow, reopens the same
+   * drafts without reading the website again.
+   */
+  const batchId = searchParams.get("batch");
+  const [starting, setStarting] = useState(false);
+  const [startingCount, setStartingCount] = useState(0);
+  /*
+   * One start per paste. The wizard used to be swapped for a spinner while
+   * the drafts were created and then, for one render before the URL carried
+   * the batch id, mounted again with the pasted address, so the picker read
+   * the site a second time and a second batch of drafts followed three
+   * seconds behind the first. The wizard now stays mounted and the address is
+   * dropped once an import has started.
+   */
+  const startedRef = useRef(false);
+  // Chosen here, before the request, so leaving mid-way can still cancel it.
+  const pendingBatch = useRef(null);
+  /*
+   * The guard is for one paste, not one visit. Add Listing is the same page
+   * before and after a workspace, so coming back from one (Done, or the
+   * header link) kept the guard set and the next paste's Continue did
+   * nothing at all. Leaving a workspace re-arms it.
+   */
+  const hadBatch = useRef(!!batchId);
+  useEffect(() => {
+    if (batchId) hadBatch.current = true;
+    else if (hadBatch.current) {
+      hadBatch.current = false;
+      startedRef.current = false;
+      pendingBatch.current = null;
+    }
+  }, [batchId]);
+  /*
+   * Leaving while the drafts are being made throws the whole batch away:
+   * the request may already have created them, so they are cancelled by the
+   * id chosen above, and the jump to the workspace is called off.
+   */
+  useLeaveGuard({
+    active: starting,
+    message: "Leaving now will discard every property in this import. Leave anyway?",
+    onLeave: ({ beacon }) => {
+      const id = pendingBatch.current;
+      pendingBatch.current = null;
+      startedRef.current = false;
+      return id ? sendWhileLeaving(`/api/landlord/import/batches/${id}/cancel`, { all: true }, { beacon }) : Promise.resolve();
+    },
+  });
+  const startImport = async (targets, pastedUrl) => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    setSite("");
+    setStartingCount(targets.length);
+    setStarting(true);
+    pendingBatch.current = crypto.randomUUID();
+    try {
+      const res = await fetch("/api/landlord/import/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pastedUrl, targets, batchId: pendingBatch.current }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.batchId) {
+        startedRef.current = false;
+        toast.error(data.error || "We couldn't start that import. Please try again.");
+        return;
+      }
+      if (!pendingBatch.current) return; // cancelled while creating
+      router.push(`/add-listing?mode=assisted&batch=${encodeURIComponent(data.batchId)}`);
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setStarting(false);
+    }
+  };
+
   useEffect(() => {
     if (mode === "assisted" && !session) {
-      router.replace(`/login?callbackUrl=${encodeURIComponent("/add-listing?mode=assisted")}`);
+      router.replace(
+        `/login?callbackUrl=${encodeURIComponent(
+          `/add-listing?mode=assisted${site ? `&site=${encodeURIComponent(site)}` : ""}`
+        )}`
+      );
     }
-  }, [mode, session, router]);
+  }, [mode, session, router, site]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-4">
@@ -69,9 +176,37 @@ export default function AddListingPage() {
         </div>
       ) : mode === "manual" ? (
         <AddListingFlow user={user} />
-      ) : mode === "assisted" ? (
-        <AddListingWizard
+      ) : mode === "assisted" && batchId ? (
+        <ImportWorkspace
+          key={batchId}
           user={user}
+          batchId={batchId}
+          onDone={() => router.push("/dashboard/landlord?tab=drafts")}
+          onCancel={() => router.push("/add-listing?mode=assisted")}
+        />
+      ) : mode === "assisted" ? (
+        <>
+          {/* The wizard stays mounted underneath (a remount would re-read
+              the site); this card takes over the screen while the drafts
+              are being made, which can take a few seconds per building. */}
+          {starting && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 px-4 backdrop-blur-sm">
+              <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-8 py-12 text-center shadow-xl">
+                <Loader2 className="h-8 w-8 animate-spin text-red-600" />
+                <p className="text-lg font-semibold text-gray-900">
+                  Creating {startingCount === 1 ? "your draft" : `${startingCount} drafts`}…
+                </p>
+                <p className="max-w-md text-sm text-gray-500">
+                  Each property gets a draft listing now. Reading your website into them starts right after, and you can watch it on the next page.
+                </p>
+              </div>
+            </div>
+          )}
+          <div className={starting ? "hidden" : ""}>
+          <AddListingWizard
+          user={user}
+          initialImportUrl={site}
+          onImportMany={startImport}
           onClose={() => setMode(null)}
           onSuccess={(_units, _diff, result) => {
             if (result?.draft) {
@@ -82,49 +217,161 @@ export default function AddListingPage() {
             toast.success("Listing published!");
             router.push("/dashboard/landlord?tab=properties");
           }}
-        />
+          />
+          </div>
+        </>
       ) : (
-        <StartChoice onPick={setMode} signedOut={!session} />
+        <StartChoice
+          signedOut={!session}
+          onManual={() => setMode("manual")}
+          onImport={(address) =>
+            router.push(
+              `/add-listing?mode=assisted${
+                address ? `&site=${encodeURIComponent(address)}` : ""
+              }`
+            )
+          }
+        />
       )}
     </div>
   );
 }
 
+const PMS_LOGOS = [
+  { label: "Buildium", logo: "/pms-logos/buildium.png" },
+  { label: "AppFolio", logo: "/pms-logos/appfolio.png" },
+  { label: "DoorLoop", logo: "/pms-logos/doorloop.png" },
+  { label: "Rentec Direct", logo: "/pms-logos/rentecdirect.png" },
+];
+
 /*
- * The fork, lifted out of the wizard's own first step so the manual path never
- * mounts the wizard at all.
+ * All three ways in, on the first screen, with the website box ready to type
+ * into. It used to take three clicks to reach that box: pick "import" here,
+ * pick "import" again inside the wizard, then open the box. A landlord who came
+ * to paste their website address should be able to paste it.
  */
-function StartChoice({ onPick, signedOut }) {
+function StartChoice({ onManual, onImport, signedOut }) {
+  const [address, setAddress] = useState("");
+  // The click navigates to the wizard, which has to compile and mount before it
+  // can show its own progress. On a cold dev server that gap is seconds of a
+  // button that looks like it did nothing.
+  const [going, setGoing] = useState(false);
+  const go = () => {
+    const a = address.trim();
+    if (!a || going) return;
+    setGoing(true);
+    onImport(a);
+  };
   const card =
-    "group flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-red-400 hover:bg-red-50/50";
+    "flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left";
+  const clickable =
+    "group transition hover:border-red-400 hover:bg-red-50/50 cursor-pointer";
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-bold text-gray-900">List your place</h1>
-      <p className="mb-6 mt-1 text-sm text-gray-500">How would you like to start?</p>
+      <p className="mb-6 mt-1 text-sm text-gray-500">
+        Pick whichever is easiest. You review everything before it goes live.
+      </p>
+
       <div className="space-y-3">
-        <button type="button" className={card} onClick={() => onPick("manual")}>
+        {/* 1. The fast path, with the box right here. */}
+        <div className={`${card} border-red-200 bg-white`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+            <Globe className="h-5 w-5 text-red-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
+              Import from your website
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                Fastest
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Paste your address below and we pull in your photos, units and details.
+              You pick which properties to list.
+              {signedOut && " You'll sign in first."}
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                inputMode="url"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    go();
+                  }
+                }}
+                placeholder="yourproperty.com"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={go}
+                disabled={!address.trim() || going}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {going ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Find my properties
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. By hand. */}
+        <button type="button" onClick={onManual} className={`${card} ${clickable}`}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
             <PencilLine className="h-5 w-5 text-gray-600" />
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900">Type it in</p>
-            <p className="text-xs text-gray-500">
-              Enter property/lease information manually.
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900">Type it in myself</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              A few quick questions. About 4 minutes.
             </p>
           </div>
         </button>
-        <button type="button" className={card} onClick={() => onPick("assisted")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100">
-            <Globe className="h-5 w-5 text-gray-600" />
+
+        {/* 3. PMS sync — straight to the integrations page, not via the wizard. */}
+        <Link
+          href="/dashboard/landlord?tab=integrations"
+          className={`${card} ${clickable}`}
+        >
+          <div className="flex shrink-0 -space-x-2 pt-0.5">
+            {PMS_LOGOS.map((p) => (
+              <Image
+                key={p.label}
+                src={p.logo}
+                alt={p.label}
+                title={p.label}
+                width={56}
+                height={56}
+                className="h-8 w-8 rounded-full border border-gray-200 bg-white object-contain p-1 shadow-sm"
+              />
+            ))}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900">Import from a website or your PMS</p>
-            <p className="text-xs text-gray-500">
-              We&apos;ll pull the details in and you review them.
-              {signedOut && " You'll sign in first."}
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
+              I use Buildium, AppFolio, DoorLoop or Rentec
+              <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                Beta
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Connect once. Your listings create and update themselves.
             </p>
           </div>
-        </button>
+          <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 group-hover:text-red-500" />
+        </Link>
+
       </div>
     </div>
   );

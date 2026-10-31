@@ -1,8 +1,144 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-28T03:36:34.772Z",
-  "count": 161,
+  "_generated": "2026-10-31T19:37:43.955Z",
+  "count": 220,
   "utils": [
+    {
+      "file": "src/lib/agents/access.js",
+      "description": "Who is talking to Proxy on this request, and in what capacity."
+    },
+    {
+      "file": "src/lib/agents/backfill.js",
+      "description": "The chat-history backfill (Wyatt, 2026-10-26): every landlord message and"
+    },
+    {
+      "file": "src/lib/agents/compliance.js",
+      "description": "Fair-housing screening of what landlords add to a listing's knowledge"
+    },
+    {
+      "file": "src/lib/agents/context.js",
+      "description": "Everything Proxy may know about one listing, as text for the model and as"
+    },
+    {
+      "file": "src/lib/agents/coreWrites.js",
+      "description": "Displayed fields, written by the agent (PRD v3, \"Edit by conversation\")."
+    },
+    {
+      "file": "src/lib/agents/corrections.js",
+      "description": "\"Students are told when an answer they received is later corrected\""
+    },
+    {
+      "file": "src/lib/agents/crawl.js",
+      "description": "Finding every page of a listing's website (Wyatt, 2026-10-27, round 6:"
+    },
+    {
+      "file": "src/lib/agents/digest.js",
+      "description": "The rollout digest (PRD v3, \"Metrics and rollout digest\"): one email a day"
+    },
+    {
+      "file": "src/lib/agents/flags.js",
+      "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/gate.js",
+      "description": "Who may use a listing's agent tools on this request: any owner of the"
+    },
+    {
+      "file": "src/lib/agents/ingest.js",
+      "description": "Getting documents and links into a listing's knowledge (PRD v3, with"
+    },
+    {
+      "file": "src/lib/agents/landlordAgent.js",
+      "description": "The landlord's side of their listing's agent (PRD v3, milestone 7)."
+    },
+    {
+      "file": "src/lib/agents/landlordChat.js",
+      "description": "The landlord's Proxy chat, one per listing (Wyatt, 2026-10-27, round 6;"
+    },
+    {
+      "file": "src/lib/agents/limits.js",
+      "description": "Rate limits for Proxy, separate from the chat send limits (which never"
+    },
+    {
+      "file": "src/lib/agents/model.js",
+      "description": "The model calls behind the per-listing agents."
+    },
+    {
+      "file": "src/lib/agents/notify.js",
+      "description": "Emails Proxy sends (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/overview.js",
+      "description": "The team's counts for the per-listing agents: agents by status, current"
+    },
+    {
+      "file": "src/lib/agents/pages.js",
+      "description": "Pages into knowledge (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/proxy.js",
+      "description": "Proxy answers a student (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/questionEmail.js",
+      "description": "Landlords answer Proxy's questions by email (PRD v3, milestone 3)."
+    },
+    {
+      "file": "src/lib/agents/questions.js",
+      "description": "Questions Proxy sends to landlords, and what comes back (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/questionTokens.js",
+      "description": "The per-question reply address a landlord can answer from (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/screen.js",
+      "description": "Text hygiene for Proxy."
+    },
+    {
+      "file": "src/lib/agents/sections.js",
+      "description": "The vocabulary of the knowledge store: sections, scopes, the fee and policy"
+    },
+    {
+      "file": "src/lib/agents/seed.js",
+      "description": "Seeding an agent from what the app already knows (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/store.js",
+      "description": "The knowledge store's one write path (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/studentView.js",
+      "description": "What a student (or anything acting for one: the read API, Proxy's context,"
+    },
+    {
+      "file": "src/lib/agents/sync.js",
+      "description": "The daily per-agent sync (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/synthesize.js",
+      "description": "Proxy learns (PRD v3, with Wyatt's note of 2026-10-26: the model, not a"
+    },
+    {
+      "file": "src/lib/agents/threads.js",
+      "description": "Proxy threads (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/tourNotify.js",
+      "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
+    },
+    {
+      "file": "src/lib/agents/tours.js",
+      "description": "Tour scheduling (PRD v3, milestone 5; reworked by Wyatt, 2026-10-27, round 6)."
+    },
+    {
+      "file": "src/lib/agents/tourTime.js",
+      "description": "Tour times, shared by the server and the browser (no server imports)."
+    },
+    {
+      "file": "src/lib/agents/visitorEmail.js",
+      "description": "A signed-out visitor's email, given in the chat (Wyatt, 2026-10-27)."
+    },
     {
       "file": "src/lib/analytics/access.js",
       "description": "Who can open /analytics, and which tabs they see."
@@ -324,6 +460,10 @@
       "description": "Loader for the published legal documents (/privacy, /terms)."
     },
     {
+      "file": "src/lib/listingDraft/assignPhotos.js",
+      "description": "Second pass of the paste-your-website draft: which photos show which floor"
+    },
+    {
       "file": "src/lib/listingDraft/extract.js",
       "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
     },
@@ -332,8 +472,12 @@
       "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
     },
     {
-      "file": "src/lib/listingDraft/rateLimit.js",
-      "description": "In-memory sliding-window rate limit for listing drafts: max 20 per hour per"
+      "file": "src/lib/listingDraft/floorPlanUnits.js",
+      "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
+    },
+    {
+      "file": "src/lib/listingDraft/sightmap.js",
+      "description": "SightMap inventory reader."
     },
     {
       "file": "src/lib/listings/filterListings.js",
@@ -556,6 +700,94 @@
       "description": "The evidence-backed target-query map the measurement engine tracks."
     },
     {
+      "file": "src/lib/sourceImport/alreadyListed.js",
+      "description": "Which of these buildings are already on Proximity, and whose."
+    },
+    {
+      "file": "src/lib/sourceImport/apply.js",
+      "description": "Lay a snapshot over a listing."
+    },
+    {
+      "file": "src/lib/sourceImport/assets.js",
+      "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
+    },
+    {
+      "file": "src/lib/sourceImport/jobs.js",
+      "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/limits.js",
+      "description": "Spending caps for the URL importer."
+    },
+    {
+      "file": "src/lib/sourceImport/model.js",
+      "description": "The model calls behind the importer: Haiku first, Sonnet only when Haiku"
+    },
+    {
+      "file": "src/lib/sourceImport/pageCache.js",
+      "description": "The importer's shared page cache (see setSharedPageCache in"
+    },
+    {
+      "file": "src/lib/sourceImport/read.js",
+      "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/document.js",
+      "description": "Files a landlord's site links to instead of putting the numbers on the"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/embeddedProperties.js",
+      "description": "A company's property list embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/entrata.js",
+      "description": "Entrata floor plans, as the \"pm-entrata-manager\" WordPress plugin renders"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/floorPlanVision.js",
+      "description": "Which of a unit's images is its floor plan diagram."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/flyer.js",
+      "description": "\"What's included\" flyers."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/g5.js",
+      "description": "G5 (g5marketingcloud.com) inventory reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
+      "description": "Floor plans embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/securecafe.js",
+      "description": "SecureCafe (RentCafe online leasing) portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/zillow.js",
+      "description": "A Zillow listing's own photos."
+    },
+    {
+      "file": "src/lib/sourceImport/sanitize.js",
+      "description": "Make an imported description publishable under the content rules."
+    },
+    {
+      "file": "src/lib/sourceImport/snapshot.js",
+      "description": "The one shape every reader produces and the one shape the writer consumes."
+    },
+    {
+      "file": "src/lib/sourceImport/sync.js",
+      "description": "The recurring source sync."
+    },
+    {
+      "file": "src/lib/sourceSync/attach.js",
+      "description": "Attach (or clear) the source URL a listing is monitored against."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.js",
+      "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
       "file": "src/lib/streetview.js",
       "description": "Google Street View Static API helper."
     },
@@ -566,6 +798,10 @@
     {
       "file": "src/lib/supabaseWithUser.js",
       "description": "Thin wrappers around the write-as-user RPCs defined in migration"
+    },
+    {
+      "file": "src/lib/useLeaveGuard.js",
+      "description": "Ask before leaving a page with work in flight, and clean up if they go."
     },
     {
       "file": "src/lib/userRole.js",

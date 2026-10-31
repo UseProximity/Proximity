@@ -2,6 +2,7 @@ import supabase from "@/lib/supabase";
 import { auth } from "@/auth";
 import { unitIsAvailable, isLiveLease, isPublished } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
+import { listingsAtAddress } from "@/lib/listings/propertyName";
 import { unitNameKey } from "@/utils/unitName";
 import { sortUnits } from "@/utils/unitOrder";
 
@@ -22,6 +23,10 @@ import { sortUnits } from "@/utils/unitOrder";
 // unioned onto it. That way the create flow behaves correctly even before the
 // duplicate rows have been merged in the database.
 //
+// `listingId` (signed in only) narrows the answer to that one row, for the
+// import's "this is already yours" tab, which edits exactly the listing the
+// landlord has rather than the union of every duplicate at the address.
+//
 // @auth public
 export async function GET(req) {
   const session = await auth();
@@ -29,7 +34,9 @@ export async function GET(req) {
     return Response.json({ error: "Too many lookups. Try again shortly." }, { status: 429 });
   }
 
-  const address = new URL(req.url).searchParams.get("address")?.trim();
+  const params = new URL(req.url).searchParams;
+  const address = params.get("address")?.trim();
+  const onlyListingId = session ? params.get("listingId") : null;
   if (!address) {
     return Response.json({ error: "An address is required." }, { status: 400 });
   }
@@ -53,14 +60,26 @@ export async function GET(req) {
     .select(
       `id, title, address, latitude, longitude, created_at, published_at,
        listing_landlords!listing_id(user_id),
+       listing_images(id, listing_image_units(unit_id)),
        listing_units!listing_id(
-         id, name, sort_order, bedrooms, bathrooms, area, deleted_at, published_at,
-         unit_leases!unit_id(id, rent, sublease, is_active, unavailable, owner_id, contact_name, contact_email, published_at)
+         id, name, sort_order, bedrooms, bathrooms, area, deleted_at, published_at, floor_plan_image_url,
+         unit_leases!unit_id(
+           id, rent, rent_is_per_person, lease_term_months, available_from,
+           sublease, is_active, unavailable, owner_id, contact_name, contact_email, published_at
+         )
        )`
     )
-    .eq("property_key", propertyKey)
+    // No ZIP in what was typed or read ("716 heman avenue|"): any listing at
+    // that street address, whatever its ZIP. See listingsAtAddress.
+    [propertyKey.endsWith("|") ? "like" : "eq"]("property_key", propertyKey.endsWith("|") ? `${propertyKey}%` : propertyKey)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
+
+  if (!error && onlyListingId) {
+    const one = (rows ?? []).filter((r) => r.id === onlyListingId);
+    rows.length = 0;
+    rows.push(...one);
+  }
 
   if (error) {
     console.error("[properties/lookup] Lookup failed:", error.message);
@@ -104,6 +123,18 @@ export async function GET(req) {
 
   const canonical = visibleRows[0];
 
+  /*
+   * How many photos each unit, and the property, already has. An import onto a
+   * listing that has photos holds the website's back instead of adding them, so
+   * a landlord who uploaded their rooms by hand doesn't get every one twice.
+   */
+  const photoCountByUnit = new Map();
+  for (const img of visibleRows.flatMap((row) => row.listing_images ?? [])) {
+    for (const tag of img.listing_image_units ?? []) {
+      photoCountByUnit.set(tag.unit_id, (photoCountByUnit.get(tag.unit_id) ?? 0) + 1);
+    }
+  }
+
   const units = visibleRows
     .flatMap((row) =>
       sortUnits((row.listing_units ?? []).filter((unit) => !unit.deleted_at))
@@ -115,6 +146,11 @@ export async function GET(req) {
         return {
           id: lease.id,
           rent: lease.rent,
+          // What the landlord needs to edit an offering of their own in place.
+          rentIsPerPerson: !!lease.rent_is_per_person,
+          leaseTermMonths: lease.lease_term_months ?? [],
+          availableFrom: lease.available_from ?? null,
+          unavailable: !!lease.unavailable,
           sublease: !!lease.sublease,
           // Whether a renter could take this offering today.
           live: isLiveLease(lease),
@@ -140,6 +176,9 @@ export async function GET(req) {
         bedrooms: unit.bedrooms,
         bathrooms: unit.bathrooms,
         area: unit.area,
+        name: unit.name ?? null,
+        floorPlanImageUrl: unit.floor_plan_image_url ?? null,
+        photoCount: photoCountByUnit.get(unit.id) ?? 0,
         available: unitIsAvailable(unit),
         leases,
         liveLeaseCount: liveLeases.length,
@@ -179,6 +218,7 @@ export async function GET(req) {
     }
     existing.leases.push(...unit.leases);
     existing.duplicateUnitIds = [...(existing.duplicateUnitIds ?? []), unit.id];
+    existing.photoCount += unit.photoCount;
     existing.liveLeaseCount = existing.leases.filter((l) => l.live).length;
     existing.canAddSublease = existing.liveLeaseCount === 0;
   }
@@ -195,8 +235,19 @@ export async function GET(req) {
     }
   }
 
+  /*
+   * Which of the rows at this address are the caller's own, so the import can
+   * open theirs for editing rather than attaching to someone else's. Signed in
+   * only: whose a listing is is not a visitor's business.
+   */
+  const atAddress = session
+    ? await listingsAtAddress(address, userId)
+    : { listings: [], match: null };
+
   return Response.json({
     propertyKey,
+    listings: atAddress.listings,
+    match: atAddress.match,
     property: {
       id: canonical.id,
       title: canonical.title,
@@ -207,6 +258,7 @@ export async function GET(req) {
       listingRowCount: visibleRows.length,
       ownerCount: ownerIds.size,
       viewerHasLease: mergedUnits.some((u) => u.leases.some((l) => l.isMine)),
+      photoCount: (canonical.listing_images ?? []).length,
       units: mergedUnits,
     },
   });

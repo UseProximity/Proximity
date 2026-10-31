@@ -8,6 +8,8 @@ import Link from "next/link";
 import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import StudentTours from "@/components/proxy/StudentTours";
+import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 
@@ -878,20 +880,22 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
 
           {/* ── RIGHT COLUMN ── */}
           <div className="space-y-8">
+            {/* Tours booked through Proxy (per-listing agents). Renders nothing when there are none. */}
+            <StudentTours />
             {/* Contacted section */}
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <h2 className="text-lg font-bold text-gray-900">Contacted</h2>
+                <h2 className="text-lg font-bold text-gray-900">Inquiries</h2>
               </div>
               <div className="border-b border-gray-200 mb-4" />
 
               {contacted.length === 0 ? (
                 <div>
                   <p className="text-sm text-gray-500 mb-6">
-                    You haven&apos;t contacted any leasing agents yet. Browse listings to get started.
+                    You haven&apos;t asked about any places yet. Browse listings to get started.
                   </p>
                   <Link href="/browse"
                     className="inline-block px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -904,8 +908,9 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                     Congrats, you&apos;ve reached out to the leasing agent. Check your email and your Proximity messages for updates.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+                    {/* The same card as the main page and browse grid (Wyatt, 2026-10-27). */}
                     {contactedVisible.map((listing) => (
-                      <ListingCard key={listing._id} listing={listing} badge={<CheckBadge />} />
+                      <BrowseCard key={listing._id} listing={listing} session={session} onCardClick={(id) => router.push(`${window.location.pathname}?listing=${id}`)} />
                     ))}
                   </div>
                   {contactedPages > 1 && (

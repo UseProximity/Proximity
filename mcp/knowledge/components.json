@@ -1,11 +1,16 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-28T03:36:34.746Z",
-  "count": 139,
+  "_generated": "2026-10-31T19:37:43.917Z",
+  "count": 156,
   "components": [
     {
       "name": "DeleteAccountButton",
       "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgentsView",
+      "file": "src/components/admin/AgentsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -139,6 +144,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ChatSkeleton",
+      "file": "src/components/chat/ChatSkeleton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ChatThreadList",
       "file": "src/components/chat/ChatThreadList.js",
       "description": "Inbox thread rows + empty state with Browse listings CTA"
@@ -159,6 +169,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "LandlordProxyThread",
+      "file": "src/components/chat/LandlordProxyThread.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "MessagesPanel",
       "file": "src/components/chat/MessagesPanel.js",
       "description": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)"
@@ -171,6 +186,11 @@
     {
       "name": "ProximityAssistantTranscript",
       "file": "src/components/chat/ProximityAssistantTranscript.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProxyThread",
+      "file": "src/components/chat/ProxyThread.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -234,6 +254,16 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AgentTab",
+      "file": "src/components/landlord/AgentTab.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordProxyChat",
+      "file": "src/components/landlord/LandlordProxyChat.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "Footer",
       "file": "src/components/layout/Footer.js",
       "description": "No description. Run generate after adding a description above."
@@ -251,6 +281,11 @@
     {
       "name": "StagingBanner",
       "file": "src/components/layout/StagingBanner.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StagingBannerBar",
+      "file": "src/components/layout/StagingBannerBar.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -479,6 +514,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ImportGaps",
+      "file": "src/components/listings/editor/ImportGaps.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "listingFormOptions",
       "file": "src/components/listings/listingFormOptions.js",
       "description": "No description. Run generate after adding a description above."
@@ -486,6 +526,16 @@
     {
       "name": "AddListingWizard",
       "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ImportSources",
+      "file": "src/components/listings/wizard/ImportSources.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ImportWorkspace",
+      "file": "src/components/listings/wizard/ImportWorkspace.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -574,6 +624,36 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AvailabilityGrid",
+      "file": "src/components/proxy/AvailabilityGrid.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProxyPanel",
+      "file": "src/components/proxy/ProxyPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StudentTours",
+      "file": "src/components/proxy/StudentTours.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourBooking",
+      "file": "src/components/proxy/TourBooking.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourMarker",
+      "file": "src/components/proxy/TourMarker.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourPicker",
+      "file": "src/components/proxy/TourPicker.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "DormReviewForm",
       "file": "src/components/reviews/DormReviewForm.js",
       "description": "No description. Run generate after adding a description above."
@@ -616,6 +696,11 @@
     {
       "name": "setupTokenStore",
       "file": "src/components/reviews/setupTokenStore.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BackToTop",
+      "file": "src/components/ui/BackToTop.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

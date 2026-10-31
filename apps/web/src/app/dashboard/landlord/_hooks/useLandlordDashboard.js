@@ -336,6 +336,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleNavigation = (key) => {
+    // On desktop only the content column scrolls (page.js); on mobile, the window.
+    document.getElementById("landlord-dashboard-main")?.scrollTo({ top: 0, behavior: "smooth" });
     window.scrollTo({ top: 0, behavior: "smooth" });
     setActiveView(key);
     setSelectedProperty(null);
@@ -385,6 +387,10 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         return "Settings";
       case "reviews":
         return "My Reviews";
+      case "questions":
+        return "Questions from students";
+      case "tours":
+        return "Tour requests";
       case "integrations":
         return "PMS Sync (Beta)";
       case "profile":

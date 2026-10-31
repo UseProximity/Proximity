@@ -41,6 +41,22 @@ export const KINDS = {
   content_report: ["team", "Content report"],
   contact_mismatch: ["team", "Landlord contact mismatch"],
   feedback: ["team", "Site feedback"],
+  proxy_answer: ["chat", "Proxy answered a student"],
+  proxy_relay: ["chat", "Landlord answer relayed by Proxy"],
+  proxy_no_answer: ["chat", "Proxy: no answer from the landlord yet"],
+  tour_request: ["landlords", "Tour request"],
+  tour_proposal: ["chat", "Tour: landlord proposed times"],
+  tour_confirmed: ["chat", "Tour confirmed"],
+  tour_cancelled: ["chat", "Tour cancelled"],
+  tour_reminder: ["chat", "Tour reminder"],
+  tour_no_answer: ["chat", "Tour: no answer from the landlord"],
+  proxy_question: ["landlords", "Question from a student (via Proxy)"],
+  proxy_reminder: ["landlords", "Unanswered question reminder"],
+  agent_digest: ["team", "Agents daily digest"],
+  availability_gone: ["landlords", "Unit or listing gone from website"],
+  source_sync_digest: ["team", "Website sync digest"],
+  source_sync_failure: ["team", "Website sync failure"],
+  import_cap_alert: ["team", "Website import cap reached"],
 };
 
 export function categoryOf(kind) {

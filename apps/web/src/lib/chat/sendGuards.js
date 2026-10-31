@@ -72,12 +72,17 @@ export async function screenOutgoingChat({
   listingId = null,
   confirmed = false,
   audience = "student",
+  // A tour thread (chat_threads.unrestricted): the two sides have already
+  // exchanged contact details, so sharing them here is not leaving the
+  // platform (Wyatt, 2026-10-26). Abuse and fraud are still blocked.
+  unrestricted = false,
 }) {
   const verdict = screenChatText(body);
 
   if (verdict.action === "block") {
     const contactOnly = verdict.reasons.every((r) => CONTACT_REASONS.has(r));
     if (contactOnly) {
+      if (unrestricted) return { blocked: false, flagged: false, reasons: [] };
       if (!confirmed) {
         return {
           blocked: false,

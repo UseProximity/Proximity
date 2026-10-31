@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import ChatAvatar from "@/components/chat/ChatAvatar";
@@ -380,13 +381,7 @@ export default function ChatTranscript({
         className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-2 min-h-0 touch-pan-y"
       >
         {showLoading ? (
-          <div className="flex flex-1 items-center justify-center py-12 min-h-[8rem]">
-            <div
-              className="w-6 h-6 border-2 border-gray-200 border-t-red-500 rounded-full animate-spin"
-              role="status"
-              aria-label="Loading messages"
-            />
-          </div>
+          <ChatSkeleton className="py-2" />
         ) : list.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">
             No messages yet. Say hello!

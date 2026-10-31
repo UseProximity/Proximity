@@ -18,7 +18,9 @@ const METRIC_COLORS = {
   saves: "#d97706",
   contacts: "#2563eb",
 };
-const METRIC_LABELS = { clicks: "Views", saves: "Saves", contacts: "Contacts" };
+// "contacts" is the metric's name in the database; students see it as
+// inquiries, since every question to Proxy counts (Wyatt, 2026-10-26).
+const METRIC_LABELS = { clicks: "Views", saves: "Saves", contacts: "Inquiries" };
 const RANGE_OPTIONS_CHART = [
   { value: "7d", label: "7 days" },
   { value: "30d", label: "30 days" },

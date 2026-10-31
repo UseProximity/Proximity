@@ -23,6 +23,7 @@ import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useUnitLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
+import ProxyPanel from "@/components/proxy/ProxyPanel";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
@@ -38,7 +39,7 @@ import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
-import { ChevronLeft, ChevronRight} from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
@@ -1526,6 +1527,15 @@ export default function ListingModalInfo({
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("amenities");
+  // The Proxy chat's input bar, pinned to the bottom of the listing while
+  // Contact is open (Wyatt, 2026-10-28): ProxyPanel renders into it.
+  const [proxyInputSlot, setProxyInputSlot] = useState(null);
+  // No floating Feedback button over a Contact tab (FeedbackWidget hides on this).
+  useEffect(() => {
+    if (activeTab !== "contact") return;
+    document.body.dataset.listingContact = "1";
+    return () => { delete document.body.dataset.listingContact; };
+  }, [activeTab]);
 
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
   // param so a reload or a shared link opens on Overview as usual.
@@ -2132,6 +2142,7 @@ export default function ListingModalInfo({
    * After every hook, never before. An early return above them would change
    * the hook order between the loading and loaded renders.
    */
+  const proxyContact = activeTab === "contact" && !!(listing?.agent?.live || preview);
   if (detailLoading) {
     return (
       <ListingDetailSkeleton compact={compact} excludeTabs={excludeTabs} />
@@ -2140,9 +2151,9 @@ export default function ListingModalInfo({
 
   return (
     <>
-      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+      <div className={`bg-gray-50${compact ? "" : " min-h-screen"}${proxyContact ? " listing-proxy-contact" : ""}`}>
         <div
-          className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
+          className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4" : "pt-8"} ${proxyContact ? "pb-0" : "pb-8"}`}
         >
           {/* ── Photo Grid ── */}
           <div
@@ -2322,7 +2333,23 @@ export default function ListingModalInfo({
                   * see which unit the date actually applies to.
                   */}
               </div>
-              <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
+              <div className="shrink-0 w-full md:w-auto flex items-center gap-3 md:ml-auto">
+                {/* Ask Proxy (Wyatt, 2026-10-27): straight to the Contact tab with the cursor in the chat. */}
+                {(listing.agent?.live || preview) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("contact");
+                      setTimeout(() => {
+                        scrollIntoContainer(document.getElementById("listing-tabs"));
+                        window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
+                      }, 60);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    <Sparkles className="h-4 w-4" /> Ask Proxy
+                  </button>
+                )}
                 {/* Rating moved up from the removed stats bar. */}
                 {overallAvg ? (
                   <span className="inline-flex items-center gap-2">
@@ -2478,6 +2505,9 @@ export default function ListingModalInfo({
                     Narrowed by the student's saved move-in month and lease
                     length, picked in its own header. */}
                 <div>
+                  {/* Rent specials are no longer shown here (Wyatt, 2026-10-27):
+                      Proxy quotes current ones when asked, and expired ones
+                      never. The data stays in listing_concessions. */}
                   <LeaseOptions
                     leases={selectedUnitLeases}
                     loading={leasesLoading}
@@ -2580,11 +2610,14 @@ export default function ListingModalInfo({
             {/* White from edge to edge under the tab bar, down to the bottom
                 of the page: no grey frame around a card (Wyatt, 2026-10-27).
                 The negative margins cancel the page padding; px-10 keeps the
-                text where the card's padding used to put it. */}
+                text where the card's padding used to put it. The Proxy chat
+                sits straight under the tab line with its own padding. */}
             <div
-              className={`bg-white -mx-4 px-10 py-6 ${
-                compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"
-              }`}
+              className={
+                proxyContact
+                  ? "bg-white -mx-4 px-6 pt-5 pb-4"
+                  : `bg-white -mx-4 px-10 py-6 ${compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"}`
+              }
             >
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
@@ -2629,13 +2662,34 @@ export default function ListingModalInfo({
                   preview={preview}
                 />
               )}
-              {activeTab === "contact" && !session && (
+              {/*
+               * Proxy first (per-listing agents, PRD v3): on a listing whose
+               * agent is live, the Contact tab is the Proxy conversation, signed
+               * in or not. The owner's preview gets it too, in test mode. The
+               * old contact form stays for every other listing.
+               *
+               * Mounted with the listing and only hidden on the other tabs, so
+               * the conversation is already loaded when Contact opens.
+               */}
+              {(listing.agent?.live || preview) && (
+                <div className={activeTab === "contact" ? "" : "hidden"}>
+                  <ProxyPanel
+                    listing={listing}
+                    session={session}
+                    selectedLease={selectedLease}
+                    preview={preview}
+                    active={activeTab === "contact"}
+                    inputSlot={proxyInputSlot}
+                  />
+                </div>
+              )}
+              {activeTab === "contact" && !listing.agent?.live && !preview && !session && (
                 <SignInPrompt
                   message="Sign in to contact the property manager."
                   tab="contact"
                 />
               )}
-              {activeTab === "contact" && session && (
+              {activeTab === "contact" && !listing.agent?.live && !preview && session && (
                 <ContactTab
                   listing={listing}
                   session={session}
@@ -2645,6 +2699,9 @@ export default function ListingModalInfo({
                 />
               )}
             </div>
+            {proxyContact && (
+              <div ref={setProxyInputSlot} className="sticky bottom-0 z-40 -mx-4 border-t border-gray-100 bg-white px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3" />
+            )}
           </motion.div>
         </div>
       </div>

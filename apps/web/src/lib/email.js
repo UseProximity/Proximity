@@ -1113,3 +1113,243 @@ export async function sendContentReportEmail({
     req
   );
 }
+
+/*
+ * Source sync (the weekly re-read of landlord websites, lib/sourceImport).
+ *
+ * One digest per run naming every listing that changed, was held for a
+ * person, or failed, with the applied and proposed changes under each. The
+ * failure email goes out immediately, per listing, because a site that
+ * stopped answering is worth knowing about before the digest.
+ */
+const escSync = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function describeChange(c) {
+  const where = c.detail?.label ? `${escSync(c.detail.label)}: ` : "";
+  const money = (n) => (n == null ? "no price" : `$${Number(n).toLocaleString("en-US")}`);
+  switch (c.kind) {
+    case "lease_new":
+      return `${where}new lease at ${money(c.new?.rent)}${c.new?.rentIsPerPerson ? " per person" : ""}${(c.new?.leaseTermMonths ?? []).length ? ` (${c.new.leaseTermMonths.join(", ")} months)` : ""}`;
+    case "lease_withdrawn":
+      return `${where}lease at ${money(c.detail?.rent)} no longer offered, marked unavailable`;
+    case "lease_updated":
+      return `${where}lease details updated (${escSync(c.field)})`;
+    case "unit_relisted":
+      return `${where}lease is back on the website`;
+    case "unit_new":
+      return `${where}new floor plan on the website${c.new?.offers ? `, ${c.new.offers} price${c.new.offers === 1 ? "" : "s"}` : ""}`;
+    case "unit_updated":
+      return `${where}unit details filled in (${escSync(c.field)})`;
+    case "spec_mismatch":
+      return `${where}bed/bath/size differ from the website (${escSync(JSON.stringify(c.old))} vs ${escSync(JSON.stringify(c.new))})`;
+    case "missing_unit":
+      return `${where}no longer on the website`;
+    case "property_updated":
+      return `property details filled in`;
+    case "photos_added":
+      return `${where}${c.new} photo${c.new === 1 ? "" : "s"} added`;
+    default:
+      return `${where}${escSync(c.kind)}`;
+  }
+}
+
+export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
+  const block = (i) => {
+    const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
+    const head = `<p style="margin:16px 0 4px"><strong>${escSync(i.listing)}</strong> <span style="color:#666">(${escSync(i.status)}${i.platform ? `, ${escSync(i.platform)}` : ""}${i.confidence ? `, ${escSync(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
+    if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escSync(i.error)}</p>`;
+    const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
+    const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escSync(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    const hold = i.holdReason
+      ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
+      : "";
+    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+  };
+  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const quiet = items.length - changed.length;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_digest" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync: ${changed.length} listing${changed.length === 1 ? "" : "s"} changed or need a look`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync digest</h2>
+        <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
+        ${changed.map(block).join("")}
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. Held changes can be applied from the import review or the admin console.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourceUrl, error, failures, baseUrl }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_failure" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync failed: ${listing}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync failed</h2>
+        <p><strong>${escSync(listing)}</strong> could not be read from <a href="${escSync(sourceUrl)}">${escSync(sourceUrl)}</a>.</p>
+        <p style="color:#b91c1c">${escSync(error)}</p>
+        <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
+        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+/* The importer hit a site-wide cap: every import is paused until the window passes. */
+export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "import_cap_alert" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website imports paused: ${kind} cap reached`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website imports paused</h2>
+        <p>The site-wide cap on ${escSync(kind)} reads was reached: ${Number(used)} of ${Number(limit)} in the last ${Number(hours)} hours.</p>
+        <p style="color:#444">Landlords are told to try again later until the window passes. If this is real demand, raise the cap (IMPORT_GLOBAL_* settings). If it is not, check listing_import_usage for the accounts behind it.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing imports on Proximity." })}
+      </div>`,
+  });
+}
+
+/* ─── Per-listing agents (Proxy) ─────────────────────────────────────────── */
+
+function proxyParagraphs(messages) {
+  return (messages ?? []).map((m) =>
+    `<div style="margin:10px 0;padding:12px 14px;background:#f9fafb;border-left:3px solid #ef4444;border-radius:6px;white-space:pre-wrap">${escapeHtml(String(m))}</div>`
+  ).join("");
+}
+
+/*
+ * To a student who has left the listing page: Proxy answered, or relayed the
+ * landlord's answer, or has no answer yet. Never names the landlord.
+ */
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  const subject = kind === "proxy_relay"
+    ? `The landlord answered your question about ${listingLabel}`
+    : kind === "proxy_no_answer"
+      ? `No answer yet about ${listingLabel}`
+      : `Proxy answered your question about ${listingLabel}`;
+  await sendMailSafe(transporter, {
+    logAs: { kind, threadId, userId },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${kind === "proxy_relay" ? "The landlord's answer came back." : kind === "proxy_no_answer" ? "An update on your question." : "Here is what Proxy found."} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
+        ${proxyParagraphs(messages)}
+        <a href="${threadUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open the conversation</a>
+        <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>
+        ${emailFooter({ reason: "You are receiving this because you asked Proxy about a listing on Proximity." })}
+      </div>`,
+  }, testEmailTo);
+}
+
+/*
+ * To a landlord: a student's question Proxy could not answer (or a reminder,
+ * or the student's reply to a clarifying question). The student is never
+ * named, and the question names the listing, not a lease (2026-10-29).
+ * A contact with no account yet is asked to create one to answer.
+ */
+export async function sendProxyLandlordQuestionEmail({
+  to, name, listingLabel, question, queueUrl, kind = "proxy_question",
+  hasAccount = true, studentReply = null, reminderDay = null, replyTo = null,
+}) {
+  const first = name ? String(name).split(" ")[0] : "";
+  // With a per-question reply address, answering the email answers the student.
+  const canReply = !!replyTo && hasAccount;
+  const subject = reminderDay
+    ? `Reminder: a student is waiting on an answer about ${listingLabel}`
+    : studentReply
+      ? `The student replied about ${listingLabel}`
+      : `A student has a question about ${listingLabel}`;
+  // One line from Proxy, the question in a box, then how to answer (Wyatt, 2026-10-28).
+  const hello = `${first ? `Hi ${escapeHtml(first)}, it's` : "It's"} Proxy, the assistant on ${escapeHtml(listingLabel)}.`;
+  const lead = reminderDay
+    ? `A student asked me this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting on you:`
+    : studentReply
+      ? "The student got back to you about this question:"
+      : "A student asked me something I don't know yet:";
+  const box = (text, label = null) => `<div style="margin:12px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;white-space:pre-wrap;line-height:1.45">${label ? `<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(label)}</div>` : ""}${escapeHtml(text)}</div>`;
+  await sendMailSafe(transporter, {
+    logAs: { kind },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    replyTo: canReply ? replyTo : CHAT_FROM_ADDRESS,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p style="margin:0">${hello} ${lead}</p>
+        ${box(question)}
+        ${studentReply ? box(studentReply, "Their reply") : ""}
+        ${hasAccount
+          ? `<p style="margin:14px 0 6px">${canReply ? "<strong>Reply to this email</strong> with your answer, or answer in the app. Either way I'll save it and pass it on to the student. If you need a detail from them first, just ask it and I'll check with them." : "Answer in the app and I'll save it and pass it on to the student."}</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Answer in the app</a>`
+          : `<p style="margin:14px 0 6px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Create an account with it to answer students' questions.</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Create an account to answer</a>`}
+        ${emailFooter({ reason: "You are receiving this because you are the contact for a listing on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * Tour scheduling emails (per-listing agents): request, proposal,
+ * confirmation (with a calendar file), cancellation, reminders. One shape,
+ * the caller supplies the words.
+ */
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  await sendMailSafe(transporter, {
+    logAs: { kind, userId, threadId },
+    from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    // A reply goes into the direct chat when the email carries its reply address.
+    replyTo: replyTo || CHAT_FROM_ADDRESS,
+    subject,
+    ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }] } : {}),
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${escapeHtml(intro)}</p>
+        ${lines.length ? `<ul style="margin:8px 0 12px 18px;padding:0">${lines.map((l) => `<li style="margin:3px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
+        ${note ? `<p style="color:#444">${escapeHtml(note)}</p>` : ""}
+        ${ctaUrl ? `<a href="${ctaUrl}" style="display:inline-block;margin:12px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${escapeHtml(ctaLabel ?? "Open Proximity")}</a>` : ""}
+        ${emailFooter({ reason: "You are receiving this because of a tour request on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * The per-listing agents' daily rollout digest, to the team: sections of
+ * label and value rows, each with an optional list and note.
+ */
+export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
+  const block = (s) => `
+    <h3 style="margin:18px 0 6px;color:#111;font-size:14px">${escapeHtml(s.title)}</h3>
+    <table style="border-collapse:collapse;font-size:13px">${(s.rows ?? []).map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#444">${escapeHtml(String(k))}</td><td style="padding:2px 0;font-weight:600">${escapeHtml(String(v))}</td></tr>`).join("")}</table>
+    ${s.note ? `<p style="margin:6px 0 2px;color:#666;font-size:12px">${escapeHtml(s.note)}</p>` : ""}
+    ${(s.list ?? []).length ? `<ul style="margin:4px 0 0 18px;padding:0;font-size:12px;color:#333">${s.list.map((l) => `<li style="margin:2px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}`;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "agent_digest" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Agents digest: ${day}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Per-listing agents, ${escapeHtml(day)}</h2>
+        ${(sections ?? []).map(block).join("")}
+        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin" style="color:#dc2626">Open the admin Agents tab</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer the per-listing agents on Proximity." })}
+      </div>`,
+  });
+}

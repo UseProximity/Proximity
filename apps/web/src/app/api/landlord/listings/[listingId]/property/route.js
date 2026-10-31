@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
+import { markLandlordSet } from "@/lib/agents/coreWrites";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import {
   findPropertyNameConflict,
   propertyNameTakenResponse,
@@ -162,6 +164,12 @@ export async function PATCH(req, { params }) {
       console.error("[listings/property] update failed:", error.message);
       return NextResponse.json({ error: "Could not save those details." }, { status: 500 });
     }
+    // A dashboard edit after launch is landlord-set: a website sync holds
+    // changes to these fields for the landlord instead of applying them.
+    const protectedFields = Object.fromEntries(Object.entries(patch).filter(([k]) => ["description", "furnished", "sublease_friendly"].includes(k)));
+    if (Object.keys(protectedFields).length) {
+      markLandlordSet({ listingId, target: "property", fields: protectedFields, userId: session.user.id, cause: "dashboard" }).catch(() => {});
+    }
   }
 
   if (Array.isArray(body.amenities)) {
@@ -194,6 +202,21 @@ export async function PATCH(req, { params }) {
         .from("listing_custom_amenities")
         .insert(labels.map((label) => ({ listing_id: listingId, label })));
     }
+  }
+
+  /*
+   * The page an import read this property from. Set here when an owner
+   * re-imports a listing that already exists, so the source check covers it
+   * as well as the listings an import created. Never fails the save.
+   */
+  if (typeof body.sourceUrl === "string" && body.sourceUrl.trim()) {
+    const attached = await attachSourceUrl({
+      listingId,
+      rawUrl: body.sourceUrl.trim(),
+      indexUrl: typeof body.indexUrl === "string" ? body.indexUrl.trim() || null : null,
+      userId: session.user.id,
+    });
+    if (!attached.ok) console.warn("[listings/property] source not attached:", attached.reason);
   }
 
   return NextResponse.json({ message: "Property updated" });

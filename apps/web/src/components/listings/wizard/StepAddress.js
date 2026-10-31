@@ -135,7 +135,16 @@ export default function StepAddress({ w }) {
 
       {/* A listing already exists here — attach to one of its units instead of
           creating a duplicate property. */}
-      {(w.lookupLoading || w.existingProperty) && (
+      {/* On an existing-property tab the units step shows that property's units
+          and the leases you hold there, so the one-unit picker is not needed. */}
+      {w.batchExisting && w.existingProperty && (
+        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <strong>{w.existingProperty.title || "This property"}</strong> is already on Proximity.
+          On the Units step you can add your units to it and change the leases you already have
+          there.
+        </p>
+      )}
+      {!w.batchExisting && (w.lookupLoading || w.existingProperty) && (
         <div className="mt-4">
           <PropertyUnitPicker
             loading={w.lookupLoading}

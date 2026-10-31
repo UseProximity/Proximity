@@ -22,9 +22,10 @@
  * nothing to say about who to reach.
  */
 
+import { FOCUS_EVENT, revealGap } from "./ImportGaps";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDownWideNarrow, Plus, Trash2 } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
 import { UnitFloorPlan } from "./EditorImageRows";
@@ -284,7 +285,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
-          <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent}
+          <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent} data-gap={`rent:${lease.id}`}
             placeholder="Leave blank for “Contact for pricing”"
             onChange={(e) => set({ rent: e.target.value })} />
           <div className="mt-1.5 inline-flex rounded-lg bg-gray-100 p-0.5 text-[11px]">
@@ -299,7 +300,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         </label>
         <label className="block">
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Available on</span>
-          <input type="date" className={`mt-1 w-full ${field}`} value={draft.availableFrom}
+          <input type="date" className={`mt-1 w-full ${field}`} value={draft.availableFrom} data-gap={`date:${lease.id}`}
             onChange={(e) => set({ availableFrom: e.target.value })} />
           <span className="mt-0.5 block text-[11px] text-gray-400">
             A date in the past shows{" "}
@@ -312,7 +313,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
           Lease lengths you accept
         </span>
-        <div className="mt-1.5">
+        <div className="mt-1.5" data-gap={`terms:${lease.id}`}>
           <LeaseTermPicker
             value={draft.leaseTermMonths}
             onChange={(next) => set({ leaseTermMonths: next })}
@@ -436,7 +437,7 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white">
+    <div className="rounded-xl border border-gray-200 bg-white" data-gap={`unit:${unit.id}`}>
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
         <h4 className="text-sm font-semibold text-gray-900">
           {unit.name ?? `${unit.bedrooms ?? "?"} bed · ${unit.bathrooms ?? "?"} bath`}
@@ -482,10 +483,10 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
       </div>
 
       {isPropertyOwner ? (
-        <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
           {/* The unit's one name. Whatever is typed here is what every screen
               calls this unit, students' and landlords' alike. */}
-          <label className="block sm:col-span-3">
+          <label className="block sm:col-span-4 lg:col-span-3">
             <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
               {UNIT_NAME_LABEL}
               <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
@@ -509,16 +510,21 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
             <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
               onChange={(e) => set({ area: clampCount(e.target.value) })} />
           </label>
+          {/* The plan sits in the same row as the numbers it draws. */}
+          <div className="block">
+            <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+          </div>
         </div>
       ) : (
-        <p className="px-4 py-3 text-sm text-gray-500">
-          {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
-          {unit.area ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
-          <span className="ml-2 text-xs text-gray-400">Managed by the property owner</span>
-        </p>
+        <div className="flex flex-wrap items-start gap-4 px-4 py-3">
+          <p className="text-sm text-gray-500">
+            {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
+            {unit.area ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
+            <span className="ml-2 text-xs text-gray-400">Managed by the property owner</span>
+          </p>
+          <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+        </div>
       )}
-
-      <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} />
 
       {/*
         * The offerings sit on a darker ground than the unit above them. They are
@@ -785,10 +791,24 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
   const [localOrder, setLocalOrder] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [dragId, setDragId] = useState(null);
-  const [overId, setOverId] = useState(null);
+  /*
+   * While a tab is dragged the others move out of its way: previewOrder is
+   * the order on screen, and releasing saves exactly that. (Working out the
+   * drop position from the tab let go on put a tab dragged rightward one
+   * place short, behind the tab it was dropped on.)
+   */
+  const [previewOrder, setPreviewOrderState] = useState(null);
+  // The same order in a ref: drop and drag-end both fire on release, in one
+  // render, and only the first may save.
+  const previewRef = useRef(null);
+  const setPreviewOrder = (ids) => {
+    previewRef.current = ids;
+    setPreviewOrderState(ids);
+  };
   const canReorder = isPropertyOwner && listed.length > 1 && !savingOrder;
-  const visible = localOrder
-    ? localOrder.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
+  const order = previewOrder ?? localOrder;
+  const visible = order
+    ? order.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
     : listed;
 
   const saveOrder = async (ids) => {
@@ -815,16 +835,43 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
     }
   };
 
-  const dropOn = (targetId) => {
-    const from = dragId;
-    setDragId(null);
-    setOverId(null);
-    if (!from || from === targetId) return;
+  // Dragged over another tab, past its middle: take its place.
+  const dragOver = (e, targetId) => {
+    if (!dragId || targetId === dragId) return;
     const ids = visible.map((u) => u.id);
-    ids.splice(ids.indexOf(from), 1);
-    ids.splice(ids.indexOf(targetId), 0, from);
-    saveOrder(ids);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    // Tabs differ in width; waiting for the middle stops a swap undoing itself.
+    if ((from < to && e.clientX < mid) || (from > to && e.clientX > mid)) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragId);
+    setPreviewOrder(ids);
   };
+
+  // Released: keep what is on screen, saving it if it changed.
+  const finishDrag = () => {
+    const ids = previewRef.current;
+    setDragId(null);
+    setPreviewOrder(null);
+    if (!ids) return;
+    const before = listed.map((u) => u.id);
+    if (ids.join() !== (localOrder ?? before).join()) saveOrder(ids);
+  };
+
+  // Studios first, then by bedrooms, bathrooms and size.
+  const layoutOrder = [...listed]
+    .sort(
+      (a, b) =>
+        (a.bedrooms ?? 99) - (b.bedrooms ?? 99) ||
+        (Number(a.bathrooms) || 99) - (Number(b.bathrooms) || 99) ||
+        (Number(a.area) || 0) - (Number(b.area) || 0) ||
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true })
+    )
+    .map((u) => u.id);
+  const sortedAlready = layoutOrder.join() === visible.map((u) => u.id).join();
 
   /*
    * One unit open at a time, selected by id rather than index so adding or
@@ -833,6 +880,18 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
    * forms with no way to tell where one ended — the same reason browse tabs them.
    */
   const [openId, setOpenId] = useState(null);
+
+  // "Fill this in" from the missing-fields box (ImportGaps): open the unit
+  // the field belongs to, then scroll to and highlight the field.
+  useEffect(() => {
+    const onFocus = (e) => {
+      const { target, unitId } = e.detail ?? {};
+      if (unitId) setOpenId(unitId);
+      setTimeout(() => revealGap(target), unitId ? 250 : 50);
+    };
+    window.addEventListener(FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_EVENT, onFocus);
+  }, []);
   // A unit being described but not yet saved. It gets its own tab so the + is
   // still one click, but nothing reaches the database until the specs are
   // there — a unit with invented beds and baths would show up in browse and
@@ -952,6 +1011,7 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
             disabled={savingOrder}
             onDragStart={(e) => {
               setDragId(u.id);
+              setPreviewOrder(visible.map((x) => x.id));
               e.dataTransfer.effectAllowed = "move";
               // Firefox will not start a drag without data.
               try { e.dataTransfer.setData("text/plain", u.id); } catch {}
@@ -960,10 +1020,10 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
               if (!dragId) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              if (overId !== u.id) setOverId(u.id);
+              dragOver(e, u.id);
             }}
-            onDrop={(e) => { e.preventDefault(); dropOn(u.id); }}
-            onDragEnd={() => { setDragId(null); setOverId(null); }}
+            onDrop={(e) => { e.preventDefault(); finishDrag(); }}
+            onDragEnd={finishDrag}
             className={`flex-1 whitespace-nowrap border-b-2 px-3 py-2.5 text-center text-sm font-semibold transition ${
               savingOrder
                 ? openUnit.id === u.id && !drafting
@@ -973,8 +1033,8 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
                 ? "border-red-600 bg-red-600 text-white"
                 : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
             }${canReorder ? " cursor-grab active:cursor-grabbing" : ""}${
-              dragId === u.id ? " opacity-40" : ""
-            }${overId === u.id && dragId !== u.id ? " ring-2 ring-inset ring-red-300" : ""}`}
+              dragId === u.id ? " opacity-50 ring-2 ring-inset ring-red-400" : ""
+            }`}
           >
             {unitTabLabel(u)}
             {/* A unit with nothing on offer still gets a tab — it is the only
@@ -995,16 +1055,26 @@ export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail
         {addButton}
       </div>
       {isPropertyOwner && listed.length > 1 && (
-        <p className="-mt-1 flex items-center gap-1.5 px-1 text-[11px] text-gray-400">
+        <div className="-mt-1 flex items-center gap-2 px-1 text-[11px] text-gray-400">
           {savingOrder ? (
-            <>
+            <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-gray-500" />
               Saving order…
-            </>
+            </span>
           ) : (
-            "Drag the tabs to change the order students see."
+            <span>Drag the tabs to change the order students see.</span>
           )}
-        </p>
+          <button
+            type="button"
+            onClick={() => saveOrder(layoutOrder)}
+            disabled={savingOrder || sortedAlready}
+            title={sortedAlready ? "Already sorted by bedrooms and bathrooms" : "Sort studios first, then by bedrooms, bathrooms and size"}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:cursor-default disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+          >
+            <ArrowDownWideNarrow className="h-3 w-3" />
+            Sort by beds and baths
+          </button>
+        </div>
       )}
 
       {drafting ? (

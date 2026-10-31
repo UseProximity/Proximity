@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner, canAddUnitPhotos } from "@/lib/listings/ownership";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed } from "@/lib/listings/unitNames";
+import { markLandlordSet } from "@/lib/agents/coreWrites";
 
 /*
  * Edit ONE unit's physical facts.
@@ -181,6 +182,13 @@ export async function PATCH(req, { params }) {
     }
     console.error("[units/:id] update failed:", error.message);
     return NextResponse.json({ error: "Could not save that unit." }, { status: 500 });
+  }
+
+  // A dashboard edit after launch is landlord-set: a website sync holds
+  // changes to this unit's details for the owner instead of applying them.
+  const protectedFields = Object.fromEntries(Object.entries(patch).filter(([k]) => ["bedrooms", "bathrooms", "area", "name"].includes(k)));
+  if (isOwner && Object.keys(protectedFields).length) {
+    markLandlordSet({ listingId, target: "unit", id: unitId, fields: protectedFields, userId: session.user.id, cause: "dashboard" }).catch(() => {});
   }
 
   return NextResponse.json({ message: "Unit updated" });

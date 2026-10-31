@@ -356,7 +356,7 @@
       {
         "table": "chat_messages",
         "status": "active",
-        "description": "Messages in a chat thread. Written ONLY through rpc_send_chat_message / rpc_send_chat_attachment_message (rate limited by fn_chat_assert_send_rate, body <= 5000 chars), read through rpc_get_chat_messages; app code never selects the table directly except Supabase Realtime, which pushes INSERTs to MessagesContext.js. listing_id = the property this message is about (a thread can move between properties; fn_chat_current_listing_id picks the latest). message_type text|attachment; metadata jsonb carries attachment previews. deleted_at = soft delete. trg_bump_chat_thread_on_message bumps chat_threads.updated_at. RLS policies allow participants to select and insert, but the app goes through the service role. Live in prod since 2026-10-07 (migrations 202607300001 to 202610070003).",
+        "description": "Messages in a chat thread. Written ONLY through rpc_send_chat_message / rpc_send_chat_attachment_message (rate limited by fn_chat_assert_send_rate, body <= 5000 chars), read through rpc_get_chat_messages; app code never selects the table directly except Supabase Realtime, which pushes INSERTs to MessagesContext.js. listing_id = the property this message is about (a thread can move between properties; fn_chat_current_listing_id picks the latest). message_type text|attachment; metadata jsonb carries attachment previews. deleted_at = soft delete. trg_bump_chat_thread_on_message bumps chat_threads.updated_at. RLS policies allow participants to select and insert, but the app goes through the service role. Live in prod since 2026-10-07 (migrations 202607300001 to 202610070003). message_type now also proxy_answer | proxy_asked | proxy_relay | proxy_note, sent by the Proxy system user 00000000-0000-0000-0000-000000000010; metadata carries factKeys, updatedAt, questionIds.",
         "columns": [
           "id:uuid",
           "thread_id:uuid",
@@ -447,7 +447,7 @@
       {
         "table": "chat_threads",
         "status": "active",
-        "description": "One conversation. Since 202610030001 (chat_pair_threads) a thread is the PAIR (listing_id, landlord_id, interested_user_id): partial unique index on those three for live threads, so a student has one thread per landlord per property. thread_type_id -> thread_types (fn_chat_direct_type_id). landlord_id is resolved by fn_chat_resolve_landlord (lease owner first, then primary landlord, never the info@ house account). lease_id exists ONLY on dev. updated_at is bumped on every message and orders the inbox (rpc_list_chat_threads). deleted_at = soft delete. Live in prod since 2026-10-07.",
+        "description": "One conversation. Since 202610030001 (chat_pair_threads) a thread is the PAIR (listing_id, landlord_id, interested_user_id): partial unique index on those three for live threads, so a student has one thread per landlord per property. thread_type_id -> thread_types (fn_chat_direct_type_id). landlord_id is resolved by fn_chat_resolve_landlord (lease owner first, then primary landlord, never the info@ house account). lease_id exists ONLY on dev. updated_at is bumped on every message and orders the inbox (rpc_list_chat_threads). deleted_at = soft delete. Live in prod since 2026-10-07. Proxy threads (thread type 'proxy', per-listing agents): one per listing per student (interested_user_id) or signed-out visitor (visitor_id = prx_vid cookie), no landlord participant, never listed by rpc_list_chat_threads. notify_email = a visitor's address for updates (never shown to landlords); unrestricted = a tour thread with contact/link moderation lifted; proxy_state = Proxy's notes (nudge turn).",
         "columns": [
           "id:uuid",
           "thread_type_id:uuid",
@@ -458,7 +458,11 @@
           "deleted_at:timestamptz",
           "interested_user_id:uuid",
           "landlord_id:uuid",
-          "lease_id:uuid"
+          "lease_id:uuid",
+          "visitor_id:uuid",
+          "notify_email:text",
+          "unrestricted:bool",
+          "proxy_state:jsonb"
         ],
         "dev_only_columns": [
           "lease_id"
@@ -1118,7 +1122,7 @@
       {
         "table": "listing_concessions",
         "status": "ops_curated",
-        "description": "Promotional concessions per listing (amount_type flat|percentage|months_free, valid_from/valid_until, active). NOT read or written by any app code on staging; rows are curated by hand during property review sessions (last_verified_source holds the sources, e.g. RentCafe rental options pages) and by the unmerged importer branches (feat/listing-import-url, feat/import-match-sync). 35 rows in prod, still being updated as of 2026-10-12. Product decision pending: build a UI for it or stop curating.",
+        "description": "Promotional concessions per listing (amount_type flat|percentage|months_free, valid_from/valid_until, active). NOT read or written by any app code on staging; rows are curated by hand during property review sessions (last_verified_source holds the sources, e.g. RentCafe rental options pages) and by the unmerged importer branches (feat/listing-import-url, feat/import-match-sync). 35 rows in prod, still being updated as of 2026-10-12. Product decision pending: build a UI for it or stop curating. Seeded into listing_facts by lib/agents/seed.js (per-listing agents, 2026-10-27).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1135,7 +1139,7 @@
           "last_verified_at:timestamptz",
           "last_verified_source:text"
         ],
-        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); check amount_type in (flat,percentage,months_free); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->unit_leases.id (set null; repointed from the retired listing_leases by 202610270001); check amount_type in (flat,percentage,months_free); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 35,
           "prod_last_write": "2026-10-12"
@@ -1201,7 +1205,7 @@
       {
         "table": "listing_fees",
         "status": "ops_curated",
-        "description": "Itemised fees per listing (fee_type_id -> fee_types; basis flat|per_person|per_bed|per_unit|per_day|per_bedroom_per_month|percentage; refundable). NOT read or written by any app code on staging; 196 rows in prod curated by hand during property reviews (last_verified_source records where each number came from) and by the importer branches. Product decision pending: build a UI for it or stop curating.",
+        "description": "Itemised fees per listing (fee_type_id -> fee_types; basis flat|per_person|per_bed|per_unit|per_day|per_bedroom_per_month|percentage; refundable). NOT read or written by any app code on staging; 196 rows in prod curated by hand during property reviews (last_verified_source records where each number came from) and by the importer branches. Product decision pending: build a UI for it or stop curating. Seeded into listing_facts by lib/agents/seed.js (per-listing agents, 2026-10-27).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1217,36 +1221,10 @@
           "last_verified_at:timestamptz",
           "last_verified_source:text"
         ],
-        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->listing_leases.id (cascade); fee_type_id->fee_types.id; check basis in (flat,per_person,per_bed,per_unit,per_day,per_bedroom_per_month,percentage); rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=ops_curated; pk id; fk listing_id->listings.id (cascade); listing_lease_id->unit_leases.id (set null; repointed from the retired listing_leases by 202610270001); fee_type_id->fee_types.id; check basis in (flat,per_person,per_bed,per_unit,per_day,per_bedroom_per_month,percentage); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 196,
           "prod_last_write": "2026-10-12"
-        }
-      },
-      {
-        "table": "listing_field_states",
-        "status": "unused",
-        "description": "Per-field verification/confidence state for listing data. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
-        "columns": [
-          "id:uuid",
-          "listing_id:uuid",
-          "table_name:text",
-          "record_id:uuid",
-          "field_name:text",
-          "state:text",
-          "source:text",
-          "ai_confidence:numeric",
-          "evidence:text",
-          "suggested_value:text",
-          "last_changed_at:timestamptz",
-          "changed_by:uuid",
-          "extraction_run_id:uuid",
-          "created_at:timestamptz"
-        ],
-        "notes": "status=unused; pk id; fk listing_id->listings.id (cascade); changed_by->users.id (set null); extraction_run_id->lease_extraction_runs.id (set null); unique (table_name, record_id, field_name); check state in (confirmed,ai_suggested,empty,rejected); rls: on, with policies (app uses the service role anyway)",
-        "observed_2026_10_12": {
-          "prod_rows": 0,
-          "prod_last_write": null
         }
       },
       {
@@ -1319,13 +1297,14 @@
       {
         "table": "listing_landlords",
         "status": "active",
-        "description": "Join: listing ↔ landlord user (is_primary flags the owner).",
+        "description": "Join: listing ↔ landlord user (is_primary flags the owner). claimed_at (202610270007... see 202610270006_claimed_at): when the owner claimed the listing, default now(); existing rows backfilled to at least 15 days before the migration so everyone at launch counts as verified. An owner claimed within 14 days has agent edits held for admin review (lib/agents/coreWrites.js recentlyClaimed).",
         "columns": [
           "listing_id:uuid",
           "user_id:uuid",
           "is_primary:bool",
           "created_at:timestamptz",
-          "id:uuid"
+          "id:uuid",
+          "claimed_at:timestamptz"
         ],
         "notes": "status=active; pk id; fk listing_id->listings.id (cascade); user_id->users.id (cascade); unique (listing_id, user_id); rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
@@ -1537,7 +1516,7 @@
       {
         "table": "listing_source_events",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches feat/listing-import-url and feat/import-match-sync): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows; table exists on both DBs but was created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -1566,7 +1545,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (unmerged importer branches): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff). Zero rows; created outside the repo migrations. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1585,7 +1564,8 @@
           "next_check_at:timestamptz",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "index_url:text"
+          "index_url:text",
+          "portal:jsonb"
         ],
         "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unique (listing_id); check source_kind in (own_site,portal) | last_status in (ok,unchanged,changed,fetch_failed,parse_failed,suppressed,skipped,gone,url_stale); rls: service role only (no policies)",
         "observed_2026_10_12": {
@@ -1596,7 +1576,7 @@
       {
         "table": "listing_source_snapshots",
         "status": "unreleased",
-        "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows; created outside the repo migrations.",
+        "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -2330,7 +2310,7 @@
       {
         "table": "thread_types",
         "status": "reference",
-        "description": "Lookup for chat_threads.thread_type_id (2 rows). fn_chat_direct_type_id resolves the direct type; no app code reads it.",
+        "description": "Lookup for chat_threads.thread_type_id (2 rows). fn_chat_direct_type_id resolves the direct type; no app code reads it. 'proxy' added 2026-10-27 for Proxy threads.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2432,7 +2412,7 @@
       {
         "table": "users",
         "status": "active",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.] Fixed system row 00000000-0000-0000-0000-000000000010 = Proxy (proxy@useproximity.org, role system, is_system), the sender of Proxy's chat messages.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2537,6 +2517,356 @@
           "prod_rows": 33,
           "prod_last_write": "2026-09-19"
         }
+      },
+      {
+        "table": "listing_import_page_cache",
+        "status": "unreleased",
+        "description": "Short-lived cache of landlord pages fetched by the URL importer (lib/sourceImport/pageCache.js), shared by every building of a batch across server instances. Read for 15 minutes, cleared after an hour by the importer. Service role only.",
+        "columns": [
+          "key:text",
+          "page:jsonb",
+          "fetched_at:timestamptz"
+        ],
+        "notes": "pk key ('smart:'|'waited:<ms>:'|'render:<raw>:<ms>:' + url); index on fetched_at; RLS enabled, no policies. Migration 202610240001 (dev applied, prod pending)."
+      },
+      {
+        "table": "listing_import_usage",
+        "status": "unreleased",
+        "description": "URL importer spend per account: one row per picker read ('picker') and per batch or retry of buildings ('building', units = buildings). lib/sourceImport/limits.js sums it against per-account and site-wide caps before any paid read. Service role only.",
+        "columns": [
+          "id:int8",
+          "user_id:uuid",
+          "kind:text",
+          "units:int4",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk user_id->users.id (cascade); check kind in (picker, building), units > 0; indexes (user_id, kind, created_at), (kind, created_at); RLS enabled, no policies. Migration 202610240002 (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_import_jobs",
+        "status": "unreleased",
+        "description": "Background jobs for the paste-your-website importer (feat/agents-importer): one row per draft listing a landlord ticked in the site picker. /api/cron/import-jobs (every 2 minutes) runs queued jobs in lanes; the add-listing workspace polls status/step/progress. target jsonb = what the picker handed over (name, address, url, levelUrl, pastedUrl, alreadyListed); result jsonb = counts, landlord notes and the applied snapshot. Service role only. Since milestone 6 a job with target.sync = true is a per-agent sync (target.propose = true holds every displayed-field change as an open listing_source_events row for the landlord to confirm); user_id is the Proxy system user for the daily batch.",
+        "columns": [
+          "id:uuid",
+          "batch_id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "target:jsonb",
+          "status:text",
+          "step:text",
+          "progress:int4",
+          "attempts:int4",
+          "error:text",
+          "result:jsonb",
+          "started_at:timestamptz",
+          "finished_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk user_id->users.id (cascade); listing_id->listings.id (set null); check status in (queued, running, done, failed, cancelled); indexes (batch_id, created_at), (status, created_at), (user_id, created_at desc); RLS enabled, no policies. Migration 202610200001 (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_import_page_cache",
+        "status": "unreleased",
+        "description": "Short-lived cache of landlord pages fetched by lib/sourceImport, shared by every building read in a batch and by the picker before it, so a 12-building import fetches the site-wide pages once. Rows older than an hour are cleared by the importer itself. Service role only.",
+        "columns": [
+          "key:text",
+          "page:jsonb",
+          "fetched_at:timestamptz"
+        ],
+        "notes": "pk key; index (fetched_at); RLS enabled, no policies. Migration 202610240001_import_page_cache (dev applied; prod applied at the milestone 0 merge)."
+      },
+      {
+        "table": "listing_agents",
+        "status": "unreleased",
+        "description": "Per-listing agents (PRD v3): one row per listing. status is the per-listing switch: off until the pilot, pilot or on = Proxy answers (with the global LISTING_AGENTS_ENABLED switch, lib/agents/flags.js). seeded_at set by lib/agents/seed.js; sync bookkeeping filled by milestone 6. Service role only.",
+        "columns": [
+          "listing_id:uuid",
+          "status:text",
+          "seeded_at:timestamptz",
+          "last_sync_at:timestamptz",
+          "last_manual_sync_at:timestamptz",
+          "manual_syncs_today:int4",
+          "manual_sync_day:date",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk listing_id -> listings.id (cascade); check status in (off, pilot, on); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_sources",
+        "status": "unreleased",
+        "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only. Page sources are written by lib/agents/pages.js on every sync (last_fingerprint = hash of the page text, so unchanged pages are not re-synthesized); last_status 'stale' after 3 failures in a row hides the source's facts from Proxy.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "url:text",
+          "document_id:uuid",
+          "message_id:uuid",
+          "question_id:uuid",
+          "user_id:uuid",
+          "owner_id:uuid",
+          "label:text",
+          "enabled:bool",
+          "check_interval_days:int4",
+          "next_check_at:timestamptz",
+          "last_checked_at:timestamptz",
+          "last_status:text",
+          "last_error:text",
+          "consecutive_failures:int4",
+          "last_fingerprint:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), message_id->chat_messages.id (set null), user_id/owner_id->users.id (set null), document_id->listing_documents.id (set null); unique (listing_id) where kind=site_data; unique (listing_id, url) where kind=page; check kind, last_status; RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_facts",
+        "status": "unreleased",
+        "description": "The knowledge store: one row per claim about a listing. section core|fees|policies|specials|misc, dotted field_key (fee.application, policy.pets, special.<slug>, misc.<slug>, core.verified), structured value jsonb, a one-line student-safe summary, scope (property | owner = users.id or the nil uuid for unclaimed leases | unit = listing_units.id | lease = unit_leases.id), source, redacted excerpt, confidence, landlord_set (outranks every other source; a sync holds instead of overwriting), validity window. One current row per key and scope; superseded rows keep history. Core VALUES are not copied here (read live from listings/units/leases); a core row records provenance only. Written only through lib/agents/store.js setFact. Core provenance rows core.<lease|unit|property>.<field> with landlord_set are written by lib/agents/coreWrites.js markLandlordSet from the dashboard's property, unit and lease routes and from the agent chat; apply.js holds sync changes to those scopes.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "section:text",
+          "field_key:text",
+          "value:jsonb",
+          "summary:text",
+          "scope_level:text",
+          "scope_id:uuid",
+          "source_id:uuid",
+          "source_ref:text",
+          "excerpt:text",
+          "confidence:text",
+          "landlord_set:bool",
+          "set_by:uuid",
+          "observed_at:timestamptz",
+          "valid_from:date",
+          "valid_until:date",
+          "is_current:bool",
+          "superseded_by:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_fact_events",
+        "status": "unreleased",
+        "description": "Change history and review queue for listing_facts: every setFact writes one (cause seed|sync|url_added|landlord_chat|landlord_answer|dashboard|admin|document|backfill|revert; status applied|held|proposed|approved|rejected|reverted) with old and new value. 'held' = a change to a landlord-set fact waiting for the landlord; 'proposed' = an extraction waiting for confirmation. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "fact_id:uuid",
+          "previous_fact_id:uuid",
+          "section:text",
+          "field_key:text",
+          "scope_level:text",
+          "scope_id:uuid",
+          "cause:text",
+          "status:text",
+          "old_value:jsonb",
+          "new_value:jsonb",
+          "actor_id:uuid",
+          "source_id:uuid",
+          "detail:jsonb",
+          "decided_by:uuid",
+          "decided_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), fact_id/previous_fact_id->listing_facts.id (set null), actor_id/decided_by->users.id, source_id->listing_sources.id; index (listing_id, created_at desc) and a partial one on held/proposed; RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_documents",
+        "status": "unreleased",
+        "description": "Files a landlord uploads to their agent (brochure, fee sheet, policy PDF): metadata, extraction status and the redacted excerpt kept afterwards. The file itself is deleted once extraction finishes (file_deleted_at). Milestone 7 fills it. Service role only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "uploaded_by:uuid",
+          "filename:text",
+          "mime_type:text",
+          "size_bytes:int4",
+          "storage_key:text",
+          "status:text",
+          "reject_reason:text",
+          "excerpt:text",
+          "facts_count:int4",
+          "error:text",
+          "extracted_at:timestamptz",
+          "file_deleted_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade), uploaded_by->users.id (set null); check status in (uploaded, extracting, done, rejected, failed); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_agent_usage",
+        "status": "unreleased",
+        "description": "Model spend per agent (answers, triage, extraction, sync reads): tokens and cost in cents per call, summed against the per-agent and site-wide caps. Written by lib/agents/store.js recordUsage. Service role only.",
+        "columns": [
+          "id:int8",
+          "listing_id:uuid",
+          "kind:text",
+          "model:text",
+          "input_tokens:int4",
+          "output_tokens:int4",
+          "cost_cents:numeric",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings.id (cascade); indexes (listing_id, created_at), (created_at); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_questions",
+        "status": "unreleased",
+        "description": "A question Proxy could not answer, sent to one landlord (owner_id = the owner of the lease the student chose, else the primary owner, else the placeholder contact user; NULL = unroutable, waits for a claim). One row per distinct open question per listing: lib/agents/questions.js dedupes exact matches by `normalized` and near matches with Haiku, so several students wait on one row (asked_count). status open|answered|closed|unroutable; pending_clarifier while the landlord's clarifying question waits on the student; reminder_1_at/reminder_3_at/student_told_at driven by /api/cron/agent-questions (hourly). context is the one line a landlord sees about the asker (lease, signed in or not), never a name. reply_token_hash (202610270003): SHA-256 of the per-question reply token (reply+q<token>@<reply domain>, lib/agents/questionTokens.js) so a landlord can answer by replying to the email; lib/agents/questionEmail.js handles the inbound side (sender must be the landlord, an approved reply sender or a test sender), classifies answer vs clarifier with Haiku, reads attachments and links into the knowledge base.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "owner_id:uuid",
+          "status:text",
+          "question:text",
+          "normalized:text",
+          "section:text",
+          "context:text",
+          "asked_count:int4",
+          "first_thread_id:uuid",
+          "answer:text",
+          "answered_by:uuid",
+          "answered_at:timestamptz",
+          "closed_at:timestamptz",
+          "pending_clarifier:bool",
+          "reminder_1_at:timestamptz",
+          "reminder_3_at:timestamptz",
+          "student_told_at:timestamptz",
+          "last_activity_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "reply_token_hash:text"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), owner_id/answered_by->users (set null), first_thread_id->chat_threads (set null); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "listing_question_waiters",
+        "status": "unreleased",
+        "description": "The Proxy threads (students or visitors) waiting on a listing_questions row; relayed_at once the answer was posted into that thread.",
+        "columns": [
+          "id:uuid",
+          "question_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "user_id:uuid",
+          "visitor_id:uuid",
+          "relayed_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; unique (question_id, thread_id); fk question_id->listing_questions (cascade), thread_id->chat_threads (cascade); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "listing_question_messages",
+        "status": "unreleased",
+        "description": "The exchange on a question: the landlord's clarifying questions and answer (body after contact details were removed; raw_body as written, never shown to students), the student's replies, via app|email.",
+        "columns": [
+          "id:uuid",
+          "question_id:uuid",
+          "sender:text",
+          "thread_id:uuid",
+          "user_id:uuid",
+          "body:text",
+          "raw_body:text",
+          "screened:bool",
+          "via:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; check sender in (landlord, student, proxy), via in (app, email); fk question_id->listing_questions (cascade); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "landlord_agent_messages",
+        "status": "unreleased",
+        "description": "The landlord's saved conversation with a listing's agent, one thread per landlord per listing (round 7). Merged with that landlord's questions and tour requests into the one chat shown in the Agent tab, the Questions tab and Messages (lib/agents/landlordChat.js). A landlord message Proxy matched to an open question carries question_id (the answer itself is in listing_question_messages); an agent message can carry the proposal the landlord confirms, with proposal_status open | applied | cancelled.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "landlord_id:uuid",
+          "sender:text",
+          "body:text",
+          "question_id:uuid",
+          "proposal:jsonb",
+          "proposal_status:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; check sender in (landlord, agent), proposal_status in (open, applied, cancelled); fk listing_id->listings (cascade), landlord_id->users (cascade), question_id->listing_questions (set null); index (landlord_id, listing_id, created_at); RLS on, no policies. Migration 202610280003_landlord_agent_messages (dev applied 2026-10-28; prod pending, in the bundle)."
+      },
+      {
+        "table": "listing_agent_questions",
+        "status": "unreleased",
+        "description": "The audit log of every student message Proxy handled: the question, Proxy's reply, the fact keys it drew on, the outcome (answered | asked_landlord | partly_answered | chit_chat | tour | unavailable | declined | failed | test), model and latency, asker (user_id or visitor_id), inquiry flag (false in test mode), reported_at from 'Report this answer'. Also the rate-limit ledger (lib/agents/limits.js). PII stripped at the 30-day purge.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "thread_id:uuid",
+          "message_id:uuid",
+          "user_id:uuid",
+          "visitor_id:uuid",
+          "question:text",
+          "answer:text",
+          "fact_keys:text[]",
+          "outcome:text",
+          "question_id:uuid",
+          "model:text",
+          "latency_ms:int4",
+          "inquiry:bool",
+          "reported_at:timestamptz",
+          "created_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), thread_id/message_id (set null), user_id->users (set null), question_id->listing_questions (set null); indexes (listing_id, created_at desc), (thread_id, created_at); RLS on, no policies. Migration 202610270002_proxy_threads_and_questions (dev applied 2026-10-27; prod at the milestone 2 merge)."
+      },
+      {
+        "table": "student_availability",
+        "status": "unreleased",
+        "description": "A student's weekly tour availability pattern (per-listing agents, tour scheduling): { mon: [9,10,14], ... } hour blocks 8 to 19 in America/Chicago. Set once from the Book a tour card and reused for every request (lib/agents/tourTime.js turns it into real-date slots over the next 14 days).",
+        "columns": [
+          "user_id:uuid",
+          "pattern:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk user_id -> users.id (cascade); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
+      },
+      {
+        "table": "tour_requests",
+        "status": "unreleased",
+        "description": "One tour request per student per lease (lib/agents/tours.js): the real-date slots the student offered (student_slots, ISO UTC), the landlord's counter-proposals (landlord_slots), the confirmed slot, and the contact details each side received on confirmation (student_contact, landlord_contact: name, email, phone). landlord_id = owner of the lease, else primary owner, else the listing's contact placeholder. status requested|proposed|confirmed|cancelled|expired. thread_id = the in-app thread opened on confirmation (chat_threads.unrestricted = true: contact details and links allowed); proxy_thread_id = the Proxy thread the request came from. Reminder stamps driven by /api/cron/agent-questions (landlord day 1 and 3, student told day 5, both the day before).",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "student_id:uuid",
+          "landlord_id:uuid",
+          "status:text",
+          "student_slots:jsonb",
+          "landlord_slots:jsonb",
+          "confirmed_slot:timestamptz",
+          "confirmed_by:uuid",
+          "confirmed_at:timestamptz",
+          "student_contact:jsonb",
+          "landlord_contact:jsonb",
+          "student_phone:text",
+          "proxy_thread_id:uuid",
+          "thread_id:uuid",
+          "cancelled_by:uuid",
+          "cancel_reason:text",
+          "reminder_1_at:timestamptz",
+          "reminder_3_at:timestamptz",
+          "student_told_at:timestamptz",
+          "day_before_reminded_at:timestamptz",
+          "last_activity_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), student_id->users (cascade), landlord_id/confirmed_by/cancelled_by->users (set null), proxy_thread_id/thread_id->chat_threads (set null); unique (student_id, coalesce(lease_id, listing_id)) where status in (requested, proposed); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
       }
     ],
     "functions": [
