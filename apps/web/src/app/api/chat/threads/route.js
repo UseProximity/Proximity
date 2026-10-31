@@ -22,6 +22,7 @@ import {
 import { annotateNoReply } from "@/lib/chat/followups";
 import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
 import { landlordProxyOverview } from "@/lib/agents/landlordChat";
+import { agentsEnabled } from "@/lib/agents/flags";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -52,7 +53,11 @@ export async function GET(req) {
     const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
     const direct = (await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
     // The student's Proxy conversations ride along, on their own tab in the
-    // overlay. They never fail the inbox.
+    // overlay. They never fail the inbox. Only clients that ask for them get
+    // them (the web overlay passes ?include=proxy; the mobile app does not
+    // know these rows yet), and only while the agents are on (PR #365 review).
+    const wantsProxy = new URL(req.url).searchParams.get("include") === "proxy" && agentsEnabled();
+    if (!wantsProxy) return NextResponse.json(direct);
     await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
     const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
     // A landlord's Proxy chats, one per listing (questions and tour requests).

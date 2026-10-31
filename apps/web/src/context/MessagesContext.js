@@ -153,7 +153,8 @@ export function MessagesProvider({ children }) {
     const seq = ++refreshSeqRef.current;
     setThreadsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
     try {
-      const res = await fetch("/api/chat/threads");
+      // Proxy conversations are opt-in on this endpoint (the mobile app does not show them yet).
+      const res = await fetch("/api/chat/threads?include=proxy");
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error || `Failed to load threads (${res.status})`);
