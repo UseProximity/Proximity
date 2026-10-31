@@ -457,7 +457,7 @@ export default function AvailableListings({
       <div
         ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"
+          expandedListing ? "w-[58vw]" : "w-[40vw] px-4 py-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
@@ -467,7 +467,7 @@ export default function AvailableListings({
          * lifecycle, and that lifecycle does not complete in this container.
          * Under mode="wait" the incoming child was never let in at all on the
          * deep-link path (?panel= on first load, where an effect drives the
-         * swap during mount): the column widened to 65vw while still showing
+         * swap during mount): the column widened to the panel width while still showing
          * the listing grid, so the URL claimed a panel was open and none was.
          * Without mode="wait" the entry worked but the outgoing child was
          * never unmounted, leaving an invisible opacity-0 copy of the panel

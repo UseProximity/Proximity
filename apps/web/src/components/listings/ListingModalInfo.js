@@ -1384,14 +1384,14 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
         <div className="animate-pulse">
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
-            className={`flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+            className={`flex flex-col md:flex-row gap-px bg-white -mx-4 mb-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
-            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%] rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl" />
-            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
-              <div className="flex-1 bg-gray-200 rounded-tr-xl" />
-              <div className="flex-1 bg-gray-200 rounded-br-xl" />
+            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
+            <div className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]">
+              <div className="flex-1 bg-gray-200" />
+              <div className="flex-1 bg-gray-200" />
             </div>
           </div>
 
@@ -1942,19 +1942,19 @@ export default function ListingModalInfo({
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
-          {/* ── Photo Grid ── */}
+          {/* ── Photo Grid ── Edge to edge with no card corners, the title
+              straight under it (Wyatt, 2026-10-31). The negative margins undo
+              the page padding. */}
           <div
-            className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+            className={`relative flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               ref={heroImgWrapperRef}
-              className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
-                hasSideTiles
-                  ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
-                  : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
+              className={`relative cursor-pointer bg-gray-100 overflow-hidden aspect-[4/3] md:aspect-auto ${
+                hasSideTiles ? "md:flex-shrink-0 md:w-[65%]" : "md:w-full"
               }`}
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
@@ -1982,7 +1982,7 @@ export default function ListingModalInfo({
               )}
               {/* Cover badges: live PMS-verified availability + Street View attribution */}
               {(listing.verifiedLive || (coverImage && listing.imageFromStreetView)) && (
-                <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-1.5">
+                <div className={`absolute left-3 z-10 flex flex-col items-start gap-1.5 ${compact ? "top-14" : "top-3"}`}>
                   {listing.verifiedLive && !listing.unavailable && (
                     <div className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
                       <span className="relative flex h-2 w-2" aria-hidden="true">
@@ -2017,7 +2017,7 @@ export default function ListingModalInfo({
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
             {hasSideTiles && (
             <motion.div
-              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+              className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
@@ -2025,9 +2025,7 @@ export default function ListingModalInfo({
               {sideTiles.map((tile, i) => (
                 <div
                   key={`${tile.src}-${i}`}
-                  className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
-                    i === 0 ? "rounded-tr-xl" : ""
-                  } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
+                  className="relative flex-1 cursor-pointer overflow-hidden bg-gray-100"
                   onClick={() => setIsGalleryOpen(true)}
                 >
                   <Image
@@ -2148,7 +2146,7 @@ export default function ListingModalInfo({
             <div
               id="listing-tabs"
               className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                compact ? "top-[52px]" : "top-0 px-4"
+                compact ? "top-0" : "top-0 px-4"
               }`}
             >
               {/* Three-column row so the tabs stay optically centred no matter

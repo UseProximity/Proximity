@@ -15,16 +15,17 @@ export default function ListDetailPanel({
   const { data: session } = useSession();
 
   return (
-    <div>
-      {/* Sticky top banner */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4 py-3">
+    <div className="relative">
+      {/* White pills over the photos instead of a bar above them (Wyatt,
+          2026-10-31). They scroll away with the photos; the tabs stick. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-center justify-between p-3">
         <button
           onClick={onBack}
           aria-label="Back to listings"
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors duration-150"
+          className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-gray-700 shadow-md transition-colors duration-150 hover:bg-white hover:text-gray-900"
         >
           <svg
-            className="w-4 h-4 flex-shrink-0"
+            className="w-3.5 h-3.5 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             strokeWidth={2.5}
@@ -32,10 +33,9 @@ export default function ListDetailPanel({
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          <span className="text-sm font-semibold">Back to listings</span>
+          <span className="text-xs font-semibold">Back to listings</span>
         </button>
-        <div className="flex items-center gap-2 text-gray-600">
-          <span className="text-sm font-semibold">Save this listing</span>
+        <div className="pointer-events-auto flex items-center rounded-full bg-white/95 p-1 text-gray-700 shadow-md">
           <HeartIcon listingId={listing._id} />
         </div>
       </div>
