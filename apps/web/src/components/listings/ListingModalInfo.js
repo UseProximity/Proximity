@@ -2121,7 +2121,7 @@ export default function ListingModalInfo({
                 <div className={`min-w-0 md:flex-1 ${headStuck ? "flex-1" : "w-full md:w-auto"}`}>
                   <h1
                     className={`truncate font-bold text-gray-900 leading-snug transition-all duration-200 ${
-                      headStuck ? "text-lg sm:text-xl" : "text-[19px] sm:text-[27px]"
+                      headStuck ? "text-[18px] sm:text-[23px]" : "text-[19px] sm:text-[27px]"
                     }`}
                   >
                     {listing.title || street}
@@ -2152,11 +2152,11 @@ export default function ListingModalInfo({
                   {overallAvg ? (
                     <span className={`inline-flex items-center ${headStuck ? "gap-1" : "gap-2"}`}>
                       <Star
-                        className={`shrink-0 fill-amber-400 text-amber-400 ${headStuck ? "h-5 w-5" : "h-8 w-8"}`}
+                        className={`shrink-0 fill-amber-400 text-amber-400 ${headStuck ? "h-6 w-6" : "h-8 w-8"}`}
                         aria-hidden="true"
                       />
                       <span
-                        className={`font-semibold leading-none text-gray-900 ${headStuck ? "text-lg" : "text-2xl"}`}
+                        className={`font-semibold leading-none text-gray-900 ${headStuck ? "text-xl" : "text-2xl"}`}
                       >
                         {overallAvg}
                       </span>
@@ -2166,7 +2166,7 @@ export default function ListingModalInfo({
                     </span>
                   ) : (
                     <span
-                      className={`inline-flex items-center text-gray-400 ${headStuck ? "h-7 text-xs" : "h-9 text-sm"}`}
+                      className={`inline-flex items-center text-gray-400 ${headStuck ? "h-8 text-[13px]" : "h-9 text-sm"}`}
                     >
                       No reviews yet
                     </span>
