@@ -310,8 +310,10 @@ echo "    foreign key parity with PROD verified ($(grep -c . "$PROD_KEYS") const
 
 echo "[6/6] Putting partner sandbox data back…"
 # Runs last so FKs are in place: rows that no longer fit (e.g. they point at something prod deleted)
-# are reported as warnings and skipped rather than restored as orphans.
-psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.restore();"
+# are reported as warnings and skipped rather than restored as orphans. The restore is one statement,
+# so it gets a longer timeout than the database's 2 minute default; 15 minutes still fails a hung run.
+psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
+  -c "select * from snapshot_preserve.restore();"
 psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
 
 echo "✓ Done. DEV mirrors PROD; role grants re-applied; function grants match prod; FKs reconciled; partner data restored; snapshot_taken_at stamped."

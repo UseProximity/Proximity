@@ -21,7 +21,8 @@ import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
-import LeaseOptions from "@/components/listings/LeaseOptions";
+import LeaseOptions, { useUnitLeasePrefs } from "@/components/listings/LeaseOptions";
+import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import ProxyPanel from "@/components/proxy/ProxyPanel";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
@@ -1326,7 +1327,7 @@ function FloorPlanLink({ url, onOpen, separator = true }) {
       <button
         type="button"
         onClick={onOpen}
-        className="inline-flex items-center gap-1 font-medium text-red-600 underline underline-offset-2 transition hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        className="inline-flex items-center gap-1 text-gray-500 underline-offset-2 transition hover:text-gray-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
       >
         <LayoutGrid className="h-3 w-3" />
         View floor plan
@@ -1458,7 +1459,7 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
 
           {/* Tab strip */}
           <div
-            className={`bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
+            className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
               compact ? "" : "px-4"
             }`}
           >
@@ -1471,15 +1472,15 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </nav>
           </div>
 
-          {/* Tab body */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow p-6 space-y-3">
+          {/* Tab body: white edge to edge, like the loaded page. */}
+          <div className="-mx-4 -mb-8 min-h-[60vh] space-y-6 bg-white px-10 py-6">
+            <div className="space-y-3">
               <Bar className="h-5 w-40" />
               <Bar className="h-3 w-full" />
               <Bar className="h-3 w-full" />
               <Bar className="h-3 w-2/3" />
             </div>
-            <div className="bg-white rounded-xl shadow p-6">
+            <div>
               <Bar className="h-5 w-32 mb-4" />
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -1718,6 +1719,11 @@ export default function ListingModalInfo({
    * unit has no lease when it simply hasn't arrived.
    */
   const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
+
+  // The student's move-in month and lease length as they apply to this unit.
+  // The pickers sit in the unit's name row; the lease list below reads the same.
+  const leasePrefs = useUnitLeasePrefs(selectedUnitLeases, preview);
+  const showLeasePickers = !leasesLoading && selectedUnitLeases.length > 0;
 
   /*
    * Sending an enquiry opens the conversation, it does not leave a receipt on
@@ -2433,11 +2439,14 @@ export default function ListingModalInfo({
                     the offerings on it. */}
                 {/* One line: name, size and floor plan on the left, "Jump to"
                     on the right. Skipped entirely when there is none of it. */}
+                {/* The move-in and lease length pickers share this row, on
+                    the right, away from the unit's own details. */}
                 {(selectedUnitName ||
                   selectedUnitArea ||
                   selectedUnit?.floorPlanImageUrl ||
-                  showUnitJumps) && (
-                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-gray-100 px-4 pt-3">
+                  showUnitJumps ||
+                  showLeasePickers) && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 px-4 pt-3">
                     <p className="flex flex-wrap items-baseline text-xs text-gray-500">
                       {selectedUnitName && (
                         <span className="text-sm font-semibold text-gray-900">
@@ -2458,8 +2467,18 @@ export default function ListingModalInfo({
                         separator={Boolean(selectedUnitName || selectedUnitArea)}
                       />
                     </p>
+                    {showLeasePickers && (
+                      <div className="w-full text-xs text-gray-500 sm:ml-auto sm:w-auto">
+                        <LeasePrefsControls
+                          value={leasePrefs.prefs}
+                          onChange={leasePrefs.setPrefs}
+                          onClear={leasePrefs.clear}
+                          leases={selectedUnitLeases}
+                        />
+                      </div>
+                    )}
                     {showUnitJumps && (
-                      <div className="ml-auto flex items-baseline gap-3 text-xs">
+                      <div className={`flex items-baseline gap-3 text-xs ${showLeasePickers ? "" : "ml-auto"}`}>
                         <span className="text-gray-500">Jump to:</span>
                         {unitBedJumps.map(({ beds, idx, label }) => (
                           <button
@@ -2482,7 +2501,9 @@ export default function ListingModalInfo({
                 )}
 
                 {/* Lease options for the unit on the open tab: one card per
-                    landlord, their offerings inside it, one Contact for all. */}
+                    landlord, their offerings inside it, one Contact for all.
+                    Narrowed by the student's saved move-in month and lease
+                    length, picked in its own header. */}
                 <div>
                   {/* Rent specials are no longer shown here (Wyatt, 2026-10-27):
                       Proxy quotes current ones when asked, and expired ones
@@ -2491,6 +2512,7 @@ export default function ListingModalInfo({
                     leases={selectedUnitLeases}
                     loading={leasesLoading}
                     onContact={handleContactLease}
+                    prefs={leasePrefs.prefs}
                   />
                 </div>
               </div>
@@ -2499,7 +2521,7 @@ export default function ListingModalInfo({
             {/* ── Sticky Tab Bar ── */}
             <div
               id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm ${proxyContact ? "mb-0" : "mb-6"} -mx-4 ${
+              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm -mx-4 ${
                 compact ? "top-[52px]" : "top-0 px-4"
               }`}
             >
@@ -2584,8 +2606,19 @@ export default function ListingModalInfo({
               </nav>
             </div>
 
-            {/* ── Tab Content ── (the Proxy chat sits straight under the tab line, full width, no card) */}
-            <div className={proxyContact ? "bg-white -mx-4 px-6 pt-5 pb-4" : "bg-white rounded-xl shadow p-6"}>
+            {/* ── Tab Content ── */}
+            {/* White from edge to edge under the tab bar, down to the bottom
+                of the page: no grey frame around a card (Wyatt, 2026-10-27).
+                The negative margins cancel the page padding; px-10 keeps the
+                text where the card's padding used to put it. The Proxy chat
+                sits straight under the tab line with its own padding. */}
+            <div
+              className={
+                proxyContact
+                  ? "bg-white -mx-4 px-6 pt-5 pb-4"
+                  : `bg-white -mx-4 px-10 py-6 ${compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"}`
+              }
+            >
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (

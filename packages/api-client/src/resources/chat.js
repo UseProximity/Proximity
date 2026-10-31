@@ -86,6 +86,32 @@ export class ChatResource {
     });
   }
 
+  // Landlord only. Emailed replies held in this conversation because they came from
+  // someone not set up to reply for the landlord, plus the landlord's whole
+  // approved/declined sender list. Returns { held: [...], senders: [...] }; the
+  // student side always gets both empty.
+  getReplySenders(threadId) {
+    return this.client.request(`/api/chat/threads/${encodeURIComponent(threadId)}/reply-senders`);
+  }
+
+  // Decides on the sender of one held reply. `decision` is "approve" or "decline";
+  // `scope` is "address" or "domain" (domain only when the held reply says
+  // canApproveDomain). Approving delivers the held replies after the response, so
+  // it returns { ok, pattern, delivering } at once. A reply already handled is a 404.
+  decideReplySender(threadId, { heldId, decision, scope = "address" }) {
+    return this.client.request(`/api/chat/threads/${encodeURIComponent(threadId)}/reply-senders`, {
+      method: "POST",
+      body: JSON.stringify({ heldId, decision, scope }),
+    });
+  }
+
+  // Removes one entry from the landlord's list of senders (approved or declined).
+  removeReplySender(id) {
+    return this.client.request(`/api/chat/reply-senders/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
   // Short-lived Supabase Realtime JWT. Returns { accessToken, expiresAt }.
   getRealtimeToken() {
     return this.client.request("/api/chat/realtime-token");

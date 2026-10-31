@@ -31,6 +31,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { QUESTION_BY_ID } from "@proximity/shared";
 import { qKey, useChatStore } from "../../src/store/chatStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { ChatBubble } from "../../src/components/matchmaking/ChatBubble";
@@ -199,7 +200,7 @@ export default function MatchmakingScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           renderItem={({ item }) => (
             <View>
-              <ChatBubble message={item} onEdit={item.questionId ? editAnswer : null} />
+              <ChatBubble message={item} onEdit={item.questionId && QUESTION_BY_ID[item.questionId] ? editAnswer : null} />
               {!!item.recommendations?.length && (
                 <View className="px-4 mb-2 gap-2">
                   {item.recommendations.map((rec) => (

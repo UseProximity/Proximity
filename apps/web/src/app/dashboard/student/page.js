@@ -10,6 +10,8 @@ import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 import StudentTours from "@/components/proxy/StudentTours";
 import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
+import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
+import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 
 function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
@@ -92,6 +94,17 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const { update: updateSession } = useSession();
   const router = useRouter();
   const initialRole = (user.role || "student").toLowerCase();
+  /*
+   * Move-in month and lease length. Seeded from the shared copy, which already
+   * holds any change made on a listing this visit, and falling back to the
+   * dashboard payload until that copy has loaded.
+   */
+  const leasePrefs = useLeasePreferences();
+  const [housing, setHousing] = useState(
+    leasePrefs.loaded
+      ? leasePrefs.prefs
+      : { moveIn: user.preferredMoveInDate ?? null, months: user.preferredLeaseMonths ?? null }
+  );
   const [form, setForm] = useState({
     name: user.name || "",
     birthday: user.birthday
@@ -158,6 +171,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
         body: JSON.stringify({
           ...form,
           birthday: form.birthday || undefined,
+          preferredMoveInDate: housing.moveIn ?? null,
+          preferredLeaseMonths: housing.months ?? null,
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -166,6 +181,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
         throw new Error(data.error || "Failed to save");
       }
       const updated = await res.json();
+      // Every listing's lease options read the shared copy: bring it up to date.
+      leasePrefs.hydrate({ moveIn: updated.preferredMoveInDate, months: updated.preferredLeaseMonths });
       onSaved(updated);
 
       // If role changed, push the new role into the JWT and route them to
@@ -302,6 +319,24 @@ function EditProfileModal({ user, onClose, onSaved }) {
               <option value="Other">Other</option>
             </select>
           </div>
+
+          {/* Housing search: narrows the lease options on every listing. */}
+          {form.role === "student" && (
+            <div className="rounded-lg border border-gray-200 px-3 py-3">
+              <p className="text-sm font-semibold text-gray-800">Housing search</p>
+              <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                When you want to move in and for how long. Every listing shows the
+                lease options that fit first.
+              </p>
+              <LeasePrefsControls
+                variant="form"
+                idPrefix="profile-lease-prefs"
+                value={housing}
+                onChange={(patch) => setHousing((prev) => ({ ...prev, ...patch }))}
+                onClear={() => setHousing({ moveIn: null, months: null })}
+              />
+            </div>
+          )}
 
           {/* Email notifications */}
           <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
@@ -525,6 +560,8 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     role: dbUser?.role ?? session?.user?.role ?? "student",
     phone: dbUser?.phone ?? null,
     description: dbUser?.description ?? null,
+    preferredMoveInDate: dbUser?.preferredMoveInDate ?? null,
+    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? null,
   };
 
   const contacted = user.contacted;
@@ -1056,6 +1093,8 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               role: updated.role,
               phone: updated.phone,
               description: updated.description,
+              preferredMoveInDate: updated.preferredMoveInDate,
+              preferredLeaseMonths: updated.preferredLeaseMonths,
             }));
           }}
         />

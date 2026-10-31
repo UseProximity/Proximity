@@ -61,6 +61,7 @@ import {
   MapPin,
   Star,
   Mail,
+  Flag,
 } from "lucide-react-native";
 import {
   getRentRangeLabel,
@@ -255,6 +256,19 @@ export default function ListingDetailScreen() {
       if (err?.status === 401) return; // session expired: the api client already signed out
       showError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.REPORT_REVIEW));
     }
+  }
+
+  // Reports the listing itself. The reason list is a native sheet (app/listing-sheet/report.js);
+  // a signed-out visitor is offered sign in first, since the server needs to know who reports.
+  function handleReportListing() {
+    if (!user) {
+      Alert.alert("Sign in to report", "You need an account to report a listing.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign in", onPress: () => router.push("/(auth)/login") },
+      ]);
+      return;
+    }
+    router.push({ pathname: "/listing-sheet/report", params: { listingId: id } });
   }
 
   function handleBlockReviewAuthor(review) {
@@ -463,6 +477,13 @@ export default function ListingDetailScreen() {
   // contact address and no landlord account yet; that is never "mine".
   const isOwnListing = !!user?.id && listing.owner?._id === user.id;
   const canMessage = listing.owner?.canChat === true && !isOwnListing;
+  // Any stake in the listing, as the server counts it (POST /api/listingReport refuses
+  // these reports): the listing's landlord, or the owner of one of its live leases.
+  // Other co-owners are not in this response, so the server stays the final check.
+  const hasStake =
+    !!user?.id &&
+    (listing.owner?._id === user.id ||
+      (listing.unitTypes ?? []).some((unit) => (unit.leases ?? []).some((lease) => lease.ownerId === user.id)));
   const hasAmenities = listing.amenities?.length > 0 || listing.utilitiesIncluded?.length > 0;
   // One chip per card that actually renders, in page order.
   const navSections = [
@@ -767,6 +788,19 @@ export default function ListingDetailScreen() {
               </DetailCard>
               </View>
             ) : null}
+
+            {hasStake ? null : (
+              <Pressable
+                onPress={handleReportListing}
+                accessibilityRole="button"
+                accessibilityLabel="Report listing"
+                hitSlop={8}
+                className="flex-row items-center justify-center gap-1.5 py-3 active:opacity-60"
+              >
+                <Flag size={14} color="#9ca3af" />
+                <Text className="text-sm text-gray-400">Report listing</Text>
+              </Pressable>
+            )}
           </View>
         </Animated.ScrollView>
 

@@ -193,9 +193,12 @@ declare
   progress bigint;
   pass     int := 0;
 begin
+  -- The primary key matters: every row's status update looks itself up by (table_name, ident), and
+  -- without an index each lookup scans the whole list, so the restore slows quadratically.
   create temp table if not exists _restore (
     table_name text, ident jsonb, row_data jsonb,
-    status text not null default 'pending', last_error text
+    status text not null default 'pending', last_error text,
+    primary key (table_name, ident)
   ) on commit drop;
   truncate _restore;
   insert into _restore (table_name, ident, row_data)

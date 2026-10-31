@@ -23,7 +23,8 @@ export function AnswerBar({ question, onAnswer }) {
       return (
         <ChoiceChips
           options={options.filter((o) => !/^other$/i.test(o))}
-          allowOther
+          allowOther={!meta?.noOther}
+          expandCount={!!meta?.expandCount}
           unsureLabel="No Preference"
           onPick={submit}
           onUnsure={meta?.allowUnsure ? () => submit(UNSURE) : null}

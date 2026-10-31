@@ -153,9 +153,14 @@ function inferRouteDetails(routePath, content) {
     if (AUTH_RANK[methodAuth[m]] > AUTH_RANK[auth]) auth = methodAuth[m];
   }
 
-  // Detect Supabase tables accessed
+  // Detect Supabase tables accessed. The scan sees only literal .from("table") calls in
+  // the route file, so a route whose queries live in a helper declares them in a comment:
+  //   @tables users, other_table
   const tableMatches = [...content.matchAll(/\.from\(["']([a-z_]+)["']\)/g)];
-  const tables = [...new Set(tableMatches.map((m) => m[1]))];
+  const declaredTables = [...content.matchAll(/@tables\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/g)].flatMap((m) =>
+    m[1].split(",").map((t) => t.trim())
+  );
+  const tables = [...new Set([...tableMatches.map((m) => m[1]), ...declaredTables])];
 
   // Derive URL path from filesystem path
   // e.g. src/app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]

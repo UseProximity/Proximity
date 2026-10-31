@@ -1,7 +1,8 @@
-// Ported verbatim from apps/web/src/lib/matchmaking/questionEngine.js. Pure,
-// deterministic question-flow engine with NO supabase/Anthropic/DOM imports,
-// so the exact same optimistic-update logic web uses client-side (before the
-// POST round-trip lands) can drive the mobile chat store too.
+// Mirror of apps/web/src/lib/matchmaking/questionEngine.js (only the import below
+// carries a .js extension). Keep identical to the web copy.
+// Pure, deterministic question-flow engine. NO supabase / Anthropic imports,
+// this module is imported on both the server (chatOrchestrator, route) and the
+// client (ChatClient) so the next question can render instantly with no round-trip.
 import {
   QUESTION_PLAN,
   WEIGHT_MAP,
@@ -17,16 +18,14 @@ export function describeQuestion(question, preferences) {
   const p = preferences ?? {};
   const prompt = question.prompt.replace("{{name}}", p.name || "there");
   const meta = {};
-  if (question.kind === "confirm_or_replace") meta.currentName = p.name || "";
   if (question.kind === "budget_max") meta.maxLabel = question.maxLabel;
   if (question.kind === "month_select") meta.others = question.others ?? [];
   if (question.kind === "open_text") meta.placeholder = question.placeholder ?? "";
-  if (question.kind === "slider") {
-    meta.min = question.min ?? 1;
-    meta.max = question.max ?? 6;
-    meta.plusOnMax = !!question.plusOnMax;
-    meta.unit = question.unit ?? "";
-  }
+  // An option ending in "+" opens a number field instead of submitting the chip
+  // text, so we capture an exact count rather than an open-ended bucket.
+  if (question.expandCount) meta.expandCount = true;
+  // Suppress the automatic "Something else…" escape on closed-set questions.
+  if (question.noOther) meta.noOther = true;
   if (question.allowUnsure) meta.allowUnsure = true;
   // top_priority offers the student's OWN priority picks as its options.
   const options = question.optionsFromPriorities
@@ -78,10 +77,6 @@ export function applyAnswer(preferences, weights, answer) {
     (Array.isArray(value) && value.length === 1 && value[0] === "No preference");
 
   switch (kind) {
-    case "confirm_or_replace":
-      prefs.name = value;
-      prefs._name_confirmed = true;
-      break;
     case "budget_max":
       if (unsure) {
         prefs.budget_max = null;
@@ -105,9 +100,13 @@ export function applyAnswer(preferences, weights, answer) {
         } else {
           prefs.priorities = Array.isArray(value) ? value : [value];
           delete prefs._priorities_unsure;
+          // With a single pick there is nothing to choose between, so we skip the
+          // top_priority question (see isAnswered), but the ranker still wants a
+          // headline anchor, and the one thing they named IS it.
+          if (prefs.priorities.length === 1) prefs.top_priority = prefs.priorities[0];
         }
         // A stale headline anchor (picked earlier, then removed from the
-        // priorities set) must not survive: dropping it re-asks top_priority.
+        // priorities set) must not survive, dropping it re-asks top_priority.
         if (prefs.top_priority && !(prefs.priorities ?? []).includes(prefs.top_priority)) {
           delete prefs.top_priority;
         }
@@ -126,13 +125,6 @@ export function applyAnswer(preferences, weights, answer) {
       break;
     default: // choice, yesno_pref, month_select
       prefs[field] = unsure ? "No preference" : value;
-  }
-
-  // Med students orient around the MEDICAL campus, not the Danforth campus: seed
-  // that proximity target so their very first ranking already accounts for it.
-  if (answer.questionId === "program" && value === "Med") {
-    prefs.proximity_targets = [...new Set([...(prefs.proximity_targets ?? []), "med_campus"])];
-    bumpWeight(w, "walkability", 1);
   }
 
   // "Unsure" answers impose no constraint and add no weight. Everything else is
@@ -160,12 +152,10 @@ export function applyAnswer(preferences, weights, answer) {
 function reconstructAnswer(q, p) {
   const base = { questionId: q.id, field: q.field, kind: q.kind };
   switch (q.id) {
-    case "name_confirm":
-      return { ...base, value: p.name };
     case "budget":
       return { ...base, value: p._budget_unsure ? UNSURE : p.budget_max };
     case "priorities":
-      // Replay the stored set (order carries no meaning under binary weights:
+      // Replay the stored set (order carries no meaning under binary weights,
       // every stated priority rebuilds to weight 1).
       return { ...base, kind: "rank", value: p._priorities_unsure ? UNSURE : p.priorities ?? [] };
     case "extras":
@@ -216,8 +206,8 @@ export function recomputeFromPreferences(preferences) {
     prefs = applied.preferences;
     weights = applied.weights;
   }
-  // proximity_targets isn't driven by a question (it's set by med-year seeding or
-  // a "close to the med campus / groceries" refinement), so carry it forward;
+  // proximity_targets isn't driven by a question (it's set by a "close to the med
+  // campus / groceries" refinement), so carry it forward,
   // otherwise a panel re-rank would silently drop where the student wants to be near.
   if (p.proximity_targets?.length) prefs.proximity_targets = [...p.proximity_targets];
   // Same reasoning for the rejected-listing set: it's set during a refine turn,
@@ -230,8 +220,8 @@ export function recomputeFromPreferences(preferences) {
 // Human-readable rendering of an answer, for the user's chat bubble.
 export function answerToLabel(answer) {
   const { kind, value } = answer;
-  // When the control supplied an explicit display label (e.g. the "Yes, that's
-  // me" name-confirm chip), show that in the bubble rather than the raw value.
+  // When the control supplied an explicit display label, show that in the
+  // bubble rather than the raw value.
   if (answer.label) return answer.label;
   // The UNSURE sentinel must be resolved before any kind-specific rendering, or
   // the raw "__unsure__" string leaks into the bubble (tradeoff hit this).

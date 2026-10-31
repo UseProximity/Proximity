@@ -1,13 +1,18 @@
 // Matchmaking chat state, mirroring apps/web/src/components/matchmaking/ChatClient.js's
 // logic (same optimistic-update flow via the shared questionEngine, same
 // request shapes against apiClient.matchmaking.*) but as a Zustand store
-// instead of component state, and in-memory only: a guest's session can't be
-// resumed server-side anyway (GET /api/matchmaking/chat always returns
-// { session: null } for the shared guest identity), so there's nothing to gain
-// from persisting across an app restart, matching this plan's "in-memory"
-// framing of the port.
+// instead of component state, and in-memory only: the server is the source of truth
+// for a signed-in user's chat (GET /api/matchmaking/chat resumes it), so nothing is
+// persisted across an app restart.
+//
+// Signed out: the website lets a visitor chat anonymously, so the API answers a request
+// with no session with 200 { session: null, anonymous: true } rather than a 401. The app
+// has no anonymous flow; init() treats that answer (and a 401, e.g. an expired token) as
+// "sign in first" by setting needsAuth, without starting a chat.
 import { create } from "zustand";
 import apiClient from "../lib/apiClient";
+import { useAuthStore } from "./authStore";
+import { createTurnQueue } from "../lib/turnQueue";
 import { isNetworkError } from "../lib/apiError";
 import { ERROR_MESSAGES } from "../lib/errorMessages";
 import {
@@ -19,13 +24,19 @@ import {
   QUESTION_BY_ID,
 } from "@proximity/shared";
 
+// Bumped by reset() whenever the auth identity changes. init() and startFresh() remember
+// the value they started under and drop their result if it has moved on, so a slow
+// request from the previous identity cannot overwrite the newer state.
+let epoch = 0;
+
 // Serializes every POST so a fast double-tap can never let the server see
-// out-of-order writes (mirrors ChatClient's postChain ref).
-let postChain = Promise.resolve();
-function enqueue(task) {
-  postChain = postChain.then(task, task);
-  return postChain;
-}
+// out-of-order writes (mirrors ChatClient's postChain ref). See lib/turnQueue.js for how
+// a task from a previous identity is skipped or told it is stale.
+const enqueue = createTurnQueue({
+  getEpoch: () => epoch,
+  isSignedIn: () => Boolean(useAuthStore.getState().user?.id),
+  onSignedOut: () => useChatStore.setState({ needsAuth: true, loading: false }),
+});
 
 function questionToMessage(q, animate = false) {
   return { role: "assistant", content: q.prompt, ts: new Date().toISOString(), question: q, animate };
@@ -35,6 +46,57 @@ function questionToMessage(q, animate = false) {
 // numbered tradeoffs) distinct. Also keys the answer controls, so each question
 // starts with fresh local state.
 export const qKey = (q) => (q ? `${q.id}:${q.meta?.stepKey ?? ""}` : "");
+
+// Proxy's standalone remark (data.note) shown just before the next question, as its own
+// bubble so it never gets mixed into the question text.
+function noteMessage(note) {
+  return { role: "assistant", content: note, ts: new Date().toISOString(), animate: true };
+}
+
+// Appends the question a response asks next, with its note ahead of it. Does nothing when
+// that question is already the latest message (the optimistic local copy).
+function withNextQuestion(messages, data) {
+  if (qKey(messages[messages.length - 1]?.question) === qKey(data.nextQuestion)) return messages;
+  return [
+    ...messages,
+    ...(data.note ? [noteMessage(data.note)] : []),
+    questionToMessage(data.nextQuestion, true),
+  ];
+}
+
+// A mid-script answer shows its next question from the local script straight away, so a
+// note on the server's reply (e.g. the big-group heads-up) is slotted in before that
+// question when it arrives.
+function withNoteBeforeQuestion(messages, data) {
+  if (!data.note || !data.nextQuestion) return messages;
+  if (messages.some((m) => m.role === "assistant" && m.content === data.note)) return messages;
+  const at = messages.map((m) => qKey(m.question)).lastIndexOf(qKey(data.nextQuestion));
+  if (at < 0) return messages;
+  return [...messages.slice(0, at), noteMessage(data.note), ...messages.slice(at)];
+}
+
+// Says so when a turn fails, instead of leaving the student waiting for a reply that is
+// not coming. `retryQuestion` is the question the failed turn consumed: it is asked again
+// after the message so the answer controls come back. Without one, a question that is
+// already the latest message stays last, so it keeps its controls.
+function reportTurnFailure(retryQuestion) {
+  const failure = {
+    role: "assistant",
+    content: ERROR_MESSAGES.MATCHMAKING.TURN,
+    ts: new Date().toISOString(),
+    animate: true,
+  };
+  useChatStore.setState((state) => {
+    const last = state.messages[state.messages.length - 1];
+    if (retryQuestion) return { messages: [...state.messages, failure, questionToMessage(retryQuestion, false)] };
+    if (last?.question) return { messages: [...state.messages.slice(0, -1), failure, last] };
+    return { messages: [...state.messages, failure] };
+  });
+}
+
+// A saved question the current script can still ask as it was saved. Server-written
+// tradeoff questions (the narrowing and commute turns) are not in the script.
+const isCurrentQuestion = (q) => q.kind === "tradeoff" || QUESTION_BY_ID[q.id]?.kind === q.kind;
 
 function inlineRecsMessage(data) {
   return {
@@ -92,8 +154,17 @@ export const useChatStore = create((set, get) => ({
   init: async () => {
     if (get().isInitialized) return;
     set({ loading: true, isInitialized: true });
+    const startedIn = epoch;
     try {
-      const { session } = await apiClient.matchmaking.getSession();
+      const { session, anonymous } = await apiClient.matchmaking.getSession();
+      if (startedIn !== epoch) return;
+      // A request with no session is answered as an anonymous website visitor, not a
+      // 401 (see GET /api/matchmaking/chat). The app has no anonymous flow, so this is
+      // the same "sign in first" outcome, reached before any chat is started.
+      if (anonymous) {
+        set({ needsAuth: true, loading: false });
+        return;
+      }
       if (session) {
         const serverMessages = (session.transcript ?? []).map((m) => ({
           role: m.role,
@@ -109,7 +180,13 @@ export const useChatStore = create((set, get) => ({
           session.status !== "recommendations_ready" &&
           serverMessages.length > 0 &&
           !serverMessages.some((m) => m.question);
-        if (isStaleOldChat) {
+        // A session saved under an older script can be waiting on a question that no longer
+        // exists (name_confirm, program, grad_year) or changed shape (lease_term was
+        // multi-select), which the app cannot render or the server cannot take. Restart too.
+        const pendingQuestion = serverMessages[serverMessages.length - 1]?.question;
+        const isStaleScript =
+          session.status !== "recommendations_ready" && pendingQuestion && !isCurrentQuestion(pendingQuestion);
+        if (isStaleOldChat || isStaleScript) {
           await get().startFresh();
           return;
         }
@@ -142,6 +219,7 @@ export const useChatStore = create((set, get) => ({
         await get().startFresh();
       }
     } catch (err) {
+      if (startedIn !== epoch) return;
       if (err?.status === 401) {
         set({ needsAuth: true, loading: false });
         return;
@@ -155,9 +233,18 @@ export const useChatStore = create((set, get) => ({
   },
 
   startFresh: async () => {
+    // Every way into a new chat passes here (init, and startOver from the error-state
+    // refresh), so this is where a signed-out user is stopped: the app has no anonymous
+    // flow, and the server would otherwise mint a visitor session for the request.
+    if (!useAuthStore.getState().user?.id) {
+      set({ needsAuth: true, loading: false });
+      return;
+    }
     set({ loading: true, error: null });
+    const startedIn = epoch;
     try {
       const data = await apiClient.matchmaking.sendTurn({ message: "" });
+      if (startedIn !== epoch) return;
       set({
         sessionId: data.sessionId,
         preferences: data.preferences ?? {},
@@ -172,6 +259,7 @@ export const useChatStore = create((set, get) => ({
         loading: false,
       });
     } catch (err) {
+      if (startedIn !== epoch) return;
       if (err?.status === 401) {
         set({ needsAuth: true, loading: false });
         return;
@@ -192,6 +280,7 @@ export const useChatStore = create((set, get) => ({
   // Leaves isInitialized false so a subsequent init() actually runs its auth
   // check instead of no-op'ing on stale state from a previous session.
   reset: () => {
+    epoch += 1;
     set({ ...initialState });
   },
 
@@ -234,10 +323,13 @@ export const useChatStore = create((set, get) => ({
     });
 
     const finalizing = !upcoming;
+    // The question this answer consumed; asked again if the final turn fails.
+    const retryQuestion = finalizing ? get().messages.findLast((m) => m.question)?.question : null;
     const snapshot = { preferences: applied.preferences, weights: applied.weights };
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({ sessionId, answer, ...snapshot });
+        if (isStale()) return;
         if (finalizing) {
           set({
             preferences: data.preferences ?? get().preferences,
@@ -246,39 +338,42 @@ export const useChatStore = create((set, get) => ({
             status: data.status ?? get().status,
           });
           if (data.nextQuestion) {
-            set((state) =>
-              qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-                ? {}
-                : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-            );
+            set((state) => ({ messages: withNextQuestion(state.messages, data) }));
           } else if (data.recommendations?.length) {
             get()._appendRecsWithContact(data);
           }
-        } else if (data.recommendations || data.status) {
-          set({
-            recommendations: data.recommendations ?? get().recommendations,
-            status: data.status ?? get().status,
-          });
+        } else {
+          if (data.recommendations || data.status) {
+            set({
+              recommendations: data.recommendations ?? get().recommendations,
+              status: data.status ?? get().status,
+            });
+          }
+          if (data.note) set((state) => ({ messages: withNoteBeforeQuestion(state.messages, data) }));
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] answerQuestion failed:", err);
+        reportTurnFailure(retryQuestion);
       } finally {
-        if (finalizing) set({ loading: false });
+        if (finalizing && !isStale()) set({ loading: false });
       }
     });
   },
 
   _answerTradeoff: (answer) => {
     const { sessionId, preferences, weights } = get();
+    // The tradeoff question this answer consumed; asked again if the turn fails.
+    const retryQuestion = get().messages.findLast((m) => m.question)?.question;
     set((state) => ({
       messages: [...state.messages, { role: "user", content: answerToLabel(answer), ts: new Date().toISOString() }],
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({
           sessionId,
@@ -286,6 +381,7 @@ export const useChatStore = create((set, get) => ({
           preferences,
           weights,
         });
+        if (isStale()) return;
         set({
           recommendations: data.recommendations ?? get().recommendations,
           status: data.status ?? get().status,
@@ -293,22 +389,20 @@ export const useChatStore = create((set, get) => ({
           weights: data.weights ?? get().weights,
         });
         if (data.nextQuestion) {
-          set((state) =>
-            qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-              ? {}
-              : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-          );
+          set((state) => ({ messages: withNextQuestion(state.messages, data) }));
         } else if (data.recommendations?.length) {
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] tradeoff failed:", err);
+        reportTurnFailure(retryQuestion);
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -381,9 +475,10 @@ export const useChatStore = create((set, get) => ({
       ),
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.contactOwners({ sessionId, listingIds, message, selectionLabel });
+        if (isStale()) return;
         set((state) => ({
           messages: [
             ...state.messages,
@@ -396,6 +491,7 @@ export const useChatStore = create((set, get) => ({
           ],
         }));
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
@@ -408,7 +504,7 @@ export const useChatStore = create((set, get) => ({
           ],
         }));
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -421,9 +517,10 @@ export const useChatStore = create((set, get) => ({
       messages: [...state.messages, { role: "user", content: text, ts: new Date().toISOString() }],
       loading: true,
     }));
-    enqueue(async () => {
+    enqueue(async (isStale) => {
       try {
         const data = await apiClient.matchmaking.sendTurn({ sessionId, message: text, preferences, weights });
+        if (isStale()) return;
         set({
           recommendations: data.recommendations ?? get().recommendations,
           status: data.status ?? get().status,
@@ -431,7 +528,34 @@ export const useChatStore = create((set, get) => ({
           weights: data.weights ?? get().weights,
         });
         if (data.mode === "agent") {
-          if (data.reranked && data.recommendations?.length) {
+          if (data.pendingRelax) {
+            // The re-rank found nothing new: this reply only announces that the search is
+            // being widened. Run the widening turn now (the typing row stays up meanwhile).
+            set((state) => ({
+              messages: [
+                ...state.messages,
+                { role: "assistant", content: data.assistantMessage, ts: new Date().toISOString(), animate: true },
+              ],
+            }));
+            const widened = await apiClient.matchmaking.relaxRetry({ sessionId });
+            if (isStale()) return;
+            set({
+              recommendations: widened.recommendations ?? get().recommendations,
+              status: widened.status ?? get().status,
+              preferences: widened.preferences ?? get().preferences,
+              weights: widened.weights ?? get().weights,
+            });
+            if (widened.reranked && widened.recommendations?.length) {
+              get()._appendRecsWithContact(widened);
+            } else if (widened.assistantMessage) {
+              set((state) => ({
+                messages: [
+                  ...state.messages,
+                  { role: "assistant", content: widened.assistantMessage, ts: new Date().toISOString(), animate: true },
+                ],
+              }));
+            }
+          } else if (data.reranked && data.recommendations?.length) {
             get()._appendRecsWithContact(data);
           } else if (data.draft?.listingIds?.length) {
             set((state) => ({
@@ -452,22 +576,20 @@ export const useChatStore = create((set, get) => ({
             }));
           }
         } else if (data.nextQuestion) {
-          set((state) =>
-            qKey(state.messages[state.messages.length - 1]?.question) === qKey(data.nextQuestion)
-              ? {}
-              : { messages: [...state.messages, questionToMessage(data.nextQuestion, true)] }
-          );
+          set((state) => ({ messages: withNextQuestion(state.messages, data) }));
         } else if (data.recommendations?.length) {
           get()._appendRecsWithContact(data);
         }
       } catch (err) {
+        if (isStale()) return;
         if (err?.status === 401) {
           set({ needsAuth: true, loading: false });
           return;
         }
         console.error("[chatStore] sendMessage failed:", err);
+        reportTurnFailure(null);
       } finally {
-        set({ loading: false });
+        if (!isStale()) set({ loading: false });
       }
     });
   },
@@ -475,6 +597,9 @@ export const useChatStore = create((set, get) => ({
   // Edit a past answer: rewind prefs/weights to before that question, truncate
   // the transcript back to it, and re-ask it. The user continues forward from there.
   editAnswer: (questionId) => {
+    // Answers from an older script or the narrowing turns ("tradeoff") have no question
+    // in the script to re-ask.
+    if (!QUESTION_BY_ID[questionId]) return;
     const { preferences, sessionId } = get();
     const rewound = rewindTo(preferences, questionId);
 
@@ -484,10 +609,11 @@ export const useChatStore = create((set, get) => ({
       const descriptor = describeQuestion(QUESTION_BY_ID[questionId], rewound.preferences);
       const truncated = [...head, questionToMessage(descriptor, false)];
 
-      enqueue(() =>
+      enqueue((isStale) =>
         apiClient.matchmaking
           .rewind({ sessionId, transcript: truncated, preferences: rewound.preferences, weights: rewound.weights })
           .catch((err) => {
+            if (isStale()) return;
             if (err?.status === 401) {
               set({ needsAuth: true });
               return;
@@ -506,3 +632,13 @@ export const useChatStore = create((set, get) => ({
     });
   },
 }));
+
+// A different signed-in identity (sign out, sign in, or a direct switch) ends everything
+// still queued or in flight for the previous one, and clears its chat, at once and whether
+// or not the matchmaking screen has re-run its effect yet (it holds back while the new user
+// has not agreed to AI consent, and must not be left showing the old one's state or a
+// stuck spinner). Token refreshes and profile edits keep the same id, so they change
+// nothing. The screen's reinit() still restarts the chat once it is allowed to.
+useAuthStore.subscribe((state, previous) => {
+  if (state.user?.id !== previous.user?.id) useChatStore.getState().reset();
+});

@@ -22,6 +22,11 @@ export const ERROR_MESSAGES = {
     RESEND_VERIFICATION: "Couldn't send the verification email. Please try again.",
     RESEND_EMAIL: "Couldn't resend the email. Please try again.",
     RESET_EMAIL: "Couldn't send the reset email. Please try again.",
+    RESET_PASSWORD: "Couldn't reset your password. Please try again.",
+    RESET_LINK_INVALID: "This reset link is invalid or has expired. Request a new one.",
+    VERIFY_EMAIL: "Couldn't verify your email. Please try again.",
+    VERIFY_LINK_INVALID:
+      "This verification link is invalid or has expired. If you already verified your email, sign in. Otherwise sign in to request a new link.",
     INVALID_CREDENTIALS: "Incorrect email or password.",
     EMAIL_NOT_VERIFIED: "Verify your email before signing in.",
     APPLE_EMAIL_NOT_VERIFIED:
@@ -69,6 +74,8 @@ export const ERROR_MESSAGES = {
     FAVORITE: "Couldn't update your saved listings. Please try again.",
     MESSAGE_SEND: "Couldn't send your message. Please try again.",
     REPORT_REVIEW: "Couldn't send your report. Please try again.",
+    REPORT_LISTING: "Couldn't send your report. Please try again.",
+    REPORT_OWN_LISTING: "You can't report your own listing.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
@@ -140,6 +147,10 @@ export const ERROR_MESSAGES = {
     FILE_NAME_LONG: "A file name is too long. Rename the file and try again.",
     RATE_LIMIT: "You're sending messages too quickly. Please wait a moment and try again.",
     NOT_FOUND: "This conversation couldn't be found.",
+    // Landlord's held email replies (HeldRepliesBanner).
+    REPLY_DECIDE: "Something went wrong. Please try again.",
+    REPLY_REMOVE: "Couldn't remove that sender. Please try again.",
+    REPLY_NOT_WAITING: "That reply is no longer waiting. It may already have been handled.",
     BLOCK: "Couldn't block this user. Please try again.",
     REPORT: "Couldn't send your report. Please try again.",
     REPORT_OWN: "You can't report your own message.",
@@ -177,6 +188,7 @@ export const ERROR_MESSAGES = {
     LISTING_LOAD: "Couldn't load this listing.",
     // Said by Proxy in the conversation, in its own voice.
     CONTACT: "I couldn't reach out just now, please try again in a bit.",
+    TURN: "I couldn't get that through just now, please try again in a bit.",
   },
 };
 
@@ -196,9 +208,9 @@ export const SERVER_ERRORS = {
   TOKEN_EXPIRED: E.AUTH.SESSION_EXPIRED,
   EMAIL_EXISTS: E.AUTH.EMAIL_EXISTS,
   GOOGLE_ACCOUNT: E.AUTH.GOOGLE_ACCOUNT,
-  SET_PASSWORD_EMAILED: E.AUTH.SET_PASSWORD_EMAILED,
   MISSING_FIELDS: E.AUTH.FIELDS_REQUIRED,
   // Sign up and password reset.
+  SET_PASSWORD_EMAILED: E.AUTH.SET_PASSWORD_EMAILED,
   "An account with this email already exists.": E.AUTH.EMAIL_EXISTS,
   "This email is linked to an Apple account. Please sign in with Apple.": E.AUTH.APPLE_ACCOUNT,
   "This email uses Google sign-in. Please continue with Google.": E.AUTH.GOOGLE_ACCOUNT,
@@ -208,6 +220,9 @@ export const SERVER_ERRORS = {
   "Email is required.": E.AUTH.EMAIL_INVALID,
   "Name is required.": E.AUTH.NAME_REQUIRED,
   "Password must be at least 8 characters.": E.AUTH.PASSWORD_SHORT,
+  // Password reset and email verification links.
+  "Reset link is invalid or has expired.": E.AUTH.RESET_LINK_INVALID,
+  "Verification link is invalid or has expired.": E.AUTH.VERIFY_LINK_INVALID,
   // Change password.
   "Current password is incorrect": E.PROFILE.CURRENT_PASSWORD_INCORRECT,
   "New password must be at least 8 characters": E.PROFILE.NEW_PASSWORD_SHORT,
@@ -232,6 +247,7 @@ export const SERVER_ERRORS = {
   "Choose a reason for your report": E.CHAT.REPORT_REASON,
   "You have sent a lot of messages in a short time. Try again shortly.": E.CHAT.RATE_LIMIT,
   [E.CHAT.UNAVAILABLE]: E.CHAT.UNAVAILABLE,
+  "That reply is no longer waiting": E.CHAT.REPLY_NOT_WAITING,
   // Answers to the chat send, start and attachment routes.
   PASSWORD_REQUIRED: E.CHAT.PASSWORD_REQUIRED, // body.code, not text
   "listing not found": E.LISTINGS.NOT_FOUND,
@@ -253,6 +269,7 @@ export const SERVER_ERRORS = {
   "You have a lease at this property but don't own the property record, so you can't edit it. Edit your own lease instead.":
     E.LISTINGS.NOT_OWNER,
   "You can't report your own review": E.LISTINGS.REPORT_OWN_REVIEW,
+  "You can't report your own listing": E.LISTINGS.REPORT_OWN_LISTING,
   "Review not found": E.LISTINGS.REVIEW_NOT_FOUND,
   "You can't block yourself": E.LISTINGS.BLOCK_SELF,
   "This reviewer can't be blocked": E.LISTINGS.BLOCK_UNAVAILABLE,

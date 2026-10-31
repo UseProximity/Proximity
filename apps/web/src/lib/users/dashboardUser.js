@@ -508,6 +508,9 @@ export async function buildDashboardUser({ email, id } = {}) {
     _id: user.id?.toString(),
     // Prefer camelCase for clients; snake_case remains via the spread above.
     emailNotifications: user.email_notifications !== false,
+    // The student's move-in month and lease length (see /api/account/lease-preferences).
+    preferredMoveInDate: user.preferred_move_in_date ?? null,
+    preferredLeaseMonths: user.preferred_lease_months ?? null,
     favorites: safeFavorites,
     favoritesIds: safeFavoritesIds,
     listings: safeListings,
