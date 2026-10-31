@@ -5,7 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
-import { markLandlordSet } from "@/lib/agents/coreWrites";
+import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
 
 /*
  * Manage ONE lease — the counterpart to the property-level routes under
@@ -111,6 +111,9 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
+  const leaseProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));
+  const old = await coreValuesBefore({ target: "lease", id: leaseId, fields: leaseProtected });
+
   const { error } = await supabase
     .from("unit_leases")
     .update(patch)
@@ -126,9 +129,8 @@ export async function PATCH(req, { params }) {
 
   // A dashboard edit after launch is landlord-set: a website sync holds
   // changes to this lease for the landlord instead of applying them.
-  const protectedFields = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));
-  if (Object.keys(protectedFields).length && check.listingId) {
-    markLandlordSet({ listingId: check.listingId, target: "lease", id: leaseId, fields: protectedFields, userId: session.user.id, cause: "dashboard" }).catch(() => {});
+  if (Object.keys(leaseProtected).length && check.listingId) {
+    markLandlordSet({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, cause: "dashboard" }).catch(() => {});
   }
 
   // A changed contact address only receives message alerts once confirmed.
