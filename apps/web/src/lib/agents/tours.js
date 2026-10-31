@@ -22,7 +22,7 @@
  * reminded the day before a confirmed tour.
  */
 import supabase from "@/lib/supabase";
-import { postProxyMessage, postMessage } from "./threads";
+import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
 import { shortDate } from "./sections";
 import {
   notifyTourRequested, notifyTourProposed, notifyTourConfirmed, notifyTourCancelled, notifyTourReminder, notifyTourNoAnswer, nameShown,
@@ -120,9 +120,31 @@ async function postAvailability({ t, listingId, proxyThreadId, studentId, clean,
     metadata: { tourId: t.id } });
 }
 
+/*
+ * The ids a tour request names come from the browser, so both are checked
+ * against the listing (PR #365 review): the lease must be one of this
+ * listing's, and the thread must be this student's own Proxy conversation
+ * about this listing (a visitor's thread is claimed when they sign in and
+ * open the chat, before they can book).
+ */
+async function leaseOnListing(leaseId, listingId) {
+  const { data } = await supabase.from("unit_leases").select("id, listing_units!unit_id(listing_id)").eq("id", leaseId).maybeSingle();
+  return data?.listing_units?.listing_id === listingId;
+}
+
+async function studentProxyThread(threadId, listingId, studentId) {
+  const typeId = await proxyThreadTypeId();
+  const { data } = await supabase.from("chat_threads").select("id, listing_id, interested_user_id, thread_type_id, deleted_at").eq("id", threadId).maybeSingle();
+  return !!data && !data.deleted_at && data.thread_type_id === typeId && data.listing_id === listingId && data.interested_user_id === studentId;
+}
+
 export async function requestTour({ listingId, leaseId = null, studentId, slots, proxyThreadId = null }) {
   const clean = validSlots(slots);
   if (!clean.length) return { error: "Pick at least one time that works for you.", status: 400 };
+  if (leaseId && !(await leaseOnListing(leaseId, listingId))) return { error: "That lease is not on this listing.", status: 400 };
+  if (proxyThreadId && !(await studentProxyThread(proxyThreadId, listingId, studentId))) {
+    return { error: "That conversation is not yours.", status: 403 };
+  }
   const { data: owned } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", studentId).limit(1);
   if (owned?.length) return { error: "You cannot book a tour of your own listing.", status: 400 };
   const landlordId = await resolveLandlord({ listingId, leaseId });
