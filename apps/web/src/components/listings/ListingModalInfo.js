@@ -77,7 +77,10 @@ function scrollIntoContainer(el) {
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
+// Pricing leads and a listing opens on it: price is the first thing a student
+// asks (Wyatt, 2026-10-31).
 const TABS = [
+  { id: "pricing", label: "Pricing" },
   { id: "amenities", label: "Overview" },
   { id: "map", label: "Map" },
   { id: "places", label: "Places" },
@@ -1499,10 +1502,10 @@ export default function ListingModalInfo({
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [activeTab, setActiveTab] = useState("amenities");
+  const [activeTab, setActiveTab] = useState("pricing");
 
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
-  // param so a reload or a shared link opens on Overview as usual.
+  // param so a reload or a shared link opens on Pricing as usual.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("listingTab");
@@ -2140,38 +2143,6 @@ export default function ListingModalInfo({
               </div>
             </div>
 
-            {/* ── Leases ── "I want a [beds] for [length] starting [month]",
-                then every matching lease under its floor plan (Wyatt,
-                2026-10-30). Replaced the unit tabs. */}
-            {sortedUnits.length > 0 && (
-              <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
-                {!leasesLoading && hasLeases && (
-                  <div className="px-4 py-3">
-                    <LeasePrefsControls
-                      value={leaseView.prefs}
-                      choices={leaseView.choices}
-                      only={leaseView.only}
-                      count={matchingLeases.length}
-                      sort={leaseView.sort}
-                      sorts={leaseView.sorts}
-                      onSort={leaseView.setSort}
-                      onChange={leaseView.setPrefs}
-                      onClear={leaseView.clear}
-                    />
-                  </div>
-                )}
-                <LeaseOptions
-                  groups={leaseView.groups}
-                  prefs={leaseView.prefs}
-                  sort={leaseView.sort}
-                  loading={leasesLoading}
-                  empty={!hasLeases}
-                  onContact={handleContactLease}
-                  onFloorPlan={setFloorPlanUnit}
-                />
-              </div>
-            )}
-
             {/* ── Sticky Tab Bar ── */}
             <div
               id="listing-tabs"
@@ -2270,6 +2241,39 @@ export default function ListingModalInfo({
                 compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"
               }`}
             >
+              {/* "I want a [beds] for [length] starting [month]", then every
+                  matching lease as landlord, floor plan, lease (Wyatt,
+                  2026-10-30). Its own tab since 2026-10-31. */}
+              {activeTab === "pricing" && (
+                <div>
+                  {!leasesLoading && hasLeases && (
+                    <div className="pb-3">
+                      <LeasePrefsControls
+                        value={leaseView.prefs}
+                        choices={leaseView.choices}
+                        only={leaseView.only}
+                        count={matchingLeases.length}
+                        sort={leaseView.sort}
+                        sorts={leaseView.sorts}
+                        onSort={leaseView.setSort}
+                        onChange={leaseView.setPrefs}
+                        onClear={leaseView.clear}
+                      />
+                    </div>
+                  )}
+                  <div className="-mx-4">
+                    <LeaseOptions
+                      groups={leaseView.groups}
+                      prefs={leaseView.prefs}
+                      sort={leaseView.sort}
+                      loading={leasesLoading}
+                      empty={!hasLeases}
+                      onContact={handleContactLease}
+                      onFloorPlan={setFloorPlanUnit}
+                    />
+                  </div>
+                </div>
+              )}
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (
