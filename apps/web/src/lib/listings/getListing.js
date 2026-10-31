@@ -27,6 +27,8 @@ import {
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
 import { sortUnits } from "@/utils/unitOrder";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -126,7 +128,8 @@ export function landlordKeyer() {
  * Contact falls back to the listing row because pre-migration leases carry the
  * property-level contact; once a lease has its own, that wins.
  */
-export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
+export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), bedrooms = null) {
+  const roomShare = isRoomShareListing(listingRow);
   return (unitLeases ?? [])
     .filter(isLiveLease)
     .map((l) => ({
@@ -138,6 +141,15 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
       rent: Number(l.rent) > 0 ? Number(l.rent) : null,
       // null = the landlord never said; rentBasis falls back to inference.
       rentIsPerPerson: l.rent_is_per_person ?? null,
+      /*
+       * The whole apartment's monthly rent, for ranking only: per-person and
+       * whole-unit prices can't be compared as stated (Wyatt, 2026-10-31).
+       * Never shown; the renter sees `rent` as the landlord set it.
+       */
+      unitRent:
+        Number(l.rent) > 0
+          ? leaseRentBasis({ rent: l.rent, rent_is_per_person: l.rent_is_per_person, bedrooms }, roomShare)?.unitRent ?? null
+          : null,
       sublease: !!l.sublease,
       furnished: l.furnished ?? null,
       description: l.description ?? null,
@@ -229,7 +241,7 @@ function buildListing(row, owner = null, reviews = []) {
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,
       // filters, matchmaking) keep working unchanged.
-      const leases = shapeLeases(u.unit_leases, row, keyFor);
+      const leases = shapeLeases(u.unit_leases, row, keyFor, u.bedrooms);
       return {
         id: u.id,
         // The photos tagged with this unit, in gallery order.

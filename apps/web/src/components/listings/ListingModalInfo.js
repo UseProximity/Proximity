@@ -13,7 +13,6 @@ import {
   Car,
   FileText,
   Star,
-  LayoutGrid,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -21,7 +20,7 @@ import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
-import LeaseOptions, { useUnitLeasePrefs } from "@/components/listings/LeaseOptions";
+import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
@@ -55,6 +54,14 @@ function defaultListingInquiry(ownerName) {
     : "Hi, I'm interested in this listing.";
 }
 
+// The nearest ancestor that scrolls vertically, or null when the window does.
+// Shared with ListDetailPanel so both find the same container.
+export function scrollParent(el) {
+  let root = el?.parentElement;
+  while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
+  return root ?? null;
+}
+
 // Scroll `el` into view within its nearest scrollable ancestor; falls back to
 // window-level scrollIntoView so it works in both modals and full-page views.
 function scrollIntoContainer(el) {
@@ -78,13 +85,20 @@ function scrollIntoContainer(el) {
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
+// Pricing leads and a listing opens on it: price is the first thing a student
+// asks (Wyatt, 2026-10-31).
 const TABS = [
+  { id: "pricing", label: "Pricing" },
   { id: "amenities", label: "Overview" },
   { id: "map", label: "Map" },
   { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
   { id: "contact", label: "Contact" },
 ];
+
+// How far back down the sticky header has to come before it grows again. More
+// than the ~50px compacting takes off, so the two can't chase each other.
+const HEAD_UNSTICK = 72;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1310,31 +1324,6 @@ function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-/*
- * "View floor plan", beside the unit's beds and baths.
- *
- * Renders nothing when the unit has no plan, which is most of them — an
- * always-present link to a missing diagram is worse than no link. The plan
- * opens in place rather than navigating away, with the original a click further
- * on for anyone who wants to keep it.
- */
-function FloorPlanLink({ url, onOpen, separator = true }) {
-  if (!url) return null;
-  return (
-    <>
-      {separator && <span className="mx-1.5 text-gray-300">·</span>}
-      <button
-        type="button"
-        onClick={onOpen}
-        className="inline-flex items-center gap-1 text-gray-500 underline-offset-2 transition hover:text-gray-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-      >
-        <LayoutGrid className="h-3 w-3" />
-        View floor plan
-      </button>
-    </>
-  );
-}
-
 function FloorPlanViewer({ url, unitName, onClose }) {
   return (
     <div
@@ -1407,53 +1396,24 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
         <div className="animate-pulse">
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
-            className={`flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+            className={`flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
-            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%] rounded-tl-xl rounded-tr-xl md:rounded-tr-none md:rounded-bl-xl" />
-            <div className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]">
-              <div className="flex-1 bg-gray-200 rounded-tr-xl" />
-              <div className="flex-1 bg-gray-200 rounded-br-xl" />
+            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
+            <div className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]">
+              <div className="flex-1 bg-gray-200" />
+              <div className="flex-1 bg-gray-200" />
             </div>
           </div>
 
-          {/* Header card: address on the left, rating on the right */}
-          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          {/* Title: flat and edge to edge, name over address, rating right. */}
+          <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div className="w-full md:w-auto">
-              <Bar className="h-6 w-56 max-w-full" />
-              <Bar className="h-4 w-40 max-w-full mt-2" />
+              <Bar className="h-7 w-64 max-w-full" />
+              <Bar className="h-4 w-48 max-w-full mt-2" />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Bar className="h-8 w-8 rounded-full" />
-              <Bar className="h-6 w-16" />
-            </div>
-          </div>
-
-          {/* Unit selector: tab strip, unit identity, then the lease rows */}
-          <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
-            <div className="flex w-full">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex-1 px-3 py-2.5 border-b-2 border-gray-100">
-                  <Bar className="h-4 w-full" />
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-gray-100 px-4 pt-3 pb-1">
-              <Bar className="h-4 w-32" />
-              <Bar className="h-3 w-48 max-w-full mt-1.5" />
-            </div>
-            <div className="divide-y divide-gray-100">
-              {[0, 1].map((i) => (
-                <div key={i} className="flex items-center justify-between gap-4 px-4 py-4">
-                  <div className="flex-1">
-                    <Bar className="h-4 w-28" />
-                    <Bar className="h-3 w-40 max-w-full mt-2" />
-                  </div>
-                  <Bar className="h-8 w-24 rounded-lg shrink-0" />
-                </div>
-              ))}
-            </div>
+            <Bar className="h-5 w-24 shrink-0" />
           </div>
 
           {/* Tab strip */}
@@ -1471,21 +1431,37 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </nav>
           </div>
 
-          {/* Tab body: white edge to edge, like the loaded page. */}
-          <div className="-mx-4 -mb-8 min-h-[60vh] space-y-6 bg-white px-10 py-6">
-            <div className="space-y-3">
-              <Bar className="h-5 w-40" />
-              <Bar className="h-3 w-full" />
-              <Bar className="h-3 w-full" />
-              <Bar className="h-3 w-2/3" />
+          {/* Pricing, the tab a listing opens on: the "I want" sentence, one
+              landlord, a floor plan and its leases. */}
+          <div className="-mx-4 -mb-8 min-h-[60vh] bg-white px-10 py-6">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <Bar className="h-4 w-12" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-4 w-6" />
+              <Bar className="h-7 w-28 rounded-lg" />
+              <Bar className="h-4 w-14" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-7 w-36 rounded-lg sm:ml-auto" />
             </div>
-            <div>
-              <Bar className="h-5 w-32 mb-4" />
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Bar className="h-5 w-5 rounded-full shrink-0" />
-                    <Bar className="h-3 flex-1" />
+            <div className="border-t border-gray-100 py-3">
+              <div className="flex items-center gap-3">
+                <Bar className="h-9 w-9 rounded-full shrink-0" />
+                <div className="flex-1">
+                  <Bar className="h-4 w-32" />
+                  <Bar className="h-3 w-52 max-w-full mt-1.5" />
+                </div>
+                <Bar className="h-8 w-24 sm:w-[130px] rounded-lg shrink-0" />
+              </div>
+              <Bar className="h-3 w-48 max-w-full mt-4" />
+              <div className="mt-1 divide-y divide-gray-100 pl-2 sm:pl-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-3">
+                    {Array.from({ length: 4 }).map((__, j) => (
+                      <div key={j}>
+                        <Bar className="h-2.5 w-12" />
+                        <Bar className="h-4 w-20 mt-1.5" />
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -1514,6 +1490,8 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  // Called with true/false as the title and tabs stick to the top and let go.
+  onHeadStuck = null,
   /*
    * The owner looking at their own listing through the dashboard's "View as
    * Student" (GlobalListingModal with ?preview=1). Everything renders as a
@@ -1525,10 +1503,43 @@ export default function ListingModalInfo({
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [activeTab, setActiveTab] = useState("amenities");
+  const [activeTab, setActiveTab] = useState("pricing");
+
+  /*
+   * True once the header has stuck to the top: the sentinel just above it has
+   * scrolled up out of the panel or modal it scrolls in. Compacting takes about
+   * 50px off the header, which moves everything under it, so growing back
+   * waits until the sentinel is HEAD_UNSTICK px back in view. Without that gap
+   * the shrink and the browser's scroll correction fed each other and the
+   * header twitched at the line (Wyatt, 2026-10-31).
+   */
+  const headSentinelRef = useRef(null);
+  const [headStuck, setHeadStuck] = useState(false);
+  // The browse panel's sliding pills follow the same stuck state (one listener).
+  const onHeadStuckRef = useRef(onHeadStuck);
+  onHeadStuckRef.current = onHeadStuck;
+  useEffect(() => {
+    const el = headSentinelRef.current;
+    if (!el) return;
+    const root = scrollParent(el);
+    const target = root ?? window;
+    let stuck = false;
+    const onScroll = () => {
+      const top = root ? root.getBoundingClientRect().top : 0;
+      const dist = el.getBoundingClientRect().top - top;
+      if (!stuck && dist < 0) stuck = true;
+      else if (stuck && dist > HEAD_UNSTICK) stuck = false;
+      else return;
+      setHeadStuck(stuck);
+      onHeadStuckRef.current?.(stuck);
+    };
+    onScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [detailLoading]);
 
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
-  // param so a reload or a shared link opens on Overview as usual.
+  // param so a reload or a shared link opens on Pricing as usual.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("listingTab");
@@ -1599,121 +1610,59 @@ export default function ListingModalInfo({
     if (img?.complete && img.naturalWidth > 0) setHeroImageLoaded(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Unit selector — sorted ascending by beds, then baths, then disambiguation index
-  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
-  const [floorPlanOpen, setFloorPlanOpen] = useState(false);
-
-  // sortedUnits: [{origIdx, label}] in the landlord's order (see utils/unitOrder),
-  // falling back to beds then baths for units never placed, then dup number.
-  // Studios (0 beds) are labelled "Studio".
-  const sortedUnits = useMemo(() => {
-    const units = (listing.unitTypes ?? []).filter(
-      (u) => u.available !== false
-    );
-    const isStudio = (u) => (u.bedrooms ?? 0) === 0;
-
-    /*
-     * No deduplication. Two units that look identical are two apartments: a
-     * building with ten matching studios has ten of them, and each carries its
-     * own offering from possibly a different landlord.
-     *
-     * This used to collapse units matching on beds, baths, rent and area, which
-     * was written when a "unit" meant a floor-plan type. Under the property →
-     * unit → lease model it hid real inventory — and would have hidden one
-     * landlord's live offering behind another's identical-looking one.
-     */
-    const deduped = units;
-
-    // Build base labels in original order for stable disambiguation numbering.
-    // Each entry has a full label ("2 Bed / 1 Bath") and a short label
-    // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
-    // Tabs always say beds/baths, even on named units: that is what a student
-    // is choosing between. The name is shown under the strip once the tab is open.
-    const baseLabelOf = deduped.map((u) => {
-      if (isStudio(u)) return { full: "Studio", short: "Studio" };
-      const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
-      const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
-      return {
-        full: `${beds} Bed / ${baths} Bath`,
-        short: `${beds} Br / ${baths} Ba`,
-      };
-    });
-    const counts = {};
-    for (const { full } of baseLabelOf) counts[full] = (counts[full] || 0) + 1;
-    const counters = {};
-    const labels = baseLabelOf.map(({ full, short }) => {
-      if (counts[full] > 1) {
-        counters[full] = (counters[full] || 0) + 1;
-        const n = counters[full];
-        return {
-          base: full,
-          num: n,
-          label: `${full} (${n})`,
-          shortLabel: `${short} (${n})`,
-        };
-      }
-      return { base: full, num: 0, label: full, shortLabel: short };
-    });
-    return deduped
-      .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
-      .sort((a, b) => compareUnits(a.unit, b.unit) || a.num - b.num);
-  }, [listing.unitTypes]);
+  const [floorPlanUnit, setFloorPlanUnit] = useState(null);
 
   /*
-   * Open on the unit the renter's filters actually matched rather than the
-   * cheapest-by-bedroom default. Runs as an effect because sortedUnits is
-   * derived, and re-runs when the detail fetch replaces the browse-feed listing
-   * (the feed paints first, so the unit may not be resolvable on first render).
+   * The units on offer, in the landlord's order (see utils/unitOrder), falling
+   * back to beds then baths for units never placed.
    *
-   * Dedup above can collapse the matched unit into an identical twin, so fall
-   * back to the twin's tab — same beds/baths/rent, so it is the same answer.
+   * No deduplication. Two units that look identical are two apartments: a
+   * building with ten matching studios has ten of them, and each carries its
+   * own offering from possibly a different landlord.
    */
-  useEffect(() => {
-    if (!initialUnitId) return;
-    let idx = sortedUnits.findIndex((s) => s.unit.id === initialUnitId);
-    if (idx < 0) {
-      const target = (listing.unitTypes ?? []).find((u) => u.id === initialUnitId);
-      if (target) {
-        idx = sortedUnits.findIndex(
-          (s) =>
-            s.unit.bedrooms === target.bedrooms &&
-            s.unit.bathrooms === target.bathrooms
-        );
-      }
-    }
-    if (idx >= 0) setSelectedUnitIdx(idx);
-  }, [initialUnitId, sortedUnits, listing.unitTypes]);
-
-  const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
-
-  useEffect(() => {
-    // The plan belongs to one apartment; switching tabs makes it the wrong one.
-    setFloorPlanOpen(false);
-  }, [selectedUnitIdx]);
+  const sortedUnits = useMemo(
+    () => (listing.unitTypes ?? []).filter((u) => u.available !== false).sort(compareUnits),
+    [listing.unitTypes]
+  );
 
   /*
-   * Leases on the unit whose tab is open. A unit can carry several competing
-   * offerings, so each row is independently contactable — there is no "selected"
-   * lease in the browse view.
+   * A renter who arrives from a filtered browse search opens on the size of the
+   * unit their filters matched, for this visit only (Wyatt, 2026-10-30).
    */
-  const selectedUnitLeases = useMemo(
-    () => selectedUnit?.leases ?? [],
-    [selectedUnit]
-  );
+  const visitBeds = useMemo(() => {
+    const target = initialUnitId ? (listing.unitTypes ?? []).find((u) => u.id === initialUnitId) : null;
+    return target ? target.bedrooms ?? null : null;
+  }, [initialUnitId, listing.unitTypes]);
+
+  /*
+   * "I want a [beds] for [length] starting [month]" (Wyatt, 2026-10-30): the
+   * student's saved picks as they apply here, what each dropdown offers, and
+   * the matching leases grouped by floor plan. Replaced the unit tabs.
+   */
+  const leaseView = useListingLeasePrefs(sortedUnits, preview, visitBeds);
 
   /*
    * The browse panel paints itself from the listing feed before the detail fetch
    * resolves, and that feed carries no leases at all. An ABSENT `leases` key
    * therefore means "not loaded yet", while an empty array means "genuinely none
    * on offer" — getListing always sets one. Conflating them would tell a reader a
-   * unit has no lease when it simply hasn't arrived.
+   * listing has no lease when it simply hasn't arrived.
    */
-  const leasesLoading = !!selectedUnit && selectedUnit.leases === undefined;
+  const leasesLoading = sortedUnits.some((u) => u.leases === undefined);
+  const hasLeases = sortedUnits.some((u) => u.leases?.length);
 
-  // The student's move-in month and lease length as they apply to this unit.
-  // The pickers sit in the unit's name row; the lease list below reads the same.
-  const leasePrefs = useUnitLeasePrefs(selectedUnitLeases, preview);
-  const showLeasePickers = !leasesLoading && selectedUnitLeases.length > 0;
+  // Every lease the picks match, best first within each floor plan.
+  const matchingLeases = useMemo(
+    () => leaseView.groups.flatMap((g) => g.leases),
+    [leaseView.groups]
+  );
+
+  /*
+   * The unit whose photos lead: only when the picks narrow the listing to a
+   * single floor plan. Otherwise the property's own photos show.
+   */
+  const selectedUnit = leaseView.groups.length === 1 ? leaseView.groups[0].unit : null;
+  const selectedUnitName = selectedUnit?.name ?? null;
 
   /*
    * Sending an enquiry opens the conversation, it does not leave a receipt on
@@ -1735,32 +1684,20 @@ export default function ListingModalInfo({
 
   /*
    * Which lease the contact form is about. Set by the Contact button on a lease
-   * row; falls back to the open unit's first offering when the Contact tab is
+   * row; falls back to the best matching offering when the Contact tab is
    * reached from the tab strip instead.
    */
   const [selectedLeaseId, setSelectedLeaseId] = useState(null);
   useEffect(() => {
     setSelectedLeaseId((current) =>
-      current && selectedUnitLeases.some((l) => l.id === current)
+      current && matchingLeases.some((l) => l.id === current)
         ? current
-        : selectedUnitLeases[0]?.id ?? null
+        : matchingLeases[0]?.id ?? null
     );
-  }, [selectedUnitLeases]);
+  }, [matchingLeases]);
 
   const selectedLease =
-    selectedUnitLeases.find((l) => l.id === selectedLeaseId) ?? null;
-
-  /*
-   * Name of the open unit, or null when it has none: an unnamed unit gets no
-   * invented label. Beds and baths are not repeated here, the tab says them.
-   */
-  const selectedUnitName = selectedUnit?.name ?? null;
-
-  // Only when it is known: "? sq ft" is worse than saying nothing.
-  const selectedUnitArea =
-    selectedUnit?.area != null
-      ? `${Number(selectedUnit.area).toLocaleString()} sq ft`
-      : null;
+    matchingLeases.find((l) => l.id === selectedLeaseId) ?? null;
 
   /*
    * Whether to offer furniture rental. Reads unit_leases.furnished — the
@@ -1768,8 +1705,8 @@ export default function ListingModalInfo({
    * property-level listings.furnished is only a fallback for units whose leases
    * haven't loaded.
    */
-  const showFurnishCta = selectedUnitLeases.length
-    ? selectedUnitLeases.some((l) => !l.furnished)
+  const showFurnishCta = matchingLeases.length
+    ? matchingLeases.some((l) => !l.furnished)
     : !listing.furnished;
 
   /*
@@ -1805,115 +1742,12 @@ export default function ListingModalInfo({
      * who holds the unit and reaching whoever happens to be primary.
      */
     setActiveTab("contact");
-    setTimeout(
-      () => scrollIntoContainer(document.getElementById("listing-tabs")),
-      50
-    );
-  };
-
-  // When the unit tabs don't all fit, the selector overflows horizontally and
-  // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
-  // full-label row so the decision never feeds back into its own measurement.
-  const unitTrackRef = useRef(null);
-  const unitMeasureRef = useRef(null);
-  const [unitsScroll, setUnitsScroll] = useState(false);
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    const measure = unitMeasureRef.current;
-    if (!track || !measure) return;
-    const check = () =>
-      setUnitsScroll(measure.scrollWidth > track.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, [sortedUnits]);
-
-  /*
-   * The overflowing strip does not scroll by hand (no swipe, wheel or
-   * scrollbar). Arrows page it instead, and each one only shows while there
-   * are tabs hidden on its side, so the left arrow appears after the first
-   * click and the right one goes away at the end.
-   */
-  const [unitsCanLeft, setUnitsCanLeft] = useState(false);
-  const [unitsCanRight, setUnitsCanRight] = useState(false);
-  const updateUnitArrows = () => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    setUnitsCanLeft(track.scrollLeft > 1);
-    setUnitsCanRight(
-      track.scrollLeft + track.clientWidth < track.scrollWidth - 1
-    );
-  };
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    updateUnitArrows();
-    const ro = new ResizeObserver(updateUnitArrows);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, [sortedUnits, unitsScroll]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pages by most of the visible width, leaving some overlap so the reader
-  // keeps their place.
-  const pageUnits = (dir) => {
-    const track = unitTrackRef.current;
-    if (!track) return;
-    track.scrollBy({ left: dir * track.clientWidth * 0.8, behavior: "smooth" });
-  };
-
-  /*
-   * Keeps the open tab in view: a tab opened from a filter match can sit
-   * off-screen. Scrolls only the strip, never the page around it, and clears
-   * the arrows so they never cover the tab. A jump lines its tab up at the
-   * start of the strip so the rest of that bed count follows it.
-   */
-  const UNIT_ARROW_WIDTH = 36;
-  const unitAlignStartRef = useRef(false);
-  useEffect(() => {
-    const track = unitTrackRef.current;
-    const tab = track?.children[selectedUnitIdx];
-    if (!track || !tab) return;
-    const alignStart = unitAlignStartRef.current;
-    unitAlignStartRef.current = false;
-    if (alignStart || tab.offsetLeft < track.scrollLeft + UNIT_ARROW_WIDTH) {
-      track.scrollTo({
-        left: tab.offsetLeft - (tab.offsetLeft > 0 ? UNIT_ARROW_WIDTH : 0),
-        behavior: "smooth",
-      });
-    } else if (
-      tab.offsetLeft + tab.offsetWidth >
-      track.scrollLeft + track.clientWidth - UNIT_ARROW_WIDTH
-    ) {
-      track.scrollTo({
-        left:
-          tab.offsetLeft + tab.offsetWidth - track.clientWidth + UNIT_ARROW_WIDTH,
-        behavior: "smooth",
-      });
-    }
-  }, [selectedUnitIdx, unitsScroll]);
-
-  // "Jump to" links: one per bed count, opening the first unit with it. Only
-  // worth showing when the tabs overflow and there is more than one count.
-  const unitBedJumps = useMemo(() => {
-    const firstIdxByBeds = new Map();
-    sortedUnits.forEach(({ unit }, idx) => {
-      const beds = unit.bedrooms ?? 0;
-      if (!firstIdxByBeds.has(beds)) firstIdxByBeds.set(beds, idx);
-    });
-    return [...firstIdxByBeds.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([beds, idx]) => ({
-        beds,
-        idx,
-        label: beds === 0 ? "Studio" : `${beds} Bed`,
-      }));
-  }, [sortedUnits]);
-  const showUnitJumps = unitsScroll && unitBedJumps.length > 1;
-  const selectedUnitBeds = selectedUnit ? selectedUnit.bedrooms ?? 0 : null;
-  const jumpToBeds = (idx) => {
-    unitAlignStartRef.current = true;
-    setSelectedUnitIdx(idx);
+    /*
+     * To the sentinel just above the header, not the header: once stuck the
+     * header is already at the top, so scrolling to it went nowhere and left
+     * the student partway down the Contact tab.
+     */
+    setTimeout(() => scrollIntoContainer(headSentinelRef.current), 50);
   };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
@@ -2144,19 +1978,19 @@ export default function ListingModalInfo({
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
-          {/* ── Photo Grid ── */}
+          {/* ── Photo Grid ── Edge to edge with no card corners, the title
+              straight under it (Wyatt, 2026-10-31). The negative margins undo
+              the page padding. */}
           <div
-            className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
+            className={`relative flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               ref={heroImgWrapperRef}
-              className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
-                hasSideTiles
-                  ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
-                  : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
+              className={`relative cursor-pointer bg-gray-100 overflow-hidden aspect-[4/3] md:aspect-auto ${
+                hasSideTiles ? "md:flex-shrink-0 md:w-[65%]" : "md:w-full"
               }`}
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
@@ -2184,7 +2018,7 @@ export default function ListingModalInfo({
               )}
               {/* Cover badges: live PMS-verified availability + Street View attribution */}
               {(listing.verifiedLive || (coverImage && listing.imageFromStreetView)) && (
-                <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-1.5">
+                <div className={`absolute left-3 z-10 flex flex-col items-start gap-1.5 ${compact ? "top-14" : "top-3"}`}>
                   {listing.verifiedLive && !listing.unavailable && (
                     <div className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
                       <span className="relative flex h-2 w-2" aria-hidden="true">
@@ -2204,10 +2038,13 @@ export default function ListingModalInfo({
                   )}
                 </div>
               )}
-              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
+              {/* HeartIcon: shown in the modal (mobile). The desktop panel has its own header.
+                  The photo runs to the modal's corner on phones and on a single
+                  photo, where the close button sits, so the heart steps left of
+                  it there. */}
               {!compact && !preview && (
                 <div
-                  className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />
@@ -2219,7 +2056,7 @@ export default function ListingModalInfo({
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
             {hasSideTiles && (
             <motion.div
-              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+              className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
@@ -2227,9 +2064,7 @@ export default function ListingModalInfo({
               {sideTiles.map((tile, i) => (
                 <div
                   key={`${tile.src}-${i}`}
-                  className={`relative flex-1 cursor-pointer overflow-hidden bg-gray-100 ${
-                    i === 0 ? "rounded-tr-xl" : ""
-                  } ${i === sideTiles.length - 1 ? "rounded-br-xl" : ""}`}
+                  className="relative flex-1 cursor-pointer overflow-hidden bg-gray-100"
                   onClick={() => setIsGalleryOpen(true)}
                 >
                   <Image
@@ -2303,277 +2138,164 @@ export default function ListingModalInfo({
                 </span>
               </div>
             )}
-            <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
-                  {listing.title || street}
-                </h1>
-                {cityStateZip && (
-                  <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
-                )}
-                {/*
-                  * No property-level "Available <date>" pill here on purpose.
-                  * It used to read from listing.availableFrom, a rollup that
-                  * only the browse feed computes — so opening a listing showed
-                  * the pill for the split second the panel held feed data, then
-                  * dropped it the moment the detail fetch replaced that object.
-                  * A move-in date belongs to one offering anyway, not to the
-                  * building: LeaseOptions shows it per lease, where a renter can
-                  * see which unit the date actually applies to.
-                  */}
-              </div>
-              <div className="shrink-0 w-full md:w-auto flex items-center gap-2 md:ml-auto">
-                {/* Rating moved up from the removed stats bar. */}
-                {overallAvg ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Star
-                      className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400"
-                      aria-hidden="true"
-                    />
-                    <span className="text-2xl font-semibold leading-none text-gray-900">
-                      {overallAvg}
-                    </span>
-                    <span className="text-md text-gray-500">
-                      ({reviewCount})
-                    </span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center h-9 text-sm text-gray-400">
-                    No reviews yet
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* ── Unit Selector ── */}
-            {sortedUnits.length > 0 && (
-              <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div className="relative">
-                  <div
-                    ref={unitTrackRef}
-                    onScroll={updateUnitArrows}
-                    className="flex w-full overflow-x-hidden"
+            {/* ── Sticky header ── The title, address and rating stick with
+                the tabs as one block (Wyatt, 2026-10-31). Once stuck it
+                compacts: a smaller title, no address, the rating cut to the
+                title's height. The sentinel just above it says when. */}
+            <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
+            <div id="listing-head" className="sticky top-0 z-30">
+              {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
+              <div
+                className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
+                  headStuck
+                    ? "py-2.5 flex-row items-center justify-between gap-4"
+                    : "pt-6 pb-4 flex-col md:flex-row md:justify-between md:items-center gap-4"
+                }`}
+              >
+                {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
+                <div className={`min-w-0 md:flex-1 ${headStuck ? "flex-1" : "w-full md:w-auto"}`}>
+                  <h1
+                    className={`truncate font-bold text-gray-900 leading-snug transition-all duration-200 ${
+                      headStuck ? "text-[18px] sm:text-[23px]" : "text-[19px] sm:text-[27px]"
+                    }`}
                   >
-                    {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
-                      <button
-                        key={origIdx}
-                        type="button"
-                        onClick={() => setSelectedUnitIdx(sortedIdx)}
-                        className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
-                          selectedUnitIdx === sortedIdx
-                            ? "bg-red-600 text-white border-red-600"
-                            : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                        }`}
-                      >
-                        {unitsScroll ? shortLabel : label}
-                      </button>
-                    ))}
-                  </div>
-                  {unitsCanLeft && (
-                    <button
-                      type="button"
-                      onClick={() => pageUnits(-1)}
-                      aria-label="Show previous units"
-                      className="absolute left-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
+                    {listing.title || street}
+                  </h1>
+                  {cityStateZip && (
+                    <p
+                      className={`truncate text-gray-500 text-[15px] sm:text-base overflow-hidden transition-all duration-200 ${
+                        headStuck ? "max-h-0 opacity-0" : "max-h-8 mt-0.5 opacity-100"
+                      }`}
                     >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                  )}
-                  {unitsCanRight && (
-                    <button
-                      type="button"
-                      onClick={() => pageUnits(1)}
-                      aria-label="Show more units"
-                      className="absolute right-0 top-0 z-10 flex h-[42px] w-9 items-center justify-center bg-white/95 text-red-600 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)] hover:bg-white"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-                {/* Hidden full-label row used only to measure natural width */}
-                <div
-                  ref={unitMeasureRef}
-                  aria-hidden="true"
-                  className="absolute top-0 left-0 flex invisible pointer-events-none"
-                >
-                  {sortedUnits.map(({ origIdx, label }) => (
-                    <span
-                      key={origIdx}
-                      className="whitespace-nowrap py-2.5 px-3 text-sm font-semibold"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Identity of the unit on the open tab. The tab label is only
-                    the floor plan ("2 Bed / 1 Bath"), which does not say WHICH
-                    unit, so the real identity ("Apt 1W") is stated here, above
-                    the offerings on it. */}
-                {/* One line: name, size and floor plan on the left, "Jump to"
-                    on the right. Skipped entirely when there is none of it. */}
-                {/* The move-in and lease length pickers share this row, on
-                    the right, away from the unit's own details. */}
-                {(selectedUnitName ||
-                  selectedUnitArea ||
-                  selectedUnit?.floorPlanImageUrl ||
-                  showUnitJumps ||
-                  showLeasePickers) && (
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-100 px-4 pt-3">
-                    <p className="flex flex-wrap items-baseline text-xs text-gray-500">
-                      {selectedUnitName && (
-                        <span className="text-sm font-semibold text-gray-900">
-                          {selectedUnitName}
-                        </span>
-                      )}
-                      {selectedUnitArea && (
-                        <>
-                          {selectedUnitName && (
-                            <span className="mx-1.5 text-gray-300">·</span>
-                          )}
-                          {selectedUnitArea}
-                        </>
-                      )}
-                      <FloorPlanLink
-                        url={selectedUnit?.floorPlanImageUrl}
-                        onOpen={() => setFloorPlanOpen(true)}
-                        separator={Boolean(selectedUnitName || selectedUnitArea)}
-                      />
+                      {cityStateZip}
                     </p>
-                    {showLeasePickers && (
-                      <div className="w-full text-xs text-gray-500 sm:ml-auto sm:w-auto">
-                        <LeasePrefsControls
-                          value={leasePrefs.prefs}
-                          onChange={leasePrefs.setPrefs}
-                          onClear={leasePrefs.clear}
-                          leases={selectedUnitLeases}
-                        />
-                      </div>
-                    )}
-                    {showUnitJumps && (
-                      <div className={`flex items-baseline gap-3 text-xs ${showLeasePickers ? "" : "ml-auto"}`}>
-                        <span className="text-gray-500">Jump to:</span>
-                        {unitBedJumps.map(({ beds, idx, label }) => (
-                          <button
-                            key={beds}
-                            type="button"
-                            onClick={() => jumpToBeds(idx)}
-                            aria-current={selectedUnitBeds === beds ? "true" : undefined}
-                            className={`font-medium underline underline-offset-2 transition ${
-                              selectedUnitBeds === beds
-                                ? "text-red-600"
-                                : "text-gray-500 hover:text-gray-700"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Lease options for the unit on the open tab: one card per
-                    landlord, their offerings inside it, one Contact for all.
-                    Narrowed by the student's saved move-in month and lease
-                    length, picked in its own header. */}
-                <div>
-                  <LeaseOptions
-                    leases={selectedUnitLeases}
-                    loading={leasesLoading}
-                    onContact={handleContactLease}
-                    prefs={leasePrefs.prefs}
-                  />
+                  )}
+                  {/*
+                    * No property-level "Available <date>" pill here on purpose.
+                    * It used to read from listing.availableFrom, a rollup that
+                    * only the browse feed computes — so opening a listing showed
+                    * the pill for the split second the panel held feed data, then
+                    * dropped it the moment the detail fetch replaced that object.
+                    * A move-in date belongs to one offering anyway, not to the
+                    * building: LeaseOptions shows it per lease, where a renter can
+                    * see which unit the date actually applies to.
+                    */}
+                </div>
+                <div className={`shrink-0 flex items-center gap-2 md:ml-auto ${headStuck ? "" : "w-full md:w-auto"}`}>
+                  {/* Rating moved up from the removed stats bar. Stuck, it is
+                      cut to the title's height. */}
+                  {overallAvg ? (
+                    <span className={`inline-flex items-center ${headStuck ? "gap-1" : "gap-2"}`}>
+                      <Star
+                        className={`shrink-0 fill-amber-400 text-amber-400 ${headStuck ? "h-6 w-6" : "h-8 w-8"}`}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={`font-semibold leading-none text-gray-900 ${headStuck ? "text-xl" : "text-2xl"}`}
+                      >
+                        {overallAvg}
+                      </span>
+                      <span className={`text-gray-500 ${headStuck ? "text-sm" : "text-md"}`}>
+                        ({reviewCount})
+                      </span>
+                    </span>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center text-gray-400 ${headStuck ? "h-8 text-[13px]" : "h-9 text-sm"}`}
+                    >
+                      No reviews yet
+                    </span>
+                  )}
                 </div>
               </div>
-            )}
 
-            {/* ── Sticky Tab Bar ── */}
-            <div
-              id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                compact ? "top-[52px]" : "top-0 px-4"
-              }`}
-            >
-              {/* Three-column row so the tabs stay optically centred no matter
-                  how wide the right-hand action is. */}
-              <nav className="flex items-stretch max-w-7xl mx-auto">
-                <div className="flex-1" aria-hidden="true" />
+              {/* ── Tab Bar ── */}
+              <div
+                id="listing-tabs"
+                className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
+                  compact ? "" : "px-4"
+                }`}
+              >
+                {/* Three-column row so the tabs stay optically centred no matter
+                    how wide the right-hand action is. */}
+                <nav className="flex items-stretch max-w-7xl mx-auto">
+                  <div className="flex-1" aria-hidden="true" />
 
-                <div className="flex overflow-x-auto scrollbar-hidden">
-                  {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
-                    (tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-                          activeTab === tab.id
-                            ? "text-red-600 border-red-600"
-                            : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    )
-                  )}
-                </div>
+                  <div className="flex overflow-x-auto scrollbar-hidden">
+                    {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
+                      (tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                            activeTab === tab.id
+                              ? "text-red-600 border-red-600"
+                              : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      )
+                    )}
+                  </div>
 
-                {/* Furniture rental, styled as a tab so it reads as part of this
-                    row. It only appears against an UNFURNISHED offering —
-                    furnished belongs to the lease now, not the building, so this
-                    asks whether any live offering on the open unit is
-                    unfurnished, falling back to listings.furnished when none has
-                    loaded. */}
-                {/* Opaque and padded so that when the tab strip scrolls under it
-                    on a narrow screen, the last tab is clipped cleanly instead of
-                    appearing to run into the button. */}
-                <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
-                  {/* Joining this property's waitlist happens on the landlord's
-                      own form, so the link hops through our API first: that
-                      redirect is the only place a click can still be recorded
-                      before the browser leaves for a domain we can't see into. */}
-                  {waitlist && !preview &&
-                    (session ? (
+                  {/* Furniture rental, styled as a tab so it reads as part of this
+                      row. It only appears against an UNFURNISHED offering —
+                      furnished belongs to the lease now, not the building, so this
+                      asks whether any live offering on the open unit is
+                      unfurnished, falling back to listings.furnished when none has
+                      loaded. */}
+                  {/* Opaque and padded so that when the tab strip scrolls under it
+                      on a narrow screen, the last tab is clipped cleanly instead of
+                      appearing to run into the button. */}
+                  <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
+                    {/* Joining this property's waitlist happens on the landlord's
+                        own form, so the link hops through our API first: that
+                        redirect is the only place a click can still be recorded
+                        before the browser leaves for a domain we can't see into. */}
+                    {waitlist && !preview &&
+                      (session ? (
+                        <a
+                          href={`/api/waitlist/${listing._id}`}
+                          target="_blank"
+                          /* No "noreferrer": the first hop is our own API route,
+                             and stripping the header there blinds the click log to
+                             which page the student was on. */
+                          rel="noopener nofollow"
+                          onClick={() => trackWaitlistClick()}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            trackWaitlistClick();
+                            setWaitlistOpen(true);
+                          }}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </button>
+                      ))}
+                    {showFurnishCta && (
                       <a
-                        href={`/api/waitlist/${listing._id}`}
+                        href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
-                        /* No "noreferrer": the first hop is our own API route,
-                           and stripping the header there blinds the click log to
-                           which page the student was on. */
-                        rel="noopener nofollow"
-                        onClick={() => trackWaitlistClick()}
-                        className={waitlistButtonClass}
+                        rel="noopener noreferrer sponsored nofollow"
+                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
                       >
-                        {waitlist.label}
+                        Furnish This Property
                       </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          trackWaitlistClick();
-                          setWaitlistOpen(true);
-                        }}
-                        className={waitlistButtonClass}
-                      >
-                        {waitlist.label}
-                      </button>
-                    ))}
-                  {showFurnishCta && (
-                    <a
-                      href="https://cort.sjv.io/zzb9y0"
-                      target="_blank"
-                      rel="noopener noreferrer sponsored nofollow"
-                      className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
-                    >
-                      Furnish This Property
-                    </a>
-                  )}
-                  {tabBarAction && (
-                    <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
-                  )}
-                </div>
-              </nav>
+                    )}
+                    {tabBarAction && (
+                      <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                    )}
+                  </div>
+                </nav>
+              </div>
             </div>
 
             {/* ── Tab Content ── */}
@@ -2586,6 +2308,38 @@ export default function ListingModalInfo({
                 compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"
               }`}
             >
+              {/* "I want a [beds] for [length] starting [month]", then every
+                  matching lease as landlord, floor plan, lease (Wyatt,
+                  2026-10-30). Its own tab since 2026-10-31. */}
+              {activeTab === "pricing" && (
+                <div>
+                  {!leasesLoading && hasLeases && (
+                    <div className="pb-3">
+                      <LeasePrefsControls
+                        value={leaseView.prefs}
+                        choices={leaseView.choices}
+                        count={matchingLeases.length}
+                        sort={leaseView.sort}
+                        sorts={leaseView.sorts}
+                        onSort={leaseView.setSort}
+                        onChange={leaseView.setPrefs}
+                        onClear={leaseView.clear}
+                      />
+                    </div>
+                  )}
+                  <div className="-mx-4">
+                    <LeaseOptions
+                      groups={leaseView.groups}
+                      prefs={leaseView.prefs}
+                      sort={leaseView.sort}
+                      loading={leasesLoading}
+                      empty={!hasLeases}
+                      onContact={handleContactLease}
+                      onFloorPlan={setFloorPlanUnit}
+                    />
+                  </div>
+                </div>
+              )}
               {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
               {activeTab === "map" && <MapTab listing={listing} />}
               {activeTab === "places" && (
@@ -2660,11 +2414,11 @@ export default function ListingModalInfo({
       )}
 
       {/* ── Floor plan ── */}
-      {floorPlanOpen && selectedUnit?.floorPlanImageUrl && (
+      {floorPlanUnit?.floorPlanImageUrl && (
         <FloorPlanViewer
-          url={selectedUnit.floorPlanImageUrl}
-          unitName={selectedUnitName}
-          onClose={() => setFloorPlanOpen(false)}
+          url={floorPlanUnit.floorPlanImageUrl}
+          unitName={floorPlanUnit.name ?? null}
+          onClose={() => setFloorPlanUnit(null)}
         />
       )}
 
