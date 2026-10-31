@@ -2101,7 +2101,8 @@ export default function ListingModalInfo({
                 </span>
               </div>
             )}
-            <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
+            <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
               <div>
                 <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
                   {listing.title || street}
