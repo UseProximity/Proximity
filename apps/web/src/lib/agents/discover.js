@@ -51,18 +51,65 @@ const FREE_EMAIL = new Set([
   "wustl.edu", "slu.edu", "umsl.edu", "proximity.test", "useproximity.org", "example.com",
 ]);
 
-async function tavily(query, includeDomains = null) {
+/*
+ * Web search. Tavily first; when it refuses (HTTP 429: our key is a
+ * development key with a low rate limit, 2026-10-31) it is rested for a
+ * minute and Firecrawl's search answers instead, with the domains written
+ * into the query. Calls are spaced out across the whole process so a batch
+ * does not trip the limit to begin with.
+ */
+const SEARCH_GAP_MS = 700;
+let lastSearch = Promise.resolve();
+let tavilyRestUntil = 0;
+
+function spaced() {
+  const turn = lastSearch.then(() => new Promise((r) => setTimeout(r, SEARCH_GAP_MS)));
+  lastSearch = turn;
+  return turn;
+}
+
+async function tavily(query, includeDomains) {
   const key = process.env.TAVILY_API_KEY;
-  if (!key) throw new Error("TAVILY_API_KEY is not set");
+  if (!key) return null;
+  if (Date.now() < tavilyRestUntil) return null;
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ query, max_results: 8, search_depth: "basic", ...(includeDomains ? { include_domains: includeDomains } : {}) }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`search failed (HTTP ${res.status})`);
+  if (res.status === 429 || res.status === 432) {
+    tavilyRestUntil = Date.now() + 60_000;
+    return null;
+  }
+  if (!res.ok) throw new Error(`Tavily HTTP ${res.status}`);
   const data = await res.json();
   return (data.results ?? []).map((r) => ({ url: r.url, title: r.title ?? "", content: String(r.content ?? "").slice(0, 600) }));
+}
+
+async function firecrawlSearch(query, includeDomains) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return null;
+  const sites = includeDomains?.length ? ` (${includeDomains.map((d) => `site:${d}`).join(" OR ")})` : "";
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: `${query}${sites}`, limit: 8 }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`Firecrawl HTTP ${res.status}`);
+  const data = await res.json();
+  const web = data?.data?.web ?? data?.data ?? [];
+  return (Array.isArray(web) ? web : []).map((r) => ({ url: r.url, title: r.title ?? "", content: String(r.description ?? r.markdown ?? "").slice(0, 600) }));
+}
+
+async function search(query, includeDomains = null) {
+  await spaced();
+  const t = await tavily(query, includeDomains);
+  if (t) return { results: t, via: "tavily" };
+  const f = await firecrawlSearch(query, includeDomains);
+  if (f) return { results: f, via: "firecrawl" };
+  throw new Error("no search service available (TAVILY_API_KEY and FIRECRAWL_API_KEY missing or refusing)");
 }
 
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
@@ -183,15 +230,19 @@ export async function discoverListing(listing, { dryRun = false } = {}) {
   // Searches.
   let searches = 0;
   const errors = [];
-  for (const s of searchesFor(listing)) {
+  const planned = searchesFor(listing);
+  for (const s of planned) {
     try {
-      const results = await tavily(s.query, s.domains);
+      const { results } = await search(s.query, s.domains);
       searches++;
       for (const r of results) add({ ...r, foundBy: s.why });
     } catch (err) {
       errors.push(`${s.why}: ${err.message}`);
     }
   }
+  // Every search failing means we learned nothing new: leave the listing
+  // unsearched so the next run tries it again.
+  if (planned.length && !searches) throw new Error(`searches failed: ${errors[0] ?? "unknown"}`);
   if (searches && !dryRun) {
     await recordUsage({ listingId: listing.id, kind: "discover", costCents: searches * SEARCH_COST_CENTS });
   }
@@ -340,7 +391,8 @@ export async function discoverBatch({ limit = 12, concurrency = 4, redo = false,
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, batch.length || 1) }, worker));
   return {
-    done: results.length,
+    done: results.filter((r) => !r.error).length,
+    errored: results.filter((r) => r.error).length,
     remaining: Math.max(0, todo.length - batch.length),
     total: (listings ?? []).length,
     searches: results.reduce((n, r) => n + (r.searches ?? 0), 0),
