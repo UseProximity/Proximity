@@ -25,7 +25,7 @@
 import supabase from "@/lib/supabase";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
-import { currentFacts } from "./store";
+import { studentFacts } from "./studentView";
 import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_USER_ID } from "./threads";
 import { sanitizeStudentText, screenStudentText, CONTACT_NOTE } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
@@ -179,8 +179,17 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
       thread.proxy_state = fresh?.proxy_state ?? thread.proxy_state;
     }
   }
-  const facts = await currentFacts(listingId);
-  const factByKey = new Map(facts.map((f) => [f.field_key, f]));
+  /*
+   * What a student may be told: the same filter as the public facts view
+   * (no expired, low-confidence or stale facts). One key can hold a version
+   * per owner, unit or lease, so every version is kept and labelled rather
+   * than one silently winning (PR #365 review).
+   */
+  const view = await studentFacts(listingId);
+  const facts = Object.entries(view.sections).flatMap(([section, list]) => list.map((f) => ({ ...f, section })));
+  const factByKey = new Map();
+  for (const f of facts) factByKey.set(f.key, [...(factByKey.get(f.key) ?? []), f]);
+  const scopeText = (f) => (f.scope.level === "property" ? "whole property" : `${f.scope.level}: ${f.scope.label}`);
 
   const canAsk = ctx.hasLiveLease && !testMode && (userId ? true : await visitorCanAskLandlord(visitorId));
   const allowNudge = nudgeAllowed(thread.proxy_state, studentTurns);
@@ -197,15 +206,16 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
 
   const system = `${SYSTEM}\n\n=== LISTING ===\n${ctx.text}\n\n=== STATE ===\n${state}`;
   const handlers = {
-    get_fact_details: async ({ keys }) => (keys ?? []).slice(0, 20).map((k) => {
-      const f = factByKey.get(k);
-      return f ? { key: k, section: f.section, summary: f.summary, value: f.value, scope: f.scope_level, valid_from: f.valid_from, valid_until: f.valid_until, updated: shortDate(f.observed_at), landlord_confirmed: f.landlord_set } : { key: k, error: "no such fact" };
+    get_fact_details: async ({ keys }) => (keys ?? []).slice(0, 20).flatMap((k) => {
+      const versions = factByKey.get(k);
+      if (!versions) return [{ key: k, error: "no such fact" }];
+      return versions.map((f) => ({ key: k, section: f.section, summary: f.summary, value: f.value, applies_to: scopeText(f), valid_from: f.validFrom, valid_until: f.validUntil, updated: shortDate(f.updatedAt), landlord_confirmed: f.landlordSet }));
     }),
     search_knowledge: async ({ query }) => {
       const q = String(query ?? "").toLowerCase().split(/\W+/).filter((w) => w.length > 2);
-      const hits = facts.filter((f) => f.section !== "core" && q.some((w) => `${f.field_key} ${f.summary} ${JSON.stringify(f.value)}`.toLowerCase().includes(w)));
+      const hits = facts.filter((f) => q.some((w) => `${f.key} ${f.summary} ${JSON.stringify(f.value)}`.toLowerCase().includes(w)));
       const leaseHits = ctx.leases.filter((l) => q.some((w) => `${l.label} ${l.unitName}`.toLowerCase().includes(w)));
-      return { facts: hits.slice(0, 15).map((f) => ({ key: f.field_key, summary: f.summary, scope: f.scope_level })), leases: leaseHits.map((l) => ({ number: l.index, label: l.label, owner: l.ownerLabel })) };
+      return { facts: hits.slice(0, 15).map((f) => ({ key: f.key, summary: f.summary, applies_to: scopeText(f) })), leases: leaseHits.map((l) => ({ number: l.index, label: l.label, owner: l.ownerLabel })) };
     },
     list_leases: async () => ctx.leases.map((l) => ({ number: l.index, unit: l.unitName, owner: l.ownerLabel, rent: l.rent, label: l.label })),
   };
@@ -243,7 +253,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
   } else {
     reply = String(final.reply).trim();
     const usedKeys = (final.answered_keys ?? []).filter((k) => factByKey.has(k));
-    const updatedAt = usedKeys.map((k) => factByKey.get(k).observed_at).sort().pop() ?? null;
+    const updatedAt = usedKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
 
     if (pending && final.clarifier_reply) {
       await studentReplyToClarifier({ question: pending, thread, body: text, userId });

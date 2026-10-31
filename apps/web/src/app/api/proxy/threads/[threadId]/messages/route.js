@@ -9,7 +9,9 @@
  * @auth public
  */
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// 300: after() waits out the 30 s quiet window before emailing the answer, on
+// top of the model call; waiting is not billed as CPU (PR #365 review).
+export const maxDuration = 300;
 
 import { NextResponse, after } from "next/server";
 import { proxyActor, proxyAvailable } from "@/lib/agents/access";

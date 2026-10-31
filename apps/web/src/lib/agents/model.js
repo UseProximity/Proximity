@@ -108,7 +108,12 @@ export async function runTools({
     });
     addUsage(usage, resp.usage);
     const finalBlock = resp.content.find((b) => b.type === "tool_use" && b.name === finalTool);
-    text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || text;
+    // Only a turn that finished is an answer. Text written alongside a tool
+    // call is the model thinking aloud ("Let me check the fees"), and posting
+    // it when the rounds ran out stopped the question reaching the landlord
+    // (PR #365 review).
+    const said = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    if (resp.stop_reason !== "tool_use") text = said || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });
       return { final: stripEmDashes(finalBlock.input), text, usage, calls };
