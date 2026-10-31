@@ -2038,7 +2038,7 @@ export default function ListingModalInfo({
                   )}
                 </div>
               )}
-              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header.
+              {/* HeartIcon: shown in the modal (mobile). The desktop panel has its own header.
                   The photo runs to the modal's corner on phones and on a single
                   photo, where the close button sits, so the heart steps left of
                   it there. */}
