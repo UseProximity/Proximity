@@ -5,7 +5,7 @@
  * PMS_COVERAGE_BRIEF.md Appendix B requires that a complaint can be honoured within
  * 24 hours; SOURCE_SYNC_PORTALS_ENABLED plus this classification is that lever, and it
  * works without a deploy and without touching any listing data. Note the switch is an
- * explicit OFF (see sourceKindEnabled below) — classification stays useful for
+ * explicit OFF (see sourceKindEnabled below), classification stays useful for
  * counting and audit even while every portal monitor is running normally.
  */
 
@@ -53,7 +53,7 @@ export function isPortalHost(host) {
 
 /*
  * Returns { url, host, kind } or null when the URL is unusable.
- * kind is "portal" or "own_site" — the values listings.source_kind accepts.
+ * kind is "portal" or "own_site", the values listings.source_kind accepts.
  */
 export function classifySourceUrl(rawUrl) {
   let parsed;

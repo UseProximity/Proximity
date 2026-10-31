@@ -59,7 +59,7 @@ export function DateGrid({ selected, onChange, days = 7, scrollClass = "" }) {
   };
 
   return (
-    <div className={`select-none overflow-x-auto ${scrollClass}`} onPointerMove={onPointerMove} style={{ touchAction: "none" }}>
+    <div className={`select-none touch-none overflow-x-auto ${scrollClass}`} onPointerMove={onPointerMove}>
       <table className="w-full table-fixed border-collapse text-[11px]">
         <thead className={scrollClass ? "sticky top-0 z-10 bg-white" : ""}>
           <tr>

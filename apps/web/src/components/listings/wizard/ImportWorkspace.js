@@ -12,6 +12,9 @@ import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftCon
 import ImportGaps from "@/components/listings/editor/ImportGaps";
 import ImportSources from "./ImportSources";
 import BackToTop from "@/components/ui/BackToTop";
+
+// The progress bar in 5% steps, as literal classes Tailwind can see (no inline styles).
+const PROGRESS_WIDTHS = ["w-[0%]", "w-[5%]", "w-[10%]", "w-[15%]", "w-[20%]", "w-[25%]", "w-[30%]", "w-[35%]", "w-[40%]", "w-[45%]", "w-[50%]", "w-[55%]", "w-[60%]", "w-[65%]", "w-[70%]", "w-[75%]", "w-[80%]", "w-[85%]", "w-[90%]", "w-[95%]", "w-full"];
 import useLeaveGuard, { sendWhileLeaving } from "@/lib/useLeaveGuard";
 
 /*
@@ -80,7 +83,7 @@ function Progress({ job, others = 0 }) {
         {stepWithName(job.status === "queued" ? "Waiting to read" : job.step || "Reading", job.target?.name)}
       </p>
       <div className="h-1.5 w-64 overflow-hidden rounded-full bg-gray-100">
-        <div className="h-full rounded-full bg-red-500 transition-all duration-700" style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full bg-red-500 transition-all duration-700 ${PROGRESS_WIDTHS[Math.round(pct / 5)]}`} />
       </div>
       <p className="text-xs text-gray-400">Usually a minute or two.{others > 0 ? " You can check the finished ones meanwhile." : ""}</p>
     </div>

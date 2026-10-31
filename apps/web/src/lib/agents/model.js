@@ -59,7 +59,7 @@ async function log({ listingId, kind, model, usage, tag }) {
 
 /* No em dash ever reaches a student or the store (repo rule). */
 export function stripEmDashes(value) {
-  if (typeof value === "string") return value.replace(/—/g, ", ").replace(/\s+,/g, ",");
+  if (typeof value === "string") return value.replace(/\u2014/g, ", ").replace(/\s+,/g, ",");
   if (Array.isArray(value)) return value.map(stripEmDashes);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));

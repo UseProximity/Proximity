@@ -28,9 +28,18 @@ export async function POST(req, { params }) {
     const { data: msg } = await supabase.from("chat_messages").select("id, body, created_at").eq("id", String(body?.messageId ?? "")).eq("thread_id", thread.id).maybeSingle();
     if (!msg) return NextResponse.json({ error: "Message not found" }, { status: 404 });
 
-    const { data: log } = await supabase.from("listing_agent_questions").select("id, question, answer").eq("thread_id", thread.id)
+    const { data: log } = await supabase.from("listing_agent_questions").select("id, question, answer, reported_at").eq("thread_id", thread.id)
       .lte("created_at", new Date(new Date(msg.created_at).getTime() + 5000).toISOString()).order("created_at", { ascending: false }).limit(1);
     const row = log?.[0];
+    // One report per answer, and five a day per person: each one emails the
+    // team (PR #365 review). A repeat is accepted quietly.
+    if (row?.reported_at) return NextResponse.json({ ok: true });
+    const who = actor.userId ? ["user_id", actor.userId] : actor.visitorId ? ["visitor_id", actor.visitorId] : null;
+    if (who) {
+      const { count } = await supabase.from("listing_agent_questions").select("id", { count: "exact", head: true })
+        .eq(who[0], who[1]).gte("reported_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      if ((count ?? 0) >= 5) return NextResponse.json({ error: "You've reported several answers today. Thanks; we're looking at them." }, { status: 429 });
+    }
     if (row) await supabase.from("listing_agent_questions").update({ reported_at: new Date().toISOString() }).eq("id", row.id);
 
     await sendTeamEmail({

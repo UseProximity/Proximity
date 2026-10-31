@@ -77,8 +77,8 @@ const UnitSchema = z.object({
   leaseTermPrices: z.array(z.number()),
   /*
    * Whether this floor plan can actually be rented right now. A building
-   * routinely lists layouts it is not letting — "Pricing: Call For Details",
-   * "Join Waitlist" — and they came through as ordinary units with an empty
+   * routinely lists layouts it is not letting, "Pricing: Call For Details",
+   * "Join Waitlist", and they came through as ordinary units with an empty
    * price, which reads as something we failed to read rather than something
    * the building is not offering.
    */
@@ -107,7 +107,7 @@ const PropertySchema = z.object({
  * Deliberately flat strings. A nested object here (description, amount,
  * conditions, validUntil) pushed the structured-output schema past the API's
  * grammar size limit and every extraction started failing with "the compiled
- * grammar is too large" — a 500 on every import, from one nested field. The
+ * grammar is too large", a 500 on every import, from one nested field. The
  * deadline is pulled out of the sentence on our side, where it costs nothing.
  */
 const ListingSchema = z.object({
@@ -151,8 +151,8 @@ Rules, in order of importance:
    Decide by how the site itself is organised: apartments filed under a shared plan are (a); apartments each presented separately are (b). Never invent a name out of the bed/bath count; if the site gives a plan no name, leave "title" null and the form names it by its layout. Never put a comma in "title". Collapse repeats: two listings of the same plan, or the same apartment, are one unit. When the page lists one bathrooms value alongside several bedroom options (e.g. "Bedrooms: 1/2/3, Bathrooms: 1"), apply that bathroom count to each unit rather than leaving it null (add a sourceNote); reserve null for when the page gives no bathroom information at all. STUDIOS: record a studio as bedrooms 0, and put "Studio" in the unit's title (unless the site gives it a specific name). LEASE TERMS: put the lease lengths this floor plan is offered on, in months, in "leaseTermMonths" (e.g. [7,9,12]); an empty array when the pages don't say. A LIVE AVAILABILITY FEED section, when present, is the property's own availability system and outranks the page text for prices, unit numbers, lease terms and dates: use its numbers exactly, give each floor plan the unit numbers it lists, and set rentBasis "total" for its prices, which are whole-unit monthly rents. LEASE-TERM RANGES ARE NOT PRICES: a page that says something like "we offer flexible lease terms ranging from 3 to 24 months" and shows ONE rent is telling you the lengths they will discuss, not a price per length. In that case put the single rent on the term the page says it reflects (these pages normally say the displayed rate is a 12-month rate, so use 12), leave "leaseTermPrices" empty, and add a sourceNote saying the site quotes terms from X to Y months and that only the displayed rate is published. Never spread one price across a range, and never invent a price for a term the page does not price. PER-UNIT RENT: when the pages price individual apartments differently, put one whole-unit monthly rent per entry of "unitNames", in the SAME ORDER, in "unitRents". Same length as unitNames or empty, never partially filled. PER-TERM PRICING: when the pages quote a different rent for different lease lengths, put one price per entry of "leaseTermMonths", in the SAME ORDER, in "leaseTermPrices". Same length as leaseTermMonths or empty. Both are whole-unit monthly rents. PER-UNIT AVAILABILITY: when the pages give a different date for individual apartments, put one date per entry of "unitNames", in the SAME ORDER, in "unitAvailability" as YYYY-MM-DD. Same length as unitNames or empty; never partially filled, and never a guess. AVAILABILITY: when the site states when a unit is available, set availableFrom: "now" for "available now/immediately", or the date as YYYY-MM-DD (infer the year sensibly for month-day dates: the next occurrence). Null when not stated.
 6. AMENITIES: map what the site states onto the allowed enum values; anything real that doesn't fit (e.g. "EV charging", "rooftop pool" beyond "pool"/"rooftop") goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.
 6c. NEVER READ A NUMBER OUT OF AN IMAGE URL OR FILE NAME. Image candidates are given to you so you can choose which pictures to use, and for nothing else. Their file names contain apartment numbers, photo-shoot codes and internal ids that look like data and are not: a floor plan called 100N108A published as a 1108-BEDROOM apartment because "1108" appears in the name of its floor-plan image. Bedrooms, bathrooms, square footage, rent and dates come from the page's words. If the words do not say, leave the field null; a blank a landlord fills in is worth more than a number you inferred from a file name.
-6d. WAITLIST AND "CALL FOR DETAILS": set a unit's "available" to false when the pages show no price for it and instead invite the reader to join a waitlist, call for details, or ask about pricing — that floor plan exists but is not being let today. Everything else is available: true. Never invent a rent for one of these; leave rent null and let availability carry the meaning.
-7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY — interiors, exteriors, amenity spaces. AIM FOR TWELVE AND INCLUDE THE INSIDES. A building's interior photographs usually sit on its FLOOR PLAN pages rather than its front page, under file names that say nothing a human would recognise — "p2245709_new_10d_dorchester-apt-10d-06232025_152317_40_ui.jpg" is a photograph of a room in apartment 10D, and a page full of those is the only place some buildings show their kitchens and bedrooms at all. An unreadable file name is not a reason to leave a photo out; it is what a real photo off a property management system looks like. A listing that goes out with five exterior shots and nothing of the inside is the common failure here, and students choose a flat by its rooms. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
+6d. WAITLIST AND "CALL FOR DETAILS": set a unit's "available" to false when the pages show no price for it and instead invite the reader to join a waitlist, call for details, or ask about pricing, that floor plan exists but is not being let today. Everything else is available: true. Never invent a rent for one of these; leave rent null and let availability carry the meaning.
+7. PHOTOS: from IMAGE CANDIDATES, return in imageUrls (max 12, best first) the URLs that are photos OF THIS PROPERTY, interiors, exteriors, amenity spaces. AIM FOR TWELVE AND INCLUDE THE INSIDES. A building's interior photographs usually sit on its FLOOR PLAN pages rather than its front page, under file names that say nothing a human would recognise, "p2245709_new_10d_dorchester-apt-10d-06232025_152317_40_ui.jpg" is a photograph of a room in apartment 10D, and a page full of those is the only place some buildings show their kitchens and bedrooms at all. An unreadable file name is not a reason to leave a photo out; it is what a real photo off a property management system looks like. A listing that goes out with five exterior shots and nothing of the inside is the common failure here, and students choose a flat by its rooms. Use the alt text, filename, and URL path as evidence. Prefer real photographs first, never a floor plan as the first image.
 7b. FLOOR PLANS: a floor-plan diagram that clearly belongs to one specific unit type goes in that unit's floorPlanImageUrl (exact candidate URL) and NOT in imageUrls. Floor plans you can't match to a specific unit go at the END of imageUrls — students want them either way. Exclude anything that looks like a logo, a stock/lifestyle shot unrelated to the building, another property, a map, or a person. Return candidate URLs exactly as given; never invent or modify a URL. Each candidate notes which PAGE section(s) it appeared on — use that as your strongest signal: when a TARGET PROPERTY is specified, PAGE 2+ are that property's own pages, so an image appearing ONLY there is almost certainly its photo — include it even with a bare CDN filename and no alt. An image repeated on page 1 and elsewhere is usually site chrome or another property's teaser. Only exclude a target-page-only image when there is positive evidence it isn't this property (e.g. its alt/filename names a different building).
 8. description: a faithful, plain-text summary in the site's own words where possible, 2-5 sentences, no marketing fluff you didn't see, no em dashes. NEVER name the landlord, management company, or their website/brand in the description (students contact through Proximity; e.g. write "the landlord" instead of "Mosaic Living"). title: the property's name as students would know the building (often the street address); never append the management company's brand to it.
 9. contact_*: only contact details shown on the pages for THIS landlord/property (leasing office email/phone). Never fabricate.
@@ -245,8 +245,8 @@ const looksLikeUnitCode = (s, unitNames = []) => {
   if (!t) return false;
   /*
    * Only a title that IS one of this floor plan's apartment numbers gets moved.
-   * The old length-and-digits test also ate legitimate plan names — Mac calls
-   * its layouts 100N101A and Dorchester calls one DOR-3BTD — which left every
+   * The old length-and-digits test also ate legitimate plan names, Mac calls
+   * its layouts 100N101A and Dorchester calls one DOR-3BTD, which left every
    * floor plan on those buildings unnamed.
    */
   return unitNames.some((n) => String(n).trim().toLowerCase() === t.toLowerCase());
@@ -303,13 +303,13 @@ export async function extractListingDraft({
   );
   if (portalPage) {
     sections.push(
-      `LISTING PORTAL — THIS OVERRIDES RULE 4. This page is on a rental portal (Apartments.com, Zillow, ForRent and the like) and describes exactly ONE property: the one named in the page title and address. Every other property on the page is the portal's own "similar listings" or "nearby" rail and belongs to other landlords. Rule 4 does NOT apply here: however many properties you can see, this page is a single property. You MUST fill "listing" for the property this page is about, and you MUST return an empty "properties" array. Never return listing: null for this page.`
+      `LISTING PORTAL, THIS OVERRIDES RULE 4. This page is on a rental portal (Apartments.com, Zillow, ForRent and the like) and describes exactly ONE property: the one named in the page title and address. Every other property on the page is the portal's own "similar listings" or "nearby" rail and belongs to other landlords. Rule 4 does NOT apply here: however many properties you can see, this page is a single property. You MUST fill "listing" for the property this page is about, and you MUST return an empty "properties" array. Never return listing: null for this page.`
     );
   }
   if (liveInventory) sections.push(liveInventory);
   if (unitsHandledElsewhere) {
     sections.push(
-      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention — that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents and unitAvailability empty, because the apartments are supplied separately and will be merged in. DO still fill leaseTermMonths (and leaseTermPrices where the pages price a term) from anywhere on the site that states them — a lease length belongs to the building, not to an apartment, so nothing else supplies it and leaving it out means the landlord retypes it.`
+      `UNITS: return one "units" entry for EVERY floor plan the pages show, including the ones the AVAILABLE APARTMENTS block does not mention, that block covers only some of them, and a building's studios and larger plans are usually the ones it misses. For each, fill bedrooms, bathrooms, area, title (the floor plan's name or code as the site writes it) and rent. Do NOT list individual apartments: leave unitNames, unitRents and unitAvailability empty, because the apartments are supplied separately and will be merged in. DO still fill leaseTermMonths (and leaseTermPrices where the pages price a term) from anywhere on the site that states them, a lease length belongs to the building, not to an apartment, so nothing else supplies it and leaving it out means the landlord retypes it.`
     );
   }
   if (targetProperty) {
@@ -394,13 +394,13 @@ export async function extractListingDraft({
     parsed = salvageDraft(raw);
     if (parsed) {
       console.warn(
-        `[listing-draft] output truncated (stop_reason: ${response.stop_reason}) — ` +
+        `[listing-draft] output truncated (stop_reason: ${response.stop_reason}), ` +
           `salvaged ${parsed.properties.length} properties`
       );
     }
   }
   // Callers must treat a failed parse as "couldn't read it", never as an empty
-  // success — an empty properties list is how the picker decides to give up.
+  // success, an empty properties list is how the picker decides to give up.
   if (!parsed) return null;
   const draft = stripEmDashes(parsed);
 
@@ -505,7 +505,7 @@ export async function extractListingDraft({
       /*
        * The same file-name test the page parser uses, applied to the model's
        * choice as well. RentCafe labels the first photo in a plan's carousel
-       * "Floor Plan <name>", so a reader going by the label — human or model —
+       * "Floor Plan <name>", so a reader going by the label, human or model,
        * puts a photograph of a kitchen in the floor plan box, and the landlord
        * has to notice and undo it. A name that says kitchen, bedroom or lobby
        * is not a floor plan whoever picked it.

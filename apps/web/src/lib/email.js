@@ -1122,11 +1122,9 @@ export async function sendContentReportEmail({
  * failure email goes out immediately, per listing, because a site that
  * stopped answering is worth knowing about before the digest.
  */
-const escSync = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function describeChange(c) {
-  const where = c.detail?.label ? `${escSync(c.detail.label)}: ` : "";
+  const where = c.detail?.label ? `${escapeHtml(c.detail.label)}: ` : "";
   const money = (n) => (n == null ? "no price" : `$${Number(n).toLocaleString("en-US")}`);
   switch (c.kind) {
     case "lease_new":
@@ -1134,15 +1132,15 @@ function describeChange(c) {
     case "lease_withdrawn":
       return `${where}lease at ${money(c.detail?.rent)} no longer offered, marked unavailable`;
     case "lease_updated":
-      return `${where}lease details updated (${escSync(c.field)})`;
+      return `${where}lease details updated (${escapeHtml(c.field)})`;
     case "unit_relisted":
       return `${where}lease is back on the website`;
     case "unit_new":
       return `${where}new floor plan on the website${c.new?.offers ? `, ${c.new.offers} price${c.new.offers === 1 ? "" : "s"}` : ""}`;
     case "unit_updated":
-      return `${where}unit details filled in (${escSync(c.field)})`;
+      return `${where}unit details filled in (${escapeHtml(c.field)})`;
     case "spec_mismatch":
-      return `${where}bed/bath/size differ from the website (${escSync(JSON.stringify(c.old))} vs ${escSync(JSON.stringify(c.new))})`;
+      return `${where}bed/bath/size differ from the website (${escapeHtml(JSON.stringify(c.old))} vs ${escapeHtml(JSON.stringify(c.new))})`;
     case "missing_unit":
       return `${where}no longer on the website`;
     case "property_updated":
@@ -1150,17 +1148,17 @@ function describeChange(c) {
     case "photos_added":
       return `${where}${c.new} photo${c.new === 1 ? "" : "s"} added`;
     default:
-      return `${where}${escSync(c.kind)}`;
+      return `${where}${escapeHtml(c.kind)}`;
   }
 }
 
 export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const block = (i) => {
     const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
-    const head = `<p style="margin:16px 0 4px"><strong>${escSync(i.listing)}</strong> <span style="color:#666">(${escSync(i.status)}${i.platform ? `, ${escSync(i.platform)}` : ""}${i.confidence ? `, ${escSync(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
-    if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escSync(i.error)}</p>`;
+    const head = `<p style="margin:16px 0 4px"><strong>${escapeHtml(i.listing)}</strong> <span style="color:#666">(${escapeHtml(i.status)}${i.platform ? `, ${escapeHtml(i.platform)}` : ""}${i.confidence ? `, ${escapeHtml(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
+    if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
     const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
-    const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escSync(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escapeHtml(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
     const hold = i.holdReason
       ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
       : "";
@@ -1193,8 +1191,8 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Website sync failed</h2>
-        <p><strong>${escSync(listing)}</strong> could not be read from <a href="${escSync(sourceUrl)}">${escSync(sourceUrl)}</a>.</p>
-        <p style="color:#b91c1c">${escSync(error)}</p>
+        <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
+        <p style="color:#b91c1c">${escapeHtml(error)}</p>
         <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
         <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
@@ -1212,7 +1210,7 @@ export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) 
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Website imports paused</h2>
-        <p>The site-wide cap on ${escSync(kind)} reads was reached: ${Number(used)} of ${Number(limit)} in the last ${Number(hours)} hours.</p>
+        <p>The site-wide cap on ${escapeHtml(kind)} reads was reached: ${Number(used)} of ${Number(limit)} in the last ${Number(hours)} hours.</p>
         <p style="color:#444">Landlords are told to try again later until the window passes. If this is real demand, raise the cap (IMPORT_GLOBAL_* settings). If it is not, check listing_import_usage for the accounts behind it.</p>
         ${emailFooter({ reason: "You are receiving this because you administer listing imports on Proximity." })}
       </div>`,

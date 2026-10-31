@@ -98,8 +98,8 @@ function TypingBubble() {
         <Sparkles className="h-3 w-3 text-red-600" />
       </div>
       <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-3">
-        {[0, 150, 300].map((delay) => (
-          <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: `${delay}ms` }} />
+        {["[animation-delay:0ms]", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
+          <span key={delay} className={`h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 ${delay}`} />
         ))}
       </div>
     </div>

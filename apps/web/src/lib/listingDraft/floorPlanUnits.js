@@ -51,9 +51,9 @@ const MAX_PLANS = 16;
  *
  * Six at a time all come back 200 on the current plan, so the obvious move is
  * to open six plan pages at once. It does not work. Tried across the whole
- * acceptance suite, six made the largest building SLOWER — One Hundred Above
+ * acceptance suite, six made the largest building SLOWER, One Hundred Above
  * the Park went from 119 seconds to 250, which is close enough to the
- * platform's 300-second limit to fail in production — while saving twenty or
+ * platform's 300-second limit to fail in production, while saving twenty or
  * thirty seconds on the smaller ones. The extra requests do not run in
  * parallel so much as queue on their side, and a queue behind a slow page
  * costs more than it saves.
@@ -77,8 +77,8 @@ export function findFloorPlanPages(html, indexUrl, cap = Infinity) {
   }
   if (!basePath || basePath === "/") return [];
   /*
-   * The plans are usually children of the index — /floorplans then
-   * /floorplans/100n101a — but not always. Vivienne lists its twenty-three
+   * The plans are usually children of the index, /floorplans then
+   * /floorplans/100n101a, but not always. Vivienne lists its twenty-three
    * plans at /floor-plan/eden while the index is /floor-plans, one letter
    * apart, and insisting on the child path found none of them at all. So a
    * sibling whose last segment is the same word singular or plural counts too.
@@ -183,7 +183,7 @@ export function parseFloorPlanPage(text, url) {
   /*
    * Both spellings: the count before the word ("1 Bedroom") and after it
    * ("Bedrooms: 1"). Only the first was read, and a plan whose render used the
-   * other came back with no bed count — which was then filled in by the model,
+   * other came back with no bed count, which was then filled in by the model,
    * and the model has been caught taking the number out of an image file name.
    * Whatever this reads off the page beats a guess, so it is worth being
    * generous about the wording.
@@ -197,7 +197,7 @@ export function parseFloorPlanPage(text, url) {
    * page therefore described the filter, not the apartment: the word "studio"
    * turned all seven plans into studios, and preferring the first number would
    * have turned all seven into one-beds, which is just as wrong. The plan's own
-   * line names itself first — "Lindell II 2 Bedrooms | 2 Bathrooms" — so that
+   * line names itself first, "Lindell II 2 Bedrooms | 2 Bathrooms", so that
    * is what we look for, and the beds and baths have to be part of the same
    * line to count. The name and its numbers often sit on separate lines, so
    * line breaks are allowed inside that window.
@@ -294,12 +294,12 @@ function stripMarkdown(text) {
  * costs nothing.
  */
 /*
- * The floor plan's own diagram — and nothing else.
+ * The floor plan's own diagram, and nothing else.
  *
  * This was wrong twice before it was right, both times by trusting a label
  * instead of the picture. RentCafe puts alt="Floor Plan 100N101a" on the FIRST
  * IMAGE OF THE CAROUSEL, which is a photo of the kitchen, and names its assets
- * "...-1101-kitchen1-thumbnail_2_fp.jpg" — so the alt says floor plan, the file
+ * "...-1101-kitchen1-thumbnail_2_fp.jpg", so the alt says floor plan, the file
  * ends _fp, and what a landlord saw in the floor plan box was a photograph of
  * an oven. The actual diagram opens in a dialog and is not a plain image on the
  * page at all, so on those pages there is nothing here to find.
@@ -337,7 +337,7 @@ function findPlanImage(html, finalUrl, name) {
  * The lease lengths a page states, in months.
  *
  * These were only ever read off the leasing application page, which many sites
- * do not publish — so a building that says "12 month lease" on every floor plan
+ * do not publish, so a building that says "12 month lease" on every floor plan
  * still handed the landlord four empty chip rows to fill in by hand. Anything
  * we have already fetched is worth reading for it.
  *
@@ -413,7 +413,7 @@ async function fetchLeaseTermRange(applyUrl) {
     console.log(`[listing-draft] lease terms: ${m[1]}-${m[2]} months, rate reflects ${reflects ?? "?"}`);
     return { min: Number(m[1]), max: Number(m[2]), reflects, special, offered };
   } catch (err) {
-    console.log(`[listing-draft] lease terms: ${applyUrl.slice(0, 120)} failed — ${err.message}`);
+    console.log(`[listing-draft] lease terms: ${applyUrl.slice(0, 120)} failed, ${err.message}`);
     return null;
   }
 }
@@ -454,7 +454,7 @@ export async function fetchFloorPlanUnits(urls) {
            * information on it at all.
            *
            * Matching only "oleapplication" found nothing on any RentCafe site,
-           * which is Keeley's entire portfolio — so every Keeley building
+           * which is Keeley's entire portfolio, so every Keeley building
            * imported with four empty lease-term rows and the note saying the
            * site doesn't publish its lengths. It does. Each plan page carries a
            * "Lease now" link to /onlineleasing/.../floorplans/<id>, which
@@ -537,7 +537,7 @@ export function describeFloorPlanUnits(result) {
         } months, leave leaseTermPrices empty, and add a sourceNote saying terms run ${termRange.min} to ${termRange.max} months and only the displayed rate is published.`
     );
   }
-  return `AVAILABLE APARTMENTS (read from this property's own floor-plan pages — these apartment numbers, rents and dates are authoritative; list every apartment number under its floor plan in unitNames, with its date in unitAvailability, and never contradict them):\n${lines.join(
+  return `AVAILABLE APARTMENTS (read from this property's own floor-plan pages, these apartment numbers, rents and dates are authoritative; list every apartment number under its floor plan in unitNames, with its date in unitAvailability, and never contradict them):\n${lines.join(
     "\n"
   )}`;
 }

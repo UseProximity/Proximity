@@ -203,10 +203,13 @@ async function confirm(t, iso, byUserId) {
   const now = new Date().toISOString();
   const when = fmtTourTime(iso);
   const threadId = await openDirectThread(t);
+  // Only while still undecided: a double click, or a cancel that landed
+  // first, finds nothing to update and stops here (PR #365 review).
   const { data: updated, error } = await supabase.from("tour_requests").update({
     status: "confirmed", confirmed_slot: iso, confirmed_by: byUserId, confirmed_at: now, thread_id: threadId, last_activity_at: now,
-  }).eq("id", t.id).select(TOUR_SELECT).single();
+  }).eq("id", t.id).in("status", ["requested", "proposed", "messaging"]).select(TOUR_SELECT).maybeSingle();
   if (error) throw fail("tour confirm", error);
+  if (!updated) return null;
   await postMessage({ threadId, listingId: t.listing_id, senderId: t.landlord_id, type: "text", body: `Your tour is confirmed for ${when}. Message me here if anything changes.`, metadata: { tourId: t.id, confirmed: true } });
   if (t.proxy_thread_id) {
     await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
@@ -229,6 +232,7 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
     const checked = checkTourTime(t.student_slots ?? [], day, time);
     if (checked.error) return { error: checked.error, status: 400 };
     const updated = await confirm(t, checked.iso, landlordId);
+    if (!updated) return { error: "This request just changed. Refresh to see where it stands.", status: 409 };
     return { tour: shape(updated, "landlord") };
   }
   if (action === "message") {
@@ -250,8 +254,10 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
     return { tour: shape(updated, "landlord"), threadId };
   }
   if (action === "cancel") {
-    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: landlordId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
+    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: landlordId, last_activity_at: now })
+      .eq("id", t.id).in("status", ["requested", "proposed", "messaging", "confirmed"]).select(TOUR_SELECT).maybeSingle();
     if (error) throw fail("tour cancel", error);
+    if (!updated) return { error: "This request is already closed", status: 409 };
     if (t.proxy_thread_id) await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: "The landlord cancelled your tour request. You can send new times from the calendar button, or look at similar places.", metadata: { tourId: t.id, cancelled: true } });
     await notifyTourCancelled({ tourId: t.id, by: "landlord" }).catch(() => {});
     return { tour: shape(updated, "landlord") };
@@ -279,8 +285,10 @@ export async function studentAct({ tourId, studentId, action, slots = [] }) {
   }
   if (action === "cancel") {
     if (!["requested", "proposed", "messaging", "confirmed"].includes(t.status)) return { error: "This request is already closed", status: 409 };
-    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: studentId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
+    const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: studentId, last_activity_at: now })
+      .eq("id", t.id).in("status", ["requested", "proposed", "messaging", "confirmed"]).select(TOUR_SELECT).maybeSingle();
     if (error) throw fail("tour cancel", error);
+    if (!updated) return { error: "This request is already closed", status: 409 };
     if (t.proxy_thread_id) await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note", body: "Your tour request is cancelled. Send new times from the calendar button whenever you're ready.", metadata: { tourId: t.id, cancelled: true } });
     await notifyTourCancelled({ tourId: t.id, by: "student" }).catch(() => {});
     return { tour: shape(updated, "student") };

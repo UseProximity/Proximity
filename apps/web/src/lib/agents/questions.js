@@ -357,10 +357,6 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   if (!q) return { error: "Question not found", status: 404 };
   if (q.owner_id && q.owner_id !== landlordUserId) return { error: "This question was sent to another landlord", status: 403 };
   if (!["open", "answered"].includes(q.status)) return { error: "This question is already closed", status: 409 };
-  // Writing on an answered card (a correction, an extra detail) reaches
-  // everyone who asked it, so they all wait for this reply again.
-  if (q.status === "answered") await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id);
-
   const screened = screenLandlordText(body);
   if (!screened.text) return { error: "Write an answer first.", status: 400 };
   if (screened.onlyContact) {
@@ -373,6 +369,11 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     done = c.kind !== "clarifier";
     if (c.kind === "both" && c.answerPart && c.questionPart) both = c;
   }
+  // Writing on an answered card (a correction, an extra detail) reaches
+  // everyone who asked it, so they all wait for this reply again; only once
+  // the reply is accepted (PR #365 review).
+  if (q.status === "answered") await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id);
+
   await supabase.from("listing_question_messages").insert({
     question_id: q.id, sender: "landlord", user_id: landlordUserId, body: screened.text, raw_body: screened.removed ? screened.original : null,
     screened: screened.removed > 0, via,

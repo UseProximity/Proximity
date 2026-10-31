@@ -838,7 +838,7 @@ export async function POST(req) {
      *
      * Best-effort in the strongest sense: a listing must never fail to publish
      * because we could not record where it was read from. Only for a property
-     * this request actually created — attaching an offering to someone else's
+     * this request actually created, attaching an offering to someone else's
      * building must not re-point their monitor at the page this landlord
      * happened to paste.
      */
