@@ -225,12 +225,6 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
     [offerings, saved, visit]
   );
   const choices = useMemo(() => listingChoices(offerings, prefs), [offerings, prefs]);
-  // A dropdown with one value across the whole listing is just said.
-  const only = useMemo(() => {
-    const all = listingChoices(offerings, {});
-    const one = (opts) => (opts.length === 1 ? opts[0] : null);
-    return { beds: one(all.beds), months: one(all.months), moveIn: one(all.moveIn) };
-  }, [offerings]);
   const groups = useMemo(() => listingMatches(offerings, prefs), [offerings, prefs]);
 
   // Sort is for this visit only, not saved. Size sorts are offered only when a
@@ -255,7 +249,7 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
     if (preview) setPreviewPrefs({ beds: null, moveIn: null, months: null });
     else shared.clear();
   };
-  return { prefs, choices, only, groups, setPrefs, clear, sort, sorts, setSort };
+  return { prefs, choices, groups, setPrefs, clear, sort, sorts, setSort };
 }
 
 export default function LeaseOptions({ groups = [], prefs = null, sort = "match", loading = false, empty = false, onContact, onFloorPlan }) {

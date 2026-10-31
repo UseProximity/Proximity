@@ -1384,7 +1384,7 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
         <div className="animate-pulse">
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
-            className={`flex flex-col md:flex-row gap-px bg-white -mx-4 mb-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
+            className={`flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
@@ -1395,42 +1395,13 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </div>
           </div>
 
-          {/* Header card: address on the left, rating on the right */}
-          <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          {/* Title: flat and edge to edge, name over address, rating right. */}
+          <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div className="w-full md:w-auto">
-              <Bar className="h-6 w-56 max-w-full" />
-              <Bar className="h-4 w-40 max-w-full mt-2" />
+              <Bar className="h-7 w-64 max-w-full" />
+              <Bar className="h-4 w-48 max-w-full mt-2" />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Bar className="h-8 w-8 rounded-full" />
-              <Bar className="h-6 w-16" />
-            </div>
-          </div>
-
-          {/* Unit selector: tab strip, unit identity, then the lease rows */}
-          <div className="bg-white rounded-xl shadow mb-4 overflow-hidden">
-            <div className="flex w-full">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex-1 px-3 py-2.5 border-b-2 border-gray-100">
-                  <Bar className="h-4 w-full" />
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-gray-100 px-4 pt-3 pb-1">
-              <Bar className="h-4 w-32" />
-              <Bar className="h-3 w-48 max-w-full mt-1.5" />
-            </div>
-            <div className="divide-y divide-gray-100">
-              {[0, 1].map((i) => (
-                <div key={i} className="flex items-center justify-between gap-4 px-4 py-4">
-                  <div className="flex-1">
-                    <Bar className="h-4 w-28" />
-                    <Bar className="h-3 w-40 max-w-full mt-2" />
-                  </div>
-                  <Bar className="h-8 w-24 rounded-lg shrink-0" />
-                </div>
-              ))}
-            </div>
+            <Bar className="h-5 w-24 shrink-0" />
           </div>
 
           {/* Tab strip */}
@@ -1448,21 +1419,37 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
             </nav>
           </div>
 
-          {/* Tab body: white edge to edge, like the loaded page. */}
-          <div className="-mx-4 -mb-8 min-h-[60vh] space-y-6 bg-white px-10 py-6">
-            <div className="space-y-3">
-              <Bar className="h-5 w-40" />
-              <Bar className="h-3 w-full" />
-              <Bar className="h-3 w-full" />
-              <Bar className="h-3 w-2/3" />
+          {/* Pricing, the tab a listing opens on: the "I want" sentence, one
+              landlord, a floor plan and its leases. */}
+          <div className="-mx-4 -mb-8 min-h-[60vh] bg-white px-10 py-6">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <Bar className="h-4 w-12" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-4 w-6" />
+              <Bar className="h-7 w-28 rounded-lg" />
+              <Bar className="h-4 w-14" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-7 w-36 rounded-lg sm:ml-auto" />
             </div>
-            <div>
-              <Bar className="h-5 w-32 mb-4" />
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Bar className="h-5 w-5 rounded-full shrink-0" />
-                    <Bar className="h-3 flex-1" />
+            <div className="border-t border-gray-100 py-3">
+              <div className="flex items-center gap-3">
+                <Bar className="h-9 w-9 rounded-full shrink-0" />
+                <div className="flex-1">
+                  <Bar className="h-4 w-32" />
+                  <Bar className="h-3 w-52 max-w-full mt-1.5" />
+                </div>
+                <Bar className="h-8 w-24 sm:w-[130px] rounded-lg shrink-0" />
+              </div>
+              <Bar className="h-3 w-48 max-w-full mt-4" />
+              <div className="mt-1 divide-y divide-gray-100 pl-2 sm:pl-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-3">
+                    {Array.from({ length: 4 }).map((__, j) => (
+                      <div key={j}>
+                        <Bar className="h-2.5 w-12" />
+                        <Bar className="h-4 w-20 mt-1.5" />
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -2101,12 +2088,13 @@ export default function ListingModalInfo({
             )}
             {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
             <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
+              {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
+              <div className="min-w-0 w-full md:w-auto md:flex-1">
+                <h1 className="truncate text-[19px] sm:text-[27px] font-bold text-gray-900 leading-snug">
                   {listing.title || street}
                 </h1>
                 {cityStateZip && (
-                  <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
+                  <p className="truncate text-gray-500 text-[15px] sm:text-base mt-0.5">{cityStateZip}</p>
                 )}
                 {/*
                   * No property-level "Available <date>" pill here on purpose.
@@ -2250,7 +2238,6 @@ export default function ListingModalInfo({
                       <LeasePrefsControls
                         value={leaseView.prefs}
                         choices={leaseView.choices}
-                        only={leaseView.only}
                         count={matchingLeases.length}
                         sort={leaseView.sort}
                         sorts={leaseView.sorts}

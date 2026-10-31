@@ -8,8 +8,8 @@
  *   "sentence"  on a listing: "I want a [2 bed] for [12 months] starting
  *               [Aug 2027]" (Wyatt, 2026-10-30). `choices` comes from
  *               listingChoices, so each dropdown offers only what the listing
- *               has given the other two picks. A dropdown with a single value
- *               across the whole listing (`only`) is plain text, not a select.
+ *               has given the other two picks. Every part is a dropdown that
+ *               starts on "any", even with a single value to offer.
  *   "form"      the profile form: every size up to 6 beds, every month for two
  *               years and every length up to 24.
  *
@@ -65,7 +65,6 @@ export default function LeasePrefsControls({
   variant = "sentence",
   idPrefix = "lease-prefs",
   choices = null,
-  only = null,
   count = null,
   sort = null,
   sorts = null,
@@ -78,34 +77,30 @@ export default function LeasePrefsControls({
   }
 
   /*
-   * A single value across the whole listing is said, not asked, and so is
-   * "any" when the other two picks leave nothing to choose (leases with no
-   * stated start, say). Anything else is a select listing what exists given
-   * the other two picks, plus an "any" to step back out.
+   * Always a dropdown, starting on "any" (Wyatt, 2026-10-31): even when the
+   * listing has a single size or length, it is offered, not filled in. Each
+   * lists what exists given the other two picks.
    */
-  const part = (key, label, any, number = false) =>
-    only?.[key] || (value?.[key] == null && !choices?.[key]?.length) ? (
-      <span className="font-semibold text-gray-900">{only?.[key]?.label ?? any}</span>
-    ) : (
-      <label htmlFor={`${idPrefix}-${key}`} className="relative inline-flex max-w-full">
-        <span className="sr-only">{label}</span>
-        <Select
-          id={`${idPrefix}-${key}`}
-          value={value?.[key]}
-          any={any}
-          options={choices?.[key] ?? []}
-          onPick={(v) => onChange({ [key]: v })}
-          className={SENTENCE_SELECT}
-          number={number}
-        />
-        <SelectChevron />
-      </label>
-    );
+  const part = (key, label, any, number = false) => (
+    <label htmlFor={`${idPrefix}-${key}`} className="relative inline-flex max-w-full">
+      <span className="sr-only">{label}</span>
+      <Select
+        id={`${idPrefix}-${key}`}
+        value={value?.[key]}
+        any={any}
+        options={choices?.[key] ?? []}
+        onPick={(v) => onChange({ [key]: v })}
+        className={SENTENCE_SELECT}
+        number={number}
+      />
+      <SelectChevron />
+    </label>
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-gray-700">
       {/* "I want a [3 bed]", but "I want [any size]" (Wyatt, 2026-10-30). */}
-      <span>{value?.beds != null || only?.beds ? "I want a" : "I want"}</span>
+      <span>{value?.beds != null ? "I want a" : "I want"}</span>
       {part("beds", "Size", "any size", true)}
       <span>for</span>
       {part("months", "Lease length", "any length", true)}
