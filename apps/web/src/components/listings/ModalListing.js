@@ -49,7 +49,7 @@ export default function ModalListing({ isOpen, onClose, header = null, children 
         </button>
         {header}
         {/* No side padding: the listing's photos run to the modal's edges (Wyatt, 2026-10-31). */}
-        <div className="w-full overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
+        <div className="w-full overflow-y-auto [overflow-anchor:none] overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

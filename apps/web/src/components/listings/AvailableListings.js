@@ -456,7 +456,7 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto scrollbar-hidden transition-[width] duration-300 ${
+        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
           expandedListing ? "w-[58vw]" : "w-[40vw] px-4 py-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}

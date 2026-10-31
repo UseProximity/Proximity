@@ -88,6 +88,10 @@ const TABS = [
   { id: "contact", label: "Contact" },
 ];
 
+// How far back down the sticky header has to come before it grows again. More
+// than the ~50px compacting takes off, so the two can't chase each other.
+const HEAD_UNSTICK = 72;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /*
@@ -1491,8 +1495,14 @@ export default function ListingModalInfo({
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("pricing");
 
-  // True once the header has stuck to the top: the sentinel just above it has
-  // scrolled up out of the panel or modal it scrolls in.
+  /*
+   * True once the header has stuck to the top: the sentinel just above it has
+   * scrolled up out of the panel or modal it scrolls in. Compacting takes about
+   * 50px off the header, which moves everything under it, so growing back
+   * waits until the sentinel is HEAD_UNSTICK px back in view. Without that gap
+   * the shrink and the browser's scroll correction fed each other and the
+   * header twitched at the line (Wyatt, 2026-10-31).
+   */
   const headSentinelRef = useRef(null);
   const [headStuck, setHeadStuck] = useState(false);
   useEffect(() => {
@@ -1500,12 +1510,19 @@ export default function ListingModalInfo({
     if (!el) return;
     let root = el.parentElement;
     while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
-    const io = new IntersectionObserver(
-      ([e]) => setHeadStuck(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
-      { root: root ?? null }
-    );
-    io.observe(el);
-    return () => io.disconnect();
+    const target = root ?? window;
+    let stuck = false;
+    const onScroll = () => {
+      const top = root ? root.getBoundingClientRect().top : 0;
+      const dist = el.getBoundingClientRect().top - top;
+      if (!stuck && dist < 0) stuck = true;
+      else if (stuck && dist > HEAD_UNSTICK) stuck = false;
+      else return;
+      setHeadStuck(stuck);
+    };
+    onScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
   }, [detailLoading]);
 
   // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
