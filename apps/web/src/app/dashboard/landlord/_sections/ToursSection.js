@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { TourItem } from "@/components/landlord/LandlordProxyChat";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceLandlordChange, onLandlordChange } from "@/components/landlord/landlordSync";
 
 const OPEN = ["requested", "proposed", "messaging"];
 
@@ -33,6 +34,8 @@ export default function ToursSection({ viewAsId = null }) {
     } catch (err) { setError(err.message); }
   }, [viewAsId]);
   useEffect(() => { load(); }, [load]);
+  // A pick or a message to the student in any other area updates this list, and the other way round.
+  useEffect(() => onLandlordChange(() => load()), [load]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!tours) return <ChatSkeleton rows={3} />;
@@ -47,7 +50,7 @@ export default function ToursSection({ viewAsId = null }) {
       {list.map((t) => (
         <div key={t.id} className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="mb-2 text-xs font-semibold text-gray-500">{t.listingTitle}</p>
-          <TourItem tour={t} viewAsId={viewAsId} onDone={load} />
+          <TourItem tour={t} viewAsId={viewAsId} onDone={() => { load(); announceLandlordChange({ listingId: t.listingId ?? null }); }} />
         </div>
       ))}
     </section>

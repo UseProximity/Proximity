@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDays } from "lucide-react";
 import { fmtSlot } from "@/lib/agents/tourTime";
+import { onInboxChange } from "@/components/landlord/landlordSync";
 
 export default function StudentTours() {
   const [tours, setTours] = useState(null);
@@ -19,6 +20,8 @@ export default function StudentTours() {
     } catch { /* leave empty */ }
   }, []);
   useEffect(() => { load(); }, [load]);
+  // Landlord replies seen anywhere on the page (Proxy's notes) update this list too.
+  useEffect(() => onInboxChange(() => load()), [load]);
 
   const act = async (tour, action, slot = null) => {
     const r = await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, slot }) });

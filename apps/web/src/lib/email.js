@@ -1231,11 +1231,18 @@ function proxyParagraphs(messages) {
  */
 export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null }) {
   const first = name ? String(name).split(" ")[0] : "";
-  const subject = kind === "proxy_relay"
-    ? `The landlord answered your question about ${listingLabel}`
-    : kind === "proxy_no_answer"
-      ? `No answer yet about ${listingLabel}`
-      : `Proxy answered your question about ${listingLabel}`;
+  const subject = {
+    proxy_relay: `The landlord answered your question about ${listingLabel}`,
+    proxy_clarifier: `The landlord has a question for you about ${listingLabel}`,
+    proxy_correction: `An update from the landlord about ${listingLabel}`,
+    proxy_no_answer: `No answer yet about ${listingLabel}`,
+  }[kind] ?? `Proxy answered your question about ${listingLabel}`;
+  const intro = {
+    proxy_relay: "The landlord's answer came back.",
+    proxy_clarifier: "The landlord needs one detail from you before they can answer.",
+    proxy_correction: "The landlord updated something Proxy told you.",
+    proxy_no_answer: "An update on your question.",
+  }[kind] ?? "Here is what Proxy found.";
   await sendMailSafe(transporter, {
     logAs: { kind, threadId, userId },
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
@@ -1244,7 +1251,7 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
         <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
-        <p>${kind === "proxy_relay" ? "The landlord's answer came back." : kind === "proxy_no_answer" ? "An update on your question." : "Here is what Proxy found."} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
+        <p>${intro} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
         ${proxyParagraphs(messages)}
         <a href="${threadUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open the conversation</a>
         <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>

@@ -404,7 +404,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     const heldB = await heldThreadIds(waiters.map((w) => w.thread_id));
     for (const w of waiters) {
       if (heldB.has(w.thread_id)) continue;
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, answered: true, landlordAsked: followUp } });
       await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };

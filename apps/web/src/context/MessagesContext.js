@@ -24,6 +24,7 @@ import {
   useState,
 } from "react";
 import { useSession } from "next-auth/react";
+import { onLandlordChange, onInboxChange } from "@/components/landlord/landlordSync";
 import {
   subscribeInboxMessages,
   subscribeThreadMessages,
@@ -720,7 +721,15 @@ export function MessagesProvider({ children }) {
     }
 
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    // A landlord answered Proxy or picked a tour time somewhere on the page:
+    // the inbox's Proxy rows and unread badge catch up (Wyatt, 2026-11-01).
+    const offLandlord = onLandlordChange(() => refreshThreads().catch(() => {}));
+    const offInbox = onInboxChange(() => refreshThreads().catch(() => {}));
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      offLandlord();
+      offInbox();
+    };
   }, [userId, loadMessages, refreshThreads, markThreadRead]);
 
   const unreadCount = useMemo(

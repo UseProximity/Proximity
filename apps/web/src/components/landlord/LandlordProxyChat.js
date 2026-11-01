@@ -29,6 +29,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import { Send, Sparkles, CalendarDays, X, MessageCircleQuestion, ChevronDown, ChevronUp, CheckCircle2, ArrowDown } from "lucide-react";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceLandlordChange, onLandlordChange } from "@/components/landlord/landlordSync";
 import { chicagoToUtc } from "@/lib/agents/tourTime";
 
 function ProxyAvatar({ show = true }) {
@@ -243,6 +244,9 @@ function QuestionCard({ item, extra, folded, onToggle, canFold, replying, onRepl
 
 function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, replying, onReply, highlight }) {
   const t = item.tour;
+  // Once they're talking, the card shows the conversation; the time picker
+  // waits behind a button for when they agree (Wyatt, 2026-11-01).
+  const [picking, setPicking] = useState(false);
   const first = t.studentName?.split(" ")[0] || "them";
   const unit = t.lease ? ` ${t.lease.unit}${t.lease.rent ? ` at $${Number(t.lease.rent).toLocaleString("en-US")}/mo` : ""}` : "";
   const openChat = t.threadId ? <Link href={`/?messages=1&thread=${t.threadId}`} className="inline-flex rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white">Open the chat with {first}</Link> : null;
@@ -264,11 +268,18 @@ function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, re
     >
       <p>{`${t.studentName} wants to tour${unit}. They're available:\n${t.availabilityText || "(no times left)"}`}</p>
       {t.status === "messaging" && <p>You&apos;re talking with them directly. Confirm a time here once you agree on one.</p>}
-      {["requested", "proposed", "messaging"].includes(t.status) && <TourControls tour={t} viewAsId={viewAsId} onDone={onDone} onReply={onReply} />}
+      {["requested", "proposed"].includes(t.status) && <TourControls tour={t} viewAsId={viewAsId} onDone={onDone} onReply={onReply} />}
       {t.status === "confirmed" && <p>Confirmed for {t.confirmedText}. I let them know.</p>}
       {t.status === "cancelled" && <p>{t.cancelledByMe ? "You declined this tour." : "They cancelled this request."}</p>}
       {t.status === "expired" && <p>Their times passed without a confirmation.</p>}
       {[...item.exchange, ...extra].map((e) => <Entry key={e.id} e={e} />)}
+      {t.status === "messaging" && (picking
+        ? <TourControls tour={t} viewAsId={viewAsId} onDone={onDone} onReply={onReply} />
+        : (
+          <button type="button" onClick={() => setPicking(true)} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:border-gray-400">
+            Confirm a time
+          </button>
+        ))}
       {openChat && <div>{openChat}</div>}
     </Card>
   );
@@ -277,7 +288,9 @@ function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, re
 /* The Tours tab shows the same card on its own, writing to the student in place. */
 export function TourItem({ tour, viewAsId, onDone }) {
   const state = tour.status === "requested" || tour.status === "proposed" ? "needs_you" : tour.status === "messaging" ? "waiting" : tour.status === "confirmed" ? "confirmed" : "closed";
-  return <TourCard item={{ id: tour.id, tour, state, exchange: [] }} extra={[]} viewAsId={viewAsId} onDone={onDone} folded={false} canFold={false} />;
+  const label = tour.studentName?.split(" ")[0] || "The student";
+  const exchange = (tour.messages ?? []).map((m) => ({ ...m, label, note: m.from === "you" ? "In your direct chat." : null }));
+  return <TourCard item={{ id: tour.id, tour, state, exchange }} extra={[]} viewAsId={viewAsId} onDone={onDone} folded={false} canFold={false} />;
 }
 
 function Proposal({ item, busy, onDecide }) {
@@ -352,6 +365,9 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
       const seen = seenRef.current;
       const fresh = quiet && seen ? news.filter((k) => !seen.has(k)) : [];
       seenRef.current = new Set(news);
+      // Something changed on the server (an emailed answer, a student's
+      // reply): every other count and copy of this chat catches up too.
+      if (fresh.length) announceLandlordChange({ listingId, source: selfRef.current });
       if (fresh.length) {
         setIncoming(true);
         await new Promise((res) => setTimeout(res, 1400));
@@ -363,8 +379,20 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   }, [listingId, qs]);
 
   useEffect(() => { setData(null); setTarget(null); setChoice(null); setOpened(new Set()); seenRef.current = null; load(); }, [load]);
+  // No background check while a message is on its way: it would show the
+  // half-saved answer above the "Sending…" copy. The card says Sending until
+  // the answer is passed on and saved, then reloads once (Wyatt, 2026-11-01).
+  const inFlightRef = useRef(false);
+  const selfRef = useRef(Math.random().toString(36).slice(2));
+  // Another copy of this chat (or another area) changed something: reload.
+  useEffect(() => onLandlordChange((e) => {
+    if (e.detail?.source === selfRef.current || inFlightRef.current) return;
+    if (!e.detail?.listingId || e.detail.listingId === listingId) load();
+  }), [load, listingId]);
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") load({ quiet: true }); }, 8000);
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible" && !inFlightRef.current) load({ quiet: true });
+    }, 8000);
     return () => clearInterval(t);
   }, [load]);
   useEffect(() => () => clearInterval(timerRef.current), []);
@@ -404,6 +432,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
     setPending(null);
     setChoice(null);
     const toCard = !!(p.questionId || p.tourId);
+    inFlightRef.current = true;
     if (toCard) {
       setSending(p);
       setOpened((cur) => new Set(cur).add(p.questionId ? `question:${p.questionId}` : `tour:${p.tourId}`));
@@ -415,10 +444,11 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
       await post({ action: "send", text: p.text, questionId: p.questionId ?? null, tourId: p.tourId ?? null });
       await load();
       onChanged?.();
+      announceLandlordChange({ listingId, source: selfRef.current });
     } catch (err) {
       toast.error(err.message);
       setText(p.text);
-    } finally { setWorking(false); setSent(null); setSending(null); }
+    } finally { inFlightRef.current = false; setWorking(false); setSent(null); setSending(null); }
   }, [post, load, onChanged]);
 
   const hold = useCallback((p) => {
@@ -531,7 +561,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
               <div key={key} className={gap}>
                 {i.kind === "question"
                   ? <QuestionCard {...props} />
-                  : <TourCard {...props} viewAsId={viewAsId} onDone={() => { load(); onChanged?.(); }} />}
+                  : <TourCard {...props} viewAsId={viewAsId} onDone={() => { load(); onChanged?.(); announceLandlordChange({ listingId, source: selfRef.current }); }} />}
               </div>
             );
           }

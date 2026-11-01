@@ -86,10 +86,14 @@ export async function handleVisitorEmail({ thread, text, testEmailTo = null }) {
     return { reply: "I've already sent a few confirmation links from this conversation, so I can't send another. Sign in to get answers by email.", held: false, email, question };
   }
   const token = crypto.randomBytes(24).toString("base64url");
+  // Every link sent for the same address keeps working, so a second tab's
+  // email does not turn the first one's link into "expired" (Wyatt, 2026-11-01).
+  const prior = state.emailConfirm?.email === email ? state.emailConfirm : null;
+  const hashes = [...(prior?.hashes ?? (prior?.hash ? [prior.hash] : [])), hashToken(token)].slice(-CONFIRMS_PER_THREAD);
   await updateProxyState(thread.id, {
     notifyAsked: true,
     confirmsSent: sent + 1,
-    emailConfirm: { email, hash: hashToken(token), expiresAt: new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), at: new Date().toISOString() },
+    emailConfirm: { email, hash: hashes.at(-1), hashes, expiresAt: new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), at: prior?.at ?? new Date().toISOString() },
   });
   const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
   await sendProxyConfirmEmail({
@@ -114,22 +118,35 @@ export async function handleVisitorEmail({ thread, text, testEmailTo = null }) {
 export async function confirmVisitorEmail(token) {
   if (!token || String(token).length < 20) return null;
   const hash = hashToken(token);
-  const { data: thread } = await supabase.from("chat_threads")
+  const find = (state) => supabase.from("chat_threads")
     .select("id, listing_id, proxy_state, interested_user_id")
-    .eq("proxy_state->emailConfirm->>hash", hash).is("deleted_at", null).maybeSingle();
-  const pending = thread?.proxy_state?.emailConfirm;
+    .contains("proxy_state", state).is("deleted_at", null).limit(1).maybeSingle();
+  let { data: thread } = await find({ emailConfirm: { hashes: [hash] } });
+  if (!thread) ({ data: thread } = await find({ emailConfirm: { hash } }));
+  if (!thread) {
+    // A link opened again (a second tab, or a mail scanner that opened it
+    // first) lands where the first click did, not on "expired".
+    const { data: done } = await find({ emailConfirmed: { hashes: [hash] } });
+    const confirmed = done?.proxy_state?.emailConfirmed;
+    if (!confirmed || new Date(confirmed.expiresAt) < new Date()) return null;
+    return { listingId: done.listing_id, existingAccount: !!confirmed.existingAccount };
+  }
+  const pending = thread.proxy_state?.emailConfirm;
   if (!pending || new Date(pending.expiresAt) < new Date()) return null;
+  const confirmed = (existingAccount) => ({
+    hashes: pending.hashes ?? [pending.hash], expiresAt: pending.expiresAt, existingAccount,
+  });
   const email = pending.email;
 
   const user = await userByEmail(email);
   if (user && (completedAccount(user) || user.deleted_at)) {
     await supabase.from("chat_threads").update({ notify_email: email }).eq("id", thread.id);
-    await updateProxyState(thread.id, { emailConfirm: null, heldForAccount: user.id });
+    await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(true), heldForAccount: user.id });
     return { listingId: thread.listing_id, existingAccount: true };
   }
   const stub = user ?? (await startIncompleteAccount(email));
   await supabase.from("chat_threads").update({ notify_email: email }).eq("id", thread.id);
-  await updateProxyState(thread.id, { emailConfirm: null, heldForAccount: null, incompleteAccount: stub?.id ?? null });
+  await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(false), heldForAccount: null, incompleteAccount: stub?.id ?? null });
 
   // An answer relayed while the address waited for confirmation.
   const { data: missed } = await supabase.from("chat_messages").select("body")

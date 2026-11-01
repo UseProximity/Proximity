@@ -308,9 +308,27 @@ export async function listLandlordTours(landlordId) {
   const ids = (data ?? []).map((t) => t.student_id);
   const { data: students } = ids.length ? await supabase.from("users").select("id, name").in("id", ids) : { data: [] };
   const names = new Map((students ?? []).map((s) => [s.id, s.name]));
+  // The direct chat a tour opened, newest few, so every card shows what was
+  // said there instead of the time picker (Wyatt, 2026-11-01).
+  const threadIds = [...new Set((data ?? []).map((t) => t.thread_id).filter(Boolean))];
+  const { data: direct } = threadIds.length
+    ? await supabase.from("chat_messages").select("id, thread_id, sender_id, body, created_at").in("thread_id", threadIds)
+      .is("deleted_at", null).order("created_at", { ascending: false }).limit(threadIds.length * 6)
+    : { data: [] };
+  const byThread = new Map();
+  for (const m of direct ?? []) {
+    const list = byThread.get(m.thread_id) ?? [];
+    if (list.length < 4) list.unshift({ id: m.id, from: m.sender_id === landlordId ? "you" : "them", body: m.body, at: m.created_at });
+    byThread.set(m.thread_id, list);
+  }
   return (data ?? []).map((t) => {
     const shown = nameShown(t);
-    return { ...shape(t, "landlord"), studentName: (shown && names.get(t.student_id)) || "A student", studentNamed: shown && !!names.get(t.student_id) };
+    return {
+      ...shape(t, "landlord"),
+      studentName: (shown && names.get(t.student_id)) || "A student",
+      studentNamed: shown && !!names.get(t.student_id),
+      messages: (t.thread_id && byThread.get(t.thread_id)) || [],
+    };
   });
 }
 

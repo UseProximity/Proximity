@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircleQuestion } from "lucide-react";
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
+import { onLandlordChange } from "@/components/landlord/landlordSync";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 export default function QuestionsSection({ viewAsId = null, onCountChange = null }) {
@@ -35,6 +36,8 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
     } catch (err) { setError(err.message); }
   }, [viewAsId, onCountChange]);
   useEffect(() => { load(); }, [load]);
+  // Counts follow answers given anywhere: here, in Messages, or by email.
+  useEffect(() => onLandlordChange(() => load()), [load]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!listings) return <ChatSkeleton rows={4} />;

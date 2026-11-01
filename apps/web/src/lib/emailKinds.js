@@ -43,6 +43,8 @@ export const KINDS = {
   feedback: ["team", "Site feedback"],
   proxy_answer: ["chat", "Proxy answered a student"],
   proxy_relay: ["chat", "Landlord answer relayed by Proxy"],
+  proxy_clarifier: ["chat", "Landlord asked the student something via Proxy"],
+  proxy_correction: ["chat", "Landlord update to an earlier Proxy answer"],
   proxy_no_answer: ["chat", "Proxy: no answer from the landlord yet"],
   tour_request: ["landlords", "Tour request"],
   tour_proposal: ["chat", "Tour: landlord proposed times"],

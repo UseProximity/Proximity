@@ -57,6 +57,7 @@ import { useTour } from "./TourMarker";
 import TourPicker from "./TourPicker";
 import { availabilitySummary, availabilityText } from "@/lib/agents/tourTime";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceInboxChange } from "@/components/landlord/landlordSync";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
 
@@ -89,6 +90,8 @@ function leaseChoices(listing) {
 // What Proxy says the first time a student opens a listing's chat (Wyatt,
 // 2026-10-29). Shown, not saved: no thread fills up for someone who only looked.
 const GREETING = "Hey, I'm Proxy. Ask me anything about this listing, or tap Tour and I'll get you in touch with the landlord.";
+// Shown, not saved; it stays at the top once the conversation starts (Wyatt, 2026-11-01).
+const GREETING_MSG = { id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" };
 
 /* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
 function TypingBubble() {
@@ -240,6 +243,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         const have = new Set(m.map((x) => x.id));
         const extra = incoming.filter((x) => !have.has(x.id));
         if (!extra.length) return m;
+        // Anything from Proxy (a relayed answer, a tour update, a new direct
+        // chat with the landlord): the inbox and every tour view catch up.
+        if (extra.some((x) => x.fromProxy)) setTimeout(announceInboxChange, 0);
         setFresh((f) => new Set([...f, ...extra.filter((x) => x.fromProxy).map((x) => x.id)]));
         return [...m.filter((x) => !String(x.id).startsWith("temp-")), ...extra];
       });
@@ -471,17 +477,17 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       )}
 
       {loading && <ChatSkeleton rows={3} />}
-      {/* Before the first question the greeting sits at the top with room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30). */}
+      {/* Before the first question the greeting sits at the top with some room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30; less room 2026-11-01). */}
       {greet && (
-        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-56"}`}>
-          <Bubble msg={{ id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" }} animate />
+        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-32"}`}>
+          <Bubble msg={GREETING_MSG} animate />
         </div>
       )}
       {started && (
         <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
-          {messages.map((m, i) => {
-            const first = i === 0 || sideOf(messages[i - 1]) !== sideOf(m);
-            const last = i === messages.length - 1 || sideOf(messages[i + 1]) !== sideOf(m);
+          {[GREETING_MSG, ...messages].map((m, i, all) => {
+            const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+            const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
             return (
               <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
                 <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />

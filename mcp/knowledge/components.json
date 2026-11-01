@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-01T18:59:18.389Z",
-  "count": 157,
+  "_generated": "2026-11-01T23:36:05.927Z",
+  "count": 158,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -261,6 +261,11 @@
     {
       "name": "LandlordProxyChat",
       "file": "src/components/landlord/LandlordProxyChat.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "landlordSync",
+      "file": "src/components/landlord/landlordSync.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

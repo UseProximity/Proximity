@@ -46,7 +46,14 @@ async function threadRecipient(threadId) {
   return { thread: t, email, name, userId, listingLabel: t.listings?.title || t.listings?.address || "a listing" };
 }
 
-export async function notifyStudentThread({ threadId, kind = "proxy_answer", quietMs = ALERT_QUIET_MS, testEmailTo = null }) {
+// Which of Proxy's recent messages each kind of student email carries.
+const EMAILED = {
+  proxy_relay: (m) => m.message_type === "proxy_relay",
+  proxy_correction: (m) => m.message_type === "proxy_note" && !!m.metadata?.correction,
+  proxy_no_answer: (m) => m.message_type === "proxy_note" && !m.metadata?.correction,
+};
+
+export async function notifyStudentThread({ threadId, kind = "proxy_relay", quietMs = ALERT_QUIET_MS, testEmailTo = null }) {
   try {
     const at = new Date();
     if (quietMs > 0) await sleep(quietMs);
@@ -56,12 +63,17 @@ export async function notifyStudentThread({ threadId, kind = "proxy_answer", qui
       const { data: p } = await supabase.from("chat_participants").select("last_read_at").eq("thread_id", threadId).eq("user_id", r.userId).maybeSingle();
       if (p?.last_read_at && new Date(p.last_read_at) >= at) return "read";
     }
-    const { data: msgs } = await supabase.from("chat_messages").select("body, message_type, created_at").eq("thread_id", threadId)
+    const { data: recent } = await supabase.from("chat_messages").select("body, message_type, metadata, created_at").eq("thread_id", threadId)
       .eq("sender_id", PROXY_USER_ID).is("deleted_at", null).gte("created_at", new Date(at.getTime() - 60_000).toISOString())
-      .order("created_at", { ascending: true }).limit(5);
-    if (!msgs?.length) return "nothing";
+      .order("created_at", { ascending: true }).limit(10);
+    // Only what the landlord sent back is emailed (Wyatt, 2026-11-01): Proxy's
+    // own answers and "I've sent it to the landlord" notes are seen on the page.
+    const msgs = (recent ?? []).filter((m) => EMAILED[kind]?.(m)).slice(-5);
+    if (!msgs.length) return "nothing";
+    // A landlord who only asked the student something is not an answer.
+    const asking = kind === "proxy_relay" && msgs.every((m) => m.metadata?.clarifier && !m.metadata?.answered);
     await sendProxyStudentEmail({
-      to: r.email, name: r.name, kind, listingLabel: r.listingLabel,
+      to: r.email, name: r.name, kind: asking ? "proxy_clarifier" : kind, listingLabel: r.listingLabel,
       messages: msgs.map((m) => m.body),
       threadUrl: `${getBaseUrl()}/listings/${r.thread.listing_id}?listingTab=contact`,
       threadId, userId: r.userId ?? null, testEmailTo,
