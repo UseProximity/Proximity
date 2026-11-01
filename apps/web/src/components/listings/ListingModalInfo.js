@@ -55,32 +55,18 @@ function defaultListingInquiry(ownerName) {
 }
 
 // The nearest ancestor that scrolls vertically, or null when the window does.
-// Shared with ListDetailPanel so both find the same container.
+// Shared with ListDetailPanel so both find the same container. Stops below
+// <body>: the app's body is overflow:auto, but that passes to the viewport, so
+// on the full listing page it is the window that scrolls, never the body.
 export function scrollParent(el) {
   let root = el?.parentElement;
-  while (root && !/(auto|scroll)/.test(getComputedStyle(root).overflowY)) root = root.parentElement;
-  return root ?? null;
-}
-
-// Scroll `el` into view within its nearest scrollable ancestor; falls back to
-// window-level scrollIntoView so it works in both modals and full-page views.
-function scrollIntoContainer(el) {
-  if (!el) return;
-  let parent = el.parentElement;
-  while (parent && parent !== document.body) {
-    const cs = window.getComputedStyle(parent);
-    if (
-      /auto|scroll/.test(cs.overflowY) &&
-      parent.scrollHeight > parent.clientHeight
-    ) {
-      const elTop = el.getBoundingClientRect().top;
-      const parentTop = parent.getBoundingClientRect().top;
-      parent.scrollBy({ top: elTop - parentTop, behavior: "smooth" });
-      return;
-    }
-    parent = parent.parentElement;
-  }
-  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  while (
+    root &&
+    root !== document.body &&
+    !/(auto|scroll)/.test(getComputedStyle(root).overflowY)
+  )
+    root = root.parentElement;
+  return root && root !== document.body ? root : null;
 }
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
@@ -91,8 +77,8 @@ const TABS = [
   { id: "pricing", label: "Pricing" },
   { id: "amenities", label: "Overview" },
   { id: "map", label: "Map" },
-  { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
+  { id: "places", label: "Places" },
   { id: "contact", label: "Contact" },
 ];
 
@@ -240,7 +226,7 @@ function AmenitiesTab({ listing }) {
           </div>
         </>
       )}
-      <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">Description</h2>
       <div className="space-y-2">
         {decodeHtml(listing.description || "")
           .split("\n")
@@ -434,7 +420,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      {/* The section title sits on the toggle's row, not above it (Wyatt, 2026-11-01). */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h2 className="text-xl font-bold text-gray-900">Places</h2>
         <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
           {toggleBtn("walking", WalkingPersonIcon, "Walking")}
           {toggleBtn("driving", Car, "Driving")}
@@ -474,6 +462,26 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 }
 
 // ─── Auth Gate ───────────────────────────────────────────────────────────────
+
+/*
+ * One stretch of the continuous listing page. The tab row jumps here, and the
+ * scroll highlight reads where it sits. Every section after the first opens
+ * with a hairline so the page still reads as distinct parts.
+ */
+function Section({ id, label = null, sectionRefs, children }) {
+  return (
+    <section
+      id={`listing-${id}`}
+      ref={(el) => {
+        sectionRefs.current[id] = el;
+      }}
+      className="py-8 first:pt-0 border-t border-gray-100 first:border-t-0"
+    >
+      {label && <h2 className="text-xl font-bold text-gray-900 mb-4">{label}</h2>}
+      {children}
+    </section>
+  );
+}
 
 function SignInPrompt({ message, tab }) {
   return (
@@ -1017,9 +1025,9 @@ function ReviewsTab({
             </form>
           </>
         ) : (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          <p className="text-sm font-medium text-red-600">
             Sign in with your school email to leave a review
-          </div>
+          </p>
         )}
       </div>
       )}
@@ -1492,6 +1500,8 @@ export default function ListingModalInfo({
   detailLoading = false,
   // Called with true/false as the title and tabs stick to the top and let go.
   onHeadStuck = null,
+  // Called when a tab click starts scrolling the page to its section.
+  onSectionJump = null,
   /*
    * The owner looking at their own listing through the dashboard's "View as
    * Student" (GlobalListingModal with ?preview=1). Everything renders as a
@@ -1538,14 +1548,88 @@ export default function ListingModalInfo({
     return () => target.removeEventListener("scroll", onScroll);
   }, [detailLoading]);
 
-  // Reopen the tab a reader signed in from (see returnUrlForTab), then drop the
-  // param so a reload or a shared link opens on Pricing as usual.
+  /*
+   * One continuous page: every section renders in order and the tabs are
+   * jump links (Wyatt, 2026-11-01). `activeTab` is only the highlight, which
+   * follows whichever section sits under the header as the reader scrolls.
+   */
+  const headRef = useRef(null);
+  const sectionRefs = useRef({});
+  const visibleTabIds = TABS.filter((t) => !excludeTabs.includes(t.id)).map((t) => t.id);
+  const visibleKey = visibleTabIds.join(",");
+  const show = (id) => visibleTabIds.includes(id);
+  // While a jump's smooth scroll runs, the highlight stays on the clicked tab
+  // instead of flicking through every section it passes.
+  const spyQuietUntil = useRef(0);
+  const onSectionJumpRef = useRef(onSectionJump);
+  onSectionJumpRef.current = onSectionJump;
+  // A tab asked for before the sections exist (the sign-in return below).
+  const pendingJump = useRef(null);
+
+  const jumpTo = (id) => {
+    const section = sectionRefs.current[id];
+    if (!section) return;
+    setActiveTab(id);
+    spyQuietUntil.current = Date.now() + 1000;
+    onSectionJumpRef.current?.();
+    const root = scrollParent(section);
+    const rootTop = root ? root.getBoundingClientRect().top : 0;
+    const scrolled = root ? root.scrollTop : window.scrollY;
+    /*
+     * Less the header's height as it is NOW. If it isn't stuck yet it compacts
+     * on the way down, and the content under it moves up by exactly the height
+     * it loses, so the full height is the right offset in both cases.
+     */
+    const top =
+      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
+    (root ?? window).scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    const anchor = headSentinelRef.current;
+    if (!anchor) return;
+    const root = scrollParent(anchor);
+    const target = root ?? window;
+    const ids = visibleKey.split(",");
+    const onScroll = () => {
+      if (Date.now() < spyQuietUntil.current) return;
+      const rootTop = root ? root.getBoundingClientRect().top : 0;
+      const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
+      const scrolled = root ? root.scrollTop : window.scrollY;
+      const viewport = root ? root.clientHeight : window.innerHeight;
+      const height = root ? root.scrollHeight : document.documentElement.scrollHeight;
+      const present = ids.filter((id) => sectionRefs.current[id]);
+      if (!present.length) return;
+      let current = present[0];
+      for (const id of present) {
+        if (sectionRefs.current[id].getBoundingClientRect().top <= line) current = id;
+      }
+      // A short last section can never reach the header, so the bottom of the
+      // page counts as being on it.
+      if (scrolled > 0 && scrolled + viewport >= height - 2) current = present[present.length - 1];
+      setActiveTab(current);
+    };
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [detailLoading, visibleKey]);
+
+  // Run a jump that was asked for while the skeleton was still up.
+  useEffect(() => {
+    if (detailLoading || !pendingJump.current) return;
+    const id = pendingJump.current;
+    pendingJump.current = null;
+    setTimeout(() => jumpTo(id), 100);
+  }, [detailLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Return a reader to the section they signed in from (see returnUrlForTab),
+  // then drop the param so a reload or a shared link opens at the top as usual.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("listingTab");
     if (!tab) return;
     if (TABS.some((t) => t.id === tab) && !excludeTabs.includes(tab)) {
-      setActiveTab(tab);
+      if (detailLoading) pendingJump.current = tab;
+      else setTimeout(() => jumpTo(tab), 100);
     }
     params.delete("listingTab");
     const qs = params.toString();
@@ -1741,13 +1825,8 @@ export default function ListingModalInfo({
      * competing offerings this is the difference between reaching the person
      * who holds the unit and reaching whoever happens to be primary.
      */
-    setActiveTab("contact");
-    /*
-     * To the sentinel just above the header, not the header: once stuck the
-     * header is already at the top, so scrolling to it went nowhere and left
-     * the student partway down the Contact tab.
-     */
-    setTimeout(() => scrollIntoContainer(headSentinelRef.current), 50);
+    // Down to the Contact section, now part of the same page.
+    setTimeout(() => jumpTo("contact"), 50);
   };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
@@ -2143,12 +2222,12 @@ export default function ListingModalInfo({
                 compacts: a smaller title, no address, the rating cut to the
                 title's height. The sentinel just above it says when. */}
             <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
-            <div id="listing-head" className="sticky top-0 z-30">
+            <div id="listing-head" ref={headRef} className="sticky top-0 z-30">
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
                   headStuck
-                    ? "py-2.5 flex-row items-center justify-between gap-4"
+                    ? "pt-4 pb-2.5 flex-row items-center justify-between gap-4"
                     : "pt-6 pb-4 flex-col md:flex-row md:justify-between md:items-center gap-4"
                 }`}
               >
@@ -2227,7 +2306,8 @@ export default function ListingModalInfo({
                         <button
                           key={tab.id}
                           type="button"
-                          onClick={() => setActiveTab(tab.id)}
+                          onClick={() => jumpTo(tab.id)}
+                          aria-current={activeTab === tab.id ? "true" : undefined}
                           className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
                             activeTab === tab.id
                               ? "text-red-600 border-red-600"
@@ -2311,8 +2391,8 @@ export default function ListingModalInfo({
               {/* "I want a [beds] for [length] starting [month]", then every
                   matching lease as landlord, floor plan, lease (Wyatt,
                   2026-10-30). Its own tab since 2026-10-31. */}
-              {activeTab === "pricing" && (
-                <div>
+              {show("pricing") && (
+                <Section id="pricing" label="Pricing" sectionRefs={sectionRefs}>
                   {!leasesLoading && hasLeases && (
                     <div className="pb-3">
                       <LeasePrefsControls
@@ -2338,65 +2418,81 @@ export default function ListingModalInfo({
                       onFloorPlan={setFloorPlanUnit}
                     />
                   </div>
-                </div>
+                </Section>
               )}
-              {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
-              {activeTab === "map" && <MapTab listing={listing} />}
-              {activeTab === "places" && (
-                <PlacesTab
-                  walkTimes={walkTimes}
-                  walkLoading={walkLoading}
-                  shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
-                  driveTimes={driveTimes}
-                />
+              {show("amenities") && (
+                <Section id="amenities" label="Overview" sectionRefs={sectionRefs}>
+                  <AmenitiesTab listing={listing} />
+                </Section>
               )}
-              {activeTab === "reviews" && !session && (
-                <SignInPrompt message="Sign in to view and leave reviews." tab="reviews" />
+              {show("map") && (
+                <Section id="map" label="Map" sectionRefs={sectionRefs}>
+                  <MapTab listing={listing} />
+                </Section>
               )}
-              {activeTab === "reviews" && session && (
-                <ReviewsTab
-                  legitimateReviews={legitimateReviews}
-                  reviewsLoaded={reviewsLoaded}
-                  reviewCount={reviewCount}
-                  overallAvg={overallAvg}
-                  starCounts={starCounts}
-                  commAvg={commAvg}
-                  locAvg={locAvg}
-                  valAvg={valAvg}
-                  showAllReviews={showAllReviews}
-                  setShowAllReviews={setShowAllReviews}
-                  session={session}
-                  listing={listing}
-                  reviewText={reviewText}
-                  setReviewText={setReviewText}
-                  rating={rating}
-                  setRating={setRating}
-                  commRating={commRating}
-                  setCommRating={setCommRating}
-                  locRating={locRating}
-                  setLocRating={setLocRating}
-                  valRating={valRating}
-                  setValRating={setValRating}
-                  reviewLoading={reviewLoading}
-                  handleReviewSubmit={handleReviewSubmit}
-                  onReviewChange={onReviewChange}
-                  preview={preview}
-                />
+              {show("reviews") && (
+                <Section id="reviews" label="Reviews" sectionRefs={sectionRefs}>
+                  {!session ? (
+                    <SignInPrompt message="Sign in to view and leave reviews." tab="reviews" />
+                  ) : (
+                    <ReviewsTab
+                      legitimateReviews={legitimateReviews}
+                      reviewsLoaded={reviewsLoaded}
+                      reviewCount={reviewCount}
+                      overallAvg={overallAvg}
+                      starCounts={starCounts}
+                      commAvg={commAvg}
+                      locAvg={locAvg}
+                      valAvg={valAvg}
+                      showAllReviews={showAllReviews}
+                      setShowAllReviews={setShowAllReviews}
+                      session={session}
+                      listing={listing}
+                      reviewText={reviewText}
+                      setReviewText={setReviewText}
+                      rating={rating}
+                      setRating={setRating}
+                      commRating={commRating}
+                      setCommRating={setCommRating}
+                      locRating={locRating}
+                      setLocRating={setLocRating}
+                      valRating={valRating}
+                      setValRating={setValRating}
+                      reviewLoading={reviewLoading}
+                      handleReviewSubmit={handleReviewSubmit}
+                      onReviewChange={onReviewChange}
+                      preview={preview}
+                    />
+                  )}
+                </Section>
               )}
-              {activeTab === "contact" && !session && (
-                <SignInPrompt
-                  message="Sign in to contact the property manager."
-                  tab="contact"
-                />
+              {show("places") && (
+                <Section id="places" sectionRefs={sectionRefs}>
+                  <PlacesTab
+                    walkTimes={walkTimes}
+                    walkLoading={walkLoading}
+                    shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
+                    driveTimes={driveTimes}
+                  />
+                </Section>
               )}
-              {activeTab === "contact" && session && (
-                <ContactTab
-                  listing={listing}
-                  session={session}
-                  selectedLease={selectedLease}
-                  onOpenThread={openThread}
-                  preview={preview}
-                />
+              {show("contact") && (
+                <Section id="contact" label="Contact" sectionRefs={sectionRefs}>
+                  {!session ? (
+                    <SignInPrompt
+                      message="Sign in to contact the property manager."
+                      tab="contact"
+                    />
+                  ) : (
+                    <ContactTab
+                      listing={listing}
+                      session={session}
+                      selectedLease={selectedLease}
+                      onOpenThread={openThread}
+                      preview={preview}
+                    />
+                  )}
+                </Section>
               )}
             </div>
           </motion.div>
