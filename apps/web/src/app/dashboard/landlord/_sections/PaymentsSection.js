@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PaymentMethodsCard from "./PaymentMethodsCard";
+import ChargesCard from "./ChargesCard";
+import ContestChargeModal from "./ContestChargeModal";
 
 const NOTICES = {
   success: { tone: "green", text: "Payment method saved." },
@@ -16,8 +18,9 @@ async function call(url, options) {
 }
 
 /*
- * The landlord's payments page. For now it holds the payment method card; the
- * balance, charges, invoices and agreement join it as those features land.
+ * The landlord's payments page: balance and charges (with Approve and Contest)
+ * and the payment method card. Invoices and the agreement join it as those
+ * features land.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -25,6 +28,9 @@ async function call(url, options) {
  */
 export default function PaymentsSection() {
   const [methods, setMethods] = useState([]);
+  const [charges, setCharges] = useState([]);
+  const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
+  const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -32,8 +38,10 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
-    const body = await call("/api/billing/payment-methods");
-    setMethods(body.methods);
+    const [m, c] = await Promise.all([call("/api/billing/payment-methods"), call("/api/billing/charges")]);
+    setMethods(m.methods);
+    setCharges(c.charges);
+    setSummary(c.summary);
   }, []);
 
   useEffect(() => {
@@ -108,6 +116,28 @@ export default function PaymentsSection() {
     });
   };
 
+  const approve = (charge) =>
+    run(async () => {
+      await call(`/api/billing/charges/${charge.id}/approve`, { method: "POST" });
+      await load();
+      setNotice({ tone: "green", text: "Charge approved. It will be on your next monthly invoice." });
+    });
+
+  const contest = (reason) =>
+    run(async () => {
+      try {
+        await call(`/api/billing/charges/${contesting.id}/contest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        });
+      } finally {
+        setContesting(null);
+        await load().catch(() => {});
+      }
+      setNotice({ tone: "gray", text: "Charge contested. We will email you the outcome." });
+    });
+
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
   return (
@@ -122,6 +152,13 @@ export default function PaymentsSection() {
           {notice.text}
         </div>
       )}
+      <ChargesCard
+        charges={charges}
+        summary={summary}
+        busy={busy}
+        onApprove={approve}
+        onContest={setContesting}
+      />
       <PaymentMethodsCard
         methods={methods}
         busy={busy}
@@ -129,6 +166,14 @@ export default function PaymentsSection() {
         onSetDefault={setDefault}
         onRemove={remove}
       />
+      {contesting && (
+        <ContestChargeModal
+          charge={contesting}
+          busy={busy}
+          onCancel={() => setContesting(null)}
+          onSubmit={contest}
+        />
+      )}
     </div>
   );
 }

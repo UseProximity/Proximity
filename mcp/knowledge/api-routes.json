@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 142,
+  "count": 146,
   "routes": [
     {
       "path": "/api/account",
@@ -74,6 +74,22 @@
         "users"
       ],
       "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/test-charges",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history",
+        "users"
+      ],
+      "file": "src/app/api/admin/billing/test-charges/route.js"
     },
     {
       "path": "/api/admin/chat/reply-senders",
@@ -558,6 +574,50 @@
         "pms_review_queue"
       ],
       "file": "src/app/api/availability/confirm/route.js"
+    },
+    {
+      "path": "/api/billing/charges",
+      "methods": [
+        "GET"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "GET": "landlord"
+      },
+      "tables": [
+        "charges"
+      ],
+      "file": "src/app/api/billing/charges/route.js"
+    },
+    {
+      "path": "/api/billing/charges/[id]/approve",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/billing/charges/[id]/approve/route.js"
+    },
+    {
+      "path": "/api/billing/charges/[id]/contest",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/billing/charges/[id]/contest/route.js"
     },
     {
       "path": "/api/billing/payment-methods",
