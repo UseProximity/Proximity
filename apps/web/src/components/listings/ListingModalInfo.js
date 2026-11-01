@@ -226,7 +226,7 @@ function AmenitiesTab({ listing }) {
           </div>
         </>
       )}
-      <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">Description</h2>
       <div className="space-y-2">
         {decodeHtml(listing.description || "")
           .split("\n")
@@ -2225,7 +2225,7 @@ export default function ListingModalInfo({
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
                   headStuck
-                    ? "py-2.5 flex-row items-center justify-between gap-4"
+                    ? "pt-4 pb-2.5 flex-row items-center justify-between gap-4"
                     : "pt-6 pb-4 flex-col md:flex-row md:justify-between md:items-center gap-4"
                 }`}
               >
@@ -2418,9 +2418,8 @@ export default function ListingModalInfo({
                   </div>
                 </Section>
               )}
-              {/* AmenitiesTab carries its own Amenities and Overview headings. */}
               {show("amenities") && (
-                <Section id="amenities" sectionRefs={sectionRefs}>
+                <Section id="amenities" label="Overview" sectionRefs={sectionRefs}>
                   <AmenitiesTab listing={listing} />
                 </Section>
               )}
