@@ -14,7 +14,7 @@ export const STRIPE_WEBHOOK_EVENTS = [
   "payment_method.attached",
   "payment_method.detached",
   "payment_method.updated",
-  "payment_method.automatically_updated",
+  "payment_method.card_automatically_updated",
   "customer.updated",
 
   // Monthly invoices

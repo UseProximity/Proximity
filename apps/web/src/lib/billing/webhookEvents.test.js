@@ -5,6 +5,7 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { processStripeEvent } from "./webhookEvents.js";
 import { handlers } from "./webhookHandlers.js";
+import { paymentMethodHandlers } from "./paymentMethodHandlers.js";
 import { getStripe } from "./stripe.js";
 import { STRIPE_WEBHOOK_EVENTS } from "./stripeEvents.mjs";
 
@@ -136,5 +137,11 @@ describe("webhook signature", () => {
 describe("STRIPE_WEBHOOK_EVENTS", () => {
   it("lists each event once", () => {
     assert.equal(new Set(STRIPE_WEBHOOK_EVENTS).size, STRIPE_WEBHOOK_EVENTS.length);
+  });
+
+  it("covers every event a handler is written for, so none is silently never delivered", () => {
+    for (const type of Object.keys(paymentMethodHandlers)) {
+      assert.ok(STRIPE_WEBHOOK_EVENTS.includes(type), `${type} has a handler but is not subscribed`);
+    }
   });
 });

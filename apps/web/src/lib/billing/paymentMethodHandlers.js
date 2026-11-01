@@ -7,7 +7,7 @@
  *   setup_intent.succeeded         a bank account that was Verifying is now usable
  *   setup_intent.setup_failed      verification failed: the method is marked Failed
  *   payment_method.updated         expiry or card number refreshed on Stripe's side
- *   payment_method.automatically_updated   the card updater replaced an expired card
+ *   payment_method.card_automatically_updated   the card updater replaced an expired card
  *   payment_method.detached        removed on Stripe (our Remove button or the dashboard)
  */
 import { getStripe } from "./stripe.js";
@@ -44,7 +44,7 @@ export const paymentMethodHandlers = {
   },
 
   "payment_method.updated": refresh,
-  "payment_method.automatically_updated": refresh,
+  "payment_method.card_automatically_updated": refresh,
 
   "payment_method.detached": async (event, { db }) => {
     const result = await removeByStripeId(db, getStripe(), event.data.object.id);

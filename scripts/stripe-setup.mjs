@@ -88,6 +88,8 @@ async function main() {
   console.log(`Mode:     ${isLive ? "LIVE" : "sandbox"}${args.dryRun ? " (dry run)" : ""}`);
   console.log(`Endpoint: ${url.href}`);
 
+  await ensurePaymentMethods(stripe, args.dryRun);
+
   let existing = null;
   for await (const endpoint of stripe.webhookEndpoints.list({ limit: 100 })) {
     if (endpoint.url === url.href) {
@@ -137,6 +139,39 @@ async function main() {
   printChecklist(isLive);
 }
 
+/*
+ * Invoices are charged to a bank account (ACH) or a card, so both must be turned
+ * on in the account's default payment method configuration. A fresh account has
+ * US bank account OFF, which lets a landlord link a bank but can then stop
+ * Stripe collecting an invoice with it. Turning one on can be refused (live mode
+ * needs the account approved for ACH Direct Debit), so a refusal is reported as
+ * something to do by hand, not a crash.
+ */
+async function ensurePaymentMethods(stripe, dryRun) {
+  const WANTED = ["us_bank_account", "card"];
+  const configs = await stripe.paymentMethodConfigurations.list({ limit: 20 });
+  const config = configs.data.find((c) => c.is_default && c.active);
+  if (!config) {
+    console.log("Payment methods: no default configuration found; turn on US bank account and Cards in the dashboard.");
+    return;
+  }
+  const off = WANTED.filter((m) => config[m]?.display_preference?.value !== "on");
+  if (!off.length) {
+    console.log(`Payment methods: ${WANTED.join(" and ")} already on.`);
+    return;
+  }
+  console.log(`Payment methods: turning on ${off.join(" and ")} in configuration ${config.id}`);
+  if (dryRun) return;
+  try {
+    await stripe.paymentMethodConfigurations.update(config.id, {
+      ...Object.fromEntries(off.map((m) => [m, { display_preference: { preference: "on" } }])),
+    });
+    console.log("Payment methods: updated.");
+  } catch (err) {
+    console.log(`Payment methods: Stripe refused (${err.message}). Turn them on in Settings > Payment methods.`);
+  }
+}
+
 // Billing behaviour Stripe only lets you set in the dashboard, so the script
 // cannot do it. Listed every run so nothing is configured from memory.
 function printChecklist(isLive) {
@@ -144,8 +179,8 @@ function printChecklist(isLive) {
   console.log(`\nDashboard settings to confirm in the ${where} account (not settable by API):`);
   console.log("  [ ] Settings > Billing > Revenue recovery > Smart Retries: OFF");
   console.log("  [ ] Settings > Billing > Revenue recovery > Automatic invoice reminders: as wanted (on by default)");
-  console.log("  [ ] Settings > Payment methods: US bank account (ACH) ON, Cards ON");
-  console.log("  [ ] Settings > Payment methods > US bank account: Financial Connections verification ON");
+  console.log("  [ ] Settings > Payment methods > US bank account: confirm Financial Connections verification is ON");
+  console.log("      (US bank account and Cards are switched on by this script; check the line above says so)");
 }
 
 main().catch((err) => fail(err?.message || String(err)));
