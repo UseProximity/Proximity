@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-10-31T19:37:43.912Z",
-  "count": 177,
+  "_generated": "2026-11-01T18:59:18.380Z",
+  "count": 179,
   "routes": [
     {
       "path": "/api/account",
@@ -389,6 +389,18 @@
         "users"
       ],
       "file": "src/app/api/admin/viewUser/route.js"
+    },
+    {
+      "path": "/api/agents/enabled",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/agents/enabled/route.js"
     },
     {
       "path": "/api/auth/[...nextauth]",
@@ -2198,6 +2210,18 @@
         "listings"
       ],
       "file": "src/app/api/properties/lookup/route.js"
+    },
+    {
+      "path": "/api/proxy/confirm-email",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/confirm-email/route.js"
     },
     {
       "path": "/api/proxy/threads",

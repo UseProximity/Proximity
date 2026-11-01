@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-31T19:37:43.955Z",
-  "count": 220,
+  "_generated": "2026-11-01T18:59:18.440Z",
+  "count": 221,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/agents/backfill.js",
       "description": "The chat-history backfill (Wyatt, 2026-10-26): every landlord message and"
+    },
+    {
+      "file": "src/lib/agents/budget.js",
+      "description": "The agents' AI spend caps (PRD v3; enforced since the PR #365 review,"
     },
     {
       "file": "src/lib/agents/compliance.js",

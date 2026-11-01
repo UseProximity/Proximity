@@ -5,11 +5,11 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 
 /*
- * The signed-in user's move-in month and lease length, the two answers every
- * unit's lease options are narrowed by. Read on its own because the listing
+ * The signed-in user's bed count, move-in month and lease length, the three
+ * answers every listing's lease options are narrowed by. Read on its own because the listing
  * page needs only these, and /api/getUser builds the whole dashboard.
  *
- * Writes go through PATCH /api/editProfile (preferredMoveInDate,
+ * Writes go through PATCH /api/editProfile (preferredBeds, preferredMoveInDate,
  * preferredLeaseMonths) like every other profile field.
  *
  * @auth any
@@ -21,7 +21,7 @@ export async function GET(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let query = supabase.from("users").select("preferred_move_in_date, preferred_lease_months");
+    let query = supabase.from("users").select("preferred_move_in_date, preferred_lease_months, preferred_beds");
     query = requestUser.id ? query.eq("id", requestUser.id) : query.eq("email", requestUser.email);
     const { data, error } = await query.maybeSingle();
 
@@ -34,6 +34,7 @@ export async function GET(req) {
       {
         moveIn: data?.preferred_move_in_date ?? null,
         months: data?.preferred_lease_months ?? null,
+        beds: data?.preferred_beds ?? null,
       },
       { headers: { "Cache-Control": "no-store" } }
     );

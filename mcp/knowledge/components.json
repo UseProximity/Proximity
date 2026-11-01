@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-31T19:37:43.917Z",
-  "count": 156,
+  "_generated": "2026-11-01T18:59:18.389Z",
+  "count": 157,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -651,6 +651,11 @@
     {
       "name": "TourPicker",
       "file": "src/components/proxy/TourPicker.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "useAgentsEnabled",
+      "file": "src/components/proxy/useAgentsEnabled.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
