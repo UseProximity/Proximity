@@ -6,6 +6,7 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { emailNewListingToOwners } from "@/lib/email/newListingEmail";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
 import { unitNameKey } from "@/utils/unitName";
 
 /*
@@ -333,6 +334,11 @@ export async function POST(req) {
   if (!valid) {
     return NextResponse.json({ error: "Say what to publish." }, { status: 400 });
   }
+
+  // Publishing needs a payment method and, when required, a signed agreement
+  // (lib/billing/listingGate.js). Drafts stay saved; only going live is refused.
+  const gate = await checkListingGate(supabase, userId);
+  if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
 
   try {
     if (kind === "all") {

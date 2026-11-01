@@ -16,6 +16,7 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
 import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
@@ -217,6 +218,16 @@ export async function POST(req) {
       ownerId = requestUser.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Putting a listing in front of students needs a payment method and, when
+       * required, a signed commission agreement (lib/billing/listingGate.js).
+       * Only landlords are checked, and saving a draft is never blocked, so
+       * nothing a landlord has typed is lost.
+       */
+      if (!draft) {
+        const gate = await checkListingGate(supabase, ownerId);
+        if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
       }
       /*
        * Someone has to be reachable about the offering. Not asked of the

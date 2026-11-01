@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
 import InvoicesCard from "./InvoicesCard";
+import AgreementCard from "./AgreementCard";
 import ContestChargeModal from "./ContestChargeModal";
 
 const NOTICES = {
@@ -20,8 +21,8 @@ async function call(url, options) {
 
 /*
  * The landlord's payments page: balance and charges (with Approve and Contest),
- * monthly invoices (with Pay now), and the payment method card. The agreement
- * joins it when that feature lands.
+ * monthly invoices (with Pay now), the payment method card, and the commission
+ * agreement with the checklist of what is needed to publish a listing.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -31,6 +32,7 @@ export default function PaymentsSection() {
   const [methods, setMethods] = useState([]);
   const [charges, setCharges] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [gate, setGate] = useState(null);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
   const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,15 +42,17 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
-    const [m, c, i] = await Promise.all([
+    const [m, c, i, g] = await Promise.all([
       call("/api/billing/payment-methods"),
       call("/api/billing/charges"),
       call("/api/billing/invoices"),
+      call("/api/billing/gate"),
     ]);
     setMethods(m.methods);
     setCharges(c.charges);
     setSummary(c.summary);
     setInvoices(i.invoices);
+    setGate(g);
   }, []);
 
   useEffect(() => {
@@ -161,6 +165,12 @@ export default function PaymentsSection() {
       }
     });
 
+  const openSignedCopy = () =>
+    run(async () => {
+      const { url } = await call("/api/billing/agreement/file");
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
   return (
@@ -174,6 +184,14 @@ export default function PaymentsSection() {
         >
           {notice.text}
         </div>
+      )}
+      {gate && (
+        <AgreementCard
+          gate={gate}
+          hasActivePaymentMethod={methods.some((m) => m.status === "active")}
+          onOpenSigned={openSignedCopy}
+          busy={busy}
+        />
       )}
       <ChargesCard
         charges={charges}

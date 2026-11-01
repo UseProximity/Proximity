@@ -21,6 +21,10 @@ export const BILLING_TIME_ZONE = "America/Chicago";
 // Where contests, failures, chargebacks and overdue notices go.
 export const BILLING_TEAM_EMAIL = "info@useproximity.org";
 
+// The current version of the commission agreement. A label, not a document: the
+// agreement itself is drafted and kept outside the app. Bump it when the terms change.
+export const CURRENT_AGREEMENT_VERSION = "2026-11";
+
 export const CHARGE_STATUSES = [
   "unconfirmed",
   "pending",

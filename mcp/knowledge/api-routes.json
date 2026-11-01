@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 161,
+  "count": 166,
   "routes": [
     {
       "path": "/api/account",
@@ -76,6 +76,37 @@
       "file": "src/app/api/admin/[table]/route.js"
     },
     {
+      "path": "/api/admin/billing/agreements",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "landlord_agreements",
+        "users"
+      ],
+      "file": "src/app/api/admin/billing/agreements/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreements/[id]/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "landlord_agreements"
+      ],
+      "file": "src/app/api/admin/billing/agreements/[id]/file/route.js"
+    },
+    {
       "path": "/api/admin/billing/charges/[id]/adjust",
       "methods": [
         "POST"
@@ -136,6 +167,22 @@
         "charge_status_history"
       ],
       "file": "src/app/api/admin/billing/charges/[id]/void/route.js"
+    },
+    {
+      "path": "/api/admin/billing/gate-settings",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PUT": "admin"
+      },
+      "tables": [
+        "billing_settings"
+      ],
+      "file": "src/app/api/admin/billing/gate-settings/route.js"
     },
     {
       "path": "/api/admin/billing/invoices/[id]/restore-leases",
@@ -733,6 +780,20 @@
       "file": "src/app/api/availability/confirm/route.js"
     },
     {
+      "path": "/api/billing/agreement/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "GET": "landlord"
+      },
+      "tables": [
+        "landlord_agreements"
+      ],
+      "file": "src/app/api/billing/agreement/file/route.js"
+    },
+    {
       "path": "/api/billing/charges",
       "methods": [
         "GET"
@@ -775,6 +836,23 @@
         "charge_status_history"
       ],
       "file": "src/app/api/billing/charges/[id]/contest/route.js"
+    },
+    {
+      "path": "/api/billing/gate",
+      "methods": [
+        "GET"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "GET": "landlord"
+      },
+      "tables": [
+        "billing_settings",
+        "payment_methods",
+        "landlord_agreements",
+        "users"
+      ],
+      "file": "src/app/api/billing/gate/route.js"
     },
     {
       "path": "/api/billing/invoices",

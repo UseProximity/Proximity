@@ -11,6 +11,9 @@
  *   Invoices     failed or overdue invoices, and ones whose leases were withdrawn:
  *                Retry payment, and Restore leases once settled.
  *   Corrections  refund or credit a wrong Paid charge (the charge is never edited).
+ *   Agreements and gate  record commission agreements by hand (sent, signed, void) and
+ *                switch on the rules that stop a landlord publishing without a payment
+ *                method or a signed agreement.
  *   Billing run  dry run and live run of the monthly billing, and the switch that
  *                lets the first-Monday cron create real invoices.
  *   Test charge  makes a charge on a landlord account (never on production).
@@ -26,6 +29,7 @@ import NoteDialog from "@/components/admin/billing/NoteDialog";
 import TestChargeForm from "@/components/admin/billing/TestChargeForm";
 import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
 import CorrectionsPanel from "@/components/admin/billing/CorrectionsPanel";
+import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 
 async function call(url, options) {
@@ -144,6 +148,7 @@ export default function BillingView({ search }) {
     { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
     { key: "corrections", label: "Corrections" },
+    { key: "agreements", label: "Agreements and gate" },
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
   ];
@@ -199,6 +204,7 @@ export default function BillingView({ search }) {
         <InvoiceList invoices={filtered.invoices} busy={busy} onRetry={retryInvoice} onRestore={restoreLeases} />
       )}
       {tab === "corrections" && <CorrectionsPanel search={search} />}
+      {tab === "agreements" && <AgreementsPanel search={search} />}
       {tab === "run" && <BillingRunPanel />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
 

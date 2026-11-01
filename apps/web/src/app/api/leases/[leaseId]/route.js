@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { HELD_FOR_BILLING_MESSAGE, isLeaseHeldForBilling } from "@/lib/billing/listingGate";
 
 /*
  * Manage ONE lease — the counterpart to the property-level routes under
@@ -108,6 +109,12 @@ export async function PATCH(req, { params }) {
 
   if (!Object.keys(patch).length) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
+  // A lease the overdue-invoice job withdrew stays withdrawn until an admin
+  // restores it, or putting it back by hand would undo the withdrawal.
+  if ((patch.is_active === true || patch.unavailable === false) && (await isLeaseHeldForBilling(supabase, leaseId))) {
+    return NextResponse.json({ error: HELD_FOR_BILLING_MESSAGE, code: "lease_held_for_billing" }, { status: 403 });
   }
 
   const { error } = await supabase
