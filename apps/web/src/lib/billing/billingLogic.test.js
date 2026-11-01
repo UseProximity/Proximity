@@ -9,7 +9,7 @@ import { billingPeriodFor, firstMondayOfMonth, isBillingDay } from "./billingPer
 import { TRANSITIONS, canTransition, isReviewOver, landlordActions, reviewEndsAt, summarizeBalance } from "./chargeLifecycle.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices, triggerLabel } from "./invoicePlan.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod, isCardExpired, needsAttention } from "./paymentMethodState.js";
-import { isInvoiceOverdue } from "./overdue.js";
+import { invoiceAttentionReason, isInvoiceOverdue } from "./overdue.js";
 import { dollarsToCents, formatCents } from "./money.js";
 import { CHARGE_STATUSES } from "./constants.js";
 
@@ -244,6 +244,22 @@ describe("overdue invoices", () => {
 
   it("never actions an invoice twice", () => {
     assert.equal(isInvoiceOverdue(invoice({ invoice_date: "2026-01-01T00:00:00Z", overdue_actioned_at: "2026-12-01" }), now), false);
+  });
+
+  it("the admin list shows failed invoices and overdue ones, even after leases were withdrawn", () => {
+    const old = { invoice_date: "2026-01-01T00:00:00Z" };
+    assert.equal(invoiceAttentionReason(invoice({ status: "failed", invoice_date: "2026-12-09T00:00:00Z" }), now), "failed");
+    assert.equal(invoiceAttentionReason(invoice({ ...old, status: "open" }), now), "overdue");
+    assert.equal(invoiceAttentionReason(invoice({ ...old, status: "open", overdue_actioned_at: "2026-12-01" }), now), "overdue");
+  });
+
+  it("the admin list leaves out fresh, processing, paid and void invoices", () => {
+    const old = { invoice_date: "2026-01-01T00:00:00Z" };
+    assert.equal(invoiceAttentionReason(invoice({ status: "open", invoice_date: "2026-12-01T00:00:00Z" }), now), null);
+    for (const status of ["processing", "paid", "void", "uncollectible"]) {
+      assert.equal(invoiceAttentionReason(invoice({ ...old, status }), now), null, status);
+    }
+    assert.equal(invoiceAttentionReason(null, now), null);
   });
 });
 

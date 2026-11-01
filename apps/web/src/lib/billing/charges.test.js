@@ -3,7 +3,8 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { leaseLabel, chargeView, statusMessage } from "./chargeDisplay.js";
+import { leaseLabel, chargeView, statusMessage, adminChargeView } from "./chargeDisplay.js";
+import { adminResolveContest, adminVoidCharge } from "./adminReview.js";
 import { CHARGE_STATUSES } from "./constants.js";
 import { createCharge, landlordApprove, landlordContest, transitionError } from "./charges.js";
 import { BillingError } from "./errors.js";
@@ -66,6 +67,42 @@ describe("chargeView", () => {
 
   it("never carries the admin's internal note", () => {
     assert.ok(!JSON.stringify(chargeView(row)).includes("INTERNAL"));
+  });
+});
+
+describe("adminChargeView", () => {
+  const row = {
+    id: "c1", landlord_id: "l1", amount_cents: 5000, trigger_type: "finalize_deal", trigger_ref: "ref-9",
+    status: "contested", created_at: "2026-11-01T00:00:00Z", contested_at: "2026-11-02T00:00:00Z",
+    contest_reason: "wrong", resolution_note: "INTERNAL", is_test: true,
+    landlord: { name: "Pat", email: "pat@x.com" }, listing: { address: "123 Main St" },
+    lease: null, student: { name: "Sam" },
+  };
+
+  it("adds the landlord and the internal note for admins", () => {
+    const v = adminChargeView(row);
+    assert.deepEqual(v.landlord, { id: "l1", name: "Pat", email: "pat@x.com" });
+    assert.equal(v.resolutionNote, "INTERNAL");
+    assert.equal(v.isTest, true);
+    assert.equal(v.triggerRef, "ref-9");
+    assert.equal(v.contestReason, "wrong");
+  });
+
+  it("the landlord's view of the same row still has no internal note", () => {
+    assert.ok(!JSON.stringify(chargeView(row)).includes("INTERNAL"));
+  });
+});
+
+describe("admin actions validate before touching the database", () => {
+  const db = { from() { throw new Error("should not reach the database"); }, rpc() { throw new Error("should not reach the database"); } };
+
+  it("resolving a contest needs a valid outcome and a written note", async () => {
+    await assert.rejects(() => adminResolveContest(db, { chargeId: "c", adminId: "a", outcome: "paid", note: "x" }), /approved or voided/);
+    await assert.rejects(() => adminResolveContest(db, { chargeId: "c", adminId: "a", outcome: "approved", note: " " }), /note is required/);
+  });
+
+  it("voiding needs a written note", async () => {
+    await assert.rejects(() => adminVoidCharge(db, { chargeId: "c", adminId: "a", note: "" }), /note is required/);
   });
 });
 

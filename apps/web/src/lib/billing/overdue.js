@@ -20,3 +20,18 @@ export function isInvoiceOverdue(invoice, now = new Date()) {
   const age = now.getTime() - new Date(invoice.invoice_date).getTime();
   return age > OVERDUE_DAYS * DAY_MS;
 }
+
+/*
+ * Why an invoice is on the admin's "needs attention" list, or null if it is not.
+ * Failed invoices always are. An unpaid one is once it is past the overdue
+ * limit, even after its leases were withdrawn (the admin still has to restore
+ * them), so this does not look at overdue_actioned_at. A payment still
+ * processing is left alone.
+ */
+export function invoiceAttentionReason(invoice, now = new Date()) {
+  if (!invoice) return null;
+  if (invoice.status === "failed") return "failed";
+  if (!UNPAID.has(invoice.status)) return null;
+  const age = now.getTime() - new Date(invoice.invoice_date).getTime();
+  return age > OVERDUE_DAYS * DAY_MS ? "overdue" : null;
+}

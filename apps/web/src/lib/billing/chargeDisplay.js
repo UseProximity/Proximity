@@ -46,6 +46,24 @@ export function statusMessage(charge) {
   }
 }
 
+// The admin's shape of a charge row: everything the landlord sees, plus who they
+// are and the internal resolution note.
+export function adminChargeView(row, now = new Date()) {
+  return {
+    ...chargeView(row, now),
+    landlord: {
+      id: row.landlord_id,
+      name: row.landlord?.name ?? null,
+      email: row.landlord?.email ?? null,
+    },
+    triggerRef: row.trigger_ref ?? null,
+    pendingAt: row.pending_at ?? null,
+    contestedAt: row.contested_at ?? null,
+    resolutionNote: row.resolution_note ?? null,
+    isTest: !!row.is_test,
+  };
+}
+
 // The landlord-facing shape of a charge row joined with its listing, lease and
 // student. Deliberately leaves out the admin's internal resolution note.
 export function chargeView(row, now = new Date()) {

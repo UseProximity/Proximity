@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 146,
+  "count": 151,
   "routes": [
     {
       "path": "/api/account",
@@ -76,13 +76,74 @@
       "file": "src/app/api/admin/[table]/route.js"
     },
     {
+      "path": "/api/admin/billing/charges/[id]/confirm",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/admin/billing/charges/[id]/confirm/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/resolve",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/admin/billing/charges/[id]/resolve/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/void",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/admin/billing/charges/[id]/void/route.js"
+    },
+    {
+      "path": "/api/admin/billing/review",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "charges",
+        "billing_disputes",
+        "billing_invoices"
+      ],
+      "file": "src/app/api/admin/billing/review/route.js"
+    },
+    {
       "path": "/api/admin/billing/test-charges",
       "methods": [
         "POST"
       ],
-      "auth": "super",
+      "auth": "admin",
       "methodAuth": {
-        "POST": "super"
+        "POST": "admin"
       },
       "tables": [
         "charges",
@@ -907,6 +968,21 @@
         "users"
       ],
       "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
+      "path": "/api/cron/billing-review-clock",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "charges",
+        "charge_status_history"
+      ],
+      "file": "src/app/api/cron/billing-review-clock/route.js"
     },
     {
       "path": "/api/cron/chat-checkin",

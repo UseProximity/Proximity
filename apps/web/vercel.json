@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/chat-checkin-report",
       "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/cron/billing-review-clock",
+      "schedule": "0 13 * * *"
     }
   ]
 }
