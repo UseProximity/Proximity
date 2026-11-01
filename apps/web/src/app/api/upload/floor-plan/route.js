@@ -40,6 +40,9 @@ export async function POST(req) {
     const formData = await req.formData();
     const file = formData.get("file");
     const db = formData.get("db") || null;
+    // The add-listing wizard also stages a unit's own photos here before the
+    // unit exists; they are kept apart from floor plans and must be images.
+    const isUnitPhoto = formData.get("kind") === "unit-photo";
 
     if (!file || typeof file.arrayBuffer !== "function") {
       return Response.json({ error: "No file" }, { status: 400 });
@@ -47,13 +50,16 @@ export async function POST(req) {
     if (file.type && !ALLOWED.has(file.type)) {
       return Response.json({ error: "Unsupported file type" }, { status: 400 });
     }
+    if (isUnitPhoto && !String(file.type).startsWith("image/")) {
+      return Response.json({ error: "Unit photos must be images" }, { status: 400 });
+    }
 
     const bucket = getBucket(db);
     const publicBase = getPublicBase(db);
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const safeName = (file.name || "floor-plan").replace(/\s+/g, "-");
-    const key = `floor-plans/${crypto.randomUUID()}-${safeName}`;
+    const key = `${isUnitPhoto ? "unit-photos" : "floor-plans"}/${crypto.randomUUID()}-${safeName}`;
 
     await r2.send(
       new PutObjectCommand({

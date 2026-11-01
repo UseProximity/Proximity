@@ -25,6 +25,10 @@ import DraggableImageGrid from "@/components/ui/DraggableImageGrid";
 import { compressImage } from "@/utils/compressImage";
 import { uploadImagesToR2 } from "@/utils/uploadImagesToR2";
 
+// A row longer than PHOTO_FOLD_PAST photos folds to PHOTO_PAGE until "Show all".
+const PHOTO_FOLD_PAST = 20;
+const PHOTO_PAGE = 12;
+
 const BUSY_LABEL = {
   upload: "Uploading…",
   remove: "Deleting…",
@@ -35,7 +39,13 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
   // null when idle, otherwise which act is in flight — a delete used to report
   // itself as "Saving order…", which is a different thing happening.
   const [busy, setBusy] = useState(null);
+  // An import can bring hundreds of photos; a page of them is enough to
+  // see what arrived, the rest unfold on request.
+  const [expanded, setExpanded] = useState(false);
   const movable = canMoveAll ? photos : photos.filter((p) => p.mine);
+  const folds = movable.length > PHOTO_FOLD_PAST;
+  const shown = expanded || !folds ? movable : movable.slice(0, PHOTO_PAGE);
+  const hidden = movable.slice(shown.length);
   const pinned = canMoveAll ? [] : photos.filter((p) => !p.mine);
   const inputId = `img-${unitId ?? "property"}`;
 
@@ -123,13 +133,23 @@ function Row({ label, hint, photos, canAdd, canMoveAll, listingId, unitId, onCha
         <div className="min-w-0 flex-1">
           {movable.length > 0 && (
             <DraggableImageGrid
-              images={movable.map((p) => p.url)}
-              onReorder={reorder}
+              images={shown.map((p) => p.url)}
+              // A drag among the visible photos keeps the hidden ones in place.
+              onReorder={(urls) => reorder([...urls, ...hidden.map((p) => p.url)])}
               onRemove={remove}
               saving={!!busy}
               busyLabel={BUSY_LABEL[busy] ?? "Working…"}
               renderCorner={renderCorner}
             />
+          )}
+          {folds && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-red-300 hover:text-red-600"
+            >
+              {expanded ? "Show less" : `Show all ${movable.length} photos`}
+            </button>
           )}
           {pinned.length > 0 && (
             <div className="mt-2">
@@ -204,7 +224,7 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
 
   const inputId = `fp-${unit?.id}`;
   return (
-    <div className="w-28 shrink-0">
+    <div className="w-28 shrink-0" data-gap={`floorplan:${unit?.id}`}>
       {/* The heading is part of the target too: people click the words "Floor
           plan" as readily as the box under them. */}
       <label
@@ -428,7 +448,7 @@ export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
   const canTag = (photo) => isPropertyOwner || (photo.mine && allowedUnitIds.size > 0);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white">
+    <div className="rounded-xl border border-gray-200 bg-white" data-gap="photos">
       <Row
         label="Photos"
         hint={
@@ -462,8 +482,11 @@ export function PropertyPhotoRow({ listing, isPropertyOwner, onChanged }) {
 /**
  * One unit's floor plan. Rendered inside that unit's panel.
  */
-export function UnitFloorPlan({ listing, unit, onChanged }) {
+export function UnitFloorPlan({ listing, unit, onChanged, inline = false }) {
   const listingId = listing?._id || listing?.id;
+  // `inline` puts the slot in the unit's own spec row (name, beds, baths,
+  // sq ft, then the plan) rather than in a row of its own beneath it.
+  if (inline) return <FloorPlanSlot unit={unit} canEdit listingId={listingId} onChanged={onChanged} />;
   return (
     <div className="border-t border-gray-100 px-4 py-3">
       {/* Editable by anyone who may add to this unit: the property owner, or a

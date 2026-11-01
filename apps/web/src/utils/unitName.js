@@ -67,3 +67,14 @@ export function parseUnitNames(raw) {
     return true;
   });
 }
+
+/*
+ * The apartments one lease covers, as its description says them: "Apt 14C",
+ * "Apts 07C, 11C". A floor plan is one unit, so this is where a building's
+ * apartment numbers live.
+ */
+export function apartmentsLabel(apartments) {
+  const list = [...new Set((apartments ?? []).map((a) => String(a ?? "").trim()).filter(Boolean))];
+  if (!list.length) return null;
+  return `${list.length === 1 ? "Apt" : "Apts"} ${list.join(", ")}`;
+}

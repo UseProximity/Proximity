@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -16,7 +17,10 @@ import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
+import ImportGaps from "@/components/listings/editor/ImportGaps";
+import BackToTop from "@/components/ui/BackToTop";
 import ListingMetricsChart from "./ListingMetricsChart";
+import AgentTab from "@/components/landlord/AgentTab";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 
 export default function PropertyAnalyticsSection({
@@ -28,8 +32,24 @@ export default function PropertyAnalyticsSection({
   currentUserEmail,
 }) {
   const router = useRouter();
+  // The Agent tab and the "Inquiries" wording wait for the agents switch.
+  const agentsOn = useAgentsEnabled();
   const [allTimeMetrics, setAllTimeMetrics] = useState([]);
   const [contactTotals, setContactTotals] = useState({});
+  // Two tabs (Wyatt, 2026-10-27): the listing itself, and its agent. Drafts
+  // get the agent too; Proxy only answers students once it is published.
+  const [pageTab, setPageTab] = useState(() => {
+    if (typeof window === "undefined") return "listing";
+    return new URLSearchParams(window.location.search).get("ptab") === "agent" ? "agent" : "listing";
+  });
+  const chooseTab = (t) => {
+    setPageTab(t);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (t === "agent") params.set("ptab", "agent"); else params.delete("ptab");
+      window.history.replaceState(null, "", `?${params.toString()}`);
+    } catch {}
+  };
 
   const listingId = p?._id || p?.id;
   // "lease" ownership means they hold an offering here but not the property
@@ -176,6 +196,25 @@ export default function PropertyAnalyticsSection({
         )
       )}
 
+      {agentsOn && (
+      <div className="flex gap-1 border-b border-gray-200">
+        {[["listing", "Listing"], ["agent", "Agent"]].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => chooseTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${pageTab === key ? "border-red-600 text-red-600" : "border-transparent text-gray-500 hover:text-gray-800"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      )}
+
+      {agentsOn && pageTab === "agent" ? (
+        <AgentTab listingId={listingId} viewAsId={viewAsId} isDraft={!!p.isDraft} />
+      ) : (
+      <>
       {/* Images */}
       {images.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-1">
@@ -205,7 +244,7 @@ export default function PropertyAnalyticsSection({
             icon: <Star className="h-4 w-4 text-yellow-500" />,
           },
           {
-            label: "Contacts",
+            label: agentsOn ? "Inquiries" : "Contacts",
             value: totalContacts,
             icon: <MessageSquare className="h-4 w-4 text-blue-500" />,
           },
@@ -250,6 +289,10 @@ export default function PropertyAnalyticsSection({
         * whole property at once, which is what let a property owner's save
         * silently rewrite another landlord's offering.
         */}
+      <BackToTop />
+      {/* A draft says what it still needs, with a way to each field. */}
+      {p.isDraft && <ImportGaps listing={p} />}
+
       <EditorOverview
         listing={p}
         canEdit={isPropertyOwner}
@@ -273,6 +316,8 @@ export default function PropertyAnalyticsSection({
         onChanged={onPhotosChanged}
       />
 
+      </>
+      )}
     </div>
   );
 }

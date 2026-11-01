@@ -22,6 +22,7 @@ import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
+import ProxyPanel from "@/components/proxy/ProxyPanel";
 import { calcAge } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
@@ -37,7 +38,7 @@ import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
-import { ChevronLeft, ChevronRight} from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
@@ -1514,6 +1515,15 @@ export default function ListingModalInfo({
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("pricing");
+  // The Proxy chat's input bar (Wyatt, 2026-10-28): ProxyPanel renders into
+  // it, and it pins to the bottom while the reader is in the Contact section.
+  const [proxyInputSlot, setProxyInputSlot] = useState(null);
+  // No floating Feedback button over the Contact section (FeedbackWidget hides on this).
+  useEffect(() => {
+    if (activeTab !== "contact") return;
+    document.body.dataset.listingContact = "1";
+    return () => { delete document.body.dataset.listingContact; };
+  }, [activeTab]);
 
   /*
    * True once the header has stuck to the top: the sentinel just above it has
@@ -2260,7 +2270,22 @@ export default function ListingModalInfo({
                     * see which unit the date actually applies to.
                     */}
                 </div>
-                <div className={`shrink-0 flex items-center gap-2 md:ml-auto ${headStuck ? "" : "w-full md:w-auto"}`}>
+                <div className={`shrink-0 flex items-center gap-3 md:ml-auto ${headStuck ? "" : "w-full md:w-auto"}`}>
+                  {/* Ask Proxy (Wyatt, 2026-10-27): down to Contact with the cursor in the chat. */}
+                  {(listing.agent?.live || preview) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        jumpTo("contact");
+                        window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
+                      }}
+                      className={`inline-flex items-center gap-1.5 rounded-lg bg-red-600 font-semibold text-white hover:bg-red-700 ${
+                        headStuck ? "px-3 py-1.5 text-[13px]" : "px-3.5 py-2 text-sm"
+                      }`}
+                    >
+                      <Sparkles className="h-4 w-4" /> Ask Proxy
+                    </button>
+                  )}
                   {/* Rating moved up from the removed stats bar. Stuck, it is
                       cut to the title's height. */}
                   {overallAvg ? (
@@ -2390,7 +2415,9 @@ export default function ListingModalInfo({
             >
               {/* "I want a [beds] for [length] starting [month]", then every
                   matching lease as landlord, floor plan, lease (Wyatt,
-                  2026-10-30). Its own tab since 2026-10-31. */}
+                  2026-10-30). Its own tab since 2026-10-31. Rent specials
+                  are not shown here (Wyatt, 2026-10-27): Proxy quotes current
+                  ones when asked, and expired ones never. */}
               {show("pricing") && (
                 <Section id="pricing" label="Pricing" sectionRefs={sectionRefs}>
                   {!leasesLoading && hasLeases && (
@@ -2478,7 +2505,23 @@ export default function ListingModalInfo({
               )}
               {show("contact") && (
                 <Section id="contact" label="Contact" sectionRefs={sectionRefs}>
-                  {!session ? (
+                  {/*
+                   * Proxy first (per-listing agents, PRD v3): on a listing whose
+                   * agent is live, Contact is the Proxy conversation, signed in
+                   * or not. The owner's preview gets it too, in test mode. The
+                   * old contact form stays for every other listing.
+                   */}
+                  {listing.agent?.live || preview ? (
+                    <ProxyPanel
+                      listing={listing}
+                      session={session}
+                      selectedLease={selectedLease}
+                      preview={preview}
+                      active={activeTab === "contact"}
+                      glideOnOpen={false}
+                      inputSlot={proxyInputSlot}
+                    />
+                  ) : !session ? (
                     <SignInPrompt
                       message="Sign in to contact the property manager."
                       tab="contact"
@@ -2493,6 +2536,17 @@ export default function ListingModalInfo({
                     />
                   )}
                 </Section>
+              )}
+              {/* Proxy's input sits under the chat and pins to the bottom
+                  while the reader is in Contact. It keeps its place in the
+                  page either way, so the page never jumps when it pins. */}
+              {show("contact") && (listing.agent?.live || preview) && (
+                <div
+                  ref={setProxyInputSlot}
+                  className={`-mx-10 border-t border-gray-100 bg-white px-10 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] ${
+                    activeTab === "contact" ? "sticky bottom-0 z-40" : ""
+                  }`}
+                />
               )}
             </div>
           </motion.div>

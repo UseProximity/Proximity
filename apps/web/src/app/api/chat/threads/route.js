@@ -20,6 +20,9 @@ import {
   assertListingContactNotBlocked,
 } from "@/lib/chat/safety";
 import { annotateNoReply } from "@/lib/chat/followups";
+import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
+import { landlordProxyOverview } from "@/lib/agents/landlordChat";
+import { agentsEnabled } from "@/lib/agents/flags";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -48,7 +51,24 @@ export async function GET(req) {
     }
 
     const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
-    return NextResponse.json(await annotateNoReply(authUser.id, inbox));
+    const direct = (await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
+    // The student's Proxy conversations ride along, on their own tab in the
+    // overlay. They never fail the inbox. Only clients that ask for them get
+    // them (the web overlay passes ?include=proxy; the mobile app does not
+    // know these rows yet), and only while the agents are on (PR #365 review).
+    const wantsProxy = new URL(req.url).searchParams.get("include") === "proxy" && agentsEnabled();
+    if (!wantsProxy) return NextResponse.json(direct);
+    await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
+    const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
+    // A landlord's Proxy chats, one per listing (questions and tour requests).
+    const asLandlord = await landlordProxyOverview(authUser.id).catch((err) => { console.error("GET /api/chat/threads landlord proxy rows:", err?.message ?? err); return []; });
+    const landlordRows = asLandlord.map((l) => ({
+      kind: "proxy_landlord", threadId: `lp-${l.listingId}`, listingId: l.listingId, listingTitle: l.title, listingAddress: l.address, listingImage: l.image,
+      listings: [], listingCount: 1, isInterestedUser: false, otherUserId: null, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
+      lastMessageBody: l.lastText, lastMessageType: "text", lastMessageAt: l.lastAt, lastMessageMine: false, updatedAt: l.lastAt,
+      unreadCount: l.openQuestions + l.openTours, hasUnread: l.openQuestions + l.openTours > 0,
+    }));
+    return NextResponse.json([...direct, ...proxy, ...landlordRows]);
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

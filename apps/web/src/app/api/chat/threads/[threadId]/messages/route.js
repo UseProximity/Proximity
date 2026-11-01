@@ -191,6 +191,10 @@ export async function POST(req, { params }) {
       return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
     }
 
+    // A tour thread: contact details and links are allowed (see sendGuards).
+    const { data: threadRow } = await supabase.from("chat_threads").select("unrestricted").eq("id", threadId).maybeSingle();
+    const unrestricted = threadRow?.unrestricted === true;
+
     let payload;
     try {
       payload = await req.json();
@@ -230,6 +234,7 @@ export async function POST(req, { params }) {
         threadId,
         confirmed,
         audience,
+        unrestricted,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
@@ -296,6 +301,7 @@ export async function POST(req, { params }) {
         threadId,
         confirmed,
         audience,
+        unrestricted,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });

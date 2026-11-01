@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner, canAddUnitPhotos } from "@/lib/listings/ownership";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed } from "@/lib/listings/unitNames";
+import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
 
 /*
  * Edit ONE unit's physical facts.
@@ -165,6 +166,8 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
+  const unitProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["bedrooms", "bathrooms", "area", "name"].includes(k)));
+  const old = isOwner ? await coreValuesBefore({ target: "unit", id: unitId, fields: unitProtected }) : null;
   const { error } = await supabase
     .from("listing_units")
     .update(patch)
@@ -181,6 +184,12 @@ export async function PATCH(req, { params }) {
     }
     console.error("[units/:id] update failed:", error.message);
     return NextResponse.json({ error: "Could not save that unit." }, { status: 500 });
+  }
+
+  // A dashboard edit after launch is landlord-set: a website sync holds
+  // changes to this unit's details for the owner instead of applying them.
+  if (isOwner && Object.keys(unitProtected).length) {
+    markLandlordSet({ listingId, target: "unit", id: unitId, fields: unitProtected, old, userId: session.user.id, cause: "dashboard" }).catch(() => {});
   }
 
   return NextResponse.json({ message: "Unit updated" });
