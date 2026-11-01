@@ -33,6 +33,21 @@ export function isBillingDay(now = new Date()) {
   return day === firstMondayOfMonth(year, month);
 }
 
+// The next billing day on or after today (Chicago), as YYYY-MM-DD.
+export function nextBillingDay(now = new Date()) {
+  const today = chicagoDate(now);
+  let { year, month } = today;
+  if (today.day > firstMondayOfMonth(year, month)) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  const day = firstMondayOfMonth(year, month);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 // The invoice's billing period: the first day of the Chicago month, as
 // YYYY-MM-01. With the landlord it is the idempotency key of the run.
 export function billingPeriodFor(now = new Date()) {

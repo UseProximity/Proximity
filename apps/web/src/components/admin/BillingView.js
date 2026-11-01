@@ -9,6 +9,8 @@
  *                emailed the outcome.
  *   Chargebacks  Stripe disputes, read-only (answered in the Stripe dashboard).
  *   Invoices     failed or overdue invoices, read-only.
+ *   Billing run  dry run and live run of the monthly billing, and the switch that
+ *                lets the first-Monday cron create real invoices.
  *   Test charge  makes a charge on a landlord account (never on production).
  *
  * Every action is recorded in the charge's history with the admin who took it.
@@ -20,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ChargeQueue from "@/components/admin/billing/ChargeQueue";
 import NoteDialog from "@/components/admin/billing/NoteDialog";
 import TestChargeForm from "@/components/admin/billing/TestChargeForm";
+import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 
 async function call(url, options) {
@@ -126,6 +129,7 @@ export default function BillingView({ search }) {
     { key: "contest", label: "Contested", count: data.contested.length },
     { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
+    { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
   ];
 
@@ -177,6 +181,7 @@ export default function BillingView({ search }) {
       )}
       {tab === "chargebacks" && <ChargebackList chargebacks={filtered.chargebacks} />}
       {tab === "invoices" && <InvoiceList invoices={filtered.invoices} />}
+      {tab === "run" && <BillingRunPanel />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
 
       {dialog && (
