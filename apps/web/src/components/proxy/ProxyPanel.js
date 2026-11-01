@@ -182,7 +182,7 @@ function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null, glideOnOpen = true }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -295,14 +295,16 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [active, started, scrollToEnd]);
 
   // Opening the Contact tab glides to the bottom of the panel (the input),
-  // after the modal's own jump to the tab strip has happened.
+  // after the modal's own jump to the tab strip has happened. Not on the
+  // continuous listing page, where Contact turns active just by scrolling to
+  // it and a glide would take the page out of the reader's hands.
   useEffect(() => {
-    if (!active || loading) return;
+    if (!active || loading || !glideOnOpen) return;
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     const t = setTimeout(() => scrollToEnd(true), 180);
     return () => clearTimeout(t);
-  }, [active, loading, scrollToEnd]);
+  }, [active, loading, glideOnOpen, scrollToEnd]);
 
   const sendTour = useCallback(async (slots) => {
     const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
@@ -490,7 +492,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         </div>
       )}
 
-      {inputSlot ? (active ? createPortal(inputBar, inputSlot) : null) : <div className="shrink-0">{inputBar}</div>}
+      {inputSlot ? createPortal(inputBar, inputSlot) : <div className="shrink-0">{inputBar}</div>}
     </div>
   );
 }
