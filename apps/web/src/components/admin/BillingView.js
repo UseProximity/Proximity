@@ -14,6 +14,8 @@
  *   Agreements and gate  record commission agreements by hand (sent, signed, void) and
  *                switch on the rules that stop a landlord publishing without a payment
  *                method or a signed agreement.
+ *   Launch enrollment  the window existing landlords get to set up payments, and the
+ *                notice email (test to yourself first, then send to those who need it).
  *   Billing run  dry run and live run of the monthly billing, and the switch that
  *                lets the first-Monday cron create real invoices.
  *   Test charge  makes a charge on a landlord account (never on production).
@@ -30,6 +32,7 @@ import TestChargeForm from "@/components/admin/billing/TestChargeForm";
 import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
 import CorrectionsPanel from "@/components/admin/billing/CorrectionsPanel";
 import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
+import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 
 async function call(url, options) {
@@ -149,6 +152,7 @@ export default function BillingView({ search }) {
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
     { key: "corrections", label: "Corrections" },
     { key: "agreements", label: "Agreements and gate" },
+    { key: "enrollment", label: "Launch enrollment" },
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
   ];
@@ -205,6 +209,7 @@ export default function BillingView({ search }) {
       )}
       {tab === "corrections" && <CorrectionsPanel search={search} />}
       {tab === "agreements" && <AgreementsPanel search={search} />}
+      {tab === "enrollment" && <EnrollmentPanel />}
       {tab === "run" && <BillingRunPanel />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
 

@@ -1,0 +1,194 @@
+/*
+ * Launch enrollment: telling existing landlords that fees are now collected in the
+ * app and asking them to add a payment method (and, once it is ready, sign the
+ * commission agreement) within a window. The PRD is explicit that nothing happens
+ * automatically when the window ends: the deadline is a date in the email and a
+ * banner on the Payments tab, and what follows is the admins' call (the listing
+ * gate switches in listingGate.js are the lever).
+ *
+ * Who is asked: landlords (not deleted, with an email) who have something live on
+ * the site, a published lease or listing, and who still need to set up. A landlord
+ * row the importer created with nothing live has nothing to be blocked from, so
+ * is left alone. Someone already emailed is skipped, so pressing Send twice never
+ * emails anyone twice, unless the admin asks to include them.
+ *
+ * The window (deadline, and whether the agreement is part of the ask) is stored in
+ * billing_settings. `db` is a service-role Supabase client.
+ */
+import { BillingError } from "./errors.js";
+import { getBillingSetting, setBillingSetting } from "./settings.js";
+import { hasActivePaymentMethod } from "./paymentMethodState.js";
+
+export const ENROLLMENT_WINDOW = "enrollment_window";
+export const ENROLLMENT_EMAIL_KIND = "billing_enrollment";
+
+const PAGE = 1000;
+const CHUNK = 150; // ids per .in() filter, to keep request URLs short
+const NOT_DELIVERED = "(failed,rejected,bounced,complained)";
+
+async function pageAll(buildQuery) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < PAGE) return rows;
+  }
+}
+
+async function inChunks(ids, fetchChunk) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await fetchChunk(ids.slice(i, i + CHUNK))));
+  return out;
+}
+
+// "2026-12-15" -> "December 15, 2026"
+export function formatDeadline(deadline) {
+  if (!deadline) return null;
+  return new Date(`${deadline}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+export async function getEnrollmentWindow(db) {
+  const value = await getBillingSetting(db, ENROLLMENT_WINDOW, null);
+  return {
+    deadline: typeof value?.deadline === "string" ? value.deadline : null,
+    includeAgreement: value?.includeAgreement === true,
+  };
+}
+
+export async function setEnrollmentWindow(db, { deadline, includeAgreement }, adminId, now = new Date()) {
+  let clean = null;
+  if (deadline) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || Number.isNaN(new Date(`${deadline}T12:00:00Z`).getTime())) {
+      throw new BillingError("bad_deadline", "Enter the deadline as a date.");
+    }
+    if (deadline < now.toISOString().slice(0, 10)) {
+      throw new BillingError("bad_deadline", "The deadline cannot be in the past.");
+    }
+    clean = deadline;
+  }
+  await setBillingSetting(db, ENROLLMENT_WINDOW, { deadline: clean, includeAgreement: includeAgreement === true }, adminId);
+  return { deadline: clean, includeAgreement: includeAgreement === true };
+}
+
+/*
+ * Who would be emailed, and why everyone else would not. Counts explain the gap
+ * between "all landlords" and "emails to send".
+ */
+export async function findEnrollmentAudience(db, { includeAgreement = false, includeAlreadyEmailed = false, now = new Date() } = {}) {
+  const landlords = await pageAll(() =>
+    db
+      .from("users")
+      .select("id, name, email, roles!role_id!inner(name)")
+      .eq("roles.name", "landlord")
+      .is("deleted_at", null)
+      .not("email", "is", null)
+      .order("id")
+  );
+  const ids = landlords.map((l) => l.id);
+
+  // Something live: a published, available lease they own, or a live listing they are linked to.
+  const liveOwners = new Set();
+  for (const row of await inChunks(ids, async (chunk) => {
+    const { data, error } = await db
+      .from("unit_leases")
+      .select("owner_id")
+      .in("owner_id", chunk)
+      .eq("is_active", true)
+      .eq("unavailable", false)
+      .is("deleted_at", null)
+      .not("published_at", "is", null);
+    if (error) throw error;
+    return data;
+  })) liveOwners.add(row.owner_id);
+  for (const row of await inChunks(ids, async (chunk) => {
+    const { data, error } = await db
+      .from("listing_landlords")
+      .select("user_id, listings!inner(published_at, deleted_at, unavailable)")
+      .in("user_id", chunk)
+      .not("listings.published_at", "is", null)
+      .is("listings.deleted_at", null)
+      .eq("listings.unavailable", false);
+    if (error) throw error;
+    return data;
+  })) liveOwners.add(row.user_id);
+
+  const methods = new Map();
+  for (const row of await inChunks(ids, async (chunk) => {
+    const { data, error } = await db
+      .from("payment_methods")
+      .select("user_id, status, type, exp_month, exp_year, deleted_at")
+      .in("user_id", chunk)
+      .is("deleted_at", null);
+    if (error) throw error;
+    return data;
+  })) {
+    if (!methods.has(row.user_id)) methods.set(row.user_id, []);
+    methods.get(row.user_id).push(row);
+  }
+
+  const signed = new Set(
+    (
+      await inChunks(ids, async (chunk) => {
+        const { data, error } = await db.from("landlord_agreements").select("user_id").in("user_id", chunk).eq("status", "signed");
+        if (error) throw error;
+        return data;
+      })
+    ).map((r) => r.user_id)
+  );
+
+  const emailed = new Set(
+    (
+      await inChunks(ids, async (chunk) => {
+        const { data, error } = await db
+          .from("sent_emails")
+          .select("user_id")
+          .eq("kind", ENROLLMENT_EMAIL_KIND)
+          .in("user_id", chunk)
+          .not("status", "in", NOT_DELIVERED);
+        if (error) throw error;
+        return data;
+      })
+    ).map((r) => r.user_id)
+  );
+
+  const counts = { landlords: landlords.length, withLiveListing: 0, alreadySetUp: 0, alreadyEmailed: 0, toSend: 0 };
+  const toSend = [];
+  for (const l of landlords) {
+    if (!liveOwners.has(l.id)) continue;
+    counts.withLiveListing += 1;
+    const setUp = hasActivePaymentMethod(methods.get(l.id) ?? [], now) && (!includeAgreement || signed.has(l.id));
+    if (setUp) {
+      counts.alreadySetUp += 1;
+      continue;
+    }
+    if (emailed.has(l.id)) {
+      counts.alreadyEmailed += 1;
+      if (!includeAlreadyEmailed) continue;
+    }
+    toSend.push({ id: l.id, name: l.name, email: l.email });
+  }
+  counts.toSend = toSend.length;
+  return { counts, toSend };
+}
+
+/*
+ * Send to the audience one at a time. `send(landlord)` resolves true when the
+ * email went out. Capped per call so one click cannot run past the function's
+ * time limit; send again to continue (already emailed landlords are skipped).
+ */
+export async function sendEnrollmentEmails({ toSend, send, limit = 300 }) {
+  const batch = toSend.slice(0, limit);
+  let sent = 0;
+  let failed = 0;
+  for (const landlord of batch) {
+    if (await send(landlord)) sent += 1;
+    else failed += 1;
+  }
+  return { attempted: batch.length, sent, failed, remaining: toSend.length - batch.length };
+}

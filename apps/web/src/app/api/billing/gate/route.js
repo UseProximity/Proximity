@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { agreementView, getLiveAgreement } from "@/lib/billing/agreements";
 import { checkListingGate, gateMessage } from "@/lib/billing/listingGate";
+import { getEnrollmentWindow } from "@/lib/billing/enrollment";
 import { billingErrorResponse } from "@/lib/billing/http";
 
 /*
@@ -19,9 +20,10 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const [gate, agreement] = await Promise.all([
+    const [gate, agreement, enrollment] = await Promise.all([
       checkListingGate(supabase, session.user.id),
       getLiveAgreement(supabase, session.user.id),
+      getEnrollmentWindow(supabase),
     ]);
     return NextResponse.json({
       allowed: gate.allowed,
@@ -30,6 +32,8 @@ export async function GET() {
       requirePaymentMethod: gate.requirePaymentMethod,
       requireAgreement: gate.requireAgreement,
       agreement: agreementView(agreement),
+      // The enrollment window, shown as a banner until the landlord has set up.
+      enrollment: { deadline: enrollment.deadline, includeAgreement: enrollment.includeAgreement },
     });
   } catch (err) {
     return billingErrorResponse(err, "read listing gate");

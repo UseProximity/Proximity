@@ -159,12 +159,15 @@ export function methodRemovedTeamEmail({ landlordName, landlordEmail, outstandin
   };
 }
 
-export function enrollmentEmail({ name, deadline, paymentsUrl }) {
+// includeAgreement is false until the commission agreement is ready, so the email
+// only asks for what a landlord can actually do yet.
+export function enrollmentEmail({ name, deadline, includeAgreement = true, paymentsUrl }) {
+  const ask = includeAgreement ? "add a payment method and sign the commission agreement" : "add a payment method";
   return {
     subject: "Set up payments on Proximity",
     html: wrap(`
       ${hello(name)}
-      <p>Proximity now collects fees in the app instead of by external invoice. Please add a payment method and sign the commission agreement${
+      <p>Proximity now collects fees in the app instead of by external invoice. Please ${ask}${
         deadline ? ` by ${e(deadline)}` : ""
       }. A bank account (ACH) is the recommended option.</p>
       ${button(paymentsUrl, "Set up payments")}

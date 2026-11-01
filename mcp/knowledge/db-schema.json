@@ -340,7 +340,7 @@
       {
         "table": "billing_settings",
         "status": "unreleased",
-        "description": "Key/value switches for in-app payments; a missing key reads as false. Keys: agreement_required (seeded false so a signed agreement is not needed to publish until the agreement is ready), payment_method_required (an active payment method is needed to publish; off until launch), billing_run_enabled (lets the first-Monday cron create real invoices; off until an admin has checked a dry run).",
+        "description": "Key/value switches for in-app payments; a missing key reads as false. Keys: agreement_required (seeded false so a signed agreement is not needed to publish until the agreement is ready), payment_method_required (an active payment method is needed to publish; off until launch), billing_run_enabled (lets the first-Monday cron create real invoices; off until an admin has checked a dry run), enrollment_window (JSON {deadline, includeAgreement}: the launch enrollment window shown to landlords).",
         "columns": [
           "key:text",
           "value:jsonb",

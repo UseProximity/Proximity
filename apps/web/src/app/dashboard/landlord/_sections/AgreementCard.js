@@ -37,8 +37,22 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onOpenSign
   const status = STATUS[agreement.status] ?? STATUS.none;
   const showChecklist = gate.requirePaymentMethod || gate.requireAgreement;
 
+  // The launch enrollment window: a reminder with the date, until they have set up.
+  const enrollmentWindow = gate.enrollment;
+  const needsAgreement = enrollmentWindow?.includeAgreement && agreement.status !== "signed";
+  const showWindow = enrollmentWindow?.deadline && (!hasActivePaymentMethod || needsAgreement);
+  const deadline = enrollmentWindow?.deadline
+    ? new Date(`${enrollmentWindow.deadline}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })
+    : null;
+
   return (
     <section className="bg-white rounded-lg border border-gray-100 shadow-sm">
+      {showWindow && (
+        <div className="rounded-t-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Proximity now collects fees in the app. Please {needsAgreement ? "add a payment method and sign the commission agreement" : "add a payment method"} by{" "}
+          <strong>{deadline}</strong>. A bank account (ACH) is the recommended option.
+        </div>
+      )}
       <div className="px-4 py-4 border-b border-gray-100">
         <h2 className="text-base font-semibold text-gray-900">Commission agreement</h2>
         <p className="mt-1 text-sm text-gray-500">

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 166,
+  "count": 168,
   "routes": [
     {
       "path": "/api/account",
@@ -167,6 +167,48 @@
         "charge_status_history"
       ],
       "file": "src/app/api/admin/billing/charges/[id]/void/route.js"
+    },
+    {
+      "path": "/api/admin/billing/enrollment",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PUT": "admin"
+      },
+      "tables": [
+        "billing_settings",
+        "users",
+        "unit_leases",
+        "listing_landlords",
+        "payment_methods",
+        "landlord_agreements",
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/billing/enrollment/route.js"
+    },
+    {
+      "path": "/api/admin/billing/enrollment/send",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "billing_settings",
+        "users",
+        "unit_leases",
+        "listing_landlords",
+        "payment_methods",
+        "landlord_agreements",
+        "sent_emails"
+      ],
+      "file": "src/app/api/admin/billing/enrollment/send/route.js"
     },
     {
       "path": "/api/admin/billing/gate-settings",

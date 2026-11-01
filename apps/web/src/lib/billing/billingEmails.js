@@ -26,10 +26,13 @@ const transporter = nodemailer.createTransport({
 const LANDLORD_REASON = "You are receiving this because you have a landlord account on Proximity.";
 const TEAM_REASON = "Internal billing notification.";
 
+// Resolves true when the email was handed to the mailer, false when it was skipped
+// or failed (never throws). Most callers ignore the answer; the enrollment send
+// counts it to report how many went out.
 async function deliver({ kind, to, userId, reason, message }) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn(`[billing email] ${kind}: email env vars not set, skipping.`);
-    return;
+    return false;
   }
   try {
     await sendMailSafe(transporter, {
@@ -40,8 +43,10 @@ async function deliver({ kind, to, userId, reason, message }) {
       subject: message.subject,
       html: `${message.html}${emailFooter({ reason })}`,
     });
+    return true;
   } catch (err) {
     console.error(`[billing email] ${kind} failed:`, err?.message);
+    return false;
   }
 }
 
