@@ -35,24 +35,61 @@ export function ChargebackList({ chargebacks }) {
   );
 }
 
-// Invoices that failed or are past the 30 day overdue limit.
-export function InvoiceList({ invoices }) {
+const REASON_BADGE = {
+  failed: <Badge color="red">Payment failed</Badge>,
+  overdue: <Badge color="red">Overdue</Badge>,
+  restore: <Badge color="amber">Leases withdrawn</Badge>,
+};
+
+/*
+ * Invoices that need an admin: failed, past the 30 day overdue limit, or whose
+ * leases were withdrawn and are still waiting to be put back. Retry makes one
+ * attempt with the landlord's default method; Restore puts back the leases the
+ * overdue job withdrew (do this once the invoice is settled).
+ */
+export function InvoiceList({ invoices, busy, onRetry, onRestore }) {
   if (invoices.length === 0) return <Empty>No failed or overdue invoices.</Empty>;
   return (
     <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
       {invoices.map((inv) => (
-        <li key={inv.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <Landlord landlord={inv.landlord} />
-            <p className="mt-0.5 text-xs text-gray-500">
-              Invoiced {fmtDate(inv.invoiceDate)} ({inv.daysOld} days ago)
-              {inv.failureMessage ? ` · ${inv.failureMessage}` : ""}
-            </p>
+        <li key={inv.id} className="px-4 py-3 space-y-2">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Landlord landlord={inv.landlord} />
+              <p className="mt-0.5 text-xs text-gray-500">
+                Invoiced {fmtDate(inv.invoiceDate)} ({inv.daysOld} days ago) · {inv.status}
+                {inv.failureMessage ? ` · ${inv.failureMessage}` : ""}
+              </p>
+            </div>
+            {REASON_BADGE[inv.reason]}
+            {inv.disputed && <Badge color="amber">Disputed</Badge>}
+            {inv.leasesToRestore > 0 && <Badge color="gray">{inv.leasesToRestore} lease(s) withdrawn</Badge>}
+            <p className="text-sm font-semibold text-gray-900">{formatCents(inv.totalCents)}</p>
           </div>
-          {inv.reason === "failed" ? <Badge color="red">Payment failed</Badge> : <Badge color="red">Overdue</Badge>}
-          {inv.disputed && <Badge color="amber">Disputed</Badge>}
-          {inv.leasesWithdrawn && <Badge color="gray">Leases withdrawn</Badge>}
-          <p className="text-sm font-semibold text-gray-900">{formatCents(inv.totalCents)}</p>
+          {(inv.canRetry || inv.leasesToRestore > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {inv.canRetry && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRetry(inv)}
+                  className="px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm hover:bg-gray-700 disabled:opacity-60"
+                >
+                  Retry payment
+                </button>
+              )}
+              {inv.leasesToRestore > 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRestore(inv)}
+                  className="px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Restore leases
+                </button>
+              )}
+            </div>
+          )}
         </li>
       ))}
     </ul>

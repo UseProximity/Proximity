@@ -107,6 +107,24 @@ export function payInvoice(stripe, invoiceId, paymentMethodId) {
   return stripe.invoices.pay(invoiceId, { payment_method: paymentMethodId, off_session: true });
 }
 
+const NEEDS_ACTION_MESSAGE = "Your bank needs you to confirm this payment. Open the invoice to complete it.";
+
+/*
+ * The reason to show a landlord when paying an invoice failed. A decline already
+ * reads fine ("Your card was declined."), but a payment that needs the cardholder
+ * to authenticate comes back in Stripe's developer wording about client secrets,
+ * so that one is replaced with what the landlord should actually do.
+ */
+export function paymentFailureMessage(err) {
+  const text = String(err?.message ?? "");
+  const needsAction =
+    err?.code === "invoice_payment_intent_requires_action" ||
+    err?.code === "authentication_required" ||
+    /requires additional action|next_action|client_secret/i.test(text);
+  if (needsAction) return NEEDS_ACTION_MESSAGE;
+  return text || "The payment did not go through.";
+}
+
 /*
  * Record that paying an invoice failed, and tell the landlord and the team, once.
  * Idempotent: an invoice already Failed is left alone and nobody is emailed

@@ -8,7 +8,9 @@
  *                Approved or Voided with a written internal note; the landlord is
  *                emailed the outcome.
  *   Chargebacks  Stripe disputes, read-only (answered in the Stripe dashboard).
- *   Invoices     failed or overdue invoices, read-only.
+ *   Invoices     failed or overdue invoices, and ones whose leases were withdrawn:
+ *                Retry payment, and Restore leases once settled.
+ *   Corrections  refund or credit a wrong Paid charge (the charge is never edited).
  *   Billing run  dry run and live run of the monthly billing, and the switch that
  *                lets the first-Monday cron create real invoices.
  *   Test charge  makes a charge on a landlord account (never on production).
@@ -23,6 +25,7 @@ import ChargeQueue from "@/components/admin/billing/ChargeQueue";
 import NoteDialog from "@/components/admin/billing/NoteDialog";
 import TestChargeForm from "@/components/admin/billing/TestChargeForm";
 import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
+import CorrectionsPanel from "@/components/admin/billing/CorrectionsPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 
 async function call(url, options) {
@@ -86,7 +89,7 @@ export default function BillingView({ search }) {
     setNotice(null);
     try {
       await fn();
-      setNotice(successText);
+      if (successText) setNotice(successText);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -97,6 +100,17 @@ export default function BillingView({ search }) {
 
   const confirm = (charge) =>
     act(() => post(`/api/admin/billing/charges/${charge.id}/confirm`), "Charge confirmed. The 7 day review has started.");
+
+  const retryInvoice = (invoice) =>
+    act(() => post(`/api/admin/billing/invoices/${invoice.id}/retry`), "Payment attempt started. The result arrives shortly.");
+
+  const restoreLeases = (invoice) => {
+    if (!window.confirm("Put this landlord's withdrawn leases back on the market? Only do this once the invoice is settled.")) return;
+    return act(async () => {
+      const r = await post(`/api/admin/billing/invoices/${invoice.id}/restore-leases`);
+      setNotice(`Restored ${r.restored} of ${r.total} lease(s).`);
+    }, null);
+  };
 
   const submitNote = (note) => {
     const { key, charge, outcome } = dialog;
@@ -129,6 +143,7 @@ export default function BillingView({ search }) {
     { key: "contest", label: "Contested", count: data.contested.length },
     { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
+    { key: "corrections", label: "Corrections" },
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
   ];
@@ -180,7 +195,10 @@ export default function BillingView({ search }) {
         />
       )}
       {tab === "chargebacks" && <ChargebackList chargebacks={filtered.chargebacks} />}
-      {tab === "invoices" && <InvoiceList invoices={filtered.invoices} />}
+      {tab === "invoices" && (
+        <InvoiceList invoices={filtered.invoices} busy={busy} onRetry={retryInvoice} onRestore={restoreLeases} />
+      )}
+      {tab === "corrections" && <CorrectionsPanel search={search} />}
       {tab === "run" && <BillingRunPanel />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
 

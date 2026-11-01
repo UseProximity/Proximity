@@ -5,14 +5,15 @@
  * twice for one event (Stripe redelivers an event whose first delivery failed),
  * so each one must be safe to repeat.
  *
- * Handlers are added with the features that need them. Payment methods are in
- * paymentMethodHandlers.js; invoices and payment status, and disputes, follow.
+ * Payment method events are in paymentMethodHandlers.js; invoice and payment
+ * status and disputes are in invoiceHandlers.js.
  */
 
 import { paymentMethodHandlers } from "./paymentMethodHandlers.js";
+import { invoiceHandlers } from "./invoiceHandlers.js";
 
 // type -> async (event, ctx) => void. ctx is { db }.
-export const handlers = { ...paymentMethodHandlers };
+export const handlers = { ...paymentMethodHandlers, ...invoiceHandlers };
 
 export async function handleStripeEvent(event, ctx) {
   const handler = handlers[event.type];

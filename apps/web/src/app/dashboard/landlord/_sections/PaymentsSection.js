@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
+import InvoicesCard from "./InvoicesCard";
 import ContestChargeModal from "./ContestChargeModal";
 
 const NOTICES = {
@@ -18,9 +19,9 @@ async function call(url, options) {
 }
 
 /*
- * The landlord's payments page: balance and charges (with Approve and Contest)
- * and the payment method card. Invoices and the agreement join it as those
- * features land.
+ * The landlord's payments page: balance and charges (with Approve and Contest),
+ * monthly invoices (with Pay now), and the payment method card. The agreement
+ * joins it when that feature lands.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -29,6 +30,7 @@ async function call(url, options) {
 export default function PaymentsSection() {
   const [methods, setMethods] = useState([]);
   const [charges, setCharges] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
   const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,10 +40,15 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
-    const [m, c] = await Promise.all([call("/api/billing/payment-methods"), call("/api/billing/charges")]);
+    const [m, c, i] = await Promise.all([
+      call("/api/billing/payment-methods"),
+      call("/api/billing/charges"),
+      call("/api/billing/invoices"),
+    ]);
     setMethods(m.methods);
     setCharges(c.charges);
     setSummary(c.summary);
+    setInvoices(i.invoices);
   }, []);
 
   useEffect(() => {
@@ -138,6 +145,22 @@ export default function PaymentsSection() {
       setNotice({ tone: "gray", text: "Charge contested. We will email you the outcome." });
     });
 
+  const payInvoice = (invoice) =>
+    run(async () => {
+      try {
+        const result = await call(`/api/billing/invoices/${invoice.id}/pay`, { method: "POST" });
+        setNotice({
+          tone: "green",
+          text: result.alreadyPaid
+            ? "That invoice is already paid."
+            : "Payment started. A bank payment can take a few business days to complete.",
+        });
+      } finally {
+        // A decline still changes the invoice (its reason), so always show the latest.
+        await load().catch(() => {});
+      }
+    });
+
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
   return (
@@ -159,6 +182,7 @@ export default function PaymentsSection() {
         onApprove={approve}
         onContest={setContesting}
       />
+      <InvoicesCard invoices={invoices} busy={busy} onPay={payInvoice} />
       <PaymentMethodsCard
         methods={methods}
         busy={busy}

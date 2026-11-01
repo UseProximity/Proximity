@@ -66,31 +66,61 @@ async function chargebacks(db) {
   }));
 }
 
+const INVOICE_COLUMNS =
+  "id, landlord_id, status, total_cents, invoice_date, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)";
+
+// Leases the overdue job withdrew and nobody has restored yet, counted per invoice.
+// Reads as none until the billing_lease_withdrawals migration is applied, so the
+// review keeps working in an environment that does not have it yet.
+async function unrestoredWithdrawals(db) {
+  const { data, error } = await db.from("billing_lease_withdrawals").select("invoice_id").is("restored_at", null);
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "42P01") return new Map();
+    throw error;
+  }
+  const counts = new Map();
+  for (const { invoice_id } of data) counts.set(invoice_id, (counts.get(invoice_id) ?? 0) + 1);
+  return counts;
+}
+
 async function invoicesNeedingAttention(db, now) {
   const { data, error } = await db
     .from("billing_invoices")
-    .select(
-      "id, landlord_id, status, total_cents, invoice_date, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)"
-    )
+    .select(INVOICE_COLUMNS)
     .in("status", ["open", "failed"])
     .order("invoice_date", { ascending: true })
     .limit(QUEUE_LIMIT);
   if (error) throw error;
-  return data
+
+  const withdrawn = await unrestoredWithdrawals(db);
+  const rows = data
     .map((inv) => ({ inv, reason: invoiceAttentionReason(inv, now) }))
-    .filter(({ reason }) => reason)
-    .map(({ inv, reason }) => ({
-      id: inv.id,
-      reason,
-      status: inv.status,
-      totalCents: inv.total_cents,
-      invoiceDate: inv.invoice_date,
-      daysOld: Math.floor((now.getTime() - new Date(inv.invoice_date).getTime()) / DAY_MS),
-      failureMessage: inv.last_failure_message ?? null,
-      disputed: inv.disputed,
-      leasesWithdrawn: !!inv.overdue_actioned_at,
-      landlord: { id: inv.landlord_id, name: inv.landlord?.name ?? null, email: inv.landlord?.email ?? null },
-    }));
+    .filter(({ reason }) => reason);
+
+  // An invoice paid since its leases were withdrawn drops out of the list above, but
+  // the admin still has to put the leases back, so it stays here until they do.
+  const listed = new Set(rows.map(({ inv }) => inv.id));
+  const missing = [...withdrawn.keys()].filter((id) => !listed.has(id));
+  if (missing.length) {
+    const { data: extra, error: extraError } = await db.from("billing_invoices").select(INVOICE_COLUMNS).in("id", missing);
+    if (extraError) throw extraError;
+    for (const inv of extra) rows.push({ inv, reason: "restore" });
+  }
+
+  return rows.map(({ inv, reason }) => ({
+    id: inv.id,
+    reason,
+    status: inv.status,
+    totalCents: inv.total_cents,
+    invoiceDate: inv.invoice_date,
+    daysOld: Math.floor((now.getTime() - new Date(inv.invoice_date).getTime()) / DAY_MS),
+    failureMessage: inv.last_failure_message ?? null,
+    disputed: inv.disputed,
+    leasesWithdrawn: !!inv.overdue_actioned_at,
+    leasesToRestore: withdrawn.get(inv.id) ?? 0,
+    canRetry: inv.status === "failed" || inv.status === "open",
+    landlord: { id: inv.landlord_id, name: inv.landlord?.name ?? null, email: inv.landlord?.email ?? null },
+  }));
 }
 
 export async function loadAdminReview(db, now = new Date()) {

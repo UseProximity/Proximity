@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 154,
+  "count": 161,
   "routes": [
     {
       "path": "/api/account",
@@ -76,6 +76,23 @@
       "file": "src/app/api/admin/[table]/route.js"
     },
     {
+      "path": "/api/admin/billing/charges/[id]/adjust",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "charges",
+        "charge_adjustments",
+        "billing_invoices",
+        "billing_accounts"
+      ],
+      "file": "src/app/api/admin/billing/charges/[id]/adjust/route.js"
+    },
+    {
       "path": "/api/admin/billing/charges/[id]/confirm",
       "methods": [
         "POST"
@@ -119,6 +136,51 @@
         "charge_status_history"
       ],
       "file": "src/app/api/admin/billing/charges/[id]/void/route.js"
+    },
+    {
+      "path": "/api/admin/billing/invoices/[id]/restore-leases",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "billing_lease_withdrawals",
+        "unit_leases"
+      ],
+      "file": "src/app/api/admin/billing/invoices/[id]/restore-leases/route.js"
+    },
+    {
+      "path": "/api/admin/billing/invoices/[id]/retry",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "billing_invoices",
+        "payment_methods"
+      ],
+      "file": "src/app/api/admin/billing/invoices/[id]/retry/route.js"
+    },
+    {
+      "path": "/api/admin/billing/paid-charges",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "charges",
+        "charge_adjustments"
+      ],
+      "file": "src/app/api/admin/billing/paid-charges/route.js"
     },
     {
       "path": "/api/admin/billing/review",
@@ -715,6 +777,35 @@
       "file": "src/app/api/billing/charges/[id]/contest/route.js"
     },
     {
+      "path": "/api/billing/invoices",
+      "methods": [
+        "GET"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "GET": "landlord"
+      },
+      "tables": [
+        "billing_invoices"
+      ],
+      "file": "src/app/api/billing/invoices/route.js"
+    },
+    {
+      "path": "/api/billing/invoices/[id]/pay",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "billing_invoices",
+        "payment_methods"
+      ],
+      "file": "src/app/api/billing/invoices/[id]/pay/route.js"
+    },
+    {
       "path": "/api/billing/payment-methods",
       "methods": [
         "GET"
@@ -1002,6 +1093,23 @@
         "users"
       ],
       "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
+      "path": "/api/cron/billing-overdue",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "billing_invoices",
+        "billing_lease_withdrawals",
+        "unit_leases",
+        "users"
+      ],
+      "file": "src/app/api/cron/billing-overdue/route.js"
     },
     {
       "path": "/api/cron/billing-review-clock",

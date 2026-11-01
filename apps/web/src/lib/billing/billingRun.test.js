@@ -8,7 +8,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { nextBillingDay } from "./billingPeriod.js";
-import { periodLabel, recordPaymentFailure } from "./invoicing.js";
+import { paymentFailureMessage, periodLabel, recordPaymentFailure } from "./invoicing.js";
+import { invoiceView } from "./invoiceAccess.js";
+import { adjustPaidCharge } from "./adjustments.js";
 import { BILLING_RUN_ENABLED, getBillingSetting } from "./settings.js";
 
 describe("nextBillingDay", () => {
@@ -34,6 +36,65 @@ describe("periodLabel", () => {
   it("names the month on the invoice", () => {
     assert.equal(periodLabel("2026-11-01"), "November 2026");
     assert.equal(periodLabel("2027-01-01"), "January 2027");
+  });
+});
+
+describe("paymentFailureMessage", () => {
+  it("keeps a plain decline as Stripe words it", () => {
+    assert.equal(paymentFailureMessage({ message: "Your card was declined." }), "Your card was declined.");
+    assert.equal(
+      paymentFailureMessage({ message: "The customer's account has insufficient funds to cover this payment." }),
+      "The customer's account has insufficient funds to cover this payment."
+    );
+  });
+
+  it("replaces Stripe's developer wording for a payment that needs authentication", () => {
+    const wanted = "Your bank needs you to confirm this payment. Open the invoice to complete it.";
+    assert.equal(
+      paymentFailureMessage({ message: "The invoice payment requires additional action. Retrieve the invoice's PaymentIntent, then use `client_secret` and `next_action`..." }),
+      wanted
+    );
+    assert.equal(paymentFailureMessage({ code: "authentication_required", message: "x" }), wanted);
+    assert.equal(paymentFailureMessage({ code: "invoice_payment_intent_requires_action", message: "x" }), wanted);
+  });
+
+  it("always says something", () => {
+    assert.equal(paymentFailureMessage({}), "The payment did not go through.");
+    assert.equal(paymentFailureMessage(null), "The payment did not go through.");
+  });
+});
+
+describe("invoiceView", () => {
+  const row = { id: "i1", billing_period: "2027-01-01", total_cents: 5000, invoice_date: "2027-01-04", hosted_invoice_url: "https://h", invoice_pdf_url: "https://p", last_failure_message: "declined" };
+
+  it("offers Pay now on open and failed invoices only", () => {
+    const can = (status) => invoiceView({ ...row, status }).canPay;
+    assert.deepEqual(["open", "failed", "processing", "paid", "void", "uncollectible"].map(can), [true, true, false, false, false, false]);
+  });
+
+  it("shows the failure reason only while the invoice is failed", () => {
+    assert.equal(invoiceView({ ...row, status: "failed" }).failureMessage, "declined");
+    assert.equal(invoiceView({ ...row, status: "paid" }).failureMessage, null);
+  });
+
+  it("carries the links to Stripe's pages", () => {
+    const v = invoiceView({ ...row, status: "open" });
+    assert.equal(v.hostedInvoiceUrl, "https://h");
+    assert.equal(v.invoicePdfUrl, "https://p");
+  });
+});
+
+describe("adjustPaidCharge validation", () => {
+  const db = { from() { throw new Error("should not reach the database"); } };
+  const base = { chargeId: "c", adminId: "a", kind: "refund", amountCents: 100, reason: "wrong" };
+
+  it("refuses an unknown kind, a bad amount and a missing reason before touching anything", async () => {
+    await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, kind: "chargeback" }), /refund or a credit/);
+    for (const amountCents of [0, -1, 1.5, "100", null]) {
+      await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, amountCents }), /amount in dollars/);
+    }
+    await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "  " }), /reason is required/);
+    await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "x".repeat(1001) }), /under 1000/);
   });
 });
 

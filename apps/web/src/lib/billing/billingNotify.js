@@ -4,7 +4,12 @@
  * code stays free of the email transport and can be tested with a stand-in.
  */
 import { getBaseUrl } from "@/lib/email";
-import { sendPaymentFailedEmail, sendPaymentFailedTeamEmail } from "./billingEmails";
+import {
+  sendOverdueEmail,
+  sendOverdueTeamEmail,
+  sendPaymentFailedEmail,
+  sendPaymentFailedTeamEmail,
+} from "./billingEmails";
 
 export function billingNotify() {
   return {
@@ -22,6 +27,24 @@ export function billingNotify() {
         landlordEmail: landlord?.email,
         totalCents: invoice.total_cents,
         reason: message,
+      });
+    },
+
+    // The overdue job hid the landlord's leases: tell them how to get them back, and tell the team.
+    async overdue({ invoice, landlord, withdrawnCount }) {
+      const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=payments`;
+      if (landlord?.email) {
+        await sendOverdueEmail(
+          { id: landlord.id, email: landlord.email, name: landlord.name },
+          { totalCents: invoice.total_cents, invoiceDate: invoice.invoice_date, paymentsUrl }
+        );
+      }
+      await sendOverdueTeamEmail({
+        landlordName: landlord?.name,
+        landlordEmail: landlord?.email,
+        totalCents: invoice.total_cents,
+        invoiceDate: invoice.invoice_date,
+        withdrawnCount,
       });
     },
   };

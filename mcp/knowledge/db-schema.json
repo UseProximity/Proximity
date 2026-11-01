@@ -526,6 +526,20 @@
         "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk stripe_event_id; partial index on received_at where processed_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
+        "table": "billing_lease_withdrawals",
+        "status": "unreleased",
+        "description": "Which leases the overdue-invoice job withdrew (is_active false, unavailable true), one row per (invoice, lease), so an admin can restore exactly those and leave any lease the landlord withdrew themselves alone. restored_at is NULL while a lease is still withdrawn.",
+        "columns": [
+          "id:uuid",
+          "invoice_id:uuid",
+          "lease_id:uuid",
+          "withdrawn_at:timestamptz",
+          "restored_at:timestamptz",
+          "restored_by_id:uuid"
+        ],
+        "notes": "Migration 202611010001_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies)."
+      },
+      {
         "table": "landlord_reply_senders",
         "status": "live",
         "description": "Who may reply by email on a landlord's behalf besides their account email, alert address and same-company domain (Wyatt, 2026-10-24). pattern is one address ('vic@x.com') or a domain ('@x.com', never a shared free-mail domain). decision approved | declined ('not them'; an exact decline beats an approved domain). Managed by the landlord from the held-reply banner in the conversation (HeldRepliesBanner) or by admins in the Conversations view.",

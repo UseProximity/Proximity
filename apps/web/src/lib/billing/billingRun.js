@@ -31,7 +31,7 @@ import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoiceP
 import { leaseLabel } from "./chargeDisplay.js";
 import { transitionCharge } from "./charges.js";
 import { getOrCreateBillingAccount } from "./customers.js";
-import { effectiveStatus } from "./paymentMethodState.js";
+import { defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
 import {
   assertDraftTotal,
   ensureDraftInvoice,
@@ -39,6 +39,7 @@ import {
   finalizeInvoice,
   findInvoiceByKey,
   payInvoice,
+  paymentFailureMessage,
   recordPaymentFailure,
 } from "./invoicing.js";
 
@@ -117,18 +118,6 @@ async function usersById(db, ids) {
   const { data, error } = await db.from("users").select("id, name, email").in("id", ids);
   if (error) throw error;
   return new Map(data.map((u) => [u.id, u]));
-}
-
-async function defaultMethod(db, userId, now) {
-  const { data, error } = await db
-    .from("payment_methods")
-    .select("id, type, status, exp_month, exp_year, stripe_payment_method_id")
-    .eq("user_id", userId)
-    .eq("is_default", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw error;
-  return data && effectiveStatus(data, now) === "active" ? data : null;
 }
 
 // Claim the planned charges for this invoice: Approved -> Invoiced. A charge that
@@ -239,7 +228,7 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
         await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
         outcome = "payment_started";
       } catch (err) {
-        await recordPaymentFailure(db, { invoiceId: row.id, message: err.message, notify, now });
+        await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
         outcome = "payment_failed";
       }
     }

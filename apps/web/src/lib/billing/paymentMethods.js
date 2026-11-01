@@ -261,6 +261,19 @@ async function ownedMethod(db, userId, id) {
   return data;
 }
 
+// The method invoices are charged to: the default one, if it is usable right now.
+export async function defaultActiveMethod(db, userId, now = new Date()) {
+  const { data, error } = await db
+    .from("payment_methods")
+    .select("id, type, status, exp_month, exp_year, stripe_payment_method_id")
+    .eq("user_id", userId)
+    .eq("is_default", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return data && effectiveStatus(data, now) === "active" ? data : null;
+}
+
 async function customerIdFor(db, userId) {
   const { data, error } = await db.from("billing_accounts").select("stripe_customer_id").eq("user_id", userId).maybeSingle();
   if (error) throw error;
