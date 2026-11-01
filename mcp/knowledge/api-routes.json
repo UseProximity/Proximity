@@ -1,7 +1,7 @@
 {
-  "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
+  "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
   "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 137,
+  "count": 142,
   "routes": [
     {
       "path": "/api/account",
@@ -558,6 +558,80 @@
         "pms_review_queue"
       ],
       "file": "src/app/api/availability/confirm/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods",
+      "methods": [
+        "GET"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "GET": "landlord"
+      },
+      "tables": [
+        "payment_methods"
+      ],
+      "file": "src/app/api/billing/payment-methods/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/[id]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "DELETE": "landlord"
+      },
+      "tables": [
+        "payment_methods",
+        "billing_accounts",
+        "charges"
+      ],
+      "file": "src/app/api/billing/payment-methods/[id]/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/[id]/default",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "payment_methods",
+        "billing_accounts"
+      ],
+      "file": "src/app/api/billing/payment-methods/[id]/default/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/setup",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "billing_accounts"
+      ],
+      "file": "src/app/api/billing/payment-methods/setup/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/sync",
+      "methods": [
+        "POST"
+      ],
+      "auth": "landlord",
+      "methodAuth": {
+        "POST": "landlord"
+      },
+      "tables": [
+        "payment_methods",
+        "billing_accounts"
+      ],
+      "file": "src/app/api/billing/payment-methods/sync/route.js"
     },
     {
       "path": "/api/chat/access-token",

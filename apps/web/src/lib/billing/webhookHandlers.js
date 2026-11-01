@@ -5,12 +5,14 @@
  * twice for one event (Stripe redelivers an event whose first delivery failed),
  * so each one must be safe to repeat.
  *
- * Phase 2 ships the dispatcher only. Handlers are added with the features that
- * need them: payment methods, invoices and payment status, disputes.
+ * Handlers are added with the features that need them. Payment methods are in
+ * paymentMethodHandlers.js; invoices and payment status, and disputes, follow.
  */
 
+import { paymentMethodHandlers } from "./paymentMethodHandlers.js";
+
 // type -> async (event, ctx) => void. ctx is { db }.
-export const handlers = {};
+export const handlers = { ...paymentMethodHandlers };
 
 export async function handleStripeEvent(event, ctx) {
   const handler = handlers[event.type];

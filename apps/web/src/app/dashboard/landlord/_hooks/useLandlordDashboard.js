@@ -391,6 +391,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         return "My Profile";
       case "analytics":
         return "Analytics";
+      case "payments":
+        return "Payments";
       default:
         return "Landlord Dashboard";
     }
