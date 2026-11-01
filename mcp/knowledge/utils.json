@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-01T18:59:18.440Z",
-  "count": 221,
+  "_generated": "2026-11-01T23:31:55.656Z",
+  "count": 222,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -506,6 +506,10 @@
     {
       "file": "src/lib/listings/leaseFit.test.js",
       "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/listings/leasePrefsColumns.js",
+      "description": "The account columns behind a student's saved sizes and lease lengths."
     },
     {
       "file": "src/lib/listings/listingSelect.js",

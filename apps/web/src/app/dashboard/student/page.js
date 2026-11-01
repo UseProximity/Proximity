@@ -105,9 +105,9 @@ function EditProfileModal({ user, onClose, onSaved }) {
     leasePrefs.loaded
       ? leasePrefs.prefs
       : {
-          beds: user.preferredBeds ?? null,
+          beds: user.preferredBeds ?? [],
           moveIn: user.preferredMoveInDate ?? null,
-          months: user.preferredLeaseMonths ?? null,
+          months: user.preferredLeaseMonths ?? [],
         }
   );
   const [form, setForm] = useState({
@@ -177,8 +177,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
           ...form,
           birthday: form.birthday || undefined,
           preferredMoveInDate: housing.moveIn ?? null,
-          preferredLeaseMonths: housing.months ?? null,
-          preferredBeds: housing.beds ?? null,
+          preferredLeaseMonths: housing.months ?? [],
+          preferredBeds: housing.beds ?? [],
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -343,7 +343,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
                 idPrefix="profile-lease-prefs"
                 value={housing}
                 onChange={(patch) => setHousing((prev) => ({ ...prev, ...patch }))}
-                onClear={() => setHousing({ beds: null, moveIn: null, months: null })}
+                onClear={() => setHousing({ beds: [], moveIn: null, months: [] })}
               />
             </div>
           )}
@@ -572,8 +572,8 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     phone: dbUser?.phone ?? null,
     description: dbUser?.description ?? null,
     preferredMoveInDate: dbUser?.preferredMoveInDate ?? null,
-    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? null,
-    preferredBeds: dbUser?.preferredBeds ?? null,
+    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? [],
+    preferredBeds: dbUser?.preferredBeds ?? [],
   };
 
   const contacted = user.contacted;
