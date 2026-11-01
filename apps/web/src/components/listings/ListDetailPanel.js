@@ -33,8 +33,13 @@ export default function ListDetailPanel({
           pills.mode === "off" ? "hidden" : ""
         }`}
       >
+        {/*
+          * pointer-events-none on the wrapper itself, not only its children:
+          * parked above the top it sits right over the stuck tab row, and the
+          * bare wrapper swallowed every tab click (Wyatt, 2026-11-01).
+          */}
         <div
-          className={`transition duration-200 ${
+          className={`pointer-events-none transition duration-200 ${
             pills.mode === "shown"
               ? "translate-y-0 opacity-100"
               : "-translate-y-full opacity-0 [&_*]:!pointer-events-none"
@@ -54,6 +59,7 @@ export default function ListDetailPanel({
         initialUnitId={initialUnitId}
         detailLoading={detailLoading}
         onHeadStuck={pills.setStuck}
+        onSectionJump={pills.suppress}
       />
     </div>
   );
@@ -103,6 +109,17 @@ function usePills(detailLoading) {
   const [mode, setMode] = useState("off");
   const [stuck, setStuck] = useState(false);
   const [original, setOriginal] = useState(true);
+  /*
+   * A tab click scrolls the page itself. Jumping back up to a section must not
+   * read as the reader scrolling up, or the pills would slide in right over
+   * the heading they were taken to. For a second after a jump, upward
+   * scrolling leaves the pills where they are.
+   */
+  const quietUntil = useRef(0);
+  const suppress = () => {
+    quietUntil.current = Date.now() + 1000;
+    setMode((m) => (m === "shown" ? "hidden" : m));
+  };
   useEffect(() => {
     const head = ref.current?.querySelector("#listing-head");
     if (!head) return;
@@ -122,6 +139,10 @@ function usePills(detailLoading) {
         setMode("off");
         setOriginal(true);
       } else if (top < last) {
+        if (Date.now() < quietUntil.current) {
+          last = top;
+          return;
+        }
         setMode("shown");
         setOriginal(false);
       } else if (top > last) setMode("hidden");
@@ -130,5 +151,5 @@ function usePills(detailLoading) {
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
-  return { ref, mode, stuck, setStuck, original };
+  return { ref, mode, stuck, setStuck, original, suppress };
 }
