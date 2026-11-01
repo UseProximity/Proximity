@@ -420,7 +420,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      {/* The section title sits on the toggle's row, not above it (Wyatt, 2026-11-01). */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h2 className="text-xl font-bold text-gray-900">Places</h2>
         <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
           {toggleBtn("walking", WalkingPersonIcon, "Walking")}
           {toggleBtn("driving", Car, "Driving")}
@@ -1023,9 +1025,9 @@ function ReviewsTab({
             </form>
           </>
         ) : (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          <p className="text-sm font-medium text-red-600">
             Sign in with your school email to leave a review
-          </div>
+          </p>
         )}
       </div>
       )}
@@ -2465,7 +2467,7 @@ export default function ListingModalInfo({
                 </Section>
               )}
               {show("places") && (
-                <Section id="places" label="Places" sectionRefs={sectionRefs}>
+                <Section id="places" sectionRefs={sectionRefs}>
                   <PlacesTab
                     walkTimes={walkTimes}
                     walkLoading={walkLoading}
