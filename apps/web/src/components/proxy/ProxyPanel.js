@@ -267,7 +267,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
 
   useEffect(() => {
     if (!active || !thread || sending) return;
-    const t = setInterval(refresh, 15000);
+    // Every few seconds while the chat is on screen (Wyatt, 2026-11-02).
+    const t = setInterval(refresh, 4000);
     return () => clearInterval(t);
   }, [active, thread, sending, refresh]);
 

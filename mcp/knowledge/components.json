@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-01T23:36:05.927Z",
-  "count": 158,
+  "_generated": "2026-11-02T19:51:20.239Z",
+  "count": 159,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -196,6 +196,11 @@
     {
       "name": "SetPasswordPrompt",
       "file": "src/components/chat/SetPasswordPrompt.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TourProposalCard",
+      "file": "src/components/chat/TourProposalCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

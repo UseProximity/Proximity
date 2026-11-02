@@ -384,7 +384,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   useEffect(() => {
     const t = setInterval(() => {
       if (document.visibilityState === "visible" && !inFlightRef.current) load({ quiet: true });
-    }, 8000);
+    }, 4000);
     return () => clearInterval(t);
   }, [load]);
   useEffect(() => () => clearInterval(timerRef.current), []);

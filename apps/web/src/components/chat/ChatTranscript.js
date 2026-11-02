@@ -9,6 +9,7 @@ import ChatAttachmentBubble from "@/components/chat/ChatAttachmentBubble";
 import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
 import NoReplyNote from "@/components/chat/NoReplyNote";
 import HeldRepliesBanner from "@/components/chat/HeldRepliesBanner";
+import TourProposalCard from "@/components/chat/TourProposalCard";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
@@ -131,6 +132,14 @@ function findReadReceiptMessageId(list, otherUserLastReadAt) {
  * time is hover / swipe-left. attachment messages render inline images /
  * downloadable files.
  */
+// The grey line at the top of a chat a tour opened.
+function tourNote(tour) {
+  if (!tour) return null;
+  if (tour.status === "confirmed" && tour.confirmedText) return `Tour confirmed for ${tour.confirmedText}. Work out the details here.`;
+  if (tour.status === "cancelled") return `This tour of ${tour.listingTitle} was cancelled.`;
+  return `About touring ${tour.listingTitle}. Work out a time here.`;
+}
+
 export default function ChatTranscript({
   thread,
   messages,
@@ -380,11 +389,17 @@ export default function ChatTranscript({
         ref={listRef}
         className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-2 min-h-0 touch-pan-y"
       >
+        {/* A chat a tour opened says so at the top, in no one's voice (Wyatt, 2026-11-02). */}
+        {!showLoading && tourNote(thread?.tour) && (
+          <p className="mx-auto max-w-sm rounded-lg bg-gray-50 px-3 py-2 text-center text-xs text-gray-500 select-none">
+            {tourNote(thread.tour)}
+          </p>
+        )}
         {showLoading ? (
           <ChatSkeleton className="py-2" />
         ) : list.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">
-            No messages yet. Say hello!
+            {thread?.tour ? "Say hello and work out the details here." : "No messages yet. Say hello!"}
           </p>
         ) : (
           list.map((msg, i) => {
@@ -480,6 +495,17 @@ export default function ChatTranscript({
                       </div>
                     )}
                   </div>
+                  {msg.metadata?.tourProposal && (
+                    <div className={msg.isMine ? "flex justify-end" : "pl-10"}>
+                      <TourProposalCard
+                        key={`${msg.id}:${msg.metadata.tourProposal.status}`}
+                        messageId={msg.id}
+                        proposal={msg.metadata.tourProposal}
+                        mine={msg.isMine}
+                        otherName={thread?.otherUserName?.split(" ")[0] || "them"}
+                      />
+                    </div>
+                  )}
                   {msg.id === readReceiptMessageId && readReceiptTime && (
                     <p className="mt-1 text-[11px] text-gray-400 text-right select-none">
                       Read · {readReceiptTime}
