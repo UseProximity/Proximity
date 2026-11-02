@@ -8,10 +8,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { nextBillingDay } from "./billingPeriod.js";
-import { assertInvoiceMatches, paymentFailureMessage, periodLabel, recordPaymentFailure } from "./invoicing.js";
-import { invoiceView } from "./invoiceAccess.js";
+import { assertInvoiceMatches, finalizedFields, paymentFailureMessage, paymentUnderway, periodLabel, recordPaymentFailure } from "./invoicing.js";
+import { invoiceView, retryInvoicePayment } from "./invoiceAccess.js";
 import { adjustPaidCharge } from "./adjustments.js";
-import { BILLING_RUN_ENABLED, getBillingSetting } from "./settings.js";
+import { BILLING_RUN_ENABLED, getBillingSetting, withSettingsLock } from "./settings.js";
+import { chargeableMethod } from "./paymentMethods.js";
 
 describe("nextBillingDay", () => {
   it("is today on the billing day itself", () => {
@@ -98,6 +99,10 @@ describe("paymentFailureMessage", () => {
 
 describe("invoiceView", () => {
   const row = { id: "i1", billing_period: "2027-01-01", total_cents: 5000, invoice_date: "2027-01-04", hosted_invoice_url: "https://h", invoice_pdf_url: "https://p", last_failure_message: "declined" };
+
+  it("does not offer Pay now on an invoice a run never issued (PR #370 review)", () => {
+    assert.equal(invoiceView({ ...row, status: "open", invoice_date: null }).canPay, false);
+  });
 
   it("offers Pay now on open and failed invoices only", () => {
     const can = (status) => invoiceView({ ...row, status }).canPay;
@@ -201,5 +206,175 @@ describe("recordPaymentFailure", () => {
     const db = fakeDb(row);
     await recordPaymentFailure(db, { invoiceId: "i1", message: "x".repeat(2000), notify: null });
     assert.equal(db.calls.update.last_failure_message.length, 500);
+  });
+});
+
+describe("finalizedFields (PR #370 review)", () => {
+  it("dates the invoice when Stripe finalized it, not when the run started", () => {
+    const f = finalizedFields({ status_transitions: { finalized_at: 1793664000 }, hosted_invoice_url: "https://h", invoice_pdf: "https://p" }, new Date("2030-01-01"));
+    assert.equal(f.invoice_date, new Date(1793664000 * 1000).toISOString());
+    assert.equal(f.hosted_invoice_url, "https://h");
+    assert.equal(f.invoice_pdf_url, "https://p");
+  });
+
+  it("falls back to now when Stripe gives no finalize time", () => {
+    assert.equal(finalizedFields({}, new Date("2026-11-02T18:00:00Z")).invoice_date, "2026-11-02T18:00:00.000Z");
+  });
+});
+
+// A stand-in Stripe: one invoice in `status`, paid by intents in `intentStatuses`.
+function fakeStripe({ status = "open", intentStatuses = [], payError = null } = {}) {
+  const calls = { pay: 0 };
+  return {
+    calls,
+    invoices: {
+      retrieve: async (id) => ({
+        id,
+        status,
+        payments: { data: intentStatuses.map((_, i) => ({ payment: { payment_intent: `pi_${i}` } })) },
+      }),
+      pay: async () => {
+        calls.pay += 1;
+        if (payError) throw payError;
+        return {};
+      },
+    },
+    paymentIntents: { retrieve: async (id) => ({ id, status: intentStatuses[Number(id.split("_")[1])] }) },
+    customers: { update: async () => ({}) },
+  };
+}
+
+describe("paymentUnderway (PR #370 review)", () => {
+  it("says paid, processing, or nothing", async () => {
+    assert.equal(await paymentUnderway(fakeStripe({ status: "paid" }), "in_1"), "paid");
+    assert.equal(await paymentUnderway(fakeStripe({ intentStatuses: ["processing"] }), "in_1"), "processing");
+    assert.equal(await paymentUnderway(fakeStripe({ intentStatuses: ["requires_payment_method"] }), "in_1"), null);
+    assert.equal(await paymentUnderway(fakeStripe(), "in_1"), null);
+  });
+});
+
+// A tiny in-memory stand-in for the Supabase calls these paths make.
+function memoryDb(tables) {
+  const rows = (t) => (tables[t] ??= []);
+  const pick = (r, path) => path.split("->>").reduce((v, k) => (v == null ? v : v[k]), r);
+  function query(table) {
+    const filters = [];
+    let op = { kind: "select" };
+    const matches = (r) => filters.every((f) => f(r));
+    const api = {
+      select() { return api; },
+      eq(col, v) { filters.push((r) => pick(r, col) === v); return api; },
+      neq(col, v) { filters.push((r) => r[col] !== v); return api; },
+      is(col, v) { filters.push((r) => (r[col] ?? null) === v); return api; },
+      in(col, vs) { filters.push((r) => vs.includes(r[col])); return api; },
+      not(col, _op, v) { filters.push((r) => (r[col] ?? null) !== v); return api; },
+      order() { return api; },
+      limit() { return api; },
+      insert(row) {
+        if (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) {
+          return Promise.resolve({ error: { code: "23505" } });
+        }
+        rows(table).push({ ...row });
+        return Promise.resolve({ error: null });
+      },
+      update(patch) { op = { kind: "update", patch }; return api; },
+      delete() { op = { kind: "delete" }; return api; },
+      async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
+      then(res, rej) { return api.run().then(res, rej); },
+      async run() {
+        const hit = rows(table).filter(matches);
+        if (op.kind === "update") hit.forEach((r) => Object.assign(r, op.patch));
+        if (op.kind === "delete") tables[table] = rows(table).filter((r) => !matches(r));
+        return { data: hit, error: null };
+      },
+    };
+    return api;
+  }
+  return { tables, from: query };
+}
+
+describe("withSettingsLock (PR #370 review)", () => {
+  const opts = (now) => ({ key: "k", staleMs: 60_000, busyMessage: "busy", now });
+
+  it("lets one caller in and refuses a second while it runs", async () => {
+    const db = memoryDb({});
+    const now = new Date("2026-11-02T18:00:00Z");
+    const result = await withSettingsLock(db, opts(now), async () => {
+      await assert.rejects(() => withSettingsLock(db, opts(now), async () => "second"), (e) => e.status === 409 && e.message === "busy");
+      return "first";
+    });
+    assert.equal(result, "first");
+    assert.equal(db.tables.billing_settings.length, 0, "released afterwards");
+  });
+
+  it("takes over a lock left by a caller that died", async () => {
+    const db = memoryDb({ billing_settings: [{ key: "k", value: { started_at: "2026-11-02T17:00:00.000Z" } }] });
+    const result = await withSettingsLock(db, opts(new Date("2026-11-02T18:00:00Z")), async () => "ran");
+    assert.equal(result, "ran");
+  });
+
+  it("releases the lock when the work throws", async () => {
+    const db = memoryDb({});
+    await assert.rejects(() => withSettingsLock(db, opts(new Date()), async () => { throw new Error("boom"); }), /boom/);
+    assert.equal(db.tables.billing_settings.length, 0);
+  });
+});
+
+describe("chargeableMethod (PR #370 review)", () => {
+  const now = new Date("2026-11-02T18:00:00Z");
+  const card = (over) => ({ id: "m", user_id: "l1", type: "card", status: "active", is_default: false, exp_month: 12, exp_year: 2030, deleted_at: null, stripe_payment_method_id: "pm", created_at: "2026-01-01", ...over });
+
+  it("moves the default off a failed card onto a usable method the landlord added", async () => {
+    const db = memoryDb({
+      billing_accounts: [{ user_id: "l1", stripe_customer_id: "cus_1" }],
+      payment_methods: [card({ id: "old", status: "failed", is_default: true, stripe_payment_method_id: "pm_old" }), card({ id: "bank", type: "us_bank_account", stripe_payment_method_id: "pm_bank" })],
+    });
+    const m = await chargeableMethod(db, fakeStripe(), "l1", now);
+    assert.equal(m.stripe_payment_method_id, "pm_bank");
+    assert.deepEqual(db.tables.payment_methods.map((x) => [x.id, x.is_default]), [["old", false], ["bank", true]]);
+  });
+
+  it("treats an expired default card the same way", async () => {
+    const db = memoryDb({
+      billing_accounts: [{ user_id: "l1", stripe_customer_id: "cus_1" }],
+      payment_methods: [card({ id: "old", is_default: true, exp_year: 2025, stripe_payment_method_id: "pm_old" }), card({ id: "new", stripe_payment_method_id: "pm_new" })],
+    });
+    assert.equal((await chargeableMethod(db, fakeStripe(), "l1", now)).stripe_payment_method_id, "pm_new");
+  });
+
+  it("keeps a usable default, and finds nothing when nothing is usable", async () => {
+    const keep = memoryDb({ payment_methods: [card({ id: "a", is_default: true, stripe_payment_method_id: "pm_a" }), card({ id: "b", stripe_payment_method_id: "pm_b" })] });
+    assert.equal((await chargeableMethod(keep, fakeStripe(), "l1", now)).stripe_payment_method_id, "pm_a");
+    const none = memoryDb({ billing_accounts: [{ user_id: "l1", stripe_customer_id: "cus_1" }], payment_methods: [card({ status: "failed", is_default: true })] });
+    assert.equal(await chargeableMethod(none, fakeStripe(), "l1", now), null);
+  });
+});
+
+describe("retryInvoicePayment while a payment is settling (PR #370 review)", () => {
+  const invoiceRow = { id: "i1", landlord_id: "l1", billing_period: "2026-11-01", stripe_invoice_id: "in_1", status: "open", total_cents: 5000, invoice_date: "2026-11-02" };
+  const methods = [{ id: "m", user_id: "l1", type: "card", status: "active", is_default: true, exp_month: 12, exp_year: 2030, deleted_at: null, stripe_payment_method_id: "pm" }];
+
+  it("refuses to pay again, without recording a failure, while an ACH payment is in flight", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], payment_methods: methods });
+    const stripe = fakeStripe({ intentStatuses: ["processing"] });
+    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1" }), (e) => e.code === "in_progress");
+    assert.equal(stripe.calls.pay, 0);
+    assert.equal(db.tables.billing_invoices[0].status, "open");
+  });
+
+  it("does not record a failure when Stripe refuses because another attempt just started", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], payment_methods: methods });
+    const intentStatuses = [];
+    const stripe = fakeStripe({ intentStatuses, payError: Object.assign(new Error("Invoice is already being paid"), { code: "invoice_payment_intent_requires_action_x" }) });
+    // The racing attempt's intent shows up only after our pay call is refused.
+    const pay = stripe.invoices.pay;
+    stripe.invoices.pay = async (...a) => { intentStatuses.push("processing"); return pay(...a); };
+    assert.deepEqual(await retryInvoicePayment(db, stripe, { invoiceId: "i1" }), { started: true });
+    assert.equal(db.tables.billing_invoices[0].status, "open");
+  });
+
+  it("refuses an invoice a run never issued", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow, invoice_date: null }] });
+    await assert.rejects(() => retryInvoicePayment(db, fakeStripe(), { invoiceId: "i1" }), (e) => e.code === "not_payable");
   });
 });

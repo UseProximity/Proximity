@@ -14,6 +14,26 @@ import { getAgreementProvider, manualProvider, registerAgreementProvider } from 
 
 const ON = { requirePaymentMethod: true, requireAgreement: true };
 
+describe("gate: overdue invoice (PR #370 review)", () => {
+  const OFF = { requirePaymentMethod: false, requireAgreement: false, hasPaymentMethod: false, agreementSigned: false };
+
+  it("blocks a landlord with an overdue invoice even with both switches off", () => {
+    const d = gateDecision({ role: "landlord", ...OFF, overdueInvoice: true });
+    assert.equal(d.allowed, false);
+    assert.deepEqual(d.missing, ["overdue_invoice"]);
+    assert.match(gateMessage(d.missing), /pay your overdue invoice/);
+  });
+
+  it("never blocks admins or students for it", () => {
+    assert.equal(gateDecision({ role: "admin", ...OFF, overdueInvoice: true }).allowed, true);
+  });
+
+  it("names every reason at once", () => {
+    const d = gateDecision({ role: "landlord", requirePaymentMethod: true, requireAgreement: false, hasPaymentMethod: false, agreementSigned: true, overdueInvoice: true });
+    assert.equal(gateMessage(d.missing), "Before you can publish a listing you need to pay your overdue invoice and add an active payment method. You can do this under Payments in your landlord dashboard. Your drafts are saved.");
+  });
+});
+
 describe("gateDecision", () => {
   it("lets everyone through while both requirements are off", () => {
     const d = gateDecision({ role: "landlord", requirePaymentMethod: false, requireAgreement: false, hasPaymentMethod: false, agreementSigned: false });

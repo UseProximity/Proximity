@@ -132,6 +132,50 @@ export function finalizeInvoice(stripe, invoiceId) {
   return stripe.invoices.finalizeInvoice(invoiceId, { auto_advance: false });
 }
 
+/*
+ * What the local row should hold once Stripe has finalized the invoice. The
+ * invoice date is when Stripe finalized it, not when the run started: the overdue
+ * clock counts from it. Also used to fill in a row whose run crashed between
+ * finalizing and saving these, so a resumed run never leaves them blank.
+ */
+export function finalizedFields(invoice, now = new Date()) {
+  const finalized = invoice.status_transitions?.finalized_at;
+  return {
+    invoice_date: finalized ? new Date(finalized * 1000).toISOString() : now.toISOString(),
+    hosted_invoice_url: invoice.hosted_invoice_url ?? null,
+    invoice_pdf_url: invoice.invoice_pdf ?? null,
+  };
+}
+
+const idOf = (v) => (v && typeof v === "object" ? v.id : v) ?? null;
+
+/*
+ * Whether a payment on this invoice is already done or under way, checked after
+ * Stripe refused a pay call. Stripe refuses to pay an invoice that is already
+ * paid or whose ACH payment is still settling, and that is not a failure: the
+ * landlord must not be told their payment did not go through while it is.
+ * Returns "paid", "processing" or null (a real failure).
+ */
+export async function paymentUnderway(stripe, invoiceId) {
+  let invoice;
+  try {
+    invoice = await stripe.invoices.retrieve(invoiceId, { expand: ["payments"] });
+  } catch {
+    return null;
+  }
+  if (invoice.status === "paid") return "paid";
+  const intentIds = (invoice.payments?.data ?? []).map((p) => idOf(p.payment?.payment_intent)).filter(Boolean);
+  for (const id of intentIds) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(id);
+      if (pi.status === "processing" || pi.status === "succeeded") return "processing";
+    } catch {
+      // An intent we cannot read says nothing either way.
+    }
+  }
+  return null;
+}
+
 // Pay with a specific method (the landlord's default). One attempt, no retries.
 export function payInvoice(stripe, invoiceId, paymentMethodId) {
   return stripe.invoices.pay(invoiceId, { payment_method: paymentMethodId, off_session: true });

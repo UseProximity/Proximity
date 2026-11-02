@@ -67,7 +67,7 @@ async function chargebacks(db) {
 }
 
 const INVOICE_COLUMNS =
-  "id, landlord_id, status, total_cents, invoice_date, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)";
+  "id, landlord_id, status, total_cents, invoice_date, created_at, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)";
 
 // Leases the overdue job withdrew and nobody has restored yet, counted per invoice.
 // Reads as none until the billing_lease_withdrawals migration is applied, so the
@@ -88,7 +88,7 @@ async function invoicesNeedingAttention(db, now) {
     .from("billing_invoices")
     .select(INVOICE_COLUMNS)
     .in("status", ["open", "failed"])
-    .order("invoice_date", { ascending: true })
+    .order("invoice_date", { ascending: true, nullsFirst: true })
     .limit(QUEUE_LIMIT);
   if (error) throw error;
 
@@ -113,12 +113,12 @@ async function invoicesNeedingAttention(db, now) {
     status: inv.status,
     totalCents: inv.total_cents,
     invoiceDate: inv.invoice_date,
-    daysOld: Math.floor((now.getTime() - new Date(inv.invoice_date).getTime()) / DAY_MS),
+    daysOld: Math.floor((now.getTime() - new Date(inv.invoice_date ?? inv.created_at).getTime()) / DAY_MS),
     failureMessage: inv.last_failure_message ?? null,
     disputed: inv.disputed,
     leasesWithdrawn: !!inv.overdue_actioned_at,
     leasesToRestore: withdrawn.get(inv.id) ?? 0,
-    canRetry: inv.status === "failed" || inv.status === "open",
+    canRetry: !!inv.invoice_date && (inv.status === "failed" || inv.status === "open"),
     landlord: { id: inv.landlord_id, name: inv.landlord?.name ?? null, email: inv.landlord?.email ?? null },
   }));
 }

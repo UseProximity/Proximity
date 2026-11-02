@@ -7,7 +7,10 @@
  *   credit   a credit on the landlord's Stripe customer balance, which Stripe
  *            takes off their next invoice automatically (a negative balance).
  *
- * The adjustments on one charge never add up to more than the charge. Each call
+ * The adjustments on one charge never add up to more than the charge. Corrections
+ * on one charge run one at a time (a per-charge lock), so two admins correcting
+ * the same charge at once cannot both read the same remaining amount and refund
+ * more than was paid; the second is told to try again. Each call
  * has a deterministic idempotency key (charge, amount already adjusted, amount),
  * so repeating a request that half-failed returns the same refund or credit
  * instead of making a second.
@@ -18,6 +21,7 @@
  * `db` is a service-role Supabase client and `stripe` a Stripe client.
  */
 import { BillingError } from "./errors.js";
+import { withSettingsLock } from "./settings.js";
 
 const MAX_REASON_LENGTH = 1000;
 
@@ -60,6 +64,19 @@ export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, am
     throw new BillingError("not_paid", "Only a Paid charge can be refunded or credited. Void or resolve it instead.", 409);
   }
 
+  return withSettingsLock(
+    db,
+    {
+      key: `adjust_lock:${chargeId}`,
+      staleMs: 2 * 60 * 1000,
+      busyMessage: "Someone else is correcting this charge right now. Refresh and check what is left before trying again.",
+    },
+    () => adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why })
+  );
+}
+
+async function adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why }) {
+  // Read inside the lock, so it includes any correction that just finished.
   const already = await adjustedSoFar(db, chargeId);
   const remaining = charge.amount_cents - already;
   if (amountCents > remaining) {
