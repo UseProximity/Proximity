@@ -409,20 +409,40 @@ export function listingChoices(offerings, prefs, today = todayISO()) {
   };
 }
 
-// The saved picks as they apply to this listing, in priority order.
+/*
+ * Each saved pick as this listing can offer it: kept when offered, otherwise
+ * the nearest value it does offer, the smaller one on a tie (Wyatt,
+ * 2026-11-01: a saved 2 bed opens a listing with only 1 and 3 beds on 1 bed).
+ */
+export function closestOffered(options, wanted) {
+  const values = options.map((o) => o.value);
+  if (!values.length) return [];
+  const pick = (w) => values.reduce((best, v) => {
+    const d = Math.abs(v - w);
+    const bd = Math.abs(best - w);
+    return d < bd || (d === bd && v < best) ? v : best;
+  });
+  return [...new Set(wanted.map((w) => (values.includes(w) ? w : pick(w))))].sort((a, b) => a - b);
+}
+
+/*
+ * The saved picks as they apply to this listing, in priority order: size,
+ * then length, then move-in. Every saved pick fills in, as itself or its
+ * closest alternative here (Wyatt, 2026-11-01). Nothing here is saved back:
+ * the account keeps what the student chose.
+ */
 export function listingPrefs(offerings, saved, today = todayISO()) {
-  const offered = (opts, list) => list.filter((v) => opts.some((o) => o.value === v));
-  const beds = offered(listingChoices(offerings, {}, today).beds, normalizeBedsList(saved?.beds));
-  const months = offered(listingChoices(offerings, { beds }, today).months, normalizeMonthsList(saved?.months));
+  const beds = closestOffered(listingChoices(offerings, {}, today).beds, normalizeBedsList(saved?.beds));
+  const months = closestOffered(listingChoices(offerings, { beds }, today).months, normalizeMonthsList(saved?.months));
   /*
    * A lease fits a move-in month when it starts by the end of it, so a saved
-   * Sep fits leases starting in Aug. When no lease starts in the saved month
-   * itself, the latest start month before it shows the same leases and is the
-   * one the dropdown can say.
+   * Sep fits leases starting in Aug: the latest start month on or before the
+   * saved one shows the same leases and is the one the picker can say. With
+   * none that early, the soonest month after it is the closest alternative.
    */
   let moveIn = liveMoveIn(saved?.moveIn, today);
   const starts = listingChoices(offerings, { beds, months }, today).moveIn;
-  moveIn = moveIn ? starts.filter((o) => o.value <= moveIn).at(-1)?.value ?? null : null;
+  if (moveIn) moveIn = starts.filter((o) => o.value <= moveIn).at(-1)?.value ?? starts[0]?.value ?? null;
   return { beds, moveIn, months };
 }
 

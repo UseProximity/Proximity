@@ -5,15 +5,16 @@
  * 0 is a studio), how long (lease length in months) and when the student
  * wants to move in (a month).
  *
- * Size and length are toggle pills, several at a time (Wyatt, 2026-11-01):
- * "Studio or 1 bed, for 9 or 12 months". No pill on means any. Move-in stays
- * one dropdown.
+ * On a listing (Wyatt, 2026-11-01): "Beds: ( )  Duration: ( )  Move-In: ( )".
+ * Each is a pill that opens a list; Beds and Duration check several at once
+ * and the pill fills in with them ("1, 2", "10 mo, 12 mo"), Move-In picks one.
+ * An empty pill means any.
  *
  *   "sentence"  on a listing. `choices` comes from listingChoices, so each
- *               row offers only what the listing has given the other picks.
- *               A row with nothing to offer is left out.
- *   "form"      the profile form: every size up to 6 beds, every length up
- *               to 24 months and every month for two years.
+ *               list offers only what the listing has given the other picks.
+ *               Beds or Duration with nothing to offer is left out.
+ *   "form"      the profile form: toggle pills for every size up to 6 beds
+ *               and every length up to 24 months, every month for two years.
  *
  * Controlled: the caller owns the values and decides whether a change is saved
  * (a listing saves to the account straight away; the profile form waits for
@@ -21,8 +22,8 @@
  * lib/listings/leaseFit.js.
  */
 
-import { useMemo } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
 import { leaseMonthOptions, moveInHasPassed, moveInOptions } from "@/lib/listings/leaseFit";
 
 const FORM_SELECT =
@@ -48,6 +49,7 @@ const SelectChevron = () => (
 // Pill labels: the row's own label says what the number is.
 const bedPill = (n) => (n === 0 ? "Studio" : String(n));
 const monthPill = (n) => `${n} mo`;
+const bedsLong = (n) => `${n} bed`;
 
 const FORM_BEDS = [0, 1, 2, 3, 4, 5, 6].map((n) => ({ value: n, label: bedPill(n) }));
 const FORM_MONTHS = Array.from({ length: 24 }, (_, i) => ({ value: i + 1, label: String(i + 1) }));
@@ -96,13 +98,73 @@ function Pills({ label, options, value, onChange, pillLabel = (o) => o.label }) 
   );
 }
 
-// A labelled row: the label sits to the left, the controls wrap beside it.
-const Row = ({ label, children }) => (
-  <div className="flex items-start gap-3">
-    <span className="w-14 shrink-0 pt-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</span>
-    <div className="min-w-0 flex-1">{children}</div>
-  </div>
-);
+/*
+ * "Beds: ( )". The pill shows what is picked, nothing when it is any, and
+ * opens the listing's options. `multi` checks several and stays open while
+ * the student checks; otherwise one pick (or Any) closes it.
+ */
+function PickerPill({ label, options, value, onChange, multi = false, summary, anyLabel = "Any" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const on = multi ? asList(value) : value == null ? [] : [value];
+  const text = summary(on);
+  const pick = (v) => {
+    if (multi) onChange(toggle(on, v));
+    else { onChange(v); setOpen(false); }
+  };
+  const Item = ({ active, onClick, children }) => (
+    <button
+      type="button"
+      role={multi ? "menuitemcheckbox" : "menuitemradio"}
+      aria-checked={active}
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-800 hover:bg-gray-50"
+    >
+      <span className={`flex h-4 w-4 shrink-0 items-center justify-center border ${multi ? "rounded" : "rounded-full"} ${active ? "border-red-600 bg-red-600 text-white" : "border-gray-300 bg-white"}`}>
+        {active && <Check className="h-3 w-3" strokeWidth={3} />}
+      </span>
+      {children}
+    </button>
+  );
+  return (
+    <div ref={ref} className="relative flex items-center gap-1.5">
+      <span className="text-sm font-medium text-gray-700">{label}:</span>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${label}: ${text || anyLabel}`}
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex h-8 min-w-12 max-w-48 items-center justify-center truncate rounded-full border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
+          text ? PILL_ON : "border-gray-300 bg-white hover:bg-gray-50"
+        }`}
+      >
+        {text}
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-0 top-full z-40 mt-1 max-h-64 min-w-40 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          {!multi && <Item active={on.length === 0} onClick={() => pick(null)}>{anyLabel}</Item>}
+          {options.map((o) => (
+            <Item key={o.value} active={on.includes(o.value)} onClick={() => pick(o.value)}>{o.label}</Item>
+          ))}
+          {multi && on.length > 0 && (
+            <button type="button" onClick={() => onChange([])} className="w-full px-3 pb-1 pt-1.5 text-left text-xs font-medium text-gray-500 underline underline-offset-2 hover:text-gray-800">
+              Any {label.toLowerCase()}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function LeasePrefsControls({
   value,
@@ -124,70 +186,73 @@ export default function LeasePrefsControls({
 
   const beds = choices?.beds ?? [];
   const months = choices?.months ?? [];
+  const moveIns = choices?.moveIn ?? [];
   return (
-    <div className="space-y-2 text-sm text-gray-700">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700">
       {beds.length > 0 && (
-        <Row label="Beds">
-          <Pills label="Size" options={beds} value={value?.beds} onChange={(v) => onChange({ beds: v })} pillLabel={(o) => bedPill(o.value)} />
-        </Row>
+        <PickerPill
+          label="Beds"
+          multi
+          options={beds.map((o) => ({ value: o.value, label: o.value === 0 ? "Studio" : bedsLong(o.value) }))}
+          value={value?.beds}
+          onChange={(v) => onChange({ beds: v })}
+          summary={(on) => on.map(bedPill).join(", ")}
+        />
       )}
       {months.length > 0 && (
-        <Row label="Length">
-          <Pills label="Lease length" options={months} value={value?.months} onChange={(v) => onChange({ months: v })} pillLabel={(o) => monthPill(o.value)} />
-        </Row>
+        <PickerPill
+          label="Duration"
+          multi
+          options={months.map((o) => ({ value: o.value, label: o.value === 1 ? "1 month" : `${o.value} months` }))}
+          value={value?.months}
+          onChange={(v) => onChange({ months: v })}
+          summary={(on) => on.map(monthPill).join(", ")}
+        />
       )}
-      <Row label="Start">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {/* Always a dropdown starting on "Any", even with one month to offer (Wyatt, 2026-10-31). */}
-          <label htmlFor={`${idPrefix}-moveIn`} className="relative inline-flex max-w-full">
-            <span className="sr-only">Move-in month</span>
-            <Select
-              id={`${idPrefix}-moveIn`}
-              value={value?.moveIn}
-              any="Any time"
-              options={choices?.moveIn ?? []}
-              onPick={(v) => onChange({ moveIn: v })}
-              className={SENTENCE_SELECT}
-            />
-            <SelectChevron />
-          </label>
-          {(count != null || (hasAny && onClear) || sorts?.length > 0) && (
-            <span className="flex flex-wrap items-center gap-3 text-xs text-gray-500 sm:ml-auto">
-              {/* Sort is for this visit only (Wyatt, 2026-10-31). */}
-              {sorts?.length > 0 && onSort && (
-                <label htmlFor={`${idPrefix}-sort`} className="flex items-center gap-1.5">
-                  Sort by
-                  <span className="relative inline-flex">
-                    <select
-                      id={`${idPrefix}-sort`}
-                      value={sort ?? sorts[0].value}
-                      onChange={(e) => onSort(e.target.value)}
-                      className={SENTENCE_SELECT}
-                    >
-                      {sorts.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <SelectChevron />
-                  </span>
-                </label>
-              )}
-              {count != null && <span>{count === 1 ? "1 lease" : `${count} leases`}</span>}
-              {hasAny && onClear && (
-                <button
-                  type="button"
-                  onClick={onClear}
-                  className="rounded font-medium underline underline-offset-2 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+      {/* Always offered, even with one month (Wyatt, 2026-10-31); one pick, not several (2026-11-01). */}
+      <PickerPill
+        label="Move-In"
+        options={moveIns}
+        value={value?.moveIn ?? null}
+        onChange={(v) => onChange({ moveIn: v })}
+        summary={(on) => (on.length ? moveIns.find((o) => o.value === on[0])?.label ?? "" : "")}
+        anyLabel="Any time"
+      />
+      {(count != null || (hasAny && onClear) || sorts?.length > 0) && (
+        <span className="flex flex-wrap items-center gap-3 text-xs text-gray-500 sm:ml-auto">
+          {/* Sort is for this visit only (Wyatt, 2026-10-31). */}
+          {sorts?.length > 0 && onSort && (
+            <label htmlFor={`${idPrefix}-sort`} className="flex items-center gap-1.5">
+              Sort by
+              <span className="relative inline-flex">
+                <select
+                  id={`${idPrefix}-sort`}
+                  value={sort ?? sorts[0].value}
+                  onChange={(e) => onSort(e.target.value)}
+                  className={SENTENCE_SELECT}
                 >
-                  Clear
-                </button>
-              )}
-            </span>
+                  {sorts.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <SelectChevron />
+              </span>
+            </label>
           )}
-        </div>
-      </Row>
+          {count != null && <span>{count === 1 ? "1 lease" : `${count} leases`}</span>}
+          {hasAny && onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded font-medium underline underline-offset-2 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Clear
+            </button>
+          )}
+        </span>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   listingOfferings,
   listingChoices,
   listingPrefs,
+  closestOffered,
   listingMatches,
   unitMoveInOptions,
   sortPlans,
@@ -173,13 +174,13 @@ test("each dropdown offers only what exists given the other two", () => {
   assert.deepEqual(vals(studio.months), [12]);
 });
 
-test("saved picks give way in order beds, length, move-in", () => {
-  // No 10 month studio: beds stays, length reads Any.
-  assert.deepEqual(listingPrefs(OFFERS, { beds: 0, months: 10 }, TODAY), { beds: [0], moveIn: null, months: [] });
-  // No 3 bed lease here: beds reads Any, length still applies.
-  assert.deepEqual(listingPrefs(OFFERS, { beds: 3, months: 10 }, TODAY), { beds: [], moveIn: null, months: [10] });
-  // A passed move-in month means this month.
-  assert.deepEqual(listingPrefs(OFFERS, { beds: 2, moveIn: "2026-01-01" }, TODAY), { beds: [2], moveIn: null, months: [] });
+test("saved picks fill in, or their closest alternative, in order beds, length, move-in", () => {
+  // No 10 month studio: beds stays, length fills in the studio's closest, 12.
+  assert.deepEqual(listingPrefs(OFFERS, { beds: 0, months: 10 }, TODAY), { beds: [0], moveIn: null, months: [12] });
+  // No 3 bed lease here: the closest size, 2, fills in and 10 months still applies.
+  assert.deepEqual(listingPrefs(OFFERS, { beds: 3, months: 10 }, TODAY), { beds: [2], moveIn: null, months: [10] });
+  // A passed move-in month means as soon as possible: the soonest start here.
+  assert.deepEqual(listingPrefs(OFFERS, { beds: 2, moveIn: "2026-01-01" }, TODAY), { beds: [2], moveIn: "2026-11-01", months: [] });
   assert.deepEqual(listingPrefs(OFFERS, { beds: 2, moveIn: "2026-11-01" }, TODAY), { beds: [2], moveIn: "2026-11-01", months: [] });
 });
 
@@ -240,8 +241,8 @@ test("landlords follow the sort: best plan first, then all of theirs", () => {
 test("a saved move-in month with no start in it shows the latest start before it", () => {
   // Sep 2027 fits the Aug 2027 lease, so the dropdown reads Aug 2027, not Any.
   assert.deepEqual(listingPrefs(OFFERS, { beds: 2, moveIn: "2027-09-01" }, TODAY), { beds: [2], moveIn: "2027-08-01", months: [] });
-  // Earlier than every start: nothing fits, so Any.
-  assert.equal(listingPrefs(OFFERS, { beds: 0, moveIn: "2026-11-01" }, TODAY).moveIn, null);
+  // Earlier than every start: the soonest start after it is the closest alternative.
+  assert.equal(listingPrefs(OFFERS, { beds: 0, moveIn: "2026-11-01" }, TODAY).moveIn, "2026-12-01");
 });
 
 test("a unit with no bedroom count is not a studio and stays under any size", () => {
@@ -272,10 +273,20 @@ test("several sizes and lengths can be picked at once (Wyatt, 2026-11-01)", () =
   // But they follow the other field: with 10 months picked only the 2 bed is offered.
   assert.deepEqual(vals(listingChoices(OFFERS, { months: [10] }, TODAY).beds), [2]);
 
-  // Saved values the listing lacks drop out one by one, the rest still apply.
-  assert.deepEqual(listingPrefs(OFFERS, { beds: [2, 3], months: [10, 24] }, TODAY), { beds: [2], moveIn: null, months: [10] });
+  // Saved values the listing lacks become their closest alternative: 3 bed to 2, 24 months to 12.
+  assert.deepEqual(listingPrefs(OFFERS, { beds: [2, 3], months: [10, 24] }, TODAY), { beds: [2], moveIn: null, months: [10, 12] });
 
   // A lease written for any picked length fits; the miss reason names them all.
   assert.equal(leaseFit(lease(1, 1, null, [9]), { months: [9, 12] }, TODAY).term, "fit");
   assert.equal(missReason(lease(1, 1, null, [10]), { months: [6, 9, 12] }, TODAY), "No 6, 9 or 12-month option");
+});
+
+test("the closest alternative breaks ties toward the smaller value", () => {
+  const opts = (...v) => v.map((value) => ({ value }));
+  assert.deepEqual(closestOffered(opts(1, 3), [2]), [1]);
+  assert.deepEqual(closestOffered(opts(11, 13), [12]), [11]);
+  assert.deepEqual(closestOffered(opts(1, 3), [2, 3]), [1, 3]);
+  assert.deepEqual(closestOffered(opts(0, 4), [2, 3]), [0, 4]);
+  assert.deepEqual(closestOffered([], [2]), []);
+  assert.deepEqual(closestOffered(opts(1, 2), []), []);
 });
