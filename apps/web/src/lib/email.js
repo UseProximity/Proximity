@@ -168,7 +168,9 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // listing's owner with the student CC'd and set as reply-to, so the landlord replies
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
-export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req }) {
+// `sandbox` is true when a review sandbox account sent the inquiry: sendMailSafe then
+// sends it to REVIEW_SANDBOX_INBOX instead of the owner, with the CC dropped.
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req, sandbox = false }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
@@ -188,6 +190,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   };
   return sendMailSafe(transporter, {
     logAs: { kind: "owner_inquiry" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
     to,
     cc: student.email || undefined,
@@ -729,13 +732,17 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
  * conversations stay in the landlord's account, so a leasing office that never
  * asked for this can tell what it is and ignore it.
  */
-export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo }) {
+// `sandbox` is true when the landlord is a review sandbox account: the address was typed
+// by the reviewer and may belong to a real person, so sendMailSafe sends the email to
+// REVIEW_SANDBOX_INBOX instead.
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo, sandbox = false }) {
   const landlord = escapeHtml(landlordName || "A landlord");
   const listing = listingLabel ? escapeHtml(listingLabel) : "";
   const subject = listingLabel
     ? `Confirm message alerts for ${listingLabel}`
     : "Confirm this address for Proximity message alerts";
   const message = {
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     subject,

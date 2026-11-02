@@ -19,6 +19,7 @@
 import { createHash, randomBytes } from "crypto";
 import supabase from "@/lib/supabase";
 import { sendContactVerificationEmail } from "@/lib/email";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const HOUSE_ACCOUNT_EMAIL = "info@useproximity.org";
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -123,6 +124,11 @@ export async function requestContactVerification({
       return "skipped";
     }
 
+    // A review sandbox landlord's confirmation email goes to the team inbox instead of
+    // the typed address, which may belong to a real person. Looked up before anything is
+    // written, so a failed lookup returns "failed" (below) and nothing has been saved.
+    const sandbox = (await sandboxIdsAmong([landlordId])).has(landlordId);
+
     const rawToken = randomBytes(32).toString("base64url");
     const row = {
       landlord_id: landlordId,
@@ -146,6 +152,7 @@ export async function requestContactVerification({
       listingLabel,
       confirmUrl: `${baseUrl}/contact-verify?token=${encodeURIComponent(rawToken)}`,
       testEmailTo,
+      sandbox,
     });
     return "sent";
   } catch (err) {

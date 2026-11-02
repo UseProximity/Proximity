@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { clientIp } from "@/lib/auth/loginThrottle";
 import {
   readVisitorId,
@@ -374,10 +375,16 @@ export async function POST(request) {
       const student = { name: (sessionName || actor.name || "A Proximity student").trim(), email: requestUser.email };
 
       let sent = 0;
+      // Review sandbox: a sandbox student's inquiry goes to REVIEW_SANDBOX_INBOX, not the
+      // owner (owners here are real, so no recipient check). Looked up inside the try so a
+      // failed lookup (after its retries) sends nothing and is reported like a failed send;
+      // null means not looked up yet, so the next listing tries again.
+      let sandbox = null;
       for (const listingId of listingIds) {
         const owner = await resolveOwnerForListing(listingId);
         if (!owner) continue;
         try {
+          sandbox ??= (await sandboxIdsAmong([actor.id])).has(actor.id);
           await sendOwnerInquiryEmail({
             to: owner.email,
             landlordName: owner.name,
@@ -385,6 +392,7 @@ export async function POST(request) {
             listingAddress: owner.title || owner.address,
             message: typeof body.message === "string" ? body.message : null,
             req: request,
+            sandbox,
           });
           sent += 1;
           // Same markup as the browse-page contact flow (POST /api/contacted):
