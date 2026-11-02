@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { runOverdueJob } from "@/lib/billing/overdueJob";
 import { runMethodAttentionJob } from "@/lib/billing/methodAttentionJob";
+import { enforceEnrollmentDeadline } from "@/lib/billing/enrollment";
 import { billingNotify } from "@/lib/billing/billingNotify";
 
 /*
@@ -18,6 +19,9 @@ import { billingNotify } from "@/lib/billing/billingNotify";
  * It also emails landlords whose default payment method is expiring this month,
  * has expired or has failed, and who have no other usable one, once per problem
  * (methodAttentionJob.js), so they can fix it before the monthly run.
+ *
+ * And on the enrollment deadline it switches the listing requirements on
+ * (enforceEnrollmentDeadline), once.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -42,7 +46,15 @@ export async function GET(req) {
       console.error("billing method check failed", err);
       methods = { error: "failed" };
     }
-    return NextResponse.json({ ok: true, ...result, methods });
+    let enrollment = null;
+    try {
+      enrollment = await enforceEnrollmentDeadline(supabase);
+      if (enrollment) console.warn(`billing: enrollment deadline ${enrollment.deadline} reached, switched on ${enrollment.switchedOn.join(", ")}`);
+    } catch (err) {
+      console.error("billing enrollment deadline check failed", err);
+      enrollment = { error: "failed" };
+    }
+    return NextResponse.json({ ok: true, ...result, methods, enrollment });
   } catch (err) {
     console.error("billing overdue job failed", err);
     return NextResponse.json({ error: "Overdue job failed" }, { status: 500 });

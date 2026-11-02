@@ -41,6 +41,8 @@ export const KINDS = {
   billing_method_attention: ["billing", "Payment method needs updating"],
   billing_overdue: ["billing", "Overdue invoice, listings hidden"],
   billing_enrollment: ["billing", "Payments setup invitation"],
+  billing_agreement_request: ["billing", "Commission agreement to sign"],
+  billing_agreement_declined_team: ["billing", "Agreement declined (to team)"],
   billing_contest_submitted: ["billing", "Charge contested (to team)"],
   billing_payment_failed_team: ["billing", "Payment failed (to team)"],
   billing_overdue_team: ["billing", "Leases withdrawn (to team)"],

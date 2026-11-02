@@ -5,9 +5,9 @@
  * mail transport.
  *
  * Landlord emails: contest outcome, failed payment, payment method needs
- * attention, overdue notice, launch enrollment.
+ * attention, overdue notice, launch enrollment, commission agreement to sign.
  * Team emails (to info@useproximity.org): contest submitted, failed payment,
- * chargeback, only payment method removed, overdue withdrawal.
+ * chargeback, only payment method removed, overdue withdrawal, agreement declined.
  *
  * Every value that came from a person or Stripe goes through escapeHtml. The
  * admin note on a contest is internal and is never put in a landlord email.
@@ -177,6 +177,38 @@ export function enrollmentEmail({ name, deadline, includeAgreement = true, payme
       }. A bank account (ACH) is the recommended option.</p>
       ${button(paymentsUrl, "Set up payments")}
       <p>Charges are reviewed before they are collected, and you can approve or contest each one from your payments page.</p>
+    `),
+  };
+}
+
+/*
+ * Asking a landlord to sign the commission agreement (sent by an admin from the
+ * dashboard). The PDF is attached so they can read it anywhere; signing happens
+ * on their Payments tab. `resign` when a new version replaces one they signed.
+ */
+export function agreementRequestEmail({ name, versionLabel, signUrl, resign = false, deadline = null }) {
+  const what = resign
+    ? `We have updated the Proximity commission agreement${versionLabel ? ` (${e(versionLabel)})` : ""}. Please review and sign the new version`
+    : `Please review and sign the Proximity commission agreement${versionLabel ? ` (${e(versionLabel)})` : ""}`;
+  return {
+    subject: resign ? "Please sign the updated Proximity commission agreement" : "Please sign your Proximity commission agreement",
+    html: wrap(`
+      ${hello(name)}
+      <p>${what}${deadline ? ` by ${e(deadline)}` : ""}. It sets out the fee Proximity charges when it brings you a tenant. A copy is attached for your records.</p>
+      ${button(signUrl, "Review and sign")}
+      <p>You sign it in your Proximity landlord dashboard, under Payments. It takes about two minutes, and you can view your signed copy there at any time.</p>
+      <p>Questions about the terms? Just reply to this email.</p>
+    `),
+  };
+}
+
+export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason }) {
+  return {
+    subject: `Commission agreement declined: ${landlordName || landlordEmail || "a landlord"}`,
+    html: wrap(`
+      <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the commission agreement in Documenso.</p>
+      <p>Reason given: ${reason ? e(reason) : "none"}</p>
+      <p>They cannot publish new listings while the agreement is required. Reach out to them, then send the agreement again from Admin, Billing, Agreements.</p>
     `),
   };
 }

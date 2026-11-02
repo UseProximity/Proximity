@@ -151,7 +151,7 @@ export default function BillingView({ search }) {
     { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
     { key: "corrections", label: "Corrections" },
-    { key: "agreements", label: "Agreements and gate" },
+    { key: "agreements", label: "Landlords and agreements" },
     { key: "enrollment", label: "Launch enrollment" },
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),

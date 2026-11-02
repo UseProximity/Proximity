@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getBucket, r2 } from "@/lib/r2";
-import { signedAgreementKey, validateSignedPdf } from "./agreementPdf";
+import { agreementVersionKey, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
 
 const bucket = () => process.env.R2_PRIVATE_BUCKET_NAME || getBucket();
 
@@ -36,14 +36,28 @@ export async function storeSignedAgreement({ userId, bytes }) {
 }
 
 // A short-lived download link for a stored agreement.
-export function signedAgreementUrl(key) {
+export function signedAgreementUrl(key, filename = "commission-agreement.pdf") {
   return getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: bucket(),
       Key: key,
-      ResponseContentDisposition: 'attachment; filename="commission-agreement.pdf"',
+      ResponseContentDisposition: `attachment; filename="${filename.replace(/[^\w.-]+/g, "-")}"`,
     }),
     { expiresIn: 300 }
   );
+}
+
+// An uploaded agreement version (the unsigned PDF). Validates it, stores it, returns its key.
+export async function storeAgreementVersion({ bytes }) {
+  validateSignedPdf(bytes, "agreement");
+  const key = agreementVersionKey(randomUUID());
+  await r2.send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: "application/pdf" }));
+  return key;
+}
+
+// A stored agreement's bytes: to push a version to Documenso, or attach it to an email.
+export async function readAgreementFile(key) {
+  const res = await r2.send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  return new Uint8Array(await res.Body.transformToByteArray());
 }

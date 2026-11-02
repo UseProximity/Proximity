@@ -30,6 +30,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
@@ -389,7 +390,7 @@ export default function AddListingFlow({ user }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return toast.error(data.error || (asDraft ? "Couldn't save that draft." : "Couldn't publish that listing."));
+        return publishErrorToast(data, asDraft ? "Couldn't save that draft." : "Couldn't publish that listing.");
       }
       toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       clearPendingDraft();

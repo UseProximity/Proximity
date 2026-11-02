@@ -11,7 +11,7 @@
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { emailFooter } from "@/lib/email";
-import { BILLING_TEAM_EMAIL } from "./constants";
+import { AGREEMENT_REQUEST_KIND, BILLING_TEAM_EMAIL } from "./constants";
 import * as t from "./billingEmailTemplates";
 
 const transporter = nodemailer.createTransport({
@@ -29,7 +29,7 @@ const TEAM_REASON = "Internal billing notification.";
 // Resolves true when the email was handed to the mailer, false when it was skipped
 // or failed (never throws). Most callers ignore the answer; the enrollment send
 // counts it to report how many went out.
-async function deliver({ kind, to, userId, reason, message }) {
+async function deliver({ kind, to, userId, reason, message, attachments }) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn(`[billing email] ${kind}: email env vars not set, skipping.`);
     return false;
@@ -42,6 +42,7 @@ async function deliver({ kind, to, userId, reason, message }) {
       replyTo: BILLING_TEAM_EMAIL,
       subject: message.subject,
       html: `${message.html}${emailFooter({ reason })}`,
+      ...(attachments?.length && { attachments }),
     });
     return true;
   } catch (err) {
@@ -50,8 +51,8 @@ async function deliver({ kind, to, userId, reason, message }) {
   }
 }
 
-const toLandlord = (kind, landlord, message) =>
-  deliver({ kind, to: landlord.email, userId: landlord.id, reason: LANDLORD_REASON, message });
+const toLandlord = (kind, landlord, message, attachments) =>
+  deliver({ kind, to: landlord.email, userId: landlord.id, reason: LANDLORD_REASON, message, attachments });
 const toTeam = (kind, message) =>
   deliver({ kind, to: BILLING_TEAM_EMAIL, reason: TEAM_REASON, message });
 
@@ -64,6 +65,14 @@ export const sendPaymentMethodAttentionEmail = (landlord, input) =>
   toLandlord("billing_method_attention", landlord, t.paymentMethodAttentionEmail({ name: landlord.name, ...input }));
 export const sendOverdueEmail = (landlord, input) =>
   toLandlord("billing_overdue", landlord, t.overdueEmail({ name: landlord.name, ...input }));
+// `pdf` is the agreement's bytes, attached as commission-agreement.pdf when given.
+export const sendAgreementRequestEmail = (landlord, input, pdf = null) =>
+  toLandlord(
+    AGREEMENT_REQUEST_KIND,
+    landlord,
+    t.agreementRequestEmail({ name: landlord.name, ...input }),
+    pdf ? [{ filename: "proximity-commission-agreement.pdf", content: Buffer.from(pdf), contentType: "application/pdf" }] : null
+  );
 export const sendEnrollmentEmail = (landlord, input) =>
   toLandlord("billing_enrollment", landlord, t.enrollmentEmail({ name: landlord.name, ...input }));
 
@@ -74,5 +83,7 @@ export const sendPaymentFailedTeamEmail = (input) =>
   toTeam("billing_payment_failed_team", t.paymentFailedTeamEmail(input));
 export const sendOverdueTeamEmail = (input) => toTeam("billing_overdue_team", t.overdueTeamEmail(input));
 export const sendChargebackTeamEmail = (input) => toTeam("billing_chargeback_team", t.chargebackTeamEmail(input));
+export const sendAgreementDeclinedTeamEmail = (input) =>
+  toTeam("billing_agreement_declined_team", t.agreementDeclinedTeamEmail(input));
 export const sendMethodRemovedTeamEmail = (input) =>
   toTeam("billing_method_removed_team", t.methodRemovedTeamEmail(input));

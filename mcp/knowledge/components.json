@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-02T18:07:34.655Z",
-  "count": 167,
+  "_generated": "2026-11-02T19:17:14.920Z",
+  "count": 171,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -121,6 +121,21 @@
     {
       "name": "TestChargeForm",
       "file": "src/components/admin/billing/TestChargeForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementVersions",
+      "file": "src/components/admin/billing/agreements/AgreementVersions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordAgreementList",
+      "file": "src/components/admin/billing/agreements/LandlordAgreementList.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/billing/agreements/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -571,6 +586,11 @@
     {
       "name": "listingFormOptions",
       "file": "src/components/listings/listingFormOptions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "publishErrorToast",
+      "file": "src/components/listings/publishErrorToast.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

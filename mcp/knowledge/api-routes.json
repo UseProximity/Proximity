@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-02T18:07:34.649Z",
-  "count": 211,
+  "_generated": "2026-11-02T19:17:14.915Z",
+  "count": 218,
   "routes": [
     {
       "path": "/api/account",
@@ -111,7 +111,7 @@
       "file": "src/app/api/admin/agents/queue/route.js"
     },
     {
-      "path": "/api/admin/billing/agreements",
+      "path": "/api/admin/billing/agreement-versions",
       "methods": [
         "GET",
         "POST"
@@ -119,6 +119,34 @@
       "auth": "admin",
       "methodAuth": {
         "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "landlord_agreements"
+      ],
+      "file": "src/app/api/admin/billing/agreement-versions/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreement-versions/[id]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/agreement-versions/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreements",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
         "POST": "admin"
       },
       "tables": [
@@ -251,6 +279,30 @@
       },
       "tables": [],
       "file": "src/app/api/admin/billing/invoices/[id]/retry/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/agreement-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/agreement-email/route.js"
     },
     {
       "path": "/api/admin/billing/paid-charges",
@@ -835,6 +887,32 @@
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/file/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/sign",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/agreement/sign/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/sync",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/sync/route.js"
     },
     {
       "path": "/api/billing/charges",
@@ -2997,6 +3075,18 @@
         "users"
       ],
       "file": "src/app/api/waitlist/[listingId]/route.js"
+    },
+    {
+      "path": "/api/webhooks/documenso",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/webhooks/documenso/route.js"
     },
     {
       "path": "/api/webhooks/new-listing",

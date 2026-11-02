@@ -22,7 +22,8 @@ async function call(url, options) {
 /*
  * The landlord's payments page: balance and charges (with Approve and Contest),
  * monthly invoices (with Pay now), the payment method card, and the commission
- * agreement with the checklist of what is needed to publish a listing.
+ * agreement (signed here, through Documenso) with the checklist of what is needed
+ * to publish a listing. Emails link to #commission-agreement.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -165,6 +166,21 @@ export default function PaymentsSection() {
       }
     });
 
+  // The signing email links to #commission-agreement; the card only exists once loaded.
+  const scrolledToAgreement = useRef(false);
+  useEffect(() => {
+    if (!gate || scrolledToAgreement.current || window.location.hash !== "#commission-agreement") return;
+    scrolledToAgreement.current = true;
+    document.getElementById("commission-agreement")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [gate]);
+
+  // After the signing dialog: refresh, and say where things stand.
+  const agreementChanged = (result) => {
+    if (result === "signed") setNotice({ tone: "green", text: "Thank you. Your commission agreement is signed." });
+    else if (result === "pending") setNotice({ tone: "gray", text: "Signed. Your copy is being saved and will appear here in a minute." });
+    load().catch((e) => setError(e.message));
+  };
+
   const openSignedCopy = () =>
     run(async () => {
       const { url } = await call("/api/billing/agreement/file");
@@ -190,6 +206,7 @@ export default function PaymentsSection() {
           gate={gate}
           hasActivePaymentMethod={methods.some((m) => m.status === "active")}
           onOpenSigned={openSignedCopy}
+          onChanged={agreementChanged}
           busy={busy}
         />
       )}

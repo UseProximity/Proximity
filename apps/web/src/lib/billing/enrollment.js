@@ -1,10 +1,10 @@
 /*
  * Launch enrollment: telling existing landlords that fees are now collected in the
  * app and asking them to add a payment method (and, once it is ready, sign the
- * commission agreement) within a window. The PRD is explicit that nothing happens
- * automatically when the window ends: the deadline is a date in the email and a
- * banner on the Payments tab, and what follows is the admins' call (the listing
- * gate switches in listingGate.js are the lever).
+ * commission agreement) within a window. The deadline is a date in the email and a
+ * banner on the Payments tab. When it arrives the listing requirements switch on
+ * by themselves (enforceEnrollmentDeadline, Wyatt 2026-11-02): from then on a
+ * landlord needs them to publish. Live listings stay up either way.
  *
  * Who is asked: landlords (not deleted, with an email) who have something live on
  * the site, a published lease or listing, and who still need to set up. A landlord
@@ -18,6 +18,8 @@
 import { BillingError } from "./errors.js";
 import { getBillingSetting, setBillingSetting } from "./settings.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
+import { resignCutoff, signatureStillValid } from "./agreementVersions.js";
+import { AGREEMENT_REQUIRED, PAYMENT_METHOD_REQUIRED } from "./listingGate.js";
 
 export const ENROLLMENT_WINDOW = "enrollment_window";
 export const ENROLLMENT_EMAIL_KIND = "billing_enrollment";
@@ -58,6 +60,8 @@ export async function getEnrollmentWindow(db) {
   return {
     deadline: typeof value?.deadline === "string" ? value.deadline : null,
     includeAgreement: value?.includeAgreement === true,
+    // When the deadline switched the requirements on (enforceEnrollmentDeadline).
+    enforcedAt: typeof value?.enforcedAt === "string" ? value.enforcedAt : null,
   };
 }
 
@@ -72,27 +76,43 @@ export async function setEnrollmentWindow(db, { deadline, includeAgreement }, ad
     }
     clean = deadline;
   }
-  await setBillingSetting(db, ENROLLMENT_WINDOW, { deadline: clean, includeAgreement: includeAgreement === true }, adminId);
-  return { deadline: clean, includeAgreement: includeAgreement === true };
+  // A new deadline is a new window: it switches the requirements on again when it
+  // arrives. Saving the same deadline keeps the record that it already did.
+  const current = await getEnrollmentWindow(db);
+  const enforcedAt = clean && clean === current.deadline ? current.enforcedAt : null;
+  await setBillingSetting(db, ENROLLMENT_WINDOW, { deadline: clean, includeAgreement: includeAgreement === true, enforcedAt }, adminId);
+  return { deadline: clean, includeAgreement: includeAgreement === true, enforcedAt };
+}
+
+// Today's date in Chicago (the billing time zone), as YYYY-MM-DD.
+export function chicagoDate(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
 /*
- * Who would be emailed, and why everyone else would not. Counts explain the gap
- * between "all landlords" and "emails to send".
+ * On the enrollment deadline (Chicago time) the listing requirements switch on by
+ * themselves: an active payment method, and a signed agreement when the window
+ * asked for one. Run daily by the billing cron. It acts once per deadline: an
+ * admin who switches a requirement back off afterwards is not overruled the next day.
+ * Returns what it switched on, or null.
  */
-export async function findEnrollmentAudience(db, { includeAgreement = false, includeAlreadyEmailed = false, now = new Date() } = {}) {
-  const landlords = await pageAll(() =>
-    db
-      .from("users")
-      .select("id, name, email, roles!role_id!inner(name)")
-      .eq("roles.name", "landlord")
-      .is("deleted_at", null)
-      .not("email", "is", null)
-      .order("id")
-  );
-  const ids = landlords.map((l) => l.id);
+export async function enforceEnrollmentDeadline(db, { now = new Date(), adminId = null } = {}) {
+  const window = await getEnrollmentWindow(db);
+  if (!window.deadline || window.enforcedAt) return null;
+  if (chicagoDate(now) < window.deadline) return null;
 
-  // Something live: a published, available lease they own, or a live listing they are linked to.
+  const switched = [PAYMENT_METHOD_REQUIRED];
+  if (window.includeAgreement) switched.push(AGREEMENT_REQUIRED);
+  for (const key of switched) await setBillingSetting(db, key, true, adminId);
+  await setBillingSetting(db, ENROLLMENT_WINDOW, { ...window, enforcedAt: now.toISOString() }, adminId);
+  return { deadline: window.deadline, switchedOn: switched };
+}
+
+/*
+ * Which of these landlords have something live on the site: a published,
+ * available lease they own, or a live listing they are linked to.
+ */
+export async function liveListingOwners(db, ids) {
   const liveOwners = new Set();
   for (const row of await inChunks(ids, async (chunk) => {
     const { data, error } = await db
@@ -118,6 +138,47 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
     return data;
   })) liveOwners.add(row.user_id);
 
+  return liveOwners;
+}
+
+/*
+ * Which of these landlords hold a signature that still counts (see
+ * agreementVersions.resignCutoff).
+ */
+export async function validSignerIds(db, ids) {
+  const cutoff = await resignCutoff(db);
+  const rows = await inChunks(ids, async (chunk) => {
+    const withVersion = await db
+      .from("landlord_agreements")
+      .select("user_id, agreement_version:agreement_versions!version_id(published_at)")
+      .in("user_id", chunk)
+      .eq("status", "signed");
+    if (!withVersion.error) return withVersion.data;
+    // Before the agreement_versions migration: every signature counts.
+    const { data, error } = await db.from("landlord_agreements").select("user_id").in("user_id", chunk).eq("status", "signed");
+    if (error) throw error;
+    return data;
+  });
+  return new Set(rows.filter((r) => signatureStillValid(r.agreement_version?.published_at ?? null, cutoff)).map((r) => r.user_id));
+}
+
+/*
+ * Who would be emailed, and why everyone else would not. Counts explain the gap
+ * between "all landlords" and "emails to send".
+ */
+export async function findEnrollmentAudience(db, { includeAgreement = false, includeAlreadyEmailed = false, now = new Date() } = {}) {
+  const landlords = await pageAll(() =>
+    db
+      .from("users")
+      .select("id, name, email, roles!role_id!inner(name)")
+      .eq("roles.name", "landlord")
+      .is("deleted_at", null)
+      .not("email", "is", null)
+      .order("id")
+  );
+  const ids = landlords.map((l) => l.id);
+  const liveOwners = await liveListingOwners(db, ids);
+
   const methods = new Map();
   for (const row of await inChunks(ids, async (chunk) => {
     const { data, error } = await db
@@ -132,15 +193,7 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
     methods.get(row.user_id).push(row);
   }
 
-  const signed = new Set(
-    (
-      await inChunks(ids, async (chunk) => {
-        const { data, error } = await db.from("landlord_agreements").select("user_id").in("user_id", chunk).eq("status", "signed");
-        if (error) throw error;
-        return data;
-      })
-    ).map((r) => r.user_id)
-  );
+  const signed = await validSignerIds(db, ids);
 
   const emailed = new Set(
     (

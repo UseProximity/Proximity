@@ -25,6 +25,7 @@
 import { FOCUS_EVENT, revealGap } from "./ImportGaps";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import { ArrowDownWideNarrow, Plus, Trash2 } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
 import { clampCount } from "@/utils/unitCounts";
@@ -151,7 +152,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't save that listing.");
+      if (!res.ok) return publishErrorToast(data, "Couldn't save that listing.");
       toast.success("Your listing was updated.");
       setDirty(false);
       await onChanged();
@@ -172,7 +173,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
         body: JSON.stringify({ isActive: true, unavailable: false }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't publish that listing.");
+      if (!res.ok) return publishErrorToast(data, "Couldn't publish that listing.");
       toast.success("Published. Students can see this listing again.");
       setDraft((d) => ({ ...d, unavailable: false }));
       await onChanged();

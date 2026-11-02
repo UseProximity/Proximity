@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import { Send } from "lucide-react";
 
 export function DraftBadge({ className = "" }) {
@@ -61,7 +62,7 @@ export function PublishButton({
         body: JSON.stringify({ kind, id, scope }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't publish that.");
+      if (!res.ok) return publishErrorToast(data, "Couldn't publish that.");
       // A draft building whose address went live under someone else while it
       // waited joins that building instead (see /api/landlord/publish).
       if (data.published?.mergedInto) {

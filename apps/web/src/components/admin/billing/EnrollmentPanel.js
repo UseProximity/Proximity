@@ -19,8 +19,9 @@ const FIELD = "rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline
  * ready, sign it). Set the window, check the wording with a test email to
  * yourself, then send. Only landlords with something live who have not set up and
  * were not already emailed are included, so pressing Send twice does not email
- * anyone twice. Nothing happens automatically when the deadline passes; the gate
- * switches (Agreements and gate) are what you turn on afterwards.
+ * anyone twice. When the deadline arrives the listing requirements switch on by
+ * themselves (the daily billing cron): a payment method, and the agreement when
+ * it was part of the ask. Live listings stay up.
  */
 export default function EnrollmentPanel() {
   const [data, setData] = useState(null);
@@ -114,7 +115,8 @@ export default function EnrollmentPanel() {
             </label>
             <p className="text-xs text-gray-500">
               The deadline is in the email and shown as a banner on each landlord&apos;s Payments tab until they have set up.
-              Nothing happens automatically when it passes.
+              On the deadline, publishing requires a payment method (and a signed agreement, if ticked) automatically.
+              Listings already live stay up.
             </p>
           </div>
 

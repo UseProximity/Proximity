@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-02T18:07:34.700Z",
-  "count": 270,
+  "_generated": "2026-11-02T19:17:14.966Z",
+  "count": 274,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -296,16 +296,24 @@
       "description": "Checks on a signed agreement file before it is stored. Pure, so it can be"
     },
     {
-      "file": "src/lib/billing/agreementProviders.js",
-      "description": "Where an e-signature provider (DocuSign, Documenso, ...) plugs in. None is"
-    },
-    {
       "file": "src/lib/billing/agreements.js",
-      "description": "The commission agreement, as scaffolding. There is one live agreement record"
+      "description": "Each landlord's commission agreement (landlord_agreements). Landlords sign in"
     },
     {
       "file": "src/lib/billing/agreements.test.js",
       "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementServices.js",
+      "description": "The real Documenso client, signed-PDF storage and team email, wired together for"
+    },
+    {
+      "file": "src/lib/billing/agreementSigning.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementVersions.js",
+      "description": "Versions of the commission agreement document (agreement_versions). An admin"
     },
     {
       "file": "src/lib/billing/balance.js",
@@ -368,6 +376,10 @@
       "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
     },
     {
+      "file": "src/lib/billing/documenso.js",
+      "description": "Documenso, the e-signature provider for the commission agreement (Teams plan)."
+    },
+    {
       "file": "src/lib/billing/enrollment.js",
       "description": "Launch enrollment: telling existing landlords that fees are now collected in the"
     },
@@ -398,6 +410,10 @@
     {
       "file": "src/lib/billing/invoicing.js",
       "description": "The Stripe side of a monthly invoice, one step per function. Every step is safe"
+    },
+    {
+      "file": "src/lib/billing/landlordOverview.js",
+      "description": "The admin dashboard's view of every landlord's commission agreement and"
     },
     {
       "file": "src/lib/billing/listingGate.js",

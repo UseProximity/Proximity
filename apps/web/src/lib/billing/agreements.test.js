@@ -7,10 +7,10 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { agreementView, markAgreementSigned } from "./agreements.js";
+import { agreementView, cleanSignerTitle, markAgreementSigned, summarizeAgreementRows } from "./agreements.js";
+import { signatureStillValid } from "./agreementVersions.js";
 import { gateDecision, gateMessage, gateResponseBody } from "./listingGate.js";
 import { MAX_SIGNED_PDF_BYTES, signedAgreementKey, validateSignedPdf } from "./agreementPdf.js";
-import { getAgreementProvider, manualProvider, registerAgreementProvider } from "./agreementProviders.js";
 
 const ON = { requirePaymentMethod: true, requireAgreement: true };
 
@@ -89,14 +89,73 @@ describe("gate messages", () => {
 });
 
 describe("agreementView", () => {
-  it("reads as 'none' before any record exists", () => {
-    assert.deepEqual(agreementView(null), { status: "none", version: null, signedAt: null, signerName: null, hasSignedFile: false });
+  const live = { id: "v2", label: "December 2026", provider_template_id: "envelope_t", provider_recipient_id: 7 };
+  const signedRow = (over) => ({
+    id: "a1",
+    status: "signed",
+    version: "November 2026",
+    signed_at: "2026-11-02T12:00:00Z",
+    signer_name: "Pat",
+    signer_title: "Owner",
+    signed_file_key: "billing/agreements/u/f.pdf",
+    agreement_version: { id: "v1", label: "November 2026", published_at: "2026-11-01T00:00:00Z" },
+    ...over,
   });
 
-  it("exposes status and signing details, never the file key", () => {
-    const v = agreementView({ status: "signed", version: "2026-11", signed_at: "2026-11-02T12:00:00Z", signer_name: "Pat", signed_file_key: "billing/agreements/u/f.pdf" });
-    assert.deepEqual(v, { status: "signed", version: "2026-11", signedAt: "2026-11-02T12:00:00Z", signerName: "Pat", hasSignedFile: true });
+  it("reads as not signed, and signable once a version is live", () => {
+    assert.equal(agreementView(summarizeAgreementRows([])).status, "not_signed");
+    assert.equal(agreementView(summarizeAgreementRows([])).canSign, false);
+    assert.equal(agreementView(summarizeAgreementRows([], { liveVersion: live })).canSign, true);
+    assert.equal(agreementView(summarizeAgreementRows([], { liveVersion: live }), { signingAvailable: false }).canSign, false);
+  });
+
+  it("exposes the signature, never the file key", () => {
+    const v = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: live }));
+    assert.equal(v.status, "signed");
+    assert.equal(v.signerTitle, "Owner");
+    assert.equal(v.signedVersionLabel, "November 2026");
+    assert.equal(v.hasSignedFile, true);
+    assert.equal(v.canSign, false);
     assert.ok(!JSON.stringify(v).includes("billing/agreements"));
+  });
+
+  it("asks for a new signature once a version requiring it goes live (PR #370 Documenso)", () => {
+    const state = summarizeAgreementRows([signedRow()], { liveVersion: live, cutoff: "2026-12-01T00:00:00Z" });
+    assert.equal(state.valid, false);
+    const v = agreementView(state);
+    assert.equal(v.status, "needs_resign");
+    assert.equal(v.canSign, true);
+    assert.equal(v.hasSignedFile, true, "the old signed copy stays viewable");
+  });
+
+  it("shows a copy in progress, and a decline once it ended that way", () => {
+    assert.equal(agreementView(summarizeAgreementRows([{ status: "sent", provider_envelope_id: "envelope_x" }], { liveVersion: live })).status, "in_progress");
+    const declined = agreementView(summarizeAgreementRows([{ status: "voided", ended_reason: "declined: terms", ended_at: "2026-11-03T00:00:00Z" }], { liveVersion: live }));
+    assert.equal(declined.status, "not_signed");
+    assert.equal(declined.declinedAt, "2026-11-03T00:00:00Z");
+  });
+});
+
+describe("signatureStillValid", () => {
+  it("counts every signature until a version asks existing signers to re-sign", () => {
+    assert.equal(signatureStillValid("2026-11-01T00:00:00Z", null), true);
+    assert.equal(signatureStillValid(null, null), true);
+  });
+
+  it("then counts only signatures on that version or a later one", () => {
+    const cutoff = "2026-12-01T00:00:00Z";
+    assert.equal(signatureStillValid("2026-11-01T00:00:00Z", cutoff), false);
+    assert.equal(signatureStillValid("2026-12-01T00:00:00Z", cutoff), true);
+    assert.equal(signatureStillValid("2027-01-01T00:00:00Z", cutoff), true);
+    assert.equal(signatureStillValid(null, cutoff), false, "a paper signature from before any version");
+  });
+});
+
+describe("cleanSignerTitle", () => {
+  it("needs a title of sensible length", () => {
+    assert.equal(cleanSignerTitle("  Property Manager "), "Property Manager");
+    assert.throws(() => cleanSignerTitle(" "), /Enter your title/);
+    assert.throws(() => cleanSignerTitle("x".repeat(101)), /under 100/);
   });
 });
 
@@ -138,18 +197,3 @@ describe("signed agreement files", () => {
   });
 });
 
-describe("agreement providers", () => {
-  it("starts with only the manual provider, which does nothing by itself", () => {
-    assert.equal(getAgreementProvider().name, "manual");
-    assert.throws(() => manualProvider.sendForSignature(), /by hand/);
-    assert.throws(() => getAgreementProvider("docusign"), /Unknown agreement provider/);
-  });
-
-  it("accepts a complete adapter and rejects an incomplete one", () => {
-    assert.throws(() => registerAgreementProvider({ name: "half", sendForSignature() {} }), /missing getStatus/);
-    assert.throws(() => registerAgreementProvider({ sendForSignature() {}, getStatus() {}, parseWebhook() {} }), /needs a name/);
-    const adapter = { name: "test-provider", sendForSignature: async () => ({ envelopeId: "e1" }), getStatus: async () => "sent", parseWebhook: async () => null };
-    registerAgreementProvider(adapter);
-    assert.equal(getAgreementProvider("test-provider"), adapter);
-  });
-});

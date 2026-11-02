@@ -280,6 +280,22 @@ begin
   if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
   if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
   if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
+  -- Documenso: dev and staging use their own Documenso team, which has none of prod's
+  -- templates or documents. Agreement versions go back to drafts without a template
+  -- (an admin reconnects one in dev to test signing), and a copy in progress is
+  -- voided. Signed agreements keep their record; their PDFs live in prod's bucket.
+  if to_regclass('public.agreement_versions') is not null then
+    update public.landlord_agreements
+       set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+     where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+    update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
+    update public.agreement_versions
+       set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
+           provider_editor_url = null, fields_checked_at = null,
+           status = case when status = 'live' then 'retired' else status end
+     where provider_template_id is not null or status = 'live';
+    update public.agreement_versions set status = 'draft' where status = 'ready';
+  end if;
 end $$;
 
 notify pgrst, 'reload schema';

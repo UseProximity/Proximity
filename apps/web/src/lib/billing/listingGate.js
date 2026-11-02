@@ -30,7 +30,7 @@
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { getBillingSetting } from "./settings.js";
-import { getLiveAgreement } from "./agreements.js";
+import { agreementState } from "./agreements.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
@@ -123,7 +123,9 @@ export async function checkListingGate(db, userId, now = new Date()) {
     hasPaymentMethod = hasActivePaymentMethod(data, now);
   }
   let agreementSigned = true;
-  if (settings.requireAgreement) agreementSigned = (await getLiveAgreement(db, userId))?.status === "signed";
+  // Signed, and on a version that still counts (a version made live with "existing
+  // signers must re-sign" invalidates signatures on earlier ones).
+  if (settings.requireAgreement) agreementSigned = (await agreementState(db, userId)).valid;
 
   return {
     ...gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice }),
