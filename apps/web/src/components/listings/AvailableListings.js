@@ -686,7 +686,7 @@ export default function AvailableListings({
             <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                 {showSuggested && <SuggestedHeading label={suggestedLabel} />}
-                <span className="text-sm font-semibold text-gray-500">
+                <span className="text-xs font-semibold text-gray-500">
                   {resultCount}{" "}
                   {viewportBounds ? "in this area" : "Listings Found"}
                 </span>
