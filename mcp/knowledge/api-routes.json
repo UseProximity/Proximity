@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-02T19:51:20.234Z",
-  "count": 181,
+  "_generated": "2026-11-02T19:51:31.393Z",
+  "count": 183,
   "routes": [
     {
       "path": "/api/account",
@@ -93,6 +93,26 @@
       "file": "src/app/api/admin/agents/route.js"
     },
     {
+      "path": "/api/admin/agents/landlord-chats",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "users",
+        "listings",
+        "listing_questions",
+        "tour_requests",
+        "landlord_agent_messages",
+        "listing_question_messages",
+        "listing_question_waiters"
+      ],
+      "file": "src/app/api/admin/agents/landlord-chats/route.js"
+    },
+    {
       "path": "/api/admin/agents/queue",
       "methods": [
         "GET",
@@ -136,6 +156,7 @@
         "GET": "admin"
       },
       "tables": [
+        "thread_types",
         "chat_threads",
         "users",
         "listings",
@@ -159,6 +180,7 @@
         "chat_messages",
         "chat_attachments",
         "chat_moderation_events",
+        "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
         "users"
@@ -343,6 +365,21 @@
       },
       "tables": [],
       "file": "src/app/api/admin/source-sync/route.js"
+    },
+    {
+      "path": "/api/admin/tours",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "tour_requests",
+        "users"
+      ],
+      "file": "src/app/api/admin/tours/route.js"
     },
     {
       "path": "/api/admin/update-campus-walk-times",

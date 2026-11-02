@@ -4,6 +4,7 @@ import { STALE_CLAIM_MS } from "@/lib/chat/inboundEmail";
 import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { domainApprovable } from "@/lib/chat/replySenders";
+import { PROXY_USER_ID } from "@/lib/agents/threads";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -17,6 +18,12 @@ import { domainApprovable } from "@/lib/chat/replySenders";
  * (held for the landlord's approval, refused, failed), and the landlord's
  * list of who may reply for them by email (Wyatt, 2026-10-24). Decisions on
  * those are made through /api/admin/chat/reply-senders.
+ *
+ * Proxy conversations open here too (Wyatt, 2026-11-01): Proxy's messages
+ * come from its system user and are marked as Proxy, a signed-out visitor's
+ * have no sender and are marked as the visitor, and each Proxy message says
+ * what it was (an answer, a question sent on, a landlord reply relayed, a
+ * note). A tour's direct chat carries the tour it came from.
  *
  * Read only. Nothing here marks events reviewed or edits messages.
  *
@@ -62,7 +69,7 @@ export async function GET(req, { params }) {
       await Promise.all([
         supabase
           .from("chat_threads")
-          .select("id, subject, listing_id, landlord_id, interested_user_id, created_at, updated_at, deleted_at, listing:listings!listing_id(id, title, address)")
+          .select("id, subject, listing_id, landlord_id, interested_user_id, visitor_id, notify_email, unrestricted, thread_type_id, created_at, updated_at, deleted_at, listing:listings!listing_id(id, title, address), type:thread_types!thread_type_id(name)")
           .eq("id", threadId)
           .maybeSingle(),
         supabase
@@ -90,6 +97,14 @@ export async function GET(req, { params }) {
 
     if (threadError) throw threadError;
     if (!thread) return Response.json({ error: "Not found" }, { status: 404 });
+
+    const isProxy = thread.type?.name === "proxy";
+    // The tour a direct chat came from, or the tours a Proxy chat asked for.
+    const { data: tours } = await supabase
+      .from("tour_requests")
+      .select("id, status, confirmed_slot, thread_id, proxy_thread_id")
+      .or(`thread_id.eq.${threadId},proxy_thread_id.eq.${threadId}`)
+      .order("created_at", { ascending: false });
 
     const [{ data: inbound, error: inError }, { data: senders, error: sendersError }] = await Promise.all([
       supabase
@@ -173,6 +188,16 @@ export async function GET(req, { params }) {
         listing: thread.listing ?? null,
         landlordId: thread.landlord_id,
         studentId: thread.interested_user_id,
+        kind: isProxy ? "agent" : "direct",
+        fromTour: !isProxy && thread.unrestricted === true,
+        visitor: thread.interested_user_id || !thread.visitor_id ? null : { id: thread.visitor_id, email: thread.notify_email ?? null },
+        tours: (tours ?? []).map((t) => ({
+          id: t.id,
+          status: t.status,
+          confirmedSlot: t.confirmed_slot,
+          directThreadId: t.thread_id,
+          proxyThreadId: t.proxy_thread_id,
+        })),
       },
       people: [...people.values()],
       messages: (messages ?? []).map((m) => ({
@@ -180,6 +205,7 @@ export async function GET(req, { params }) {
         senderId: m.sender_id,
         body: m.body,
         type: m.message_type,
+        fromProxy: m.sender_id === PROXY_USER_ID,
         via: m.metadata?.via === "email" ? "email" : "app",
         emailFrom: m.metadata?.email_from ?? null,
         createdAt: m.created_at,
