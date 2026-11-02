@@ -132,6 +132,27 @@ export function availabilityText(slots) {
     .join("\n");
 }
 
+/*
+ * A student's one-hour slots minus the hour a confirmed tour takes, so the
+ * same time can't be booked twice (Wyatt, 2026-11-01: one hour from the
+ * start). A tour at 5:30pm takes the 5pm and 6pm slots.
+ */
+export const TOUR_BLOCK_MS = 60 * 60 * 1000;
+export function slotsWithout(slots, startIso, blockMs = TOUR_BLOCK_MS) {
+  const start = Date.parse(startIso);
+  const end = start + blockMs;
+  return (slots ?? []).filter((s) => {
+    const a = Date.parse(s);
+    return a + 3600 * 1000 <= start || a >= end;
+  });
+}
+
+/* Whether a start time overlaps an hour already booked by another tour. */
+export function clashesWith(startIso, bookedIsos, blockMs = TOUR_BLOCK_MS) {
+  const a = Date.parse(startIso);
+  return (bookedIsos ?? []).some((b) => Math.abs(Date.parse(b) - a) < blockMs);
+}
+
 /* "2 day availability" for the chip in the chat input. */
 export function availabilitySummary(slots) {
   const n = availabilityDays(slots).length;

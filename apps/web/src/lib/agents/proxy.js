@@ -142,26 +142,36 @@ async function countInquiry({ listingId, userId }) {
  * Returns { messages: [new chat_messages rows], outcome, questionIds, error? }.
  * `testMode`: a landlord or admin trying their own listing. Real answers, but
  * nothing is logged as a student question, counted or sent to a landlord.
+ *
+ * `defer`: runs work the reply does not wait on (asking the landlord, passing
+ * on a student's answer, logging) after the reply is out, so the student sees
+ * it seconds sooner (Wyatt, 2026-11-01). A route passes next/server's after;
+ * without it the work runs before returning, as it always did.
  */
-export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false }) {
+export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false, defer = null }) {
   const started = Date.now();
+  const timings = {};
+  const mark = (step) => { timings[step] = Date.now() - started; };
   let text = sanitizeStudentText(body);
   if (!text) return { error: "Say something first.", status: 400 };
   const listingId = thread.listing_id;
 
-  if (!testMode) {
-    const refusal = await checkMessageAllowed({ userId, visitorId, ip, listingId });
-    if (refusal) return refusal;
-  }
-
-  const ctx = await buildProxyContext(listingId);
+  // Everything the answer needs, read at once rather than one after another.
+  const [refusal, ctx, history, pending, view] = await Promise.all([
+    testMode ? null : checkMessageAllowed({ userId, visitorId, ip, listingId }),
+    buildProxyContext(listingId),
+    listMessages(thread.id),
+    testMode ? null : pendingClarifierFor(thread.id),
+    studentFacts(listingId),
+  ]);
+  mark("read");
+  if (refusal) return refusal;
   if (!ctx) return { error: "This listing is no longer available.", status: 404 };
   const chosenLeaseId = leaseId ?? thread.lease_id ?? null;
   const chosenLease = ctx.leases.find((l) => l.id === chosenLeaseId) ?? null;
-  const history = await listMessages(thread.id);
   const studentTurns = history.filter((m) => m.sender_id !== PROXY_USER_ID).length + 1;
-  const pending = testMode ? null : await pendingClarifierFor(thread.id);
   const firstMessage = !history.some((m) => m.sender_id !== PROXY_USER_ID);
+  const later = [];
 
   const studentMsg = await postMessage({ threadId: thread.id, listingId, senderId: userId, body: text, type: "text", metadata: visitorId && !userId ? { visitor: true } : {} });
   const out = [studentMsg];
@@ -185,7 +195,6 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
    * per owner, unit or lease, so every version is kept and labelled rather
    * than one silently winning (PR #365 review).
    */
-  const view = await studentFacts(listingId);
   const facts = Object.entries(view.sections).flatMap(([section, list]) => list.map((f) => ({ ...f, section })));
   const factByKey = new Map();
   for (const f of facts) factByKey.set(f.key, [...(factByKey.get(f.key) ?? []), f]);
@@ -231,6 +240,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     console.error("[proxy] model failed:", err?.message ?? err);
     result = null;
   }
+  mark("model");
   // Prose with no structured result still answers the student.
   const final = result?.final ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false, offered_question: "" } : null);
 
@@ -240,10 +250,10 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
   if (!final?.reply) {
     // Fail open: the landlord gets the whole message.
     if (canAsk) {
-      const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: text, leaseId: chosenLeaseId, askerUserId: userId, visitorId });
-      questionIds = q ? [q.id] : [];
       reply = `I couldn't work that out just now, but I've sent your message to the landlord and will let you know when they respond. ${await askedLine({ thread, userId })}`;
-      out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_asked", metadata: { questionIds } }));
+      const posted = await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_asked", metadata: { questionIds: [] } });
+      out.push(posted);
+      later.push(() => askInBackground({ ctx, thread, studentMsg, posted, asks: [{ question: text, leaseId: chosenLeaseId }], userId, visitorId }));
       outcome = "asked_landlord";
     } else {
       reply = "I couldn't work that out just now. Please try again in a moment.";
@@ -256,7 +266,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     const updatedAt = usedKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
 
     if (pending && final.clarifier_reply) {
-      await studentReplyToClarifier({ question: pending, thread, body: text, userId });
+      later.push(() => studentReplyToClarifier({ question: pending, thread, body: text, userId }));
     }
 
     const toAsk = (final.unanswered_questions ?? []).map((u) => ({ question: String(u.question ?? "").trim(), leaseNumber: Number(u.lease_number) || 0 })).filter((u) => u.question);
@@ -264,52 +274,94 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     if (["apply", "negotiate"].includes(final.intent) && !toAsk.length) {
       toAsk.push({ question: `The student would like to ${final.intent === "apply" ? "apply" : "discuss the terms"}. ${text}`, leaseNumber: chosenLease?.index ?? 0 });
     }
-    if (toAsk.length && canAsk) {
-      for (const u of toAsk.slice(0, 3)) {
-        const lease = ctx.leases.find((l) => l.index === u.leaseNumber) ?? chosenLease;
-        const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: u.question, leaseId: lease?.id ?? null, askerUserId: userId, visitorId });
-        if (q) questionIds.push(q.id);
-      }
-    }
+    // The questions are worked out now and sent once the reply is out.
+    const asks = toAsk.length && canAsk
+      ? toAsk.slice(0, 3).map((u) => ({ question: u.question, leaseId: (ctx.leases.find((l) => l.index === u.leaseNumber) ?? chosenLease)?.id ?? null }))
+      : [];
+    const asking = asks.length > 0;
     // One grey sentence (Wyatt, 2026-10-27): when nothing could be answered
     // the model's "I don't have that" is folded into the asking line; when
     // part was answered, the answer posts and the asking line follows it.
-    const nothingAnswered = !usedKeys.length && questionIds.length > 0 && final.intent !== "small_talk";
+    const nothingAnswered = !usedKeys.length && asking && final.intent !== "small_talk";
     if (nothingAnswered) {
       const body = `I don't have that yet, but I've asked the landlord and will let you know when they respond. ${await askedLine({ thread, userId })}`;
-      out.push(await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds } }));
-    } else if (questionIds.length) {
+      const posted = await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds: [] } });
+      out.push(posted);
+      later.push(() => askInBackground({ ctx, thread, studentMsg, posted, asks, userId, visitorId }));
+    } else if (asking) {
       // Partly answered: the answer already says the rest went to the landlord; only how the answer arrives is added.
       const body = `${reply} ${await askedLine({ thread, userId })}`.trim();
-      out.push(await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds, factKeys: usedKeys, updatedAt, intent: final.intent } }));
+      const posted = await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds: [], factKeys: usedKeys, updatedAt, intent: final.intent } });
+      out.push(posted);
+      later.push(() => askInBackground({ ctx, thread, studentMsg, posted, asks, userId, visitorId }));
     } else {
       out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_answer", metadata: { factKeys: usedKeys, updatedAt, intent: final.intent } }));
     }
     outcome = final.intent === "small_talk" ? "chit_chat"
       : final.intent === "tour" ? "tour"
       : !ctx.hasLiveLease && toAsk.length ? "unavailable"
-      : questionIds.length && usedKeys.length ? "partly_answered"
-      : questionIds.length ? "asked_landlord"
+      : asking && usedKeys.length ? "partly_answered"
+      : asking ? "asked_landlord"
       : final.intent === "abuse" ? "declined"
       : "answered";
     if (final.nudged) await updateProxyState(thread.id, { lastNudgeTurn: studentTurns });
     // An offer to ask the landlord waits for the student's yes on the next turn.
     const offer = String(final.offered_question ?? "").trim();
-    if (offer || thread.proxy_state?.offer) await updateProxyState(thread.id, { offer: offer && !questionIds.length ? offer.slice(0, 300) : null });
+    if (offer || thread.proxy_state?.offer) await updateProxyState(thread.id, { offer: offer && !asking ? offer.slice(0, 300) : null });
   }
 
   // Contact details in what went to the landlord were left out; say so (Wyatt, 2026-10-29).
-  const relayed = questionIds.length > 0 || !!(pending && final?.clarifier_reply);
+  const relayed = out.some((m) => m.message_type === "proxy_asked") || !!(pending && final?.clarifier_reply);
   if (relayed && screenStudentText(text).removed > 0) {
     out.push(await postProxyMessage({ threadId: thread.id, listingId, body: CONTACT_NOTE.student, type: "proxy_note", metadata: { contactNote: true } }));
   }
 
-  await supabase.from("listing_agent_questions").insert({
-    listing_id: listingId, thread_id: thread.id, message_id: studentMsg.id, user_id: userId, visitor_id: userId ? null : visitorId,
-    question: text, answer: reply, fact_keys: final?.answered_keys ?? [], outcome: testMode ? "test" : outcome,
-    question_id: questionIds[0] ?? null, model: SONNET, latency_ms: Date.now() - started, inquiry: !testMode,
+  mark("reply");
+  // Where the time went, per step, for tuning speed (Wyatt, 2026-11-01).
+  console.info(`[proxy] timing listing=${listingId} outcome=${outcome} ${Object.entries(timings).map(([k, v]) => `${k}=${v}ms`).join(" ")}`);
+  const latency = Date.now() - started;
+  // First, so the question asked after it can link itself to this row.
+  later.unshift(async () => {
+    await supabase.from("listing_agent_questions").insert({
+      listing_id: listingId, thread_id: thread.id, message_id: studentMsg.id, user_id: userId, visitor_id: userId ? null : visitorId,
+      question: text, answer: reply, fact_keys: final?.answered_keys ?? [], outcome: testMode ? "test" : outcome,
+      question_id: questionIds[0] ?? null, model: SONNET, latency_ms: latency, inquiry: !testMode,
+    });
+    if (!testMode && firstMessage) await countInquiry({ listingId, userId });
   });
-  if (!testMode && firstMessage) await countInquiry({ listingId, userId });
+
+  const runLater = async () => {
+    for (const job of later) {
+      try { await job(); } catch (err) { console.error("[proxy] after-reply step failed:", err?.message ?? err); }
+    }
+  };
+  if (defer) defer(runLater);
+  else await runLater();
 
   return { messages: out, outcome, questionIds, intent: final?.intent ?? null };
+}
+
+/*
+ * The questions a reply said were sent, sent now that the student has it:
+ * dedupe, the landlord's card and email. The reply's message learns its
+ * question ids. If nothing could be sent, Proxy says so instead of leaving a
+ * promise standing.
+ */
+async function askInBackground({ ctx, thread, studentMsg, posted, asks, userId, visitorId }) {
+  const ids = [];
+  for (const a of asks) {
+    try {
+      const q = await askLandlord({ ctx, thread, messageId: studentMsg.id, questionText: a.question, leaseId: a.leaseId, askerUserId: userId, visitorId });
+      if (q) ids.push(q.id);
+    } catch (err) {
+      console.error("[proxy] asking the landlord failed:", err?.message ?? err);
+    }
+  }
+  if (ids.length) {
+    await supabase.from("chat_messages").update({ metadata: { ...(posted.metadata ?? {}), questionIds: ids } }).eq("id", posted.id);
+    await supabase.from("listing_agent_questions").update({ question_id: ids[0] }).eq("message_id", studentMsg.id).is("question_id", null);
+    return;
+  }
+  await postProxyMessage({ threadId: thread.id, listingId: ctx.listingId, type: "proxy_note",
+    body: "Sorry, I couldn't get that question to the landlord just now. Please send it again in a moment." });
 }

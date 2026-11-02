@@ -17,7 +17,7 @@ import { TourItem } from "@/components/landlord/LandlordProxyChat";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import { announceLandlordChange, onLandlordChange } from "@/components/landlord/landlordSync";
 
-const OPEN = ["requested", "proposed", "messaging"];
+const OPEN = ["requested", "proposed"];
 
 export default function ToursSection({ viewAsId = null }) {
   const [tours, setTours] = useState(null);
@@ -41,8 +41,10 @@ export default function ToursSection({ viewAsId = null }) {
   if (!tours) return <ChatSkeleton rows={3} />;
 
   const open = tours.filter((t) => OPEN.includes(t.status));
+  // Arranged in the direct chat from here on (Wyatt, 2026-11-01).
+  const talking = tours.filter((t) => t.status === "messaging");
   const upcoming = tours.filter((t) => t.status === "confirmed" && Date.parse(t.confirmedSlot) > Date.now());
-  const past = tours.filter((t) => !OPEN.includes(t.status) && !upcoming.includes(t)).slice(0, 20);
+  const past = tours.filter((t) => !OPEN.includes(t.status) && !talking.includes(t) && !upcoming.includes(t)).slice(0, 20);
 
   const block = (title, list) => list.length > 0 && (
     <section className="space-y-4">
@@ -64,6 +66,7 @@ export default function ToursSection({ viewAsId = null }) {
         </div>
       )}
       {block("Waiting on you", open)}
+      {block("Talking directly", talking)}
       {block("Upcoming", upcoming)}
       {block("Past", past)}
     </div>

@@ -67,6 +67,9 @@ const LINKED_LABEL = /^\s*[\w .&'-]{1,30}<https?:\/\/[^>\s]+>\s*$/i;
 const PRONOUNS = /^\s*\((he|she|they|ze|xe)\/\w+\)\s*$/i;
 const CREDENTIALS = /^\s*,?\s*[A-Z]{2,5}(,\s*[A-Z]{2,5})*\s*$/;
 
+// "Wyatt Ogle", "Mary-Kate O'Neil": two or three capitalised words, nothing else.
+const PERSON_NAME = /^[A-Z][a-zA-Z'.-]+(?: [A-Z][a-zA-Z'.-]+){1,2}$/;
+
 // Outlook writes links in plain text as "LinkedIn<https://...>".
 function withoutInlineUrls(line) {
   return line.replace(/<[^>\s]+>/g, "").replace(/\[removed\]/g, "x@x.co");
@@ -200,6 +203,11 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const beforeSignature = lines;
   lines = lines.slice();
   while (lines.length > 0 && isSignatureLine(lines[lines.length - 1], names)) lines.pop();
+  // A bare "First Last" left standing over a signature that went is its name
+  // line, even when the display name differs from the account (2026-11-01).
+  const removedSome = beforeSignature.slice(lines.length).some((l) => l.trim());
+  const lastKept = lines.length - 1;
+  if (removedSome && lastKept > 0 && PERSON_NAME.test(lines[lastKept].trim()) && !lines[lastKept - 1].trim()) lines.pop();
   if (!lines.some((l) => l.trim()) || isAnsweredNumber(lines, beforeSignature.slice(lines.length))) {
     lines = beforeSignature;
   }

@@ -67,6 +67,7 @@ import { alertTeam } from "@/lib/chat/deliveryAlerts";
 import { scanChatAttachments } from "@/lib/chat/scanAttachment";
 import { recordAttachmentScan } from "@/lib/chat/sendGuards";
 import { findQuestionToken, handleQuestionEmail } from "@/lib/agents/questionEmail";
+import { findAgentReplyToken, handleAgentReplyEmail } from "@/lib/agents/replyEmail";
 
 const MAX_BODY = 5000;
 // An inline image this small is a signature logo, a social icon or a tracking
@@ -337,6 +338,20 @@ async function processOne({ bucket, key, recipients }) {
       }
       const finishWithBase = (id, fields) => finish(id, { ...base, ...fields });
       return handleQuestionEmail({ parsed, fromEmail, token: questionToken.token, attachments: emailAttachments(parsed), logId, finish: finishWithBase });
+    }
+    /*
+     * A landlord answering a tour request (a message to the student) or a
+     * student answering one of Proxy's emails (a message to Proxy): see
+     * lib/agents/replyEmail.js (Wyatt, 2026-11-01).
+     */
+    const agentToken = findAgentReplyToken(parsed, recipients);
+    if (agentToken) {
+      base.to_address = agentToken.address;
+      if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
+        await finish(logId, { ...base, status: "unauthenticated" });
+        return { status: "unauthenticated" };
+      }
+      return handleAgentReplyEmail({ parsed, fromEmail, token: agentToken, logId, finish: (id, fields) => finish(id, { ...base, ...fields }) });
     }
     const found = findReplyToken(parsed, recipients);
     if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {

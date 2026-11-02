@@ -26,7 +26,9 @@ import { agentChat, confirmProposal } from "./landlordAgent";
 import { screenLandlordText, CONTACT_NOTE } from "./screen";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
-const OPEN_TOURS = ["requested", "proposed", "messaging"];
+// Waiting on the landlord. A tour they are messaging about lives in that chat,
+// which carries its own unread count (Wyatt, 2026-11-01).
+const OPEN_TOURS = ["requested", "proposed"];
 
 /*
  * What Proxy says after a landlord's reply to a question (Wyatt, 2026-10-29):

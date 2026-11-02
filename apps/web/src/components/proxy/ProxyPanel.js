@@ -265,6 +265,17 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     return () => window.removeEventListener(SYNC_EVENT, on);
   }, [thread, refresh]);
 
+  // Contact on the listing: the conversation to its newest message.
+  useEffect(() => {
+    const on = (e) => {
+      if (e.detail?.listingId !== listingId) return;
+      const el = listRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    };
+    window.addEventListener("proxy:scroll-end", on);
+    return () => window.removeEventListener("proxy:scroll-end", on);
+  }, [listingId]);
+
   // "Ask Proxy" on the listing header puts the cursor in this chat.
   useEffect(() => {
     const on = (e) => { if (e.detail?.listingId === listingId) setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250); };

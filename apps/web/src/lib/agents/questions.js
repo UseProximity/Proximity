@@ -280,6 +280,9 @@ const RelayWording = z.object({
  * with a follow-up question. One or two grey sentences in Proxy's words
  * (Wyatt, 2026-10-27: everything is filtered through Proxy).
  */
+// Words that promise an action Proxy is not taking when it relays an answer.
+const PROMISES = /\b(I(?:'ve| have| will|'ll| am|'m)\s+(?:also\s+)?(?:asked|ask|asking|reached out|reach out|checking|check|follow(?:ed|ing)? up|clarif\w*|let you know|get back)|asked them to|to clarify)\b/i;
+
 export async function proxyRelays({ question, answer, followUp = "", listingId }) {
   const fallback = followUp
     ? `The landlord got back to me: ${answer} They also want to know: ${followUp} Reply here and I'll pass it on.`
@@ -287,11 +290,14 @@ export async function proxyRelays({ question, answer, followUp = "", listingId }
   try {
     const { parsed } = await parseStructured({
       model: HAIKU, listingId, kind: "relay_wording", tag: "relay-wording", maxTokens: 260,
-      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you and the landlord has now replied to you. Write what you tell the student. Keep every fact the landlord gave and add nothing: no caveats, no guesses, nothing about what the landlord did not mention.",
+      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you and the landlord has now replied to you. Write what you tell the student. Keep every fact the landlord gave and add nothing: no caveats, no guesses, nothing about what the landlord did not mention. Never say you did, will do or are doing anything (asking the landlord again, clarifying, checking, following up): you only report what the landlord said. If the reply leaves something open, the student can ask you about it.",
       messages: [{ role: "user", content: `The student asked: "${question}"\n\nThe landlord's reply: "${answer}"${followUp ? `\n\nThe landlord also asks the student: "${followUp}"` : ""}` }],
       schema: RelayWording,
     });
     const text = parsed?.message?.trim();
+    // Proxy once told a student it had asked the landlord to clarify when it
+    // had not (Wyatt, 2026-11-01). A relay only reports; a promise falls back.
+    if (text && PROMISES.test(text) && !followUp) return fallback;
     return text && text.length > 10 ? text : fallback;
   } catch {
     return fallback;

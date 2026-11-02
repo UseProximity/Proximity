@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-01T23:31:55.656Z",
-  "count": 222,
+  "_generated": "2026-11-02T00:52:44.668Z",
+  "count": 225,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -96,6 +96,14 @@
       "description": "The per-question reply address a landlord can answer from (PRD v3)."
     },
     {
+      "file": "src/lib/agents/replyEmail.js",
+      "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyTokens.js",
+      "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
+    },
+    {
       "file": "src/lib/agents/screen.js",
       "description": "Text hygiene for Proxy."
     },
@@ -138,6 +146,10 @@
     {
       "file": "src/lib/agents/tourTime.js",
       "description": "Tour times, shared by the server and the browser (no server imports)."
+    },
+    {
+      "file": "src/lib/agents/tourTime.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/visitorEmail.js",

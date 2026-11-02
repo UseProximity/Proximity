@@ -1229,24 +1229,28 @@ function proxyParagraphs(messages) {
  * To a student who has left the listing page: Proxy answered, or relayed the
  * landlord's answer, or has no answer yet. Never names the landlord.
  */
-export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null }) {
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null, replyTo = null }) {
   const first = name ? String(name).split(" ")[0] : "";
   const subject = {
     proxy_relay: `The landlord answered your question about ${listingLabel}`,
     proxy_clarifier: `The landlord has a question for you about ${listingLabel}`,
     proxy_correction: `An update from the landlord about ${listingLabel}`,
     proxy_no_answer: `No answer yet about ${listingLabel}`,
+    proxy_reply: `Re: your question about ${listingLabel}`,
   }[kind] ?? `Proxy answered your question about ${listingLabel}`;
   const intro = {
     proxy_relay: "The landlord's answer came back.",
     proxy_clarifier: "The landlord needs one detail from you before they can answer.",
     proxy_correction: "The landlord updated something Proxy told you.",
     proxy_no_answer: "An update on your question.",
+    proxy_reply: "Here's Proxy's reply.",
   }[kind] ?? "Here is what Proxy found.";
   await sendMailSafe(transporter, {
     logAs: { kind, threadId, userId },
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
+    // Replying goes to Proxy in the same conversation (Wyatt, 2026-11-01).
+    ...(replyTo ? { replyTo } : {}),
     subject,
     html: `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
@@ -1254,6 +1258,7 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
         <p>${intro} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
         ${proxyParagraphs(messages)}
         <a href="${threadUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open the conversation</a>
+        ${replyTo ? `<p style="color:#444">Reply to this email to ask Proxy anything else.</p>` : ""}
         <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>
         ${emailFooter({ reason: "You are receiving this because you asked Proxy about a listing on Proximity." })}
       </div>`,

@@ -136,14 +136,14 @@ function PickerPill({ label, options, value, onChange, multi = false, summary, a
   );
   return (
     <div ref={ref} className="relative flex items-center gap-1.5">
-      <span className="text-sm font-medium text-gray-700">{label}:</span>
+      <span className="text-[13px] font-medium text-gray-700">{label}:</span>
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${label}: ${text || anyLabel}`}
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex h-8 min-w-12 max-w-48 items-center justify-center truncate rounded-full border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
+        className={`inline-flex h-7 min-w-10 max-w-44 items-center justify-center truncate rounded-md border px-2.5 text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
           text ? PILL_ON : "border-gray-300 bg-white hover:bg-gray-50"
         }`}
       >

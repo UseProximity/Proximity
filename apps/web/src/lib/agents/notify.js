@@ -26,6 +26,7 @@ import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
 import { ALERT_QUIET_MS } from "@/lib/chat/notifyEmail";
 import { PROXY_USER_ID, postProxyMessage } from "./threads";
 import { questionReplyAddress } from "./questionTokens";
+import { proxyReplyAddress } from "./replyTokens";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,6 +78,8 @@ export async function notifyStudentThread({ threadId, kind = "proxy_relay", quie
       messages: msgs.map((m) => m.body),
       threadUrl: `${getBaseUrl()}/listings/${r.thread.listing_id}?listingTab=contact`,
       threadId, userId: r.userId ?? null, testEmailTo,
+      // Replying to it talks to Proxy in this conversation (Wyatt, 2026-11-01).
+      replyTo: proxyReplyAddress({ threadId, recipientKey: r.userId ?? String(r.email).trim().toLowerCase() }),
     });
     return "sent";
   } catch (err) {

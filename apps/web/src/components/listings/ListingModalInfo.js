@@ -1592,7 +1592,11 @@ export default function ListingModalInfo({
      */
     const top =
       scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
-    (root ?? window).scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    // Contact goes all the way down, to the chat's newest message and its box
+    // (Wyatt, 2026-11-01): it is the last section, so that is the page's bottom.
+    const end = root ? root.scrollHeight : document.documentElement.scrollHeight;
+    (root ?? window).scrollTo({ top: id === "contact" ? end : Math.max(0, top), behavior: "smooth" });
+    if (id === "contact") window.dispatchEvent(new CustomEvent("proxy:scroll-end", { detail: { listingId: listing?._id } }));
   };
 
   useEffect(() => {

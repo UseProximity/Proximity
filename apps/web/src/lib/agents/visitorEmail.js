@@ -28,6 +28,7 @@
 import crypto from "node:crypto";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendProxyConfirmEmail, sendProxyStudentEmail } from "@/lib/email";
+import { proxyReplyAddress } from "./replyTokens";
 import { updateProxyState, PROXY_USER_ID } from "./threads";
 
 // Confirmation links last two days; a conversation gets three of them.
@@ -157,6 +158,7 @@ export async function confirmVisitorEmail(token) {
     await sendProxyStudentEmail({
       to: email, name: null, kind: "proxy_relay", listingLabel: listing?.title || listing?.address || "a listing",
       messages: missed.map((m) => m.body), threadUrl: `${getBaseUrl()}/listings/${thread.listing_id}?listingTab=contact`, threadId: thread.id,
+      replyTo: proxyReplyAddress({ threadId: thread.id, recipientKey: thread.interested_user_id ?? email }),
     }).catch((err) => console.error("[proxy] missed-answer email failed:", err?.message ?? err));
   }
   return { listingId: thread.listing_id, existingAccount: false };

@@ -60,3 +60,12 @@ test("an Outlook signature with linked labels goes, under a Last, First display 
   const text = `Cobalt is paintable, yes\n\nWyatt Ogle\n(442) 515-0724 | Portfolio<https://www.wyatt-ogle.com/> | LinkedIn<https://www.linkedin.com/in/wyattogle28/>\n\nFrom: Proxy at Proximity <info@useproximity.org>\nSent: Sunday, November 1, 2026 2:17 PM`;
   assert.equal(extractReplyText({ text, senderName: "Test Landlord", fromName: "Ogle, Wyatt" }), "Cobalt is paintable, yes");
 });
+
+test("a name line over a removed signature goes even when no name matches", () => {
+  const text = `Thanks! Also, is there a gym in the building?\n\nWyatt Ogle\n(442) 515-0724 | Portfolio<https://www.wyatt-ogle.com/>\n${QUOTE}`;
+  assert.equal(extractReplyText({ text, senderName: "Proximity Tester" }), "Thanks! Also, is there a gym in the building?");
+});
+
+test("a short last line that is the message itself stays", () => {
+  assert.equal(extractReplyText({ text: `Sounds good.\n\nSee You Then\n${QUOTE}`, senderName: "Jessica Nelson" }), "Sounds good.\n\nSee You Then");
+});

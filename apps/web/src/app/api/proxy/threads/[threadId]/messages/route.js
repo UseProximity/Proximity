@@ -9,10 +9,11 @@
  * @auth public
  */
 export const dynamic = "force-dynamic";
-// 300: an answer can take several model calls (PR #365 review).
+// 300: an answer can take several model calls, and the landlord question
+// is sent after the reply (PR #365 review; Wyatt, 2026-11-01).
 export const maxDuration = 300;
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { proxyActor, proxyAvailable } from "@/lib/agents/access";
 import { getThread, canAccessThread, shapeMessage } from "@/lib/agents/threads";
 import { handleStudentMessage } from "@/lib/agents/proxy";
@@ -37,6 +38,8 @@ export async function POST(req, { params }) {
     const result = await handleStudentMessage({
       thread, body: body?.body, userId: actor.userId, visitorId: actor.visitorId,
       ip: clientIp(req.headers), leaseId, testMode: avail.testMode,
+      // Asking the landlord and logging run once the reply is out.
+      defer: (work) => after(work),
     });
     if (result.error) return NextResponse.json({ error: result.error, code: result.code ?? null }, { status: result.status ?? 400 });
 
