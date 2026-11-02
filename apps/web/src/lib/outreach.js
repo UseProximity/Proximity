@@ -23,6 +23,15 @@
  * their own inbox, request a password reset for any account in the prod-data snapshot,
  * and receive the link.
  *
+ * Review sandbox (App Store review accounts): a message carrying `sandbox: true` is
+ * redirected to REVIEW_SANDBOX_INBOX on EVERY environment, production included, ahead
+ * of every other rule (cc/bcc dropped, original recipient noted in the subject). With
+ * the variable unset or not a single ordinary address, it is suppressed, never sent
+ * on. The flag is set by server code that has looked the acting user up in the
+ * database (lib/reviewSandbox.js), never from a header or cookie, and the redirect
+ * ignores the tester cookie, header and OUTREACH_TEST_RECIPIENT. Like `logAs`, the
+ * field is removed before sending.
+ *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  *
@@ -32,6 +41,7 @@
  */
 import { outreachEnabled } from "./appEnv.js";
 import { recordEmail } from "./emailLog.js";
+import { sandboxInbox } from "./reviewSandbox.js";
 
 // One ordinary address only: commas, semicolons and angle brackets are rejected so a
 // header, cookie or env value cannot name several recipients (nodemailer splits on them).
@@ -92,10 +102,10 @@ function sentOutcome(transporter, info, redirectedTo) {
 }
 
 export async function sendMailSafe(transporter, message, req) {
-  const { logAs, ...mail } = message ?? {};
+  const { logAs, sandbox, ...mail } = message ?? {};
   let redirectedTo = null;
   try {
-    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; });
+    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; }, sandbox === true);
     await recordEmail(
       mail,
       logAs,
@@ -114,7 +124,37 @@ export async function sendMailSafe(transporter, message, req) {
   }
 }
 
-async function deliver(transporter, message, req, onRedirect) {
+// Send `message` to the single address `to` only: cc/bcc are dropped so no real (or
+// placeholder) carbon-copy recipient is ever emailed, and the original recipient is
+// noted in the subject. `tag` is the subject prefix, which says why it was redirected.
+function redirectTo(transporter, message, to, tag, onRedirect) {
+  const original = message?.to ?? "(none)";
+  console.log(`[outreach redirect] ${tag} ${original} → ${to}`);
+  onRedirect(to);
+  return transporter.sendMail({
+    ...message,
+    to,
+    cc: undefined,
+    bcc: undefined,
+    subject: `[${tag} ${original}] ${message?.subject ?? ""}`,
+  });
+}
+
+async function deliver(transporter, message, req, onRedirect, sandbox = false) {
+  // A review sandbox action never reaches the real recipient, on any environment.
+  // Checked before outreachEnabled(), and it never consults the tester cookie, header
+  // or OUTREACH_TEST_RECIPIENT: the destination is the server-set inbox or nothing.
+  if (sandbox) {
+    const inbox = sandboxInbox();
+    if (!inbox || !EMAIL_RE.test(inbox)) {
+      console.error(
+        `[outreach suppressed] review sandbox email not sent (REVIEW_SANDBOX_INBOX is unset or invalid) → to=${message?.to} subject=${message?.subject}`
+      );
+      return { suppressed: true };
+    }
+    return redirectTo(transporter, message, inbox, "REVIEW SANDBOX, was:", onRedirect);
+  }
+
   if (outreachEnabled()) {
     return transporter.sendMail(message);
   }
@@ -128,20 +168,8 @@ async function deliver(transporter, message, req, onRedirect) {
     ? process.env.OUTREACH_TEST_RECIPIENT
     : null;
   const to = (await stagingTestRecipient(req)) ?? envRecipient;
-  if (to) {
-    const original = message?.to ?? "(none)";
-    console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);
-    onRedirect(to);
-    // Collapse everything to the single test inbox — drop cc/bcc so a real (or
-    // placeholder) carbon-copy recipient is never emailed off production.
-    return transporter.sendMail({
-      ...message,
-      to,
-      cc: undefined,
-      bcc: undefined,
-      subject: `[TEST → was: ${original}] ${message?.subject ?? ""}`,
-    });
-  }
+  // Collapse everything to the single test inbox (cc/bcc dropped, see redirectTo).
+  if (to) return redirectTo(transporter, message, to, "TEST → was:", onRedirect);
 
   console.log(`[outreach suppressed] would send → to=${message?.to} subject=${message?.subject}`);
   return { suppressed: true };
