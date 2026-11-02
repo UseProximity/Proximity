@@ -79,6 +79,8 @@ async function fetchListingEntries() {
       .is("deleted_at", null)
       .not("published_at", "is", null)
       .eq("unavailable", false)
+      // Listings made by an App Store review sandbox account are not public.
+      .eq("review_sandbox", false)
       .order("id")
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;

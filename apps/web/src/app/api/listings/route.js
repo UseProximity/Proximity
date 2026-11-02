@@ -305,7 +305,12 @@ export async function fetchListings(listingIds = null) {
     )
     .is("deleted_at", null)
     // Draft properties belong on their owner's dashboard, not in browse.
-    .not("published_at", "is", null);
+    .not("published_at", "is", null)
+    // Listings made by an App Store review sandbox account never show to anyone here
+    // (the flag is stamped at creation, see 202611020001_review_sandbox.sql). This is
+    // the feed behind browse, search, the map, popular, saved, the sitemap's price pages
+    // and the website's browse pages.
+    .eq("review_sandbox", false);
 
   if (listingIds?.length > 0) {
     query = query.in("id", listingIds);

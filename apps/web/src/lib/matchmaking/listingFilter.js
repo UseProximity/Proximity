@@ -965,6 +965,8 @@ export async function fetchActiveListings() {
     .is("deleted_at", null)
     .eq("unavailable", false)
     .not("published_at", "is", null)
+    // Never recommend a listing made by an App Store review sandbox account.
+    .eq("review_sandbox", false)
     .limit(80);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
   // Retired units (collapsed by a property merge) are not rentable options, and
