@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-01T18:59:18.518Z",
-  "count": 101,
+  "_generated": "2026-11-02T15:04:32.755Z",
+  "count": 102,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -373,6 +373,10 @@
     },
     {
       "name": "R2_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "REVIEW_SANDBOX_INBOX",
       "public": false
     },
     {
