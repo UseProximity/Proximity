@@ -3,7 +3,9 @@
  * withdraws the landlord's leases (hides them from students). The landlord and
  * the team are emailed once.
  *
- * It counts from the invoice date only (see overdue.js), so Approved charges
+ * It counts from the invoice date only (see overdue.js), which is set when Stripe
+ * finalizes the invoice: a row a crashed run left before that has no date and is
+ * never actioned. So Approved charges
  * under the $5 minimum, which can wait months without an invoice, never trigger
  * it. A payment still settling (Processing) does not count as overdue.
  *
@@ -60,6 +62,7 @@ export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) 
     .select("id, landlord_id, status, total_cents, invoice_date, overdue_actioned_at")
     .in("status", ["open", "failed"])
     .is("overdue_actioned_at", null)
+    .not("stripe_invoice_id", "is", null)
     .lt("invoice_date", cutoff)
     .order("invoice_date", { ascending: true })
     .limit(BATCH);
@@ -114,6 +117,13 @@ export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new
 
   let restored = 0;
   for (const row of rows) {
+    // Marked restored first: the database refuses to put a lease back on the market
+    // while an unrestored withdrawal points at it (202611010002_billing_holds.sql).
+    const { error: markError } = await db
+      .from("billing_lease_withdrawals")
+      .update({ restored_at: now.toISOString(), restored_by_id: adminId })
+      .eq("id", row.id);
+    if (markError) throw markError;
     const { data: lease, error: updateError } = await db
       .from("unit_leases")
       .update({ is_active: true, unavailable: false })
@@ -123,13 +133,12 @@ export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();
-    if (updateError) throw updateError;
+    if (updateError) {
+      // Leave it listed as withdrawn so the admin can try again.
+      await db.from("billing_lease_withdrawals").update({ restored_at: null, restored_by_id: null }).eq("id", row.id);
+      throw updateError;
+    }
     if (lease) restored += 1;
-    const { error: markError } = await db
-      .from("billing_lease_withdrawals")
-      .update({ restored_at: now.toISOString(), restored_by_id: adminId })
-      .eq("id", row.id);
-    if (markError) throw markError;
   }
   return { restored, total: rows.length };
 }

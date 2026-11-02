@@ -261,6 +261,17 @@ describe("overdue invoices", () => {
     }
     assert.equal(invoiceAttentionReason(null, now), null);
   });
+
+  it("never treats an invoice Stripe never issued as overdue, however old the row (PR #370 review)", () => {
+    const unissued = invoice({ invoice_date: null, created_at: "2026-01-01T00:00:00Z" });
+    assert.equal(isInvoiceOverdue(unissued, now), false);
+    assert.equal(isInvoiceOverdue({ ...unissued, status: "failed" }, now), false);
+  });
+
+  it("lists a run's unfinished invoice for admins once it has been stuck a day", () => {
+    assert.equal(invoiceAttentionReason(invoice({ invoice_date: null, created_at: "2026-12-08T00:00:00Z" }), now), "unfinished");
+    assert.equal(invoiceAttentionReason(invoice({ invoice_date: null, created_at: "2026-12-09T12:00:00Z" }), now), null);
+  });
 });
 
 describe("money", () => {

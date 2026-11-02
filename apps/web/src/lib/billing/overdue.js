@@ -14,9 +14,15 @@ import { DAY_MS, OVERDUE_DAYS } from "./constants.js";
 
 const UNPAID = new Set(["open", "failed"]);
 
+// An invoice left unfinished by a billing run for this long is flagged to admins.
+const UNFINISHED_AFTER_MS = DAY_MS;
+
 export function isInvoiceOverdue(invoice, now = new Date()) {
   if (!invoice || invoice.overdue_actioned_at) return false;
   if (!UNPAID.has(invoice.status)) return false;
+  // No invoice date means Stripe never finalized it: the landlord was never sent
+  // anything they could pay, so it can never be overdue.
+  if (!invoice.invoice_date) return false;
   const age = now.getTime() - new Date(invoice.invoice_date).getTime();
   return age > OVERDUE_DAYS * DAY_MS;
 }
@@ -26,12 +32,19 @@ export function isInvoiceOverdue(invoice, now = new Date()) {
  * Failed invoices always are. An unpaid one is once it is past the overdue
  * limit, even after its leases were withdrawn (the admin still has to restore
  * them), so this does not look at overdue_actioned_at. A payment still
- * processing is left alone.
+ * processing is left alone. One a billing run never finished (no invoice date
+ * a day after it was started) is listed as "unfinished".
  */
 export function invoiceAttentionReason(invoice, now = new Date()) {
   if (!invoice) return null;
   if (invoice.status === "failed") return "failed";
   if (!UNPAID.has(invoice.status)) return null;
+  // A run stopped before Stripe finalized it. The next run picks it up, but an
+  // admin should know it is stuck rather than find out a month later.
+  if (!invoice.invoice_date) {
+    const since = now.getTime() - new Date(invoice.created_at ?? now).getTime();
+    return since > UNFINISHED_AFTER_MS ? "unfinished" : null;
+  }
   const age = now.getTime() - new Date(invoice.invoice_date).getTime();
   return age > OVERDUE_DAYS * DAY_MS ? "overdue" : null;
 }

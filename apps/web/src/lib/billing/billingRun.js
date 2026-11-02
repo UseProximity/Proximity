@@ -18,6 +18,12 @@
  *   - A month's invoice is never added to after it is finalized: a charge approved
  *     later waits for the next run.
  *
+ *   - A row an earlier run left unfinished (never finalized in Stripe) is finished
+ *     by the next run, whatever month it belongs to. A row from an earlier month
+ *     is only finished with the charges already on it, never added to.
+ *   - Only one live run at a time: the cron and an admin's Run billing now cannot
+ *     overlap (see withRunLock).
+ *
  * Dry run computes every invoice and total and creates nothing, in Stripe or the
  * database. One landlord failing never stops the others.
  *
@@ -28,20 +34,23 @@
 import { BillingError } from "./errors.js";
 import { MIN_INVOICE_CENTS } from "./constants.js";
 import { billingPeriodFor } from "./billingPeriod.js";
+import { withSettingsLock } from "./settings.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoicePlan.js";
 import { leaseLabel } from "./chargeDisplay.js";
 import { transitionCharge } from "./charges.js";
 import { getOrCreateBillingAccount } from "./customers.js";
-import { defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
+import { chargeableMethod, defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
 import {
   assertDraftTotal,
   assertInvoiceMatches,
   ensureDraftInvoice,
   ensureInvoiceItems,
   finalizeInvoice,
+  finalizedFields,
   findInvoiceByKey,
   payInvoice,
   paymentFailureMessage,
+  paymentUnderway,
   recordPaymentFailure,
 } from "./invoicing.js";
 
@@ -103,12 +112,21 @@ async function chargesOnInvoice(db, localInvoiceId) {
   return data.map(toPlanningRow);
 }
 
-async function openInvoicesForPeriod(db, billingPeriod, landlordId) {
+const ROW_COLUMNS = "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, hosted_invoice_url";
+
+/*
+ * Open rows a live run re-checks: this month's, plus any from an earlier month
+ * that a run never finished (no invoice date: Stripe never finalized it). Without
+ * the second part a row left half done in one month would never be picked up
+ * again, and the charges claimed onto it would never be billed.
+ */
+async function openInvoicesToResume(db, billingPeriod, landlordId) {
   let q = db
     .from("billing_invoices")
-    .select("id, landlord_id, billing_period, stripe_invoice_id, status, total_cents")
-    .eq("billing_period", billingPeriod)
-    .eq("status", "open");
+    .select(ROW_COLUMNS)
+    .eq("status", "open")
+    .or(`billing_period.eq.${billingPeriod},invoice_date.is.null`)
+    .order("billing_period", { ascending: true });
   if (landlordId) q = q.eq("landlord_id", landlordId);
   const { data, error } = await q;
   if (error) throw error;
@@ -206,24 +224,29 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
 
     await assertDraftTotal(stripe, invoice.id, total);
     invoice = await finalizeInvoice(stripe, invoice.id);
+    await hooks.at?.("stripe_finalized", { row, invoice });
     const { error } = await db
       .from("billing_invoices")
-      .update({
-        total_cents: total,
-        invoice_date: now.toISOString(),
-        hosted_invoice_url: invoice.hosted_invoice_url ?? null,
-        invoice_pdf_url: invoice.invoice_pdf ?? null,
-      })
+      .update({ total_cents: total, ...finalizedFields(invoice, now) })
       .eq("id", row.id);
     if (error) throw error;
     outcome = "invoiced";
     await hooks.at?.("finalized", { row, invoice });
+  } else if (!row.invoice_date || !row.hosted_invoice_url) {
+    // An earlier run finalized it in Stripe and stopped before saving the date and
+    // links. Save them now, from Stripe, so the overdue clock and the landlord's
+    // invoice page are right.
+    const { error } = await db
+      .from("billing_invoices")
+      .update({ total_cents: total, ...finalizedFields(invoice, now) })
+      .eq("id", row.id);
+    if (error) throw error;
   }
 
   // Pay once. An invoice that already had an attempt is not attempted again here;
   // a failed one is the landlord's (or an admin's) to retry.
   if (invoice.status === "open" && !invoice.attempted) {
-    const method = await defaultMethod(db, row.landlord_id, now);
+    const method = await chargeableMethod(db, stripe, row.landlord_id, now);
     if (!method) {
       await recordPaymentFailure(db, { invoiceId: row.id, message: "No active payment method on file", notify, now });
       outcome = "payment_failed";
@@ -232,8 +255,14 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
         await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
         outcome = "payment_started";
       } catch (err) {
-        await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
-        outcome = "payment_failed";
+        // Refused because it is already paid or a payment is settling is not a
+        // failure, and must not email the landlord that it did not go through.
+        if (await paymentUnderway(stripe, invoice.id)) {
+          outcome = "payment_started";
+        } else {
+          await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
+          outcome = "payment_failed";
+        }
       }
     }
     await hooks.at?.("paid", { row, invoice });
@@ -281,9 +310,9 @@ async function billLandlord(ctx, planned) {
       billing_period: planned.billingPeriod,
       total_cents: planned.totalCents,
       status: "open",
-      invoice_date: now.toISOString(),
+      // invoice_date stays empty until Stripe finalizes the invoice (finalizedFields).
     })
-    .select("id, landlord_id, billing_period, stripe_invoice_id, status, total_cents")
+    .select(ROW_COLUMNS)
     .single();
   if (error) {
     // Another run got there between the check and the insert.
@@ -313,10 +342,11 @@ async function billLandlord(ctx, planned) {
 
 /*
  * Pick up a local row a crashed run left behind. If nothing has reached Stripe
- * (or the invoice is still a draft) it may also claim charges that were approved
- * since; once the invoice is finalized it is only finished, never added to.
+ * (or the invoice is still a draft) and the row is this month's, it may also
+ * claim charges that were approved since; a row from an earlier month, or one
+ * already finalized, is only finished, never added to.
  */
-async function resumeInvoice(ctx, row) {
+async function resumeInvoice(ctx, row, billingPeriod) {
   const { db, stripe } = ctx;
   const landlord = (await usersById(db, [row.landlord_id])).get(row.landlord_id);
   const account = await getOrCreateBillingAccount(db, stripe, { id: row.landlord_id, email: landlord?.email, name: landlord?.name });
@@ -324,7 +354,7 @@ async function resumeInvoice(ctx, row) {
   const existing = await findInvoiceByKey(stripe, account.stripe_customer_id, key);
 
   if (!existing || existing.status === "draft") {
-    const fresh = planInvoices(await approvedUninvoiced(db, row.landlord_id).then((r) => r.map(toPlanningRow)), {
+    const fresh = row.billing_period !== billingPeriod ? null : planInvoices(await approvedUninvoiced(db, row.landlord_id).then((r) => r.map(toPlanningRow)), {
       billingPeriod: row.billing_period,
       minCents: 1,
     }).invoices[0];
@@ -355,8 +385,10 @@ export async function runBillingRun({
   const billingPeriod = billingPeriodFor(now);
   const charges = await approvedUninvoiced(db, onlyLandlordId);
   const plan = planInvoices(charges.map(toPlanningRow), { billingPeriod });
-  const openRows = await openInvoicesForPeriod(db, billingPeriod, onlyLandlordId);
-  const billedLandlords = new Set(openRows.map((r) => r.landlord_id));
+  const openRows = await openInvoicesToResume(db, billingPeriod, onlyLandlordId);
+  // Only this month's row stands in for this month's invoice. A stranded row from
+  // an earlier month is finished separately and does not stop this month's.
+  const billedLandlords = new Set(openRows.filter((r) => r.billing_period === billingPeriod).map((r) => r.landlord_id));
 
   if (dryRun) {
     const users = await usersById(db, [...new Set([...plan.invoices.map((i) => i.landlordId), ...plan.deferred.map((d) => d.landlordId)])]);
@@ -376,12 +408,17 @@ export async function runBillingRun({
         waitsForNextMonth: billedLandlords.has(inv.landlordId),
       })),
       deferred: plan.deferred.map((d) => ({ ...d, landlord: show(d.landlordId) })),
-      // This month's invoices still open (unpaid, or not finished by an earlier run); a live run re-checks them.
+      // Invoices still open (this month's, or any month's that an earlier run never finished); a live run re-checks them.
       openInvoices: openRows.length,
+      unfinishedInvoices: openRows.filter((r) => !r.invoice_date).length,
       grandTotalCents: plan.grandTotalCents,
     };
   }
 
+  return withRunLock(db, now, () => liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords }));
+}
+
+async function liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords }) {
   const ctx = { db, stripe, now, notify, hooks };
   const results = [];
   const attempt = async (landlordId, fn) => {
@@ -393,7 +430,7 @@ export async function runBillingRun({
   };
 
   // Finish what an earlier run left half done first, then bill the rest.
-  for (const row of openRows) await attempt(row.landlord_id, () => resumeInvoice(ctx, row));
+  for (const row of openRows) await attempt(row.landlord_id, () => resumeInvoice(ctx, row, billingPeriod));
   for (const planned of plan.invoices) {
     if (billedLandlords.has(planned.landlordId)) continue;
     await attempt(planned.landlordId, () => billLandlord(ctx, planned));
@@ -413,4 +450,23 @@ export async function runBillingRun({
       errors: count("error"),
     },
   };
+}
+
+// ── One live run at a time ──────────────────────────────────────────────────
+
+export const RUN_LOCK_KEY = "billing_run_lock";
+
+/*
+ * Two live runs at once (the first-Monday cron and an admin's Run billing now)
+ * could both try to pay the same invoice, and Stripe refusing the second would
+ * read as a failed payment. The stale limit is longer than the cron's 300s, so a
+ * lock left by a run that was killed frees itself, but never while a run could
+ * still be going.
+ */
+function withRunLock(db, now, fn) {
+  return withSettingsLock(
+    db,
+    { key: RUN_LOCK_KEY, staleMs: 15 * 60 * 1000, now, busyMessage: "A billing run is already in progress. Try again in a few minutes." },
+    fn
+  );
 }

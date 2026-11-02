@@ -39,11 +39,13 @@ const REASON_BADGE = {
   failed: <Badge color="red">Payment failed</Badge>,
   overdue: <Badge color="red">Overdue</Badge>,
   restore: <Badge color="amber">Leases withdrawn</Badge>,
+  unfinished: <Badge color="amber">Not issued</Badge>,
 };
 
 /*
  * Invoices that need an admin: failed, past the 30 day overdue limit, or whose
- * leases were withdrawn and are still waiting to be put back. Retry makes one
+ * leases were withdrawn and are still waiting to be put back, or that a billing
+ * run started but never issued in Stripe (Run billing now finishes it). Retry makes one
  * attempt with the landlord's default method; Restore puts back the leases the
  * overdue job withdrew (do this once the invoice is settled).
  */
@@ -57,7 +59,9 @@ export function InvoiceList({ invoices, busy, onRetry, onRestore }) {
             <div className="min-w-0 flex-1">
               <Landlord landlord={inv.landlord} />
               <p className="mt-0.5 text-xs text-gray-500">
-                Invoiced {fmtDate(inv.invoiceDate)} ({inv.daysOld} days ago) · {inv.status}
+                {inv.invoiceDate
+                  ? `Invoiced ${fmtDate(inv.invoiceDate)} (${inv.daysOld} days ago) · ${inv.status}`
+                  : `Started ${inv.daysOld} days ago, never issued in Stripe. Run billing now to finish it.`}
                 {inv.failureMessage ? ` · ${inv.failureMessage}` : ""}
               </p>
             </div>

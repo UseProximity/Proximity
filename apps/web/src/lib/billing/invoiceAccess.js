@@ -14,8 +14,8 @@
  * `db` is a service-role Supabase client and `stripe` a Stripe client.
  */
 import { BillingError } from "./errors.js";
-import { defaultActiveMethod } from "./paymentMethods.js";
-import { payInvoice, paymentFailureMessage, recordPaymentFailure } from "./invoicing.js";
+import { chargeableMethod } from "./paymentMethods.js";
+import { payInvoice, paymentFailureMessage, paymentUnderway, recordPaymentFailure } from "./invoicing.js";
 
 const COLUMNS =
   "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, hosted_invoice_url, invoice_pdf_url, last_failure_message, disputed";
@@ -30,8 +30,9 @@ export function invoiceView(row) {
     hostedInvoiceUrl: row.hosted_invoice_url ?? null,
     invoicePdfUrl: row.invoice_pdf_url ?? null,
     failureMessage: row.status === "failed" ? row.last_failure_message ?? null : null,
-    // Pay now is offered on an open invoice or one that failed; not while a payment is settling.
-    canPay: row.status === "failed" || row.status === "open",
+    // Pay now is offered on an issued invoice that is open or failed; not while a
+    // payment is settling, and not on one a billing run has not finished issuing.
+    canPay: !!row.invoice_date && (row.status === "failed" || row.status === "open"),
   };
 }
 
@@ -60,7 +61,7 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId = 
   if (row.status === "processing") {
     throw new BillingError("in_progress", "A payment for this invoice is already in progress.", 409);
   }
-  if (!["failed", "open"].includes(row.status) || !row.stripe_invoice_id) {
+  if (!["failed", "open"].includes(row.status) || !row.stripe_invoice_id || !row.invoice_date) {
     throw new BillingError("not_payable", "This invoice cannot be paid right now.", 409);
   }
 
@@ -70,7 +71,16 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId = 
     throw new BillingError("not_payable", "This invoice cannot be paid right now.", 409);
   }
 
-  const method = await defaultActiveMethod(db, row.landlord_id, now);
+  // An ACH payment the run (or an earlier click) started may still be settling
+  // before its webhook has marked the row Processing. Paying again would be refused
+  // and read as a failure.
+  const underway = await paymentUnderway(stripe, invoice.id);
+  if (underway === "paid") return { alreadyPaid: true };
+  if (underway === "processing") {
+    throw new BillingError("in_progress", "A payment for this invoice is already in progress.", 409);
+  }
+
+  const method = await chargeableMethod(db, stripe, row.landlord_id, now);
   if (!method) {
     throw new BillingError(
       "no_method",
@@ -88,6 +98,9 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId = 
   try {
     await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
   } catch (err) {
+    const raced = await paymentUnderway(stripe, invoice.id);
+    if (raced === "paid") return { alreadyPaid: true };
+    if (raced === "processing") return { started: true };
     // Recorded quietly: the person who pressed the button sees the reason right away.
     const message = paymentFailureMessage(err);
     await recordPaymentFailure(db, { invoiceId: row.id, message, notify: null, now });

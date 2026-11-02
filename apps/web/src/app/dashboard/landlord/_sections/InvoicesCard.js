@@ -14,6 +14,7 @@ const STATUS = {
 
 const NOTE = {
   open: "Waiting for payment.",
+  preparing: "This invoice is still being prepared. Nothing is due yet.",
   processing: "Your bank payment is being processed. This takes a few business days.",
   paid: "Paid. Thank you.",
   void: "This invoice was cancelled. Nothing is owed for it.",
@@ -30,7 +31,9 @@ function InvoiceRow({ invoice, busy, onPay }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-gray-900">
             {periodLabel(invoice.billingPeriod)}
-            <span className="ml-2 text-xs font-normal text-gray-400">Invoiced {dateOnly(invoice.invoiceDate)}</span>
+            {invoice.invoiceDate && (
+              <span className="ml-2 text-xs font-normal text-gray-400">Invoiced {dateOnly(invoice.invoiceDate)}</span>
+            )}
           </p>
         </div>
         <p className="text-sm font-semibold text-gray-900">{formatCents(invoice.totalCents)}</p>
@@ -38,7 +41,9 @@ function InvoiceRow({ invoice, busy, onPay }) {
       </div>
 
       <p className="mt-1 text-xs text-gray-500">
-        {invoice.status === "failed" ? invoice.failureMessage || "The payment did not go through." : NOTE[invoice.status]}
+        {invoice.status === "failed"
+          ? invoice.failureMessage || "The payment did not go through."
+          : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
       </p>
       {invoice.status === "failed" && (
         <p className="mt-1 text-xs text-gray-500">

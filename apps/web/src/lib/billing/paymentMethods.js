@@ -131,18 +131,29 @@ export async function recordPaymentMethod(db, stripe, { customerId, paymentMetho
   return { recorded: pm.id, userId, status: finalStatus };
 }
 
-// Make the oldest Active method the default when the landlord has none.
-async function ensureDefault(db, stripe, userId, customerId) {
+const METHOD_STATE_COLUMNS = "id, stripe_payment_method_id, type, status, is_default, exp_month, exp_year";
+
+/*
+ * Keep the default usable: if there is no default, or the default has failed or
+ * expired, the oldest usable method becomes the default. A usable default is
+ * never changed. Returns the default after any change (null when nothing is usable).
+ */
+async function ensureDefault(db, stripe, userId, customerId, now = new Date()) {
   const { data: live, error } = await db
     .from("payment_methods")
-    .select("id, stripe_payment_method_id, status, is_default")
+    .select(METHOD_STATE_COLUMNS)
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  if (live.some((m) => m.is_default)) return;
-  const next = live.find((m) => m.status === "active");
-  if (next) await makeDefault(db, stripe, userId, customerId, next);
+  const current = live.find((m) => m.is_default);
+  if (current && effectiveStatus(current, now) === "active") return current;
+  const next = live.find((m) => effectiveStatus(m, now) === "active");
+  if (next && customerId) {
+    await makeDefault(db, stripe, userId, customerId, next);
+    return next;
+  }
+  return null;
 }
 
 async function makeDefault(db, stripe, userId, customerId, method) {
@@ -274,6 +285,19 @@ export async function defaultActiveMethod(db, userId, now = new Date()) {
   return data && effectiveStatus(data, now) === "active" ? data : null;
 }
 
+/*
+ * The method to charge an invoice to, for the billing run and Pay now. The default
+ * when it is usable; otherwise the landlord's oldest usable method, which is made
+ * the default here and on Stripe (a landlord whose card expired or failed, and who
+ * has since added a bank account, is charged to that). Null when nothing is usable.
+ */
+export async function chargeableMethod(db, stripe, userId, now = new Date()) {
+  const current = await defaultActiveMethod(db, userId, now);
+  if (current) return current;
+  const customerId = await customerIdFor(db, userId);
+  return ensureDefault(db, stripe, userId, customerId, now);
+}
+
 async function customerIdFor(db, userId) {
   const { data, error } = await db.from("billing_accounts").select("stripe_customer_id").eq("user_id", userId).maybeSingle();
   if (error) throw error;
@@ -308,7 +332,7 @@ export async function finishRemoval(db, stripe, method) {
 
   const { data: remaining, error: listError } = await db
     .from("payment_methods")
-    .select("id, stripe_payment_method_id, status, is_default")
+    .select(METHOD_STATE_COLUMNS)
     .eq("user_id", method.user_id)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -316,7 +340,7 @@ export async function finishRemoval(db, stripe, method) {
 
   if (method.is_default) {
     const customerId = await customerIdFor(db, method.user_id);
-    const next = remaining.find((m) => m.status === "active");
+    const next = remaining.find((m) => effectiveStatus(m, new Date()) === "active");
     if (customerId && next) await makeDefault(db, stripe, method.user_id, customerId, next);
     else if (customerId) {
       await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: "" } });

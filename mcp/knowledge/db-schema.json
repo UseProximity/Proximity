@@ -438,7 +438,7 @@
       {
         "table": "billing_invoices",
         "status": "unreleased",
-        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) starts the 30 day overdue clock; processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
+        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) is when Stripe finalized the invoice and starts the 30 day overdue clock; it is NULL while a run has not finished issuing it, and such a row is never overdue (202611010002_billing_holds); processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
@@ -537,7 +537,7 @@
           "restored_at:timestamptz",
           "restored_by_id:uuid"
         ],
-        "notes": "Migration 202611010001_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies)."
+        "notes": "Migration 202611010001_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies). Trigger trg_block_relisting_billing_hold on unit_leases (fn_block_relisting_billing_hold, 202611010002_billing_holds) refuses any update that puts a lease with an unrestored row back on the market, so restoring marks restored_at first."
       },
       {
         "table": "landlord_reply_senders",

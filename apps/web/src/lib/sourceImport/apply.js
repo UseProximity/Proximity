@@ -31,6 +31,7 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
+import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
@@ -568,6 +569,9 @@ export async function executeChange(change, { state, userId }) {
     }
     case "lease_update": {
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
+      // The database keeps a lease withdrawn for an overdue invoice off the market
+      // until an admin restores it (202611010002_billing_holds.sql).
+      if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       return Object.keys(d.patch).join(", ");
     }
