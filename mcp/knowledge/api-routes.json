@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, landlord=landlord role only, super=super admin only.",
-  "_generated": "2026-10-31T00:33:29.629Z",
-  "count": 168,
+  "_generated": "2026-11-01T18:59:18.380Z",
+  "count": 211,
   "routes": [
     {
       "path": "/api/account",
@@ -48,6 +48,7 @@
         "locations",
         "listing_units",
         "unit_leases",
+        "listing_concessions",
         "listing_drive_times",
         "users"
       ],
@@ -74,6 +75,40 @@
         "users"
       ],
       "file": "src/app/api/admin/[table]/route.js"
+    },
+    {
+      "path": "/api/admin/agents",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "listing_agents"
+      ],
+      "file": "src/app/api/admin/agents/route.js"
+    },
+    {
+      "path": "/api/admin/agents/queue",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "listing_fact_events",
+        "listing_source_events",
+        "listing_agents"
+      ],
+      "file": "src/app/api/admin/agents/queue/route.js"
     },
     {
       "path": "/api/admin/billing/agreements",
@@ -560,6 +595,18 @@
       "file": "src/app/api/admin/sent-emails/[id]/route.js"
     },
     {
+      "path": "/api/admin/source-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/source-sync/route.js"
+    },
+    {
       "path": "/api/admin/update-campus-walk-times",
       "methods": [
         "POST"
@@ -604,6 +651,18 @@
         "users"
       ],
       "file": "src/app/api/admin/viewUser/route.js"
+    },
+    {
+      "path": "/api/agents/enabled",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/agents/enabled/route.js"
     },
     {
       "path": "/api/auth/[...nextauth]",
@@ -1113,7 +1172,9 @@
         "GET": "any",
         "POST": "landlord+"
       },
-      "tables": [],
+      "tables": [
+        "chat_threads"
+      ],
       "file": "src/app/api/chat/threads/[threadId]/messages/route.js"
     },
     {
@@ -1183,6 +1244,44 @@
       },
       "tables": [],
       "file": "src/app/api/contacted/route.js"
+    },
+    {
+      "path": "/api/cron/agent-digest",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/agent-digest/route.js"
+    },
+    {
+      "path": "/api/cron/agent-questions",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listing_questions"
+      ],
+      "file": "src/app/api/cron/agent-questions/route.js"
+    },
+    {
+      "path": "/api/cron/agent-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/agent-sync/route.js"
     },
     {
       "path": "/api/cron/auto-unavailable",
@@ -1310,6 +1409,18 @@
       "file": "src/app/api/cron/chat-retention/route.js"
     },
     {
+      "path": "/api/cron/import-jobs",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/import-jobs/route.js"
+    },
+    {
       "path": "/api/cron/landlord-nudge",
       "methods": [
         "GET"
@@ -1413,6 +1524,18 @@
       "file": "src/app/api/cron/seo-report/route.js"
     },
     {
+      "path": "/api/cron/source-sync",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/source-sync/route.js"
+    },
+    {
       "path": "/api/cron/waitlist-nudge",
       "methods": [
         "GET"
@@ -1423,6 +1546,20 @@
       },
       "tables": [],
       "file": "src/app/api/cron/waitlist-nudge/route.js"
+    },
+    {
+      "path": "/api/dev/agents-seed",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/dev/agents-seed/route.js"
     },
     {
       "path": "/api/dev/inbound-email",
@@ -1489,6 +1626,37 @@
         "listings"
       ],
       "file": "src/app/api/dev/matchmaking-saturation-sim/route.js"
+    },
+    {
+      "path": "/api/dev/proxy-redteam",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/dev/proxy-redteam/route.js"
+    },
+    {
+      "path": "/api/dev/proxy-sim",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "listing_questions",
+        "tour_requests",
+        "listing_landlords",
+        "listings"
+      ],
+      "file": "src/app/api/dev/proxy-sim/route.js"
     },
     {
       "path": "/api/devices/push-token",
@@ -1643,6 +1811,99 @@
       "file": "src/app/api/landlord/contact-emails/route.js"
     },
     {
+      "path": "/api/landlord/import/batches/[batchId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/batches/[batchId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/batches/[batchId]/cancel",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/batches/[batchId]/cancel/route.js"
+    },
+    {
+      "path": "/api/landlord/import/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/events/route.js"
+    },
+    {
+      "path": "/api/landlord/import/jobs/[jobId]",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public",
+        "DELETE": "public"
+      },
+      "tables": [
+        "listing_import_jobs",
+        "listings"
+      ],
+      "file": "src/app/api/landlord/import/jobs/[jobId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/listing/[listingId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listing_source_events"
+      ],
+      "file": "src/app/api/landlord/import/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/import/run",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/import/run/route.js"
+    },
+    {
+      "path": "/api/landlord/import/start",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/landlord/import/start/route.js"
+    },
+    {
       "path": "/api/landlord/listing-draft",
       "methods": [
         "POST"
@@ -1698,6 +1959,104 @@
         "home_types"
       ],
       "file": "src/app/api/landlord/listings/[listingId]/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/changes",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/changes/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/chat",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/chat/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/documents",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/documents/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/facts",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/facts/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/sync",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/sync/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/tell",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/tell/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/url",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/url/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/contact",
@@ -1969,6 +2328,20 @@
       "file": "src/app/api/landlord/pms/request-integration/route.js"
     },
     {
+      "path": "/api/landlord/proxy-chat",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/proxy-chat/route.js"
+    },
+    {
       "path": "/api/landlord/publish",
       "methods": [
         "POST"
@@ -1988,6 +2361,30 @@
       "file": "src/app/api/landlord/publish/route.js"
     },
     {
+      "path": "/api/landlord/questions",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/questions/route.js"
+    },
+    {
+      "path": "/api/landlord/questions/[questionId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/questions/[questionId]/route.js"
+    },
+    {
       "path": "/api/landlord/reviews",
       "methods": [
         "GET"
@@ -2001,6 +2398,30 @@
         "listing_reviews"
       ],
       "file": "src/app/api/landlord/reviews/route.js"
+    },
+    {
+      "path": "/api/landlord/tours",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/tours/route.js"
+    },
+    {
+      "path": "/api/landlord/tours/[tourId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/tours/[tourId]/route.js"
     },
     {
       "path": "/api/lease-check",
@@ -2090,6 +2511,20 @@
       },
       "tables": [],
       "file": "src/app/api/listing/[listingId]/route.js"
+    },
+    {
+      "path": "/api/listing/[listingId]/facts",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "listings"
+      ],
+      "file": "src/app/api/listing/[listingId]/facts/route.js"
     },
     {
       "path": "/api/listingReport",
@@ -2268,6 +2703,83 @@
       "file": "src/app/api/properties/lookup/route.js"
     },
     {
+      "path": "/api/proxy/confirm-email",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/confirm-email/route.js"
+    },
+    {
+      "path": "/api/proxy/threads",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/[threadId]/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/messages",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/proxy/threads/[threadId]/messages/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/notify-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "chat_threads"
+      ],
+      "file": "src/app/api/proxy/threads/[threadId]/notify-email/route.js"
+    },
+    {
+      "path": "/api/proxy/threads/[threadId]/report",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "chat_messages",
+        "listing_agent_questions"
+      ],
+      "file": "src/app/api/proxy/threads/[threadId]/report/route.js"
+    },
+    {
       "path": "/api/referralPayment",
       "methods": [
         "GET",
@@ -2345,6 +2857,21 @@
       "file": "src/app/api/reviewReport/route.js"
     },
     {
+      "path": "/api/reviewVote",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [
+        "listing_reviews",
+        "review_votes"
+      ],
+      "file": "src/app/api/reviewVote/route.js"
+    },
+    {
       "path": "/api/reviews/[reviewId]",
       "methods": [
         "PATCH",
@@ -2373,21 +2900,6 @@
         "users"
       ],
       "file": "src/app/api/reviews/confirm/route.js"
-    },
-    {
-      "path": "/api/reviewVote",
-      "methods": [
-        "POST"
-      ],
-      "auth": "any",
-      "methodAuth": {
-        "POST": "any"
-      },
-      "tables": [
-        "listing_reviews",
-        "review_votes"
-      ],
-      "file": "src/app/api/reviewVote/route.js"
     },
     {
       "path": "/api/searchUsers",
@@ -2468,6 +2980,48 @@
         "testimonials"
       ],
       "file": "src/app/api/testimonials/route.js"
+    },
+    {
+      "path": "/api/tours",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/tours/route.js"
+    },
+    {
+      "path": "/api/tours/[tourId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/tours/[tourId]/route.js"
+    },
+    {
+      "path": "/api/tours/availability",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "PUT": "any"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/tours/availability/route.js"
     },
     {
       "path": "/api/upload",

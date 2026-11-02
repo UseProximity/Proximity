@@ -52,6 +52,22 @@
     {
       "path": "/api/cron/billing-overdue",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/import-jobs",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-questions",
+      "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-sync",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/agent-digest",
+      "schedule": "0 14 * * *"
     }
   ]
 }

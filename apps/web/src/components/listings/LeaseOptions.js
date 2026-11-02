@@ -239,9 +239,10 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
   }, [groups]);
 
   /*
-   * Picking saves only the dropdown that changed. A saved pick this listing
-   * can't offer reads "Any" here but stays on the account for every other
-   * listing, so changing the length here never erases a saved 3 bed.
+   * Picking saves only the row that changed. A saved pick this listing
+   * can't offer shows as its closest alternative here, but the account keeps
+   * the saved one for every other listing, so changing the length here never
+   * erases a saved 3 bed (Wyatt, 2026-11-01).
    */
   const setPrefs = (patch) => {
     if ("beds" in patch) setVisit(null);
@@ -250,7 +251,7 @@ export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
   };
   const clear = () => {
     setVisit(null);
-    if (preview) setPreviewPrefs({ beds: null, moveIn: null, months: null });
+    if (preview) setPreviewPrefs({ beds: [], moveIn: null, months: [] });
     else shared.clear();
   };
   return { prefs, choices, groups, setPrefs, clear, sort, sorts, setSort };

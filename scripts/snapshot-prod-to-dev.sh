@@ -5,14 +5,16 @@
 #
 # ⚠️ DESTRUCTIVE to the DEV database's `public` schema. It NEVER writes to prod.
 #
-# Steps: [1] dump prod (+ capture its FK set and function grants)  [2] save partner sandbox data
-#        [3] restore into dev  [4] re-grant Supabase roles, then copy prod's function grants and
-#        verify no definer function is left public or abort  [5] reconcile FKs against prod, then
-#        verify parity or abort
-#        [6] put partner sandbox data back.
+# Steps: [1] dump prod (+ capture its FK set and function grants)  [2] save partner sandbox data,
+#        then detach FKs from dev-only tables into prod tables  [3] restore into dev, then verify
+#        every prod table holds exactly the dumped rows or abort  [4] re-grant Supabase roles, then
+#        copy prod's function grants and verify no definer function is left public or abort
+#        [5] reconcile FKs against prod, then verify parity or abort
+#        [6] put partner sandbox data back, then reattach the dev-only FKs.
 # Steps 2 and 6 keep dev-only partner accounts (snapshot_preserve.protected_users) and everything
-# they created alive across the wipe. See scripts/snapshot-preserve.sql.
-# Step 5 exists because the tolerant restore in step 2 can silently lose foreign keys, which
+# they created alive across the wipe, and keep dev-only tables (features migrated on dev first)
+# from blocking the restore. See scripts/snapshot-preserve.sql.
+# Step 5 exists because the tolerant restore in step 3 can silently lose foreign keys, which
 # breaks PostgREST embeds with PGRST200 → HTTP 500. See the comment on step 5 for the mechanism.
 #
 # Setup: copy connection strings into .env.snapshot.local at the repo root (gitignored):
@@ -55,7 +57,24 @@ DUMP="$(mktemp -t prox-prod-snapshot-XXXXXX.sql)"
 FKS="$(mktemp -t prox-prod-fks-XXXXXX.tsv)"
 FKSQL="$(mktemp -t prox-prod-fks-XXXXXX.sql)"
 FNACL="$(mktemp -t prox-prod-fn-grants-XXXXXX.sql)"
-trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL" "$FNACL"' EXIT
+TMPFILES=("$DUMP" "$DUMP.err" "$DUMP.counts" "$FKS" "$FKSQL" "$FNACL")
+
+# If the run dies after step 2 detached the dev-only FKs, put them back on the way out so dev-only
+# features keep their PostgREST embeds until the next run. Best effort: whatever cannot go back
+# stays in snapshot_preserve.detached_fks and the next run retries it.
+FKS_DETACHED=0
+cleanup() {
+  local code=$?
+  if [[ $code -ne 0 && $FKS_DETACHED -eq 1 ]]; then
+    echo "    run failed; putting the detached dev-only foreign keys back…"
+    psql "$DEV_DB_URL" -t -A --no-psqlrc -c "select * from snapshot_preserve.reattach_dev_only_fks();" \
+      >/dev/null 2>&1 \
+      && psql "$DEV_DB_URL" -q --no-psqlrc -c "notify pgrst, 'reload schema';" >/dev/null 2>&1 \
+      || echo "    could not reattach them all; the next run will retry"
+  fi
+  rm -f "${TMPFILES[@]}"
+}
+trap cleanup EXIT
 
 echo "[1/6] Dumping PROD public schema → $DUMP"
 # --clean --if-exists: dump includes DROPs so the restore replaces existing objects.
@@ -147,13 +166,68 @@ psql "$PROD_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "copy ($PROD_KEYS_SQL) to 
       -c "copy snapshot_preserve.prod_keys (table_name, key) from stdin"
 psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.save();"
 
+# Dev-only tables (features migrated on dev before prod) are not in the prod dump, so the restore
+# never drops them, but their FKs into prod tables make Postgres refuse the dump's DROP TABLE for
+# listings, users and friends. That failure is silent under the tolerant restore: the old dev
+# tables survive, the COPY into them fails on duplicate keys, and dev keeps serving stale rows
+# while the run reports success. So save and drop those FKs first; step 6 adds them back.
+psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
+  select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r', 'p');" \
+  | psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
+      -c "truncate snapshot_preserve.prod_tables" \
+      -c "copy snapshot_preserve.prod_tables (relname) from stdin"
+DETACHED=$(psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 \
+  -c "select snapshot_preserve.detach_dev_only_fks();")
+FKS_DETACHED=1
+echo "    detached $DETACHED foreign key(s) from dev-only tables (reattached in step 6)"
+
 echo "[3/6] Restoring into DEV (destructive)…"
 # Tolerant restore: prod's public schema references Supabase system schemas the dev project
-# doesn't have (e.g. supabase_functions webhook triggers). We skip those benign errors rather
-# than abort — dev doesn't need them. ERROR count is reported below for visibility.
+# doesn't have (e.g. supabase_functions webhook triggers). We skip those errors rather than abort,
+# because dev doesn't need them, and list them below so a new kind of error is visible in the log.
+# The row count check that follows is what catches a restore that did not really happen.
 ERRLOG="$DUMP.err"
 psql "$DEV_DB_URL" -q -f "$DUMP" >/dev/null 2>"$ERRLOG" || true
-echo "    restore finished — $(grep -c 'ERROR' "$ERRLOG" 2>/dev/null || echo 0) benign errors skipped"
+echo "    restore finished, $(grep -c 'ERROR' "$ERRLOG" 2>/dev/null || echo 0) errors skipped:"
+grep 'ERROR' "$ERRLOG" | sed -E 's/^psql:[^:]+:[0-9]+: //' | sort | uniq -c | sort -rn | head -25 \
+  | sed 's/^/      /' || true
+
+# Every table the dump carries data for must now hold exactly that many rows. A table the restore
+# could not drop keeps its old rows (and its COPY fails), so its count will not match. Counts come
+# from the dump itself, which is one consistent snapshot of prod, so live prod writes do not matter.
+EXPECTED="$DUMP.counts"
+awk '
+  /^COPY public\./ { t = $2; sub(/^public\./, "", t); gsub(/"/, "", t); n = 0; inblk = 1; next }
+  inblk && /^\\\.$/ { print t "\t" n; inblk = 0; next }
+  inblk { n++ }
+' "$DUMP" > "$EXPECTED"
+MISMATCH=$({
+  echo "create temp table _expected (relname text, n bigint);"
+  echo "copy _expected from stdin;"
+  cat "$EXPECTED"
+  echo '\.'
+  cat <<'SQL'
+select e.relname, e.n, a.n
+from _expected e
+cross join lateral (
+  select (xpath('/row/c/text()',
+          query_to_xml(format('select count(*) as c from public.%I', e.relname), false, true, '')
+         ))[1]::text::bigint as n
+) a
+where a.n is distinct from e.n
+order by e.relname;
+SQL
+} | psql "$DEV_DB_URL" -q -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1)
+if [[ -n "$MISMATCH" ]]; then
+  echo
+  echo "✗ ABORT: these DEV tables do not match the PROD dump after the restore (table, prod rows, dev rows):"
+  echo "$MISMATCH" | sed 's/^/    /'
+  echo "  DEV was not refreshed. The errors above show what blocked it. If someone wrote to DEV"
+  echo "  during the few minutes of the restore, re-running is enough."
+  exit 1
+fi
+echo "    row counts match the PROD dump on all $(grep -c . "$EXPECTED") tables"
 
 # Sanity check: a successful clone should have core tables populated.
 USERS=$(psql "$DEV_DB_URL" -t -A -c "select count(*) from users" 2>/dev/null || echo 0)
@@ -242,6 +316,8 @@ echo "[5/6] Reconciling foreign keys against PROD…"
 # after it — including the `ADD CONSTRAINT ... FOREIGN KEY` block pg_dump emits last — fails and
 # is swallowed. The result is a dev DB that looks fine but has lost inbound FKs, which breaks
 # PostgREST embeds with PGRST200 and 500s the app (browse, admin dashboard).
+# Step 2 now detaches those dev-only FKs before the restore, and step 3's row count check aborts if
+# a table still could not be replaced, so this step is a safety net for anything new.
 #
 # So: diff prod's FK set against dev's and re-add whatever is missing. Each is tried VALID first
 # (full enforcement); if pre-existing orphan rows block validation we fall back to NOT VALID,
@@ -311,7 +387,7 @@ rm -f "$RECONCILE"
 PROD_KEYS="$(mktemp -t prox-fk-prod-XXXXXX)"
 DEV_KEYS="$(mktemp -t prox-fk-dev-XXXXXX)"
 MISSING_KEYS="$(mktemp -t prox-fk-missing-XXXXXX)"
-trap 'rm -f "$DUMP" "$DUMP.err" "$FKS" "$FKSQL" "$PROD_KEYS" "$DEV_KEYS" "$MISSING_KEYS"' EXIT
+TMPFILES+=("$PROD_KEYS" "$DEV_KEYS" "$MISSING_KEYS")
 
 cut -f1,2 "$FKS" | sort > "$PROD_KEYS"
 psql "$DEV_DB_URL" -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1 -c "
@@ -337,6 +413,18 @@ echo "[6/6] Putting partner sandbox data back…"
 # so it gets a longer timeout than the database's 2 minute default; 15 minutes still fails a hung run.
 psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
   -c "select * from snapshot_preserve.restore();"
-psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
 
-echo "✓ Done. DEV mirrors PROD; role grants re-applied; function grants match prod; FKs reconciled; partner data restored; snapshot_taken_at stamped."
+# Put back the dev-only FKs detached in step 2. Last, so partner rows they point at are back first.
+REATTACH=$(psql "$DEV_DB_URL" -t -A -F' ' --no-psqlrc -v ON_ERROR_STOP=1 \
+  -c "select * from snapshot_preserve.reattach_dev_only_fks();")
+read -r RE_OK RE_NV RE_BAD <<<"$REATTACH"
+FKS_DETACHED=0
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema';"
+echo "    dev-only foreign keys: $RE_OK reattached, $RE_NV reattached NOT VALID, $RE_BAD failed"
+if [[ "${RE_BAD:-0}" -ne 0 ]]; then
+  echo "✗ ABORT: $RE_BAD dev-only foreign key(s) could not be reattached; they are kept in"
+  echo "  snapshot_preserve.detached_fks and the next run retries them."
+  exit 1
+fi
+
+echo "✓ Done. DEV mirrors PROD (row counts verified); role grants re-applied; function grants match prod; FKs reconciled; partner data restored; dev-only FKs reattached; snapshot_taken_at stamped."

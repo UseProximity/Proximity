@@ -24,6 +24,7 @@ import {
   useState,
 } from "react";
 import { useSession } from "next-auth/react";
+import { onLandlordChange, onInboxChange } from "@/components/landlord/landlordSync";
 import {
   subscribeInboxMessages,
   subscribeThreadMessages,
@@ -124,6 +125,11 @@ export function MessagesProvider({ children }) {
   activeThreadIdRef.current = activeThreadId;
   userIdRef.current = userId;
   messagesStatusRef.current = messagesStatusByThread;
+  // A student's Proxy conversations sit in the same inbox (kind "proxy") but
+  // are loaded, read and sent through the Proxy routes by ProxyThread, so the
+  // direct-chat paths below skip them.
+  const threadKindRef = useRef(new Map());
+  threadKindRef.current = new Map(threads.map((t) => [t.threadId, t.kind ?? "direct"]));
 
   const clearChatState = useCallback(() => {
     refreshSeqRef.current += 1;
@@ -148,7 +154,8 @@ export function MessagesProvider({ children }) {
     const seq = ++refreshSeqRef.current;
     setThreadsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
     try {
-      const res = await fetch("/api/chat/threads");
+      // Proxy conversations are opt-in on this endpoint (the mobile app does not show them yet).
+      const res = await fetch("/api/chat/threads?include=proxy");
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error || `Failed to load threads (${res.status})`);
@@ -169,6 +176,7 @@ export function MessagesProvider({ children }) {
 
   const loadMessages = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return [];
+    if (String(threadKindRef.current.get(threadId) ?? "").startsWith("proxy")) return [];
 
     const inFlight = loadInFlightRef.current.get(threadId);
     if (inFlight) return inFlight;
@@ -232,6 +240,11 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
+    if (String(threadKindRef.current.get(threadId) ?? "").startsWith("proxy")) {
+      // ProxyThread's own fetch marks it read on the server; clear the badge here.
+      setThreads((prev) => prev.map((t) => (t.threadId === threadId ? { ...t, hasUnread: false, unreadCount: 0 } : t)));
+      return null;
+    }
 
     // A hidden tab isn't being read, whatever the thread state says. Without this, a
     // background /messages tab marks incoming messages read, telling the sender they were
@@ -615,6 +628,15 @@ export function MessagesProvider({ children }) {
       return;
     }
 
+    if (String(threadKindRef.current.get(activeThreadId) ?? "").startsWith("proxy")) {
+      if (threadUnsubscribeRef.current) {
+        threadUnsubscribeRef.current();
+        threadUnsubscribeRef.current = null;
+      }
+      markThreadRead(activeThreadId).catch(() => {});
+      return;
+    }
+
     let cancelled = false;
     let unsubMessages = null;
     let unsubReadReceipts = null;
@@ -699,7 +721,15 @@ export function MessagesProvider({ children }) {
     }
 
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    // A landlord answered Proxy or picked a tour time somewhere on the page:
+    // the inbox's Proxy rows and unread badge catch up (Wyatt, 2026-11-01).
+    const offLandlord = onLandlordChange(() => refreshThreads().catch(() => {}));
+    const offInbox = onInboxChange(() => refreshThreads().catch(() => {}));
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      offLandlord();
+      offInbox();
+    };
   }, [userId, loadMessages, refreshThreads, markThreadRead]);
 
   const unreadCount = useMemo(

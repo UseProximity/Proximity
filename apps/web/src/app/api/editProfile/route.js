@@ -4,6 +4,7 @@ import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 import { normalizeMoveIn, normalizeMonths, normalizeBeds } from "@/lib/listings/leaseFit";
+import { prefColumns, savedList, touchesListColumns, withoutListColumns } from "@/lib/listings/leasePrefsColumns";
 
 export async function PATCH(req) {
   try {
@@ -79,9 +80,10 @@ export async function PATCH(req) {
     if (body.graduationMonth !== undefined)
       allowedFields.graduation_month = body.graduationMonth ?? null;
 
-    // The student's bed count, move-in month and lease length, which every
-    // listing's lease options are narrowed by. null clears. A move-in date is stored as the
-    // first of its month: only the month means anything.
+    // The student's bed counts, move-in month and lease lengths, which every
+    // listing's lease options are narrowed by. null or [] clears. A move-in date is stored as the
+    // first of its month: only the month means anything. Sizes and lengths
+    // take a list (Wyatt, 2026-11-01) or, from older clients, one number.
     if (body.preferredMoveInDate !== undefined) {
       const raw = body.preferredMoveInDate;
       const moveIn = raw === null || raw === "" ? null : normalizeMoveIn(raw);
@@ -90,21 +92,20 @@ export async function PATCH(req) {
       }
       allowedFields.preferred_move_in_date = moveIn;
     }
+    const listOf = (raw) => (raw === null || raw === "" ? [] : Array.isArray(raw) ? raw : [raw]);
     if (body.preferredLeaseMonths !== undefined) {
-      const raw = body.preferredLeaseMonths;
-      const months = raw === null || raw === "" ? null : normalizeMonths(raw);
-      if (raw !== null && raw !== "" && months == null) {
+      const raw = listOf(body.preferredLeaseMonths);
+      if (raw.length > 24 || raw.some((m) => normalizeMonths(m) == null)) {
         return NextResponse.json({ error: "Invalid lease length" }, { status: 400 });
       }
-      allowedFields.preferred_lease_months = months;
+      Object.assign(allowedFields, prefColumns({ months: raw }));
     }
     if (body.preferredBeds !== undefined) {
-      const raw = body.preferredBeds;
-      const beds = raw === null || raw === "" ? null : normalizeBeds(raw);
-      if (raw !== null && raw !== "" && beds == null) {
+      const raw = listOf(body.preferredBeds);
+      if (raw.length > 21 || raw.some((b) => normalizeBeds(b) == null)) {
         return NextResponse.json({ error: "Invalid bed count" }, { status: 400 });
       }
-      allowedFields.preferred_beds = beds;
+      Object.assign(allowedFields, prefColumns({ beds: raw }));
     }
 
     // Only allow role changes if provided. Anything off the self-assignable
@@ -126,12 +127,11 @@ export async function PATCH(req) {
 
     console.log("PATCH /api/editProfile: updating fields", { fields: Object.keys(allowedFields) });
 
-    const { error } = await updateAsUser(supabase, {
-      userId: supabaseId,
-      table: "users",
-      data: allowedFields,
-      rowId: supabaseId,
-    });
+    const update = (data) => updateAsUser(supabase, { userId: supabaseId, table: "users", data, rowId: supabaseId });
+    let { error } = await update(allowedFields);
+    // Before migration 202611010001 the list columns don't exist: save the
+    // first picks in the single columns rather than failing the whole profile.
+    if (error && touchesListColumns(allowedFields)) ({ error } = await update(withoutListColumns(allowedFields)));
 
     if (error) {
       console.error("PATCH /api/editProfile: update failed", {
@@ -142,11 +142,10 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
     }
 
-    const { data: updated, error: fetchError } = await supabase
-      .from("users")
-      .select("name, company_name, birthday, gender, phone, description, preferred_move_in_date, preferred_lease_months, preferred_beds, roles!role_id(name)")
-      .eq("id", supabaseId)
-      .single();
+    const PROFILE = "name, company_name, birthday, gender, phone, description, preferred_move_in_date, preferred_lease_months, preferred_beds, roles!role_id(name)";
+    const readBack = (cols) => supabase.from("users").select(cols).eq("id", supabaseId).single();
+    let { data: updated, error: fetchError } = await readBack(`${PROFILE}, preferred_beds_list, preferred_lease_months_list`);
+    if (fetchError) ({ data: updated, error: fetchError } = await readBack(PROFILE));
 
     if (fetchError || !updated) {
       console.error("PATCH /api/editProfile: fetch after update failed", { supabaseId });
@@ -162,8 +161,8 @@ export async function PATCH(req) {
       role: roles?.name ?? null,
       emailNotifications: rest.email_notifications !== false,
       preferredMoveInDate: rest.preferred_move_in_date ?? null,
-      preferredLeaseMonths: rest.preferred_lease_months ?? null,
-      preferredBeds: rest.preferred_beds ?? null,
+      preferredLeaseMonths: savedList(rest.preferred_lease_months_list, rest.preferred_lease_months),
+      preferredBeds: savedList(rest.preferred_beds_list, rest.preferred_beds),
     });
   } catch (e) {
     console.error("PATCH /api/user/profile failed:", e);

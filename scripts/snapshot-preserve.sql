@@ -52,6 +52,26 @@ create table if not exists snapshot_preserve.prod_keys (
 );
 create index if not exists prod_keys_lookup on snapshot_preserve.prod_keys (table_name, key);
 
+-- Names of every table prod has in `public`, loaded fresh by the script before each run. Anything
+-- in dev's `public` that is not listed here is a dev-only table (a feature migrated on dev first).
+create table if not exists snapshot_preserve.prod_tables (
+  relname text primary key
+);
+
+-- Foreign keys from dev-only tables into prod tables, held here while the restore runs. Postgres
+-- will not drop a table that another table's FK points at, and the prod dump has no DROP for
+-- dev-only tables, so these FKs would block the dump's DROP TABLE public.listings / users and leave
+-- dev serving stale rows. detach_dev_only_fks() saves and drops them before the restore;
+-- reattach_dev_only_fks() adds them back afterwards. A row stays here until its FK is back, so a
+-- run that dies in between is repaired by the next one.
+create table if not exists snapshot_preserve.detached_fks (
+  relname     text not null,
+  conname     text not null,
+  def         text not null,
+  detached_at timestamptz not null default now(),
+  primary key (relname, conname)
+);
+
 -- last_restore_ok guards the backup: if the previous restore did not finish, the next save() merges
 -- into the old backup instead of replacing it, so a failed week never loses partner data.
 create table if not exists snapshot_preserve.state (
@@ -259,4 +279,88 @@ begin
            count(*) filter (where x.status = 'present'),
            count(*) filter (where x.status = 'failed')
     from _restore x group by x.table_name order by x.table_name;
+end $$;
+
+-- Save, then drop, every FK that runs from a dev-only table into a prod table (see detached_fks).
+-- Run after save() and before the restore. Returns how many FKs were detached this run.
+create or replace function snapshot_preserve.detach_dev_only_fks()
+returns bigint
+language plpgsql as $$
+declare
+  r record;
+  n bigint := 0;
+begin
+  if not exists (select 1 from snapshot_preserve.prod_tables) then
+    raise exception 'snapshot_preserve.prod_tables is empty; load prod''s table names first';
+  end if;
+
+  for r in
+    select ct.relname, c.conname,
+           -- An unvalidated FK reports itself with a trailing NOT VALID; reattach adds that itself.
+           regexp_replace(pg_get_constraintdef(c.oid), '\s+NOT VALID$', '') as def
+    from pg_constraint c
+    join pg_class ct     on ct.oid = c.conrelid
+    join pg_namespace cn on cn.oid = ct.relnamespace
+    join pg_class pt     on pt.oid = c.confrelid
+    join pg_namespace pn on pn.oid = pt.relnamespace
+    where c.contype = 'f' and cn.nspname = 'public' and pn.nspname = 'public'
+      and ct.relname not in (select relname from snapshot_preserve.prod_tables)
+      and pt.relname in (select relname from snapshot_preserve.prod_tables)
+    order by ct.relname, c.conname
+  loop
+    insert into snapshot_preserve.detached_fks (relname, conname, def)
+    values (r.relname, r.conname, r.def)
+    on conflict (relname, conname) do update set def = excluded.def, detached_at = now();
+    execute format('alter table public.%I drop constraint %I', r.relname, r.conname);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- Add every detached FK back. Each is tried VALID first; if rows now point at something the
+-- snapshot removed (a dev-only listing nobody protected, say) it falls back to NOT VALID, which
+-- still registers the relationship for PostgREST and still checks new writes. FKs whose table no
+-- longer exists are forgotten. Anything that still fails stays in detached_fks for the next run.
+create or replace function snapshot_preserve.reattach_dev_only_fks()
+returns table (restored bigint, restored_not_valid bigint, failed bigint)
+language plpgsql as $$
+declare
+  r  record;
+  ok bigint := 0;
+  nv bigint := 0;
+  bad bigint := 0;
+begin
+  for r in select * from snapshot_preserve.detached_fks order by relname, conname loop
+    if to_regclass(format('public.%I', r.relname)) is null then
+      raise warning 'public.% no longer exists; forgetting its foreign key %', r.relname, r.conname;
+    elsif exists (select 1 from pg_constraint c
+                  where c.conrelid = format('public.%I', r.relname)::regclass
+                    and c.conname = r.conname) then
+      null; -- already back
+    else
+      begin
+        execute format('alter table public.%I add constraint %I %s', r.relname, r.conname, r.def);
+        ok := ok + 1;
+      exception
+        when foreign_key_violation then
+          begin
+            execute format('alter table public.%I add constraint %I %s not valid',
+                           r.relname, r.conname, r.def);
+            nv := nv + 1;
+            raise notice 'reattached % on % (NOT VALID, orphan rows present)', r.conname, r.relname;
+          exception when others then
+            bad := bad + 1;
+            raise warning 'could not reattach % on %: %', r.conname, r.relname, sqlerrm;
+            continue;
+          end;
+        when others then
+          bad := bad + 1;
+          raise warning 'could not reattach % on %: %', r.conname, r.relname, sqlerrm;
+          continue;
+      end;
+    end if;
+    delete from snapshot_preserve.detached_fks d
+     where d.relname = r.relname and d.conname = r.conname;
+  end loop;
+  return query select ok, nv, bad;
 end $$;

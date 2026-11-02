@@ -16,6 +16,7 @@ import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 import ConversationsView from "@/components/admin/ConversationsView";
 import SentEmailsView from "@/components/admin/SentEmailsView";
 import BillingView from "@/components/admin/BillingView";
+import AgentsView from "@/components/admin/AgentsView";
 
 const VIEWS = [
   { key: "listings", label: "Listings" },
@@ -28,10 +29,11 @@ const VIEWS = [
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
   { key: "billing", label: "Billing" },
+  { key: "agents", label: "Agents" },
 ];
 
 // Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "billing"]);
+const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "billing", "agents"]);
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
 
@@ -455,6 +457,8 @@ export default function AdminDashboard() {
           <SentEmailsView search={search} dbTarget={dbTarget} />
         ) : view === "billing" ? (
           <BillingView search={search} />
+        ) : view === "agents" ? (
+          <AgentsView search={search} />
         ) : loading ? (
           <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
         ) : data ? (
