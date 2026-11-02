@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { nextBillingDay } from "./billingPeriod.js";
-import { paymentFailureMessage, periodLabel, recordPaymentFailure } from "./invoicing.js";
+import { assertInvoiceMatches, paymentFailureMessage, periodLabel, recordPaymentFailure } from "./invoicing.js";
 import { invoiceView } from "./invoiceAccess.js";
 import { adjustPaidCharge } from "./adjustments.js";
 import { BILLING_RUN_ENABLED, getBillingSetting } from "./settings.js";
@@ -36,6 +36,38 @@ describe("periodLabel", () => {
   it("names the month on the invoice", () => {
     assert.equal(periodLabel("2026-11-01"), "November 2026");
     assert.equal(periodLabel("2027-01-01"), "January 2027");
+  });
+});
+
+describe("assertInvoiceMatches", () => {
+  // A stand-in Stripe whose invoice items carry the given charge ids.
+  const stripeWith = (chargeIds) => ({
+    invoiceItems: {
+      list: () => ({
+        async *[Symbol.asyncIterator]() {
+          for (const id of chargeIds) yield { metadata: { charge_id: id } };
+        },
+      }),
+    },
+  });
+  const lines = [{ chargeId: "c1", amountCents: 3000 }, { chargeId: "c2", amountCents: 2000 }];
+
+  it("accepts an invoice with the right total and a line for every charge", async () => {
+    await assert.doesNotReject(() => assertInvoiceMatches(stripeWith(["c1", "c2"]), { id: "in_1", total: 5000 }, lines, 5000));
+  });
+
+  it("refuses an invoice with a different total (a stale invoice for the same month)", async () => {
+    await assert.rejects(
+      () => assertInvoiceMatches(stripeWith(["c1", "c2"]), { id: "in_old", total: 5500 }, lines, 5000),
+      (e) => e.code === "invoice_mismatch" && /5500 cents but 5000/.test(e.message)
+    );
+  });
+
+  it("refuses an invoice that is missing a line, even if the total happens to match", async () => {
+    await assert.rejects(
+      () => assertInvoiceMatches(stripeWith(["c1", "other"]), { id: "in_x", total: 5000 }, lines, 5000),
+      (e) => e.code === "invoice_mismatch" && /no line for 1 of the charges/.test(e.message)
+    );
   });
 });
 

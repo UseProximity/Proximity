@@ -98,6 +98,36 @@ export async function assertDraftTotal(stripe, invoiceId, expectedCents) {
   return fresh;
 }
 
+/*
+ * An invoice that is already finalized and is about to be treated as this
+ * landlord's invoice for the month must really be the one we built: the same
+ * total, with a line for every charge claimed onto it. Otherwise the charges
+ * would be marked Invoiced against an invoice that never billed them. The key
+ * alone is not proof, so a mismatch stops the run for that landlord and is
+ * reported, rather than being adopted quietly.
+ */
+export async function assertInvoiceMatches(stripe, invoice, lines, totalCents) {
+  if (invoice.total !== totalCents) {
+    throw new BillingError(
+      "invoice_mismatch",
+      `Stripe invoice ${invoice.id} totals ${invoice.total} cents but ${totalCents} is being billed.`,
+      500
+    );
+  }
+  const onInvoice = new Set();
+  for await (const item of stripe.invoiceItems.list({ invoice: invoice.id, limit: 100 })) {
+    if (item.metadata?.charge_id) onInvoice.add(item.metadata.charge_id);
+  }
+  const missing = lines.filter((l) => !onInvoice.has(l.chargeId));
+  if (missing.length) {
+    throw new BillingError(
+      "invoice_mismatch",
+      `Stripe invoice ${invoice.id} has no line for ${missing.length} of the charges being billed.`,
+      500
+    );
+  }
+}
+
 export function finalizeInvoice(stripe, invoiceId) {
   return stripe.invoices.finalizeInvoice(invoiceId, { auto_advance: false });
 }

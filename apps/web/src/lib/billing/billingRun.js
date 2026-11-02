@@ -25,6 +25,7 @@
  * ({ paymentFailed }) sends the emails; `hooks.at(name, ctx)` is a test seam that
  * is called between steps so tests can simulate a crash there.
  */
+import { BillingError } from "./errors.js";
 import { MIN_INVOICE_CENTS } from "./constants.js";
 import { billingPeriodFor } from "./billingPeriod.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoicePlan.js";
@@ -34,6 +35,7 @@ import { getOrCreateBillingAccount } from "./customers.js";
 import { defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
 import {
   assertDraftTotal,
+  assertInvoiceMatches,
   ensureDraftInvoice,
   ensureInvoiceItems,
   finalizeInvoice,
@@ -183,6 +185,8 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
       localInvoiceId: row.id,
     });
   }
+  // Anything already finalized must be the invoice we built for these charges.
+  if (invoice.status !== "draft") await assertInvoiceMatches(stripe, invoice, lines, total);
   await hooks.at?.("stripe_invoice_created", { row, invoice });
 
   // "unchanged" unless this call actually moves the invoice forward, so a run that
@@ -247,6 +251,28 @@ async function billLandlord(ctx, planned) {
     .maybeSingle();
   if (existingError) throw existingError;
   if (existing) return { outcome: "already_billed" };
+
+  // No local record, so no finalized Stripe invoice for this landlord and month should exist
+  // either. If one does (a record was lost, or it came from somewhere else), claiming charges
+  // onto it would mark them billed when they never were. Stop before touching anything.
+  const landlord = (await usersById(db, [planned.landlordId])).get(planned.landlordId);
+  const account = await getOrCreateBillingAccount(db, ctx.stripe, {
+    id: planned.landlordId,
+    email: landlord?.email,
+    name: landlord?.name,
+  });
+  const stripeInvoice = await findInvoiceByKey(
+    ctx.stripe,
+    account.stripe_customer_id,
+    invoiceIdempotencyKey(planned.landlordId, planned.billingPeriod)
+  );
+  if (stripeInvoice && stripeInvoice.status !== "draft") {
+    throw new BillingError(
+      "invoice_exists",
+      `Stripe already has a finalized invoice (${stripeInvoice.id}) for this landlord and month but there is no record of it here.`,
+      500
+    );
+  }
 
   const { data: row, error } = await db
     .from("billing_invoices")
