@@ -38,6 +38,11 @@ export default function QuestionsSection({ viewAsId = null, onCountChange = null
   useEffect(() => { load(); }, [load]);
   // Counts follow answers given anywhere: here, in Messages, or by email.
   useEffect(() => onLandlordChange(() => load()), [load]);
+  // And on its own every few seconds while on screen (Wyatt, 2026-11-02).
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 10000);
+    return () => clearInterval(t);
+  }, [load]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!listings) return <ChatSkeleton rows={4} />;

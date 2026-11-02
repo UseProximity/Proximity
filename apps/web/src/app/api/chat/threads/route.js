@@ -24,6 +24,7 @@ import { allSandboxUserIds } from "@/lib/reviewSandbox";
 import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
 import { landlordProxyOverview } from "@/lib/agents/landlordChat";
 import { agentsEnabled } from "@/lib/agents/flags";
+import { fmtTourTime } from "@/lib/agents/tourTime";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -33,6 +34,24 @@ const SAFE_START_CHAT_ERRORS = new Set([
 ]);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * A direct chat that a tour opened carries that tour, so the chat can say at
+ * the top what it is for (Wyatt, 2026-11-02).
+ */
+async function withTours(rows) {
+  const ids = rows.map((t) => t.threadId).filter(Boolean);
+  if (!ids.length) return rows;
+  const { data } = await supabase.from("tour_requests").select("id, thread_id, status, confirmed_slot, created_at, listings!listing_id(title, address)")
+    .in("thread_id", ids).order("created_at", { ascending: false });
+  const byThread = new Map();
+  for (const t of data ?? []) if (!byThread.has(t.thread_id)) byThread.set(t.thread_id, t);
+  return rows.map((row) => {
+    const t = byThread.get(row.threadId);
+    if (!t) return row;
+    return { ...row, tour: { id: t.id, status: t.status, confirmedText: t.confirmed_slot ? fmtTourTime(t.confirmed_slot) : null, listingTitle: t.listings?.title || t.listings?.address || "the listing" } };
+  });
+}
 
 // GET /api/chat/threads: inbox for the logged-in user
 export async function GET(req) {
@@ -65,7 +84,7 @@ export async function GET(req) {
         inbox = unblocked.filter((t) => !sandboxIds.has(t.otherUserId));
       }
     }
-    const direct = (await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
+    const direct = await withTours((await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t })));
     // The student's Proxy conversations ride along, on their own tab in the
     // overlay. They never fail the inbox. Only clients that ask for them get
     // them (the web overlay passes ?include=proxy; the mobile app does not

@@ -26,6 +26,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { detectTourProposal } from "./tourProposals";
 import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
 import { shortDate } from "./sections";
 import {
@@ -213,13 +214,32 @@ const chatLink = (threadId) => `/?messages=1&thread=${threadId}`;
 export async function sendDirectMessage({ threadId, listingId, senderId, body, metadata = {}, via = "app" }) {
   const msg = await postMessage({ threadId, listingId, senderId, type: "text", body, metadata });
   await supabase.from("chat_participants").update({ last_read_at: new Date().toISOString() }).eq("thread_id", threadId).eq("user_id", senderId);
-  const notify = () => Promise.all([
-    notifyNewChatMessage({ threadId, senderId, messageId: msg.id, baseUrl: getBaseUrl(), via }),
-    notifyNewChatMessagePush({ threadId, senderId, messageId: msg.id }),
-  ]).catch((err) => console.error("[tours] direct chat alert failed:", err?.message ?? err));
+  const notify = async () => {
+    // A suggested tour time is spotted first, so the email can carry its Confirm.
+    await detectTourProposal({ threadId, messageId: msg.id, senderId, body });
+    await Promise.all([
+      notifyNewChatMessage({ threadId, senderId, messageId: msg.id, baseUrl: getBaseUrl(), via }),
+      notifyNewChatMessagePush({ threadId, senderId, messageId: msg.id }),
+    ]).catch((err) => console.error("[tours] direct chat alert failed:", err?.message ?? err));
+  };
   // After the response, like the chat routes; outside a request, right away.
   try { after(notify); } catch { await notify(); }
   return msg;
+}
+
+/*
+ * Whether the student already has another tour within the hour of `iso`.
+ * Returns the message to show, naming the time but not where: the other
+ * listing stays the student's business (Wyatt, 2026-11-02). Null when free.
+ */
+export async function studentClash({ tour, iso }) {
+  const { data: booked } = await supabase.from("tour_requests").select("confirmed_slot")
+    .eq("student_id", tour.student_id).eq("status", "confirmed").neq("id", tour.id);
+  const clash = (booked ?? []).map((b) => b.confirmed_slot).filter(Boolean).find((b) => clashesWith(iso, [b]));
+  if (!clash) return null;
+  const clock = (x) => fmtTourTime(x).replace(/^.* at /, "");
+  const end = new Date(Date.parse(clash) + 3600 * 1000).toISOString();
+  return `The student already has a tour on ${fmtTourTime(clash)}. Pick a time outside ${clock(clash)} to ${clock(end)}.`;
 }
 
 /*
@@ -228,7 +248,7 @@ export async function sendDirectMessage({ threadId, listingId, senderId, body, m
  * written-out availability read from the slots, so both update. A request left
  * with no times tells the student in that listing's Proxy chat.
  */
-async function releaseTourTime(t, iso) {
+export async function releaseTourTime(t, iso) {
   const { data: others } = await supabase.from("tour_requests").select("id, listing_id, student_slots, proxy_thread_id, status, listings!listing_id(title, address)")
     .eq("student_id", t.student_id).in("status", ["requested", "proposed", "messaging"]).neq("id", t.id);
   for (const o of others ?? []) {
@@ -255,7 +275,8 @@ async function confirm(t, iso, byUserId) {
   if (error) throw fail("tour confirm", error);
   if (!updated) return null;
   await releaseTourTime(t, iso).catch((err) => console.error("[tours] releasing the time failed:", err?.message ?? err));
-  await sendDirectMessage({ threadId, listingId: t.listing_id, senderId: t.landlord_id, body: `Your tour is confirmed for ${when}. Message me here if anything changes.`, metadata: { tourId: t.id, confirmed: true } });
+  // No message in the landlord's voice: the chat's note at the top says the
+  // tour is confirmed (Wyatt, 2026-11-02).
   if (t.proxy_thread_id) {
     await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
       body: `Your tour is confirmed for ${when}. The landlord can message you directly now, and you can reply to them there.`,
@@ -279,11 +300,8 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
     const checked = checkTourTime(t.student_slots ?? [], day, time);
     if (checked.error) return { error: checked.error, status: 400 };
     // The student may have just been booked for another tour at that time.
-    const { data: booked } = await supabase.from("tour_requests").select("confirmed_slot")
-      .eq("student_id", t.student_id).eq("status", "confirmed").neq("id", t.id);
-    if (clashesWith(checked.iso, (booked ?? []).map((b) => b.confirmed_slot).filter(Boolean))) {
-      return { error: "That time was just booked for another of the student's tours. Pick a different time.", status: 409 };
-    }
+    const clash = await studentClash({ tour: t, iso: checked.iso });
+    if (clash) return { error: clash, status: 409 };
     const updated = await confirm(t, checked.iso, landlordId);
     if (!updated) return { error: "This request just changed. Refresh to see where it stands.", status: 409 };
     return { tour: shape(updated, "landlord") };

@@ -309,6 +309,7 @@ export function buildChatMessageEmail({
   threadUrl,
   canReply,
   reminder = false,
+  action = null,
 }) {
   const named = displayName(senderName, "");
   const other = named || "Someone";
@@ -346,6 +347,7 @@ export function buildChatMessageEmail({
             : `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`
         )
         .join("")}
+      ${action ? `<a href="${action.url}" style="display:inline-block;margin:4px 0 8px;padding:10px 18px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px">${escapeHtml(action.label)}</a>` : ""}
       <p style="margin:24px 0 0;color:#6b7280;font-size:14px;line-height:1.5">
         <span style="color:#111827;font-weight:600">${escapeHtml(other)}</span>${company ? `<br>${escapeHtml(company)}` : ""}<br>
         About <a href="${threadUrl}" style="color:#6b7280">${escapeHtml(about)}</a>
@@ -363,6 +365,7 @@ export function buildChatMessageEmail({
     canReply ? `Reply above this line to message ${other}.\n` : null,
     nudge ? `${nudge}\n` : null,
     ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
+    action ? `${action.label}: ${action.url}\n` : null,
     other,
     company || null,
     `About ${about}`,
@@ -403,6 +406,7 @@ export async function sendChatMessageEmail({
   // REVIEW_SANDBOX_INBOX instead (see lib/outreach.js). The caller leaves out the
   // reply address and magic link for these, which also keeps it off the SES branch.
   sandbox = false,
+  action = null,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -417,6 +421,7 @@ export async function sendChatMessageEmail({
       threadUrl,
       canReply,
       reminder,
+      action,
     });
   const { subject, fromName } = build(false);
 

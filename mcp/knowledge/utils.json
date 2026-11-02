@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-02T15:04:32.732Z",
-  "count": 226,
+  "_generated": "2026-11-02T22:42:08.600Z",
+  "count": 227,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -138,6 +138,10 @@
     {
       "file": "src/lib/agents/tourNotify.js",
       "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
+    },
+    {
+      "file": "src/lib/agents/tourProposals.js",
+      "description": "Tour times suggested in a tour's direct chat (Wyatt, 2026-11-02)."
     },
     {
       "file": "src/lib/agents/tours.js",

@@ -36,6 +36,11 @@ export default function ToursSection({ viewAsId = null }) {
   useEffect(() => { load(); }, [load]);
   // A pick or a message to the student in any other area updates this list, and the other way round.
   useEffect(() => onLandlordChange(() => load()), [load]);
+  // New requests and replies show without a reload (Wyatt, 2026-11-02).
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 10000);
+    return () => clearInterval(t);
+  }, [load]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!tours) return <ChatSkeleton rows={3} />;
