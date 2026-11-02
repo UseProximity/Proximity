@@ -19,6 +19,11 @@
  *   DOCUMENSO_WEBHOOK_SECRET  the secret set on the team's webhook
  *   DOCUMENSO_HOST            optional, defaults to https://app.documenso.com
  *
+ * Documenso's own emails (a completed copy to the signer, notices to the team
+ * account's owner) follow `emailSettings`, set on each landlord's copy. Off
+ * production every one is off (agreementServices.js), because dev holds real
+ * landlords' addresses.
+ *
  * Errors become DocumensoError with Documenso's HTTP status. Their messages are
  * for logs and admins, never shown to a landlord.
  */
@@ -92,10 +97,24 @@ export function templateEditorUrl(envelope, host = documensoHost()) {
   return `${host}/t/${encodeURIComponent(team)}/templates/${encodeURIComponent(envelope.id)}/edit`;
 }
 
+// Every Documenso email for a document, switched off.
+export const DOCUMENSO_EMAILS_OFF = {
+  recipientSigningRequest: false,
+  recipientRemoved: false,
+  recipientSigned: false,
+  documentPending: false,
+  documentCompleted: false,
+  documentDeleted: false,
+  ownerDocumentCompleted: false,
+  ownerRecipientExpired: false,
+  ownerDocumentCreated: false,
+};
+
 export function createDocumensoClient({
   apiKey = process.env.DOCUMENSO_API_KEY,
   host = documensoHost(),
   fetchImpl = (...args) => fetch(...args),
+  emailSettings = null,
 } = {}) {
   const base = `${host}/api/v2`;
 
@@ -178,7 +197,7 @@ export function createDocumensoClient({
         }),
       });
       const sent = await request("POST", "/envelope/distribute", {
-        json: { envelopeId: used.id, meta: { distributionMethod: "NONE" } },
+        json: { envelopeId: used.id, meta: { distributionMethod: "NONE", ...(emailSettings && { emailSettings }) } },
       });
       const signer = (sent.recipients ?? []).find((r) => r.role === "SIGNER") ?? sent.recipients?.[0];
       if (!signer?.token) throw new DocumensoError("Documenso did not return a signing token.", 502, sent);

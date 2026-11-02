@@ -10,6 +10,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  DOCUMENSO_EMAILS_OFF,
   createDocumensoClient,
   templateEditorUrl,
   templateFieldSummary,
@@ -200,6 +201,19 @@ describe("Documenso client requests", () => {
     assert.equal(used.distributeDocument, false);
     assert.ok(sent[1].url.endsWith("/envelope/distribute"));
     assert.deepEqual(JSON.parse(sent[1].init.body), { envelopeId: "envelope_c1", meta: { distributionMethod: "NONE" } });
+  });
+
+  it("switches off every Documenso email when asked (staging, previews, local)", async () => {
+    const { sent, fetchImpl } = recordingFetch([
+      { body: { id: "envelope_c2" } },
+      { body: { success: true, id: "envelope_c2", recipients: [{ id: 1, role: "SIGNER", token: "tok" }] } },
+    ]);
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl, emailSettings: DOCUMENSO_EMAILS_OFF });
+    await client.createSigningCopy({ templateId: "t", recipientId: 1, email: "a@b.c", name: "A", externalId: "x" });
+    const meta = JSON.parse(sent[1].init.body).meta;
+    assert.equal(meta.distributionMethod, "NONE");
+    assert.ok(Object.values(meta.emailSettings).every((v) => v === false));
+    assert.equal(Object.keys(meta.emailSettings).length, 9);
   });
 
   it("downloads the signed version of the envelope's first document", async () => {
