@@ -396,10 +396,13 @@ export async function POST(request) {
           });
           sent += 1;
           // Same markup as the browse-page contact flow (POST /api/contacted):
-          // contacted interaction + "contacts" listing metric.
-          const { error: trackErr } = await recordListingContact({ userId: actor.id, listingId });
-          if (trackErr) {
-            console.error("[matchmaking/chat contact_owners] contact tracking failed:", trackErr);
+          // contacted interaction + "contacts" listing metric. Not for a review sandbox
+          // student, whose inquiry never reached the owner, so the owner's counts stay real.
+          if (!sandbox) {
+            const { error: trackErr } = await recordListingContact({ userId: actor.id, listingId });
+            if (trackErr) {
+              console.error("[matchmaking/chat contact_owners] contact tracking failed:", trackErr);
+            }
           }
         } catch (err) {
           console.error("[matchmaking/chat contact_owners] send failed:", err);

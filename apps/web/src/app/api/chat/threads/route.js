@@ -65,7 +65,7 @@ export async function GET(req) {
         inbox = unblocked.filter((t) => !sandboxIds.has(t.otherUserId));
       }
     }
-    const direct =(await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
+    const direct = (await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t }));
     // The student's Proxy conversations ride along, on their own tab in the
     // overlay. They never fail the inbox. Only clients that ask for them get
     // them (the web overlay passes ?include=proxy; the mobile app does not
