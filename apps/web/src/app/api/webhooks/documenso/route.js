@@ -10,6 +10,11 @@ import { agreementServices } from "@/lib/billing/agreementServices";
 /*
  * Documenso webhook: a landlord finished, declined or a copy was cancelled.
  *
+ * Production and the test environments share one Documenso team, and each has
+ * its own webhook, so every environment hears about every document. A document
+ * this environment's database does not know is ignored before Documenso is asked
+ * anything.
+ *
  * Documenso sends the webhook secret in X-Documenso-Secret; anything without the
  * right one is refused before the body is read. The body is used only for the
  * envelope id: the envelope is then fetched from Documenso's API, so a forged or
@@ -17,9 +22,10 @@ import { agreementServices } from "@/lib/billing/agreementServices";
  * answers 500 so Documenso tries again; an envelope that is not one of ours, or an
  * event we do not use, answers 200.
  *
- * In Documenso: Team settings > Webhooks, URL https://<site>/api/webhooks/documenso,
- * events DOCUMENT_COMPLETED, DOCUMENT_REJECTED and DOCUMENT_CANCELLED, and a secret
- * equal to DOCUMENSO_WEBHOOK_SECRET.
+ * In Documenso: Team settings > Webhooks, one per environment, URL
+ * https://<site>/api/webhooks/documenso, events DOCUMENT_COMPLETED,
+ * DOCUMENT_REJECTED and DOCUMENT_CANCELLED, and a secret equal to that
+ * environment's DOCUMENSO_WEBHOOK_SECRET.
  *
  * @auth Documenso webhook secret (DOCUMENSO_WEBHOOK_SECRET)
  */
@@ -42,6 +48,15 @@ export async function POST(req) {
   }
 
   try {
+    // Not one of ours (another environment's document, or a template): nothing to do.
+    const { data: known, error } = await supabase
+      .from("landlord_agreements")
+      .select("id")
+      .eq("provider_envelope_id", envelopeId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!known) return NextResponse.json({ ok: true, ignored: "not this environment's document" });
+
     const { documenso, options } = agreementServices();
     const envelope = await documenso.getEnvelope(envelopeId);
     const result = await applyEnvelope(supabase, documenso, envelope, options);

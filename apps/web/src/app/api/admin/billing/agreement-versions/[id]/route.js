@@ -12,7 +12,7 @@ import {
   versionView,
 } from "@/lib/billing/agreementVersions";
 import { readAgreementFile, signedAgreementUrl } from "@/lib/billing/agreementFiles";
-import { createDocumensoClient } from "@/lib/billing/documenso";
+import { documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -53,7 +53,7 @@ export async function POST(req, { params }) {
   try {
     const id = await versionId(params);
     const body = await req.json().catch(() => ({}));
-    const documenso = createDocumensoClient();
+    const documenso = documensoClient();
 
     if (body.action === "connect") {
       const version = await connectVersion(supabase, documenso, await getVersion(supabase, id), null, { readPdf: readAgreementFile });

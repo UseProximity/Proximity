@@ -5,7 +5,8 @@ import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { markAgreementSent, markAgreementSigned, voidAgreement } from "@/lib/billing/agreements";
-import { createDocumensoClient, documensoConfigured } from "@/lib/billing/documenso";
+import { documensoConfigured } from "@/lib/billing/documenso";
+import { documensoClient } from "@/lib/billing/agreementServices";
 import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
@@ -68,7 +69,7 @@ export async function POST(req) {
     if (action === "send") {
       agreement = await markAgreementSent(supabase, { userId: landlord.id });
     } else if (action === "void") {
-      agreement = await voidAgreement(supabase, documensoConfigured() ? createDocumensoClient() : null, { userId: landlord.id });
+      agreement = await voidAgreement(supabase, documensoConfigured() ? documensoClient() : null, { userId: landlord.id });
     } else {
       // Validate the name and date first, so a bad form never leaves an orphaned upload.
       if (!String(signerName ?? "").trim()) throw new BillingError("signer_required", "Who signed the agreement?");

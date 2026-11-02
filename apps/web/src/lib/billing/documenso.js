@@ -13,10 +13,14 @@
  *   downloadSigned     the completed PDF, signatures and audit trail included
  *   cancel             withdraws a copy that is no longer wanted
  *
- * Configuration (each environment has its own Documenso team, so staging and
- * local never touch production documents):
- *   DOCUMENSO_API_KEY         team API key (Settings > API tokens)
- *   DOCUMENSO_WEBHOOK_SECRET  the secret set on the team's webhook
+ * Configuration. The Teams plan allows one Documenso team, so production and
+ * every test environment share it, each with its own API token and webhook.
+ * They stay apart because each environment acts only on documents its own
+ * database knows about (the webhook ignores the rest), and are told apart in
+ * Documenso by folder and by a [TEST] title prefix off production:
+ *   DOCUMENSO_API_KEY         team API key (Team settings > API Tokens)
+ *   DOCUMENSO_WEBHOOK_SECRET  the secret set on this environment's webhook
+ *   DOCUMENSO_FOLDER_ID       optional: the Documenso folder this environment files into
  *   DOCUMENSO_HOST            optional, defaults to https://app.documenso.com
  *
  * Documenso's own emails (a completed copy to the signer, notices to the team
@@ -115,8 +119,14 @@ export function createDocumensoClient({
   host = documensoHost(),
   fetchImpl = (...args) => fetch(...args),
   emailSettings = null,
+  folderId = null,
+  titlePrefix = "",
+  envTag = null,
 } = {}) {
   const base = `${host}/api/v2`;
+  // externalId says which environment made a document, e.g. "staging:landlord-agreement:<id>".
+  const tagged = (id) => (envTag ? `${envTag}:${id}` : id);
+  const titled = (t) => `${titlePrefix}${t}`.slice(0, 255);
 
   async function request(method, path, { json, form, raw = false } = {}) {
     if (!apiKey) throw new DocumensoError("Documenso is not connected (DOCUMENSO_API_KEY is not set).", 503);
@@ -163,9 +173,10 @@ export function createDocumensoClient({
       const created = await request("POST", "/envelope/create", {
         form: multipart(
           {
-            title,
+            title: titled(title),
             type: "TEMPLATE",
-            externalId,
+            externalId: tagged(externalId),
+            ...(folderId && { folderId }),
             // The signer is a placeholder: each landlord's copy fills in their name and email.
             recipients: [{ email: "", name: "", role: "SIGNER" }],
             meta: { distributionMethod: "NONE", language: "en", typedSignatureEnabled: true, drawSignatureEnabled: true },
@@ -190,8 +201,11 @@ export function createDocumensoClient({
       const used = await request("POST", "/envelope/use", {
         form: multipart({
           envelopeId: templateId,
-          externalId,
+          externalId: tagged(externalId),
           recipients: [{ id: recipientId, email, name }],
+          ...(folderId && { folderId }),
+          // Named after the landlord, so it is easy to find in Documenso.
+          override: { title: titled(`Commission agreement: ${name}${email && email !== name ? ` (${email})` : ""}`) },
           ...(prefillFields.length && { prefillFields }),
           distributeDocument: false,
         }),

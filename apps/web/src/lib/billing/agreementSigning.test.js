@@ -231,6 +231,30 @@ describe("Documenso client requests", () => {
   });
 });
 
+describe("one Documenso team for every environment", () => {
+  it("files test documents in this environment's folder, labelled [TEST] and tagged with the environment", async () => {
+    const sent = [];
+    const fetchImpl = async (url, init) => {
+      sent.push({ url, init });
+      const body = url.endsWith("/distribute")
+        ? { success: true, id: "envelope_c", recipients: [{ id: 1, role: "SIGNER", token: "tok" }] }
+        : { id: url.endsWith("/use") ? "envelope_c" : "envelope_t" };
+      return { ok: true, status: 200, json: async () => body, text: async () => "" };
+    };
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl, folderId: "folder_test", titlePrefix: "[TEST] ", envTag: "staging" });
+    await client.createTemplate({ title: "Proximity commission agreement (Dec)", pdfBytes: new Uint8Array([37]), externalId: "agreement-version:v1" });
+    await client.createSigningCopy({ templateId: "envelope_t", recipientId: 1, email: "pat@x.com", name: "Pat", externalId: "landlord-agreement:a1" });
+    const template = JSON.parse(sent[0].init.body.get("payload"));
+    assert.equal(template.title, "[TEST] Proximity commission agreement (Dec)");
+    assert.equal(template.folderId, "folder_test");
+    assert.equal(template.externalId, "staging:agreement-version:v1");
+    const copy = JSON.parse(sent[1].init.body.get("payload"));
+    assert.equal(copy.override.title, "[TEST] Commission agreement: Pat (pat@x.com)");
+    assert.equal(copy.folderId, "folder_test");
+    assert.equal(copy.externalId, "staging:landlord-agreement:a1");
+  });
+});
+
 describe("Documenso webhook secret", () => {
   it("accepts only the exact secret, and nothing when none is configured", () => {
     assert.equal(verifyWebhookSecret("s3cret", "s3cret"), true);

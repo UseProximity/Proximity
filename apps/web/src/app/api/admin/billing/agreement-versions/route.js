@@ -5,7 +5,8 @@ import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { listVersions, uploadVersion, versionView } from "@/lib/billing/agreementVersions";
 import { storeAgreementVersion } from "@/lib/billing/agreementFiles";
-import { createDocumensoClient, documensoConfigured } from "@/lib/billing/documenso";
+import { documensoConfigured } from "@/lib/billing/documenso";
+import { documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -45,7 +46,7 @@ export async function POST(req) {
     const form = await req.formData();
     const file = form.get("file");
     if (!file || typeof file !== "object" || !file.size) throw new BillingError("file_required", "Choose the agreement PDF to upload.");
-    const version = await uploadVersion(supabase, createDocumensoClient(), {
+    const version = await uploadVersion(supabase, documensoClient(), {
       adminId: session.user.id,
       label: form.get("label"),
       fileName: file.name,
