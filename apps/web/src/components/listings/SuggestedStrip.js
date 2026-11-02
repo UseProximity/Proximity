@@ -62,7 +62,7 @@ export default function SuggestedStrip({
     <section aria-label={label} className="mb-6">
       <div
         className={
-          layout === "grid" ? "grid grid-cols-2 gap-6" : "space-y-4"
+          layout === "grid" ? "grid grid-cols-2 gap-3" : "space-y-4"
         }
       >
         {listings.map((listing, i) => (

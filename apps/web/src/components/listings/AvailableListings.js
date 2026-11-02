@@ -457,7 +457,7 @@ export default function AvailableListings({
       <div
         ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[58vw]" : "w-[40vw] px-4 py-4"
+          expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
@@ -500,12 +500,12 @@ export default function AvailableListings({
             transition={{ duration: 0.18 }}
           >
             <div
-              className={`flex items-center gap-2 px-1 mb-4 ${
+              className={`flex items-center gap-2 px-1 mb-3 ${
                 showSuggested ? "justify-between" : ""
               }`}
             >
               {showSuggested && <SuggestedHeading label={suggestedLabel} />}
-              <p className="text-sm font-semibold text-gray-500">
+              <p className="text-xs font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
               </p>
@@ -537,7 +537,7 @@ export default function AvailableListings({
             {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-3">
                 {visibleListings.map((listing) => (
                   <div key={listing._id} data-listing-id={listing._id}>
                     <ListingCard
