@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import {
   DOCUMENSO_EMAILS_OFF,
   createDocumensoClient,
+  documensoSetting,
   templateEditorUrl,
   templateFieldSummary,
   verifyWebhookSecret,
@@ -246,12 +247,31 @@ describe("one Documenso team for every environment", () => {
     await client.createSigningCopy({ templateId: "envelope_t", recipientId: 1, email: "pat@x.com", name: "Pat", externalId: "landlord-agreement:a1" });
     const template = JSON.parse(sent[0].init.body.get("payload"));
     assert.equal(template.title, "[TEST] Proximity commission agreement (Dec)");
-    assert.equal(template.folderId, "folder_test");
+    assert.equal(template.folderId, undefined, "templates are not filed in the document folder");
     assert.equal(template.externalId, "staging:agreement-version:v1");
     const copy = JSON.parse(sent[1].init.body.get("payload"));
     assert.equal(copy.override.title, "[TEST] Commission agreement: Pat (pat@x.com)");
     assert.equal(copy.folderId, "folder_test");
     assert.equal(copy.externalId, "staging:landlord-agreement:a1");
+  });
+});
+
+describe("which Documenso settings an environment reads", () => {
+  it("never reads the production settings off production, even when both are present", () => {
+    const saved = { ...process.env };
+    try {
+      Object.assign(process.env, { DOCUMENSO_API_KEY: "prod", DOCUMENSO_API_KEY_DEV: "dev", APP_ENV: "development" });
+      assert.equal(documensoSetting("DOCUMENSO_API_KEY"), "dev");
+      delete process.env.DOCUMENSO_API_KEY_DEV;
+      assert.equal(documensoSetting("DOCUMENSO_API_KEY"), null, "no fallback to the production key");
+      process.env.APP_ENV = "staging";
+      assert.equal(documensoSetting("DOCUMENSO_API_KEY"), null);
+      process.env.APP_ENV = "production";
+      assert.equal(documensoSetting("DOCUMENSO_API_KEY"), "prod");
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
   });
 });
 

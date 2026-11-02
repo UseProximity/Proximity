@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { verifyWebhookSecret } from "@/lib/billing/documenso";
+import { documensoSetting, verifyWebhookSecret } from "@/lib/billing/documenso";
 import { applyEnvelope } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 
@@ -27,13 +27,13 @@ import { agreementServices } from "@/lib/billing/agreementServices";
  * DOCUMENT_REJECTED and DOCUMENT_CANCELLED, and a secret equal to that
  * environment's DOCUMENSO_WEBHOOK_SECRET.
  *
- * @auth Documenso webhook secret (DOCUMENSO_WEBHOOK_SECRET)
+ * @auth Documenso webhook secret (DOCUMENSO_WEBHOOK_SECRET, DOCUMENSO_WEBHOOK_SECRET_DEV off production)
  */
 const HANDLED = new Set(["DOCUMENT_COMPLETED", "DOCUMENT_REJECTED", "DOCUMENT_CANCELLED", "DOCUMENT_SIGNED", "DOCUMENT_RECIPIENT_COMPLETED"]);
 
 export async function POST(req) {
-  if (!process.env.DOCUMENSO_WEBHOOK_SECRET) {
-    console.error("documenso webhook: DOCUMENSO_WEBHOOK_SECRET is not set");
+  if (!documensoSetting("DOCUMENSO_WEBHOOK_SECRET")) {
+    console.error("documenso webhook: DOCUMENSO_WEBHOOK_SECRET (or _DEV off production) is not set");
     return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
   }
   if (!verifyWebhookSecret(req.headers.get("x-documenso-secret"))) {

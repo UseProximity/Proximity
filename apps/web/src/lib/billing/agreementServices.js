@@ -4,20 +4,21 @@
  * stand-ins.
  *
  * Production and the test environments share one Documenso team (Teams plan), so
- * the client is set up per environment: its own folder (DOCUMENSO_FOLDER_ID), a
+ * the client is set up per environment: its own folder (DOCUMENSO_FOLDER_ID, or
+ * DOCUMENSO_FOLDER_ID_DEV off production), a
  * [TEST] title prefix and environment tag off production data, and, off
  * production, no Documenso emails at all (outreach rule: dev holds real landlords'
  * addresses).
  */
 import { appEnv, isProdData, outreachEnabled } from "@/lib/appEnv";
-import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured } from "./documenso.js";
+import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured, documensoSetting } from "./documenso.js";
 import { storeSignedAgreement } from "./agreementFiles.js";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
 
 export function documensoClient() {
   return createDocumensoClient({
     emailSettings: outreachEnabled() ? null : DOCUMENSO_EMAILS_OFF,
-    folderId: process.env.DOCUMENSO_FOLDER_ID || null,
+    folderId: documensoSetting("DOCUMENSO_FOLDER_ID"),
     titlePrefix: isProdData() ? "" : "[TEST] ",
     envTag: appEnv(),
   });

@@ -20,8 +20,13 @@
  * Documenso by folder and by a [TEST] title prefix off production:
  *   DOCUMENSO_API_KEY         team API key (Team settings > API Tokens)
  *   DOCUMENSO_WEBHOOK_SECRET  the secret set on this environment's webhook
- *   DOCUMENSO_FOLDER_ID       optional: the Documenso folder this environment files into
+ *   DOCUMENSO_FOLDER_ID       optional: the Documenso document folder landlords' copies go in
  *   DOCUMENSO_HOST            optional, defaults to https://app.documenso.com
+ *
+ * Production reads those names. Everywhere else (staging, previews, local) reads
+ * the same names with a _DEV suffix (DOCUMENSO_API_KEY_DEV, ...), never the
+ * production ones, so a laptop holding both never touches production documents.
+ * Like PROD_/DEV_SUPABASE_URL, the switch is isProdData().
  *
  * Documenso's own emails (a completed copy to the signer, notices to the team
  * account's owner) follow `emailSettings`, set on each landlord's copy. Off
@@ -32,6 +37,7 @@
  * for logs and admins, never shown to a landlord.
  */
 import { timingSafeEqual } from "node:crypto";
+import { isProdData } from "../appEnv.js";
 
 export const DEFAULT_DOCUMENSO_HOST = "https://app.documenso.com";
 
@@ -44,12 +50,17 @@ export class DocumensoError extends Error {
   }
 }
 
+// One Documenso setting for this environment: NAME on production data, NAME_DEV elsewhere.
+export function documensoSetting(name) {
+  return (isProdData() ? process.env[name] : process.env[`${name}_DEV`]) || null;
+}
+
 export function documensoHost() {
-  return (process.env.DOCUMENSO_HOST || DEFAULT_DOCUMENSO_HOST).replace(/\/+$/, "");
+  return (documensoSetting("DOCUMENSO_HOST") || DEFAULT_DOCUMENSO_HOST).replace(/\/+$/, "");
 }
 
 export function documensoConfigured() {
-  return !!process.env.DOCUMENSO_API_KEY;
+  return !!documensoSetting("DOCUMENSO_API_KEY");
 }
 
 /*
@@ -57,7 +68,7 @@ export function documensoConfigured() {
  * is compared in constant time. With no secret configured every request is
  * refused: an open endpoint would let anyone mark an agreement signed.
  */
-export function verifyWebhookSecret(received, expected = process.env.DOCUMENSO_WEBHOOK_SECRET) {
+export function verifyWebhookSecret(received, expected = documensoSetting("DOCUMENSO_WEBHOOK_SECRET")) {
   if (!expected || typeof received !== "string" || !received) return false;
   const a = Buffer.from(received);
   const b = Buffer.from(expected);
@@ -115,7 +126,7 @@ export const DOCUMENSO_EMAILS_OFF = {
 };
 
 export function createDocumensoClient({
-  apiKey = process.env.DOCUMENSO_API_KEY,
+  apiKey = documensoSetting("DOCUMENSO_API_KEY"),
   host = documensoHost(),
   fetchImpl = (...args) => fetch(...args),
   emailSettings = null,
@@ -176,7 +187,8 @@ export function createDocumensoClient({
             title: titled(title),
             type: "TEMPLATE",
             externalId: tagged(externalId),
-            ...(folderId && { folderId }),
+            // No folder: Documenso keeps template folders apart from document
+            // folders, and DOCUMENSO_FOLDER_ID is a document folder.
             // The signer is a placeholder: each landlord's copy fills in their name and email.
             recipients: [{ email: "", name: "", role: "SIGNER" }],
             meta: { distributionMethod: "NONE", language: "en", typedSignatureEnabled: true, drawSignatureEnabled: true },
