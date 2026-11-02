@@ -1428,10 +1428,10 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           {/* Tab strip */}
           <div
             className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-              compact ? "" : "px-4"
+              compact ? "pl-5" : "px-4"
             }`}
           >
-            <nav className="flex max-w-7xl mx-auto justify-center">
+            <nav className={`flex max-w-7xl mx-auto ${compact ? "justify-start" : "justify-center"}`}>
               {Array.from({ length: tabCount }).map((_, i) => (
                 <div key={i} className="px-5 py-3">
                   <Bar className="h-4 w-16" />
@@ -2321,13 +2321,16 @@ export default function ListingModalInfo({
               <div
                 id="listing-tabs"
                 className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                  compact ? "" : "px-4"
+                  compact ? "pl-5" : "px-4"
                 }`}
               >
                 {/* Three-column row so the tabs stay optically centred no matter
-                    how wide the right-hand action is. */}
+                    how wide the right-hand action is. In the browse panel they
+                    start at the left instead, the first label in line with the
+                    title above (Wyatt, 2026-11-01): pl-5 plus the tab's own
+                    px-5 matches the title's px-10. */}
                 <nav className="flex items-stretch max-w-7xl mx-auto">
-                  <div className="flex-1" aria-hidden="true" />
+                  {!compact && <div className="flex-1" aria-hidden="true" />}
 
                   <div className="flex overflow-x-auto scrollbar-hidden">
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
