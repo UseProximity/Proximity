@@ -211,7 +211,8 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbo
   const [replyTo, references, proposal] = await Promise.all([
     sandbox ? null : ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
     earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
-    pendingProposalFor({ threadId: data.threadId, userId: data.recipientId }).catch(() => null),
+    // No tour confirm link in a sandbox alert: it would act as the real recipient.
+    sandbox ? null : pendingProposalFor({ threadId: data.threadId, userId: data.recipientId }).catch(() => null),
   ]);
   // A tour time suggested to this person: confirm it from the email (Wyatt, 2026-11-02).
   const key = proposal ? proposalKey({ messageId: proposal.messageId, userId: data.recipientId }) : null;
