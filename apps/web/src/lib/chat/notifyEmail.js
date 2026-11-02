@@ -37,6 +37,7 @@ import { sendChatMessageEmail } from "@/lib/email";
 import { mintChatAccessToken } from "@/lib/chat/accessToken";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
 const MAX_REFERENCES = 20;
@@ -117,7 +118,7 @@ export async function notifyNewChatMessage({
     }
     if (!data?.recipientEmail) return;
 
-    await deliverAlert(data, { baseUrl, testEmailTo, messageId });
+    await deliverAlert(data, { baseUrl, testEmailTo, messageId, senderId });
   } catch (err) {
     // The message is already delivered in-app, so the sender never sees this.
     // The team does (deliverAlert reports its own failures; this is anything else).
@@ -145,10 +146,19 @@ async function logAttempt(row) {
 
 /*
  * Send one alert for a recipient row from rpc_chat_notification_recipient and log it.
- * Returns the send result, or null when nothing was sent. Never throws: a failed
- * send is logged as 'failed' and reported to the team.
+ * Returns the send result, or null when nothing was sent. A failed send is logged as
+ * 'failed' and reported to the team, and is not thrown.
+ *
+ * Review sandbox (App Store review accounts): `senderId` is the person whose message
+ * this alert is about (for a reminder, the person who is waiting). When that is a
+ * sandbox account and the recipient is not, the alert is redirected to
+ * REVIEW_SANDBOX_INBOX (see sendAlert). The flag lookup runs before the send and, if it
+ * fails after its retries, throws to the caller (which reports it to the team) so
+ * nothing is sent on a guess.
  */
-async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null }) {
+async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null, senderId = null }) {
+  const flagged = await sandboxIdsAmong([senderId, data.recipientId]);
+  const sandbox = flagged.has(senderId) && !flagged.has(data.recipientId);
   const attempt = {
     thread_id: data.threadId,
     recipient_id: data.recipientId,
@@ -157,7 +167,7 @@ async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = nul
     message_id: messageId,
   };
   try {
-    return await sendAlert(data, { baseUrl, reminder, testEmailTo, attempt });
+    return await sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbox });
   } catch (err) {
     console.error("deliverAlert: send failed:", err);
     const detail = String(err?.message ?? err).slice(0, 500);
@@ -177,7 +187,7 @@ async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = nul
   }
 }
 
-async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
+async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbox = false }) {
   // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
   // /messages deep link so the notification still arrives.
   //
@@ -185,7 +195,12 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
   // alert routed to a lease or listing contact (a shared leasing office inbox, say) would
   // hand everyone reading that inbox the landlord's whole account. Contact addresses are
   // alert routes, never accounts: they get the login-gated link and can reply by email.
-  const rawToken = (await isAccountInbox(data.recipientId, data.recipientEmail))
+  //
+  // A sandbox alert is redirected to the team's inbox, so it must not carry the REAL
+  // recipient's login link or their private reply address: no magic link is minted, no
+  // reply address is created (nothing is written to their participant row), and a reply
+  // to it cannot be filed into the thread or trigger a sender-approval email to them.
+  const rawToken = !sandbox && (await isAccountInbox(data.recipientId, data.recipientEmail))
     ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
     : null;
   const threadUrl = rawToken
@@ -193,7 +208,7 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     : `${baseUrl}/messages?thread=${data.threadId}`;
 
   const [replyTo, references] = await Promise.all([
-    ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
+    sandbox ? null : ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
     earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
   ]);
 
@@ -215,6 +230,7 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     threadId: data.threadId,
     recipientId: data.recipientId,
     testEmailTo,
+    sandbox,
   });
 
   if (sent && !sent.suppressed) {
@@ -255,7 +271,7 @@ export async function sendReplyReminder({ threadId, senderId, baseUrl }) {
     }
     if (!data?.recipientEmail) return "no_recipient";
 
-    const sent = await deliverAlert(data, { baseUrl, reminder: true });
+    const sent = await deliverAlert(data, { baseUrl, reminder: true, senderId });
     if (!sent) return "failed";
     return sent.suppressed ? "suppressed" : "sent";
   } catch (err) {

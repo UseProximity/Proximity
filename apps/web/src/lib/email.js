@@ -396,6 +396,10 @@ export async function sendChatMessageEmail({
   reminder = false,
   threadId = null,
   recipientId = null,
+  // True when a review sandbox account caused this alert: sendMailSafe then sends it to
+  // REVIEW_SANDBOX_INBOX instead (see lib/outreach.js). The caller leaves out the
+  // reply address and magic link for these, which also keeps it off the SES branch.
+  sandbox = false,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -439,6 +443,7 @@ export async function sendChatMessageEmail({
         html,
         text,
         ses: SES_SEND_OPTIONS,
+        sandbox,
       }, testEmailTo);
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
@@ -456,6 +461,7 @@ export async function sendChatMessageEmail({
     headers,
     html,
     text,
+    sandbox,
   }, testEmailTo);
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed), sesError };
 }
