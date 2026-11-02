@@ -69,3 +69,49 @@ test("a name line over a removed signature goes even when no name matches", () =
 test("a short last line that is the message itself stays", () => {
   assert.equal(extractReplyText({ text: `Sounds good.\n\nSee You Then\n${QUOTE}`, senderName: "Jessica Nelson" }), "Sounds good.\n\nSee You Then");
 });
+
+const ROBERTS = [
+  "Thanks for your interest. When are you available to view this property?",
+  "When are you looking to move in?",
+  "-Andy",
+  "",
+  "Andrew Roberts",
+  "Roberts Realty",
+  "3229 S. Brentwood Blvd.",
+  "St. Louis, MO 63119-1731",
+  "(314) 918-0800",
+  "(314) 568-8917 mobile",
+  "(314) 918-1127 fax",
+  "Listing Site: https://robertsrealtystl.com/",
+  "<http://www.robertsrealtycompany.com>",
+  "",
+  'The information in this electronic mail ("e-mail") message is confidential',
+  "and for use of only the named recipient. The information may be protected by",
+  "privilege, work product immunity or other applicable law. If you are not the",
+  "intended recipient of this e-mail, the retention, dissemination,",
+  "distribution or copying of this e-mail message is strictly prohibited. If",
+  "you receive this message in error, please notify us immediately by using any",
+  "of the above referenced methods of contact.",
+].join("\n");
+
+test("a signature under a confidentiality notice goes with the notice", () => {
+  assert.equal(
+    extractReplyText({ text: `${ROBERTS}\n${QUOTE}`, senderName: "Andy Roberts", senderCompany: "Roberts Realty" }),
+    "Thanks for your interest. When are you available to view this property?\nWhen are you looking to move in?\n-Andy",
+  );
+});
+
+test("phone numbers labelled after the number and labelled links are signature lines", () => {
+  const text = `Yes, still open.\n\nRoberts Realty\n(314) 568-8917 mobile\n(314) 918-1127 fax\nListing Site: https://robertsrealtystl.com/\n${QUOTE}`;
+  assert.equal(extractReplyText({ text, senderCompany: "Roberts Realty" }), "Yes, still open.");
+});
+
+test("a message that mentions confidentiality is not taken for a notice", () => {
+  const text = `Please keep my number confidential, I'd rather chat here.\n${QUOTE}`;
+  assert.equal(extractReplyText({ text }), "Please keep my number confidential, I'd rather chat here.");
+});
+
+test("a link inside the message stays", () => {
+  const text = `Here's the application: https://example.com/apply\nLet me know once it's in.\n${QUOTE}`;
+  assert.equal(extractReplyText({ text }), "Here's the application: https://example.com/apply\nLet me know once it's in.");
+});

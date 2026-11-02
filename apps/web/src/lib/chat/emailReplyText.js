@@ -13,6 +13,9 @@
  *      your number?" with just the number), it is the message, so it stays
  *      (Wyatt, 2026-10-24). So does a block that is only phone numbers, or
  *      that follows "My number is:".
+ *      A legal disclaimer closing the email ("The information in this e-mail is
+ *      confidential...") goes first, so the signature above it can be trimmed
+ *      (2026-11-02).
  *   3. A dangling sign-off left at the end ("Best,", "Regards,"). A sign-off that
  *      is a sentence ("Thanks!") stays, because it is part of the message.
  *
@@ -52,8 +55,11 @@ const MOBILE_FOOTERS = [
 
 const SIGN_OFF = /^\s*(best( regards)?|regards|kind regards|warm regards|thanks|thank you|many thanks|cheers|sincerely|respectfully|all the best|talk soon)\s*,\s*$/i;
 
-const PHONE_LINE = /^[\s()+\-.\d]*\d{3}[\s)\-.]*\d{3}[\s\-.]*\d{4}\s*(x\d+)?\s*$/i;
+// "(314) 568-8917 mobile" and "(314) 918-1127 fax" carry the label after the number.
+const PHONE_LINE = /^[\s()+\-.\d]*\d{3}[\s)\-.]*\d{3}[\s\-.]*\d{4}\s*(x\d+)?\s*(\(?(mobile|cell|fax|office|direct|main|work|home|m|c|f|o)\)?)?\s*$/i;
 const LABELLED_CONTACT = /^\s*(p|ph|phone|t|tel|m|mobile|cell|c|o|office|f|fax|e|email|w|web)\s*[:.|]\s*\S/i;
+// Any short label in front of a link, "Listing Site: https://...".
+const LABELLED_LINK = /^\s*[\w .&'-]{1,30}:\s*(https?:\/\/|www\.)\S+\s*$/i;
 const EMAIL_LINE = /^\s*\S+@\S+\.\S+\s*$/;
 const URL_LINE = /^\s*(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?\s*$/i;
 const ADDRESS_LINE = /^\s*\d+\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way|pkwy|parkway)\b\.?(,.*)?\s*$/i;
@@ -70,6 +76,35 @@ const CREDENTIALS = /^\s*,?\s*[A-Z]{2,5}(,\s*[A-Z]{2,5})*\s*$/;
 // "Wyatt Ogle", "Mary-Kate O'Neil": two or three capitalised words, nothing else.
 const PERSON_NAME = /^[A-Z][a-zA-Z'.-]+(?: [A-Z][a-zA-Z'.-]+){1,2}$/;
 
+// Phrases from the confidentiality notices offices append to every email.
+const DISCLAIMER_PHRASES = [
+  /\bconfidential(ity)?\b/i,
+  /\bintended (solely )?(for the )?(named )?recipient/i,
+  /\b(received?|receiving) this (e-?mail|message|communication|transmission)[^.]{0,40}\bin error\b/i,
+  /\bprivilege(d)?\b/i,
+  /\bstrictly prohibited\b/i,
+  /\b(dissemination|distribution|copying)\b/i,
+];
+
+/*
+ * Drop a closing confidentiality notice. It is only the last paragraph, and
+ * only when it carries at least two of the notice phrases, so a student writing
+ * "please keep this confidential" in the message itself is never cut. Nothing
+ * is dropped when the notice is the whole reply.
+ */
+function withoutDisclaimer(lines) {
+  let end = lines.length;
+  while (end > 0 && !lines[end - 1].trim()) end--;
+  let start = end;
+  while (start > 0 && lines[start - 1].trim()) start--;
+  if (start === end) return lines;
+  const paragraph = lines.slice(start, end).join(" ");
+  const hits = DISCLAIMER_PHRASES.filter((re) => re.test(paragraph)).length;
+  if (hits < 2) return lines;
+  const rest = lines.slice(0, start);
+  return rest.some((l) => l.trim()) ? rest : lines;
+}
+
 // Outlook writes links in plain text as "LinkedIn<https://...>".
 function withoutInlineUrls(line) {
   return line.replace(/<[^>\s]+>/g, "").replace(/\[removed\]/g, "x@x.co");
@@ -82,6 +117,7 @@ function isContactPiece(piece) {
   return (
     PHONE_LINE.test(t) ||
     LABELLED_CONTACT.test(t) ||
+    LABELLED_LINK.test(t) ||
     EMAIL_LINE.test(t) ||
     URL_LINE.test(t) ||
     SOCIAL_LINK.test(t) ||
@@ -195,6 +231,7 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const delimiter = lines.findIndex((l) => /^--\s?$/.test(l));
   if (delimiter !== -1) lines = lines.slice(0, delimiter);
   lines = lines.filter((l) => !MOBILE_FOOTERS.some((re) => re.test(l)));
+  lines = withoutDisclaimer(lines);
 
   // Longest first, so "wyatt ogle" is tried before "wyatt".
   const names = [senderName, senderCompany, fromName]
