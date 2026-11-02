@@ -21,6 +21,7 @@ import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -535,7 +536,7 @@ export async function POST(req) {
       // the new units and their leases are written.
       const { data: target, error: targetError } = await supabase
         .from("listings")
-        .select("id, address, deleted_at")
+        .select("id, address, deleted_at, review_sandbox")
         .eq("id", listingId)
         .maybeSingle();
 
@@ -545,6 +546,20 @@ export async function POST(req) {
       }
       if (!target || target.deleted_at) {
         return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+      }
+
+      /*
+       * A review sandbox account (App Store review) may only add to a sandbox property.
+       * Attaching units and leases to a real landlord's property would change what
+       * browse shows for them. Answered like an address that is already taken, without
+       * naming the property. The mobile app never sends attachToListingId, so this is a
+       * safety net. A failed flag lookup throws to the catch at the bottom (a 500).
+       */
+      if (ownerId && target.review_sandbox !== true && (await sandboxIdsAmong([ownerId])).has(ownerId)) {
+        return NextResponse.json(
+          { error: "This address is already on Proximity.", code: "address_taken" },
+          { status: 409 }
+        );
       }
 
       /*
