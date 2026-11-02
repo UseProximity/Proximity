@@ -457,7 +457,7 @@ export default function AvailableListings({
       <div
         ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[58vw]" : "w-[40vw] px-4 py-4"
+          expandedListing ? "w-[58vw]" : "w-[44vw] px-4 py-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
@@ -537,7 +537,7 @@ export default function AvailableListings({
             {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-5">
                 {visibleListings.map((listing) => (
                   <div key={listing._id} data-listing-id={listing._id}>
                     <ListingCard
