@@ -13,8 +13,15 @@ import { BillingError } from "./errors.js";
 
 export const BILLING_RUN_ENABLED = "billing_run_enabled";
 
+/*
+ * A missing key reads as `fallback`, and so does a missing table: code that reads
+ * a switch (the listing gate above all, on every publish) must keep working if it
+ * reaches an environment before the billing migration does. Every switch defaults
+ * to its safe, off position.
+ */
 export async function getBillingSetting(db, key, fallback = false) {
   const { data, error } = await db.from("billing_settings").select("value").eq("key", key).maybeSingle();
+  if (error && (error.code === "PGRST205" || error.code === "42P01")) return fallback;
   if (error) throw error;
   return data ? data.value : fallback;
 }

@@ -38,9 +38,13 @@ export async function findInvoiceByKey(stripe, customerId, key) {
   return null;
 }
 
-export async function ensureDraftInvoice(stripe, { customerId, key, landlordId, billingPeriod, localInvoiceId }) {
-  const existing = await findInvoiceByKey(stripe, customerId, key);
-  if (existing) return existing;
+/*
+ * Create the month's draft. The caller has already looked it up by key
+ * (findInvoiceByKey pages through every invoice the customer has, so it is done
+ * once per landlord, not again here); the idempotency key covers a repeat of this
+ * call within Stripe's 24 hours.
+ */
+export function createDraftInvoice(stripe, { customerId, key, landlordId, billingPeriod, localInvoiceId }) {
   return stripe.invoices.create(
     {
       customer: customerId,
@@ -182,21 +186,29 @@ export function payInvoice(stripe, invoiceId, paymentMethodId) {
 }
 
 const NEEDS_ACTION_MESSAGE = "Your bank needs you to confirm this payment. Open the invoice to complete it.";
+const GENERIC_FAILURE = "The payment did not go through.";
+
+// Stripe wording meant for developers: object ids (pm_..., in_...), object names
+// and API terms. A message containing any of it is never shown to a landlord.
+const DEVELOPER_WORDING =
+  /\b(?:pm|pi|in|ii|cus|ch|py|src|seti|card|ba|acct|sub|txn|re|cbtxn)_[A-Za-z0-9]{6,}|\bNo such\b|PaymentMethod|PaymentIntent|SetupIntent|\bAPI\b|parameter|attached|livemode|idempotenc|client_secret|next_action/i;
 
 /*
- * The reason to show a landlord when paying an invoice failed. A decline already
- * reads fine ("Your card was declined."), but a payment that needs the cardholder
- * to authenticate comes back in Stripe's developer wording about client secrets,
- * so that one is replaced with what the landlord should actually do.
+ * The reason to show a landlord when paying an invoice failed. It is shown on the
+ * dashboard, stored and emailed, so it must never carry Stripe internals. A decline
+ * reads fine as Stripe words it ("Your card was declined."). A payment that needs
+ * the cardholder to authenticate is replaced with what to do. Anything else in
+ * developer wording ("No such PaymentMethod: 'pm_...'") becomes a plain sentence.
  */
 export function paymentFailureMessage(err) {
-  const text = String(err?.message ?? "");
+  const text = String(err?.message ?? "").trim();
   const needsAction =
     err?.code === "invoice_payment_intent_requires_action" ||
     err?.code === "authentication_required" ||
     /requires additional action|next_action|client_secret/i.test(text);
   if (needsAction) return NEEDS_ACTION_MESSAGE;
-  return text || "The payment did not go through.";
+  if (!text || DEVELOPER_WORDING.test(text) || text.length > 300) return GENERIC_FAILURE;
+  return text;
 }
 
 /*

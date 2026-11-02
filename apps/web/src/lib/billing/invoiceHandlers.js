@@ -185,6 +185,15 @@ export const invoiceHandlers = {
     }
     const row = await localInvoice(db, await stripeInvoiceIdForPaymentIntent(stripe, paymentIntentId));
 
+    // Flag the invoice before recording the dispute. The dispute row is what stops a
+    // redelivery from doing this twice, so if it were written first and the flag then
+    // failed, the redelivery would stop at the duplicate and the invoice would never
+    // be flagged nor the team emailed. Flagging is safe to repeat.
+    if (row) {
+      const { error: flagError } = await db.from("billing_invoices").update({ disputed: true }).eq("id", row.id);
+      if (flagError) throw flagError;
+    }
+
     const { error } = await db.from("billing_disputes").insert({
       invoice_id: row?.id ?? null,
       stripe_dispute_id: dispute.id,
@@ -195,11 +204,6 @@ export const invoiceHandlers = {
     // Already recorded (a redelivery): nothing more to do, and no second email.
     if (error?.code === UNIQUE_VIOLATION) return;
     if (error) throw error;
-
-    if (row) {
-      const { error: flagError } = await db.from("billing_invoices").update({ disputed: true }).eq("id", row.id);
-      if (flagError) throw flagError;
-    }
 
     // The dispute is stored; an email problem must not make Stripe redeliver and lose nothing.
     try {

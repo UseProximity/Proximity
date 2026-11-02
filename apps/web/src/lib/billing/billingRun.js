@@ -35,6 +35,7 @@ import { BillingError } from "./errors.js";
 import { MIN_INVOICE_CENTS } from "./constants.js";
 import { billingPeriodFor } from "./billingPeriod.js";
 import { withSettingsLock } from "./settings.js";
+import { hasActivePaymentMethod } from "./paymentMethodState.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoicePlan.js";
 import { leaseLabel } from "./chargeDisplay.js";
 import { transitionCharge } from "./charges.js";
@@ -43,7 +44,7 @@ import { chargeableMethod, defaultActiveMethod as defaultMethod } from "./paymen
 import {
   assertDraftTotal,
   assertInvoiceMatches,
-  ensureDraftInvoice,
+  createDraftInvoice,
   ensureInvoiceItems,
   finalizeInvoice,
   finalizedFields,
@@ -133,6 +134,27 @@ async function openInvoicesToResume(db, billingPeriod, landlordId) {
   return data;
 }
 
+// Landlords with any invoice row for this month, whatever its status.
+async function landlordsInvoicedFor(db, billingPeriod, landlordId) {
+  let q = db.from("billing_invoices").select("landlord_id").eq("billing_period", billingPeriod);
+  if (landlordId) q = q.eq("landlord_id", landlordId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return new Set(data.map((r) => r.landlord_id));
+}
+
+// Whether a live run would find a method to charge (chargeableMethod), without changing anything.
+async function hasUsableMethod(db, landlordId, now) {
+  if (await defaultMethod(db, landlordId, now)) return true;
+  const { data, error } = await db
+    .from("payment_methods")
+    .select("status, type, exp_month, exp_year, deleted_at")
+    .eq("user_id", landlordId)
+    .is("deleted_at", null);
+  if (error) throw error;
+  return hasActivePaymentMethod(data, now);
+}
+
 async function usersById(db, ids) {
   if (!ids.length) return new Map();
   const { data, error } = await db.from("users").select("id, name, email").in("id", ids);
@@ -176,7 +198,7 @@ async function releaseInvoice(db, localInvoiceId) {
  * Carry one local invoice row through every Stripe step it has not done yet. The
  * charges on it are already claimed. Returns what happened, for the run report.
  */
-async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
+async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
   const claimedRows = await chargesOnInvoice(db, row.id);
   const lines = claimedRows.map((r) => ({
     chargeId: r.id,
@@ -193,9 +215,11 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row) {
   });
   const key = invoiceIdempotencyKey(row.landlord_id, row.billing_period);
 
-  let invoice = await findInvoiceByKey(stripe, account.stripe_customer_id, key);
+  // `known` is the caller's lookup by key (null when it found nothing); look it up
+  // here only when the caller did not.
+  let invoice = known !== undefined ? known : await findInvoiceByKey(stripe, account.stripe_customer_id, key);
   if (!invoice) {
-    invoice = await ensureDraftInvoice(stripe, {
+    invoice = await createDraftInvoice(stripe, {
       customerId: account.stripe_customer_id,
       key,
       landlordId: row.landlord_id,
@@ -337,7 +361,7 @@ async function billLandlord(ctx, planned) {
     const { error: updateError } = await db.from("billing_invoices").update({ total_cents: claimedTotal }).eq("id", row.id);
     if (updateError) throw updateError;
   }
-  return continueInvoice(ctx, { ...row, total_cents: claimedTotal });
+  return continueInvoice(ctx, { ...row, total_cents: claimedTotal }, stripeInvoice);
 }
 
 /*
@@ -370,7 +394,7 @@ async function resumeInvoice(ctx, row, billingPeriod) {
     }
     row = { ...row, total_cents: claimedTotal };
   }
-  return continueInvoice(ctx, row);
+  return continueInvoice(ctx, row, existing);
 }
 
 export async function runBillingRun({
@@ -393,8 +417,12 @@ export async function runBillingRun({
   if (dryRun) {
     const users = await usersById(db, [...new Set([...plan.invoices.map((i) => i.landlordId), ...plan.deferred.map((d) => d.landlordId)])]);
     const methodReady = new Map();
-    for (const inv of plan.invoices) methodReady.set(inv.landlordId, !!(await defaultMethod(db, inv.landlordId, now)));
+    for (const inv of plan.invoices) methodReady.set(inv.landlordId, await hasUsableMethod(db, inv.landlordId, now));
     const show = (id) => ({ id, name: users.get(id)?.name ?? null, email: users.get(id)?.email ?? null });
+    // A live run bills nobody who already has this month's invoice in any status
+    // (billLandlord answers already_billed), so the preview must not count them.
+    const invoicedThisMonth = await landlordsInvoicedFor(db, billingPeriod, onlyLandlordId);
+    const willBill = plan.invoices.filter((inv) => !invoicedThisMonth.has(inv.landlordId));
     return {
       dryRun: true,
       billingPeriod,
@@ -405,13 +433,15 @@ export async function runBillingRun({
         lines: inv.lines,
         hasActivePaymentMethod: methodReady.get(inv.landlordId),
         // Already has this month's invoice: these charges wait for next month.
-        waitsForNextMonth: billedLandlords.has(inv.landlordId),
+        waitsForNextMonth: invoicedThisMonth.has(inv.landlordId),
       })),
       deferred: plan.deferred.map((d) => ({ ...d, landlord: show(d.landlordId) })),
       // Invoices still open (this month's, or any month's that an earlier run never finished); a live run re-checks them.
       openInvoices: openRows.length,
       unfinishedInvoices: openRows.filter((r) => !r.invoice_date).length,
-      grandTotalCents: plan.grandTotalCents,
+      // What a live run would invoice now: landlords already invoiced this month are left out.
+      newInvoiceCount: willBill.length,
+      grandTotalCents: willBill.reduce((sum, inv) => sum + inv.totalCents, 0),
     };
   }
 

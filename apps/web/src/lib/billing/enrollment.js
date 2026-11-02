@@ -177,18 +177,43 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
   return { counts, toSend };
 }
 
+// Whether the enrollment email to this landlord was written to sent_emails.
+export async function enrollmentEmailLogged(db, userId) {
+  const { data, error } = await db
+    .from("sent_emails")
+    .select("id")
+    .eq("kind", ENROLLMENT_EMAIL_KIND)
+    .eq("user_id", userId)
+    .limit(1);
+  if (error) return false;
+  return data.length > 0;
+}
+
 /*
  * Send to the audience one at a time. `send(landlord)` resolves true when the
  * email went out. Capped per call so one click cannot run past the function's
  * time limit; send again to continue (already emailed landlords are skipped).
+ *
+ * "Already emailed" is read from sent_emails, so if sends are not being logged
+ * (the billing category migration, 202610310002, is missing) every Send would
+ * email the same landlords again. `isLogged(landlord)` is checked after the first
+ * email that goes out; if it was not logged, sending stops there.
  */
-export async function sendEnrollmentEmails({ toSend, send, limit = 300 }) {
+export async function sendEnrollmentEmails({ toSend, send, isLogged = null, limit = 300 }) {
   const batch = toSend.slice(0, limit);
   let sent = 0;
   let failed = 0;
   for (const landlord of batch) {
-    if (await send(landlord)) sent += 1;
-    else failed += 1;
+    if (await send(landlord)) {
+      sent += 1;
+      if (sent === 1 && isLogged && !(await isLogged(landlord))) {
+        throw new BillingError(
+          "not_logged",
+          "Stopped after one email: sent emails are not being recorded, so sending again would email the same landlords twice. Ask a developer to check the sent_emails log, then try again.",
+          500
+        );
+      }
+    } else failed += 1;
   }
   return { attempted: batch.length, sent, failed, remaining: toSend.length - batch.length };
 }

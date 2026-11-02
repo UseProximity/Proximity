@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-01T18:59:18.518Z",
-  "count": 104,
+  "_generated": "2026-11-02T18:07:34.766Z",
+  "count": 105,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -361,6 +361,10 @@
     },
     {
       "name": "R2_BUCKET_NAME_PROD",
+      "public": false
+    },
+    {
+      "name": "R2_PRIVATE_BUCKET_NAME",
       "public": false
     },
     {

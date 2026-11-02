@@ -38,9 +38,12 @@ function DryRunResult({ result }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-700">
-        Dry run for <strong>{result.billingPeriod.slice(0, 7)}</strong>: {result.invoices.length} invoice
-        {result.invoices.length === 1 ? "" : "s"}, <strong>{formatCents(result.grandTotalCents)}</strong> in total.
-        Nothing was created. {result.openInvoices > 0 && `${result.openInvoices} invoice(s) from this month are already open.`}
+        Dry run for <strong>{result.billingPeriod.slice(0, 7)}</strong>: {result.newInvoiceCount} new invoice
+        {result.newInvoiceCount === 1 ? "" : "s"}, <strong>{formatCents(result.grandTotalCents)}</strong> in total.
+        Nothing was created.
+        {result.invoices.length > result.newInvoiceCount &&
+          ` ${result.invoices.length - result.newInvoiceCount} landlord(s) were already invoiced this month, so their new charges wait for next month and are not in the total.`}
+        {result.openInvoices > 0 && ` ${result.openInvoices} open invoice(s) will be re-checked.`}
       </p>
       {result.invoices.length > 0 && (
         <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">

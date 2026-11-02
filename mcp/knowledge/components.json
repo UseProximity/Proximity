@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-01T23:36:05.927Z",
-  "count": 158,
+  "_generated": "2026-11-02T18:07:34.655Z",
+  "count": 167,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -11,6 +11,11 @@
     {
       "name": "AgentsView",
       "file": "src/components/admin/AgentsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingView",
+      "file": "src/components/admin/BillingView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -76,6 +81,46 @@
     {
       "name": "adminShared",
       "file": "src/components/admin/adminShared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementsPanel",
+      "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingRunPanel",
+      "file": "src/components/admin/billing/BillingRunPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChargeQueue",
+      "file": "src/components/admin/billing/ChargeQueue.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CorrectionsPanel",
+      "file": "src/components/admin/billing/CorrectionsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "EnrollmentPanel",
+      "file": "src/components/admin/billing/EnrollmentPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NoteDialog",
+      "file": "src/components/admin/billing/NoteDialog.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProblemLists",
+      "file": "src/components/admin/billing/ProblemLists.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TestChargeForm",
+      "file": "src/components/admin/billing/TestChargeForm.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

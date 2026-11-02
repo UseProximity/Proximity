@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { getBaseUrl } from "@/lib/email";
-import { findEnrollmentAudience, formatDeadline, getEnrollmentWindow, sendEnrollmentEmails } from "@/lib/billing/enrollment";
+import { enrollmentEmailLogged, findEnrollmentAudience, formatDeadline, getEnrollmentWindow, sendEnrollmentEmails } from "@/lib/billing/enrollment";
 import { sendEnrollmentEmail } from "@/lib/billing/billingEmails";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
@@ -55,7 +55,11 @@ export async function POST(req) {
       includeAgreement: window.includeAgreement,
       includeAlreadyEmailed: includeAlreadyEmailed === true,
     });
-    const result = await sendEnrollmentEmails({ toSend, send: (landlord) => sendEnrollmentEmail(landlord, input) });
+    const result = await sendEnrollmentEmails({
+      toSend,
+      send: (landlord) => sendEnrollmentEmail(landlord, input),
+      isLogged: (landlord) => enrollmentEmailLogged(supabase, landlord.id),
+    });
     return NextResponse.json({ ok: true, mode, ...result });
   } catch (err) {
     return billingErrorResponse(err, "send enrollment emails");

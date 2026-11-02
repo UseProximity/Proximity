@@ -5,6 +5,7 @@
  */
 import { getBaseUrl } from "@/lib/email";
 import {
+  sendPaymentMethodAttentionEmail,
   sendOverdueEmail,
   sendOverdueTeamEmail,
   sendPaymentFailedEmail,
@@ -28,6 +29,15 @@ export function billingNotify() {
         totalCents: invoice.total_cents,
         reason: message,
       });
+    },
+
+    // Their default method will not pay the next invoice (expiring, expired or failed).
+    async methodAttention({ landlord, state, description }) {
+      const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=payments`;
+      await sendPaymentMethodAttentionEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        { state, description, paymentsUrl }
+      );
     },
 
     // The overdue job hid the landlord's leases: tell them how to get them back, and tell the team.

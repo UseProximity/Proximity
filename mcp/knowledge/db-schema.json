@@ -380,9 +380,11 @@
           "bank_name:text",
           "created_at:timestamptz",
           "updated_at:timestamptz",
-          "deleted_at:timestamptz"
+          "deleted_at:timestamptz",
+          "attention_emailed_key:text",
+          "attention_emailed_at:timestamptz"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "attention_emailed_key/at (202611020001_payment_method_attention) record which expiring/expired/failed email the daily billing-overdue cron sent for the method, as state:month/year, so it is sent once per problem. Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "charges",

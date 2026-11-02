@@ -4,6 +4,7 @@ export const maxDuration = 120;
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { runOverdueJob } from "@/lib/billing/overdueJob";
+import { runMethodAttentionJob } from "@/lib/billing/methodAttentionJob";
 import { billingNotify } from "@/lib/billing/billingNotify";
 
 /*
@@ -13,6 +14,10 @@ import { billingNotify } from "@/lib/billing/billingNotify";
  * under the $5 minimum never trigger it, and a payment still settling is not
  * overdue. An admin restores the leases once the invoice is paid. Safe to run
  * repeatedly: an invoice is actioned once.
+ *
+ * It also emails landlords whose default payment method is expiring this month,
+ * has expired or has failed, and who have no other usable one, once per problem
+ * (methodAttentionJob.js), so they can fix it before the monthly run.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -25,9 +30,19 @@ export async function GET(req) {
   }
 
   try {
-    const result = await runOverdueJob(supabase, { notify: billingNotify() });
+    const notify = billingNotify();
+    const result = await runOverdueJob(supabase, { notify });
     if (result.failed.length) console.error("billing overdue job: some invoices failed", result.failed);
-    return NextResponse.json({ ok: true, ...result });
+    // Separate from the overdue result, and its failure must not hide that result.
+    let methods;
+    try {
+      methods = await runMethodAttentionJob(supabase, { notify });
+      if (methods.failed.length) console.error("billing method check: some methods failed", methods.failed);
+    } catch (err) {
+      console.error("billing method check failed", err);
+      methods = { error: "failed" };
+    }
+    return NextResponse.json({ ok: true, ...result, methods });
   } catch (err) {
     console.error("billing overdue job failed", err);
     return NextResponse.json({ error: "Overdue job failed" }, { status: 500 });

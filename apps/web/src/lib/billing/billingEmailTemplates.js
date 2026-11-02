@@ -101,7 +101,12 @@ export function paymentFailedTeamEmail({ landlordName, landlordEmail, totalCents
 }
 
 export function paymentMethodAttentionEmail({ name, state, description, paymentsUrl }) {
-  const why = state === "expired" ? "has expired" : "failed on the last payment";
+  const why =
+    state === "expiring"
+      ? "expires at the end of this month"
+      : state === "expired"
+        ? "has expired"
+        : "failed on the last payment";
   return {
     subject: "Update your payment method on Proximity",
     html: wrap(`

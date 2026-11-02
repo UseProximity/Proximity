@@ -44,12 +44,12 @@ export async function GET(req) {
 
     if (!enabled) {
       console.warn(
-        `billing run: automatic billing is OFF, dry run only (${result.invoices.length} invoices, ${result.grandTotalCents} cents). Review it in Admin > Billing, then switch it on.`
+        `billing run: automatic billing is OFF, dry run only (${result.newInvoiceCount} invoices, ${result.grandTotalCents} cents). Review it in Admin > Billing, then switch it on.`
       );
       return NextResponse.json({
         ok: true,
         skipped: "disabled",
-        invoices: result.invoices.length,
+        invoices: result.newInvoiceCount,
         grandTotalCents: result.grandTotalCents,
       });
     }

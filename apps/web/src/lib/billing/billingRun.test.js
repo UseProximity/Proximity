@@ -13,6 +13,9 @@ import { invoiceView, retryInvoicePayment } from "./invoiceAccess.js";
 import { adjustPaidCharge } from "./adjustments.js";
 import { BILLING_RUN_ENABLED, getBillingSetting, withSettingsLock } from "./settings.js";
 import { chargeableMethod } from "./paymentMethods.js";
+import { attentionState, runMethodAttentionJob } from "./methodAttentionJob.js";
+import { sendEnrollmentEmails } from "./enrollment.js";
+import { runBillingRun } from "./billingRun.js";
 
 describe("nextBillingDay", () => {
   it("is today on the billing day itself", () => {
@@ -89,6 +92,14 @@ describe("paymentFailureMessage", () => {
     );
     assert.equal(paymentFailureMessage({ code: "authentication_required", message: "x" }), wanted);
     assert.equal(paymentFailureMessage({ code: "invoice_payment_intent_requires_action", message: "x" }), wanted);
+  });
+
+  it("never shows a landlord Stripe ids or developer wording (PR #370 review)", () => {
+    const generic = "The payment did not go through.";
+    assert.equal(paymentFailureMessage({ message: "No such PaymentMethod: 'pm_1QabcDEFghiJKL'" }), generic);
+    assert.equal(paymentFailureMessage({ message: "The PaymentMethod provided (pm_1QabcDEF) was previously used without being attached to a Customer" }), generic);
+    assert.equal(paymentFailureMessage({ message: "Invalid parameter: invoice in_1QabcDEFghi" }), generic);
+    assert.equal(paymentFailureMessage({ message: "Your card has expired." }), "Your card has expired.");
   });
 
   it("always says something", () => {
@@ -270,6 +281,8 @@ function memoryDb(tables) {
       not(col, _op, v) { filters.push((r) => (r[col] ?? null) !== v); return api; },
       order() { return api; },
       limit() { return api; },
+      range() { return api; },
+      or() { return api; },
       insert(row) {
         if (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) {
           return Promise.resolve({ error: { code: "23505" } });
@@ -376,5 +389,89 @@ describe("retryInvoicePayment while a payment is settling (PR #370 review)", () 
   it("refuses an invoice a run never issued", async () => {
     const db = memoryDb({ billing_invoices: [{ ...invoiceRow, invoice_date: null }] });
     await assert.rejects(() => retryInvoicePayment(db, fakeStripe(), { invoiceId: "i1" }), (e) => e.code === "not_payable");
+  });
+});
+
+describe("attentionState (PR #370 review)", () => {
+  const now = new Date("2026-11-15T12:00:00Z");
+  const card = (over) => ({ type: "card", status: "active", exp_month: 3, exp_year: 2028, ...over });
+
+  it("warns in a card's last valid month, then once it has expired or failed", () => {
+    assert.equal(attentionState(card({ exp_month: 11, exp_year: 2026 }), now), "expiring");
+    assert.equal(attentionState(card({ exp_month: 10, exp_year: 2026 }), now), "expired");
+    assert.equal(attentionState(card({ status: "failed" }), now), "failed");
+    assert.equal(attentionState({ type: "us_bank_account", status: "failed" }, now), "failed");
+  });
+
+  it("is quiet for a healthy method or one still verifying", () => {
+    assert.equal(attentionState(card(), now), null);
+    assert.equal(attentionState({ type: "us_bank_account", status: "verifying" }, now), null);
+  });
+});
+
+describe("runMethodAttentionJob (PR #370 review)", () => {
+  const now = new Date("2026-11-15T12:00:00Z");
+  const method = (over) => ({ id: "m1", user_id: "l1", type: "card", status: "active", is_default: true, brand: "visa", last4: "4242", exp_month: 10, exp_year: 2026, deleted_at: null, attention_emailed_key: null, ...over });
+  const landlord = { id: "l1", name: "Pat", email: "pat@x.com", deleted_at: null };
+
+  it("emails once about an expired default card, and not again the next day", async () => {
+    const db = memoryDb({ payment_methods: [method()], users: [landlord] });
+    const sent = [];
+    const notify = { methodAttention: async (x) => sent.push(x) };
+    assert.equal((await runMethodAttentionJob(db, { now, notify })).emailed, 1);
+    assert.equal(sent[0].state, "expired");
+    assert.match(sent[0].description, /Visa ending 4242/);
+    assert.equal((await runMethodAttentionJob(db, { now, notify })).emailed, 0);
+    assert.equal(sent.length, 1);
+  });
+
+  it("stays quiet while the landlord has another usable method", async () => {
+    const db = memoryDb({ payment_methods: [method(), method({ id: "m2", is_default: false, exp_year: 2030 })], users: [landlord] });
+    const sent = [];
+    await runMethodAttentionJob(db, { now, notify: { methodAttention: async (x) => sent.push(x) } });
+    assert.equal(sent.length, 0);
+  });
+
+  it("clears the note once the method is fine again, so a later problem is emailed", async () => {
+    const db = memoryDb({ payment_methods: [method({ exp_year: 2030, attention_emailed_key: "expired:10/2026" })], users: [landlord] });
+    assert.equal((await runMethodAttentionJob(db, { now })).cleared, 1);
+    assert.equal(db.tables.payment_methods[0].attention_emailed_key, null);
+  });
+});
+
+describe("sendEnrollmentEmails (PR #370 review)", () => {
+  const toSend = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("stops after the first email when sends are not being logged", async () => {
+    let sends = 0;
+    await assert.rejects(
+      () => sendEnrollmentEmails({ toSend, send: async () => (sends += 1, true), isLogged: async () => false }),
+      (e) => e.code === "not_logged"
+    );
+    assert.equal(sends, 1);
+  });
+
+  it("sends to everyone when they are", async () => {
+    const r = await sendEnrollmentEmails({ toSend, send: async () => true, isLogged: async () => true });
+    assert.equal(r.sent, 3);
+  });
+});
+
+describe("dry run matches the live run (PR #370 review)", () => {
+  const now = new Date("2026-11-02T18:00:00Z"); // November's billing day
+  const charge = (id, landlord_id, amount_cents) => ({ id, landlord_id, amount_cents, trigger_type: "lease_signed", status: "approved", invoice_id: null, created_at: "2026-10-20" });
+
+  it("leaves landlords already invoiced this month, in any status, out of the total", async () => {
+    const db = memoryDb({
+      charges: [charge("c1", "paid-already", 3000), charge("c2", "fresh", 4000)],
+      billing_invoices: [{ id: "i1", landlord_id: "paid-already", billing_period: "2026-11-01", status: "paid", invoice_date: "2026-11-02" }],
+      users: [{ id: "paid-already", name: "A" }, { id: "fresh", name: "B" }],
+      payment_methods: [],
+    });
+    const r = await runBillingRun({ db, stripe: {}, now, dryRun: true });
+    assert.equal(r.newInvoiceCount, 1);
+    assert.equal(r.grandTotalCents, 4000);
+    assert.equal(r.invoices.find((i) => i.landlord.id === "paid-already").waitsForNextMonth, true);
+    assert.equal(r.invoices.find((i) => i.landlord.id === "fresh").waitsForNextMonth, false);
   });
 });
