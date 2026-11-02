@@ -22,7 +22,7 @@ npm ci --prefix mcp               # the MCP knowledge server
 # not symlinked run:)
 ln -s ../../.env.local apps/web/.env.local
 
-npm run dev:web -- -p 3000        # http://localhost:3000
+npm run dev -w apps/web -- -p 3000  # http://localhost:3000
 ```
 
 **Local dev must run on port 3000.** `NEXTAUTH_URL` in `.env.local` points at
