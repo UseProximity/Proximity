@@ -64,11 +64,16 @@ const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`
 // The listing page and the Messages overlay can mount a panel for the same
 // listing in the same moment; they share one open-thread request.
 const threadOpens = new Map();
+// The last thread loaded per listing this visit: reopening the listing shows
+// it at once while a fresh copy loads (Wyatt, 2026-11-01).
+const threadSeen = new Map();
+
 function openThread(listingId, leaseId) {
   const key = `${listingId}:${leaseId ?? ""}`;
   if (!threadOpens.has(key)) {
     const p = fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
       .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then((res) => { if (res.ok) threadSeen.set(key, res.data); return res; })
       .finally(() => threadOpens.delete(key));
     threadOpens.set(key, p);
   }
@@ -215,7 +220,15 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   useEffect(() => {
     if (!listingId) return;
     let cancelled = false;
-    setLoading(true);
+    const seen = threadSeen.get(`${listingId}:${leaseId ?? ""}`);
+    if (seen) {
+      setThread(seen.thread);
+      setMessages(seen.messages ?? []);
+      setTestMode(!!seen.testMode);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     openThread(listingId, leaseId)
       .then(({ ok, data }) => {
         if (cancelled) return;
@@ -265,17 +278,6 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     return () => window.removeEventListener(SYNC_EVENT, on);
   }, [thread, refresh]);
 
-  // Contact on the listing: the conversation to its newest message.
-  useEffect(() => {
-    const on = (e) => {
-      if (e.detail?.listingId !== listingId) return;
-      const el = listRef.current;
-      if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    };
-    window.addEventListener("proxy:scroll-end", on);
-    return () => window.removeEventListener("proxy:scroll-end", on);
-  }, [listingId]);
-
   // "Ask Proxy" on the listing header puts the cursor in this chat.
   useEffect(() => {
     const on = (e) => { if (e.detail?.listingId === listingId) setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250); };
@@ -301,6 +303,36 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     if (p && p !== document.body) p.scrollTo({ top: p.scrollHeight, behavior });
     else if (!fill) window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
   }, [fill]);
+
+  /*
+   * Contact on the listing: the conversation to its newest message and the
+   * page to its bottom. Asked before the thread has loaded, it happens once it
+   * has, since the messages arriving push the bottom further down (Wyatt,
+   * 2026-11-01).
+   */
+  const wantEnd = useRef(false);
+  useEffect(() => {
+    const on = (e) => {
+      if (e.detail?.listingId !== listingId) return;
+      if (loadingRef.current) { wantEnd.current = true; return; }
+      scrollToEnd(true);
+    };
+    window.addEventListener("proxy:scroll-end", on);
+    return () => window.removeEventListener("proxy:scroll-end", on);
+  }, [listingId, scrollToEnd]);
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  // The chat always opens on its newest message; a Contact click that came
+  // early takes the page down with it now.
+  useEffect(() => {
+    if (loading) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    if (wantEnd.current) {
+      wantEnd.current = false;
+      requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [loading, started, scrollToEnd]);
 
   // The conversation stays pinned to its newest message while an answer types out.
   useEffect(() => {
