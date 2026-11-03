@@ -150,13 +150,13 @@ us the address of your own property website or an existing listing of yours. We 
 public content of that page and use AI to pre-fill a draft, using only images that appeared
 on the page. Nothing is saved until you review the draft field by field and submit it, so the
 listing is still yours and you are still the one representing it. We do this only for a page
-you give us, or a page you confirm is yours when we suggest it, for your own property. We may
+you give us, for your own property. We may
 check that page again from time to time and suggest updates to your listing; nothing on the
 listing changes until you accept them.
 
 **Your listing's assistant.** Where we have turned it on for your listing, Proxy (Section 9B)
 answers students' questions about it. Proxy answers from your listing, from what you have told
-students in Proximity messages, from documents and pages you give us or confirm, and from your
+students in Proximity messages, from documents and pages you give us, and from your
 answers to earlier questions. When Proxy cannot answer, it sends you the question, without the
 student's name or contact details, and you can answer in your dashboard or by replying to our
 email. By using it, you agree that:
@@ -200,7 +200,7 @@ listing to it so they control it from then on.
 
 **We do not list a property nobody asked us to list.** A listing exists because its owner
 asked for it, or because they created it themselves. We read a property's web page only when
-its landlord gives it to us, or confirms that a page we suggest is theirs (Section 6).
+its landlord gives it to us (Section 6).
 
 **One exception: pages for properties students have reviewed.** When a student reviews a
 building that is not on Proximity, we create a page for it so the review has somewhere to
@@ -301,7 +301,7 @@ answers questions about that listing. You can use it signed in or signed out.
 
 - **It is AI-generated and it can be wrong.** Proxy answers from the listing, from what the
   landlord has told students and told us, and from documents and pages the landlord has
-  given us or confirmed. Any of that can be incomplete or out of date. Check anything that
+  given us. Any of that can be incomplete or out of date. Check anything that
   matters, such as rent, fees, or a policy, with the landlord and in your lease.
 - **It passes on what it cannot answer.** Proxy sends your question to the landlord without
   your name or contact details, and tells you when they answer. The landlord sees a one-line

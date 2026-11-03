@@ -171,7 +171,7 @@ Android app offer email and password or Google.
   you about it, a conversation opens between the two of you, stored like any other
   message described below.
 - **What landlords tell Proxy** (landlords): what you write to your agent in the dashboard,
-  the documents and web pages you give us or confirm are yours, your answers to questions,
+  the documents and web pages you give us, your answers to questions,
   and the knowledge we build from them, with a record of where each item came from and
   who changed it. We also read the messages landlords have sent students through Proximity
   into the knowledge of the listing they were about (Section 4). Only what the landlord
@@ -341,7 +341,7 @@ another, replying to say so is enough.
 | **Account and transactional email** | Verify your email address; reset your password; ask landlords to confirm whether a listing is still available; remind new landlords who have not yet posted. |
 | **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
 | **Analyze a lease you upload** | Produce the Lease Check flags and summary. |
-| **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one; suggest updates from web pages a landlord has given us or confirmed. |
+| **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one; suggest updates from web pages a landlord has given us. |
 | **Safety, integrity, and support** | Apply eligibility rules (only students at a school we serve may leave reviews, and we use your date of birth to check eligibility on listings restricted to residents 21 or older); investigate abuse and fraud, including looking at reports; respond to your questions. |
 | **Improve the Services** | Understand which pages and listings are used; act on feedback and bug reports. |
 | **Business operations** | Maintain a record of new accounts and listings for onboarding and support; keep a record of the introductions we make and the leases they lead to; once commissions take effect (Terms §1), bill landlords who pay one. |
@@ -412,7 +412,7 @@ provider located in the United States:
   question Proxy passes on, and the landlord's answer, are also sent so Proxy can check
   whether it has been asked before and reword it for the listing's knowledge.
 - **Landlord knowledge** (landlords). What you tell your agent, documents and pages you
-  give us or confirm, and your answers to questions are sent to Anthropic to turn them into
+  give us, and your answers to questions are sent to Anthropic to turn them into
   the listing's knowledge.
 - **Earlier conversations.** To give each listing's knowledge a starting point, the
   messages in each existing student-landlord conversation are sent to Anthropic once: the
@@ -567,7 +567,7 @@ and only for the purposes we specify:
 | **Google Workspace** | Recipient email addresses and message content | Sending other transactional and inquiry email, and as a fallback for message alerts |
 | **Amazon Web Services** (Simple Email Service, S3, SNS) | Email addresses of the people we send message alerts and related notices to, and the full text of those alerts; the complete content of email replies sent to a Proximity reply address, including headers and attachments, which is stored for 30 days and then deleted; delivery, bounce, and complaint reports | Sending message alerts and verification emails, receiving replies by email, and handling bounces |
 | **Nango**, and the property-management system a landlord connects (Buildium, AppFolio, DoorLoop, Rentec Direct) | Landlord-authorized property and unit availability, rent, and lease-end dates. Nango holds the property-management credentials; we store only a reference to the connection, never the credential itself. We do not import tenant records. | Optional landlord listing sync |
-| **Firecrawl, Jina, Tavily** | Public web pages a landlord gives us, or confirms are theirs | Pre-filling a listing draft from a property website, and suggesting updates to it |
+| **Firecrawl, Jina, Tavily** | Public web pages a landlord gives us | Pre-filling a listing draft from a property website, and suggesting updates to it |
 
 ### 6.4 For legal reasons
 
