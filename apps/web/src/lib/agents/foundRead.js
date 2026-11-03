@@ -51,14 +51,23 @@ const CHECK_INTERVAL_DAYS = 30;
 
 const PAGE_ORDER = { building: 0, unit: 1, home: 2 };
 
+/* Every row of a query, a page at a time (the database caps one request at 1000 rows). */
+async function allRows(build, what) {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().order("id").range(from, from + 999);
+    if (error) throw new Error(`${what}: ${error.message}`);
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+
 async function confirmedPages(listingIds) {
   const rows = [];
-  for (let i = 0; i < listingIds.length; i += 200) {
-    const { data, error } = await supabase.from("listing_found_sources")
-      .select("listing_id, url, site, page_type, confidence")
-      .in("listing_id", listingIds.slice(i, i + 200)).eq("status", "confirmed");
-    if (error) throw new Error(`found sources: ${error.message}`);
-    rows.push(...(data ?? []));
+  for (let i = 0; i < listingIds.length; i += 50) {
+    rows.push(...(await allRows(() => supabase.from("listing_found_sources")
+      .select("id, listing_id, url, site, page_type, confidence")
+      .in("listing_id", listingIds.slice(i, i + 50)).eq("status", "confirmed"), "found sources")));
   }
   const by = new Map();
   for (const r of rows) {
@@ -73,6 +82,27 @@ async function confirmedPages(listingIds) {
     list.splice(MAX_PAGES);
   }
   return by;
+}
+
+/*
+ * "<listing id> <url>" for every page already looked at. The database hands
+ * back at most 1000 rows per request, so read in small groups and pages, or a
+ * read listing looks unread and a run keeps picking it again.
+ */
+async function lookedAtPages(listingIds, since = null) {
+  const looked = new Set();
+  for (let i = 0; i < listingIds.length; i += 50) {
+    for (let from = 0; ; from += 1000) {
+      let q = supabase.from("listing_sources").select("listing_id, url").eq("kind", "page")
+        .in("listing_id", listingIds.slice(i, i + 50)).not("last_checked_at", "is", null);
+      if (since) q = q.gte("last_checked_at", new Date(since).toISOString());
+      const { data, error } = await q.order("id").range(from, from + 999);
+      if (error) throw new Error(`read pages: ${error.message}`);
+      for (const s of data ?? []) looked.add(`${s.listing_id} ${s.url}`);
+      if (!data || data.length < 1000) break;
+    }
+  }
+  return looked;
 }
 
 /* The rank of every source this listing has, by source id. */
@@ -103,6 +133,54 @@ function batchesOf(pages) {
   }
   if (cur.length) out.push(cur);
   return out;
+}
+
+/*
+ * Read one batch of pages into knowledge. A dense batch can need more facts
+ * than one answer holds, which comes back cut off; split it in half and try
+ * again. A single page that still fails is marked failed and skipped, so one
+ * bad page never stops the listing or keeps a run retrying it.
+ */
+async function readBatch(listingId, batch, rank, foundSite, out) {
+  const ranks = await sourceRanks(listingId, foundSite);
+  const text = batch.map((p, i) => `=== PAGE ${i + 1}: ${p.url} ===\n${p.text}`).join("\n\n");
+  const pageSources = batch.map((p, i) => ({ n: i + 1, url: p.url, sourceId: p.source.id }));
+  let r;
+  try {
+    r = await synthesizeKnowledge({
+      listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url,
+      cause: "seed", pageSources, noRetire: true,
+      // Replace only what came from a source at this rank or worse. A fact
+      // with no recorded source is treated as the landlord's.
+      canReplace: (fact) => (fact.source_id ? ranks.get(fact.source_id) ?? TOP_RANK : TOP_RANK) >= rank,
+    });
+  } catch (err) {
+    const message = String(err?.message ?? err).slice(0, 300);
+    if (!/parse structured output/i.test(message)) throw err;
+    if (batch.length > 1) {
+      const half = Math.ceil(batch.length / 2);
+      await readBatch(listingId, batch.slice(0, half), rank, foundSite, out);
+      await readBatch(listingId, batch.slice(half), rank, foundSite, out);
+      return;
+    }
+    const p = batch[0];
+    await supabase.from("listing_sources").update({
+      last_checked_at: new Date().toISOString(), last_status: "parse_failed", last_error: message,
+      consecutive_failures: (p.source.consecutive_failures ?? 0) + 1,
+    }).eq("id", p.source.id);
+    out.failed++;
+    out.errors.push({ url: p.url, error: message });
+    return;
+  }
+  out.written += r.written ?? 0; out.kept += r.kept ?? 0; out.held += r.held ?? 0;
+  const now = new Date().toISOString();
+  for (const p of batch) {
+    await supabase.from("listing_sources").update({
+      last_checked_at: now, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash,
+      next_check_at: new Date(Date.now() + CHECK_INTERVAL_DAYS * 86400000).toISOString(),
+    }).eq("id", p.source.id);
+  }
+  out.read += batch.length;
 }
 
 /*
@@ -147,27 +225,7 @@ export async function readFoundPages(listingId, { force = false, pages = null } 
 
   // Best rank first, so a lower source sees what a better one stored.
   for (const rank of [...groups.keys()].sort((a, b) => a - b)) {
-    for (const batch of batchesOf(groups.get(rank))) {
-      const ranks = await sourceRanks(listingId, foundSite);
-      const text = batch.map((p, i) => `=== PAGE ${i + 1}: ${p.url} ===\n${p.text}`).join("\n\n");
-      const pageSources = batch.map((p, i) => ({ n: i + 1, url: p.url, sourceId: p.source.id }));
-      const r = await synthesizeKnowledge({
-        listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url,
-        cause: "seed", pageSources, noRetire: true,
-        // Replace only what came from a source at this rank or worse. A fact
-        // with no recorded source is treated as the landlord's.
-        canReplace: (fact) => (fact.source_id ? ranks.get(fact.source_id) ?? TOP_RANK : TOP_RANK) >= rank,
-      });
-      out.written += r.written ?? 0; out.kept += r.kept ?? 0; out.held += r.held ?? 0;
-      const now = new Date().toISOString();
-      for (const p of batch) {
-        await supabase.from("listing_sources").update({
-          last_checked_at: now, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash,
-          next_check_at: new Date(Date.now() + CHECK_INTERVAL_DAYS * 86400000).toISOString(),
-        }).eq("id", p.source.id);
-      }
-      out.read += batch.length;
-    }
+    for (const batch of batchesOf(groups.get(rank))) await readBatch(listingId, batch, rank, foundSite, out);
   }
   return out;
 }
@@ -187,15 +245,7 @@ export async function readFoundBatch({ limit = 4, concurrency = 4, force = false
   const withPages = [...pagesBy.keys()];
 
   // Which found pages were already looked at (since the run started, with force).
-  const looked = new Set();
-  for (let i = 0; i < withPages.length; i += 200) {
-    let q = supabase.from("listing_sources").select("listing_id, url").eq("kind", "page")
-      .in("listing_id", withPages.slice(i, i + 200)).not("last_checked_at", "is", null);
-    if (force && since) q = q.gte("last_checked_at", new Date(since).toISOString());
-    const { data, error: e } = await q.limit(20000);
-    if (e) throw new Error(`read pages: ${e.message}`);
-    for (const s of data ?? []) looked.add(`${s.listing_id} ${s.url}`);
-  }
+  const looked = await lookedAtPages(withPages, force && since ? since : null);
   const todo = withPages.filter((id) => (force && !since) || pagesBy.get(id).some((p) => !looked.has(`${id} ${p.url}`)));
   const batch = todo.slice(0, limit);
 
@@ -225,16 +275,10 @@ export async function readFoundBatch({ limit = 4, concurrency = 4, force = false
 
 /* For the admin view: listings with confirmed pages, and how many are read. */
 export async function foundReadOverview() {
-  const { data, error } = await supabase.from("listing_found_sources").select("listing_id, url").eq("status", "confirmed").limit(20000);
-  if (error) throw new Error(`found read overview: ${error.message}`);
+  const data = await allRows(() => supabase.from("listing_found_sources").select("id, listing_id, url").eq("status", "confirmed"), "found read overview");
   const listings = new Set((data ?? []).map((r) => r.listing_id));
   const ids = [...listings];
-  const read = new Set();
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data: s } = await supabase.from("listing_sources").select("listing_id, url").eq("kind", "page")
-      .in("listing_id", ids.slice(i, i + 200)).not("last_checked_at", "is", null).limit(20000);
-    for (const r of s ?? []) read.add(`${r.listing_id} ${r.url}`);
-  }
+  const read = await lookedAtPages(ids);
   const pagesRead = (data ?? []).filter((r) => read.has(`${r.listing_id} ${r.url}`)).length;
   return { listings: listings.size, pages: data?.length ?? 0, pagesRead };
 }
