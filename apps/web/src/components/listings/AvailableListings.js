@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -10,6 +10,7 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
+import BackToTop from "@/components/ui/BackToTop";
 import SuggestedStrip, {
   SuggestedHeading,
 } from "@/components/listings/SuggestedStrip";
@@ -121,6 +122,9 @@ export default function AvailableListings({
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
   const panelRef = useRef(null);
+  // Where the grid was scrolled to when a panel opened, so closing it (button
+  // or browser back) puts the reader back there instead of at the top.
+  const gridScroll = useRef(0);
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -203,6 +207,7 @@ export default function AvailableListings({
   }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
+    gridScroll.current = panelRef.current?.scrollTop ?? 0;
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
@@ -231,15 +236,17 @@ export default function AvailableListings({
   };
 
   /*
-   * Scroll the panel to top when a listing is expanded, keyed on the listing's
+   * Scroll the panel to top when a listing is expanded (and back to where the
+   * grid was when it closes), keyed on the listing's
    * id, not on the object. The detail fetch replaces the feed object with a
    * fresh one for the SAME listing, and watching the object meant that second
    * arrival yanked the reader back to the top a couple of seconds after they
-   * started reading.
+   * started reading. A layout effect, so the position is set before the
+   * browser paints and the grid never shows at the top first.
    */
-  useEffect(() => {
-    if (expandedListing && panelRef.current) {
-      panelRef.current.scrollTop = 0;
+  useLayoutEffect(() => {
+    if (panelRef.current) {
+      panelRef.current.scrollTop = expandedListing ? 0 : gridScroll.current;
     }
   }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -456,8 +463,8 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
+        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden ${
+          expandedListing ? "w-[58vw] transition-[width] duration-300" : "w-[40vw] px-3 pt-3 pb-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
@@ -499,6 +506,11 @@ export default function AvailableListings({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
+            <BackToTop
+              scrollRef={panelRef}
+              after={600}
+              position="bottom-6 left-[calc(20vw-1.375rem)]"
+            />
             <div
               className={`flex items-center gap-2 px-1 mb-3 ${
                 showSuggested ? "justify-between" : ""
