@@ -33,7 +33,7 @@
  * Found pages are read once here. They are not added to the daily sync of
  * imported listings (knownPageUrls leaves them out); re-reading them on a
  * schedule is a later decision. A run reads only pages not looked at yet. A
- * page whose fetch or AI read failed is stamped as looked at too (last_status
+ * page whose fetch or AI read failed is stamped as looked at too (last_error
  * says why), so a run always ends; a forced run with `since` retries them.
  *
  * Every list here is read in pages of 1000 rows (the API's cap on one
@@ -141,11 +141,20 @@ function batchesOf(pages) {
   return out;
 }
 
+/*
+ * Stamp a page as looked at but not read. last_status only allows the sync's
+ * own values (a check constraint), so a failed AI read is a parse_failed with
+ * the reason in last_error. A stamp that does not save is an error: a page
+ * left unstamped would be picked again by every batch.
+ */
+const AI_READ_FAILED = "AI read failed";
+
 async function stampFailed(source, status, message) {
-  await supabase.from("listing_sources").update({
+  const { error } = await supabase.from("listing_sources").update({
     last_checked_at: new Date().toISOString(), last_status: status, last_error: String(message).slice(0, 300),
     consecutive_failures: (source.consecutive_failures ?? 0) + 1,
   }).eq("id", source.id);
+  if (error) throw new Error(`stamp page: ${error.message}`);
 }
 
 /*
@@ -218,7 +227,7 @@ export async function readFoundPages(listingId, { force = false, pages = null } 
         // No fingerprint is saved, so a forced run reads these pages again.
         const message = String(err?.message ?? err).slice(0, 300);
         for (const p of batch) {
-          await stampFailed(p.source, "read_failed", message);
+          await stampFailed(p.source, "parse_failed", `${AI_READ_FAILED}: ${message}`);
           out.errors.push({ url: p.url, error: message });
         }
         out.failed += batch.length;
@@ -236,7 +245,7 @@ async function stampListingFailed(pages, message) {
   for (const f of pages) {
     try {
       const source = await findOrCreateSource({ listingId: f.listing_id, kind: "page", url: f.url, label: f.url, checkIntervalDays: FOUND_CHECK_INTERVAL_DAYS });
-      if (isFoundSource(source, f)) await stampFailed(source, "read_failed", message);
+      if (isFoundSource(source, f)) await stampFailed(source, "parse_failed", `${AI_READ_FAILED}: ${message}`);
     } catch {
       // Nothing more to do; the panel stops a run that makes no progress.
     }
