@@ -9,7 +9,10 @@
  *   Sources of truth     search every listing for its Zillow, Apartments.com
  *                        and own-site pages; exact address matches are saved
  *                        as confirmed, likely ones wait here for Accept or
- *                        Reject. Retrieval only: nothing is read or synced.
+ *                        Reject.
+ *   Read found pages     the confirmed pages are read into each listing's
+ *                        knowledge, own site over Apartments.com over Zillow,
+ *                        never over what the landlord said (foundRead.js)
  *
  * Runs are loops of batch calls (a server call has 300 seconds), shown as
  * progress, stoppable between batches, and safe to start again: finished work
@@ -95,6 +98,10 @@ export default function AgentsLaunchPanel({ onChanged }) {
     (r, t) => `Searched ${r.done} listings in batch ${t.batches} (${r.searches} searches); ${r.remaining} of ${r.total} left${t.failed ? `; ${t.failed} failed` : ""}`,
     (r) => r.done);
 
+  const readFound = () => loop("readFound", { action: "readFound", limit: 4 },
+    (r, t) => `Read ${r.pages} pages for ${r.listings} listings in batch ${t.batches} (${r.written} facts written, ${r.kept} kept from a better source); ${r.remaining} of ${r.total} left${t.failed ? `; ${t.failed} failed` : ""}`,
+    (r) => r.listings + (r.failed?.length ?? 0));
+
   const tryDiscover = async () => {
     setRun({ kind: "preview", text: "Searching 3 listings without saving..." });
     try {
@@ -157,7 +164,7 @@ export default function AgentsLaunchPanel({ onChanged }) {
       <section>
         <h3 className="mb-1 text-sm font-semibold text-gray-900">Launch: sources of truth</h3>
         <p className="mb-3 text-xs text-gray-500">
-          Each listing is searched for its Zillow and Apartments.com pages and its own or its company&apos;s website. Pages showing the exact address are confirmed; likely matches wait below. Nothing is read or synced from them yet.
+          Each listing is searched for its Zillow and Apartments.com pages and its own or its company&apos;s website. Pages showing the exact address are confirmed; likely matches wait below. Confirmed pages can then be read into each listing&apos;s knowledge: its own site first, then Apartments.com, then Zillow, and never over what the landlord said.
         </p>
         <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Tile label="Listings searched" value={`${found.searched} / ${found.listings}`} note={`${found.listingsWithConfirmed} with a confirmed source`} />
@@ -171,6 +178,14 @@ export default function AgentsLaunchPanel({ onChanged }) {
             {found.searched ? "Search the rest" : "Search every listing"}
           </button>
           <span className="text-[11px] text-gray-500">About 5 Firecrawl searches per listing, 2 credits each.</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button disabled={running || !found.read?.pages} onClick={readFound} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+            {found.read?.pagesRead ? "Read the rest of the found pages" : "Read found pages into knowledge"}
+          </button>
+          <span className="text-[11px] text-gray-500">
+            {found.read?.pagesRead ?? 0} of {found.read?.pages ?? 0} confirmed pages read, {found.read?.listings ?? 0} listings. Up to 8 pages per listing, one AI read per site.
+          </span>
         </div>
         {preview && (
           <div className="mt-3 space-y-2 rounded-xl border border-gray-200 bg-white p-3 text-xs">

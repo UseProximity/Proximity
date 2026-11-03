@@ -113,7 +113,9 @@ function knowledgeIndex(facts) {
 }
 
 /*
- * Returns { ops, written, unchanged, held, retired, coreChanges, answer, notes }.
+ * Returns { ops, written, unchanged, held, retired, kept, coreChanges, answer, notes }.
+ * `canReplace(fact)`, when given, decides whether an existing fact may be
+ * replaced; one it refuses is kept and counted in `kept`.
  * `ownerDefault` scopes everything the text does not scope itself to one
  * owner's offer (an answer from a non-primary owner, PRD: "Ownership").
  */
@@ -121,6 +123,7 @@ export async function synthesizeKnowledge({
   listingId, text, sourceKind, sourceId = null, sourceRef = null, cause,
   landlordSet = false, setBy = null, actorId = null, ownerDefault = null,
   question = null, observedAt = null, noRetire = false, pageSources = null,
+  canReplace = null,
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty" };
@@ -156,7 +159,7 @@ export async function synthesizeKnowledge({
 
   const { data: protectedRows } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
   const protectedSources = new Set((protectedRows ?? []).map((r) => r.id));
-  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [] };
+  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, kept: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [] };
   for (const op of parsed.operations ?? []) {
     if (!SECTIONS.includes(op.section)) continue;
     const key = String(op.key ?? "").toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100);
@@ -178,6 +181,12 @@ export async function synthesizeKnowledge({
       continue;
     }
     if (op.section === "core") continue; // core values are reported as core_changes, never stored as facts
+    // A caller ranking its sources (found pages, lib/agents/foundRead.js)
+    // keeps a fact that came from a better source.
+    if (canReplace) {
+      const current = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null));
+      if (current && !canReplace(current)) { result.kept++; continue; }
+    }
     // From a batch of pages: the fact's own page is its source.
     const page = pageSources?.find((p) => p.n === op.page_number) ?? null;
     const r = await setFact({
