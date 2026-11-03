@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** October 23, 2026
+**Last updated:** November 2, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -81,9 +81,12 @@ This matters more here than on most platforms, so we want to be direct about it.
   identity verification, or license checks on anyone.
 - **We do not inspect properties.** We have never visited most of the properties listed.
 - **We do not screen or endorse.** A listing appearing on Proximity (including one the
-  matchmaking assistant recommends or one shown as "Suggested for you") is not a
-  recommendation, endorsement, or judgment that
+  matchmaking assistant recommends, one shown as "Suggested for you", or one Proxy answers
+  questions about) is not a recommendation, endorsement, or judgment that
   the property or the person renting it is safe, legitimate, lawful, or suitable for you.
+- **Proxy's answers are not promises.** An answer from Proxy, our listing assistant
+  (Section 9B), is not an offer, a guarantee, or a commitment by Proximity or by the
+  landlord. Only your lease and what the landlord agrees with you are.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
   one through us. Any commission a landlord pays us once commissions take effect
@@ -96,7 +99,8 @@ money before you have seen the place.
 ## 5. Using Proximity as a student
 
 You may browse and search listings, save the ones you like, contact the people renting them,
-use the matchmaking assistant and Lease Check, and leave reviews if you are eligible.
+ask Proxy about a listing and request a tour (Sections 9B and 9C), use the matchmaking
+assistant and Lease Check, and leave reviews if you are eligible.
 
 **Sublease listings.** If you are subletting your own place, you may post it as a listing.
 Everything in Section 6 about listing accuracy, your right to list, and non-discrimination
@@ -146,7 +150,28 @@ us the address of your own property website or an existing listing of yours. We 
 public content of that page and use AI to pre-fill a draft, using only images that appeared
 on the page. Nothing is saved until you review the draft field by field and submit it, so the
 listing is still yours and you are still the one representing it. We do this only for a page
-you give us, for your own property.
+you give us, or a page you confirm is yours when we suggest it, for your own property. We may
+check that page again from time to time and suggest updates to your listing; nothing on the
+listing changes until you accept them.
+
+**Your listing's assistant.** Where we have turned it on for your listing, Proxy (Section 9B)
+answers students' questions about it. Proxy answers from your listing, from what you have told
+students in Proximity messages, from documents and pages you give us or confirm, and from your
+answers to earlier questions. When Proxy cannot answer, it sends you the question, without the
+student's name or contact details, and you can answer in your dashboard or by replying to our
+email. By using it, you agree that:
+
+- **Your answers are reused.** An answer you give, with the question it answers, becomes
+  part of what Proxy knows about the listing and is given to any student who asks the same
+  thing, until you change it.
+- **You are responsible for what you tell it.** Your answers, and anything you tell your
+  agent in the dashboard, must be accurate and current, and must follow the fair housing
+  rules above. Proxy will not pass on an answer that discriminates.
+- **You can correct it at any time.** Your dashboard shows everything Proxy knows about the
+  listing, where each item came from, and lets you change or remove it.
+- **Proxy can be wrong.** It is AI-generated, and it may misread something or answer from
+  information that is out of date. We are not responsible for an answer you did not
+  correct, but we will fix anything wrong as soon as you tell us.
 
 **Keeping listings fresh.** Proximity may email you from time to time to ask whether a
 listing is still available, using a one-click link that does not require signing in. If a
@@ -173,9 +198,9 @@ to, we will set the listing up for them from the details and contact information
 us or point us to. Once the landlord creates their own landlord account, we assign the
 listing to it so they control it from then on.
 
-**We do not list a property nobody asked us to list.** We do not scrape listing sites,
-property aggregators, or the web at large looking for properties to put on Proximity. A
-listing exists because its owner asked for it, or because they created it themselves.
+**We do not list a property nobody asked us to list.** A listing exists because its owner
+asked for it, or because they created it themselves. We read a property's web page only when
+its landlord gives it to us, or confirms that a page we suggest is theirs (Section 6).
 
 **One exception: pages for properties students have reviewed.** When a student reviews a
 building that is not on Proximity, we create a page for it so the review has somewhere to
@@ -269,6 +294,47 @@ explains how.
   view, and contact. The same gender rule as the matchmaking assistant applies (Section 9).
 - **Landlords cannot pay to be suggested.** Suggestions are not advertising.
 
+## 9B. Proxy, the listing assistant
+
+On some listings, the Contact section is a conversation with Proxy, an AI assistant that
+answers questions about that listing. You can use it signed in or signed out.
+
+- **It is AI-generated and it can be wrong.** Proxy answers from the listing, from what the
+  landlord has told students and told us, and from documents and pages the landlord has
+  given us or confirmed. Any of that can be incomplete or out of date. Check anything that
+  matters, such as rent, fees, or a policy, with the landlord and in your lease.
+- **It passes on what it cannot answer.** Proxy sends your question to the landlord without
+  your name or contact details, and tells you when they answer. The landlord sees a one-line
+  description of what you asked about, such as the unit or lease, not who you are. The
+  question, reworded and without your details, and the landlord's answer may be used to
+  answer other students who ask the same thing.
+- **If you are signed out,** Proxy asks for an email address so it can send you the answer.
+  We send a link to confirm it is yours, and use it only for this conversation.
+- **We email you about it.** When the landlord answers, or Proxy needs something from you,
+  we email you. You can reply to that email to continue the conversation.
+- **You can report an answer.** If an answer is wrong, report it from the conversation and
+  we will look at it.
+- **It does not make decisions about you.** Proxy never approves or turns you down for
+  housing, and the landlord always decides who they rent to.
+
+Don't share anything with Proxy that you would not want the landlord to read: a question it
+passes on is shown to them as you asked it, without your name.
+
+## 9C. Tours
+
+You can ask to tour a listing by telling Proxy when you are free. Proximity passes your
+times to the landlord, and the landlord picks one or suggests another.
+
+- **Your name is shared when a tour is arranged.** Until then you are "a student". Once the
+  landlord confirms a time, or starts a conversation with you about the tour, they see your
+  name, and you can message each other directly (Section 11).
+- **We send calendar invites.** When a tour is confirmed, both of you get an email with a
+  calendar invite that names the listing, the address, and the other person.
+- **We do not arrange, attend, or check tours.** A tour is between you and the landlord.
+  Proximity does not visit the property, confirm who will meet you, or guarantee that a tour
+  will happen. The advice in Section 4 applies: meet in person before you pay anything.
+- **Either of you can cancel,** from the Services, and the other person is told.
+
 ## 10. Lease Check
 
 Lease Check is currently available on the website only. You upload a lease and an AI model
@@ -305,6 +371,12 @@ a dispute, or to confirm that a lease was signed. The rules in Section 12 apply 
 exactly as they apply to listings and reviews, and we may remove a message or withdraw
 access to messaging for a breach of them. The paragraph headed "Checks on messages and files" below
 says which messages are refused.
+
+**Conversations about a tour.** In a conversation that a tour request opened, each message
+is read automatically, by our AI provider, to see whether it suggests a time for the tour.
+If it does, the other person is asked whether to book or move the tour to that time, and
+nothing changes until they confirm. You can also reply to a tour email to message the other
+person, exactly as if you had written in the app.
 
 A message you have sent cannot be unsent. If you delete your account, we keep your
 conversations for three years afterwards, with your name and email address as the only
@@ -352,6 +424,8 @@ You agree not to:
 - work around rate limits, access controls, authentication, or any other technical measure,
   or access parts of the Services you are not authorized to reach;
 - use the Services to send spam or unsolicited commercial messages;
+- use Proxy to try to find out who another student is, to get information it is not meant
+  to give, or to send a landlord anything this section forbids;
 - use Proximity messaging to move a conversation to another channel before you have agreed
   terms, or share contact details, links, or social handles in messages for that purpose.
   We may flag, remove, or stop delivering messages that do this, and may limit your access
@@ -405,7 +479,8 @@ use our name or logo without our written permission.
 ## 16. Third-party services
 
 The Services rely on third parties, including Google for sign-in and maps imagery, Mapbox
-for maps and travel times, our AI provider for the features in Sections 9 and 10, and
+for maps and travel times, our AI provider for the features in Sections 6, 9, 9B, 9C, 10 and
+11, and
 property-management providers for the sync in Section 6. Listings may also link to
 third-party websites. We do not control any of them, we are not responsible for them, and
 your use of them may be governed by their own terms. Privacy Policy §6.3 lists the providers
@@ -433,7 +508,7 @@ you stop using is kept until you delete it. If we introduce a dormancy period, w
 you notice by email before it takes effect and a chance to keep the account open.
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
-and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 13 (the licence, to the extent content
+and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 9B and 9C (Proxy conversations, questions, and tours kept for three years), 13 (the licence, to the extent content
 remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
@@ -515,8 +590,8 @@ even if we have been advised of the possibility.
 sublease, or rental arrangement you enter into; the conduct, acts, or omissions of any
 landlord, student, or other user, whether online or in person; the condition, safety,
 legality, or availability of any property; any payment you make to another user; or any
-decision you make in reliance on the matchmaking assistant, suggested listings, or Lease
-Check.
+decision you make in reliance on the matchmaking assistant, suggested listings, Proxy, or
+Lease Check; or any tour, including whether it happens and what happens at it.
 
 **Our total liability** to you for all claims relating to the Services will not exceed
 **$100 USD**.

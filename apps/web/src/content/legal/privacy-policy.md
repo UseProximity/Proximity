@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** October 23, 2026
+**Last updated:** November 2, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -147,6 +147,35 @@ Android app offer email and password or Google.
   why. When you send a message, we may notify the other participant by email or push
   notification. A push notification can show your name and the beginning of your message;
   an email alert contains the new messages in full (Section 6.2).
+- **Proxy conversations**: on listings where it is turned on, you can ask Proxy, our
+  listing assistant, about the listing (Terms §9B). We store the conversation: what you
+  wrote, Proxy's answers, the listing and lease it was about, and when. If you are signed
+  out, we store it against a device cookie (Section 5.1) and, if you give one, the email
+  address you confirm for answers, together with a scrambled (hashed) form of the
+  confirmation link's code. If you later sign in on that device, the conversation moves to
+  your account. Proximity staff can read Proxy conversations to check the quality of its
+  answers and to investigate a report.
+- **Questions passed to a landlord**: when Proxy cannot answer, we store the question, a
+  one-line description of what it is about (such as the unit or lease, and whether the
+  person asking is signed in), and which conversations are waiting for the answer. **The
+  landlord sees the question and that description, never your name or contact details.** If
+  the landlord asks you something back, your reply is passed to them the same way. The
+  landlord's answer, with the question reworded so it does not identify you, becomes part of
+  what Proxy knows about the listing and is used to answer other people who ask.
+- **Answers you report**: if you report one of Proxy's answers, we record which answer and
+  when, and email it to the Proximity team.
+- **Tours**: if you ask to tour a listing, we store the weekly hours you say you are
+  usually free (reused for your next request), the times offered for that tour, the listing
+  and lease, the landlord, the time agreed, its status, and who cancelled it and why, if
+  they gave a reason. When a tour is confirmed, or the landlord starts a conversation with
+  you about it, a conversation opens between the two of you, stored like any other
+  message described below.
+- **What landlords tell Proxy** (landlords): what you write to your agent in the dashboard,
+  the documents and web pages you give us or confirm are yours, your answers to questions,
+  and the knowledge we build from them, with a record of where each item came from and
+  who changed it. We also read the messages landlords have sent students through Proximity
+  into the knowledge of the listing they were about (Section 4). Only what the landlord
+  said is kept as knowledge, without the student's name or contact details.
 - **Messages we refuse to send, and ones we flag**: messages are checked before they are
   delivered, to protect you from fraud and abuse and to keep conversations on the platform
   where we can help you (Terms §11 and §12). A message that threatens or abuses someone
@@ -163,7 +192,9 @@ Android app offer email and password or Google.
   conversations. They are kept for **two years**, then deleted. A message that passes the
   check is not recorded here at all.
 - **Replies by email**: when we email you a new message, you can answer by replying to that
-  email, and your reply is posted to the conversation. We remove quoted text and your
+  email, and your reply is posted to the conversation. The same applies to an email from
+  Proxy, where your reply is a message to Proxy, and to a landlord replying to a tour request
+  email, where the reply is a message to the student. We remove quoted text and your
   signature before posting it. A reply is checked like any other message: **sentences that
   threaten or abuse someone, ask for login details, or ask for payment through a method we
   cannot protect are removed and marked as removed**, and the rest of your reply is
@@ -186,6 +217,10 @@ Android app offer email and password or Google.
 
 - **Interaction history**: which listings you save and which you contact, with
   timestamps. We do not record which listings you merely view against your account.
+- **Saved lease preferences**: when you are signed in and pick a move-in date, bedroom
+  counts, or lease lengths on a listing, we save your latest picks on your account and use
+  them to narrow the lease options we show you on other listings. Each new pick replaces
+  the last.
 - **Saved browse filters** (website): when you are signed in and save a set of filters on
   the browse page (by pressing **Done** or **Apply Filters**), we keep that latest set,
   such as a price range, bedroom count, or walk time, and when you saved it. Each new save
@@ -266,6 +301,10 @@ section explains what, why, and how to have it removed.
   link for submitting the review. We use it only to send that invitation and to recognize
   the review when it comes back. It is never published, never sold, never used for
   advertising, and is not visible to landlords or to other students.
+- **People who ask Proxy without signing in.** We keep the conversation and, if you give
+  one, the email address you confirmed for answers, as described in Section 1.4. Unless you
+  sign in and add it to an account, it is emptied, including the email address, 90 days
+  after its last message.
 - **Addresses of properties students have reviewed.** When a student reviews a building
   that is not on Proximity, we create an unavailable page for it that holds the property's
   address, a Street View image, and its reviews. The page offers nothing for rent. The
@@ -296,11 +335,13 @@ another, replying to say so is enough.
 | **Provide the Services** | Create and authenticate your account; display listings; save favorites; publish your listings; display reviews and replies. |
 | **Match you to housing** | Operate the matchmaking assistant; store your preferences so you can resume where you left off; rank and explain listings against those preferences. |
 | **Suggest listings** | When you are signed in, show a short "Suggested for you" selection on the homepage and the browse page, chosen automatically from your most recent matchmaking preferences, the listings you have saved and contacted, and your saved browse filters (Section 2.2). |
+| **Answer questions about a listing** | Operate Proxy; pass questions it cannot answer to the landlord without your name; send you the answer; build and keep each listing's knowledge from what its landlord tells us. |
+| **Arrange tours** | Pass your times to the landlord; book the time agreed; send both of you calendar invites, reminders, and changes. |
 | **Connect students and landlords** | Deliver your messages and notify the other person by email or push notification; send inquiry emails on your behalf when you ask the matchmaking assistant to; send you a copy of those emails. |
 | **Account and transactional email** | Verify your email address; reset your password; ask landlords to confirm whether a listing is still available; remind new landlords who have not yet posted. |
 | **Collect reviews** | Email students at the universities we serve to invite them to review a place they have lived, using a single-use link. |
 | **Analyze a lease you upload** | Produce the Lease Check flags and summary. |
-| **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one. |
+| **Keep listings accurate** | Sync availability from a landlord's property-management system, where the landlord has connected one; suggest updates from web pages a landlord has given us or confirmed. |
 | **Safety, integrity, and support** | Apply eligibility rules (only students at a school we serve may leave reviews, and we use your date of birth to check eligibility on listings restricted to residents 21 or older); investigate abuse and fraud, including looking at reports; respond to your questions. |
 | **Improve the Services** | Understand which pages and listings are used; act on feedback and bug reports. |
 | **Business operations** | Maintain a record of new accounts and listings for onboarding and support; keep a record of the introductions we make and the leases they lead to; once commissions take effect (Terms §1), bill landlords who pay one. |
@@ -352,7 +393,7 @@ If you believe a minor has created an account, contact us at info@useproximity.o
 
 ## 4. Artificial intelligence
 
-Four Proximity features send information to **Anthropic PBC** (the Claude API), a service
+These Proximity features send information to **Anthropic PBC** (the Claude API), a service
 provider located in the United States:
 
 - **Matchmaking.** Each conversation sends its transcript, the
@@ -366,6 +407,21 @@ provider located in the United States:
   analysis, as described in Section 1.7.
 - **Listing drafts** (landlords). A property website URL you supply and the public content
   of that page are sent to Anthropic to pre-fill a listing draft.
+- **Proxy.** Each message you send Proxy is sent with the conversation so far and what
+  Proxy knows about the listing. Your name, email address, and account ID are not sent. A
+  question Proxy passes on, and the landlord's answer, are also sent so Proxy can check
+  whether it has been asked before and reword it for the listing's knowledge.
+- **Landlord knowledge** (landlords). What you tell your agent, documents and pages you
+  give us or confirm, and your answers to questions are sent to Anthropic to turn them into
+  the listing's knowledge.
+- **Earlier conversations.** To give each listing's knowledge a starting point, the
+  messages in each existing student-landlord conversation are sent to Anthropic once: the
+  landlord's messages, with the student's as context, and any document or photo the landlord
+  attached. Only what the landlord said is kept, without the student's name or contact
+  details. A conversation with new landlord messages may be read again.
+- **Tour times.** In a conversation that a tour request opened, each message is sent to
+  Anthropic, without your name or email address, to see whether it suggests a time for the
+  tour (Terms §11).
 - **Message attachment screening.** When you attach a photo or document to a message,
   the file is sent to Anthropic before the message is delivered, to check whether it is
   being used to pass on contact details or to ask for payment off the platform
@@ -381,8 +437,9 @@ Anthropic processes this data solely to return a response to us. We do not use y
 personal information to train our own models, and we do not sell or license your
 conversations or lease documents.
 
-The matchmaking assistant ranks and explains listings. It does not make any decision that
-produces a legal or similarly significant effect about you. It does not approve or deny
+The matchmaking assistant ranks and explains listings, and Proxy answers questions about
+them. Neither makes any decision that produces a legal or similarly significant effect about
+you. It does not approve or deny
 you housing, and every recommendation is a suggestion you are free to ignore. A human is
 always the one who decides whether to rent to you.
 
@@ -402,6 +459,11 @@ protects against cross-site request forgery. It is cleared when you sign out.
 If you use an external waitlist button on a listing, we set a cookie that recognizes
 repeat clicks from the same browser. Page scripts cannot read it, and it expires after
 one year.
+
+If you talk to Proxy or the matchmaking assistant without signing in, we set a cookie that
+identifies your browser, so your conversation is still there when you come back and can be
+added to your account if you sign in. Page scripts cannot read it, it contains nothing
+about you, and it expires after one year.
 
 **Functional: stored in your browser**
 
@@ -475,6 +537,12 @@ control.
   include your name and the beginning of your message.
 - When you ask the matchmaking assistant to contact an owner for you, we email your
   **name and email address** together with your inquiry.
+- When Proxy passes your question to a landlord, they see the question and a one-line
+  description of what it is about, **not your name or contact details**.
+- When a tour is confirmed, or the landlord starts a conversation with you about it, the
+  landlord sees **your name**, and you see theirs. Tour emails and calendar invites name the
+  listing, its address, and the other person. They do not include either person's email
+  address or phone number.
 - When someone messages you on Proximity, or you message them, we email the new messages
   **in full, with the sender's name** (and, for landlords, company name) to the other
   person: to their account email or, for a landlord, to an alert address they have
@@ -491,7 +559,7 @@ and only for the purposes we specify:
 | **Supabase** | All application data described in Section 1 | Managed database hosting |
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
 | **Cloudflare** | Profile photos, listing photos, floor plans; photos and PDFs attached to messages; lease documents transiently | Object storage and delivery |
-| **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content; photos and documents attached to messages | AI features (Section 4) |
+| **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content; photos and documents attached to messages; Proxy conversations, questions, and landlord answers; what landlords tell their agent and the documents they give us; existing student-landlord conversations, read once; messages in tour conversations | AI features (Section 4) |
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Expo, Apple, and Google (Firebase Cloud Messaging)** | Your device's push token, your device platform, and the content of any notification we send you. Expo's push service forwards notifications to Apple's push notification service (iOS) or Google's Firebase Cloud Messaging (Android). | Delivering push notifications to the mobile apps |
 | **Mapbox** | Map and geocoding requests from your browser or app, which include the map area you are viewing and your IP address | Maps, geocoding, and walking/driving times |
@@ -499,7 +567,7 @@ and only for the purposes we specify:
 | **Google Workspace** | Recipient email addresses and message content | Sending other transactional and inquiry email, and as a fallback for message alerts |
 | **Amazon Web Services** (Simple Email Service, S3, SNS) | Email addresses of the people we send message alerts and related notices to, and the full text of those alerts; the complete content of email replies sent to a Proximity reply address, including headers and attachments, which is stored for 30 days and then deleted; delivery, bounce, and complaint reports | Sending message alerts and verification emails, receiving replies by email, and handling bounces |
 | **Nango**, and the property-management system a landlord connects (Buildium, AppFolio, DoorLoop, Rentec Direct) | Landlord-authorized property and unit availability, rent, and lease-end dates. Nango holds the property-management credentials; we store only a reference to the connection, never the credential itself. We do not import tenant records. | Optional landlord listing sync |
-| **Firecrawl, Jina, Tavily** | Public web pages at landlord-supplied URLs | Pre-filling a listing draft from a property website |
+| **Firecrawl, Jina, Tavily** | Public web pages a landlord gives us, or confirms are theirs | Pre-filling a listing draft from a property website, and suggesting updates to it |
 
 ### 6.4 For legal reasons
 
@@ -579,6 +647,8 @@ the end of that period instead:
 | Push notification tokens | Permanently deleted. |
 | Conversation-link records | Not removed at the 30-day erasure. Deleted automatically about 30 days after each link expires (Section 1.1). They contain no name or email address. |
 | Blocks you set, and reports you filed | Permanently deleted. |
+| Proxy conversations, questions, and tours | **Kept for three years**, like other messages. Your Proxy conversations, the tours you requested, and what you said about a question (your replies, and that you were waiting for the answer) are retained for three years after deletion, and then erased. A question's text and the landlord's answer carry no details about you and stay part of the listing's knowledge. |
+| Your weekly tour availability, and saved lease preferences | Permanently deleted. |
 | Matchmaking conversations, and the housing preferences derived from them | **Kept for three years.** The transcript, the preferences you gave, and the recommendations we made are retained for three years after deletion as a record of which properties we showed you and why, and then erased. They are never published and are visible only to Proximity staff who need them. See Terms §17A. |
 | Lease Check results | Permanently deleted. |
 | Waitlist entries and review invitations | Permanently deleted. |
@@ -618,6 +688,9 @@ the end of that period instead:
 | Messages sent through Proximity | While your account is active, then for three years after deletion with the sender's name and email address, then erased (Section 8). |
 | Inquiry records and recorded leases | While your account is active, then for three years after deletion with your name and email address, then erased (Section 8). |
 | Matchmaking conversations, and the housing preferences derived from them | While your account is active, then for three years after deletion, then erased (Section 8). |
+| Proxy conversations, questions, and tours | While your account is active, then for three years after deletion, then erased (Section 8). |
+| Proxy conversations started while signed out | Emptied, including any confirmed email address, 90 days after their last message, unless added to an account first. |
+| Listing knowledge | While the listing is on Proximity. It describes the property, not the people who asked about it. |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
 | Saved listings and saved browse filters | While your account is active, then erased under Section 8. Saved browse filters are replaced each time you save a new set. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
@@ -652,8 +725,11 @@ the end of that period instead:
   If you would rather not see them, applying any filter on the browse page turns them off
   for that view, and you can email info@useproximity.org to have your saved browse filters
   deleted.
-- **Decline the AI features.** Matchmaking and Lease Check are optional. Nothing is sent to
-  Anthropic unless you choose to use them.
+- **Decline the AI features.** Matchmaking, Proxy, and Lease Check are optional, and you
+  can always message a landlord directly from Messages instead of asking Proxy. Messages in
+  a conversation opened by a tour are read for suggested times (Section 4), and existing
+  conversations are read once into listing knowledge; email info@useproximity.org if you
+  want a conversation left out.
 - **Request a copy of your data.** Email info@useproximity.org from the address on your
   account and we will provide a copy of the personal information we hold about you, in a
   portable format, within 45 days.
@@ -680,7 +756,7 @@ the statutory categories:
 | Identifiers | Yes | Name, email address, phone number, account identifier, IP address |
 | Personal information under Cal. Civ. Code §1798.80 | Yes | Name, phone number |
 | Protected classification characteristics | Yes | Date of birth / age, gender |
-| Commercial information | Yes | Listings saved and contacted; leases a landlord tells us you signed |
+| Commercial information | Yes | Listings saved and contacted; questions asked about listings; tour requests; leases a landlord tells us you signed |
 | Biometric information | No | N/A |
 | Internet or network activity | Yes | Pages viewed, referring page, analytics events |
 | Geolocation data | No | We do not collect device location |
