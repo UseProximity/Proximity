@@ -22,6 +22,8 @@ const OTHER_PORTALS = [
   "corporatehousing.com", "furnishedfinder.com", "blueground.com", "airbnb.com", "vrbo.com", "landing.com",
   "rentberry.com", "housingsearch.wustl.edu", "wustl.edu", "washu.edu", "slu.edu", "umsl.edu", "showmojo.com",
   "zillow.net", "trulia.net", "apartments.net", "apartmentratings.com", "glassdoor.com", "indeed.com",
+  // Our own site: its listing and guide pages copy the address, but are never a source.
+  "useproximity.org", "proximity-livid.vercel.app", "proximity-sandbox.vercel.app",
 ];
 
 export function hostOf(url) {
