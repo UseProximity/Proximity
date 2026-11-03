@@ -98,6 +98,9 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, result: { ...overviewCounts, review, read } });
     }
     if (action === "readFound") {
+      if (body.force === true && !body.since && !body.listingId) {
+        return NextResponse.json({ error: "A forced read needs since (when the run started)." }, { status: 400 });
+      }
       const result = await readFoundBatch({
         limit: Math.min(Number(body.limit) || 4, 8),
         force: body.force === true,
