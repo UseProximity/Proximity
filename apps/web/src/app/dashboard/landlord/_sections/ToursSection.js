@@ -15,8 +15,9 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { TourItem } from "@/components/landlord/LandlordProxyChat";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceLandlordChange, onLandlordChange } from "@/components/landlord/landlordSync";
 
-const OPEN = ["requested", "proposed", "messaging"];
+const OPEN = ["requested", "proposed"];
 
 export default function ToursSection({ viewAsId = null }) {
   const [tours, setTours] = useState(null);
@@ -33,13 +34,22 @@ export default function ToursSection({ viewAsId = null }) {
     } catch (err) { setError(err.message); }
   }, [viewAsId]);
   useEffect(() => { load(); }, [load]);
+  // A pick or a message to the student in any other area updates this list, and the other way round.
+  useEffect(() => onLandlordChange(() => load()), [load]);
+  // New requests and replies show without a reload (Wyatt, 2026-11-02).
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 10000);
+    return () => clearInterval(t);
+  }, [load]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!tours) return <ChatSkeleton rows={3} />;
 
   const open = tours.filter((t) => OPEN.includes(t.status));
+  // Arranged in the direct chat from here on (Wyatt, 2026-11-01).
+  const talking = tours.filter((t) => t.status === "messaging");
   const upcoming = tours.filter((t) => t.status === "confirmed" && Date.parse(t.confirmedSlot) > Date.now());
-  const past = tours.filter((t) => !OPEN.includes(t.status) && !upcoming.includes(t)).slice(0, 20);
+  const past = tours.filter((t) => !OPEN.includes(t.status) && !talking.includes(t) && !upcoming.includes(t)).slice(0, 20);
 
   const block = (title, list) => list.length > 0 && (
     <section className="space-y-4">
@@ -47,7 +57,7 @@ export default function ToursSection({ viewAsId = null }) {
       {list.map((t) => (
         <div key={t.id} className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="mb-2 text-xs font-semibold text-gray-500">{t.listingTitle}</p>
-          <TourItem tour={t} viewAsId={viewAsId} onDone={load} />
+          <TourItem tour={t} viewAsId={viewAsId} onDone={() => { load(); announceLandlordChange({ listingId: t.listingId ?? null }); }} />
         </div>
       ))}
     </section>
@@ -61,6 +71,7 @@ export default function ToursSection({ viewAsId = null }) {
         </div>
       )}
       {block("Waiting on you", open)}
+      {block("Talking directly", talking)}
       {block("Upcoming", upcoming)}
       {block("Past", past)}
     </div>

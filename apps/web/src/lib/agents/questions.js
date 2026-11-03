@@ -114,10 +114,14 @@ async function findFollowUp({ listingId, threadId, questionText }) {
 }
 
 /* The follow-up goes into the earlier question's card, which opens again for this thread. */
+// The landlord's turn starts (again): reminders and the day-5 note restart.
+const LANDLORD_TURN = (now) => ({ asked_at: now, reminder_1_at: null, reminder_3_at: null, student_told_at: null });
+
 async function reopenWithFollowUp({ q, thread, text, userId }) {
   const now = new Date().toISOString();
   await supabase.from("listing_question_messages").insert({ question_id: q.id, sender: "student", kind: "followup", thread_id: thread.id, user_id: userId, body: text.slice(0, 2000) });
-  await supabase.from("listing_questions").update({ status: "open", pending_clarifier: false, last_activity_at: now }).eq("id", q.id);
+  // Back to the landlord: reminders count again from now.
+  await supabase.from("listing_questions").update({ status: "open", pending_clarifier: false, last_activity_at: now, ...LANDLORD_TURN(now) }).eq("id", q.id);
   await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id).eq("thread_id", thread.id);
   if (q.owner_id) await notifyLandlordStudentReply({ questionId: q.id }).catch((err) => console.error("[proxy] follow-up alert failed:", err?.message ?? err));
 }
@@ -188,7 +192,8 @@ export async function pendingClarifierFor(threadId) {
 export async function studentReplyToClarifier({ question, thread, body, userId = null }) {
   const screened = screenStudentText(body);
   await supabase.from("listing_question_messages").insert({ question_id: question.id, sender: "student", kind: "reply", thread_id: thread.id, user_id: userId, body: (screened.text || "(The student sent only contact details, which Proxy does not pass on.)").slice(0, 2000), raw_body: screened.removed ? screened.original : null, screened: screened.removed > 0 });
-  await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: new Date().toISOString() }).eq("id", question.id);
+  const now = new Date().toISOString();
+  await supabase.from("listing_questions").update({ pending_clarifier: false, last_activity_at: now, ...LANDLORD_TURN(now) }).eq("id", question.id);
   await notifyLandlordStudentReply({ questionId: question.id }).catch((err) => console.error("[proxy] reply alert failed:", err?.message ?? err));
 }
 
@@ -202,6 +207,38 @@ async function exchangeText(q, latest) {
   const lines = (data ?? []).map((m) => `${m.sender === "landlord" ? "Landlord" : m.sender === "student" ? "Student" : "Proxy"}: ${m.body}`);
   if (lines.length <= 1) return latest;
   return `Conversation about this question, oldest first. Save what the landlord's answers establish, reading the final reply in light of the earlier messages.\n${lines.join("\n")}`;
+}
+
+const QaContext = z.object({
+  needs_context: z.boolean().describe("True only if the landlord's answer cannot be understood from the question alone."),
+  context: z.string().describe("If needs_context: one short sentence saying what the student added that the answer responds to, e.g. 'the student asked about a cat'. No names, emails, phone numbers, addresses, schools, dates of birth or anything else that identifies the student. Otherwise empty."),
+});
+
+/*
+ * A saved question-and-answer pair is public (Proxy answers from it and the
+ * facts API shows it), so the student's own replies never go in (PR #365
+ * review). When the answer only makes sense with what the student said, a
+ * one-sentence summary of that, stripped of anything identifying, is kept
+ * (Wyatt, 2026-10-31).
+ */
+async function qaContext(q, answer) {
+  const { data } = await supabase.from("listing_question_messages").select("sender, body").eq("question_id", q.id).order("created_at", { ascending: true });
+  const studentLines = (data ?? []).filter((m) => m.sender === "student").map((m) => m.body);
+  if (!studentLines.length) return null;
+  try {
+    const { parsed } = await parseStructured({
+      model: HAIKU, maxTokens: 300, listingId: q.listing_id, kind: "qa_context", tag: "qa-context",
+      system: "You prepare a landlord's answer to be saved as a public question-and-answer pair about a rental listing. Decide whether the answer needs what the student said to make sense, and if so summarise that in one short sentence with nothing that identifies the student.",
+      messages: [{ role: "user", content: `Question: ${q.question}\nStudent's replies:\n${studentLines.join("\n").slice(0, 3000)}\nLandlord's answer: ${answer}` }],
+      schema: QaContext,
+    });
+    if (!parsed?.needs_context) return null;
+    // Belt and braces: the student screen strips contact details the model left in.
+    const clean = screenStudentText(String(parsed.context ?? "")).text.trim().slice(0, 200);
+    return clean || null;
+  } catch {
+    return null;
+  }
 }
 
 async function waitersOf(questionId) {
@@ -243,6 +280,9 @@ const RelayWording = z.object({
  * with a follow-up question. One or two grey sentences in Proxy's words
  * (Wyatt, 2026-10-27: everything is filtered through Proxy).
  */
+// Words that promise an action Proxy is not taking when it relays an answer.
+const PROMISES = /\b(I(?:'ve| have| will|'ll| am|'m)\s+(?:also\s+)?(?:asked|ask|asking|reached out|reach out|checking|check|follow(?:ed|ing)? up|clarif\w*|let you know|get back)|asked them to|to clarify)\b/i;
+
 export async function proxyRelays({ question, answer, followUp = "", listingId }) {
   const fallback = followUp
     ? `The landlord got back to me: ${answer} They also want to know: ${followUp} Reply here and I'll pass it on.`
@@ -250,11 +290,14 @@ export async function proxyRelays({ question, answer, followUp = "", listingId }
   try {
     const { parsed } = await parseStructured({
       model: HAIKU, listingId, kind: "relay_wording", tag: "relay-wording", maxTokens: 260,
-      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you and the landlord has now replied to you. Write what you tell the student. Keep every fact the landlord gave and add nothing: no caveats, no guesses, nothing about what the landlord did not mention.",
+      system: "You are Proxy, the friendly assistant on a rental listing. A student asked a question through you and the landlord has now replied to you. Write what you tell the student. Keep every fact the landlord gave and add nothing: no caveats, no guesses, nothing about what the landlord did not mention. Never say you did, will do or are doing anything (asking the landlord again, clarifying, checking, following up): you only report what the landlord said. If the reply leaves something open, the student can ask you about it.",
       messages: [{ role: "user", content: `The student asked: "${question}"\n\nThe landlord's reply: "${answer}"${followUp ? `\n\nThe landlord also asks the student: "${followUp}"` : ""}` }],
       schema: RelayWording,
     });
     const text = parsed?.message?.trim();
+    // Proxy once told a student it had asked the landlord to clarify when it
+    // had not (Wyatt, 2026-11-01). A relay only reports; a promise falls back.
+    if (text && PROMISES.test(text) && !followUp) return fallback;
     return text && text.length > 10 ? text : fallback;
   } catch {
     return fallback;
@@ -290,16 +333,36 @@ export async function proxyAsksClarifier({ question, clarifier, listingId }) {
  * student; null = let classifyReply decide from the text.
  * Returns { question, kind, relayedTo, synthesis, screened }.
  */
+/*
+ * A landlord reply that neither answers nor asks the student anything ("let
+ * me check and get back to you", an out-of-office): kept on the card, but not
+ * saved as knowledge, not relayed as an answer and not closing the question,
+ * so reminders keep running and the real answer is still accepted. Each
+ * waiting student hears once that the landlord is looking into it (PR #365
+ * review, Wyatt 2026-10-31).
+ */
+export async function holdingReply({ q, landlordUserId, text, via = "app" }) {
+  await supabase.from("listing_question_messages").insert({ question_id: q.id, sender: "landlord", user_id: landlordUserId, body: text, via });
+  const waiters = (await waitersOf(q.id)).filter((w) => !w.relayed_at && w.thread_id);
+  let told = 0;
+  for (const w of waiters) {
+    const { count } = await supabase.from("chat_messages").select("id", { count: "exact", head: true })
+      .eq("thread_id", w.thread_id).eq("metadata->>holdingFor", q.id);
+    if (count) continue;
+    await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_note",
+      body: "The landlord has seen your question and is looking into it. I'll pass on their answer as soon as it comes in.",
+      metadata: { holdingFor: q.id } });
+    told++;
+  }
+  return { ok: true, holding: true, relayedTo: told };
+}
+
 export async function answerQuestion({ questionId, landlordUserId, body, done = null, via = "app" }) {
   const { data: q, error } = await supabase.from("listing_questions").select("*").eq("id", questionId).maybeSingle();
   if (error) throw fail("question", error);
   if (!q) return { error: "Question not found", status: 404 };
   if (q.owner_id && q.owner_id !== landlordUserId) return { error: "This question was sent to another landlord", status: 403 };
   if (!["open", "answered"].includes(q.status)) return { error: "This question is already closed", status: 409 };
-  // Writing on an answered card (a correction, an extra detail) reaches
-  // everyone who asked it, so they all wait for this reply again.
-  if (q.status === "answered") await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id);
-
   const screened = screenLandlordText(body);
   if (!screened.text) return { error: "Write an answer first.", status: 400 };
   if (screened.onlyContact) {
@@ -308,9 +371,15 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   let both = null;
   if (done == null) {
     const c = await classifyReply({ question: q.question, text: screened.text, listingId: q.listing_id });
+    if (c.kind === "other") return holdingReply({ q, landlordUserId, text: screened.text, via });
     done = c.kind !== "clarifier";
     if (c.kind === "both" && c.answerPart && c.questionPart) both = c;
   }
+  // Writing on an answered card (a correction, an extra detail) reaches
+  // everyone who asked it, so they all wait for this reply again; only once
+  // the reply is accepted (PR #365 review).
+  if (q.status === "answered") await supabase.from("listing_question_waiters").update({ relayed_at: null }).eq("question_id", q.id);
+
   await supabase.from("listing_question_messages").insert({
     question_id: q.id, sender: "landlord", user_id: landlordUserId, body: screened.text, raw_body: screened.removed ? screened.original : null,
     screened: screened.removed > 0, via,
@@ -341,7 +410,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     const heldB = await heldThreadIds(waiters.map((w) => w.thread_id));
     for (const w of waiters) {
       if (heldB.has(w.thread_id)) continue;
-      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, landlordAsked: followUp } });
+      await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, answered: true, landlordAsked: followUp } });
       await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     }
     return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
@@ -382,11 +451,11 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     try {
       const { setFact } = await import("./store");
       const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
-      const thread = (await exchangeText(q, screened.text)).split("\n").slice(1).join(" / ");
+      const context = await qaContext(q, screened.text);
       await setFact({
         listingId: q.listing_id, section: "misc", fieldKey: `qa.${q.id.slice(0, 8)}`,
-        value: { question: q.question, answer: screened.text, exchange: thread || null },
-        summary: `Asked: ${q.question} Answer: ${screened.text}${thread && thread.includes("Student:") ? ` (in reply to: ${thread.slice(0, 300)})` : ""}`.slice(0, 600),
+        value: { question: q.question, answer: screened.text, ...(context ? { context } : {}) },
+        summary: `Asked: ${q.question}${context ? ` (${context})` : ""} Answer: ${screened.text}`.slice(0, 600),
         scopeLevel: ownerDefault ? "owner" : "property", scopeId: ownerDefault,
         sourceId: source.id, sourceRef: `question:${q.id}`, landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, cause: "landlord_answer",
       });

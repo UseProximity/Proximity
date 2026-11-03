@@ -163,5 +163,5 @@ export function specialSummary(c) {
 /* No em dash ever reaches a student (repo rule). */
 export function cleanText(value) {
   if (typeof value !== "string") return value;
-  return value.replace(/—/g, ", ").replace(/\s+,/g, ",").replace(/\s{2,}/g, " ").trim();
+  return value.replace(/\u2014/g, ", ").replace(/\s+,/g, ",").replace(/\s{2,}/g, " ").trim();
 }

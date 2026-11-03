@@ -26,7 +26,9 @@ import { agentChat, confirmProposal } from "./landlordAgent";
 import { screenLandlordText, CONTACT_NOTE } from "./screen";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
-const OPEN_TOURS = ["requested", "proposed", "messaging"];
+// Waiting on the landlord. A tour they are messaging about lives in that chat,
+// which carries its own unread count (Wyatt, 2026-11-01).
+const OPEN_TOURS = ["requested", "proposed"];
 
 /*
  * What Proxy says after a landlord's reply to a question (Wyatt, 2026-10-29):
@@ -141,7 +143,11 @@ export async function landlordProxyTimeline(userId, listingId) {
   const tourNotes = new Map();
   for (const m of notes ?? []) if (m.tour_id) { if (!tourNotes.has(m.tour_id)) tourNotes.set(m.tour_id, []); tourNotes.get(m.tour_id).push(m); }
   const tourCard = (t) => {
-    const mine = (tourNotes.get(t.id) ?? []).filter((m) => m.sender === "landlord").map((m) => ({ id: m.id, from: "you", body: m.body, note: "Sent to them in your direct chat.", at: m.created_at }));
+    // What was said in the direct chat, from wherever it was written; the
+    // card's own copies only before that chat existed.
+    const mine = t.messages?.length
+      ? t.messages.map((m) => ({ ...m, label: t.studentName?.split(" ")[0] || "The student", note: m.from === "you" ? "In your direct chat." : null }))
+      : (tourNotes.get(t.id) ?? []).filter((m) => m.sender === "landlord").map((m) => ({ id: m.id, from: "you", body: m.body, note: "Sent to them in your direct chat.", at: m.created_at }));
     const state = t.status === "requested" || t.status === "proposed" ? "needs_you" : t.status === "messaging" ? "waiting" : t.status === "confirmed" ? "confirmed" : "closed";
     return { kind: "tour", id: t.id, at: latest(t.createdAt, t.lastActivityAt, mine[mine.length - 1]?.at), state, tour: t, exchange: mine };
   };

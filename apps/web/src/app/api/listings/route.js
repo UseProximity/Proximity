@@ -147,7 +147,7 @@ export function buildListing(row, owner = null) {
        * is_active && !unavailable, and 79 leases sit in that gap — enough for a
        * card to advertise a price the panel then refused to list.
        */
-      const leases = shapeLeases(u.unit_leases, row);
+      const leases = shapeLeases(u.unit_leases, row, undefined, u.bedrooms);
       const nextAvailable =
         leases
           .filter((l) => l.availableFrom)

@@ -57,17 +57,23 @@ import { useTour } from "./TourMarker";
 import TourPicker from "./TourPicker";
 import { availabilitySummary, availabilityText } from "@/lib/agents/tourTime";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceInboxChange } from "@/components/landlord/landlordSync";
 
 const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
 
 // The listing page and the Messages overlay can mount a panel for the same
 // listing in the same moment; they share one open-thread request.
 const threadOpens = new Map();
+// The last thread loaded per listing this visit: reopening the listing shows
+// it at once while a fresh copy loads (Wyatt, 2026-11-01).
+const threadSeen = new Map();
+
 function openThread(listingId, leaseId) {
   const key = `${listingId}:${leaseId ?? ""}`;
   if (!threadOpens.has(key)) {
     const p = fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
       .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then((res) => { if (res.ok) threadSeen.set(key, res.data); return res; })
       .finally(() => threadOpens.delete(key));
     threadOpens.set(key, p);
   }
@@ -89,6 +95,8 @@ function leaseChoices(listing) {
 // What Proxy says the first time a student opens a listing's chat (Wyatt,
 // 2026-10-29). Shown, not saved: no thread fills up for someone who only looked.
 const GREETING = "Hey, I'm Proxy. Ask me anything about this listing, or tap Tour and I'll get you in touch with the landlord.";
+// Shown, not saved; it stays at the top once the conversation starts (Wyatt, 2026-11-01).
+const GREETING_MSG = { id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" };
 
 /* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
 function TypingBubble() {
@@ -98,8 +106,8 @@ function TypingBubble() {
         <Sparkles className="h-3 w-3 text-red-600" />
       </div>
       <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-3">
-        {[0, 150, 300].map((delay) => (
-          <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: `${delay}ms` }} />
+        {["[animation-delay:0ms]", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
+          <span key={delay} className={`h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 ${delay}`} />
         ))}
       </div>
     </div>
@@ -182,7 +190,7 @@ function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
   );
 }
 
-export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null }) {
+export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null, glideOnOpen = true }) {
   const listingId = listing?._id;
   const choices = leaseChoices(listing);
   const leaseId = selectedLease?.id ?? null;
@@ -212,7 +220,15 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   useEffect(() => {
     if (!listingId) return;
     let cancelled = false;
-    setLoading(true);
+    const seen = threadSeen.get(`${listingId}:${leaseId ?? ""}`);
+    if (seen) {
+      setThread(seen.thread);
+      setMessages(seen.messages ?? []);
+      setTestMode(!!seen.testMode);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     openThread(listingId, leaseId)
       .then(({ ok, data }) => {
         if (cancelled) return;
@@ -240,6 +256,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         const have = new Set(m.map((x) => x.id));
         const extra = incoming.filter((x) => !have.has(x.id));
         if (!extra.length) return m;
+        // Anything from Proxy (a relayed answer, a tour update, a new direct
+        // chat with the landlord): the inbox and every tour view catch up.
+        if (extra.some((x) => x.fromProxy)) setTimeout(announceInboxChange, 0);
         setFresh((f) => new Set([...f, ...extra.filter((x) => x.fromProxy).map((x) => x.id)]));
         return [...m.filter((x) => !String(x.id).startsWith("temp-")), ...extra];
       });
@@ -248,7 +267,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
 
   useEffect(() => {
     if (!active || !thread || sending) return;
-    const t = setInterval(refresh, 15000);
+    // Every few seconds while the chat is on screen (Wyatt, 2026-11-02).
+    const t = setInterval(refresh, 4000);
     return () => clearInterval(t);
   }, [active, thread, sending, refresh]);
 
@@ -285,6 +305,36 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     else if (!fill) window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
   }, [fill]);
 
+  /*
+   * Contact on the listing: the conversation to its newest message and the
+   * page to its bottom. Asked before the thread has loaded, it happens once it
+   * has, since the messages arriving push the bottom further down (Wyatt,
+   * 2026-11-01).
+   */
+  const wantEnd = useRef(false);
+  useEffect(() => {
+    const on = (e) => {
+      if (e.detail?.listingId !== listingId) return;
+      if (loadingRef.current) { wantEnd.current = true; return; }
+      scrollToEnd(true);
+    };
+    window.addEventListener("proxy:scroll-end", on);
+    return () => window.removeEventListener("proxy:scroll-end", on);
+  }, [listingId, scrollToEnd]);
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  // The chat always opens on its newest message; a Contact click that came
+  // early takes the page down with it now.
+  useEffect(() => {
+    if (loading) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    if (wantEnd.current) {
+      wantEnd.current = false;
+      requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [loading, started, scrollToEnd]);
+
   // The conversation stays pinned to its newest message while an answer types out.
   useEffect(() => {
     const el = listRef.current;
@@ -295,14 +345,16 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [active, started, scrollToEnd]);
 
   // Opening the Contact tab glides to the bottom of the panel (the input),
-  // after the modal's own jump to the tab strip has happened.
+  // after the modal's own jump to the tab strip has happened. Not on the
+  // continuous listing page, where Contact turns active just by scrolling to
+  // it and a glide would take the page out of the reader's hands.
   useEffect(() => {
-    if (!active || loading) return;
+    if (!active || loading || !glideOnOpen) return;
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     const t = setTimeout(() => scrollToEnd(true), 180);
     return () => clearTimeout(t);
-  }, [active, loading, scrollToEnd]);
+  }, [active, loading, glideOnOpen, scrollToEnd]);
 
   const sendTour = useCallback(async (slots) => {
     const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
@@ -469,17 +521,17 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       )}
 
       {loading && <ChatSkeleton rows={3} />}
-      {/* Before the first question the greeting sits at the top with room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30). */}
+      {/* Before the first question the greeting sits at the top with some room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30; less room 2026-11-01). */}
       {greet && (
-        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-56"}`}>
-          <Bubble msg={{ id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" }} animate />
+        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-32"}`}>
+          <Bubble msg={GREETING_MSG} animate />
         </div>
       )}
       {started && (
         <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
-          {messages.map((m, i) => {
-            const first = i === 0 || sideOf(messages[i - 1]) !== sideOf(m);
-            const last = i === messages.length - 1 || sideOf(messages[i + 1]) !== sideOf(m);
+          {[GREETING_MSG, ...messages].map((m, i, all) => {
+            const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+            const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
             return (
               <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
                 <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />
@@ -490,7 +542,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         </div>
       )}
 
-      {inputSlot ? (active ? createPortal(inputBar, inputSlot) : null) : <div className="shrink-0">{inputBar}</div>}
+      {inputSlot ? createPortal(inputBar, inputSlot) : <div className="shrink-0">{inputBar}</div>}
     </div>
   );
 }

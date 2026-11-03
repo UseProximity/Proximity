@@ -46,7 +46,9 @@ function AuthModal({ onClose }) {
   );
 }
 
-export default function HeartIcon({ listingId }) {
+export default function HeartIcon({ listingId, size = "md" }) {
+  const iconClass = size === "sm" ? "h-5 w-5" : "h-6 w-6";
+  const padClass = size === "sm" ? "p-1" : "p-1.5";
   const { data: session } = useSession();
   const { savedIds, toggle } = useFavorites();
   const isFavorite = savedIds.includes(String(listingId));
@@ -97,16 +99,16 @@ export default function HeartIcon({ listingId }) {
         disabled={pending}
         aria-disabled={pending}
         aria-busy={pending}
-        className="focus:outline-none p-1.5 hover:text-red-500 transition-all disabled:opacity-60"
+        className={`focus:outline-none ${padClass} hover:text-red-500 transition-all disabled:opacity-60`}
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={isFavorite}
       >
         {isFavorite ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="red" viewBox="0 0 24 24" className="h-6 w-6">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="red" viewBox="0 0 24 24" className={iconClass}>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="h-6 w-6">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className={iconClass}>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
         )}

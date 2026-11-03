@@ -58,7 +58,7 @@ export async function ensureMonitors() {
   return missing.length;
 }
 
-const MONITOR_SELECT = "id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)";
+const MONITOR_SELECT = "id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, last_checked_at, last_status, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)";
 
 export async function dueMonitors({ listingId = null, limit = 30, force = false } = {}) {
   let q = supabase
@@ -85,7 +85,9 @@ export async function dueMonitors({ listingId = null, limit = 30, force = false 
 }
 
 export async function monitorFor(listingId) {
-  const { data } = await supabase.from("listing_source_monitors").select(MONITOR_SELECT).eq("listing_id", listingId).maybeSingle();
+  const { data, error } = await supabase.from("listing_source_monitors").select(MONITOR_SELECT).eq("listing_id", listingId).maybeSingle();
+  // Loud, not null: a missing column once made every website look absent.
+  if (error) console.error("[source-sync] monitor lookup:", error.message);
   return data ?? null;
 }
 

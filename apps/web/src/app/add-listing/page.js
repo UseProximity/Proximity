@@ -340,7 +340,7 @@ function StartChoice({ onManual, onImport, signedOut }) {
           </div>
         </button>
 
-        {/* 3. PMS sync — straight to the integrations page, not via the wizard. */}
+        {/* 3. PMS sync, straight to the integrations page, not via the wizard. */}
         <Link
           href="/dashboard/landlord?tab=integrations"
           className={`${card} ${clickable}`}

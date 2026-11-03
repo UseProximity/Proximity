@@ -13,7 +13,7 @@ import { classifySourceUrl } from "./classify.js";
 
 /*
  * Returns { ok: true, kind, url } or { ok: false, reason }.
- * Never throws — a failure here must not fail listing creation.
+ * Never throws, a failure here must not fail listing creation.
  */
 export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, userId = null, portal = null }) {
   if (!listingId) return { ok: false, reason: "no_listing" };
@@ -27,7 +27,7 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
    *
    * The sync needs both: source_url is the property's own page, which it reads
    * for rents and availability, and index_url is where that property is
-   * expected to keep appearing — a building that drops off its own landlord's
+   * expected to keep appearing, a building that drops off its own landlord's
    * list has almost certainly been let, which is not something the property
    * page says out loud. Nothing wrote index_url until now, so every monitor ran
    * without that check.
@@ -97,7 +97,7 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
 export async function detachSourceUrl(listingId) {
   if (!listingId) return { ok: false, reason: "no_listing" };
   try {
-    // Both columns must clear together — chk_listings_source_pair enforces it.
+    // Both columns must clear together, chk_listings_source_pair enforces it.
     await supabase
       .from("listings")
       .update({ source_url: null, source_kind: null, source_added_by: null, source_added_at: null })

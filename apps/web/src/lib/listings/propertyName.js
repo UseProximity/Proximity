@@ -81,7 +81,7 @@ export async function findPropertyNameConflict(
  * Which of these properties are already on Proximity, as one query.
  *
  * For the importer's property picker. A company adding the rest of its
- * portfolio has usually listed some of it already — Keeley has four of theirs —
+ * portfolio has usually listed some of it already, Keeley has four of theirs,
  * and without this the landlord finds out by filling in a whole building and
  * being told at the last step that the name is taken.
  *
@@ -163,7 +163,10 @@ export async function findExistingProperties(entries, { ids = null } = {}) {
   if (!byName.size && !byAddress.size && !byLoose.size) return new Map();
 
   let query = supabase.from("listings").select("id, title, address").is("deleted_at", null);
+  // The caller's own listings (ids) include their drafts; anyone else's only
+  // count once published (PR #365 review).
   if (ids) query = query.in("id", ids);
+  else query = query.not("published_at", "is", null);
   const { data: rows, error } = await query;
   if (error) {
     console.error("[propertyName] existing lookup failed:", error.message);
@@ -237,7 +240,7 @@ export async function listingsAtAddress(address, userId = null) {
    * the same street address counts.
    */
   const noZip = key.endsWith("|");
-  const byKey = supabase.from("listings").select("id, title, address, created_at");
+  const byKey = supabase.from("listings").select("id, title, address, created_at, published_at");
   const { data: rows } = await (noZip ? byKey.like("property_key", `${key}%`) : byKey.eq("property_key", key))
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -260,12 +263,17 @@ export async function listingsAtAddress(address, userId = null) {
       if (unit?.listing_id && !unit.deleted_at && ids.includes(unit.listing_id)) leased.add(unit.listing_id);
     }
   }
-  const listings = rows.map((r) => ({
-    id: r.id,
-    title: r.title ?? null,
-    address: r.address ?? null,
-    mine: owned.has(r.id) ? "owner" : leased.has(r.id) ? "lease" : null,
-  }));
+  // Another landlord's unpublished draft is theirs alone: it is neither shown
+  // nor allowed to block anyone (PR #365 review).
+  const listings = rows
+    .filter((r) => r.published_at || owned.has(r.id) || leased.has(r.id))
+    .map((r) => ({
+      id: r.id,
+      title: r.title ?? null,
+      address: r.address ?? null,
+      mine: owned.has(r.id) ? "owner" : leased.has(r.id) ? "lease" : null,
+    }));
+  if (!listings.length) return { key, listings: [], match: null };
   const match =
     listings.find((l) => l.mine === "owner") ?? listings.find((l) => l.mine) ?? listings[0];
   return { key, listings, match };

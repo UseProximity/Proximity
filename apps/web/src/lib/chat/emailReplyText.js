@@ -60,10 +60,15 @@ const ADDRESS_LINE = /^\s*\d+\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|
 const CITY_STATE_ZIP = /^\s*[a-z .'-]+,\s*[a-z]{2}\s+\d{5}(-\d{4})?\s*$/i;
 const TITLE_LINE = /^\s*(leasing|property|community|assistant|regional|general)?\s*(manager|agent|consultant|coordinator|director|owner|landlord|office|specialist|associate|team)\b[\w ,&|-]*$/i;
 const SEPARATOR_LINE = /^\s*[|_\-=*~]{2,}\s*$/;
-const SOCIAL_LINK = /^\s*(linkedin|twitter|x|instagram|facebook|website|web|site|calendly|book a (tour|time|call))\b/i;
+const SOCIAL_LINK = /^\s*(linkedin|twitter|x|instagram|facebook|website|web|site|portfolio|github|blog|calendly|book a (tour|time|call))\b/i;
+// Any short label Outlook wrote as a link, "Portfolio<https://...>".
+const LINKED_LABEL = /^\s*[\w .&'-]{1,30}<https?:\/\/[^>\s]+>\s*$/i;
 // "Wyatt Ogle (He/Him)", "Angela Clayton, CPM"
 const PRONOUNS = /^\s*\((he|she|they|ze|xe)\/\w+\)\s*$/i;
 const CREDENTIALS = /^\s*,?\s*[A-Z]{2,5}(,\s*[A-Z]{2,5})*\s*$/;
+
+// "Wyatt Ogle", "Mary-Kate O'Neil": two or three capitalised words, nothing else.
+const PERSON_NAME = /^[A-Z][a-zA-Z'.-]+(?: [A-Z][a-zA-Z'.-]+){1,2}$/;
 
 // Outlook writes links in plain text as "LinkedIn<https://...>".
 function withoutInlineUrls(line) {
@@ -71,6 +76,7 @@ function withoutInlineUrls(line) {
 }
 
 function isContactPiece(piece) {
+  if (LINKED_LABEL.test(piece)) return true;
   const t = withoutInlineUrls(piece).trim();
   if (!t) return true;
   return (
@@ -197,6 +203,11 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const beforeSignature = lines;
   lines = lines.slice();
   while (lines.length > 0 && isSignatureLine(lines[lines.length - 1], names)) lines.pop();
+  // A bare "First Last" left standing over a signature that went is its name
+  // line, even when the display name differs from the account (2026-11-01).
+  const removedSome = beforeSignature.slice(lines.length).some((l) => l.trim());
+  const lastKept = lines.length - 1;
+  if (removedSome && lastKept > 0 && PERSON_NAME.test(lines[lastKept].trim()) && !lines[lastKept - 1].trim()) lines.pop();
   if (!lines.some((l) => l.trim()) || isAnsweredNumber(lines, beforeSignature.slice(lines.length))) {
     lines = beforeSignature;
   }

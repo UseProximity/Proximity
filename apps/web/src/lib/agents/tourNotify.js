@@ -13,6 +13,7 @@ import { postProxyMessage } from "./threads";
 import { availabilityText, fmtTourTime } from "./tourTime";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
+import { tourReplyAddress } from "./replyTokens";
 
 const TZ = "America/Chicago";
 const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -72,10 +73,12 @@ export async function notifyTourRequested({ tourId }) {
     subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
     intro: `${r.studentLabel || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
     lines: rangeLines(r.t.student_slots),
-    note: "Pick a day and a start time inside their window in your dashboard, or message the student if none of it works.",
+    note: "Pick a day and a start time inside their window in your dashboard, or reply to this email to message the student directly.",
     ctaLabel: completedAccount(r.landlord) ? "Confirm a time" : "Create an account to confirm",
     ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`,
     userId: r.landlord.id,
+    // A reply is a message to the student, opening their direct chat (Wyatt, 2026-11-01).
+    replyTo: tourReplyAddress({ tourId: r.t.id, landlordId: r.landlord.id }),
   });
   return "sent";
 }
@@ -102,13 +105,34 @@ export async function notifyTourConfirmed({ tourId }) {
   const r = await loadTour(tourId);
   if (!r) return "no_recipient";
   const when = fmtTourTime(r.t.confirmed_slot);
-  const file = {
-    filename: "proximity-tour.ics", contentType: "text/calendar",
-    content: ics({ uid: r.t.id, start: r.t.confirmed_slot, summary: `Tour: ${r.listingLabel}`, location: r.address, description: `Tour of ${r.listingLabel} booked on Proximity.` }),
+  /*
+   * The calendar invite names the place and the people (Wyatt, 2026-11-02):
+   * the listing and its full address, the unit, and who the tour is with,
+   * so it reads on its own in a calendar.
+   */
+  const invite = (isStudent) => {
+    const other = isStudent ? r.landlord?.name || "the landlord" : r.student?.name || "a student";
+    const place = r.address && r.address !== r.listingLabel ? `${r.listingLabel}, ${r.address}` : r.listingLabel;
+    return {
+      filename: "proximity-tour.ics", contentType: "text/calendar",
+      content: ics({
+        uid: r.t.id, start: r.t.confirmed_slot,
+        summary: `Tour: ${r.listingLabel} with ${other}`,
+        location: place,
+        description: [
+          `Tour of ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""}`,
+          r.address ? `Address: ${r.address}` : null,
+          `With: ${other}`,
+          r.t.thread_id ? `Chat: ${chatUrl(r.t.thread_id)}` : null,
+          "Booked on Proximity.",
+        ].filter(Boolean).join("\n"),
+      }),
+    };
   };
   const sent = [];
   for (const [u, isStudent] of [[r.student, true], [r.landlord, false]]) {
     if (!canEmail(u)) continue;
+    const file = invite(isStudent);
     const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
     await sendTourEmail({
       kind: "tour_confirmed", to: u.email, name: u.name,

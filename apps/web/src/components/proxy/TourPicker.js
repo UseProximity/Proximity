@@ -14,9 +14,22 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { DateGrid, zoneAbbrev } from "./AvailabilityGrid";
-import { slotsFromPattern, availabilitySummary } from "@/lib/agents/tourTime";
+import { slotsFromPattern, availabilitySummary, fmtTourTime } from "@/lib/agents/tourTime";
 
 const GRID_DAYS = 7;
+
+// Each booked tour takes the one-hour cells it touches: 5:30pm greys 5pm and 6pm.
+function bookedHours(list) {
+  const out = new Map();
+  for (const b of list) {
+    const at = Date.parse(b.at);
+    if (!Number.isFinite(at)) continue;
+    const label = `${b.listing}, ${fmtTourTime(b.at)}`;
+    const hour = 3600 * 1000;
+    for (let t = Math.floor(at / hour) * hour; t < at + hour; t += hour) out.set(new Date(t).toISOString(), label);
+  }
+  return out;
+}
 
 function statusLine(tour) {
   if (!tour) return null;
@@ -28,6 +41,16 @@ function statusLine(tour) {
 export default function TourPicker({ tour, initial = null, onAdd, onCancelTour, onClose, busy = false }) {
   const [selected, setSelected] = useState(() => new Set(initial ?? []));
   const [loading, setLoading] = useState(!initial);
+  // Hours already taken by a booked tour, on their exact dates.
+  const [booked, setBooked] = useState(() => new Map());
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tours/availability")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((a) => { if (!cancelled) setBooked(bookedHours(a.booked ?? [])); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Nothing chosen yet in this message: the open request's times, else the
   // hours this student usually picks, painted onto this week's dates.
@@ -64,8 +87,10 @@ export default function TourPicker({ tour, initial = null, onAdd, onCancelTour, 
       ) : (
         <>
           {/* Short enough to stay clear of the listing's tab strip; the hours scroll under the dates. */}
-          <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} scrollClass="max-h-[min(34vh,260px)] overflow-y-auto" />
-          <p className="mt-1 text-[11px] text-gray-500">Drag across the hours you can make it ({zoneAbbrev()}).</p>
+          <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} booked={booked} scrollClass="max-h-[min(34vh,260px)] overflow-y-auto" />
+          <p className="mt-1 text-[11px] text-gray-500">
+            Drag across the hours you can make it ({zoneAbbrev()}).{booked.size > 0 && " Grey hours are tours you already have booked."}
+          </p>
         </>
       )}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

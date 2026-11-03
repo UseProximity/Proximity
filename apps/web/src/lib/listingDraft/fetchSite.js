@@ -988,7 +988,7 @@ export function hostOf(url) {
  *
  * Mac gives each building its own domain and links straight to it, so picking a
  * building from the list already landed us on the building's site. Keeley links
- * to its own summary page first — "Lofts at Euclid" on keeleyproperties.com,
+ * to its own summary page first, "Lofts at Euclid" on keeleyproperties.com,
  * three thousand characters of blurb, a price range, and no floor plans,
  * because the floor plans are on loftsateuclid.com. The drill looked for a
  * same-site floor-plans link, found none, and the landlord got a property with
@@ -1059,7 +1059,7 @@ const LINK_NOISE_RE =
 /*
  * Every link on the page: [{ url, text, internal }], deduped and asset-filtered.
  * Cross-site links are kept here (a management company routinely gives each
- * building its own domain) — callers that only want same-site links filter on
+ * building its own domain), callers that only want same-site links filter on
  * `internal`.
  */
 export function extractAllLinks(html, baseUrl, cap = 120) {

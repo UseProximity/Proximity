@@ -3,7 +3,9 @@
  *
  * When Proxy sends a question to the landlord it asks the visitor, once, to
  * tell it their email if they want to be alerted. The visitor types it in
- * the conversation. Then:
+ * the conversation. Nothing is created or sent there except one "confirm
+ * this is you" email (PR #365 review, Wyatt 2026-10-31): anyone can type any
+ * address. Once the link is clicked:
  *
  *   no account for that email   an incomplete account is started (a users
  *                               row with no password, like a placeholder
@@ -23,8 +25,16 @@
  * askedLine() is the sentence Proxy adds to every "sent to the landlord"
  * message so the student knows how the answer will reach them.
  */
+import crypto from "node:crypto";
 import supabase from "@/lib/supabase";
-import { updateProxyState } from "./threads";
+import { getBaseUrl, sendProxyConfirmEmail, sendProxyStudentEmail } from "@/lib/email";
+import { proxyReplyAddress } from "./replyTokens";
+import { updateProxyState, PROXY_USER_ID } from "./threads";
+
+// Confirmation links last two days; a conversation gets three of them.
+const CONFIRM_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+const CONFIRMS_PER_THREAD = 3;
+const hashToken = (t) => crypto.createHash("sha256").update(String(t)).digest("hex");
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
@@ -57,38 +67,101 @@ async function startIncompleteAccount(email) {
 }
 
 /*
- * Whether this visitor message is them giving their email, and what Proxy
- * replies. Returns null when it is an ordinary message.
+ * Whether this visitor message gives their email, and what Proxy replies.
+ * Returns null for an ordinary message. A message that also asks something
+ * ("rent? me@x.com") returns the rest as `question`, which Proxy then
+ * answers as usual.
  */
-export async function handleVisitorEmail({ thread, text }) {
+export async function handleVisitorEmail({ thread, text, testEmailTo = null }) {
   const match = String(text ?? "").match(EMAIL_RE);
   if (!match) return null;
   const email = match[0].toLowerCase();
-  const rest = String(text).replace(match[0], "").replace(/[^a-z]/gi, "");
-  const asked = !!thread.proxy_state?.notifyAsked;
-  // Either Proxy asked for it, or the message is essentially just an address.
-  if (!asked && rest.length > 30) return null;
+  const rest = String(text).replace(match[0], " ")
+    .replace(/\b(my|the)?\s*(e-?mail|address)\s*(is|:)?/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  const question = rest.replace(/[^a-z]/gi, "").length > 12 ? rest : null;
+
+  const state = thread.proxy_state ?? {};
+  const sent = Number(state.confirmsSent ?? 0);
+  if (sent >= CONFIRMS_PER_THREAD) {
+    return { reply: "I've already sent a few confirmation links from this conversation, so I can't send another. Sign in to get answers by email.", held: false, email, question };
+  }
+  const token = crypto.randomBytes(24).toString("base64url");
+  // Every link sent for the same address keeps working, so a second tab's
+  // email does not turn the first one's link into "expired" (Wyatt, 2026-11-01).
+  const prior = state.emailConfirm?.email === email ? state.emailConfirm : null;
+  const hashes = [...(prior?.hashes ?? (prior?.hash ? [prior.hash] : [])), hashToken(token)].slice(-CONFIRMS_PER_THREAD);
+  await updateProxyState(thread.id, {
+    notifyAsked: true,
+    confirmsSent: sent + 1,
+    emailConfirm: { email, hash: hashes.at(-1), hashes, expiresAt: new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), at: prior?.at ?? new Date().toISOString() },
+  });
+  const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
+  await sendProxyConfirmEmail({
+    to: email,
+    listingLabel: listing?.title || listing?.address || "a listing",
+    confirmUrl: `${getBaseUrl()}/api/proxy/confirm-email?t=${token}`,
+    threadId: thread.id,
+    testEmailTo,
+  });
+  return {
+    reply: `I've sent a confirmation link to ${email}. Click it and I'll email you there as soon as the landlord answers. The answer will show up here either way.`,
+    held: false, email, question,
+  };
+}
+
+/*
+ * The confirmation link was clicked: now the address is the visitor's, so
+ * the rules above apply. Any answer that arrived while it was unconfirmed is
+ * emailed now. Returns the listing to send them back to, or null for a bad
+ * or expired link.
+ */
+export async function confirmVisitorEmail(token) {
+  if (!token || String(token).length < 20) return null;
+  const hash = hashToken(token);
+  const find = (state) => supabase.from("chat_threads")
+    .select("id, listing_id, proxy_state, interested_user_id")
+    .contains("proxy_state", state).is("deleted_at", null).limit(1).maybeSingle();
+  let { data: thread } = await find({ emailConfirm: { hashes: [hash] } });
+  if (!thread) ({ data: thread } = await find({ emailConfirm: { hash } }));
+  if (!thread) {
+    // A link opened again (a second tab, or a mail scanner that opened it
+    // first) lands where the first click did, not on "expired".
+    const { data: done } = await find({ emailConfirmed: { hashes: [hash] } });
+    const confirmed = done?.proxy_state?.emailConfirmed;
+    if (!confirmed || new Date(confirmed.expiresAt) < new Date()) return null;
+    return { listingId: done.listing_id, existingAccount: !!confirmed.existingAccount };
+  }
+  const pending = thread.proxy_state?.emailConfirm;
+  if (!pending || new Date(pending.expiresAt) < new Date()) return null;
+  const confirmed = (existingAccount) => ({
+    hashes: pending.hashes ?? [pending.hash], expiresAt: pending.expiresAt, existingAccount,
+  });
+  const email = pending.email;
 
   const user = await userByEmail(email);
   if (user && (completedAccount(user) || user.deleted_at)) {
     await supabase.from("chat_threads").update({ notify_email: email }).eq("id", thread.id);
-    await updateProxyState(thread.id, { notifyAsked: true, heldForAccount: user.id });
-    const { count } = await supabase.from("listing_question_waiters").select("id", { count: "exact", head: true }).eq("thread_id", thread.id).is("relayed_at", null);
-    const waiting = (count ?? 0) > 0;
-    return {
-      reply: waiting
-        ? `That email already has a Proximity account. I've still sent your question to the landlord, but their answer will wait for you there: log in with ${email} and this conversation, with the answer, will be in your Messages.`
-        : `That email already has a Proximity account. Log in with ${email} and this conversation will be in your Messages, and anything the landlord answers will reach you there.`,
-      held: true, email,
-    };
+    await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(true), heldForAccount: user.id });
+    return { listingId: thread.listing_id, existingAccount: true };
   }
   const stub = user ?? (await startIncompleteAccount(email));
   await supabase.from("chat_threads").update({ notify_email: email }).eq("id", thread.id);
-  await updateProxyState(thread.id, { notifyAsked: true, heldForAccount: null, incompleteAccount: stub?.id ?? null });
-  return {
-    reply: `Got it. I'll email ${email} as soon as the landlord answers, and the answer will show up here too.`,
-    held: false, email,
-  };
+  await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(false), heldForAccount: null, incompleteAccount: stub?.id ?? null });
+
+  // An answer relayed while the address waited for confirmation.
+  const { data: missed } = await supabase.from("chat_messages").select("body")
+    .eq("thread_id", thread.id).eq("sender_id", PROXY_USER_ID).eq("message_type", "proxy_relay").is("deleted_at", null)
+    .gte("created_at", pending.at).order("created_at", { ascending: true }).limit(5);
+  if (missed?.length) {
+    const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
+    await sendProxyStudentEmail({
+      to: email, name: null, kind: "proxy_relay", listingLabel: listing?.title || listing?.address || "a listing",
+      messages: missed.map((m) => m.body), threadUrl: `${getBaseUrl()}/listings/${thread.listing_id}?listingTab=contact`, threadId: thread.id,
+      replyTo: proxyReplyAddress({ threadId: thread.id, recipientKey: thread.interested_user_id ?? email }),
+    }).catch((err) => console.error("[proxy] missed-answer email failed:", err?.message ?? err));
+  }
+  return { listingId: thread.listing_id, existingAccount: false };
 }
 
 /*
@@ -102,6 +175,7 @@ export async function askedLine({ thread, userId }) {
   }
   const state = thread.proxy_state ?? {};
   if (state.heldForAccount) return "Their answer will be waiting in your Messages once you log in.";
+  if (state.emailConfirm?.email) return `Once you click the confirmation link I sent to ${state.emailConfirm.email}, I'll email you their answer. It will show up here too.`;
   if (thread.notify_email) return `I'll email you at ${thread.notify_email} as soon as they answer, and it will show up here too.`;
   if (state.notifyAsked) return "I'll post their answer here as soon as it comes in.";
   await updateProxyState(thread.id, { notifyAsked: true });

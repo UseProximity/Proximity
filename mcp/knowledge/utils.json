@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-10-31T19:37:43.955Z",
-  "count": 220,
+  "_generated": "2026-11-02T19:51:20.279Z",
+  "count": 226,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -10,6 +10,10 @@
     {
       "file": "src/lib/agents/backfill.js",
       "description": "The chat-history backfill (Wyatt, 2026-10-26): every landlord message and"
+    },
+    {
+      "file": "src/lib/agents/budget.js",
+      "description": "The agents' AI spend caps (PRD v3; enforced since the PR #365 review,"
     },
     {
       "file": "src/lib/agents/compliance.js",
@@ -92,6 +96,14 @@
       "description": "The per-question reply address a landlord can answer from (PRD v3)."
     },
     {
+      "file": "src/lib/agents/replyEmail.js",
+      "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyTokens.js",
+      "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
+    },
+    {
       "file": "src/lib/agents/screen.js",
       "description": "Text hygiene for Proxy."
     },
@@ -128,12 +140,20 @@
       "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
     },
     {
+      "file": "src/lib/agents/tourProposals.js",
+      "description": "Tour times suggested in a tour's direct chat (Wyatt, 2026-11-02)."
+    },
+    {
       "file": "src/lib/agents/tours.js",
       "description": "Tour scheduling (PRD v3, milestone 5; reworked by Wyatt, 2026-10-27, round 6)."
     },
     {
       "file": "src/lib/agents/tourTime.js",
       "description": "Tour times, shared by the server and the browser (no server imports)."
+    },
+    {
+      "file": "src/lib/agents/tourTime.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/visitorEmail.js",
@@ -502,6 +522,10 @@
     {
       "file": "src/lib/listings/leaseFit.test.js",
       "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/listings/leasePrefsColumns.js",
+      "description": "The account columns behind a student's saved sizes and lease lengths."
     },
     {
       "file": "src/lib/listings/listingSelect.js",

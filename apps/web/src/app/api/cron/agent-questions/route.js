@@ -29,21 +29,23 @@ export async function GET(req) {
   const out = { day1: 0, day3: 0, day5: 0, errors: 0 };
   const now = new Date().toISOString();
 
+  // Timed from asked_at (when the landlord's turn last started), and never
+  // while the landlord is waiting on the student's reply (PR #365 review).
   const { data: open } = await supabase.from("listing_questions")
-    .select("id, owner_id, created_at, reminder_1_at, reminder_3_at, student_told_at")
-    .eq("status", "open").lt("created_at", before(1)).limit(500);
+    .select("id, owner_id, asked_at, reminder_1_at, reminder_3_at, student_told_at")
+    .eq("status", "open").eq("pending_clarifier", false).lt("asked_at", before(1)).limit(500);
   for (const q of open ?? []) {
     try {
       if (q.owner_id && !q.reminder_1_at) {
         await remindLandlord({ questionId: q.id, day: 1 });
         await supabase.from("listing_questions").update({ reminder_1_at: now }).eq("id", q.id);
         out.day1++;
-      } else if (q.owner_id && !q.reminder_3_at && q.created_at < before(3)) {
+      } else if (q.owner_id && !q.reminder_3_at && q.asked_at < before(3)) {
         await remindLandlord({ questionId: q.id, day: 3 });
         await supabase.from("listing_questions").update({ reminder_3_at: now }).eq("id", q.id);
         out.day3++;
       }
-      if (!q.student_told_at && q.created_at < before(5)) {
+      if (!q.student_told_at && q.asked_at < before(5)) {
         await tellStudentsNoAnswer({ questionId: q.id });
         await supabase.from("listing_questions").update({ student_told_at: now }).eq("id", q.id);
         out.day5++;

@@ -16,6 +16,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { recordUsage } from "./store";
+import { checkBudget } from "./budget";
 
 export const HAIKU = "claude-haiku-5-5";
 export const SONNET = "claude-sonnet-5-5";
@@ -58,7 +59,7 @@ async function log({ listingId, kind, model, usage, tag }) {
 
 /* No em dash ever reaches a student or the store (repo rule). */
 export function stripEmDashes(value) {
-  if (typeof value === "string") return value.replace(/—/g, ", ").replace(/\s+,/g, ",");
+  if (typeof value === "string") return value.replace(/\u2014/g, ", ").replace(/\s+,/g, ",");
   if (Array.isArray(value)) return value.map(stripEmDashes);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));
@@ -67,6 +68,7 @@ export function stripEmDashes(value) {
 }
 
 export async function parseStructured({ model = SONNET, system, messages, schema, maxTokens = 2000, tag, listingId = null, kind = "parse" }) {
+  await checkBudget({ listingId, kind });
   const response = await getClient().messages.parse({
     model,
     max_tokens: maxTokens,
@@ -88,6 +90,7 @@ export async function runTools({
   model = SONNET, system, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
   tag, listingId = null, kind = "tools", finalTool = "final",
 }) {
+  await checkBudget({ listingId, kind });
   const client = getClient();
   const convo = [...messages];
   const usage = {};
@@ -108,7 +111,12 @@ export async function runTools({
     });
     addUsage(usage, resp.usage);
     const finalBlock = resp.content.find((b) => b.type === "tool_use" && b.name === finalTool);
-    text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || text;
+    // Only a turn that finished is an answer. Text written alongside a tool
+    // call is the model thinking aloud ("Let me check the fees"), and posting
+    // it when the rounds ran out stopped the question reaching the landlord
+    // (PR #365 review).
+    const said = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    if (resp.stop_reason !== "tool_use") text = said || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });
       return { final: stripEmDashes(finalBlock.input), text, usage, calls };

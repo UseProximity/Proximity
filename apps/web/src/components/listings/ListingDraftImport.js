@@ -138,7 +138,7 @@ const placedElsewhere = (p) =>
 const farAway = (p) => (typeof p.distanceKm === "number" ? p.distanceKm > NEAR_KM : !nearCampus(p) && placedElsewhere(p));
 
 /*
- * One building, one identity, wherever it turns up — without merging buildings
+ * One building, one identity, wherever it turns up, without merging buildings
  * that merely share a name.
  *
  * Two forces pull against each other here. Mac lists One Hundred Above the Park
@@ -153,8 +153,8 @@ const farAway = (p) => (typeof p.distanceKm === "number" ? p.distanceKm > NEAR_K
  * unless both links sit on the SAME host, which is the one case where a site is
  * genuinely distinguishing two things it chose to give one label. Mac's
  * Dorchester is dorchesterapartments.com in one place and a macapartments.com
- * path in another — different hosts, one building. Altus's nine Pearl Streets
- * are nine paths on altusproperties.com — same host, nine buildings.
+ * path in another, different hosts, one building. Altus's nine Pearl Streets
+ * are nine paths on altusproperties.com, same host, nine buildings.
  */
 const nameKeyOf = (p) =>
   (p.name || "")
@@ -253,7 +253,7 @@ const makeNode = (p, parentUrl) => ({
  * the site's own areas, then everything further out flagged `far`.
  *
  * `far` used to be wrapped in a folder called "Everywhere else". That nested
- * badly — opening the inventory folder produced a second "Everywhere else"
+ * badly, opening the inventory folder produced a second "Everywhere else"
  * inside the first, and neither was a real place on the landlord's site. It is
  * now a plain "show more" line per level, which cannot nest and does not
  * pretend to be a folder.
@@ -274,6 +274,12 @@ function buildLevel(items, levelUrl) {
 }
 
 // Depth-first walk over everything currently loaded.
+// Indents for the folder tree, one step per level, as literal classes
+// Tailwind can see (no inline styles): rows at 12px + 18px a level, the
+// rows inside an opened folder 22px further in.
+const ROW_PAD = ["pl-[12px]", "pl-[30px]", "pl-[48px]", "pl-[66px]", "pl-[84px]"];
+const CHILD_PAD = ["pl-[34px]", "pl-[52px]", "pl-[70px]", "pl-[88px]", "pl-[106px]"];
+
 function walkTree(nodes, fn, depth = 0) {
   for (const n of nodes ?? []) {
     fn(n, depth);
@@ -839,8 +845,7 @@ export default function ListingDraftImport({
      */
     <label
       key={n.uid}
-      style={{ paddingLeft: `${12 + depth * 18}px` }}
-      className={`flex items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
+      className={`${ROW_PAD[Math.min(depth, 4)]} flex items-center gap-2.5 rounded-lg border py-2 pr-3 text-left text-sm transition-colors ${
         selected.has(n.id)
           ? "cursor-pointer border-red-500 bg-red-50"
           : "cursor-pointer border-gray-200 bg-white hover:border-red-300"
@@ -887,8 +892,7 @@ export default function ListingDraftImport({
       <button
         type="button"
         onClick={() => toggleFolder(n)}
-        style={{ paddingLeft: `${12 + depth * 18}px` }}
-        className="flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-3 text-left text-sm transition-colors hover:border-red-300 hover:bg-red-50/40"
+        className={`${ROW_PAD[Math.min(depth, 4)]} flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-3 text-left text-sm transition-colors hover:border-red-300 hover:bg-red-50/40`}
       >
         {n.open ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
@@ -916,8 +920,7 @@ export default function ListingDraftImport({
 
       {n.open && n.error && (
         <p
-          style={{ paddingLeft: `${34 + depth * 18}px` }}
-          className="py-1.5 text-xs text-red-600"
+          className={`${CHILD_PAD[Math.min(depth, 4)]} py-1.5 text-xs text-red-600`}
         >
           {n.error}
         </p>
@@ -926,8 +929,7 @@ export default function ListingDraftImport({
       {n.open && n.children?.length > 0 && (
         <div className="mt-1 space-y-1">
           <div
-            style={{ paddingLeft: `${34 + depth * 18}px` }}
-            className="flex items-center gap-3 pb-0.5 text-xs"
+            className={`${CHILD_PAD[Math.min(depth, 4)]} flex items-center gap-3 pb-0.5 text-xs`}
           >
             <button
               type="button"
@@ -950,8 +952,7 @@ export default function ListingDraftImport({
 
       {n.open && n.children?.length === 0 && !n.error && (
         <p
-          style={{ paddingLeft: `${34 + depth * 18}px` }}
-          className="py-1.5 text-xs text-gray-500"
+          className={`${CHILD_PAD[Math.min(depth, 4)]} py-1.5 text-xs text-gray-500`}
         >
           Nothing left to add from here.
         </p>
@@ -1000,8 +1001,7 @@ export default function ListingDraftImport({
                   return next;
                 })
               }
-              style={{ paddingLeft: `${12 + depth * 18}px` }}
-              className="flex w-full items-center gap-2 py-1.5 text-left text-xs font-medium text-gray-600 hover:text-red-600"
+              className={`${ROW_PAD[Math.min(depth, 4)]} flex w-full items-center gap-2 py-1.5 text-left text-xs font-medium text-gray-600 hover:text-red-600`}
             >
               {farOpen ? (
                 <ChevronDown className="h-3.5 w-3.5" />

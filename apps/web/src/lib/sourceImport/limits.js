@@ -39,12 +39,18 @@ export const LIMITS = {
 const HOUR = 60 * 60 * 1000;
 const since = (ms) => new Date(Date.now() - ms).toISOString();
 
+// Paged: the API returns at most 1,000 rows per request whatever the limit,
+// so a busy day used to read as at most 1,000 (PR #365 review).
 async function used({ userId = null, kind, ms }) {
-  let q = supabase.from("listing_import_usage").select("units").eq("kind", kind).gt("created_at", since(ms)).limit(20000);
-  if (userId) q = q.eq("user_id", userId);
-  const { data, error } = await q;
-  if (error) throw new Error(`usage ledger: ${error.message}`);
-  return (data ?? []).reduce((sum, r) => sum + (r.units ?? 1), 0);
+  let total = 0;
+  for (let from = 0; ; from += 1000) {
+    let q = supabase.from("listing_import_usage").select("units").eq("kind", kind).gt("created_at", since(ms)).range(from, from + 999);
+    if (userId) q = q.eq("user_id", userId);
+    const { data, error } = await q;
+    if (error) throw new Error(`usage ledger: ${error.message}`);
+    total += (data ?? []).reduce((sum, r) => sum + (r.units ?? 1), 0);
+    if (!data || data.length < 1000) return total;
+  }
 }
 
 // One alert per cap per server instance per day; enough to wake someone up.

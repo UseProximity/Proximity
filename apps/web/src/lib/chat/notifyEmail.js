@@ -37,6 +37,7 @@ import { sendChatMessageEmail } from "@/lib/email";
 import { mintChatAccessToken } from "@/lib/chat/accessToken";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
+import { pendingProposalFor, proposalKey } from "@/lib/agents/tourProposals";
 
 const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
 const MAX_REFERENCES = 20;
@@ -192,10 +193,16 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
     : `${baseUrl}/messages?thread=${data.threadId}`;
 
-  const [replyTo, references] = await Promise.all([
+  const [replyTo, references, proposal] = await Promise.all([
     ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
     earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
+    pendingProposalFor({ threadId: data.threadId, userId: data.recipientId }).catch(() => null),
   ]);
+  // A tour time suggested to this person: confirm it from the email (Wyatt, 2026-11-02).
+  const key = proposal ? proposalKey({ messageId: proposal.messageId, userId: data.recipientId }) : null;
+  const action = key
+    ? { label: `${proposal.rebook ? "Move the tour to" : "Confirm the tour for"} ${proposal.text}`, url: `${baseUrl}/api/tours/proposals/${proposal.messageId}/email?u=${data.recipientId}&k=${key}` }
+    : null;
 
   const sent = await sendChatMessageEmail({
     to: data.recipientEmail,
@@ -215,6 +222,7 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     threadId: data.threadId,
     recipientId: data.recipientId,
     testEmailTo,
+    action,
   });
 
   if (sent && !sent.suppressed) {

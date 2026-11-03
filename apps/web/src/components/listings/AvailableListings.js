@@ -456,8 +456,8 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[65vw]" : "w-[40vw] px-4 py-4"
+        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
+          expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
       >
@@ -467,7 +467,7 @@ export default function AvailableListings({
          * lifecycle, and that lifecycle does not complete in this container.
          * Under mode="wait" the incoming child was never let in at all on the
          * deep-link path (?panel= on first load, where an effect drives the
-         * swap during mount): the column widened to 65vw while still showing
+         * swap during mount): the column widened to the panel width while still showing
          * the listing grid, so the URL claimed a panel was open and none was.
          * Without mode="wait" the entry worked but the outgoing child was
          * never unmounted, leaving an invisible opacity-0 copy of the panel
@@ -500,12 +500,12 @@ export default function AvailableListings({
             transition={{ duration: 0.18 }}
           >
             <div
-              className={`flex items-center gap-2 px-1 mb-4 ${
+              className={`flex items-center gap-2 px-1 mb-3 ${
                 showSuggested ? "justify-between" : ""
               }`}
             >
               {showSuggested && <SuggestedHeading label={suggestedLabel} />}
-              <p className="text-sm font-semibold text-gray-500">
+              <p className="text-xs font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
               </p>
@@ -537,7 +537,7 @@ export default function AvailableListings({
             {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-3">
                 {visibleListings.map((listing) => (
                   <div key={listing._id} data-listing-id={listing._id}>
                     <ListingCard
@@ -686,7 +686,7 @@ export default function AvailableListings({
             <div className="h-full overflow-y-auto scrollbar-hidden bg-gray-50">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                 {showSuggested && <SuggestedHeading label={suggestedLabel} />}
-                <span className="text-sm font-semibold text-gray-500">
+                <span className="text-xs font-semibold text-gray-500">
                   {resultCount}{" "}
                   {viewportBounds ? "in this area" : "Listings Found"}
                 </span>

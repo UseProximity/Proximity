@@ -20,7 +20,7 @@ import { replyDomain, hashReplyToken } from "@/lib/chat/replyAddress";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
-import { answerQuestion, classifyReply } from "./questions";
+import { answerQuestion, classifyReply, holdingReply } from "./questions";
 import { ingestDocument } from "./ingest";
 
 export { questionReplyToken, questionReplyAddress, stampReplyToken } from "./questionTokens";
@@ -93,8 +93,15 @@ export async function handleQuestionEmail({ parsed, fromEmail, token, attachment
     return { status: "empty", reason: "no new text" };
   }
   const kind = text ? (await classifyReply({ question: q.question, text, listingId: q.listing_id })).kind : "answer";
+  // "Let me check" or an auto-reply: logged on the card, students told the
+  // landlord is on it, the question stays open (PR #365 review).
+  if (kind === "other") {
+    const r = await holdingReply({ q, landlordUserId: q.owner_id, text, via: "email" });
+    await finish(logId, { ...base, status: "posted", reason: "holding reply, question kept open", body_preview: text.slice(0, 2000) || null });
+    return { status: "posted", reason: "holding", relayedTo: r.relayedTo };
+  }
   const body = text || "Please see the details I've shared.";
-  const result = await answerQuestion({ questionId: q.id, landlordUserId: q.owner_id, body, done: kind === "other" ? true : null, via: "email" });
+  const result = await answerQuestion({ questionId: q.id, landlordUserId: q.owner_id, body, done: null, via: "email" });
   if (result.error) {
     await finish(logId, { ...base, status: "rejected", reason: String(result.error).slice(0, 200) });
     return { status: "rejected", reason: result.error };

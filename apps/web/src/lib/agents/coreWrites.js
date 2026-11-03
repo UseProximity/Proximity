@@ -55,19 +55,34 @@ const fmt = (field, v) => {
  * to them instead of applying them. One row per field, scoped to the lease,
  * unit or property.
  */
-export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {} }) {
+export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null }) {
   const scopeLevel = target === "property" ? "property" : target;
   for (const [field, value] of Object.entries(fields ?? {})) {
+    // Revert puts `old` back, so it is recorded per field, and only when it
+    // was actually read (an entry without it cannot be reverted).
+    const before = old && Object.prototype.hasOwnProperty.call(old, field) ? { old: old[field] } : {};
     try {
       await setFact({
         listingId, section: "core", fieldKey: `core.${target}.${field}`, scopeLevel, scopeId: target === "property" ? null : id,
         value: { value, set_at: new Date().toISOString() }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
-        landlordSet: true, setBy: userId, actorId: userId, cause, detail: { core: true, target, id, field, ...detail },
+        landlordSet: true, setBy: userId, actorId: userId, cause, detail: { core: true, target, id, field, ...detail, ...before },
       });
     } catch (err) {
       console.error("[agents] markLandlordSet failed:", err?.message ?? err);
     }
   }
+}
+
+/*
+ * The current values of the fields a dashboard save is about to change, read
+ * before the update so the history can offer Revert (PR #365 review).
+ */
+const CORE_TABLE = { property: "listings", unit: "listing_units", lease: "unit_leases" };
+export async function coreValuesBefore({ target, id, fields }) {
+  const cols = Object.keys(fields ?? {});
+  if (!cols.length || !CORE_TABLE[target] || !id) return null;
+  const { data } = await supabase.from(CORE_TABLE[target]).select(cols.join(", ")).eq("id", id).maybeSingle();
+  return data ?? null;
 }
 
 /* The 14-day hold: an owner who claimed the listing recently (PRD v3). */

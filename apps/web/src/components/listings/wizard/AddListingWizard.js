@@ -177,7 +177,7 @@ export default function AddListingWizard({
   /*
    * The address the import box starts with, and a key that remounts it.
    * "Start over" used to drop the landlord back on the import box with the same
-   * address already in it, which immediately read the same site again — so a
+   * address already in it, which immediately read the same site again, so a
    * typo could not be corrected without leaving the page. Starting over now
    * clears the address and gives them the empty box back.
    */
@@ -1092,7 +1092,7 @@ export default function AddListingWizard({
     /*
      * The draft sends rent specials as plain sentences. This filtered for
      * objects with a `description`, which they stopped being when the
-     * extraction schema was flattened to fix a model error — so every special
+     * extraction schema was flattened to fix a model error, so every special
      * was dropped here, silently, and two buildings published with none
      * although both had one. The API has always taken either shape.
      */
@@ -1200,7 +1200,7 @@ export default function AddListingWizard({
 
   /*
    * The earliest day any apartment on offer opens up. Availability belongs to
-   * the lease, so it is collected per apartment on the units step — this only
+   * the lease, so it is collected per apartment on the units step, this only
    * summarises it for the property row.
    */
   const earliestUnitAvailability = () => {

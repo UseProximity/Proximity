@@ -15,7 +15,6 @@
  * never limited.
  */
 import supabase from "@/lib/supabase";
-import { proxyThreadTypeId } from "./threads";
 
 const n = (name, fallback) => {
   const v = Number(process.env[name]);
@@ -68,10 +67,11 @@ export async function checkMessageAllowed({ userId = null, visitorId = null, ip 
   if (ipLimited(ip)) return { status: 429, error: PROXY_LIMIT_MESSAGE };
   const used = await countLog((q) => q.eq("visitor_id", visitorId), DAY);
   if (used >= LIMITS.visitorPerDay) return { status: 429, error: PROXY_LIMIT_MESSAGE };
-  // Three listings per device, counted on every thread the cookie ever opened.
-  const typeId = await proxyThreadTypeId();
-  const { data } = await supabase.from("chat_threads").select("listing_id")
-    .eq("thread_type_id", typeId).eq("visitor_id", visitorId).limit(50);
+  // Three listings per device, counted on listings the visitor actually
+  // asked about: the chat opens a thread on every listing they merely view,
+  // so counting threads meant nothing (PR #365 review).
+  const { data } = await supabase.from("listing_agent_questions").select("listing_id")
+    .eq("visitor_id", visitorId).limit(500);
   const listings = new Set((data ?? []).map((t) => t.listing_id));
   if (!listings.has(listingId) && listings.size >= LIMITS.visitorListings) {
     return { status: 403, error: PROXY_VISITOR_LISTINGS_MESSAGE, code: "SIGN_IN" };
@@ -82,6 +82,10 @@ export async function checkMessageAllowed({ userId = null, visitorId = null, ip 
 /* Before a signed-out visitor's question is sent to a landlord. */
 export async function visitorCanAskLandlord(visitorId) {
   if (!visitorId) return false;
-  const used = await countLog((q) => q.eq("visitor_id", visitorId).eq("outcome", "asked_landlord"), DAY);
-  return used < LIMITS.visitorQuestionsPerDay;
+  // Every question actually put to a landlord today, however Proxy's answer
+  // was labelled (asked, partly answered...): one waiter row each.
+  const { count, error } = await supabase.from("listing_question_waiters").select("id", { count: "exact", head: true })
+    .eq("visitor_id", visitorId).gte("created_at", new Date(Date.now() - DAY).toISOString());
+  if (error) throw new Error(`proxy limits: ${error.message}`);
+  return (count ?? 0) < LIMITS.visitorQuestionsPerDay;
 }

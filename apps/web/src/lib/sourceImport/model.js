@@ -58,7 +58,7 @@ export function logCost(tag, model, usage) {
 
 // No em dash ever reaches a listing (repo rule).
 function stripEmDashes(value) {
-  if (typeof value === "string") return value.replace(/\s*—\s*/g, ", ").replace(/—/g, "-");
+  if (typeof value === "string") return value.replace(/\s*\u2014\s*/g, ", ").replace(/\u2014/g, "-");
   if (Array.isArray(value)) return value.map(stripEmDashes);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));

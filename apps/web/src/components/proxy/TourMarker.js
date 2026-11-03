@@ -18,6 +18,7 @@ import { signIn } from "next-auth/react";
 import { CalendarDays, ChevronDown, Check } from "lucide-react";
 import TourBooking from "./TourBooking";
 import { fmtSlot } from "@/lib/agents/tourTime";
+import { onInboxChange } from "@/components/landlord/landlordSync";
 
 const LIVE = new Set(["requested", "proposed", "confirmed"]);
 
@@ -33,11 +34,15 @@ export function useTour(listingId, signedIn) {
   useEffect(() => {
     if (!listingId || !signedIn) return;
     let cancelled = false;
-    fetch(`/api/tours?listingId=${encodeURIComponent(listingId)}`)
+    const load = () => fetch(`/api/tours?listingId=${encodeURIComponent(listingId)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!cancelled) setTour(d?.tour && LIVE.has(d.tour.status) ? d.tour : null); })
       .catch(() => {});
-    return () => { cancelled = true; };
+    load();
+    // The landlord confirmed or wrote about the tour: Proxy's note arrives
+    // and every tour view on the page catches up (Wyatt, 2026-11-01).
+    const off = onInboxChange(load);
+    return () => { cancelled = true; off(); };
   }, [listingId, signedIn]);
   return { tour, setTour: (t) => setTour(t && LIVE.has(t.status) ? t : null) };
 }

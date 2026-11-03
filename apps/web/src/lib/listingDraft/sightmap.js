@@ -25,7 +25,7 @@
  */
 
 // Only ever talk to this host. The tokens come off a landlord's page, so the
-// path is attacker-influenced even though the host is not — pinning the host
+// path is attacker-influenced even though the host is not, pinning the host
 // is what keeps this from being an SSRF hole.
 const SIGHTMAP_HOST = "sightmap.com";
 const TIMEOUT_MS = 20000;
@@ -72,7 +72,7 @@ async function getText(url) {
 }
 
 /*
- * Returns { units: [...] } or null. Every field is whatever the API said —
+ * Returns { units: [...] } or null. Every field is whatever the API said,
  * nothing is inferred, so a null here means the site genuinely did not publish
  * it rather than that we failed to read it.
  */
@@ -244,7 +244,7 @@ export function describeSightmapInventory(inv) {
       );
     }
   }
-  return `LIVE AVAILABILITY FEED (from this property's own availability system — these prices, unit numbers, lease terms and dates are authoritative; prefer them over anything in the page text, and never contradict them):\n${lines.join(
+  return `LIVE AVAILABILITY FEED (from this property's own availability system, these prices, unit numbers, lease terms and dates are authoritative; prefer them over anything in the page text, and never contradict them):\n${lines.join(
     "\n"
   )}`;
 }

@@ -21,9 +21,11 @@ import ProfileSection from "./_sections/ProfileSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
 import QuestionsSection from "./_sections/QuestionsSection";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import ToursSection from "./_sections/ToursSection";
 import PropertyAnalyticsSection from "./_sections/PropertyAnalyticsSection";
 import { useLandlordDashboard } from "./_hooks/useLandlordDashboard";
+import { onLandlordChange } from "@/components/landlord/landlordSync";
 
 export default function ProximityDashboard({ initialViewAsId } = {}) {
   const {
@@ -67,18 +69,24 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   // the thing a landlord should not have to go looking for.
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   // What is waiting on the landlord from Proxy (open questions and tour
-  // requests), shown as a count on the Questions tab; refreshed every minute.
+  // requests), shown as a count on the Questions tab; refreshed every 10s
+  // and whenever an answer or tour pick happens anywhere on the page.
+  // Nothing of this shows, and nothing polls, while the agents are off
+  // (PR #365 review): the tabs wait for the switch.
+  const agentsOn = useAgentsEnabled();
   const [waiting, setWaiting] = useState({ questions: 0, tours: 0 });
   useEffect(() => {
+    if (!agentsOn) return;
     let cancelled = false;
     const load = () => {
       const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
       fetch(`/api/landlord/proxy-chat${qs}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!cancelled && d?.waiting) setWaiting(d.waiting); }).catch(() => {});
     };
     load();
-    const t = setInterval(load, 60000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [viewAsId, activeView]);
+    const t = setInterval(load, 10000);
+    const off = onLandlordChange(load);
+    return () => { cancelled = true; clearInterval(t); off(); };
+  }, [viewAsId, activeView, agentsOn]);
   const listings = user?.listings ?? [];
   const draftCount =
     listings.filter((l) => l.isDraft).length +
@@ -149,9 +157,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       case "reviews":
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
       case "questions":
-        return <QuestionsSection viewAsId={viewAsId} />;
+        return agentsOn ? <QuestionsSection viewAsId={viewAsId} /> : null;
       case "tours":
-        return <ToursSection viewAsId={viewAsId} />;
+        return agentsOn ? <ToursSection viewAsId={viewAsId} /> : null;
       case "integrations":
         return <IntegrationsSection />;
       case "analytics":
@@ -379,6 +387,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Reviews
                   </button>
                   )}
+                  {agentsOn && (<>
                   <button
                     onClick={() => handleNavigation("questions")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -407,6 +416,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                       <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting.tours}</span>
                     )}
                   </button>
+                  </>)}
                   {isLandlord && (
                   <button
                     onClick={() => handleNavigation("integrations")}

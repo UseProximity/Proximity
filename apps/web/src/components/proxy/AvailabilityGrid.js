@@ -19,7 +19,9 @@ export function zoneAbbrev(date = new Date()) {
   return part?.value ?? "CT";
 }
 
-export function DateGrid({ selected, onChange, days = 7, scrollClass = "" }) {
+// `booked`: Map of slot iso -> what is booked then. Those hours show grey on
+// their own date only, and can still be picked (Wyatt, 2026-11-02).
+export function DateGrid({ selected, onChange, days = 7, scrollClass = "", booked = null }) {
   const list = upcomingDays({ days });
   const cells = list.map((day) => HOURS.map((h) => ({ iso: chicagoToUtc(day.y, day.m, day.d, h).toISOString(), h })));
   // The latest selection, so a fast drag never paints from a stale render.
@@ -59,7 +61,7 @@ export function DateGrid({ selected, onChange, days = 7, scrollClass = "" }) {
   };
 
   return (
-    <div className={`select-none overflow-x-auto ${scrollClass}`} onPointerMove={onPointerMove} style={{ touchAction: "none" }}>
+    <div className={`select-none touch-none overflow-x-auto ${scrollClass}`} onPointerMove={onPointerMove}>
       <table className="w-full table-fixed border-collapse text-[11px]">
         <thead className={scrollClass ? "sticky top-0 z-10 bg-white" : ""}>
           <tr>
@@ -81,16 +83,20 @@ export function DateGrid({ selected, onChange, days = 7, scrollClass = "" }) {
               {cells.map((col, c) => {
                 const cell = col[r];
                 const on = selected.has(cell.iso);
+                const taken = booked?.get(cell.iso) ?? null;
                 return (
                   <td key={cell.iso} className="p-0">
                     <div
                       role="checkbox"
                       aria-checked={on}
-                      aria-label={`${list[c].label} ${hourLabel(h)}`}
+                      aria-label={`${list[c].label} ${hourLabel(h)}${taken ? `, tour booked at ${taken}` : ""}`}
+                      title={taken ? `Tour booked: ${taken}` : undefined}
                       data-iso={cell.iso}
                       onPointerDown={onPointerDown(cell.iso)}
                       onPointerEnter={() => paint(cell.iso)}
-                      className={`h-6 w-full cursor-pointer border border-gray-200 ${on ? "bg-red-500" : "bg-white hover:bg-red-50"}`}
+                      className={`h-6 w-full cursor-pointer border border-gray-200 ${
+                        on ? (taken ? "bg-red-300" : "bg-red-500") : taken ? "bg-gray-300 hover:bg-gray-400" : "bg-white hover:bg-red-50"
+                      }`}
                     />
                   </td>
                 );

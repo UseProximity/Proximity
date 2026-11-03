@@ -34,8 +34,8 @@ export async function postCorrections({ listingId, changes }) {
       await postProxyMessage({ threadId, listingId, type: "proxy_note", body: `Quick update from the landlord: ${c.summary}`, metadata: { correction: c.key, summary: c.summary } });
       posted++;
       const { data: todays } = await supabase.from("sent_emails").select("id").eq("thread_id", threadId)
-        .in("kind", ["proxy_answer", "proxy_relay", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);
-      if (!todays?.length) await notifyStudentThread({ threadId, kind: "proxy_answer", quietMs: 0 }).catch(() => {});
+        .in("kind", ["proxy_answer", "proxy_relay", "proxy_clarifier", "proxy_correction", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);
+      if (!todays?.length) await notifyStudentThread({ threadId, kind: "proxy_correction", quietMs: 0 }).catch(() => {});
     }
   }
   return posted;

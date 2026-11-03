@@ -7,8 +7,8 @@ import ListingDraftImport from "@/components/listings/ListingDraftImport";
  *
  * It used to repeat the other ways in underneath ("type it in", "connect your
  * property manager"), which made sense when this was the first screen a
- * landlord saw. It isn't any more — the add-listing page offers all three up
- * front — so re-listing them here only asked someone to make a choice they had
+ * landlord saw. It isn't any more, the add-listing page offers all three up
+ * front, so re-listing them here only asked someone to make a choice they had
  * already made. Backing out is the wizard's own Cancel.
  *
  * `initialImportUrl` carries the address typed on that first screen so the read

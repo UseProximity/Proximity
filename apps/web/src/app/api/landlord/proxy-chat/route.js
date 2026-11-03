@@ -29,6 +29,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { agentsEnabled } from "@/lib/agents/flags";
 import { resolveDashboardUserId } from "@/lib/users/viewAs";
 import { hasStakeInListing } from "@/lib/listings/ownership";
 import {
@@ -43,6 +44,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function GET(req) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Dark until the switch is on: no queries against tables that may not exist yet.
+  if (!agentsEnabled()) return NextResponse.json({ enabled: false, listings: [], waiting: { questions: 0, tours: 0 } });
   try {
     const { searchParams } = new URL(req.url);
     const userId = resolveDashboardUserId(session, searchParams);
@@ -62,6 +65,7 @@ export async function GET(req) {
 export async function POST(req) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!agentsEnabled()) return NextResponse.json({ error: "Not available yet." }, { status: 404 });
   let body;
   try { body = await req.json(); } catch { body = {}; }
   const listingId = String(body?.listingId ?? "");

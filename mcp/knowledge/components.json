@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-10-31T19:37:43.917Z",
-  "count": 156,
+  "_generated": "2026-11-02T19:51:20.239Z",
+  "count": 159,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -199,6 +199,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "TourProposalCard",
+      "file": "src/components/chat/TourProposalCard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "assistantConstants",
       "file": "src/components/chat/assistantConstants.js",
       "description": "No description. Run generate after adding a description above."
@@ -261,6 +266,11 @@
     {
       "name": "LandlordProxyChat",
       "file": "src/components/landlord/LandlordProxyChat.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "landlordSync",
+      "file": "src/components/landlord/landlordSync.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -651,6 +661,11 @@
     {
       "name": "TourPicker",
       "file": "src/components/proxy/TourPicker.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "useAgentsEnabled",
+      "file": "src/components/proxy/useAgentsEnabled.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

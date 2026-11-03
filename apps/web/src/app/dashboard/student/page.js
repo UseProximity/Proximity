@@ -9,6 +9,7 @@ import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 import StudentTours from "@/components/proxy/StudentTours";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
@@ -95,7 +96,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const router = useRouter();
   const initialRole = (user.role || "student").toLowerCase();
   /*
-   * Move-in month and lease length. Seeded from the shared copy, which already
+   * Bed count, move-in month and lease length. Seeded from the shared copy, which already
    * holds any change made on a listing this visit, and falling back to the
    * dashboard payload until that copy has loaded.
    */
@@ -103,7 +104,11 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const [housing, setHousing] = useState(
     leasePrefs.loaded
       ? leasePrefs.prefs
-      : { moveIn: user.preferredMoveInDate ?? null, months: user.preferredLeaseMonths ?? null }
+      : {
+          beds: user.preferredBeds ?? [],
+          moveIn: user.preferredMoveInDate ?? null,
+          months: user.preferredLeaseMonths ?? [],
+        }
   );
   const [form, setForm] = useState({
     name: user.name || "",
@@ -172,7 +177,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
           ...form,
           birthday: form.birthday || undefined,
           preferredMoveInDate: housing.moveIn ?? null,
-          preferredLeaseMonths: housing.months ?? null,
+          preferredLeaseMonths: housing.months ?? [],
+          preferredBeds: housing.beds ?? [],
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -182,7 +188,11 @@ function EditProfileModal({ user, onClose, onSaved }) {
       }
       const updated = await res.json();
       // Every listing's lease options read the shared copy: bring it up to date.
-      leasePrefs.hydrate({ moveIn: updated.preferredMoveInDate, months: updated.preferredLeaseMonths });
+      leasePrefs.hydrate({
+        beds: updated.preferredBeds,
+        moveIn: updated.preferredMoveInDate,
+        months: updated.preferredLeaseMonths,
+      });
       onSaved(updated);
 
       // If role changed, push the new role into the JWT and route them to
@@ -325,15 +335,15 @@ function EditProfileModal({ user, onClose, onSaved }) {
             <div className="rounded-lg border border-gray-200 px-3 py-3">
               <p className="text-sm font-semibold text-gray-800">Housing search</p>
               <p className="text-xs text-gray-500 mt-0.5 mb-2">
-                When you want to move in and for how long. Every listing shows the
-                lease options that fit first.
+                What size, when you want to move in and for how long. Every listing
+                opens on the leases that fit.
               </p>
               <LeasePrefsControls
                 variant="form"
                 idPrefix="profile-lease-prefs"
                 value={housing}
                 onChange={(patch) => setHousing((prev) => ({ ...prev, ...patch }))}
-                onClear={() => setHousing({ moveIn: null, months: null })}
+                onClear={() => setHousing({ beds: [], moveIn: null, months: [] })}
               />
             </div>
           )}
@@ -494,6 +504,7 @@ const CARDS_PER_PAGE = 2;
 const SUBLEASES_PER_PAGE = 4;
 
 export default function StudentDashboardPage({ initialViewAsId } = {}) {
+  const agentsOn = useAgentsEnabled();
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -561,7 +572,8 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     phone: dbUser?.phone ?? null,
     description: dbUser?.description ?? null,
     preferredMoveInDate: dbUser?.preferredMoveInDate ?? null,
-    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? null,
+    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? [],
+    preferredBeds: dbUser?.preferredBeds ?? [],
   };
 
   const contacted = user.contacted;
@@ -881,21 +893,22 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
           {/* ── RIGHT COLUMN ── */}
           <div className="space-y-8">
             {/* Tours booked through Proxy (per-listing agents). Renders nothing when there are none. */}
-            <StudentTours />
+            {agentsOn && <StudentTours />}
             {/* Contacted section */}
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <h2 className="text-lg font-bold text-gray-900">Inquiries</h2>
+                {/* "Inquiries" once every Proxy question counts as one; until the agents are on it is still "Contacted". */}
+                <h2 className="text-lg font-bold text-gray-900">{agentsOn ? "Inquiries" : "Contacted"}</h2>
               </div>
               <div className="border-b border-gray-200 mb-4" />
 
               {contacted.length === 0 ? (
                 <div>
                   <p className="text-sm text-gray-500 mb-6">
-                    You haven&apos;t asked about any places yet. Browse listings to get started.
+                    {agentsOn ? "You haven't asked about any places yet." : "You haven't contacted any leasing agents yet."} Browse listings to get started.
                   </p>
                   <Link href="/browse"
                     className="inline-block px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -1095,6 +1108,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               description: updated.description,
               preferredMoveInDate: updated.preferredMoveInDate,
               preferredLeaseMonths: updated.preferredLeaseMonths,
+              preferredBeds: updated.preferredBeds,
             }));
           }}
         />

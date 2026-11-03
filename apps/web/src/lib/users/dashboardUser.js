@@ -1,4 +1,5 @@
 import supabase from "@/lib/supabase";
+import { savedList } from "@/lib/listings/leasePrefsColumns";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
 import {
   isLiveLease,
@@ -508,9 +509,10 @@ export async function buildDashboardUser({ email, id } = {}) {
     _id: user.id?.toString(),
     // Prefer camelCase for clients; snake_case remains via the spread above.
     emailNotifications: user.email_notifications !== false,
-    // The student's move-in month and lease length (see /api/account/lease-preferences).
+    // The student's move-in month, lease lengths and bed counts (see /api/account/lease-preferences).
     preferredMoveInDate: user.preferred_move_in_date ?? null,
-    preferredLeaseMonths: user.preferred_lease_months ?? null,
+    preferredLeaseMonths: savedList(user.preferred_lease_months_list, user.preferred_lease_months),
+    preferredBeds: savedList(user.preferred_beds_list, user.preferred_beds),
     favorites: safeFavorites,
     favoritesIds: safeFavoritesIds,
     listings: safeListings,

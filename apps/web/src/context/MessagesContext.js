@@ -24,6 +24,8 @@ import {
   useState,
 } from "react";
 import { useSession } from "next-auth/react";
+import { onLandlordChange, onInboxChange } from "@/components/landlord/landlordSync";
+
 import {
   subscribeInboxMessages,
   subscribeThreadMessages,
@@ -38,6 +40,11 @@ import {
 } from "@/lib/chat/attachments";
 
 const MessagesContext = createContext(null);
+
+// How often an open conversation and the inbox look for news when the live
+// channel stays quiet (Wyatt, 2026-11-02).
+const LIVE_POLL_MS = 4000;
+const INBOX_POLL_MS = 20000;
 
 /** How many inbox threads to warm after the inbox loads. */
 const PREFETCH_THREAD_COUNT = 5;
@@ -153,7 +160,8 @@ export function MessagesProvider({ children }) {
     const seq = ++refreshSeqRef.current;
     setThreadsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
     try {
-      const res = await fetch("/api/chat/threads");
+      // Proxy conversations are opt-in on this endpoint (the mobile app does not show them yet).
+      const res = await fetch("/api/chat/threads?include=proxy");
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error || `Failed to load threads (${res.status})`);
@@ -690,7 +698,19 @@ export function MessagesProvider({ children }) {
       }
     );
 
+    /*
+     * The open conversation also checks for new messages every few seconds
+     * while it is on screen, so a new message always shows even when the live
+     * channel is down (Wyatt, 2026-11-02). Already-shown messages are merged,
+     * not repeated.
+     */
+    const poll = setInterval(() => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      loadMessages(activeThreadId).catch(() => {});
+    }, LIVE_POLL_MS);
+
     threadUnsubscribeRef.current = () => {
+      clearInterval(poll);
       unsubMessages?.();
       unsubReadReceipts?.();
     };
@@ -703,6 +723,15 @@ export function MessagesProvider({ children }) {
       }
     };
   }, [userId, activeThreadId, loadMessages, markThreadRead]);
+
+  // The inbox (new conversations, unread badges) catches up on its own too.
+  useEffect(() => {
+    if (!userId) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") refreshThreads().catch(() => {});
+    }, INBOX_POLL_MS);
+    return () => clearInterval(t);
+  }, [userId, refreshThreads]);
 
   // Tab visible while a thread is open: mark read + refetch messages + inbox.
   useEffect(() => {
@@ -719,7 +748,15 @@ export function MessagesProvider({ children }) {
     }
 
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    // A landlord answered Proxy or picked a tour time somewhere on the page:
+    // the inbox's Proxy rows and unread badge catch up (Wyatt, 2026-11-01).
+    const offLandlord = onLandlordChange(() => refreshThreads().catch(() => {}));
+    const offInbox = onInboxChange(() => refreshThreads().catch(() => {}));
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      offLandlord();
+      offInbox();
+    };
   }, [userId, loadMessages, refreshThreads, markThreadRead]);
 
   const unreadCount = useMemo(

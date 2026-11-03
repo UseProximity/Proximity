@@ -165,11 +165,14 @@ export async function synthesizeKnowledge({
     if (scopeLevel === "property" && ownerDefault) { scopeLevel = "owner"; scopeId = ownerDefault; }
     if (op.op === "retire") {
       if (noRetire) continue;
-      const target = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeId ?? null))
-        ?? facts.find((f) => f.field_key === key && f.section === op.section);
       // What the landlord set, or what their description said, is only
-      // removed by the landlord (Wyatt, 2026-10-27).
+      // removed by the landlord (Wyatt, 2026-10-27). A landlord's own words
+      // only remove facts in their own scope: falling back to the same key in
+      // any scope let one co-owner's answer retire another's fact (PR #365
+      // review).
       const landlordCause = ["landlord_chat", "landlord_statement", "landlord_answer", "landlord_edit"].includes(cause);
+      const exact = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeId ?? null));
+      const target = exact ?? (landlordCause ? null : facts.find((f) => f.field_key === key && f.section === op.section));
       if (target && !landlordCause && (target.landlord_set || protectedSources.has(target.source_id))) { result.held++; continue; }
       if (target) { await retireFact({ factId: target.id, cause, actorId, detail: { excerpt: op.excerpt, sourceRef } }); result.retired++; }
       continue;
