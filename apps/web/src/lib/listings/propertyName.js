@@ -1,4 +1,5 @@
 import supabase from "@/lib/supabase";
+import { withoutSandboxRows } from "@/lib/reviewSandbox";
 
 /*
  * Display-name uniqueness for properties.
@@ -6,6 +7,9 @@ import supabase from "@/lib/supabase";
  * One name per school (migration 202608310001). The unique index is the thing
  * that makes the rule true; this module exists so a landlord hits a sentence
  * instead of a Postgres error, and so every write path phrases it the same way.
+ * Listings made by a review sandbox account are outside the rule for everyone but
+ * sandbox accounts: they never block a real landlord (the index leaves them out
+ * too, see the follow-up migration), and the checks below skip them.
  *
  * The normalizer is NOT reimplemented here. It lives in the database as
  * normalize_property_name() and is called over RPC, for the same reason
@@ -27,13 +31,16 @@ const NO_SCHOOL = "00000000-0000-0000-0000-000000000000";
  * `excludeListingId` keeps a listing from colliding with itself when a landlord
  * saves an edit without touching the name — the overwhelmingly common PATCH.
  *
+ * `userId` is who is asking: a review sandbox listing only counts as a conflict for
+ * a sandbox account (anyone else, or nobody, ignores it).
+ *
  * A lookup that errors returns null: the index still refuses a genuine duplicate,
  * so degrading to "let it through and let the database decide" is safe, where
  * degrading to "block the save" would strand a landlord over an unrelated outage.
  */
 export async function findPropertyNameConflict(
   title,
-  { schoolId = null, excludeListingId = null } = {}
+  { schoolId = null, excludeListingId = null, userId = null } = {}
 ) {
   const { data: normalized, error: rpcError } = await supabase.rpc(
     "normalize_property_name",
@@ -50,7 +57,7 @@ export async function findPropertyNameConflict(
 
   let query = supabase
     .from("listings")
-    .select("id, title, address, school_id")
+    .select("id, title, address, school_id, review_sandbox")
     .is("deleted_at", null);
 
   query = schoolId ? query.eq("school_id", schoolId) : query.is("school_id", null);
@@ -70,11 +77,12 @@ export async function findPropertyNameConflict(
    * for the incoming name and the stored ones re-derived below.
    */
   const wanted = String(normalized);
-  for (const row of rows ?? []) {
+  const matches = (rows ?? []).filter((row) => {
     const rowNorm = normalizeLocally(row.title);
-    if (rowNorm && rowNorm === wanted) return row;
-  }
-  return null;
+    return rowNorm && rowNorm === wanted;
+  });
+  // A sandbox listing with the same name only conflicts for a sandbox account.
+  return (await withoutSandboxRows(matches, userId))[0] ?? null;
 }
 
 /*
@@ -147,7 +155,7 @@ function looseFingerprint(address) {
  * `ids` narrows the search to those listings, which is how the picker asks
  * "is any of these one of MINE" before "is it anyone's".
  */
-export async function findExistingProperties(entries, { ids = null } = {}) {
+export async function findExistingProperties(entries, { ids = null, userId = null } = {}) {
   if (ids && !ids.length) return new Map();
   const byName = new Map();
   const byAddress = new Map();
@@ -162,16 +170,19 @@ export async function findExistingProperties(entries, { ids = null } = {}) {
   }
   if (!byName.size && !byAddress.size && !byLoose.size) return new Map();
 
-  let query = supabase.from("listings").select("id, title, address").is("deleted_at", null);
+  let query = supabase.from("listings").select("id, title, address, review_sandbox").is("deleted_at", null);
   // The caller's own listings (ids) include their drafts; anyone else's only
   // count once published (PR #365 review).
   if (ids) query = query.in("id", ids);
   else query = query.not("published_at", "is", null);
-  const { data: rows, error } = await query;
+  const { data: fetched, error } = await query;
   if (error) {
     console.error("[propertyName] existing lookup failed:", error.message);
     return new Map();
   }
+  // Anyone's listings (no ids): a review sandbox listing is not "on Proximity" for a
+  // real landlord. The caller's own listings (ids) are always theirs to see.
+  const rows = ids ? fetched : await withoutSandboxRows(fetched ?? [], userId);
   for (const row of rows ?? []) {
     const n = normalizeLocally(row.title);
     if (n && byName.has(n) && !byName.get(n)) byName.set(n, row);
@@ -240,10 +251,13 @@ export async function listingsAtAddress(address, userId = null) {
    * the same street address counts.
    */
   const noZip = key.endsWith("|");
-  const byKey = supabase.from("listings").select("id, title, address, created_at, published_at");
-  const { data: rows } = await (noZip ? byKey.like("property_key", `${key}%`) : byKey.eq("property_key", key))
+  const byKey = supabase.from("listings").select("id, title, address, created_at, published_at, review_sandbox");
+  const { data: found } = await (noZip ? byKey.like("property_key", `${key}%`) : byKey.eq("property_key", key))
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
+  // A review sandbox listing never counts as "already listed" for anyone but a sandbox
+  // account, so it can neither block a real landlord nor be offered to them to add to.
+  const rows = await withoutSandboxRows(found ?? [], userId);
   if (!rows?.length) return { key, listings: [], match: null };
 
   const ids = rows.map((r) => r.id);

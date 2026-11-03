@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-03T04:27:31.711Z",
-  "count": 235,
+  "_generated": "2026-11-03T14:49:21.582Z",
+  "count": 236,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -738,6 +738,10 @@
     {
       "file": "src/lib/reviews/source.js",
       "description": "The campaign tag a printed QR code carries: /r?src=<tag>."
+    },
+    {
+      "file": "src/lib/reviewSandbox.js",
+      "description": "Review sandbox lookups (App Store review accounts). users.review_sandbox is set"
     },
     {
       "file": "src/lib/schools.js",

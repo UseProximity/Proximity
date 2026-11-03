@@ -208,6 +208,7 @@ export async function PATCH(req, { params }) {
     const conflict = await findPropertyNameConflict(safeUpdates.title, {
       schoolId: current?.school_id ?? null,
       excludeListingId: listingId,
+      userId: check.user.id,
     });
     if (conflict) {
       return NextResponse.json(propertyNameTakenResponse(conflict), { status: 409 });
