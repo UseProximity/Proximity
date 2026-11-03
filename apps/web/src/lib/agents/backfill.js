@@ -81,10 +81,16 @@ export async function backfillThread(thread) {
   return { threadId: thread.id, listingId: thread.listing_id, written: synthesis.written, unchanged: synthesis.unchanged, held: synthesis.held, documents, notes: synthesis.notes };
 }
 
-export async function runBackfill({ limit = 200, listingId = null } = {}) {
+/*
+ * Reads at most `maxRead` threads per call so a call stays inside 300 seconds;
+ * threads already read are skipped cheaply, so calling again continues.
+ * `remaining` > 0 means call again.
+ */
+export async function runBackfill({ limit = 2000, listingId = null, maxRead = 12 } = {}) {
   const threads = await backfillCandidates({ limit, listingId });
-  const out = { threads: threads.length, read: 0, skipped: 0, written: 0, documents: 0, failed: [] };
-  for (const t of threads) {
+  const out = { threads: threads.length, read: 0, skipped: 0, written: 0, documents: 0, failed: [], remaining: 0 };
+  for (const [i, t] of threads.entries()) {
+    if (out.read >= maxRead) { out.remaining = threads.length - i; break; }
     try {
       const r = await backfillThread(t);
       if (r.skipped) { out.skipped++; continue; }

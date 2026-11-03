@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-03T13:35:06.070Z",
+  "_generated": "2026-11-03T14:49:21.567Z",
   "count": 183,
   "routes": [
     {
@@ -2153,6 +2153,21 @@
       "file": "src/app/api/matchmaking/chat/route.js"
     },
     {
+      "path": "/api/parent-signup",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/parent-signup/route.js"
+    },
+    {
       "path": "/api/pendingReviews",
       "methods": [
         "GET",
@@ -2298,20 +2313,6 @@
       },
       "tables": [],
       "file": "src/app/api/proxy/threads/[threadId]/messages/route.js"
-    },
-    {
-      "path": "/api/proxy/threads/[threadId]/notify-email",
-      "methods": [
-        "POST"
-      ],
-      "auth": "public",
-      "methodAuth": {
-        "POST": "public"
-      },
-      "tables": [
-        "chat_threads"
-      ],
-      "file": "src/app/api/proxy/threads/[threadId]/notify-email/route.js"
     },
     {
       "path": "/api/proxy/threads/[threadId]/report",

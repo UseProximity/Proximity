@@ -583,7 +583,16 @@ export async function POST(req) {
         supabase.rpc("normalize_property_key", { p_address: target.address }),
         supabase.rpc("normalize_property_key", { p_address: address }),
       ]);
-      if (!targetKey || !submittedKey || targetKey !== submittedKey) {
+      /*
+       * A website often gives the street address with no ZIP, and the
+       * address check below already counts that as this property (it matches
+       * by street when the ZIP is missing), so attaching must accept it too
+       * or the landlord is told the address is taken and then refused here.
+       */
+      const sameStreet = (a, b) => a.endsWith("|") && b.startsWith(a);
+      const samePlace = targetKey && submittedKey
+        && (targetKey === submittedKey || sameStreet(submittedKey, targetKey) || sameStreet(targetKey, submittedKey));
+      if (!samePlace) {
         return NextResponse.json(
           { error: "That property doesn't match the address you entered." },
           { status: 400 }
@@ -721,9 +730,25 @@ export async function POST(req) {
         createdUnitIds[i] = await findUnitNamed(listingId, unit.name);
       }
     }
+    /*
+     * Two units with the same name in one request to an existing property
+     * (two lease variants of "Apt 2E") are one unit: only the first is inserted and the rest take
+     * its id below, as the one-at-a-time lookup used to arrange.
+     */
+    const nameKey = (u) => String(u.name ?? "").trim().toLowerCase();
+    const firstByName = new Map();
+    const sameAs = new Array(unitData.length).fill(null);
+    unitData.forEach((unit, i) => {
+      const k = nameKey(unit);
+      // Only when adding to an existing property, as before; a new listing
+      // keeps every unit type it was sent.
+      if (!attachToListingId || !k || createdUnitIds[i]) return;
+      if (firstByName.has(k)) sameAs[i] = firstByName.get(k);
+      else firstByName.set(k, i);
+    });
     const toInsert = unitData
       .map((unit, i) => ({ unit, i }))
-      .filter(({ i }) => !createdUnitIds[i]);
+      .filter(({ i }) => !createdUnitIds[i] && sameAs[i] === null);
     if (toInsert.length) {
       const { data: insertedUnits, error: unitError } = await supabase
         .from("listing_units")
@@ -755,6 +780,9 @@ export async function POST(req) {
         createdUnitIds[i] = insertedUnits[n].id;
       });
     }
+    sameAs.forEach((first, i) => {
+      if (first !== null) createdUnitIds[i] = createdUnitIds[first];
+    });
 
     const allLeaseRows = [];
     for (const [i, unit] of unitData.entries()) {

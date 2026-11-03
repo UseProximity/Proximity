@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
@@ -82,6 +83,7 @@ export default function AgentsView({ search = "" }) {
 
   return (
     <div>
+      <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (
           <div key={k} className="rounded-xl border border-gray-200 bg-white p-3"><div className="text-xs text-gray-500">{k}</div><div className="text-lg font-semibold text-gray-900">{v}</div></div>

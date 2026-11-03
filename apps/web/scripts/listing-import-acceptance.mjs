@@ -22,6 +22,13 @@
  *   node scripts/listing-import-acceptance.mjs --case mac-100
  *   node scripts/listing-import-acceptance.mjs --list       # names and costs, runs nothing
  *
+ * How a case runs (since the importer moved to background jobs): the page is
+ * read for its properties (/api/landlord/listing-draft), the case's property
+ * is imported the way the Add Listing page does it (/api/landlord/import/start,
+ * then the batch is polled until its job finishes), and the draft is read back
+ * the way "View as Student" shows it (/api/landlord/listings/[id]/preview).
+ * The draft is removed afterwards. A picker case stops after the first step.
+ *
  * Costs real money: roughly 18 Firecrawl credits and $0.40 of Anthropic usage
  * for a big building, near zero for a small one. --list prints the estimate
  * before you spend it.
@@ -42,7 +49,7 @@ const CASES = {
     },
     expect: {
       minUnits: 30,
-      minBedVariety: 4, // studio, 1, 2, 3 — the bug that started this
+      minBedVariety: 4, // studio, 1, 2, 3: the bug that started this
       maxBedrooms: 3, // and nothing above it: 100N307F once published as a 4-bed
       minUnitsWithApartments: 10,
       minPhotos: 5,
@@ -150,7 +157,7 @@ const CASES = {
      * apartments.com answers a delisted property with a redirect to the city
      * search page, and reading 0 units off a search page is the importer being
      * right, not wrong. If this case fails, open the URL yourself before
-     * treating it as a regression — a dead URL and a broken importer look
+     * treating it as a regression: a dead URL and a broken importer look
      * identical from here.
      */
     expect: { minUnits: 1, maxProperties: 0 },
@@ -220,7 +227,7 @@ function universalProblems(listing) {
    * The same floor plan twice is always wrong, and it is how the worst kind of
    * fault shows up: Dorchester returned ten units on one run and twenty on the
    * next, the extra ten being copies whose names differed only by a hyphen.
-   * Nothing above would have caught it — every unit was individually fine — and
+   * Nothing above would have caught it (every unit was individually fine), and
    * a nightly sync would have seen the building's unit count flapping.
    */
   const byTitle = new Map();
@@ -239,7 +246,8 @@ function check(name, listing, properties, expect, seconds) {
   const problems = universalProblems(listing ?? { units: [] });
   const units = listing?.units ?? [];
   const beds = new Set(units.map((u) => u.bedrooms).filter((b) => b != null));
-  const withApts = units.filter((u) => (u.unitNames ?? []).length > 0).length;
+  // The preview has no apartment names; the read's summary counts apartments.
+  const withApts = listing?.apartments ?? units.filter((u) => (u.unitNames ?? []).length > 0).length;
   const plans = units.filter((u) => u.floorPlanImageUrl).length;
   const e = expect ?? {};
 
@@ -271,6 +279,61 @@ function check(name, listing, properties, expect, seconds) {
   return problems;
 }
 
+/* The case's property from the picker: its name or street, else the only one. */
+function pickProperty(properties, target) {
+  const norm = (x) => String(x ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (target) {
+    const street = norm(String(target.address ?? "").split(",")[0]);
+    const hit = properties.find((p) => (target.name && norm(p.name) === norm(target.name)) || (street && norm(p.address).startsWith(street)));
+    if (hit) return hit;
+    throw new Error(`the picker did not offer ${target.name ?? target.address}`);
+  }
+  if (properties.length !== 1) throw new Error(`expected one property to import, the page offered ${properties.length}`);
+  return properties[0];
+}
+
+/*
+ * Import one property as the Add Listing page does and read the draft back,
+ * shaped the way check() reads it. The draft is removed afterwards.
+ */
+async function importOne(cookies, pastedUrl, property) {
+  const headers = { "Content-Type": "application/json", Cookie: cookies };
+  const start = await fetch(`${BASE}/api/landlord/import/start`, {
+    method: "POST", headers, body: JSON.stringify({ pastedUrl, targets: [property] }),
+  });
+  const started = await start.json();
+  if (!start.ok || !started.batchId) throw new Error(`import/start HTTP ${start.status} ${JSON.stringify(started).slice(0, 160)}`);
+  let job = null;
+  const until = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const b = await (await fetch(`${BASE}/api/landlord/import/batches/${started.batchId}`, { headers })).json();
+    job = (b.batch?.jobs ?? b.jobs ?? [])[0] ?? null;
+    if (job && ["done", "failed", "cancelled"].includes(job.status)) break;
+  }
+  if (!job || job.status !== "done") throw new Error(`the import ${job ? `ended ${job.status}: ${job.error ?? job.step}` : "never finished"}`);
+  try {
+    const p = await (await fetch(`${BASE}/api/landlord/listings/${job.listing_id}/preview`, { headers })).json();
+    const l = p.listing ?? p;
+    return {
+      seconds: job.result?.seconds ?? null,
+      summary: job.result?.summary ?? null,
+      listing: {
+        units: (l.unitTypes ?? []).map((u) => ({
+          title: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms, rent: u.rent, area: u.area,
+          floorPlanImageUrl: u.floorPlanImageUrl, leaseTermMonths: u.leaseTermMonths ?? [],
+        })),
+        imageUrls: l.images ?? [],
+        concessions: l.concessions ?? [],
+        apartments: job.result?.summary?.apartments ?? 0,
+      },
+    };
+  } finally {
+    // Remove the test draft (a draft this import made, never an existing listing).
+    await fetch(`${BASE}/api/landlord/import/jobs/${job.id}`, { method: "DELETE", headers }).catch(() => {});
+  }
+}
+
 async function run(name, cookies) {
   const c = CASES[name];
   const started = Date.now();
@@ -279,15 +342,20 @@ async function run(name, cookies) {
     res = await fetch(`${BASE}/api/landlord/listing-draft`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookies },
-      body: JSON.stringify({ url: c.url, ...(c.target ? { targetProperty: c.target } : {}) }),
+      body: JSON.stringify({ url: c.url }),
       signal: AbortSignal.timeout(295000),
     });
     data = await res.json();
+    if (res.ok && !c.expect?.minProperties) {
+      const imported = await importOne(cookies, c.url, pickProperty(data.properties ?? [], c.target));
+      data = { ...data, listing: imported.listing, summary: imported.summary, readSeconds: imported.seconds };
+    }
   } catch (err) {
-    console.log(`FAIL  ${name}: the request itself failed — ${err.message}`);
+    console.log(`FAIL  ${name}: the request itself failed: ${err.message}`);
     return false;
   }
-  const seconds = Math.round((Date.now() - started) / 1000);
+  // A background read is judged on its own run time, not the polling around it.
+  const seconds = data?.readSeconds ?? Math.round((Date.now() - started) / 1000);
   if (!res.ok) {
     console.log(`FAIL  ${name}: HTTP ${res.status} ${JSON.stringify(data).slice(0, 160)}`);
     console.log(`      If this says "something went wrong", read the server log: an Anthropic`);
@@ -317,7 +385,7 @@ async function run(name, cookies) {
     ? `${properties.length} properties offered, ${seconds}s`
     : `${u.length} units, ` +
       `beds ${sizes.join("/") || "none"}, ` +
-      `${u.filter((x) => (x.unitNames ?? []).length).length} with apartments, ` +
+      `${data.listing?.apartments ?? 0} apartments, ` +
       `${(data.listing?.imageUrls ?? []).length} photos, ` +
       `${u.filter((x) => x.floorPlanImageUrl).length} plans, ` +
       `${(data.listing?.concessions ?? []).length} specials, ` +

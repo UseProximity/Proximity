@@ -27,6 +27,7 @@ export const KINDS = {
   review_confirmation: ["reviews", "Review confirmation"],
   review_invite: ["reviews", "Review invite"],
   waitlist_nudge: ["reviews", "Waitlist nudge"],
+  parent_guide: ["account", "Parent guide"],
   landlord_nudge: ["landlords", "Landlord nudge"],
   owner_inquiry: ["landlords", "Owner inquiry"],
   new_listing: ["landlords", "New listing notice"],

@@ -98,6 +98,24 @@ const GREETING = "Hey, I'm Proxy. Ask me anything about this listing, or tap Tou
 // Shown, not saved; it stays at the top once the conversation starts (Wyatt, 2026-11-01).
 const GREETING_MSG = { id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" };
 
+/*
+ * The student already talks with this landlord in Messages (Wyatt,
+ * 2026-11-02): a pointer to that conversation. Proxy still answers here.
+ */
+function ExistingChatCard({ chat }) {
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <p className="min-w-0 text-xs text-gray-700">
+        You&apos;re already talking with <span className="font-semibold text-gray-900">{chat.landlordName}</span>
+        {chat.sameListing || !chat.listingLabel ? " about this place." : ` about ${chat.listingLabel}.`}
+      </p>
+      <Link href={chat.href} className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+        Open conversation
+      </Link>
+    </div>
+  );
+}
+
 /* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
 function TypingBubble() {
   return (
@@ -197,6 +215,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [thread, setThread] = useState(null);
   const [messages, setMessages] = useState([]);
   const [testMode, setTestMode] = useState(false);
+  const [existingChat, setExistingChat] = useState(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(null);
   const [input, setInput] = useState("");
@@ -225,6 +244,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       setThread(seen.thread);
       setMessages(seen.messages ?? []);
       setTestMode(!!seen.testMode);
+      setExistingChat(seen.existingChat ?? null);
       setLoading(false);
     } else {
       setLoading(true);
@@ -236,6 +256,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         setThread(data.thread);
         setMessages(data.messages ?? []);
         setTestMode(!!data.testMode);
+        setExistingChat(data.existingChat ?? null);
       })
       .catch(() => { if (!cancelled) setUnavailable("Proxy could not load just now."); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -519,6 +540,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
           Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
         </div>
       )}
+
+      {existingChat && <ExistingChatCard chat={existingChat} />}
 
       {loading && <ChatSkeleton rows={3} />}
       {/* Before the first question the greeting sits at the top with some room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30; less room 2026-11-01). */}

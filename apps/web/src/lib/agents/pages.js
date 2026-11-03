@@ -22,6 +22,7 @@ import { fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent } from "./store";
 import { synthesizeKnowledge } from "./synthesize";
 import { crawlSite, MAX_CRAWL_PAGES } from "./crawl";
+import { foundUrlSet } from "./foundRead";
 
 const MAX_PAGES = 4;
 const MAX_CHARS = 24000;
@@ -137,8 +138,15 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   return totals;
 }
 
-/* The daily read: every page this listing already knows, re-read if changed. */
+/*
+ * The daily read: every page this listing already knows, re-read if changed.
+ * Pages found by source search are left out: they are read once at launch
+ * (lib/agents/foundRead.js), and re-reading them is a later decision.
+ */
 export async function knownPageUrls(listingId) {
-  const { data } = await supabase.from("listing_sources").select("url").eq("listing_id", listingId).eq("kind", "page").eq("enabled", true).not("url", "is", null).limit(MAX_CRAWL_PAGES);
-  return (data ?? []).map((r) => r.url);
+  const [{ data }, found] = await Promise.all([
+    supabase.from("listing_sources").select("url").eq("listing_id", listingId).eq("kind", "page").eq("enabled", true).not("url", "is", null).limit(MAX_CRAWL_PAGES),
+    foundUrlSet(listingId),
+  ]);
+  return (data ?? []).map((r) => r.url).filter((u) => !found.has(u));
 }

@@ -2266,7 +2266,7 @@ export default function ListingModalInfo({
                   {/*
                     * No property-level "Available <date>" pill here on purpose.
                     * It used to read from listing.availableFrom, a rollup that
-                    * only the browse feed computes — so opening a listing showed
+                    * only the browse feed computes, so opening a listing showed
                     * the pill for the split second the panel held feed data, then
                     * dropped it the moment the detail fetch replaced that object.
                     * A move-in date belongs to one offering anyway, not to the
@@ -2353,7 +2353,7 @@ export default function ListingModalInfo({
                   </div>
 
                   {/* Furniture rental, styled as a tab so it reads as part of this
-                      row. It only appears against an UNFURNISHED offering —
+                      row. It only appears against an UNFURNISHED offering:
                       furnished belongs to the lease now, not the building, so this
                       asks whether any live offering on the open unit is
                       unfurnished, falling back to listings.furnished when none has
