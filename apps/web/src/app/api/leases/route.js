@@ -76,15 +76,23 @@ export async function POST(req) {
     return Response.json({ error: "That unit no longer exists." }, { status: 404 });
   }
 
-  // A review sandbox property does not exist for a real landlord: an offering added to
-  // it would be hidden from every student. Only a sandbox account may add to one.
+  // A review sandbox account (App Store review) and a real landlord never share a
+  // property, in either direction, like addListing's attach. A real landlord adding to a
+  // sandbox property would have the offering hidden from every student: that property
+  // does not exist for them, so 404. A sandbox account adding to a real landlord's
+  // property would change what students see there: answered like an address that is
+  // already taken.
   const { data: parent } = await supabase
     .from("listings")
     .select("review_sandbox")
     .eq("id", unit.listing_id)
     .maybeSingle();
-  if (parent?.review_sandbox && !(await sandboxIdsAmong([session.user.id])).has(session.user.id)) {
-    return Response.json({ error: "That unit no longer exists." }, { status: 404 });
+  const parentIsSandbox = parent?.review_sandbox === true;
+  const callerIsSandbox = (await sandboxIdsAmong([session.user.id])).has(session.user.id);
+  if (callerIsSandbox !== parentIsSandbox) {
+    return parentIsSandbox
+      ? Response.json({ error: "That unit no longer exists." }, { status: 404 })
+      : Response.json({ error: "This address is already on Proximity.", code: "address_taken" }, { status: 409 });
   }
 
   /*
