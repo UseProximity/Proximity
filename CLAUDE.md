@@ -57,7 +57,7 @@ There is no separate API service. `apps/web` serves every endpoint mobile uses, 
 
 ## Conventions
 
-- **Local dev runs on `localhost:3000`**: `NEXTAUTH_URL` in `apps/web/.env.local` must match the served origin or login silently bounces, and the dev R2 bucket's CORS policy allows browser photo uploads from `http://localhost:3000` only, so any Cloudflare R2 testing must happen on 3000 (Wyatt, 2026-08-12). Start it with `npm run dev -w apps/web -- -p 3000` (or `npm run dev -- -p 3000` inside `apps/web`). `npm run dev:web` alone does not pin the port, and `npm run dev:web -- -p 3000` does not work: npm reads `-p` as its own `--parseable` flag and passes `3000` to `next dev` as the project directory.
+- **Local dev runs on `localhost:3000`**: `NEXTAUTH_URL` in `apps/web/.env.local` must match the served origin or login silently bounces, and the dev R2 bucket's CORS policy allows browser photo uploads from `http://localhost:3000` only, so any Cloudflare R2 testing must happen on 3000 (Wyatt, 2026-08-12). Start it with `npm run dev:web`: it always uses port 3000. If it fails because 3000 is busy, another dev server is running: stop it.
 - Plain JavaScript everywhere (no TypeScript source except `apps/web/src/middleware.ts`; `apps/mobile/nativewind-env.d.ts` is a NativeWind-generated type file that stays committed, so do not edit or delete it); Tailwind CSS only (NativeWind `className` in `apps/mobile`), with no CSS modules and no inline styles for static styling (inline `style` is acceptable only for dynamic values).
 - In `apps/web`, use the `@/` path alias (`@/components/...`, `@/lib/...`, `@/utils/...`); `apps/mobile` uses relative imports and `@proximity/*` for packages. Keep components reasonably small; extract sub-components when they grow.
 - **No em dashes.** Not in code comments, UI copy, commit messages, PR descriptions or docs (Wyatt, 2026-09-03). Use a full stop, a comma, a colon or brackets instead. This applies to anything written into this repo, including mobile UI copy. It covers new and edited text: do not rewrite existing text only to remove them.
@@ -82,7 +82,7 @@ The purpose of a build decides its backend, not how it is distributed. Intended 
 ## Build & Test
 
 ```bash
-npm run dev:web     # web dev server (does not pin port 3000, see Conventions)
+npm run dev:web     # web dev server on port 3000 (see Conventions)
 npm run dev:mobile  # Expo dev server (needs a development build, see apps/mobile/CLAUDE.md)
 npm run build:web   # production build (/sitemap.xml is a dynamic route: apps/web/src/app/sitemap.js)
 npm run lint        # ESLint (apps/web only, mobile has no lint script)

@@ -68,10 +68,10 @@ Other features read more variables: search `process.env` in `apps/web/src`. The 
 ## Run the web app
 
 ```bash
-npm run dev -w apps/web -- -p 3000     # http://localhost:3000
+npm run dev:web     # http://localhost:3000
 ```
 
-Use port 3000. `NEXTAUTH_URL` and the dev R2 bucket are set up for that address, so login and photo uploads only work there. `npm run dev:web` alone can end up on 3001.
+The dev server always uses port 3000. `NEXTAUTH_URL` and the dev R2 bucket are set up for that address, so login and photo uploads only work there. If it fails because port 3000 is busy, another dev server is running: stop it.
 
 It works when the terminal shows `Ready` and `Local: http://localhost:3000`, and the browser shows the Proximity home page.
 

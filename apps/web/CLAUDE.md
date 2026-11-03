@@ -6,7 +6,7 @@ Next.js 15 (App Router), React 18, Tailwind 3, NextAuth v5 beta, Supabase, Cloud
 
 ## Commands (run inside `apps/web`)
 
-- `npm run dev -- -p 3000`, `npm run build`, `npm run lint`, `npm test` (Node's built-in runner, `src/**/*.test.js`).
+- `npm run dev` (port 3000 is set in the script), `npm run build`, `npm run lint`, `npm test` (Node's built-in runner, `src/**/*.test.js`).
 - `src/lib/outreach.test.mjs` is not matched by the test glob, and no CI workflow runs tests or lint.
 
 ## Env files
