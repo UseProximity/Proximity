@@ -17,6 +17,8 @@
  *                  { action: "discover", limit?, redo?, listingId?, dryRun? }
  *                                                    search for sources of truth
  *                  { action: "foundSources" }        counts + pages to review
+ *                  { action: "readFound", limit?, force?, since? }  read
+ *                                    confirmed found pages into knowledge
  *                  { action: "reviewSource", id, accept }
  *
  * Super and admin only. Seeding is how the knowledge store is first filled on
@@ -37,6 +39,7 @@ import { runBackfill } from "@/lib/agents/backfill";
 import { runDigest } from "@/lib/agents/digest";
 import { transferReport, seedBatch } from "@/lib/agents/transfer";
 import { discoverBatch, foundSourcesOverview, foundSourcesToReview, reviewFoundSource } from "@/lib/agents/discover";
+import { readFoundBatch, foundReadOverview } from "@/lib/agents/foundRead";
 
 async function requireTeam() {
   const session = await auth();
@@ -91,8 +94,17 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, result });
     }
     if (action === "foundSources") {
-      const [overviewCounts, review] = await Promise.all([foundSourcesOverview(), foundSourcesToReview({ limit: 100 })]);
-      return NextResponse.json({ ok: true, result: { ...overviewCounts, review } });
+      const [overviewCounts, review, read] = await Promise.all([foundSourcesOverview(), foundSourcesToReview({ limit: 100 }), foundReadOverview()]);
+      return NextResponse.json({ ok: true, result: { ...overviewCounts, review, read } });
+    }
+    if (action === "readFound") {
+      const result = await readFoundBatch({
+        limit: Math.min(Number(body.limit) || 4, 8),
+        force: body.force === true,
+        since: body.since ?? null,
+        listingId: body.listingId ?? null,
+      });
+      return NextResponse.json({ ok: true, result });
     }
     if (action === "reviewSource") {
       if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 });

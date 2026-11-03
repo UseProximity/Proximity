@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-03T00:57:59.102Z",
-  "count": 234,
+  "_generated": "2026-11-03T04:27:31.711Z",
+  "count": 235,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -58,6 +58,10 @@
     {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/foundRead.js",
+      "description": "Found pages into knowledge (Wyatt, 2026-11-02)."
     },
     {
       "file": "src/lib/agents/foundUrls.js",
