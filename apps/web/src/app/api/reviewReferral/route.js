@@ -214,6 +214,8 @@ async function findExactAddressListingId({ address, lat, lng }) {
     .from("listings")
     .select("id, address, lease_type, created_at")
     .is("deleted_at", null)
+    // A review sandbox listing is hidden, so a real review must not be filed on it.
+    .eq("review_sandbox", false)
     .gte("latitude", lat - latPad)
     .lte("latitude", lat + latPad)
     .gte("longitude", lng - lngPad)

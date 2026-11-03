@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 // Create a lease on a unit that already exists — step 3 of the
 // address -> unit -> lease flow, taken when the address matched a known property
@@ -72,6 +73,17 @@ export async function POST(req) {
     return Response.json({ error: "Could not verify that unit." }, { status: 500 });
   }
   if (!unit || unit.deleted_at) {
+    return Response.json({ error: "That unit no longer exists." }, { status: 404 });
+  }
+
+  // A review sandbox property does not exist for a real landlord: an offering added to
+  // it would be hidden from every student. Only a sandbox account may add to one.
+  const { data: parent } = await supabase
+    .from("listings")
+    .select("review_sandbox")
+    .eq("id", unit.listing_id)
+    .maybeSingle();
+  if (parent?.review_sandbox && !(await sandboxIdsAmong([session.user.id])).has(session.user.id)) {
     return Response.json({ error: "That unit no longer exists." }, { status: 404 });
   }
 

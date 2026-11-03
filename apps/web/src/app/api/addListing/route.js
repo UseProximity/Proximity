@@ -549,17 +549,27 @@ export async function POST(req) {
       }
 
       /*
-       * A review sandbox account (App Store review) may only add to a sandbox property.
-       * Attaching units and leases to a real landlord's property would change what
-       * browse shows for them. Answered like an address that is already taken, without
-       * naming the property. The mobile app never sends attachToListingId, so this is a
-       * safety net. A failed flag lookup throws to the catch at the bottom (a 500).
+       * A review sandbox account (App Store review) and a real landlord never share a
+       * property, in either direction. A sandbox account adding to a real landlord's
+       * property would change what browse shows for them: answered like an address that
+       * is already taken, without naming the property. A real landlord adding to a
+       * sandbox property would have their units hidden from every student: that property
+       * does not exist for them, so it is answered as not found. The mobile app never
+       * sends attachToListingId, so this is a safety net. A failed flag lookup throws to
+       * the catch at the bottom (a 500).
        */
-      if (ownerId && target.review_sandbox !== true && (await sandboxIdsAmong([ownerId])).has(ownerId)) {
-        return NextResponse.json(
-          { error: "This address is already on Proximity.", code: "address_taken" },
-          { status: 409 }
-        );
+      if (ownerId) {
+        const ownerIsSandbox = (await sandboxIdsAmong([ownerId])).has(ownerId);
+        const targetIsSandbox = target.review_sandbox === true;
+        if (ownerIsSandbox && !targetIsSandbox) {
+          return NextResponse.json(
+            { error: "This address is already on Proximity.", code: "address_taken" },
+            { status: 409 }
+          );
+        }
+        if (!ownerIsSandbox && targetIsSandbox) {
+          return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+        }
       }
 
       /*
@@ -611,7 +621,7 @@ export async function POST(req) {
         );
       }
 
-      const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
+      const nameConflict = await findPropertyNameConflict(title, { schoolId: null, userId: ownerId });
       if (nameConflict) {
         return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
       }

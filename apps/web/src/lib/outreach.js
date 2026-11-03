@@ -24,13 +24,13 @@
  * and receive the link.
  *
  * Review sandbox (App Store review accounts): a message carrying `sandbox: true` is
- * redirected to REVIEW_SANDBOX_INBOX on EVERY environment, production included, ahead
- * of every other rule (cc/bcc dropped, original recipient noted in the subject). With
- * the variable unset or not a single ordinary address, it is suppressed, never sent
- * on. The flag is set by server code that has looked the acting user up in the
- * database (lib/reviewSandbox.js), never from a header or cookie, and the redirect
- * ignores the tester cookie, header and OUTREACH_TEST_RECIPIENT. Like `logAs`, the
- * field is removed before sending.
+ * SUPPRESSED on EVERY environment, production included, ahead of every other rule. It is
+ * never sent and never redirected (a redirected copy could be acted on by whoever reads
+ * the inbox). It is still recorded in sent_emails, with the reason "review sandbox", so
+ * the admin can see what a reviewer triggered. The flag is set by server code that has
+ * looked the acting users up in the database (lib/reviewSandbox.js), never from a
+ * header or cookie, and it ignores the tester cookie, header and OUTREACH_TEST_RECIPIENT.
+ * Like `logAs`, the field is removed before sending.
  *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
@@ -41,7 +41,6 @@
  */
 import { outreachEnabled } from "./appEnv.js";
 import { recordEmail } from "./emailLog.js";
-import { sandboxInbox } from "./reviewSandbox.js";
 
 // One ordinary address only: commas, semicolons and angle brackets are rejected so a
 // header, cookie or env value cannot name several recipients (nodemailer splits on them).
@@ -109,7 +108,7 @@ export async function sendMailSafe(transporter, message, req) {
     await recordEmail(
       mail,
       logAs,
-      info?.suppressed ? { status: "suppressed" } : sentOutcome(transporter, info, redirectedTo)
+      info?.suppressed ? { status: "suppressed", detail: info.reason ?? null } : sentOutcome(transporter, info, redirectedTo)
     );
     return info;
   } catch (err) {
@@ -141,18 +140,12 @@ function redirectTo(transporter, message, to, tag, onRedirect) {
 }
 
 async function deliver(transporter, message, req, onRedirect, sandbox = false) {
-  // A review sandbox action never reaches the real recipient, on any environment.
-  // Checked before outreachEnabled(), and it never consults the tester cookie, header
-  // or OUTREACH_TEST_RECIPIENT: the destination is the server-set inbox or nothing.
+  // A review sandbox email is never sent, on any environment. Checked before
+  // outreachEnabled(), and it never consults the tester cookie, header or
+  // OUTREACH_TEST_RECIPIENT. The reason is recorded in sent_emails.status_detail.
   if (sandbox) {
-    const inbox = sandboxInbox();
-    if (!inbox || !EMAIL_RE.test(inbox)) {
-      console.error(
-        `[outreach suppressed] review sandbox email not sent (REVIEW_SANDBOX_INBOX is unset or invalid) → to=${message?.to} subject=${message?.subject}`
-      );
-      return { suppressed: true };
-    }
-    return redirectTo(transporter, message, inbox, "REVIEW SANDBOX, was:", onRedirect);
+    console.log(`[outreach suppressed] review sandbox email not sent → to=${message?.to} subject=${message?.subject}`);
+    return { suppressed: true, reason: "review sandbox" };
   }
 
   if (outreachEnabled()) {

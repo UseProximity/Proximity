@@ -5,8 +5,14 @@
  * inbox), keyed on user ids the caller already holds. Nothing is cached and nothing
  * rides in the session, so a flag change applies on the next action.
  *
- * Rule used by the callers: an action is sandbox-redirected when the actor is a
- * sandbox user and the recipient is not.
+ * Rules used by the callers:
+ *   - Email: suppressed (never sent, never redirected) when the sender OR the recipient
+ *     is a sandbox user.
+ *   - Push and the inbox: acted on when the actor is a sandbox user and the other side
+ *     is not.
+ *   - Listings: a sandbox listing is invisible to everyone but sandbox accounts, and in
+ *     the "is it already listed" checks it never blocks or absorbs a real landlord
+ *     (withoutSandboxRows below).
  *
  * A failed lookup is retried (3 attempts in all, 100 ms then 300 ms apart). If it
  * still fails the helpers log loudly and throw SandboxLookupError, and the caller
@@ -87,12 +93,15 @@ export async function allSandboxUserIds({ client } = {}) {
 }
 
 /**
- * Where sandbox-redirected email goes (REVIEW_SANDBOX_INBOX), or null when it is
- * unset or blank. The address itself is validated where it is used, by sendMailSafe
- * with the same single-address pattern as every other redirect target (outreach.js),
- * so there is one copy of that pattern. Never read from a request.
+ * For checks that ask "is there already a listing here, or with this name": sandbox
+ * listings are invisible to everyone but sandbox accounts, so a real landlord is never
+ * blocked by one or offered one. `rows` carry a `review_sandbox` field. They come back
+ * unchanged when none is a sandbox listing (no lookup, so ordinary paths cost nothing)
+ * or when the viewer is a sandbox account (which sees everything, as before); otherwise
+ * without the sandbox ones. A failed viewer lookup throws SandboxLookupError.
  */
-export function sandboxInbox() {
-  const value = String(process.env.REVIEW_SANDBOX_INBOX ?? "").trim();
-  return value || null;
+export async function withoutSandboxRows(rows, viewerId, { client } = {}) {
+  if (!Array.isArray(rows) || !rows.some((row) => row?.review_sandbox === true)) return rows;
+  const viewerIsSandbox = viewerId ? (await sandboxIdsAmong([viewerId], { client })).has(viewerId) : false;
+  return viewerIsSandbox ? rows : rows.filter((row) => row?.review_sandbox !== true);
 }

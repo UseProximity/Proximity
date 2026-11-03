@@ -375,10 +375,11 @@ export async function POST(request) {
       const student = { name: (sessionName || actor.name || "A Proximity student").trim(), email: requestUser.email };
 
       let sent = 0;
-      // Review sandbox: a sandbox student's inquiry goes to REVIEW_SANDBOX_INBOX, not the
-      // owner (owners here are real, so no recipient check). Looked up inside the try so a
-      // failed lookup (after its retries) sends nothing and is reported like a failed send;
-      // null means not looked up yet, so the next listing tries again.
+      // Review sandbox: a sandbox student's inquiry is not sent to the owner (sendMailSafe
+      // only records it as suppressed). The owner is never a sandbox account here, since
+      // recommendations exclude sandbox listings, so only the student is checked. Looked up
+      // inside the try so a failed lookup (after its retries) sends nothing and is reported
+      // like a failed send; null means not looked up yet, so the next listing tries again.
       let sandbox = null;
       for (const listingId of listingIds) {
         const owner = await resolveOwnerForListing(listingId);

@@ -169,7 +169,7 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
 // `sandbox` is true when a review sandbox account sent the inquiry: sendMailSafe then
-// sends it to REVIEW_SANDBOX_INBOX instead of the owner, with the CC dropped.
+// does not send it at all (it is only recorded as suppressed).
 export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req, sandbox = false }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
@@ -402,9 +402,9 @@ export async function sendChatMessageEmail({
   reminder = false,
   threadId = null,
   recipientId = null,
-  // True when a review sandbox account caused this alert: sendMailSafe then sends it to
-  // REVIEW_SANDBOX_INBOX instead (see lib/outreach.js). The caller leaves out the
-  // reply address and magic link for these, which also keeps it off the SES branch.
+  // True when a review sandbox account is the sender or the recipient of this alert:
+  // sendMailSafe then does not send it (it is only recorded as suppressed, see
+  // lib/outreach.js). The caller leaves out the reply address and magic link for these.
   sandbox = false,
   action = null,
 }) {
@@ -737,17 +737,13 @@ export async function sendVerificationEmail({ email, name, token, baseUrl, next,
  * conversations stay in the landlord's account, so a leasing office that never
  * asked for this can tell what it is and ignore it.
  */
-// `sandbox` is true when the landlord is a review sandbox account: the address was typed
-// by the reviewer and may belong to a real person, so sendMailSafe sends the email to
-// REVIEW_SANDBOX_INBOX instead.
-export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo, sandbox = false }) {
+export async function sendContactVerificationEmail({ to, landlordName, listingLabel, confirmUrl, testEmailTo }) {
   const landlord = escapeHtml(landlordName || "A landlord");
   const listing = listingLabel ? escapeHtml(listingLabel) : "";
   const subject = listingLabel
     ? `Confirm message alerts for ${listingLabel}`
     : "Confirm this address for Proximity message alerts";
   const message = {
-    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     subject,

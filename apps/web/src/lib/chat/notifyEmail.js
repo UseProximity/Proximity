@@ -151,15 +151,16 @@ async function logAttempt(row) {
  * 'failed' and reported to the team, and is not thrown.
  *
  * Review sandbox (App Store review accounts): `senderId` is the person whose message
- * this alert is about (for a reminder, the person who is waiting). When that is a
- * sandbox account and the recipient is not, the alert is redirected to
- * REVIEW_SANDBOX_INBOX (see sendAlert). The flag lookup runs before the send and, if it
- * fails after its retries, throws to the caller (which reports it to the team) so
- * nothing is sent on a guess.
+ * this alert is about (for a reminder, the person who is waiting). When the sender OR
+ * the recipient is a sandbox account the alert is suppressed: sendMailSafe never sends
+ * it, but still records it in sent_emails (subject and body) so the admin can see it,
+ * and it writes no chat_email_log row (see sendAlert). The flag lookup runs before the
+ * send and, if it fails after its retries, throws to the caller (which reports it to
+ * the team) so nothing is sent on a guess.
  */
 async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null, senderId = null }) {
   const flagged = await sandboxIdsAmong([senderId, data.recipientId]);
-  const sandbox = flagged.has(senderId) && !flagged.has(data.recipientId);
+  const sandbox = flagged.has(senderId) || flagged.has(data.recipientId);
   const attempt = {
     thread_id: data.threadId,
     recipient_id: data.recipientId,
@@ -197,10 +198,10 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbo
   // hand everyone reading that inbox the landlord's whole account. Contact addresses are
   // alert routes, never accounts: they get the login-gated link and can reply by email.
   //
-  // A sandbox alert is redirected to the team's inbox, so it must not carry the REAL
-  // recipient's login link or their private reply address: no magic link is minted, no
-  // reply address is created (nothing is written to their participant row), and a reply
-  // to it cannot be filed into the thread or trigger a sender-approval email to them.
+  // A sandbox alert is never sent (sendMailSafe suppresses it), so it must not cost a
+  // working credential either: no magic link is minted, no reply address is created
+  // (nothing is written to the real recipient's participant row), and no tour confirm
+  // link is looked up below. The email is still built so sent_emails shows what happened.
   const rawToken = !sandbox && (await isAccountInbox(data.recipientId, data.recipientEmail))
     ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
     : null;
