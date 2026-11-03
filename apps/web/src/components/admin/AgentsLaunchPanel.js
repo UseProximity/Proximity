@@ -170,7 +170,7 @@ export default function AgentsLaunchPanel({ onChanged }) {
           <button disabled={running} onClick={discoverAll} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
             {found.searched ? "Search the rest" : "Search every listing"}
           </button>
-          <span className="text-[11px] text-gray-500">About 5 searches per listing, under 1 cent each.</span>
+          <span className="text-[11px] text-gray-500">About 5 Firecrawl searches per listing, 2 credits each.</span>
         </div>
         {preview && (
           <div className="mt-3 space-y-2 rounded-xl border border-gray-200 bg-white p-3 text-xs">

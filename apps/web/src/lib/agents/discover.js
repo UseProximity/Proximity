@@ -14,7 +14,7 @@
  *     agent already reads (listing_sources kind 'page')
  *   - links in its description
  *   - the contact email's domain, when it is a company's (not gmail etc.)
- *   - web searches (Tavily): the address on Zillow, on Apartments.com and on
+ *   - web searches (Firecrawl, else Tavily): the address on Zillow, on Apartments.com and on
  *     the open web; the building's name the same way when it has one; the
  *     address on the company's own domain
  *
@@ -42,8 +42,9 @@ import { classifyUrl, hostOf, onDomain } from "./foundUrls";
 // Pages per listing Haiku is asked about (most likely first).
 const JUDGE_MAX = 15;
 
-// Tavily's basic search costs one credit, about $0.008.
-const SEARCH_COST_CENTS = 0.8;
+// A Firecrawl search of up to 10 results costs 2 credits, about $0.011 on our
+// plan (Tavily's basic search, the fallback, is about $0.008).
+const SEARCH_COST_CENTS = 1.1;
 
 const FREE_EMAIL = new Set([
   "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com", "aol.com", "live.com", "msn.com",
@@ -52,10 +53,10 @@ const FREE_EMAIL = new Set([
 ]);
 
 /*
- * Web search. Tavily first; when it refuses (HTTP 429: our key is a
- * development key with a low rate limit, 2026-10-31) it is rested for a
- * minute and Firecrawl's search answers instead, with the domains written
- * into the query. Calls are spaced out across the whole process so a batch
+ * Web search. Firecrawl first, with the domains written into the query
+ * (Wyatt, 2026-11-02: better results, and we have no Tavily credits). Tavily
+ * answers only when Firecrawl fails; when Tavily refuses (HTTP 429/432) it is
+ * rested for a minute. Calls are spaced out across the whole process so a batch
  * does not trip the limit to begin with.
  */
 const SEARCH_GAP_MS = 700;
@@ -105,11 +106,17 @@ async function firecrawlSearch(query, includeDomains) {
 
 async function search(query, includeDomains = null) {
   await spaced();
+  let firecrawlError = null;
+  try {
+    const f = await firecrawlSearch(query, includeDomains);
+    if (f) return { results: f, via: "firecrawl" };
+  } catch (err) {
+    firecrawlError = err;
+  }
   const t = await tavily(query, includeDomains);
   if (t) return { results: t, via: "tavily" };
-  const f = await firecrawlSearch(query, includeDomains);
-  if (f) return { results: f, via: "firecrawl" };
-  throw new Error("no search service available (TAVILY_API_KEY and FIRECRAWL_API_KEY missing or refusing)");
+  if (firecrawlError) throw firecrawlError;
+  throw new Error("no search service available (FIRECRAWL_API_KEY and TAVILY_API_KEY missing or refusing)");
 }
 
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
