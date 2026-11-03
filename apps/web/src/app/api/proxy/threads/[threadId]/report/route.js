@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { proxyActor } from "@/lib/agents/access";
-import { getThread, canAccessThread } from "@/lib/agents/threads";
+import { getThread, canAccessThread, UUID_RE } from "@/lib/agents/threads";
 import { sendTeamEmail } from "@/lib/email";
 import { escapeHtml } from "@/lib/escapeHtml";
 
@@ -25,7 +25,9 @@ export async function POST(req, { params }) {
     let body;
     try { body = await req.json(); } catch { body = {}; }
     const reason = String(body?.reason ?? "").trim().slice(0, 500);
-    const { data: msg } = await supabase.from("chat_messages").select("id, body, created_at").eq("id", String(body?.messageId ?? "")).eq("thread_id", thread.id).maybeSingle();
+    const messageId = String(body?.messageId ?? "");
+    if (!UUID_RE.test(messageId)) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    const { data: msg } = await supabase.from("chat_messages").select("id, body, created_at").eq("id", messageId).eq("thread_id", thread.id).maybeSingle();
     if (!msg) return NextResponse.json({ error: "Message not found" }, { status: 404 });
 
     const { data: log } = await supabase.from("listing_agent_questions").select("id, question, answer, reported_at").eq("thread_id", thread.id)
