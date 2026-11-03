@@ -8,12 +8,16 @@
  * A landlord opening their own listing, or an admin, gets a test thread:
  * real answers, nothing logged or sent on.
  *
+ * A signed-in student who already talks with this listing's landlord in
+ * Messages also gets existingChat, a pointer to that conversation.
+ *
  * @auth public
  */
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { proxyActor, proxyAvailable } from "@/lib/agents/access";
+import { existingChatFor } from "@/lib/agents/existingChat";
 import { getOrCreateProxyThread, listMessages, shapeMessage, markRead, claimVisitorThreads, claimThreadsByEmail } from "@/lib/agents/threads";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,12 +43,16 @@ export async function POST(req) {
     }
 
     const { thread } = await getOrCreateProxyThread({ listingId, userId: actor.userId, visitorId: actor.visitorId, leaseId });
-    const messages = await listMessages(thread.id);
+    const [messages, existingChat] = await Promise.all([
+      listMessages(thread.id),
+      actor.userId && !avail.testMode ? existingChatFor({ listingId, userId: actor.userId }) : null,
+    ]);
     await markRead(thread.id, actor.userId);
     return actor.withCookie(NextResponse.json({
       thread: { id: thread.id, listingId, leaseId: thread.lease_id, hasNotifyEmail: !!thread.notify_email, signedIn: !!actor.userId },
       messages: messages.map((m) => shapeMessage(m, { userId: actor.userId })),
       testMode: avail.testMode,
+      existingChat,
     }));
   } catch (err) {
     console.error("POST /api/proxy/threads failed:", err);
