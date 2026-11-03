@@ -1,8 +1,20 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-10-26T10:49:59.111Z",
-  "count": 88,
+  "_generated": "2026-11-01T18:59:18.518Z",
+  "count": 101,
   "envVars": [
+    {
+      "name": "AGENT_LISTING_CAP_USD",
+      "public": false
+    },
+    {
+      "name": "AGENT_MANUAL_SYNCS_PER_DAY",
+      "public": false
+    },
+    {
+      "name": "AGENT_TOTAL_CAP_USD",
+      "public": false
+    },
     {
       "name": "AIRTABLE_API_KEY",
       "public": false
@@ -93,6 +105,10 @@
     },
     {
       "name": "CHAT_CHECKIN_KEY",
+      "public": false
+    },
+    {
+      "name": "CHAT_FROM_REPLY_ADDRESS",
       "public": false
     },
     {
@@ -200,6 +216,22 @@
       "public": false
     },
     {
+      "name": "IMPORT_LANES",
+      "public": false
+    },
+    {
+      "name": "IMPORT_PAGE_CACHE",
+      "public": false
+    },
+    {
+      "name": "IMPORT_PICKER_RENDER_CAP",
+      "public": false
+    },
+    {
+      "name": "IMPORT_READ_RENDER_CAP",
+      "public": false
+    },
+    {
       "name": "IMPORT_SECRET",
       "public": false
     },
@@ -212,7 +244,15 @@
       "public": false
     },
     {
+      "name": "JINA_READER_KEY_2",
+      "public": false
+    },
+    {
       "name": "LEASE_SCANNER_KEY",
+      "public": false
+    },
+    {
+      "name": "LISTING_AGENTS_ENABLED",
       "public": false
     },
     {
@@ -333,6 +373,18 @@
     },
     {
       "name": "R2_SECRET_ACCESS_KEY",
+      "public": false
+    },
+    {
+      "name": "SOURCE_IMPORT_MODEL",
+      "public": false
+    },
+    {
+      "name": "SOURCE_SYNC_ALERT_EMAIL",
+      "public": false
+    },
+    {
+      "name": "SOURCE_SYNC_PORTALS_ENABLED",
       "public": false
     },
     {

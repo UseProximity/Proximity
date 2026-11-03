@@ -20,6 +20,10 @@ import {
   assertListingContactNotBlocked,
 } from "@/lib/chat/safety";
 import { annotateNoReply } from "@/lib/chat/followups";
+import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
+import { landlordProxyOverview } from "@/lib/agents/landlordChat";
+import { agentsEnabled } from "@/lib/agents/flags";
+import { fmtTourTime } from "@/lib/agents/tourTime";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -29,6 +33,24 @@ const SAFE_START_CHAT_ERRORS = new Set([
 ]);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * A direct chat that a tour opened carries that tour, so the chat can say at
+ * the top what it is for (Wyatt, 2026-11-02).
+ */
+async function withTours(rows) {
+  const ids = rows.map((t) => t.threadId).filter(Boolean);
+  if (!ids.length) return rows;
+  const { data } = await supabase.from("tour_requests").select("id, thread_id, status, confirmed_slot, created_at, listings!listing_id(title, address)")
+    .in("thread_id", ids).order("created_at", { ascending: false });
+  const byThread = new Map();
+  for (const t of data ?? []) if (!byThread.has(t.thread_id)) byThread.set(t.thread_id, t);
+  return rows.map((row) => {
+    const t = byThread.get(row.threadId);
+    if (!t) return row;
+    return { ...row, tour: { id: t.id, status: t.status, confirmedText: t.confirmed_slot ? fmtTourTime(t.confirmed_slot) : null, listingTitle: t.listings?.title || t.listings?.address || "the listing" } };
+  });
+}
 
 // GET /api/chat/threads: inbox for the logged-in user
 export async function GET(req) {
@@ -48,7 +70,24 @@ export async function GET(req) {
     }
 
     const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
-    return NextResponse.json(await annotateNoReply(authUser.id, inbox));
+    const direct = await withTours((await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t })));
+    // The student's Proxy conversations ride along, on their own tab in the
+    // overlay. They never fail the inbox. Only clients that ask for them get
+    // them (the web overlay passes ?include=proxy; the mobile app does not
+    // know these rows yet), and only while the agents are on (PR #365 review).
+    const wantsProxy = new URL(req.url).searchParams.get("include") === "proxy" && agentsEnabled();
+    if (!wantsProxy) return NextResponse.json(direct);
+    await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
+    const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
+    // A landlord's Proxy chats, one per listing (questions and tour requests).
+    const asLandlord = await landlordProxyOverview(authUser.id).catch((err) => { console.error("GET /api/chat/threads landlord proxy rows:", err?.message ?? err); return []; });
+    const landlordRows = asLandlord.map((l) => ({
+      kind: "proxy_landlord", threadId: `lp-${l.listingId}`, listingId: l.listingId, listingTitle: l.title, listingAddress: l.address, listingImage: l.image,
+      listings: [], listingCount: 1, isInterestedUser: false, otherUserId: null, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
+      lastMessageBody: l.lastText, lastMessageType: "text", lastMessageAt: l.lastAt, lastMessageMine: false, updatedAt: l.lastAt,
+      unreadCount: l.openQuestions + l.openTours, hasUnread: l.openQuestions + l.openTours > 0,
+    }));
+    return NextResponse.json([...direct, ...proxy, ...landlordRows]);
   } catch (error) {
     console.error("GET /api/chat/threads failed:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

@@ -92,13 +92,13 @@ export default function FeedbackWidget() {
 
   return (
     <>
-      {/* Floating launcher — desktop only */}
+      {/* Floating launcher, desktop only; never over a listing's Contact tab (ListingModalInfo sets the flag) */}
       <button
         type="button"
         onClick={openModal}
         aria-label="Report a bug or suggest a fix"
         title="Report a bug or suggest a fix"
-        className={`hidden sm:flex fixed bottom-6 left-6 z-50 items-center rounded-full shadow-lg transition ${
+        className={`hidden sm:flex [body[data-listing-contact]_&]:!hidden fixed bottom-6 left-6 z-50 items-center rounded-full shadow-lg transition ${
           subtle
             ? "p-3 bg-gray-900/40 text-white/70 backdrop-blur-sm hover:bg-gray-900 hover:text-white focus-visible:bg-gray-900 focus-visible:text-white"
             : "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800"

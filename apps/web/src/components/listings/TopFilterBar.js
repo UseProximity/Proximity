@@ -164,12 +164,12 @@ export default function TopFilterBar({
       {/* ── Top bar ── */}
       <div
         ref={filterRef}
-        className="w-full bg-white border-b border-gray-200 pl-6 pr-4 py-4 flex items-center gap-3 flex-wrap shadow-sm"
+        className="w-full bg-white border-b border-gray-200 pl-5 pr-3 py-2.5 flex items-center gap-2 flex-wrap shadow-sm"
       >
         {/* Search pill */}
-        <div className="flex items-center flex-1 min-w-[200px] max-w-sm bg-white border border-gray-300 rounded-full px-4 py-3 shadow-sm focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500 transition-all gap-2">
+        <div className="flex items-center flex-1 min-w-[200px] max-w-sm bg-white border border-gray-300 rounded-full px-3 py-2 shadow-sm focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500 transition-all gap-2">
           <svg
-            className="w-4 h-4 text-red-500 flex-shrink-0"
+            className="w-3.5 h-3.5 text-red-500 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
@@ -195,7 +195,7 @@ export default function TopFilterBar({
               }
               window.history.replaceState({}, "", url);
             }}
-            className="flex-1 outline-none text-sm bg-transparent text-gray-700 placeholder-gray-400"
+            className="flex-1 outline-none text-[13px] bg-transparent text-gray-700 placeholder-gray-400"
           />
           {search && (
             <button
@@ -208,7 +208,7 @@ export default function TopFilterBar({
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <svg
-                className="w-3.5 h-3.5"
+                className="w-3 h-3"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={2.5}
@@ -227,7 +227,7 @@ export default function TopFilterBar({
         {/* Bedroom pill */}
         <button
           onClick={(e) => openPill(e, "bedroom")}
-          className={`flex items-center gap-2 px-5 py-3 border rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             bedsActive
               ? "bg-red-600 text-white border-red-600"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -240,7 +240,7 @@ export default function TopFilterBar({
         {/* Bath pill */}
         <button
           onClick={(e) => openPill(e, "bath")}
-          className={`flex items-center gap-2 px-5 py-3 border rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             bathsActive
               ? "bg-red-600 text-white border-red-600"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -255,14 +255,14 @@ export default function TopFilterBar({
           onClick={() =>
             setFilters({ ...filters, savedOnly: !filters.savedOnly })
           }
-          className={`flex items-center gap-2 px-5 py-3 border rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             filters.savedOnly
               ? "bg-red-600 text-white border-red-600"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           }`}
         >
           <svg
-            className="w-4 h-4"
+            className="w-3.5 h-3.5"
             fill={filters.savedOnly ? "currentColor" : "none"}
             stroke="currentColor"
             strokeWidth={2}
@@ -285,12 +285,12 @@ export default function TopFilterBar({
               showFilters === "more-filters" ? false : "more-filters"
             );
           }}
-          className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-full text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
         >
           <img
             src="/assets/filter-icon.svg"
             alt=""
-            className="w-4 h-4"
+            className="w-3.5 h-3.5"
             style={{ filter: "brightness(0) opacity(0.65)" }}
           />
           <span>More Filters</span>
@@ -299,14 +299,14 @@ export default function TopFilterBar({
         {/* Clear All */}
         <button
           onClick={onReset}
-          className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium transition-colors rounded-full whitespace-nowrap ${
+          className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
               : "text-gray-400 border border-gray-200"
           }`}
         >
           <svg
-            className="w-3.5 h-3.5"
+            className="w-3 h-3"
             fill="none"
             stroke="currentColor"
             strokeWidth={2.5}

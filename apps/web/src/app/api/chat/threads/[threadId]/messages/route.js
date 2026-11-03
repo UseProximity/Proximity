@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { stagingEmailHeader } from "@/lib/outreach";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { detectTourProposal } from "@/lib/agents/tourProposals";
 import {
   CHAT_ATTACHMENT_ALLOWED_TYPES,
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -191,6 +192,10 @@ export async function POST(req, { params }) {
       return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
     }
 
+    // A tour thread: contact details and links are allowed (see sendGuards).
+    const { data: threadRow } = await supabase.from("chat_threads").select("unrestricted").eq("id", threadId).maybeSingle();
+    const unrestricted = threadRow?.unrestricted === true;
+
     let payload;
     try {
       payload = await req.json();
@@ -230,6 +235,7 @@ export async function POST(req, { params }) {
         threadId,
         confirmed,
         audience,
+        unrestricted,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });
@@ -265,6 +271,8 @@ export async function POST(req, { params }) {
 
       const baseUrl = getBaseUrl(req);
       const testEmailTo = stagingEmailHeader(req);
+      // A tour time suggested in a tour's chat is spotted for the other side to confirm.
+      after(() => detectTourProposal({ threadId, messageId: data?.messageId ?? null, senderId: authUser.id, body: bodyText }));
       after(() =>
         notifyNewChatMessage({
           threadId,
@@ -296,6 +304,7 @@ export async function POST(req, { params }) {
         threadId,
         confirmed,
         audience,
+        unrestricted,
       });
       if (screen.blocked) {
         return NextResponse.json({ error: screen.message }, { status: 422 });

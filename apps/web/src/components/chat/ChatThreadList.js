@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CalendarDays, Check } from "lucide-react";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import { sortThreadsByRecency } from "@/utils/chatThreadGrouping";
 
@@ -80,8 +81,18 @@ function ThreadRow({ thread, selected, onSelect, onPrefetch }) {
           >
             {title}
           </p>
-          <span className="text-[10px] text-gray-400 flex-shrink-0">
-            {formatPreviewTime(thread.lastMessageAt)}
+          <span className="flex flex-shrink-0 items-center gap-1.5">
+            {thread.tour && (
+              <span
+                title={thread.tour.status === "confirmed" ? "Tour confirmed" : thread.tour.status === "proposed" ? "Pick a tour time" : "Tour requested"}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+              >
+                {thread.tour.status === "confirmed" ? <Check className="h-3 w-3" /> : <CalendarDays className="h-3 w-3" />}
+              </span>
+            )}
+            <span className="text-[10px] text-gray-400">
+              {formatPreviewTime(thread.lastMessageAt)}
+            </span>
           </span>
         </div>
         {subtitle && (
@@ -120,9 +131,19 @@ export default function ChatThreadList({
   loading = false,
   error = false,
   onRetry,
+  emptyMessage = "No conversations yet. Message a landlord from a listing to get started.",
+  tabs = null,
 }) {
   const ordered = sortThreadsByRecency(threads);
+  const body = listBody();
+  return tabs ? (
+    <div className="flex flex-col flex-1 min-h-0">
+      {tabs}
+      {body}
+    </div>
+  ) : body;
 
+  function listBody() {
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center py-12 min-h-0">
@@ -173,7 +194,7 @@ export default function ChatThreadList({
           </svg>
         </div>
         <p className="text-sm text-gray-500 max-w-[240px]">
-          No conversations yet. Message a landlord from a listing to get started.
+          {emptyMessage}
         </p>
         <Link
           href="/browse"
@@ -201,4 +222,5 @@ export default function ChatThreadList({
       </div>
     </div>
   );
+  }
 }

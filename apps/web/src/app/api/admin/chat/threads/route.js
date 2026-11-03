@@ -12,6 +12,10 @@ import { getSupabaseClient } from "@/lib/supabase";
  * Deleted threads are included and marked, since an admin reviewing a report
  * needs to see what was said even after a user removed the conversation.
  *
+ * ?kind=direct (the default) is person to person: a student and a landlord,
+ * including the chats a tour opened ("From a tour"). ?kind=agent is a student
+ * or signed-out visitor talking with Proxy (Wyatt, 2026-11-01).
+ *
  * Honours the dashboard's dev/prod switch via the x-db-target header, like the
  * other admin reads.
  *
@@ -44,14 +48,23 @@ export async function GET(req) {
   }
 
   const supabase = getSupabaseClient(getDbTarget(req));
+  const kind = new URL(req.url).searchParams.get("kind") === "agent" ? "agent" : "direct";
 
   try {
-    const threads = await fetchAll(
-      supabase
-        .from("chat_threads")
-        .select("id, subject, listing_id, landlord_id, interested_user_id, created_at, updated_at, deleted_at")
-        .order("updated_at", { ascending: false })
-    );
+    const { data: proxyType } = await supabase.from("thread_types").select("id").eq("name", "proxy").maybeSingle();
+    let query = supabase
+      .from("chat_threads")
+      .select("id, subject, listing_id, landlord_id, interested_user_id, visitor_id, notify_email, unrestricted, created_at, updated_at, deleted_at")
+      .order("updated_at", { ascending: false });
+    if (proxyType?.id) {
+      // A thread with no type predates thread types and is person to person.
+      query = kind === "agent"
+        ? query.eq("thread_type_id", proxyType.id)
+        : query.or(`thread_type_id.is.null,thread_type_id.neq.${proxyType.id}`);
+    } else if (kind === "agent") {
+      return Response.json([]);
+    }
+    const threads = await fetchAll(query);
     if (threads.length === 0) return Response.json([]);
 
     const threadIds = threads.map((t) => t.id);
@@ -108,6 +121,11 @@ export async function GET(req) {
       listing: listingById.get(t.listing_id) ?? null,
       landlord: userById.get(t.landlord_id) ?? null,
       student: userById.get(t.interested_user_id) ?? null,
+      // A signed-out visitor talking with Proxy: their cookie id and, once
+      // confirmed, the email Proxy writes to.
+      visitor: t.interested_user_id || !t.visitor_id ? null : { id: t.visitor_id, email: t.notify_email ?? null },
+      kind,
+      fromTour: kind === "direct" && t.unrestricted === true,
       ...stats.get(t.id),
     }));
 

@@ -27,6 +27,9 @@ import {
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
 import { sortUnits } from "@/utils/unitOrder";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
+import { agentIsLive } from "@/lib/agents/flags";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -126,7 +129,8 @@ export function landlordKeyer() {
  * Contact falls back to the listing row because pre-migration leases carry the
  * property-level contact; once a lease has its own, that wins.
  */
-export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
+export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), bedrooms = null) {
+  const roomShare = isRoomShareListing(listingRow);
   return (unitLeases ?? [])
     .filter(isLiveLease)
     .map((l) => ({
@@ -138,6 +142,15 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer()) {
       rent: Number(l.rent) > 0 ? Number(l.rent) : null,
       // null = the landlord never said; rentBasis falls back to inference.
       rentIsPerPerson: l.rent_is_per_person ?? null,
+      /*
+       * The whole apartment's monthly rent, for ranking only: per-person and
+       * whole-unit prices can't be compared as stated (Wyatt, 2026-10-31).
+       * Never shown; the renter sees `rent` as the landlord set it.
+       */
+      unitRent:
+        Number(l.rent) > 0
+          ? leaseRentBasis({ rent: l.rent, rent_is_per_person: l.rent_is_per_person, bedrooms }, roomShare)?.unitRent ?? null
+          : null,
       sublease: !!l.sublease,
       furnished: l.furnished ?? null,
       description: l.description ?? null,
@@ -229,7 +242,7 @@ function buildListing(row, owner = null, reviews = []) {
       // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
       // above stay as the first-active-lease summary so existing callers (cards,
       // filters, matchmaking) keep working unchanged.
-      const leases = shapeLeases(u.unit_leases, row, keyFor);
+      const leases = shapeLeases(u.unit_leases, row, keyFor, u.bedrooms);
       return {
         id: u.id,
         // The photos tagged with this unit, in gallery order.
@@ -270,6 +283,25 @@ function buildListing(row, owner = null, reviews = []) {
     // Every photo at this property with the units it is tagged with, so the
     // gallery can show them all and label each one.
     gallery: allImages.map((img) => ({ url: img.url, unitIds: tagsOf(img) })),
+    /*
+     * Live rent specials, the ones a building puts in a banner or a popup.
+     * Expired offers are dropped here rather than in the UI so every surface
+     * that reads a listing gets the same answer.
+     */
+    concessions: (row.listing_concessions ?? [])
+      .filter((c) => c.active !== false)
+      .filter(
+        (c) =>
+          !c.valid_until ||
+          new Date(c.valid_until) >= new Date(new Date().toDateString())
+      )
+      .map((c) => ({
+        id: c.id,
+        description: c.description,
+        amount: c.amount ?? null,
+        conditions: c.conditions ?? null,
+        validUntil: c.valid_until ?? null,
+      })),
     // Every photo at this property, as plain URLs.
     allImages: allImages.map((img) => img.url),
     // True when the cover photo was auto-fetched from Google Street View.
@@ -392,6 +424,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
       listing_images(id, url, sort_order, source, listing_image_units(unit_id)),
+      listing_concessions(id, description, amount, amount_type, conditions, valid_until, active),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `
@@ -602,5 +635,13 @@ async function fetchListing(listingId, currentUserId, { includeDrafts }) {
     };
   });
 
-  return buildListing(row, ownerUser, reviews);
+  const built = buildListing(row, ownerUser, reviews);
+  /*
+   * Whether Proxy answers on this listing (per-listing agents, PRD v3). Both
+   * switches must be on: the global one and the listing's own status. The
+   * modal shows the Proxy panel in place of the contact form when it is.
+   */
+  const { data: agent } = await supabase.from("listing_agents").select("status").eq("listing_id", row.id).maybeSingle();
+  built.agent = { live: agentIsLive(agent) };
+  return built;
 }
