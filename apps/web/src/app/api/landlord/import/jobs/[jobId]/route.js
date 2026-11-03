@@ -8,7 +8,7 @@ import { runPendingJobs } from "@/lib/sourceImport/jobs";
 import { spendImport } from "@/lib/sourceImport/limits";
 
 async function ownJob(jobId, userId) {
-  const { data } = await supabase.from("listing_import_jobs").select("id, status, batch_id, listing_id").eq("id", jobId).eq("user_id", userId).maybeSingle();
+  const { data } = await supabase.from("listing_import_jobs").select("id, status, batch_id, listing_id, target").eq("id", jobId).eq("user_id", userId).maybeSingle();
   return data ?? null;
 }
 
@@ -38,7 +38,9 @@ export async function DELETE(req, { params }) {
   const { jobId } = await params;
   const job = await ownJob(jobId, gate.userId);
   if (!job) return NextResponse.json({ error: "No such job." }, { status: 404 });
-  if (job.listing_id) {
+  // Only a draft this import made: never a listing that already existed (the
+  // landlord's own draft included) and never the listing a site read is for.
+  if (job.listing_id && !job.target?.alreadyListed && !job.target?.sync) {
     const { data: l } = await supabase.from("listings").select("id, published_at").eq("id", job.listing_id).maybeSingle();
     if (l && l.published_at === null) {
       await supabase.from("listings").update({ deleted_at: new Date().toISOString() }).eq("id", l.id);

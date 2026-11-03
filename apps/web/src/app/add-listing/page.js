@@ -146,12 +146,16 @@ export default function AddListingPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.batchId) {
         startedRef.current = false;
+        pendingBatch.current = null;
         toast.error(data.error || "We couldn't start that import. Please try again.");
         return;
       }
       if (!pendingBatch.current) return; // cancelled while creating
       router.push(`/add-listing?mode=assisted&batch=${encodeURIComponent(data.batchId)}`);
     } catch {
+      // Re-arm Continue: the start never landed, so nothing is waiting.
+      startedRef.current = false;
+      pendingBatch.current = null;
       toast.error("Network error. Please try again.");
     } finally {
       setStarting(false);

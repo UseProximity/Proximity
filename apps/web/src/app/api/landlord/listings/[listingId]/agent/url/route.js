@@ -33,7 +33,7 @@ export async function POST(req, { params }) {
     try { body = await req.json(); } catch { body = {}; }
     const url = String(body?.url ?? "").trim();
     if (!/^https?:\/\//i.test(url)) return NextResponse.json({ error: "Enter a full web address starting with http." }, { status: 400 });
-    const r = await addUrl({ listingId, url, userId: session.user.id });
+    const r = await addUrl({ listingId, url, userId: session.user.id, isAdmin });
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
     if (r.job?.batch_id) after(() => runLanes({ batchId: r.job.batch_id, lanes: 1 }));
     return NextResponse.json({ ok: true, job: r.job });

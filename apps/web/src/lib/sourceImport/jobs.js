@@ -145,6 +145,12 @@ async function createDraft({ userId, user, target }) {
   return { listingId, title, geocoded: !!geo };
 }
 
+async function batchCancelled(batchId, userId) {
+  const { data } = await supabase.from("listing_import_jobs").select("id").eq("batch_id", batchId).eq("user_id", userId)
+    .eq("target->>cancelMarker", "true").limit(1);
+  return !!data?.length;
+}
+
 /*
  * One job per ticked property. Returns { batchId, jobs }.
  * `user` is { name, email, phone } for the draft's contact details.
@@ -160,6 +166,8 @@ export async function createImportBatch({ userId, user, pastedUrl, targets, batc
     userId
   );
   for (const [n, given] of targets.slice(0, MAX_TARGETS).entries()) {
+    // The landlord left while these were being made (cancelBatch's marker).
+    if (await batchCancelled(batchId, userId)) break;
     const raw = { ...given, alreadyListed: checked[n]?.alreadyListed ?? null };
     const target = {
       name: String(raw.name ?? "").slice(0, 200),
@@ -214,6 +222,11 @@ export async function createImportBatch({ userId, user, pastedUrl, targets, batc
       .single();
     if (error) throw new Error(`job: ${error.message}`);
     jobs.push(job);
+  }
+  // A draft made in the moment the landlord left is cleaned up with the rest.
+  if (await batchCancelled(batchId, userId)) {
+    await cancelBatch({ batchId, userId, all: true });
+    return { batchId, jobs: [], cancelled: true };
   }
   return { batchId, jobs };
 }
@@ -401,7 +414,9 @@ export async function runJob(jobId) {
       const { seedListing } = await import("@/lib/agents/seed");
       await seedListing(listing.id);
       const { queueWholeSiteRead } = await import("@/lib/agents/sync");
-      await queueWholeSiteRead({ listingId: listing.id, userId: job.user_id, batchId: job.batch_id });
+      // Its own batch, not the import's: the import workspace lists and cancels
+      // by batch, and this read is not a property the landlord ticked.
+      await queueWholeSiteRead({ listingId: listing.id, userId: job.user_id });
     } catch (e) {
       console.error(`[source-import] knowledge after import failed for ${listing.id}:`, e?.message);
     }
@@ -522,13 +537,16 @@ export async function requeueStuck({ batchId = null } = {}) {
 
 /* The batch as the workspace sees it. */
 export async function loadBatch({ batchId, userId }) {
-  const { data: jobs } = await supabase
+  let { data: jobs } = await supabase
     .from("listing_import_jobs")
     .select("id, listing_id, target, status, step, progress, attempts, error, result, created_at, finished_at")
     .eq("batch_id", batchId)
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
-  if (!jobs?.length) return null;
+  // Only the properties the landlord ticked: not a site read queued after one
+  // (older batches can hold those) nor the marker a cancel leaves.
+  jobs = (jobs ?? []).filter((j) => !j.target?.sync && !j.target?.cancelMarker);
+  if (!jobs.length) return null;
   const ids = jobs.map((j) => j.listing_id).filter(Boolean);
   const { data: listings } = ids.length
     ? await supabase.from("listings").select("id, title, address, published_at, deleted_at").in("id", ids)
@@ -561,7 +579,20 @@ export async function cancelBatch({ batchId, userId, all = false }) {
     .select("id, status, listing_id, target")
     .eq("batch_id", batchId)
     .eq("user_id", userId);
-  const doomed = (jobs ?? []).filter((j) => (all ? j.status !== "cancelled" : ["queued", "running"].includes(j.status)));
+  /*
+   * Leaving while the batch is still being created (all): the drafts are made
+   * one at a time, so the ones not made yet are stopped by a marker row that
+   * createImportBatch checks before each one.
+   */
+  if (all && !(jobs ?? []).some((j) => j.target?.cancelMarker)) {
+    await supabase.from("listing_import_jobs").insert({
+      batch_id: batchId, user_id: userId, target: { cancelMarker: true },
+      status: "cancelled", step: "Cancelled: you left the import", finished_at: new Date().toISOString(),
+    });
+  }
+  // A site read is never a ticked property: it is not cancelled with the batch.
+  const doomed = (jobs ?? []).filter((j) => !j.target?.sync && !j.target?.cancelMarker
+    && (all ? j.status !== "cancelled" : ["queued", "running"].includes(j.status)));
   if (!doomed.length) return { cancelled: 0, deleted: 0 };
   await supabase
     .from("listing_import_jobs")

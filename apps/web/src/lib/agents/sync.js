@@ -96,11 +96,23 @@ export async function manualSync({ listingId, userId, isAdmin = false }) {
  * queued; nothing displayed changes until the landlord confirms the open
  * events in the Agent tab.
  */
-export async function addUrl({ listingId, url, userId }) {
+export async function addUrl({ listingId, url, userId, isAdmin = false }) {
   if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
+  const agent = await ensureAgent(listingId);
+  // Adding a website is a full paid read, so it counts as one of the day's
+  // syncs (the same limit as "Sync now").
+  const day = todayKey();
+  const used = agent.manual_sync_day === day ? agent.manual_syncs_today : 0;
+  if (!isAdmin && used >= MANUAL_SYNCS_PER_DAY) return { error: `You can add or sync a website ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
   const attached = await attachSourceUrl({ listingId, rawUrl: url, userId });
   if (!attached.ok) return { error: attached.reason === "bad_url" ? "That doesn't look like a website address." : "Could not attach that URL.", status: 400 };
-  await ensureAgent(listingId);
+  // A read already waiting or running picks the new website up next time;
+  // no second read and no sync spent.
+  const open = await openSyncJob(listingId);
+  if (open) return { job: open, already: true };
+  if (!isAdmin) {
+    await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
+  }
   return enqueueSync({ listingId, userId, propose: true, force: true });
 }
 
