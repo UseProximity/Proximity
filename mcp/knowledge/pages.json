@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-10-28T03:36:34.751Z",
-  "count": 44,
+  "_generated": "2026-10-30T17:54:11.926Z",
+  "count": 45,
   "pages": [
     {
       "path": "/",
@@ -138,6 +138,10 @@
     {
       "path": "/messages",
       "file": "src/app/messages/page.js"
+    },
+    {
+      "path": "/parent-signup",
+      "file": "src/app/parent-signup/page.js"
     },
     {
       "path": "/refer",

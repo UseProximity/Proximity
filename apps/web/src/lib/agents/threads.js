@@ -33,7 +33,11 @@ export async function proxyThreadTypeId() {
 
 const THREAD_COLS = "id, listing_id, interested_user_id, visitor_id, lease_id, subject, notify_email, proxy_state, created_at, updated_at, deleted_at";
 
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getThread(threadId) {
+  // Not an id at all: no such thread (the database would refuse the query).
+  if (!UUID_RE.test(String(threadId ?? ""))) return null;
   const { data, error } = await supabase
     .from("chat_threads").select(THREAD_COLS).eq("id", threadId).is("deleted_at", null).maybeSingle();
   if (error) throw fail("thread", error);

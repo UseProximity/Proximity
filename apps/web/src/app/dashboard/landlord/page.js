@@ -71,7 +71,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   // the thing a landlord should not have to go looking for.
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   // What is waiting on the landlord from Proxy (open questions and tour
-  // requests), shown as a count on the Questions tab; refreshed every 30s
+  // requests), shown as a count on the Questions tab; refreshed every 10s
   // and whenever an answer or tour pick happens anywhere on the page.
   // Nothing of this shows, and nothing polls, while the agents are off
   // (PR #365 review): the tabs wait for the switch.
@@ -85,7 +85,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       fetch(`/api/landlord/proxy-chat${qs}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!cancelled && d?.waiting) setWaiting(d.waiting); }).catch(() => {});
     };
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(load, 10000);
     const off = onLandlordChange(load);
     return () => { cancelled = true; clearInterval(t); off(); };
   }, [viewAsId, activeView, agentsOn]);

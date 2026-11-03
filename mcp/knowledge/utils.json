@@ -1,11 +1,19 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-02T19:17:14.966Z",
-  "count": 274,
+  "_generated": "2026-11-03T23:30:52.027Z",
+  "count": 284,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
+    },
+    {
+      "file": "src/lib/agents/address.js",
+      "description": "Street addresses, read loosely enough to compare a listing with a page that"
+    },
+    {
+      "file": "src/lib/agents/address.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/backfill.js",
@@ -40,8 +48,28 @@
       "description": "The rollout digest (PRD v3, \"Metrics and rollout digest\"): one email a day"
     },
     {
+      "file": "src/lib/agents/discover.js",
+      "description": "Finding each listing's sources of truth (Wyatt, 2026-10-31)."
+    },
+    {
+      "file": "src/lib/agents/existingChat.js",
+      "description": "A student who already talks with this listing's landlord in Messages is"
+    },
+    {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/foundRead.js",
+      "description": "Found pages into knowledge (Wyatt, 2026-11-02)."
+    },
+    {
+      "file": "src/lib/agents/foundUrls.js",
+      "description": "What kind of source a found URL is (lib/agents/discover.js): Zillow,"
+    },
+    {
+      "file": "src/lib/agents/foundUrls.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/gate.js",
@@ -104,6 +132,10 @@
       "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
     },
     {
+      "file": "src/lib/agents/retention.js",
+      "description": "What account deletion and the retention clock do to the agents' records"
+    },
+    {
       "file": "src/lib/agents/screen.js",
       "description": "Text hygiene for Proxy."
     },
@@ -140,6 +172,10 @@
       "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
     },
     {
+      "file": "src/lib/agents/tourProposals.js",
+      "description": "Tour times suggested in a tour's direct chat (Wyatt, 2026-11-02)."
+    },
+    {
       "file": "src/lib/agents/tours.js",
       "description": "Tour scheduling (PRD v3, milestone 5; reworked by Wyatt, 2026-10-27, round 6)."
     },
@@ -150,6 +186,10 @@
     {
       "file": "src/lib/agents/tourTime.test.js",
       "description": "No description — add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/agents/transfer.js",
+      "description": "Moving every existing listing into the agents' knowledge base (Wyatt,"
     },
     {
       "file": "src/lib/agents/visitorEmail.js",

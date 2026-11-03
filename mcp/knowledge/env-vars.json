@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-02T19:17:15.033Z",
-  "count": 108,
+  "_generated": "2026-11-03T23:30:52.097Z",
+  "count": 106,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -148,15 +148,7 @@
       "public": false
     },
     {
-      "name": "DOCUMENSO_API_KEY",
-      "public": false
-    },
-    {
-      "name": "DOCUMENSO_HOST",
-      "public": false
-    },
-    {
-      "name": "DOCUMENSO_WEBHOOK_SECRET",
+      "name": "DOCUMENSO_API_KEY_DEV",
       "public": false
     },
     {

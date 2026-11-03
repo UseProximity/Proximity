@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-02T19:17:14.915Z",
-  "count": 218,
+  "_generated": "2026-11-03T23:30:51.976Z",
+  "count": 222,
   "routes": [
     {
       "path": "/api/account",
@@ -91,6 +91,26 @@
         "listing_agents"
       ],
       "file": "src/app/api/admin/agents/route.js"
+    },
+    {
+      "path": "/api/admin/agents/landlord-chats",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "users",
+        "listings",
+        "listing_questions",
+        "tour_requests",
+        "landlord_agent_messages",
+        "listing_question_messages",
+        "listing_question_waiters"
+      ],
+      "file": "src/app/api/admin/agents/landlord-chats/route.js"
     },
     {
       "path": "/api/admin/agents/queue",
@@ -394,6 +414,7 @@
         "GET": "admin"
       },
       "tables": [
+        "thread_types",
         "chat_threads",
         "users",
         "listings",
@@ -417,6 +438,7 @@
         "chat_messages",
         "chat_attachments",
         "chat_moderation_events",
+        "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
         "users"
@@ -601,6 +623,21 @@
       },
       "tables": [],
       "file": "src/app/api/admin/source-sync/route.js"
+    },
+    {
+      "path": "/api/admin/tours",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "tour_requests",
+        "users"
+      ],
+      "file": "src/app/api/admin/tours/route.js"
     },
     {
       "path": "/api/admin/update-campus-walk-times",
@@ -1117,7 +1154,9 @@
         "GET": "any",
         "POST": "landlord+"
       },
-      "tables": [],
+      "tables": [
+        "tour_requests"
+      ],
       "file": "src/app/api/chat/threads/route.js"
     },
     {
@@ -2577,6 +2616,21 @@
       "file": "src/app/api/matchmaking/chat/route.js"
     },
     {
+      "path": "/api/parent-signup",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "users",
+        "roles"
+      ],
+      "file": "src/app/api/parent-signup/route.js"
+    },
+    {
       "path": "/api/pendingReviews",
       "methods": [
         "GET",
@@ -2722,20 +2776,6 @@
       },
       "tables": [],
       "file": "src/app/api/proxy/threads/[threadId]/messages/route.js"
-    },
-    {
-      "path": "/api/proxy/threads/[threadId]/notify-email",
-      "methods": [
-        "POST"
-      ],
-      "auth": "public",
-      "methodAuth": {
-        "POST": "public"
-      },
-      "tables": [
-        "chat_threads"
-      ],
-      "file": "src/app/api/proxy/threads/[threadId]/notify-email/route.js"
     },
     {
       "path": "/api/proxy/threads/[threadId]/report",
@@ -2992,9 +3032,38 @@
         "PUT": "any"
       },
       "tables": [
-        "users"
+        "users",
+        "tour_requests"
       ],
       "file": "src/app/api/tours/availability/route.js"
+    },
+    {
+      "path": "/api/tours/proposals/[messageId]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/tours/proposals/[messageId]/route.js"
+    },
+    {
+      "path": "/api/tours/proposals/[messageId]/email",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "chat_messages"
+      ],
+      "file": "src/app/api/tours/proposals/[messageId]/email/route.js"
     },
     {
       "path": "/api/upload",
@@ -3085,7 +3154,9 @@
       "methodAuth": {
         "POST": "public"
       },
-      "tables": [],
+      "tables": [
+        "landlord_agreements"
+      ],
       "file": "src/app/api/webhooks/documenso/route.js"
     },
     {

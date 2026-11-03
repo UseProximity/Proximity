@@ -8,6 +8,19 @@
  *                  { action: "status", listingId, status }  flip a listing's
  *                                                   switch: off, pilot or on
  *
+ *                  Launch (Wyatt, 2026-10-31), each a batch the admin page
+ *                  repeats while `remaining` > 0:
+ *                  { action: "transferReport" }      what every listing has
+ *                  { action: "seedBatch", since?, limit? }  a full seeding
+ *                                                   pass started at `since`
+ *                  { action: "backfill", maxRead? }  read old landlord chats
+ *                  { action: "discover", limit?, redo?, listingId?, dryRun? }
+ *                                                    search for sources of truth
+ *                  { action: "foundSources" }        counts + pages to review
+ *                  { action: "readFound", limit?, force?, since? }  read
+ *                                    confirmed found pages into knowledge
+ *                  { action: "reviewSource", id, accept }
+ *
  * Super and admin only. Seeding is how the knowledge store is first filled on
  * production (prod writes are never done from a developer machine).
  *
@@ -24,6 +37,9 @@ import { ensureAgent } from "@/lib/agents/store";
 import { overview } from "@/lib/agents/overview";
 import { runBackfill } from "@/lib/agents/backfill";
 import { runDigest } from "@/lib/agents/digest";
+import { transferReport, seedBatch } from "@/lib/agents/transfer";
+import { discoverBatch, foundSourcesOverview, foundSourcesToReview, reviewFoundSource } from "@/lib/agents/discover";
+import { readFoundBatch, foundReadOverview } from "@/lib/agents/foundRead";
 
 async function requireTeam() {
   const session = await auth();
@@ -60,7 +76,40 @@ export async function POST(req) {
     }
     if (action === "backfill") {
       // Read today's chat history into the agents (end of the project).
-      return NextResponse.json({ ok: true, result: await runBackfill({ limit: Number(body.limit) || 200, listingId: body.listingId ?? null }) });
+      return NextResponse.json({ ok: true, result: await runBackfill({ listingId: body.listingId ?? null, maxRead: Number(body.maxRead) || 12 }) });
+    }
+    if (action === "transferReport") {
+      return NextResponse.json({ ok: true, result: await transferReport() });
+    }
+    if (action === "seedBatch") {
+      return NextResponse.json({ ok: true, result: await seedBatch({ since: body.since ?? null, limit: Math.min(Number(body.limit) || 15, 40) }) });
+    }
+    if (action === "discover") {
+      const result = await discoverBatch({
+        limit: Math.min(Number(body.limit) || 12, 30),
+        redo: body.redo === true,
+        listingId: body.listingId ?? null,
+        dryRun: body.dryRun === true,
+      });
+      return NextResponse.json({ ok: true, result });
+    }
+    if (action === "foundSources") {
+      const [overviewCounts, review, read] = await Promise.all([foundSourcesOverview(), foundSourcesToReview({ limit: 100 }), foundReadOverview()]);
+      return NextResponse.json({ ok: true, result: { ...overviewCounts, review, read } });
+    }
+    if (action === "readFound") {
+      const result = await readFoundBatch({
+        limit: Math.min(Number(body.limit) || 4, 8),
+        force: body.force === true,
+        since: body.since ?? null,
+        listingId: body.listingId ?? null,
+      });
+      return NextResponse.json({ ok: true, result });
+    }
+    if (action === "reviewSource") {
+      if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+      await reviewFoundSource({ id: body.id, accept: body.accept === true, userId: gate.userId });
+      return NextResponse.json({ ok: true });
     }
     if (action === "digest") {
       return NextResponse.json({ ok: true, result: await runDigest({ email: body.send === true }) });
