@@ -22,7 +22,7 @@ Expo SDK 56, React Native 0.85, expo-router (file routes in `app/`), NativeWind 
 
 ## Build environments
 
-- **Verified in the repo** (`eas.json`, `app.config.js`): profiles are `development` (dev client, internal), `preview` (internal), `testflight` (extends `preview`, store distribution, auto-increment) and `production` (auto-increment). Each profile uses the Expo environment of the same name, and `testflight` uses `preview`.
+- **Verified in the repo** (`eas.json`, `app.config.js`): profiles are `development` (dev client, internal), `preview` (internal), `testflight` (extends `preview`, store distribution, auto-increment) and `production` (auto-increment). `development`, `preview` and `production` each use the Expo environment of the same name. `testflight` extends `preview` and uses the `preview` environment.
   - For `preview`, `testflight` and `production` builds, `app.config.js` throws unless the API and Supabase URLs are public https hosts and the Supabase key is not a secret/service-role key. It also requires the Google client IDs and a `pk.` Mapbox token, and rejects `EXPO_PUBLIC_TEST_EMAIL_TO`.
   - It cannot tell staging from production, so a wrong Expo value would still pass.
 
