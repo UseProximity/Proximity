@@ -81,6 +81,15 @@ export default function MapView({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const preSelectZoomRef = useRef(null);
+  // The camera before the first zoom-in to a listing, so closing the panel
+  // flies back to it. When the map is still flying to the fitted view (a
+  // ?panel= deep link) that fitted view is what gets saved.
+  const preCameraRef = useRef(null);
+  const saveCamera = (map) => {
+    preCameraRef.current ??= map.isMoving()
+      ? map._fitView
+      : { center: map.getCenter(), zoom: map.getZoom() };
+  };
   const listingsRef = useRef(listings);
   // Set synchronously at the top of the panelExpanded effect so the
   // selectedListingId effect (which runs after, in definition order) can
@@ -473,6 +482,7 @@ export default function MapView({
       // The fitted view is the new baseline, so closing the panel shouldn't
       // zoom back to a level picked for results that are no longer shown.
       preSelectZoomRef.current = null;
+      preCameraRef.current = null;
       const campusLng = WASHU_CAMPUS_CENTER.longitude;
       const campusLat = WASHU_CAMPUS_CENTER.latitude;
       // Radius that contains FIT_PERCENTILE of the listings, not all of them.
@@ -499,12 +509,11 @@ export default function MapView({
           padding: 48,
           maxZoom: 15.5,
         });
-        map.flyTo({
+        map._fitView = {
           center: [campusLng, campusLat],
           zoom: camera ? camera.zoom : 13,
-          duration: 1400,
-          essential: true,
-        });
+        };
+        map.flyTo({ ...map._fitView, duration: 1400, essential: true });
       };
       // cameraForBounds/flyTo only need the map transform (container size),
       // not a loaded style. Gating on "load" here used to silently skip the
@@ -600,6 +609,11 @@ export default function MapView({
 
     panelIsTransitioningRef.current = true;
 
+    // Taken now: the selection effect below clears the saved camera when the
+    // panel closes by its button, before the timer fires.
+    const restore = panelExpanded ? null : preCameraRef.current;
+    preCameraRef.current = panelExpanded ? preCameraRef.current : null;
+
     const TRANSITION_MS = 300;
     const timer = setTimeout(() => {
       panelIsTransitioningRef.current = false;
@@ -610,6 +624,7 @@ export default function MapView({
         );
         if (listing?.longitude && listing?.latitude) {
           map.resize(); // one final sync before calculating offset
+          saveCamera(map);
           map.flyTo({
             center: [listing.longitude, listing.latitude],
             zoom: Math.min(Math.max(map.getZoom(), 15), 16),
@@ -618,6 +633,8 @@ export default function MapView({
             essential: true,
           });
         }
+      } else if (restore) {
+        map.flyTo({ ...restore, duration: 700, essential: true });
       }
     }, TRANSITION_MS + 16);
 
@@ -698,6 +715,7 @@ export default function MapView({
         if (preSelectZoomRef.current == null) {
           preSelectZoomRef.current = map.getZoom();
         }
+        saveCamera(map);
         map.flyTo({
           center: [listing.longitude, listing.latitude],
           zoom: Math.min(Math.max(map.getZoom(), 15), 16),
@@ -709,6 +727,7 @@ export default function MapView({
     } else if (preSelectZoomRef.current != null) {
       map.flyTo({ zoom: preSelectZoomRef.current, duration: 600 });
       preSelectZoomRef.current = null;
+      preCameraRef.current = null;
     }
   }, [isActive, selectedListingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
