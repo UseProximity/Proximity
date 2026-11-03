@@ -12,16 +12,22 @@
  *     is not.
  *   - Listings: a sandbox listing is invisible to everyone but sandbox accounts, and in
  *     the "is it already listed" checks it never blocks or absorbs a real landlord
- *     (withoutSandboxRows below).
+ *     (withoutSandboxRows below). In the app's listing feeds (browse, popular, saved,
+ *     matchmaking) a sandbox viewer sees every sandbox listing next to the real ones,
+ *     so a reviewer can find the listing they just made (isSandboxViewer below).
  *
  * A failed lookup is retried (3 attempts in all, 100 ms then 300 ms apart). If it
  * still fails the helpers log loudly and throw SandboxLookupError, and the caller
  * lets that stop the action (no email, no push, a 500 for the inbox) rather than
- * guessing that the user is not a sandbox account.
+ * guessing that the user is not a sandbox account. The feeds are the exception: a
+ * failed lookup there serves the public feed, which shows nothing it should not.
  *
  * Plain imports only, and the database client is loaded when a query runs, like
  * emailLog.js, so the node test runner can import modules that depend on this.
  */
+
+import { AsyncLocalStorage } from "node:async_hooks";
+import { authMobile } from "./authMobile.js";
 
 const RETRY_DELAYS_MS = [100, 300];
 
@@ -105,3 +111,41 @@ export async function withoutSandboxRows(rows, viewerId, { client } = {}) {
   const viewerIsSandbox = viewerId ? (await sandboxIdsAmong([viewerId], { client })).has(viewerId) : false;
   return viewerIsSandbox ? rows : rows.filter((row) => row?.review_sandbox !== true);
 }
+
+/**
+ * For the app's listing feeds: is the person asking a review sandbox account? Only
+ * the mobile Bearer token is read, since App Review tests the app; the website's
+ * feeds stay public-only (they sit behind a shared cache). No token means no lookup,
+ * so logged-out traffic costs nothing. Never throws: a bad token or a failed lookup
+ * is answered false, and the caller serves the public feed, which is always safe.
+ */
+export async function isSandboxViewer(req) {
+  try {
+    const mobile = await authMobile(req);
+    const id = mobile?.user?.id;
+    if (!id) return false;
+    return (await sandboxIdsAmong([id])).has(id);
+  } catch {
+    return false;
+  }
+}
+
+/*
+ * Matchmaking reads its listings deep inside the ranking pipeline, far from the
+ * request, so the route marks the whole turn instead of passing a flag through
+ * every step: withSandboxViewer(true, fn) runs fn with sandbox listings in scope,
+ * and fetchActiveListings asks sandboxViewerInScope(). Outside a marked turn the
+ * answer is always false.
+ */
+const sandboxViewerScope = new AsyncLocalStorage();
+
+export function withSandboxViewer(isSandbox, fn) {
+  return sandboxViewerScope.run(isSandbox === true, fn);
+}
+
+export function sandboxViewerInScope() {
+  return sandboxViewerScope.getStore() === true;
+}
+
+/** Response headers for a feed that may include sandbox listings: never cached. */
+export const SANDBOX_FEED_HEADERS = { "Cache-Control": "private, no-store" };

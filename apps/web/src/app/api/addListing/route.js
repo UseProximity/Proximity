@@ -956,11 +956,14 @@ export async function POST(req) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
-          .select("email, name")
+          .select("email, name, review_sandbox")
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req);
+            // A review sandbox owner's copy is recorded as not sent, never delivered.
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req, {
+              sandbox: landlordUser.review_sandbox === true,
+            });
           }
         }
       } catch (emailErr) {

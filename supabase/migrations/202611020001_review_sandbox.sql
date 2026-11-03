@@ -29,7 +29,10 @@
 -- Apply to BOTH dev and prod, prod before the code is released (the browse query
 -- filters on listings.review_sandbox).
 --
--- Rollback (nothing else depends on it until the code ships):
+-- Rollback (nothing else depends on it until the code ships). Roll back
+-- 202611030001 first: its name index depends on listings.review_sandbox, and
+-- dropping the column would silently drop that index, and the one-name-per-school
+-- rule with it.
 --   DROP TRIGGER IF EXISTS listings_stamp_review_sandbox ON public.listings;
 --   DROP FUNCTION IF EXISTS public.trg_listings_stamp_review_sandbox();
 --   DROP INDEX IF EXISTS public.idx_users_review_sandbox;

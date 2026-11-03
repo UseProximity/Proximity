@@ -82,13 +82,24 @@ export async function POST(req) {
   // does not exist for them, so 404. A sandbox account adding to a real landlord's
   // property would change what students see there: answered like an address that is
   // already taken.
-  const { data: parent } = await supabase
+  // Either lookup failing refuses the write, like addListing's attach, so a real
+  // landlord's offering is never put on a sandbox property on a guess.
+  const { data: parent, error: parentError } = await supabase
     .from("listings")
     .select("review_sandbox")
     .eq("id", unit.listing_id)
     .maybeSingle();
+  if (parentError) {
+    console.error("[leases] Property lookup failed:", parentError.message);
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
   const parentIsSandbox = parent?.review_sandbox === true;
-  const callerIsSandbox = (await sandboxIdsAmong([session.user.id])).has(session.user.id);
+  let callerIsSandbox;
+  try {
+    callerIsSandbox = (await sandboxIdsAmong([session.user.id])).has(session.user.id);
+  } catch {
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
   if (callerIsSandbox !== parentIsSandbox) {
     return parentIsSandbox
       ? Response.json({ error: "That unit no longer exists." }, { status: 404 })

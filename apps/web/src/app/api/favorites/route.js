@@ -3,6 +3,7 @@ import supabase from "@/lib/supabase";
 import { insertAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchListings } from "@/app/api/listings/route";
+import { isSandboxViewer, SANDBOX_FEED_HEADERS } from "@/lib/reviewSandbox";
 
 /**
  * @auth GET optional
@@ -66,8 +67,13 @@ export async function GET(req) {
   }
 
   try {
-    const listings = (await fetchListings(listingIds)).filter((l) => !l.unavailable);
-    return NextResponse.json(listings);
+    // A review sandbox account can save the sandbox listings it sees in browse, so
+    // its Saved tab carries them too. That answer is theirs alone, never cached.
+    const includeSandbox = await isSandboxViewer(req);
+    const listings = (await fetchListings(listingIds, { includeSandbox })).filter((l) => !l.unavailable);
+    return includeSandbox
+      ? NextResponse.json(listings, { headers: SANDBOX_FEED_HEADERS })
+      : NextResponse.json(listings);
   } catch (err) {
     console.error("[favorites GET] fetchListings error:", err);
     return NextResponse.json({ error: "Failed to fetch favorites" }, { status: 500 });

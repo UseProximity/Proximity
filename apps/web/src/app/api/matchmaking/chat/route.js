@@ -5,7 +5,7 @@ import supabase from "@/lib/supabase";
 import { handleTurn, computeRecommendations, continueRelaxedSearch, rewindToTradeoff } from "@/lib/matchmaking/chatOrchestrator";
 import { sendOwnerInquiryEmail } from "@/lib/email";
 import { recordListingContact } from "@/lib/contactTracking";
-import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+import { sandboxIdsAmong, isSandboxViewer, withSandboxViewer } from "@/lib/reviewSandbox";
 import { clientIp } from "@/lib/auth/loginThrottle";
 import {
   readVisitorId,
@@ -165,7 +165,21 @@ export async function GET(request) {
   }
 }
 
+// A review sandbox student in the app is also recommended the sandbox listings, so a
+// reviewer can find the listing they made. The whole request runs with that in scope,
+// as the listings are read deep in the ranking pipeline (fetchActiveListings). Both
+// POST (chat turns) and PATCH (a priorities edit re-ranks the picks) rank listings.
 export async function POST(request) {
+  const sandboxViewer = await isSandboxViewer(request);
+  return withSandboxViewer(sandboxViewer, () => handlePost(request));
+}
+
+export async function PATCH(request) {
+  const sandboxViewer = await isSandboxViewer(request);
+  return withSandboxViewer(sandboxViewer, () => handlePatch(request));
+}
+
+async function handlePost(request) {
   try {
     const requestUser = await getRequestUser(request);
     const { actor, visitor: cookieVisitor, error: actorError } = await resolveActor(requestUser, request);
@@ -376,8 +390,9 @@ export async function POST(request) {
 
       let sent = 0;
       // Review sandbox: a sandbox student's inquiry is not sent to the owner (sendMailSafe
-      // only records it as suppressed). The owner is never a sandbox account here, since
-      // recommendations exclude sandbox listings, so only the student is checked. Looked up
+      // only records it as suppressed). Only a sandbox student is ever recommended a
+      // sandbox listing (fetchActiveListings), so checking the student covers a sandbox
+      // owner too. Looked up
       // inside the try so a failed lookup (after its retries) sends nothing and is reported
       // like a failed send; null means not looked up yet, so the next listing tries again.
       let sandbox = null;
@@ -473,7 +488,7 @@ export async function POST(request) {
   }
 }
 
-export async function PATCH(request) {
+async function handlePatch(request) {
   try {
     const { actor, visitor, error: actorError } = await resolveActor(await getRequestUser(request), request);
     if (actorError) return NextResponse.json({ error: actorError.msg }, { status: actorError.status });
