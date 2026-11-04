@@ -26,6 +26,7 @@ import supabase from "@/lib/supabase";
 import { listingPlaceName } from "./placeName";
 import { sendReviewConfirmationEmail } from "@/lib/email";
 import { issueProfileSetupLinkToken, needsProfileSetup } from "./onboarding";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 /** How long a reviewer gets to add another review before we send anyway. */
 export const CONFIRMATION_DELAY_MINUTES = 30;
@@ -147,7 +148,11 @@ export async function flushReviewConfirmation({ userId, baseUrl }) {
      * minting fails the email still goes out, just without the setup link.
      */
     const setupToken = setupLive ? await issueProfileSetupLinkToken(userId) : null;
+    // A review sandbox account is never emailed (lib/reviewSandbox.js). A failed
+    // lookup throws here, so the claim is released and nothing is sent.
+    const sandbox = (await sandboxIdsAmong([userId])).has(userId);
     await sendReviewConfirmationEmail({
+      sandbox,
       email: user.email,
       name: user.name,
       baseUrl,

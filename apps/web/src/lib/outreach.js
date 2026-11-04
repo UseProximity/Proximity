@@ -23,6 +23,15 @@
  * their own inbox, request a password reset for any account in the prod-data snapshot,
  * and receive the link.
  *
+ * Review sandbox (App Store review accounts): a message carrying `sandbox: true` is
+ * SUPPRESSED on EVERY environment, production included, ahead of every other rule. It is
+ * never sent and never redirected (a redirected copy could be acted on by whoever reads
+ * the inbox). It is still recorded in sent_emails, with the reason "review sandbox", so
+ * the admin can see what a reviewer triggered. The flag is set by server code that has
+ * looked the acting users up in the database (lib/reviewSandbox.js), never from a
+ * header or cookie, and it ignores the tester cookie, header and OUTREACH_TEST_RECIPIENT.
+ * Like `logAs`, the field is removed before sending.
+ *
  * Use it everywhere instead of calling transporter.sendMail() directly. For non-email
  * outreach, gate the call site with outreachEnabled().
  *
@@ -92,14 +101,14 @@ function sentOutcome(transporter, info, redirectedTo) {
 }
 
 export async function sendMailSafe(transporter, message, req) {
-  const { logAs, ...mail } = message ?? {};
+  const { logAs, sandbox, ...mail } = message ?? {};
   let redirectedTo = null;
   try {
-    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; });
+    const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; }, sandbox === true);
     await recordEmail(
       mail,
       logAs,
-      info?.suppressed ? { status: "suppressed" } : sentOutcome(transporter, info, redirectedTo)
+      info?.suppressed ? { status: "suppressed", detail: info.reason ?? null } : sentOutcome(transporter, info, redirectedTo)
     );
     return info;
   } catch (err) {
@@ -114,7 +123,31 @@ export async function sendMailSafe(transporter, message, req) {
   }
 }
 
-async function deliver(transporter, message, req, onRedirect) {
+// Send `message` to the single address `to` only: cc/bcc are dropped so no real (or
+// placeholder) carbon-copy recipient is ever emailed, and the original recipient is
+// noted in the subject. `tag` is the subject prefix, which says why it was redirected.
+function redirectTo(transporter, message, to, tag, onRedirect) {
+  const original = message?.to ?? "(none)";
+  console.log(`[outreach redirect] ${tag} ${original} → ${to}`);
+  onRedirect(to);
+  return transporter.sendMail({
+    ...message,
+    to,
+    cc: undefined,
+    bcc: undefined,
+    subject: `[${tag} ${original}] ${message?.subject ?? ""}`,
+  });
+}
+
+async function deliver(transporter, message, req, onRedirect, sandbox = false) {
+  // A review sandbox email is never sent, on any environment. Checked before
+  // outreachEnabled(), and it never consults the tester cookie, header or
+  // OUTREACH_TEST_RECIPIENT. The reason is recorded in sent_emails.status_detail.
+  if (sandbox) {
+    console.log(`[outreach suppressed] review sandbox email not sent → to=${message?.to} subject=${message?.subject}`);
+    return { suppressed: true, reason: "review sandbox" };
+  }
+
   if (outreachEnabled()) {
     return transporter.sendMail(message);
   }
@@ -128,20 +161,8 @@ async function deliver(transporter, message, req, onRedirect) {
     ? process.env.OUTREACH_TEST_RECIPIENT
     : null;
   const to = (await stagingTestRecipient(req)) ?? envRecipient;
-  if (to) {
-    const original = message?.to ?? "(none)";
-    console.log(`[outreach non-prod] redirecting email (was ${original}) → ${to}`);
-    onRedirect(to);
-    // Collapse everything to the single test inbox — drop cc/bcc so a real (or
-    // placeholder) carbon-copy recipient is never emailed off production.
-    return transporter.sendMail({
-      ...message,
-      to,
-      cc: undefined,
-      bcc: undefined,
-      subject: `[TEST → was: ${original}] ${message?.subject ?? ""}`,
-    });
-  }
+  // Collapse everything to the single test inbox (cc/bcc dropped, see redirectTo).
+  if (to) return redirectTo(transporter, message, to, "TEST → was:", onRedirect);
 
   console.log(`[outreach suppressed] would send → to=${message?.to} subject=${message?.subject}`);
   return { suppressed: true };

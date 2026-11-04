@@ -6,6 +6,7 @@ import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 // Create a lease on a unit that already exists — step 3 of the
 // address -> unit -> lease flow, taken when the address matched a known property
@@ -81,6 +82,36 @@ export async function POST(req) {
   }
   if (!unit || unit.deleted_at) {
     return Response.json({ error: "That unit no longer exists." }, { status: 404 });
+  }
+
+  // A review sandbox account (App Store review) and a real landlord never share a
+  // property, in either direction, like addListing's attach. A real landlord adding to a
+  // sandbox property would have the offering hidden from every student: that property
+  // does not exist for them, so 404. A sandbox account adding to a real landlord's
+  // property would change what students see there: answered like an address that is
+  // already taken.
+  // Either lookup failing refuses the write, like addListing's attach, so a real
+  // landlord's offering is never put on a sandbox property on a guess.
+  const { data: parent, error: parentError } = await supabase
+    .from("listings")
+    .select("review_sandbox")
+    .eq("id", unit.listing_id)
+    .maybeSingle();
+  if (parentError) {
+    console.error("[leases] Property lookup failed:", parentError.message);
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
+  const parentIsSandbox = parent?.review_sandbox === true;
+  let callerIsSandbox;
+  try {
+    callerIsSandbox = (await sandboxIdsAmong([session.user.id])).has(session.user.id);
+  } catch {
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
+  if (callerIsSandbox !== parentIsSandbox) {
+    return parentIsSandbox
+      ? Response.json({ error: "That unit no longer exists." }, { status: 404 })
+      : Response.json({ error: "This address is already on Proximity.", code: "address_taken" }, { status: 409 });
   }
 
   /*

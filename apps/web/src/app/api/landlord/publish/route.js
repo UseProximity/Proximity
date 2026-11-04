@@ -174,25 +174,29 @@ async function mergeDraftIntoLive(draft, live) {
   return { liveId: live.id, unitIds: [...new Set(target.values())] };
 }
 
-// The live building already at this draft's address, if there is one.
+// The live building already at this draft's address, if there is one. A review sandbox
+// listing and a real one are never twins: a real landlord's draft must not be merged into
+// (and hidden inside) a sandbox listing, nor a sandbox draft into a real building. The
+// draft carries its own flag (stamped from its creator when it was made), so this needs
+// no lookup.
 async function liveTwinOf(draft) {
   if (!draft.property_key) return null;
   const { data } = await supabase
     .from("listings")
-    .select("id")
+    .select("id, review_sandbox")
     .eq("property_key", draft.property_key)
     .neq("id", draft.id)
     .is("deleted_at", null)
     .not("published_at", "is", null)
     .order("created_at", { ascending: true })
-    .limit(1);
-  return data?.[0] ?? null;
+    .limit(20);
+  return (data ?? []).find((t) => (t.review_sandbox === true) === (draft.review_sandbox === true)) ?? null;
 }
 
 async function publishProperty(userId, isSuper, id) {
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, property_key, published_at, deleted_at, listing_units(id, name, published_at, deleted_at, unit_leases(id, owner_id, deleted_at))")
+    .select("id, property_key, published_at, deleted_at, review_sandbox, listing_units(id, name, published_at, deleted_at, unit_leases(id, owner_id, deleted_at))")
     .eq("id", id)
     .maybeSingle();
   if (!listing || listing.deleted_at) throw new PublishError(404, "That property no longer exists.");

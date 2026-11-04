@@ -29,6 +29,7 @@ import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
 import { getBaseUrl, sendProxyStudentEmail } from "@/lib/email";
+import { isSandboxUser } from "./sandbox";
 import { landlordAct } from "./tours";
 import { getThread, PROXY_USER_ID } from "./threads";
 import { handleStudentMessage } from "./proxy";
@@ -134,6 +135,8 @@ async function proxyReply({ parsed, fromEmail, token, logId, finish }) {
   if (replies.length) {
     const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
     await sendProxyStudentEmail({
+      // A review sandbox student is never emailed (lib/reviewSandbox.js).
+      sandbox: await isSandboxUser(student?.id ?? null).catch(() => true),
       to: recipient, name: student?.name ?? null, kind: "proxy_reply", listingLabel: listing?.title || listing?.address || "a listing",
       messages: replies, threadUrl: `${getBaseUrl()}/listings/${thread.listing_id}?listingTab=contact`, threadId: thread.id,
       userId: student?.id ?? null, replyTo: proxyReplyAddress({ threadId: thread.id, recipientKey: key }),

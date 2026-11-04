@@ -21,8 +21,8 @@ export async function markAlreadyListed(properties, userId) {
   if (!pickable.length) return properties;
   const owned = await getOwnedListings(userId);
   const [listed, mine] = await Promise.all([
-    findExistingProperties(pickable),
-    findExistingProperties(pickable, { ids: [...owned.keys()] }),
+    findExistingProperties(pickable, { userId }),
+    findExistingProperties(pickable, { ids: [...owned.keys()], userId }),
   ]);
   /*
    * Whose it is. Three answers, and the workspace treats each differently:

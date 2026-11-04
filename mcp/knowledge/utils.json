@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-03T23:30:52.027Z",
-  "count": 284,
+  "_generated": "2026-11-04T19:26:12.500Z",
+  "count": 286,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -134,6 +134,10 @@
     {
       "file": "src/lib/agents/retention.js",
       "description": "What account deletion and the retention clock do to the agents' records"
+    },
+    {
+      "file": "src/lib/agents/sandbox.js",
+      "description": "Review sandbox rules for Proxy questions and tours (App Store review accounts,"
     },
     {
       "file": "src/lib/agents/screen.js",
@@ -934,6 +938,10 @@
     {
       "file": "src/lib/reviews/source.js",
       "description": "The campaign tag a printed QR code carries: /r?src=<tag>."
+    },
+    {
+      "file": "src/lib/reviewSandbox.js",
+      "description": "Review sandbox lookups (App Store review accounts). users.review_sandbox is set"
     },
     {
       "file": "src/lib/schools.js",

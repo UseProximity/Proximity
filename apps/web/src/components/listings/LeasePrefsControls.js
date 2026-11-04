@@ -8,7 +8,7 @@
  * On a listing (Wyatt, 2026-11-01): "Beds: ( )  Duration: ( )  Move-In: ( )".
  * Each is a pill that opens a list; Beds and Duration check several at once
  * and the pill fills in with them ("1, 2", "10 mo, 12 mo"), Move-In picks one.
- * An empty pill means any.
+ * A pill with nothing picked reads "Any" (Wyatt, 2026-11-02).
  *
  *   "sentence"  on a listing. `choices` comes from listingChoices, so each
  *               list offers only what the listing has given the other picks.
@@ -99,7 +99,7 @@ function Pills({ label, options, value, onChange, pillLabel = (o) => o.label }) 
 }
 
 /*
- * "Beds: ( )". The pill shows what is picked, nothing when it is any, and
+ * "Beds: ( )". The pill shows what is picked, "Any" when nothing is, and
  * opens the listing's options. `multi` checks several and stays open while
  * the student checks; otherwise one pick (or Any) closes it.
  */
@@ -144,10 +144,10 @@ function PickerPill({ label, options, value, onChange, multi = false, summary, a
         aria-label={`${label}: ${text || anyLabel}`}
         onClick={() => setOpen((o) => !o)}
         className={`inline-flex h-7 min-w-10 max-w-44 items-center justify-center truncate rounded-md border px-2.5 text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
-          text ? PILL_ON : "border-gray-300 bg-white hover:bg-gray-50"
+          text ? PILL_ON : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
         }`}
       >
-        {text}
+        {text || "Any"}
       </button>
       {open && (
         <div role="menu" className="absolute left-0 top-full z-40 mt-1 max-h-64 min-w-40 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">

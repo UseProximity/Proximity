@@ -34,6 +34,7 @@ import { applyCoreChange, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./c
 import { fairHousingFlags } from "./compliance";
 import { agentSyncStatus } from "./sync";
 import { shortDate, UNCLAIMED_OWNER_ID } from "./sections";
+import { sandboxViewFor } from "./sandbox";
 
 /* ---- what the landlord sees ------------------------------------------- */
 
@@ -101,7 +102,15 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
     })),
   ];
 
-  const { count: openQuestions } = await supabase.from("listing_questions").select("id", { count: "exact", head: true }).eq("listing_id", listingId).eq("status", "open");
+  // A review sandbox student's questions are not counted for a real landlord (lib/agents/sandbox.js).
+  const view = isAdmin ? null : await sandboxViewFor(userId);
+  let openQuestions;
+  if (!view || view.hidesNothing) {
+    ({ count: openQuestions } = await supabase.from("listing_questions").select("id", { count: "exact", head: true }).eq("listing_id", listingId).eq("status", "open"));
+  } else {
+    const { data: openRows } = await supabase.from("listing_questions").select("id").eq("listing_id", listingId).eq("status", "open").limit(1000);
+    openQuestions = (await view.questions(openRows ?? [])).length;
+  }
 
   return {
     listingId, title: ctx?.title ?? null, owner, sections, sources: sources.map((s) => ({ id: s.id, kind: s.kind, label: sourceLabel(s), url: s.url, status: s.last_status, lastCheckedAt: s.last_checked_at })),

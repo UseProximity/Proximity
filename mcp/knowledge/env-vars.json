@@ -1,6 +1,6 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-03T23:30:52.097Z",
+  "_generated": "2026-11-04T19:26:12.568Z",
   "count": 106,
   "envVars": [
     {

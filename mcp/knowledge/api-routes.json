@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-03T23:30:51.976Z",
-  "count": 222,
+  "_generated": "2026-11-04T19:26:12.457Z",
+  "count": 223,
   "routes": [
     {
       "path": "/api/account",
@@ -91,6 +91,21 @@
         "listing_agents"
       ],
       "file": "src/app/api/admin/agents/route.js"
+    },
+    {
+      "path": "/api/admin/agents/knowledge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "listings",
+        "listing_fact_events"
+      ],
+      "file": "src/app/api/admin/agents/knowledge/route.js"
     },
     {
       "path": "/api/admin/agents/landlord-chats",
@@ -2478,6 +2493,7 @@
       },
       "tables": [
         "listing_units",
+        "listings",
         "unit_leases"
       ],
       "file": "src/app/api/leases/route.js"
@@ -2578,6 +2594,7 @@
         "GET": "public"
       },
       "tables": [
+        "listings",
         "interaction_types",
         "user_listing_interactions"
       ],
