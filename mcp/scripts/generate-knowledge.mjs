@@ -221,6 +221,7 @@ const COMPONENT_DESCRIPTIONS = {
   "HeroMapPreview.js": "Landing page hero section with embedded map preview",
   "HeroSection.js": "Above-the-fold landing section with CTA",
   "MapView.js": "Main interactive Mapbox map — renders listing pins, popups, and clustering",
+  "listings/MapErrorBoundary.js": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails",
   "Modal.js": "Generic reusable modal wrapper",
   "ModalDorms.js": "Dorm detail modal with reviews",
   "ProfileCompletionModal.js": "Onboarding modal for new users to complete their profile",

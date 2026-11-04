@@ -3,9 +3,18 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-export default function ListingMap({ latitude, longitude, address }) {
+export default function ListingMap(props) {
+  return (
+    <MapErrorBoundary className="w-full h-[400px] rounded-xl">
+      <ListingMapInner {...props} />
+    </MapErrorBoundary>
+  );
+}
+
+function ListingMapInner({ latitude, longitude, address }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
 

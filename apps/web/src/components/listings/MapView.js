@@ -15,6 +15,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useRouter } from "next/navigation";
 import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
+import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 
 // Pin body for "Suggested for you" listings. Matches the swatch in
 // SuggestedStrip's heading (bg-[#A1000A]); change both together.
@@ -60,7 +61,15 @@ function percentile(values, p) {
   return sorted[idx];
 }
 
-export default function MapView({
+export default function MapView(props) {
+  return (
+    <MapErrorBoundary className="w-full h-full">
+      <MapViewInner {...props} />
+    </MapErrorBoundary>
+  );
+}
+
+function MapViewInner({
   listings = [],
   filters,
   setFilters,

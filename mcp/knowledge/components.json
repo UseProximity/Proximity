@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-03T04:37:35.606Z",
-  "count": 161,
+  "_generated": "2026-11-04T18:09:08.216Z",
+  "count": 162,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -407,6 +407,11 @@
       "name": "ListingModalInfo",
       "file": "src/components/listings/ListingModalInfo.js",
       "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
+    },
+    {
+      "name": "MapErrorBoundary",
+      "file": "src/components/listings/MapErrorBoundary.js",
+      "description": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails"
     },
     {
       "name": "MapPopupCard",
