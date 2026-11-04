@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { agreementState, agreementView, syncAgreement } from "@/lib/billing/agreements";
+import { agreementView, coverageFor, syncAgreement } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { getEnrollmentWindow } from "@/lib/billing/enrollment";
@@ -26,9 +26,9 @@ export async function GET() {
   try {
     const { documenso, signingAvailable, options } = agreementServices();
     if (signingAvailable) await syncAgreement(supabase, documenso, session.user.id, options);
-    const [gate, agreement, enrollment] = await Promise.all([
+    const [gate, coverage, enrollment] = await Promise.all([
       checkListingGate(supabase, session.user.id),
-      agreementState(supabase, session.user.id),
+      coverageFor(supabase, session.user.id),
       getEnrollmentWindow(supabase),
     ]);
     return NextResponse.json({
@@ -37,7 +37,7 @@ export async function GET() {
       message: gate.allowed ? null : gateMessage(gate.missing),
       requirePaymentMethod: gate.requirePaymentMethod,
       requireAgreement: gate.requireAgreement,
-      agreement: agreementView(agreement, { signingAvailable }),
+      agreement: agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
       // The enrollment window, shown as a banner until the landlord has set up.
       enrollment: { deadline: enrollment.deadline, includeAgreement: enrollment.includeAgreement },
     });

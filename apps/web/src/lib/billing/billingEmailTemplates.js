@@ -202,13 +202,14 @@ export function agreementRequestEmail({ name, versionLabel, signUrl, resign = fa
   };
 }
 
-export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason }) {
+export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason, kind = "master" }) {
+  const what = kind === "amendment" ? "Exhibit A amendment" : "commission agreement";
   return {
-    subject: `Commission agreement declined: ${landlordName || landlordEmail || "a landlord"}`,
+    subject: `${kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
     html: wrap(`
-      <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the commission agreement in Documenso.</p>
+      <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the ${what} in Documenso.</p>
       <p>Reason given: ${reason ? e(reason) : "none"}</p>
-      <p>They cannot publish new listings while the agreement is required. Reach out to them, then send the agreement again from Admin, Billing, Agreements.</p>
+      <p>The properties it would have covered stay as drafts while the agreement is required. Reach out to them; they can sign again from their Payments tab, or ask for changes there.</p>
     `),
   };
 }

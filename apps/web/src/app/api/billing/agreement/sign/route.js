@@ -10,13 +10,22 @@ import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 
 /*
- * Start signing the commission agreement inside the Payments tab.
- * Body: { signerTitle, authorized: true }
- * Answers { token, host } for Documenso's embedded signing page, or
- * { alreadySigned: true }. A copy already in progress is reused.
+ * Start signing inside the app: the master agreement with Exhibit A, or an
+ * Exhibit A amendment, whichever covers the properties asked for.
+ * Body: { signerTitle, authorized: true, listingIds?: [uuid] }
+ *   listingIds  the properties being published (from the publish dialog); left
+ *               out when the landlord signs from the Payments tab
+ * Answers { token, host, kind } for Documenso's embedded signing page, or
+ * { alreadySigned: true } when everything asked for is covered. A copy already
+ * in progress for the same document is reused.
  *
  * @auth landlord (own agreement only)
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Only well-formed ids, at most 200. Which of them are really the landlord's is
+// decided by the coverage plan, which ignores anything they have no stake in.
+const ownListingIds = (ids) => (Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && UUID.test(id)).slice(0, 200) : []);
+
 export async function POST(req) {
   const session = await requireDbRole(["landlord"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -33,9 +42,10 @@ export async function POST(req) {
       user,
       signerTitle: body.signerTitle,
       authorized: body.authorized === true,
+      listingIds: ownListingIds(body.listingIds),
       ...options,
     });
-    return NextResponse.json(result.token ? { token: result.token, host: documensoHost() } : result);
+    return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);
   } catch (err) {
     if (err?.name === "DocumensoError") {
       console.error("billing: start signing failed", err.message);

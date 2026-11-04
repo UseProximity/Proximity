@@ -16,7 +16,15 @@
  * them on at launch (Admin > Billing > Agreements):
  *
  *   payment_method_required   an Active payment method is needed to publish
- *   agreement_required        a Signed agreement is needed to publish
+ *   agreement_required        every property being published must be covered by
+ *                             the landlord's signed agreement (coverage.js): their
+ *                             master's Exhibit A, or a signed amendment to it
+ *
+ * Coverage is per property (decisions of 2026-11-04). A route passes the
+ * listings it is about to put live; any that are not covered come back in
+ * `uncovered`, and the landlord signs the master or an amendment covering them
+ * in the publish dialog, then publishes again. An unsigned document never
+ * covers anything. Review sandbox accounts (App Store review) are exempt.
  *
  * A landlord whose invoice went overdue (the overdue job withdrew their leases and
  * it is still unpaid) is blocked from publishing anything new as well, always,
@@ -30,15 +38,16 @@
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { getBillingSetting } from "./settings.js";
-import { agreementState } from "./agreements.js";
+import { agreementState, coverageFor } from "./agreements.js";
+import { resolvePublishedIds, uncoveredAmong } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
 export const AGREEMENT_REQUIRED = "agreement_required";
 
 // The pure rule. `missing` lists what stands in the way: "payment_method", "agreement".
-export function gateDecision({ role, requirePaymentMethod, requireAgreement, hasPaymentMethod, agreementSigned, overdueInvoice = false }) {
-  if (role !== "landlord") return { applies: false, allowed: true, missing: [] };
+export function gateDecision({ role, requirePaymentMethod, requireAgreement, hasPaymentMethod, agreementSigned, overdueInvoice = false, sandbox = false }) {
+  if (role !== "landlord" || sandbox) return { applies: false, allowed: true, missing: [] };
   const missing = [];
   if (overdueInvoice) missing.push("overdue_invoice");
   if (requirePaymentMethod && !hasPaymentMethod) missing.push("payment_method");
@@ -53,25 +62,41 @@ const PARTS = {
 };
 
 // What to tell a landlord who is blocked. Plain words, and where to fix it.
-export function gateMessage(missing) {
-  const parts = missing.map((m) => PARTS[m]).filter(Boolean);
+export function gateMessage(missing, uncovered = []) {
+  const named = uncovered.filter((u) => u.listingId).map((u) => u.address);
+  const parts = missing
+    .map((m) =>
+      m === "agreement" && uncovered.length
+        ? named.length
+          ? `add ${named.length === 1 ? named[0] : `${named.length} properties`} to your commission agreement`
+          : "add this property to your commission agreement"
+        : PARTS[m]
+    )
+    .filter(Boolean);
   const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
   return `Before you can publish a listing you need to ${list}. You can do this under Payments in your landlord dashboard. Your drafts are saved.`;
 }
 
-// The body a route returns when the gate says no.
+// The body a route returns when the gate says no. `uncovered` lets the page open
+// the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
-  return { error: gateMessage(gate.missing), code: "billing_setup_required", missing: gate.missing };
+  return {
+    error: gateMessage(gate.missing, gate.uncovered ?? []),
+    code: "billing_setup_required",
+    missing: gate.missing,
+    uncovered: gate.uncovered ?? [],
+  };
 }
 
-async function roleOf(db, userId) {
+async function userOf(db, userId) {
   const { data, error } = await db
     .from("users")
-    .select("deleted_at, roles!role_id(name)")
+    .select("deleted_at, review_sandbox, roles!role_id(name)")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data && !data.deleted_at ? data.roles?.name ?? null : null;
+  if (!data || data.deleted_at) return { role: null, sandbox: false };
+  return { role: data.roles?.name ?? null, sandbox: data.review_sandbox === true };
 }
 
 /*
@@ -104,12 +129,20 @@ export async function getGateSettings(db) {
 
 /*
  * Whether this user may publish right now, and the facts the dashboard shows.
- * Only landlords are ever checked; for anyone else it answers without touching
- * the settings or payment tables.
+ * Only landlords are ever checked; for anyone else (and review sandbox accounts)
+ * it answers without touching the settings or payment tables.
+ *
+ *   listingIds   the properties about to go live. With the agreement required,
+ *                each must be covered; the ones that are not come back in
+ *                `uncovered` ({ listingId, address }).
+ *   newProperty  a property that does not exist yet (add listing): never covered
+ *   neither      the dashboard's question: does the landlord's master count?
  */
-export async function checkListingGate(db, userId, now = new Date()) {
-  const role = await roleOf(db, userId);
-  if (role !== "landlord") return { ...gateDecision({ role }), requirePaymentMethod: false, requireAgreement: false };
+export async function checkListingGate(db, userId, { listingIds = null, newProperty = false, now = new Date() } = {}) {
+  const { role, sandbox } = await userOf(db, userId);
+  if (role !== "landlord" || sandbox) {
+    return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
+  }
 
   const [settings, overdueInvoice] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId)]);
   let hasPaymentMethod = true;
@@ -123,13 +156,24 @@ export async function checkListingGate(db, userId, now = new Date()) {
     hasPaymentMethod = hasActivePaymentMethod(data, now);
   }
   let agreementSigned = true;
-  // Signed, and on a version that still counts (a version made live with "existing
-  // signers must re-sign" invalidates signatures on earlier ones).
-  if (settings.requireAgreement) agreementSigned = (await agreementState(db, userId)).valid;
+  let uncovered = [];
+  if (settings.requireAgreement) {
+    if (listingIds?.length || newProperty) {
+      const ids = await resolvePublishedIds(db, listingIds ?? []);
+      const { properties, covered } = await coverageFor(db, userId, now);
+      uncovered = uncoveredAmong(properties, covered, ids);
+      if (newProperty) uncovered.push({ listingId: null, address: "New property" });
+      agreementSigned = uncovered.length === 0;
+    } else {
+      // Signed, in its term, and on a version that still counts.
+      agreementSigned = (await agreementState(db, userId, now)).valid;
+    }
+  }
 
   return {
     ...gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice }),
     ...settings,
+    uncovered,
   };
 }
 

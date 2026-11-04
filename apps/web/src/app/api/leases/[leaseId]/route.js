@@ -123,7 +123,7 @@ export async function PATCH(req, { params }) {
   // Putting a withdrawn offering back on the market is publishing, so it passes the
   // same gate as a new one (payment method, agreement, no overdue invoice).
   if (goingLive && !(check.lease.is_active && !check.lease.unavailable)) {
-    const gate = await checkListingGate(supabase, session.user.id);
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: check.listingId ? [check.listingId] : [] });
     if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
   }
   const leaseProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));

@@ -13,9 +13,18 @@ import { billingErrorResponse } from "@/lib/billing/http";
 /*
  * The commission agreement's versions.
  *
- * GET   every version, newest first, with how many landlords signed each.
- * POST  multipart/form-data { label, file (PDF, 4 MB at most) }: a new draft. It
- *       is pushed to Documenso straight away when Documenso is connected.
+ * GET   every version, newest first, with how many landlords signed each and,
+ *       for a negotiated version, its landlord's name.
+ * POST  multipart/form-data: a new draft, pushed to Documenso straight away when
+ *       Documenso is connected.
+ *         label                  the version's name
+ *         file                   the PDF, 4 MB at most
+ *         kind                   master (the agreement) | amendment (Exhibit A amendment)
+ *         commissionRatePercent  the rate this document sets, filled into its
+ *                                "Commission rate" box and shown on invoices
+ *         landlordId             optional: a version negotiated with one landlord
+ *         changeRequestId        optional: the change request it answers
+ *         basedOnVersionId       optional: the standard version it was edited from
  *
  * @auth admin
  */
@@ -25,15 +34,33 @@ export async function GET() {
   try {
     const versions = await listVersions(supabase);
     const counts = new Map();
+    const names = new Map();
     if (versions.length) {
-      const { data, error } = await supabase.from("landlord_agreements").select("version_id").eq("status", "signed").not("version_id", "is", null);
-      if (error) throw error;
-      for (const { version_id } of data) counts.set(version_id, (counts.get(version_id) ?? 0) + 1);
+      const [masters, amendments] = await Promise.all([
+        supabase.from("landlord_agreements").select("version_id").eq("status", "signed").not("version_id", "is", null),
+        supabase.from("agreement_amendments").select("version_id").eq("status", "signed").not("version_id", "is", null),
+      ]);
+      if (masters.error) throw masters.error;
+      if (amendments.error) throw amendments.error;
+      for (const { version_id } of [...masters.data, ...amendments.data]) counts.set(version_id, (counts.get(version_id) ?? 0) + 1);
+      const landlordIds = [...new Set(versions.map((v) => v.landlord_id).filter(Boolean))];
+      if (landlordIds.length) {
+        const { data, error } = await supabase.from("users").select("id, name, email, company_name").in("id", landlordIds);
+        if (error) throw error;
+        for (const u of data) names.set(u.id, u.company_name || u.name || u.email);
+      }
     }
-    return NextResponse.json({ versions: versions.map((v) => versionView(v, counts)), documensoConnected: documensoConfigured() });
+    return NextResponse.json({ versions: versions.map((v) => versionView(v, counts, names)), documensoConnected: documensoConfigured() });
   } catch (err) {
     return billingErrorResponse(err, "list agreement versions");
   }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function uuidOrNull(value) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || !UUID.test(value)) throw new BillingError("bad_id", "That landlord or request id is not valid.");
+  return value;
 }
 
 export async function POST(req) {
@@ -52,6 +79,11 @@ export async function POST(req) {
       fileName: file.name,
       bytes: new Uint8Array(await file.arrayBuffer()),
       storePdf: (bytes) => storeAgreementVersion({ bytes }),
+      kind: form.get("kind") === "amendment" ? "amendment" : "master",
+      commissionRatePercent: form.get("commissionRatePercent"),
+      landlordId: uuidOrNull(form.get("landlordId")),
+      changeRequestId: uuidOrNull(form.get("changeRequestId")),
+      basedOnVersionId: uuidOrNull(form.get("basedOnVersionId")),
     });
     return NextResponse.json({ version: versionView(version) });
   } catch (err) {

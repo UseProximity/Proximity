@@ -6,6 +6,9 @@
  * the hundreds), then filtered and searched here.
  *
  *   filter  all | unsigned | needs_resign | in_progress | no_method | blocked | live
+ *           | uncovered (live offerings on a property their agreement does not cover)
+ *           | review (on a negotiated version a newer standard one asked everyone
+ *             to re-sign, or a covered address that has changed since signing)
  *
  * Also: who the "email everyone who hasn't signed" button reaches, and sending
  * the signing email (one landlord or that whole group).
@@ -17,12 +20,13 @@ import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
 import { getLiveVersion, resignCutoff } from "./agreementVersions.js";
 import { summarizeAgreementRows } from "./agreements.js";
+import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
 import { gateDecision, getGateSettings } from "./listingGate.js";
 
 const PAGE = 1000;
 const CHUNK = 150;
-export const FILTERS = ["all", "unsigned", "needs_resign", "in_progress", "no_method", "blocked", "live"];
+export const FILTERS = ["all", "unsigned", "needs_resign", "in_progress", "no_method", "blocked", "live", "uncovered", "review"];
 // The bulk email skips anyone asked this recently; a single resend skips a double click.
 export const BULK_RESEND_GAP_MS = 3 * 24 * 60 * 60 * 1000;
 export const SINGLE_RESEND_GAP_MS = 2 * 60 * 1000;
@@ -59,7 +63,7 @@ async function agreementRows(db, ids) {
     const full = await db
       .from("landlord_agreements")
       .select(
-        "id, user_id, version, status, signed_at, signer_name, signer_title, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, published_at)"
+        "id, user_id, version, status, signed_at, signer_name, signer_title, signed_file_key, signed_exhibit_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_end, commission_rate_percent, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at)"
       )
       .in("user_id", chunk)
       .neq("status", "superseded")
@@ -76,6 +80,92 @@ async function agreementRows(db, ids) {
     if (error) throw error;
     return data;
   });
+}
+
+/*
+ * Every live offering these landlords have, with its property: { owner_id,
+ * leaseId, listingId, address, unit }. Review sandbox listings are left out.
+ */
+async function liveOfferings(db, ids) {
+  const rows = await inChunks(ids, async (chunk) => {
+    const { data, error } = await db
+      .from("unit_leases")
+      .select(
+        "id, owner_id, listing_units!unit_id(listing_id, name, unit_number, unit_designator, title, published_at, deleted_at, listings!listing_id(id, address, city, state, zipcode, published_at, deleted_at, review_sandbox))"
+      )
+      .in("owner_id", chunk)
+      .eq("is_active", true)
+      .eq("unavailable", false)
+      .is("deleted_at", null)
+      .not("published_at", "is", null);
+    if (error) throw error;
+    return data;
+  });
+  return rows
+    .filter((r) => {
+      const u = r.listing_units;
+      const l = u?.listings;
+      return u && !u.deleted_at && u.published_at && l && !l.deleted_at && l.published_at && l.review_sandbox !== true;
+    })
+    .map((r) => ({
+      owner_id: r.owner_id,
+      leaseId: r.id,
+      listingId: r.listing_units.listing_id,
+      address: displayAddress(r.listing_units.listings),
+      unit: unitLabel(r.listing_units),
+    }));
+}
+
+async function coverageRowsFor(db, ids) {
+  return inChunks(ids, async (chunk) => {
+    const { data, error } = await db
+      .from("agreement_coverage")
+      .select("user_id, listing_id, address, agreement_id, amendment_id, status")
+      .in("user_id", chunk)
+      .eq("status", "covered");
+    if (missingSchema(error)) return [];
+    if (error) throw error;
+    return data;
+  });
+}
+
+async function pendingAmendmentUsers(db, ids) {
+  const rows = await inChunks(ids, async (chunk) => {
+    const { data, error } = await db.from("agreement_amendments").select("user_id, created_at").in("user_id", chunk).eq("status", "sent");
+    if (missingSchema(error)) return [];
+    if (error) throw error;
+    return data;
+  });
+  return new Map(rows.map((r) => [r.user_id, r.created_at]));
+}
+
+/*
+ * One landlord's coverage for the overview: their live properties, the ones with
+ * live offerings their agreement does not cover (and how many offerings), and
+ * covered addresses that have changed since they were signed for.
+ */
+export function coverageSummary({ offerings = [], coverageRows = [], state }) {
+  const covered = coveredMap(coverageRows, { master: state.signed, masterValid: state.valid });
+  const byListing = new Map();
+  for (const o of offerings) {
+    const entry = byListing.get(o.listingId) ?? { listingId: o.listingId, address: o.address, offerings: 0, units: new Set() };
+    entry.offerings += 1;
+    if (o.unit) entry.units.add(o.unit);
+    byListing.set(o.listingId, entry);
+  }
+  const uncovered = [...byListing.values()]
+    .filter((p) => !covered.has(p.listingId))
+    .map((p) => ({ listingId: p.listingId, address: p.address, offerings: p.offerings, units: [...p.units] }));
+  const addressChanged = [...byListing.values()]
+    .filter((p) => covered.has(p.listingId) && covered.get(p.listingId).address !== p.address)
+    .map((p) => ({ listingId: p.listingId, signedAddress: covered.get(p.listingId).address, currentAddress: p.address }));
+  return {
+    liveProperties: byListing.size,
+    coveredCount: covered.size,
+    uncovered,
+    uncoveredOfferings: uncovered.reduce((n, p) => n + p.offerings, 0),
+    addressChanged,
+  };
 }
 
 async function lastRequestEmails(db, ids) {
@@ -127,10 +217,15 @@ export function invoiceSummary(invoices) {
 }
 
 export function agreementSummary(state) {
-  const { signed, pending, lastEnded, valid, needsResign } = state;
-  const status = valid ? "signed" : needsResign ? "needs_resign" : pending ? "in_progress" : "not_signed";
+  const { signed, pending, lastEnded, valid, needsResign, expired } = state;
+  const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
   return {
     status,
+    termEnd: signed?.term_end ?? null,
+    negotiated: !!signed?.agreement_version?.landlord_id,
+    flaggedForReview: !!state.flaggedForReview,
+    commissionRatePercent: signed?.commission_rate_percent == null ? null : Number(signed.commission_rate_percent),
+    hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     signedAgreementId: signed?.signed_file_key ? signed.id : null,
     signedAt: signed?.signed_at ?? null,
     signerName: signed?.signer_name ?? null,
@@ -156,6 +251,10 @@ export function matchesFilter(row, filter) {
       return !row.publishing.allowed;
     case "live":
       return row.hasLiveListing;
+    case "uncovered":
+      return (row.coverage?.uncovered?.length ?? 0) > 0;
+    case "review":
+      return !!row.agreement.flaggedForReview || (row.coverage?.addressChanged?.length ?? 0) > 0;
     default:
       return true;
   }
@@ -177,7 +276,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   );
   const ids = landlords.map((l) => l.id);
 
-  const [live, agreements, methods, invoices, lastEmails, liveVersion, cutoff, settings] = await Promise.all([
+  const [live, agreements, methods, invoices, lastEmails, liveVersion, cutoff, settings, offerings, covRows, amending] = await Promise.all([
     liveListingOwners(db, ids),
     agreementRows(db, ids).then((r) => groupBy(r, "user_id")),
     inChunks(ids, async (chunk) => {
@@ -202,10 +301,14 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
     getLiveVersion(db),
     resignCutoff(db),
     getGateSettings(db),
+    liveOfferings(db, ids).then((r) => groupBy(r, "owner_id")),
+    coverageRowsFor(db, ids).then((r) => groupBy(r, "user_id")),
+    pendingAmendmentUsers(db, ids),
   ]);
 
   const rows = landlords.map((l) => {
-    const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion, cutoff });
+    const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion, cutoff, now });
+    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
     const payment = paymentSummary(methods.get(l.id), now);
     const invoice = invoiceSummary(invoices.get(l.id));
     const publishing = gateDecision({
@@ -221,7 +324,8 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       name: l.name ?? null,
       email: l.email ?? null,
       hasLiveListing: live.has(l.id),
-      agreement: agreementSummary(state),
+      agreement: { ...agreementSummary(state), amendmentPendingSince: amending.get(l.id) ?? null },
+      coverage,
       payment,
       invoices: invoice,
       publishing: { allowed: publishing.allowed, missing: publishing.missing },

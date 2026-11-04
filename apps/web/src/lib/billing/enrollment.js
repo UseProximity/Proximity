@@ -150,7 +150,7 @@ export async function validSignerIds(db, ids) {
   const rows = await inChunks(ids, async (chunk) => {
     const withVersion = await db
       .from("landlord_agreements")
-      .select("user_id, agreement_version:agreement_versions!version_id(published_at)")
+      .select("user_id, term_end, agreement_version:agreement_versions!version_id(published_at, landlord_id)")
       .in("user_id", chunk)
       .eq("status", "signed");
     if (!withVersion.error) return withVersion.data;
@@ -159,7 +159,15 @@ export async function validSignerIds(db, ids) {
     if (error) throw error;
     return data;
   });
-  return new Set(rows.filter((r) => signatureStillValid(r.agreement_version?.published_at ?? null, cutoff)).map((r) => r.user_id));
+  // Counts while in its term, on a version no re-sign invalidated (a negotiated
+  // version never is: those landlords are flagged for review instead).
+  const now = Date.now();
+  return new Set(
+    rows
+      .filter((r) => !r.term_end || new Date(r.term_end).getTime() > now)
+      .filter((r) => r.agreement_version?.landlord_id || signatureStillValid(r.agreement_version?.published_at ?? null, cutoff))
+      .map((r) => r.user_id)
+  );
 }
 
 /*

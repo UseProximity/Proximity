@@ -10,6 +10,8 @@
 --   commission_rate_percent  entered by the admin with the upload, filled into the
 --                            document's "Commission rate" box and shown on invoices
 --   provider_rate_field_id   the Documenso id of that box, found by "Check boxes"
+--   provider_address_field_id  the id of an optional "Address" box, filled with the
+--                            landlord's billing address from Stripe
 --   change_request_id        the change request a negotiated version answers
 --                            (foreign key added in 202611050003)
 --   based_on_version_id      the standard version a negotiated one was edited from
@@ -43,6 +45,7 @@ ALTER TABLE public.agreement_versions
   ADD COLUMN IF NOT EXISTS landlord_id             uuid REFERENCES public.users(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS commission_rate_percent numeric(6,3),
   ADD COLUMN IF NOT EXISTS provider_rate_field_id  integer,
+  ADD COLUMN IF NOT EXISTS provider_address_field_id integer,
   ADD COLUMN IF NOT EXISTS change_request_id       uuid,
   ADD COLUMN IF NOT EXISTS based_on_version_id     uuid REFERENCES public.agreement_versions(id) ON DELETE SET NULL;
 

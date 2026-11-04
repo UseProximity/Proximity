@@ -89,13 +89,16 @@ export function templateFieldSummary(envelope) {
   const signer = signerOf(envelope);
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
   const count = (type) => mine.filter((f) => f.type === type).length;
-  const titleField = mine.find((f) => f.type === "TEXT" && /\btitle\b/i.test(f.fieldMeta?.label ?? ""));
+  const textField = (re) => mine.find((f) => f.type === "TEXT" && re.test(f.fieldMeta?.label ?? ""))?.id ?? null;
   return {
     recipientId: signer?.id ?? null,
     signature: count("SIGNATURE"),
     name: count("NAME"),
     date: count("DATE"),
-    titleFieldId: titleField?.id ?? null,
+    // Text boxes we fill in, found by their label in Documenso's editor.
+    titleFieldId: textField(/\btitle\b/i),
+    rateFieldId: textField(/\bcommission\b/i),
+    addressFieldId: textField(/\baddress\b/i),
     ok: !!signer && count("SIGNATURE") > 0,
   };
 }
@@ -207,9 +210,17 @@ export function createDocumensoClient({
      * A landlord's copy of the template, ready to sign in the embed. Made as a draft
      * first and then distributed with distributionMethod NONE, so Documenso sends
      * no email of its own; distributing is what issues the signing token.
+     *
+     * `prefill` fills text boxes on the template: [{ id, value }] (title, commission
+     * rate, address). `exhibit` ({ bytes, fileName, pageCount, initialsBox }) is
+     * attached to the draft as a second document, with an initials box for the
+     * signer on each of its pages, before it is distributed.
      */
-    async createSigningCopy({ templateId, recipientId, email, name, externalId, titleFieldId = null, signerTitle = null }) {
-      const prefillFields = titleFieldId && signerTitle ? [{ id: titleFieldId, type: "text", value: signerTitle }] : [];
+    async createSigningCopy({ templateId, recipientId, email, name, externalId, titleFieldId = null, signerTitle = null, prefill = [], exhibit = null, title = null }) {
+      const prefillFields = [
+        ...(titleFieldId && signerTitle ? [{ id: titleFieldId, value: signerTitle }] : []),
+        ...prefill.filter((p) => p?.id && p.value != null && String(p.value).trim()),
+      ].map((p) => ({ id: p.id, type: "text", value: String(p.value).slice(0, 500) }));
       const used = await request("POST", "/envelope/use", {
         form: multipart({
           envelopeId: templateId,
@@ -217,17 +228,41 @@ export function createDocumensoClient({
           recipients: [{ id: recipientId, email, name }],
           ...(folderId && { folderId }),
           // Named after the landlord, so it is easy to find in Documenso.
-          override: { title: titled(`Commission agreement: ${name}${email && email !== name ? ` (${email})` : ""}`) },
+          override: { title: titled(`${title || "Commission agreement"}: ${name}${email && email !== name ? ` (${email})` : ""}`) },
           ...(prefillFields.length && { prefillFields }),
           distributeDocument: false,
         }),
       });
+      let exhibitItemId = null;
+      if (exhibit) {
+        const added = await request("POST", "/envelope/item/create-many", {
+          form: multipart({ envelopeId: used.id }, [{ bytes: exhibit.bytes, name: exhibit.fileName || "exhibit-a.pdf" }]),
+        });
+        exhibitItemId = added?.data?.[0]?.id ?? null;
+        if (!exhibitItemId) throw new DocumensoError("Documenso did not add the Exhibit A document.", 502, added);
+        const signerId = (await request("GET", `/envelope/${encodeURIComponent(used.id)}`)).recipients?.find((r) => r.role === "SIGNER")?.id;
+        if (!signerId) throw new DocumensoError("The copy has no signer to initial Exhibit A.", 502);
+        const box = exhibit.initialsBox;
+        await request("POST", "/envelope/field/create-many", {
+          json: {
+            envelopeId: used.id,
+            data: Array.from({ length: exhibit.pageCount }, (_, i) => ({
+              type: "INITIALS",
+              recipientId: signerId,
+              envelopeItemId: exhibitItemId,
+              page: i + 1,
+              ...box,
+              fieldMeta: { type: "initials", required: true, label: "Initials" },
+            })),
+          },
+        });
+      }
       const sent = await request("POST", "/envelope/distribute", {
         json: { envelopeId: used.id, meta: { distributionMethod: "NONE", ...(emailSettings && { emailSettings }) } },
       });
       const signer = (sent.recipients ?? []).find((r) => r.role === "SIGNER") ?? sent.recipients?.[0];
       if (!signer?.token) throw new DocumensoError("Documenso did not return a signing token.", 502, sent);
-      return { envelopeId: used.id, token: signer.token };
+      return { envelopeId: used.id, token: signer.token, exhibitItemId };
     },
 
     // The completed PDF. An envelope holds one item per uploaded file; ours has one.
@@ -235,6 +270,18 @@ export function createDocumensoClient({
       const items = [...(envelope?.envelopeItems ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       if (!items.length) throw new DocumensoError("The signed envelope has no document in it.", 502);
       return request("GET", `/envelope/item/${encodeURIComponent(items[0].id)}/download?version=signed`, { raw: true });
+    },
+
+    // Every signed document in the envelope, in order: the agreement, then Exhibit A.
+    async downloadSignedItems(envelope) {
+      const items = [...(envelope?.envelopeItems ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      if (!items.length) throw new DocumensoError("The signed envelope has no document in it.", 502);
+      const out = [];
+      for (const item of items) {
+        const bytes = await request("GET", `/envelope/item/${encodeURIComponent(item.id)}/download?version=signed`, { raw: true });
+        out.push({ id: item.id, order: item.order ?? 0, bytes });
+      }
+      return out;
     },
 
     cancel(envelopeId, reason) {

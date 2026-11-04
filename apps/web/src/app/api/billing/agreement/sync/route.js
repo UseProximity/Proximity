@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { agreementState, agreementView, syncAgreement } from "@/lib/billing/agreements";
+import { agreementView, coverageFor, syncAgreement } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -21,8 +21,8 @@ export async function POST() {
   try {
     const { documenso, signingAvailable, options } = agreementServices();
     const result = signingAvailable ? await syncAgreement(supabase, documenso, session.user.id, options) : "unchanged";
-    const state = await agreementState(supabase, session.user.id);
-    return NextResponse.json({ result, agreement: agreementView(state, { signingAvailable }) });
+    const { state, properties, covered } = await coverageFor(supabase, session.user.id);
+    return NextResponse.json({ result, agreement: agreementView(state, { signingAvailable, properties, covered }) });
   } catch (err) {
     return billingErrorResponse(err, "sync agreement");
   }

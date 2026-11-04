@@ -13,6 +13,8 @@
 import { appEnv, isProdData, outreachEnabled } from "@/lib/appEnv";
 import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured, documensoSetting } from "./documenso.js";
 import { storeSignedAgreement } from "./agreementFiles.js";
+import { stripeBillingAddress } from "./billingAddress.js";
+import supabase from "@/lib/supabase";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
 
 export function documensoClient() {
@@ -30,9 +32,11 @@ export function agreementServices() {
     signingAvailable: documensoConfigured(),
     options: {
       storeSigned: storeSignedAgreement,
+      storeExhibit: storeSignedAgreement,
+      landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       notify: {
-        declined: ({ landlord, reason }) =>
-          sendAgreementDeclinedTeamEmail({ landlordName: landlord?.name, landlordEmail: landlord?.email, reason }),
+        declined: ({ landlord, reason, kind }) =>
+          sendAgreementDeclinedTeamEmail({ landlordName: landlord?.name, landlordEmail: landlord?.email, reason, kind }),
       },
     },
   };
