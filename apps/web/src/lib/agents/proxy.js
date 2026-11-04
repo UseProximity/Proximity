@@ -32,6 +32,7 @@ import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
 import { askLandlord, pendingClarifierFor, studentReplyToClarifier } from "./questions";
 import { handleVisitorEmail, askedLine } from "./visitorEmail";
 import { shortDate } from "./sections";
+import { isSandboxContact } from "@/lib/contactTracking";
 
 const SYSTEM = `You are Proxy, the assistant for one rental listing on Proximity, a housing site for WashU (Washington University in St. Louis) students. You answer students' questions about this listing inside a chat on the listing's page. The landlord is not in this chat. What you cannot answer, Proximity sends to the landlord on the student's behalf; the landlord answers you, and you post it back here later.
 
@@ -132,6 +133,8 @@ async function countInquiry({ listingId, userId }) {
           .upsert({ user_id: userId, listing_id: listingId, interaction_type_id: t.id }, { onConflict: "user_id,listing_id,interaction_type_id", ignoreDuplicates: true });
       }
     }
+    // A review sandbox student's question does not count for the real landlord.
+    if (await isSandboxContact(userId)) return;
     await supabase.rpc("increment_listing_metric", { p_listing_id: listingId, p_metric_name: "contacts" });
   } catch (err) {
     console.error("[proxy] inquiry count failed:", err?.message ?? err);
