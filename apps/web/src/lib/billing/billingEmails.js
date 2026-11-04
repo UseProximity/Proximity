@@ -11,7 +11,7 @@
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { emailFooter } from "@/lib/email";
-import { AGREEMENT_REQUEST_KIND, BILLING_TEAM_EMAIL } from "./constants";
+import { AGREEMENT_REQUEST_KIND, BILLING_TEAM_EMAIL, CHANGE_REQUEST_TEAM_EMAILS } from "./constants";
 import * as t from "./billingEmailTemplates";
 
 const transporter = nodemailer.createTransport({
@@ -29,7 +29,7 @@ const TEAM_REASON = "Internal billing notification.";
 // Resolves true when the email was handed to the mailer, false when it was skipped
 // or failed (never throws). Most callers ignore the answer; the enrollment send
 // counts it to report how many went out.
-async function deliver({ kind, to, userId, reason, message, attachments }) {
+async function deliver({ kind, to, userId, reason, message, attachments, sandbox = false }) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn(`[billing email] ${kind}: email env vars not set, skipping.`);
     return false;
@@ -43,6 +43,8 @@ async function deliver({ kind, to, userId, reason, message, attachments }) {
       subject: message.subject,
       html: `${message.html}${emailFooter({ reason })}`,
       ...(attachments?.length && { attachments }),
+      // A review sandbox account is never emailed (lib/outreach.js).
+      ...(sandbox && { sandbox: true }),
     });
     return true;
   } catch (err) {
@@ -87,3 +89,21 @@ export const sendAgreementDeclinedTeamEmail = (input) =>
   toTeam("billing_agreement_declined_team", t.agreementDeclinedTeamEmail(input));
 export const sendMethodRemovedTeamEmail = (input) =>
   toTeam("billing_method_removed_team", t.methodRemovedTeamEmail(input));
+
+// Agreement change requests. The team emails go to CHANGE_REQUEST_TEAM_EMAILS.
+const toChangeRequestTeam = (kind, message) =>
+  deliver({ kind, to: CHANGE_REQUEST_TEAM_EMAILS.join(", "), reason: TEAM_REASON, message });
+export const sendChangeRequestTeamEmail = (input) =>
+  toChangeRequestTeam("billing_change_request_team", t.changeRequestTeamEmail(input));
+export const sendChangeRequestReminderEmail = (input) =>
+  toChangeRequestTeam("billing_change_request_reminder", t.changeRequestReminderEmail(input));
+// `sandbox` true for a review sandbox account: recorded as suppressed, never sent.
+export const sendChangeRequestUpdateEmail = (landlord, input, { sandbox = false } = {}) =>
+  deliver({
+    kind: "billing_change_request_update",
+    to: landlord.email,
+    userId: landlord.id,
+    reason: LANDLORD_REASON,
+    message: t.changeRequestUpdateEmail({ name: landlord.name, ...input }),
+    sandbox,
+  });

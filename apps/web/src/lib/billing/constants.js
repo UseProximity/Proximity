@@ -25,6 +25,10 @@ export const BILLING_TEAM_EMAIL = "info@useproximity.org";
 // dashboard reads the latest one per landlord to show when they were last asked.
 export const AGREEMENT_REQUEST_KIND = "billing_agreement_request";
 
+// Who hears about landlords' requests to change the commission agreement (Wyatt,
+// 2026-11-04): new requests, landlord replies and the reminder for unanswered ones.
+export const CHANGE_REQUEST_TEAM_EMAILS = ["info@useproximity.org", "o.wyatt@wustl.edu"];
+
 export const CHARGE_STATUSES = [
   "unconfirmed",
   "pending",

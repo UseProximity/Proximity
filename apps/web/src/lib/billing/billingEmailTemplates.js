@@ -213,3 +213,73 @@ export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason
     `),
   };
 }
+
+// ── Agreement change requests ───────────────────────────────────────────────
+
+const DOC_LABEL = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
+const quote = (s) =>
+  `<blockquote style="margin:0 0 12px;padding-left:12px;border-left:3px solid #e5e7eb;white-space:pre-wrap">${e(s)}</blockquote>`;
+
+// To the team: a landlord opened a request (`isReply` false) or added to one (true).
+export function changeRequestTeamEmail({ landlordName, landlordEmail, documentKind, section, body, proposedText, hasFile, isReply, adminUrl }) {
+  const who = landlordName || landlordEmail || "A landlord";
+  return {
+    subject: isReply
+      ? `Agreement change request: ${who} replied`
+      : `Agreement change request from ${who}`,
+    html: wrap(`
+      <p><strong>${e(who)}</strong>${landlordEmail ? ` (${e(landlordEmail)})` : ""} ${
+        isReply ? "replied on their change request about" : "asked for changes to"
+      } ${DOC_LABEL[documentKind] ?? DOC_LABEL.master}.</p>
+      ${section ? `<p><strong>Section:</strong> ${e(section)}</p>` : ""}
+      <p><strong>${isReply ? "Their message" : "What and why"}:</strong></p>
+      ${quote(body)}
+      ${proposedText ? `<p><strong>Proposed wording:</strong></p>${quote(proposedText)}` : ""}
+      ${hasFile ? "<p>They attached a file. Open it from the admin dashboard.</p>" : ""}
+      ${button(adminUrl, "Open in admin")}
+    `),
+  };
+}
+
+// To the team: requests that have waited for an answer.
+export function changeRequestReminderEmail({ requests, adminUrl }) {
+  const rows = requests
+    .map(
+      (r) =>
+        `<li>${e(r.landlord?.name || r.landlord?.email || "A landlord")}${r.section ? `, section: ${e(r.section)}` : ""} (waiting since ${dateOnly(r.waitingSince)})</li>`
+    )
+    .join("");
+  return {
+    subject: `${requests.length} agreement change request${requests.length === 1 ? "" : "s"} waiting for an answer`,
+    html: wrap(`
+      <p>These landlords asked for changes to the commission agreement and have not heard back in 5 days or more:</p>
+      <ul>${rows}</ul>
+      ${button(adminUrl, "Answer in admin")}
+    `),
+  };
+}
+
+// To the landlord: the team replied, accepted or declined.
+export function changeRequestUpdateEmail({ name, outcome, message, paymentsUrl }) {
+  const lead = {
+    replied: "We replied to your request to change the commission agreement.",
+    accepted:
+      "We agreed to your requested changes. We are preparing a version of the agreement for you, and you will be able to sign it in your Payments tab once it is ready.",
+    declined:
+      "We are not able to make the changes you asked for. You can still sign the standard agreement in your Payments tab, or reply with a new request.",
+  }[outcome] ?? "There is an update on your request to change the commission agreement.";
+  return {
+    subject:
+      outcome === "accepted"
+        ? "Your commission agreement change request was accepted"
+        : outcome === "declined"
+          ? "About your commission agreement change request"
+          : "We replied to your commission agreement change request",
+    html: wrap(`
+      ${hello(name)}
+      <p>${lead}</p>
+      ${message ? quote(message) : ""}
+      ${button(paymentsUrl, "View in Proximity")}
+    `),
+  };
+}

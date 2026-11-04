@@ -11,6 +11,8 @@
  *   Invoices     failed or overdue invoices, and ones whose leases were withdrawn:
  *                Retry payment, and Restore leases once settled.
  *   Corrections  refund or credit a wrong Paid charge (the charge is never edited).
+ *   Change requests  landlords asking for different wording in the agreement:
+ *                reply, accept (then upload their own version) or decline.
  *   Agreements and gate  record commission agreements by hand (sent, signed, void) and
  *                switch on the rules that stop a landlord publishing without a payment
  *                method or a signed agreement.
@@ -32,6 +34,7 @@ import TestChargeForm from "@/components/admin/billing/TestChargeForm";
 import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
 import CorrectionsPanel from "@/components/admin/billing/CorrectionsPanel";
 import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
+import ChangeRequestsPanel from "@/components/admin/billing/ChangeRequestsPanel";
 import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 
@@ -76,6 +79,7 @@ export default function BillingView({ search }) {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("confirm");
   const [dialog, setDialog] = useState(null); // { key, charge, outcome? }
+  const [changeCounts, setChangeCounts] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +93,13 @@ export default function BillingView({ search }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The Change requests badge: requests waiting on the team.
+  useEffect(() => {
+    call("/api/admin/billing/change-requests?summary=1")
+      .then((r) => setChangeCounts(r.counts))
+      .catch(() => {});
+  }, []);
 
   const act = async (fn, successText) => {
     setBusy(true);
@@ -152,6 +163,7 @@ export default function BillingView({ search }) {
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
     { key: "corrections", label: "Corrections" },
     { key: "agreements", label: "Landlords and agreements" },
+    { key: "changes", label: "Change requests", count: changeCounts?.open ?? 0 },
     { key: "enrollment", label: "Launch enrollment" },
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
@@ -209,6 +221,9 @@ export default function BillingView({ search }) {
       )}
       {tab === "corrections" && <CorrectionsPanel search={search} />}
       {tab === "agreements" && <AgreementsPanel search={search} />}
+      {tab === "changes" && (
+        <ChangeRequestsPanel search={search} onOpenAgreements={() => setTab("agreements")} onCountsChange={setChangeCounts} />
+      )}
       {tab === "enrollment" && <EnrollmentPanel />}
       {tab === "run" && <BillingRunPanel />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
