@@ -46,6 +46,9 @@ function statusBadge(row) {
     case "failed":
       return { color: "red", label: "Failed to send" };
     case "suppressed":
+      if (row.status_detail === "review sandbox") {
+        return { color: "gray", label: "Not sent (review sandbox)", title: "A review sandbox account (App Store review) caused this email, so it was never sent to anyone. The body shows what it would have said." };
+      }
       return { color: "gray", label: "Not sent (test site)", title: "Off the live site with no test inbox chosen, so nothing was sent." };
     default:
       if (row.provider === "gmail") {

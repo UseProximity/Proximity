@@ -1,6 +1,7 @@
 import supabase from "@/lib/supabase";
 import { savedList } from "@/lib/listings/leasePrefsColumns";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
+import { stripSandboxReviews } from "@/lib/reviewSandbox";
 import {
   isLiveLease,
   isPublished,
@@ -467,6 +468,9 @@ export async function buildDashboardUser({ email, id } = {}) {
       : Promise.resolve({ data: [] }),
   ]);
 
+  // Review sandbox accounts' reviews are not part of any listing's rating here.
+  await stripSandboxReviews([...(favListings ?? []), ...(contactedListings ?? []), ...(ownListings ?? [])]);
+
   const metricsMap = {};
   for (const m of clicksMetrics ?? []) {
     if (m.metric_types?.name === "clicks") {
@@ -540,6 +544,7 @@ export async function loadDashboardListing({ listingId, userId }) {
     .is("deleted_at", null)
     .maybeSingle();
   if (!l) return null;
+  await stripSandboxReviews([l]);
   const landlords = (l.listing_landlords ?? []).map((x) => x.user_id);
   const holdsLease = (l.listing_units ?? []).some((u) => (u.unit_leases ?? []).some((lease) => lease.owner_id === userId && !lease.deleted_at));
   if (!landlords.includes(userId) && !holdsLease) return null;

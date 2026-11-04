@@ -9,6 +9,7 @@
  */
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { withoutSandboxReviews } from "@/lib/reviewSandbox";
 import AuthCard from "@/components/auth/AuthCard";
 import { CopyLinkBox, Countdown, PaymentMethodBox } from "./ReferClient";
 
@@ -36,15 +37,16 @@ function money(n) {
   return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
 }
 
-// Map of referrer_id → number of non-deleted reviews they've driven.
+// Map of referrer_id → number of non-deleted reviews they've driven. Reviews by
+// review sandbox accounts (App Store review) never count, so they never earn money.
 async function getReferrerCounts() {
   const { data: rows } = await supabase
     .from("listing_reviews")
-    .select("referrer_id")
+    .select("referrer_id, user_id")
     .not("referrer_id", "is", null)
     .is("deleted_at", null);
   const counts = {};
-  for (const r of rows || []) counts[r.referrer_id] = (counts[r.referrer_id] || 0) + 1;
+  for (const r of await withoutSandboxReviews(rows || [])) counts[r.referrer_id] = (counts[r.referrer_id] || 0) + 1;
   return counts;
 }
 
@@ -127,17 +129,18 @@ export default async function ReferHome() {
 
   // ── Logged in: dashboard ────────────────────────────────────────────────
   const userId = session.user.id;
-  const [{ data: reviews }, counts] = await Promise.all([
+  const [{ data: allReviews }, counts] = await Promise.all([
     supabase
       .from("listing_reviews")
-      .select("id, created_at, rating, reviewer:users!user_id(name), listings!listing_id(address)")
+      .select("id, created_at, rating, user_id, reviewer:users!user_id(name), listings!listing_id(address)")
       .eq("referrer_id", userId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     getReferrerCounts(),
   ]);
 
-  const list = (reviews || []).map((r) => ({
+  const reviews = await withoutSandboxReviews(allReviews || []);
+  const list = reviews.map((r) => ({
     id: r.id,
     date: r.created_at,
     rating: r.rating,

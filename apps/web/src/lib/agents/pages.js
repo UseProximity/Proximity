@@ -23,6 +23,7 @@ import { findOrCreateSource, ensureAgent } from "./store";
 import { synthesizeKnowledge } from "./synthesize";
 import { crawlSite, MAX_CRAWL_PAGES } from "./crawl";
 import { foundUrlSet } from "./foundRead";
+import { MAX_FOUND_PAGES } from "./foundUrls";
 
 const MAX_PAGES = 4;
 const MAX_CHARS = 24000;
@@ -140,13 +141,16 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
 
 /*
  * The daily read: every page this listing already knows, re-read if changed.
- * Pages found by source search are left out: they are read once at launch
- * (lib/agents/foundRead.js), and re-reading them is a later decision.
+ * Pages the found reader made are left out: they are read once at launch
+ * (lib/agents/foundRead.js), and re-reading them is a later decision. A
+ * landlord page that source search also turned up stays in (foundUrls.js,
+ * isFoundSource).
  */
 export async function knownPageUrls(listingId) {
   const [{ data }, found] = await Promise.all([
-    supabase.from("listing_sources").select("url").eq("listing_id", listingId).eq("kind", "page").eq("enabled", true).not("url", "is", null).limit(MAX_CRAWL_PAGES),
+    supabase.from("listing_sources").select("url").eq("listing_id", listingId).eq("kind", "page").eq("enabled", true).not("url", "is", null)
+      .order("created_at", { ascending: true }).limit(MAX_CRAWL_PAGES + MAX_FOUND_PAGES),
     foundUrlSet(listingId),
   ]);
-  return (data ?? []).map((r) => r.url).filter((u) => !found.has(u));
+  return (data ?? []).map((r) => r.url).filter((u) => !found.has(u)).slice(0, MAX_CRAWL_PAGES);
 }

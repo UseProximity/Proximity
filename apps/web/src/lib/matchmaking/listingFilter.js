@@ -23,6 +23,7 @@ import {
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import { fetchSaturation } from "./saturation";
 import { stripAiInstructions } from "@/lib/contentRules";
+import { sandboxViewerInScope, stripSandboxReviews } from "@/lib/reviewSandbox";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
@@ -959,18 +960,32 @@ function computeFitScores(pool, weights, preferences, vettingById = null) {
 // needs (units, leases, reviews, amenities, images, walk times). Shared by
 // rankListings and the narrowing phase so both see the same universe.
 export async function fetchActiveListings() {
-  const { data, error } = await supabase
-    .from("listings")
-    .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
-    .is("deleted_at", null)
-    .eq("unavailable", false)
-    .not("published_at", "is", null)
-    .limit(80);
+  const active = (sandbox) =>
+    supabase
+      .from("listings")
+      .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
+      .is("deleted_at", null)
+      .eq("unavailable", false)
+      .not("published_at", "is", null)
+      .eq("review_sandbox", sandbox);
+  // Never recommend a listing made by an App Store review sandbox account to a real
+  // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
+  // the sandbox listings, fetched on their own so they never push a real one out of
+  // the 80.
+  const { data, error } = await active(false).limit(80);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
+  let rows = data ?? [];
+  if (sandboxViewerInScope()) {
+    const { data: sandboxRows, error: sandboxErr } = await active(true).limit(20);
+    if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
+    rows = [...rows, ...(sandboxRows ?? [])];
+  }
+  // Review sandbox accounts' reviews never move a listing's rating here.
+  await stripSandboxReviews(rows);
   // Retired units (collapsed by a property merge) are not rentable options, and
   // neither are drafts. Draft offerings are dropped here too, so every check
   // below sees only what students can.
-  return (data ?? []).map((row) => ({
+  return rows.map((row) => ({
     ...row,
     listing_units: publicUnits(row.listing_units).map((u) => ({
       ...u,

@@ -287,3 +287,85 @@ describe("staging redirect allowlist", () => {
     assert.equal(accepted.sent[0].to, "wyatt@useproximity.org");
   });
 });
+
+// ---- Review sandbox (App Store review accounts) ------------------------------------
+// A message flagged `sandbox: true` is never sent and never redirected, on any
+// environment, whatever else is configured. It is recorded as suppressed with a reason.
+
+const sandboxMessage = () => ({ ...message(), bcc: "hidden@real.example", sandbox: true });
+
+describe("review sandbox: suppressed, never sent", () => {
+  for (const appEnv of ["production", "staging", "development"]) {
+    it(`${appEnv}: nothing reaches the transporter, and the reason is "review sandbox"`, async () => {
+      process.env.APP_ENV = appEnv;
+      const t = fakeTransporter();
+      const res = await sendMailSafe(t, { ...sandboxMessage(), logAs: { kind: "chat_alert" } });
+      assert.equal(t.sent.length, 0);
+      assert.deepEqual(res, { suppressed: true, reason: "review sandbox" });
+    });
+  }
+
+  it("is not redirected anywhere: the tester header (request and captured string), OUTREACH_TEST_RECIPIENT and a leftover REVIEW_SANDBOX_INBOX are all ignored", async () => {
+    process.env.OUTREACH_TEST_RECIPIENT = "env@test.example";
+    process.env.REVIEW_SANDBOX_INBOX = "review-inbox@sandbox.example";
+    try {
+      for (const appEnv of ["production", "staging", "development"]) {
+        process.env.APP_ENV = appEnv;
+        for (const req of [reqWith("tester@test.example"), "tester@test.example", undefined]) {
+          const t = fakeTransporter();
+          const res = await sendMailSafe(t, sandboxMessage(), req);
+          assert.equal(t.sent.length, 0, `${appEnv} must not send`);
+          assert.equal(res.suppressed, true);
+        }
+      }
+    } finally {
+      delete process.env.REVIEW_SANDBOX_INBOX;
+    }
+  });
+
+  it("only an exact true flags a message", async () => {
+    process.env.APP_ENV = "production";
+    for (const value of [false, undefined, null, "true", 1]) {
+      const t = fakeTransporter();
+      await sendMailSafe(t, { ...message(), sandbox: value });
+      assert.equal(t.sent.length, 1, `sandbox: ${String(value)} must send`);
+      assert.equal(t.sent[0].to, "landlord@real.example", `sandbox: ${String(value)}`);
+      assert.equal("sandbox" in t.sent[0], false);
+    }
+  });
+});
+
+describe("review sandbox: normal mail is unchanged (regression)", () => {
+  it("production, no sandbox field: real recipient, cc intact, subject untouched", async () => {
+    process.env.APP_ENV = "production";
+    const t = fakeTransporter();
+    await sendMailSafe(t, { ...message(), bcc: "hidden@real.example" });
+    assert.equal(t.sent.length, 1);
+    assert.equal(t.sent[0].to, "landlord@real.example");
+    assert.equal(t.sent[0].cc, "student@real.example");
+    assert.equal(t.sent[0].bcc, "hidden@real.example");
+    assert.equal(t.sent[0].subject, "Hello");
+  });
+
+  it("production, sandbox: false: real recipient, cc intact, flag removed", async () => {
+    process.env.APP_ENV = "production";
+    const t = fakeTransporter();
+    await sendMailSafe(t, { ...message(), sandbox: false });
+    assert.equal(t.sent[0].to, "landlord@real.example");
+    assert.equal(t.sent[0].cc, "student@real.example");
+    assert.equal("sandbox" in t.sent[0], false);
+  });
+
+  it("staging, no sandbox field: the existing tester redirect and suppression are unchanged", async () => {
+    process.env.APP_ENV = "staging";
+    const redirected = fakeTransporter();
+    await sendMailSafe(redirected, message(), reqWith("tester@test.example"));
+    assert.equal(redirected.sent[0].to, "tester@test.example");
+    assert.equal(redirected.sent[0].cc, undefined);
+    assert.equal(redirected.sent[0].subject, "[TEST → was: landlord@real.example] Hello");
+    const suppressed = fakeTransporter();
+    const res = await sendMailSafe(suppressed, message());
+    assert.equal(suppressed.sent.length, 0);
+    assert.deepEqual(res, { suppressed: true });
+  });
+});

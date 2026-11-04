@@ -436,7 +436,7 @@ export async function claimUnclaimedProperty({ userId, listingId, sublease = fal
 
   const { data: user } = await supabase
     .from("users")
-    .select("id, deleted_at, roles!role_id(name)")
+    .select("id, deleted_at, review_sandbox, roles!role_id(name)")
     .eq("id", userId)
     .maybeSingle();
   if (!user || user.deleted_at || user.roles?.name !== "landlord") return false;
@@ -478,6 +478,21 @@ export async function claimUnclaimedProperty({ userId, listingId, sublease = fal
       .limit(1);
     if (rival?.length) return false;
   }
+
+  /*
+   * A review sandbox account (App Store review) and a real landlord never own each
+   * other's properties: a sandbox account must not take a real property, and a real
+   * landlord must not take a sandbox one (it is hidden from every student). Read only
+   * now that the claim would otherwise go ahead, so the early exits above cost nothing
+   * extra. As with the landlord read above, a failure leaves the property alone.
+   */
+  const { data: target, error: targetErr } = await supabase
+    .from("listings")
+    .select("review_sandbox")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (targetErr || !target) return false;
+  if ((target.review_sandbox === true) !== (user.review_sandbox === true)) return false;
 
   /*
    * Handing over the placeholder's own row rather than inserting a second one

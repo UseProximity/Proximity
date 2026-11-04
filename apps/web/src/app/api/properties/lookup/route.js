@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { unitIsAvailable, isLiveLease, isPublished } from "@/lib/listings/unitAvailability";
 import { lookupClientKey, lookupRateLimited } from "@/lib/listings/lookupRateLimit";
 import { listingsAtAddress } from "@/lib/listings/propertyName";
+import { withoutSandboxRows } from "@/lib/reviewSandbox";
 import { unitNameKey } from "@/utils/unitName";
 import { sortUnits } from "@/utils/unitOrder";
 
@@ -58,7 +59,7 @@ export async function GET(req) {
   const { data: rows, error } = await supabase
     .from("listings")
     .select(
-      `id, title, address, latitude, longitude, created_at, published_at,
+      `id, title, address, latitude, longitude, created_at, published_at, review_sandbox,
        listing_landlords!listing_id(user_id),
        listing_images(id, listing_image_units(unit_id)),
        listing_units!listing_id(
@@ -97,7 +98,9 @@ export async function GET(req) {
    */
   const ownsRow = (row) =>
     !!userId && (row.listing_landlords ?? []).some((l) => l.user_id === userId);
-  const visibleRows = (rows ?? [])
+  // A review sandbox property is not on the site for anyone but a sandbox account: it
+  // must never be offered to a real landlord to add their units to.
+  const visibleRows = (await withoutSandboxRows(rows ?? [], userId))
     .filter((row) => isPublished(row) || ownsRow(row))
     .map((row) => {
       const owner = ownsRow(row);

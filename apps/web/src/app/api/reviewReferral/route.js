@@ -65,6 +65,7 @@ import {
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 import { checkReviewText } from "@/lib/contentRules";
 import { escapeHtml } from "@/lib/escapeHtml";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 export const dynamic = "force-dynamic";
 
@@ -214,6 +215,8 @@ async function findExactAddressListingId({ address, lat, lng }) {
     .from("listings")
     .select("id, address, lease_type, created_at")
     .is("deleted_at", null)
+    // A review sandbox listing is hidden, so a real review must not be filed on it.
+    .eq("review_sandbox", false)
     .gte("latitude", lat - latPad)
     .lte("latitude", lat + latPad)
     .gte("longitude", lng - lngPad)
@@ -606,6 +609,18 @@ export async function POST(req) {
       );
     }
 
+    /*
+     * Review sandbox (App Store review accounts): the review is seen only by its
+     * author (lib/reviewSandbox.js), a property it creates is a sandbox listing, and
+     * no landlord or team email goes out about it. A failed lookup saves nothing.
+     */
+    let reviewerIsSandbox;
+    try {
+      reviewerIsSandbox = (await sandboxIdsAmong([reviewerUserId])).has(reviewerUserId);
+    } catch {
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
     // ── Resolve the listing: exact address match, else create a stub ────────
     const addressText = String(address || "").trim();
     if (!addressText || latitude == null || longitude == null) {
@@ -657,6 +672,19 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // The stub is made as the Proximity placeholder, so the creation trigger does not
+      // stamp it. A sandbox reviewer's new property is a sandbox listing.
+      if (reviewerIsSandbox) {
+        const { error: stampErr } = await supabase
+          .from("listings")
+          .update({ review_sandbox: true })
+          .eq("id", stubId);
+        if (stampErr) {
+          console.error("[reviewReferral] sandbox stamp failed:", stampErr.message);
+          return NextResponse.json({ error: "Could not save that property." }, { status: 500 });
+        }
+      }
 
       // Tag the stub with the reviewer's school. Written here rather than passed into
       // rpc_create_listing because that RPC inserts an explicit column list that omits
@@ -757,7 +785,8 @@ export async function POST(req) {
     }
 
     // ── Notify the landlord + flag email mismatches (best-effort) ───────────
-    try {
+    // Never for a review sandbox account's review: nobody but its author sees it.
+    if (!reviewerIsSandbox) try {
       const proximityId = await resolveProximityLandlordId();
       const { data: listingRow } = await supabase
         .from("listings")

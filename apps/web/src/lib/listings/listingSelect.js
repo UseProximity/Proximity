@@ -32,5 +32,5 @@ export const LISTING_SELECT = `
   listing_utilities!listing_id(
     electric, gas, heat, water, internet, trash, cable, sewer, cooling),
   listing_images(id, url, sort_order, owner_id, listing_image_units(unit_id)),
-  listing_reviews!listing_id(rating, legitimacy, deleted_at)
+  listing_reviews!listing_id(rating, legitimacy, deleted_at, user_id)
 `.trim();

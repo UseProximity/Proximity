@@ -26,6 +26,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { sandboxViewFor } from "./sandbox";
 import { detectTourProposal } from "./tourProposals";
 import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
 import { shortDate } from "./sections";
@@ -374,8 +375,10 @@ export async function listStudentTours(studentId) {
 }
 
 export async function listLandlordTours(landlordId) {
-  const { data, error } = await supabase.from("tour_requests").select(TOUR_SELECT).eq("landlord_id", landlordId).order("created_at", { ascending: false }).limit(100);
+  const { data: rows, error } = await supabase.from("tour_requests").select(TOUR_SELECT).eq("landlord_id", landlordId).order("created_at", { ascending: false }).limit(100);
   if (error) throw fail("tours", error);
+  // A review sandbox student's tour never shows to a real landlord (lib/agents/sandbox.js).
+  const data = (await sandboxViewFor(landlordId)).tours(rows ?? []);
   const ids = (data ?? []).map((t) => t.student_id);
   const { data: students } = ids.length ? await supabase.from("users").select("id, name").in("id", ids) : { data: [] };
   const names = new Map((students ?? []).map((s) => [s.id, s.name]));

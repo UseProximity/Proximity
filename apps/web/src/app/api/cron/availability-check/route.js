@@ -44,6 +44,9 @@ export async function GET(req) {
     // A draft has never been in front of students, so there is nothing to check.
     .not("published_at", "is", null)
     .is("pms_connection_id", null)
+    // A listing made by an App Store review sandbox account can carry any contact address
+    // the reviewer typed, which may belong to a real person, so it is never emailed.
+    .eq("review_sandbox", false)
     .or("unavailable.is.null,unavailable.eq.false")
     .or(`last_verified_at.is.null,last_verified_at.lt.${staleCutoff}`)
     .or(`availability_email_sent_at.is.null,availability_email_sent_at.lt.${cooldownCutoff}`)

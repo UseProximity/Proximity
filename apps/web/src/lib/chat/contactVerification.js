@@ -19,6 +19,7 @@
 import { createHash, randomBytes } from "crypto";
 import supabase from "@/lib/supabase";
 import { sendContactVerificationEmail } from "@/lib/email";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const HOUSE_ACCOUNT_EMAIL = "info@useproximity.org";
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -106,6 +107,12 @@ export async function requestContactVerification({
       .maybeSingle();
     if (!landlord) return "skipped";
     if (normalizeContactEmail(landlord.email) === normalized) return "confirmed";
+
+    // A review sandbox landlord never sends a confirmation: the address was typed by the
+    // reviewer and may belong to a real person, and confirming it would route messages
+    // (with a login link and reply address) to them. Nothing is sent and nothing is
+    // stored. A failed lookup returns "failed" (below) before anything is written.
+    if ((await sandboxIdsAmong([landlordId])).has(landlordId)) return "skipped";
 
     const { data: existing } = await supabase
       .from("contact_email_verifications")
@@ -197,7 +204,7 @@ export async function confirmContactVerification(rawToken) {
 
   const { data: row, error } = await supabase
     .from("contact_email_verifications")
-    .select("id, email, verified_at, expires_at")
+    .select("id, email, verified_at, expires_at, landlord_id")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
@@ -206,6 +213,15 @@ export async function confirmContactVerification(rawToken) {
     return null;
   }
   if (!row) return null;
+
+  // A review sandbox landlord's links never confirm anything, including ones emailed
+  // before sandbox emails were suppressed. A failed lookup refuses the link too.
+  try {
+    if ((await sandboxIdsAmong([row.landlord_id])).has(row.landlord_id)) return null;
+  } catch (err) {
+    console.error("confirmContactVerification sandbox check failed:", err?.message ?? err);
+    return null;
+  }
   if (row.verified_at) return { email: row.email };
   if (new Date(row.expires_at).getTime() <= Date.now()) return null;
 

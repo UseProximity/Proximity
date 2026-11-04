@@ -91,11 +91,11 @@ async function geocode(address) {
 }
 
 /* A name that is free, or the name with the street behind it, or with a tag. */
-async function freeTitle(name, address) {
+async function freeTitle(name, address, userId) {
   const street = address && address !== name ? address.split(",")[0].trim() : null;
   const candidates = [name, street ? `${name} (${street})` : null, `${name} ${Math.random().toString(36).slice(2, 6)}`].filter(Boolean);
   for (const t of candidates) {
-    if (!(await findPropertyNameConflict(t, { schoolId: null }))) return t;
+    if (!(await findPropertyNameConflict(t, { schoolId: null, userId }))) return t;
   }
   return candidates.at(-1);
 }
@@ -104,7 +104,7 @@ async function createDraft({ userId, user, target }) {
   const name = String(target.name ?? "").trim().slice(0, 120) || String(target.address ?? "").trim().slice(0, 120) || "Imported property";
   const address = String(target.address ?? "").trim().slice(0, 200) || name;
   const geo = await geocode(address);
-  const title = await freeTitle(name, address);
+  const title = await freeTitle(name, address, userId);
   const { data: listingId, error } = await supabase.rpc("rpc_create_listing", {
     p_user_id: userId,
     p_listing_data: {
