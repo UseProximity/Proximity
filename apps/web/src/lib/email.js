@@ -24,9 +24,9 @@ const transporter = nodemailer.createTransport({
 });
 
 /*
- * Amazon SES, for chat alerts and alert-address confirmations. It can send as
- * info@useproximity.org with a reply+token Reply-To on our own reply domain,
- * which Gmail SMTP cannot, and it reports bounces and complaints back to
+ * Amazon SES, for chat alerts and alert-address confirmations. It can send
+ * from a reply+token address on our own reply domain, which Gmail SMTP cannot
+ * (Gmail can only set it as the Reply-To), and it reports bounces and complaints back to
  * /api/ses/events. Null when the AWS_SES_* variables are missing, in which case
  * those emails go through Gmail like everything else.
  */
@@ -283,8 +283,11 @@ function chatTimeLabels(list) {
  * of the conversation. CHAT_FROM_REPLY_ADDRESS=0 goes back to info@.
  *
  * With a replyTo (the private reply+token address) the email says it can be
- * answered directly. Without one, or when it falls back to Gmail, it only
- * points to the app, since a reply would land in the shared inbox instead.
+ * answered directly. Without one it only points to the app, since a reply
+ * would land in the shared inbox instead. The Gmail fallback keeps the
+ * replyTo as its Reply-To header (Wyatt, 2026-11-04): it used to drop it, and
+ * when SES refused every send for two days, landlords' replies to those
+ * fallback emails went to info@ and never reached the conversation.
  *
  * The email reads like one the other person wrote, not a notification about
  * one (Wyatt, 2026-10-12): their words first, in plain paragraphs, then a short
@@ -460,11 +463,14 @@ export async function sendChatMessageEmail({
     }
   }
 
-  const { html, text } = build(false);
+  // Gmail cannot send from the reply address, but it can carry it as the
+  // Reply-To, so a reply still reaches the conversation.
+  const { html, text } = build(Boolean(replyTo));
   const info = await sendMailSafe(transporter, {
     logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
+    ...(replyTo ? { replyTo } : {}),
     subject,
     headers,
     html,
