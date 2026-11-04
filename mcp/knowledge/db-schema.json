@@ -2868,6 +2868,29 @@
           "updated_at:timestamptz"
         ],
         "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), student_id->users (cascade), landlord_id/confirmed_by/cancelled_by->users (set null), proxy_thread_id/thread_id->chat_threads (set null); unique (student_id, coalesce(lease_id, listing_id)) where status in (requested, proposed); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
+      },
+      {
+        "table": "app_errors",
+        "status": "unreleased",
+        "description": "Site errors, grouped (lib/errors/record.js, Wyatt 2026-11-03): one row per problem (fingerprint = source + where + message with ids/numbers stripped + top own stack frame), counted on every recurrence via record_app_error. source server (instrumentation.js: onRequestError and console.error lines carrying an Error) or browser (POST /api/errors from components/ErrorReporter.js). The team is emailed from production only: first sighting, reopened after resolved (reopened_at), and at 10/100/1000/10000; at most once an hour per row and 15 an hour per instance. resolved_at/resolved_by set from admin Errors (super only). RLS on, no policies: service role only.",
+        "columns": [
+          "id:uuid",
+          "fingerprint:text unique",
+          "source:text",
+          "where_label:text",
+          "message:text",
+          "stack:text",
+          "sample:jsonb",
+          "app_env:text",
+          "count:int",
+          "first_seen_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "last_alerted_at:timestamptz",
+          "alerted_count:int",
+          "resolved_at:timestamptz",
+          "resolved_by:uuid",
+          "reopened_at:timestamptz"
+        ]
       }
     ],
     "functions": [
@@ -3287,6 +3310,15 @@
         "called_from": "not called",
         "defined_in": "NOT in the repo",
         "description": "Unused lease-pipeline helper. Drop with the suite."
+      },
+      {
+        "name": "record_app_error",
+        "kind": "rpc",
+        "args": "p_fingerprint, p_source, p_where, p_message, p_stack, p_sample, p_env",
+        "touches": "app_errors",
+        "called_from": "lib/errors/record.js",
+        "defined_in": "supabase/migrations/202611030001_app_errors.sql",
+        "description": "Insert or count one occurrence of a site error; reopens a resolved one. SECURITY INVOKER, service_role only."
       }
     ],
     "triggers": {

@@ -15,6 +15,7 @@ import ReferenceView from "@/components/admin/ReferenceView";
 import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 import ConversationsView from "@/components/admin/ConversationsView";
 import SentEmailsView from "@/components/admin/SentEmailsView";
+import ErrorsView from "@/components/admin/ErrorsView";
 import AgentsView from "@/components/admin/AgentsView";
 
 const VIEWS = [
@@ -28,10 +29,11 @@ const VIEWS = [
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
   { key: "agents", label: "Agents" },
+  { key: "errors", label: "Errors" },
 ];
 
 // Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "agents"]);
+const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "agents", "errors"]);
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
 
@@ -133,6 +135,15 @@ function ToolsMenu({ dbTarget, isProd }) {
                       className="text-[11px] px-2 py-0.5 bg-gray-800 text-white rounded hover:bg-gray-700 whitespace-nowrap"
                     >
                       View →
+                    </a>
+                    <a
+                      href={`/?messages=1&messagesAs=${u.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Their Messages inbox exactly as they see it, read only"
+                      className="text-[11px] px-2 py-0.5 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      Inbox →
                     </a>
                   </li>
                 ))}
@@ -464,6 +475,8 @@ export default function AdminDashboard() {
           <SentEmailsView search={search} dbTarget={dbTarget} />
         ) : view === "agents" ? (
           <AgentsView search={search} />
+        ) : view === "errors" ? (
+          <ErrorsView search={search} dbTarget={dbTarget} />
         ) : loading ? (
           <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
         ) : data ? (

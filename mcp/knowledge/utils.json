@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-03T04:27:31.711Z",
-  "count": 235,
+  "_generated": "2026-11-04T00:00:04.613Z",
+  "count": 238,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -466,6 +466,18 @@
     {
       "file": "src/lib/emailLog.test.js",
       "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/errors/client.js",
+      "description": "The browser half of the site error alerts (Wyatt, 2026-11-03): send one"
+    },
+    {
+      "file": "src/lib/errors/record.js",
+      "description": "Site error alerts (Wyatt, 2026-11-03): when a page or API call fails on"
+    },
+    {
+      "file": "src/lib/errors/serverHooks.js",
+      "description": "The Node half of instrumentation.js (site error alerts, Wyatt,"
     },
     {
       "file": "src/lib/escapeHtml.js",
