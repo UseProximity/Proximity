@@ -7,6 +7,8 @@ import { runOverdueJob } from "@/lib/billing/overdueJob";
 import { runMethodAttentionJob } from "@/lib/billing/methodAttentionJob";
 import { enforceEnrollmentDeadline } from "@/lib/billing/enrollment";
 import { billingNotify } from "@/lib/billing/billingNotify";
+import { sendChangeRequestReminders } from "@/lib/billing/changeRequests";
+import { changeRequestNotify } from "@/lib/billing/changeRequestNotify";
 
 /*
  * Daily cron: an invoice still unpaid more than 30 days after its invoice date
@@ -22,6 +24,9 @@ import { billingNotify } from "@/lib/billing/billingNotify";
  *
  * And on the enrollment deadline it switches the listing requirements on
  * (enforceEnrollmentDeadline), once.
+ *
+ * And it reminds the team about agreement change requests left unanswered for 5
+ * days (changeRequests.sendChangeRequestReminders), at most once every 5 days each.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -54,7 +59,14 @@ export async function GET(req) {
       console.error("billing enrollment deadline check failed", err);
       enrollment = { error: "failed" };
     }
-    return NextResponse.json({ ok: true, ...result, methods, enrollment });
+    let changeRequests = null;
+    try {
+      changeRequests = await sendChangeRequestReminders(supabase, { notify: changeRequestNotify() });
+    } catch (err) {
+      console.error("billing change request reminders failed", err);
+      changeRequests = { error: "failed" };
+    }
+    return NextResponse.json({ ok: true, ...result, methods, enrollment, changeRequests });
   } catch (err) {
     console.error("billing overdue job failed", err);
     return NextResponse.json({ error: "Overdue job failed" }, { status: 500 });
