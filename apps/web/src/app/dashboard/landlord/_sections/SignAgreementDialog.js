@@ -38,15 +38,16 @@ export default function SignAgreementDialog({ token, host, name, email, kind = "
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, phase]);
 
-  // The webhook and this check can race; a few tries cover Documenso finishing the PDF.
+  // The webhook and this check can race. Documenso seals the signed PDFs after the
+  // signature (longer with Exhibit A attached), so keep asking for about a minute.
   const confirm = useCallback(async () => {
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 20; i += 1) {
       const r = await post("/api/billing/agreement/sync").catch(() => null);
       const done =
         r?.result === "signed" ||
         (kind === "amendment" ? r?.agreement?.status === "signed" && !r?.agreement?.amendment : r?.agreement?.status === "signed");
       if (done) return r.agreement;
-      await wait(2000);
+      await wait(3000);
     }
     return null;
   }, [kind]);

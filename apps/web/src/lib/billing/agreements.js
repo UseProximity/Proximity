@@ -517,10 +517,11 @@ async function findDocument(db, envelopeId) {
   for (const kind of ["master", "amendment"]) {
     const { data, error } = await db
       .from(TABLE[kind])
-      .select("id, user_id, status, version_id, agreement_id")
+      .select(kind === "amendment" ? "id, user_id, status, version_id, agreement_id" : "id, user_id, status, version_id")
       .eq("provider_envelope_id", envelopeId)
       .maybeSingle();
-    if (error && missingSchema(error)) continue;
+    // Only a table that does not exist yet is skipped; any other error is real.
+    if (error && ["PGRST205", "42P01"].includes(error.code)) continue;
     if (error) throw error;
     if (data) return { kind, row: data };
   }

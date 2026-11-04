@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-04T19:26:12.500Z",
-  "count": 286,
+  "_generated": "2026-11-04T20:52:23.091Z",
+  "count": 300,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -341,7 +341,7 @@
     },
     {
       "file": "src/lib/billing/agreements.js",
-      "description": "Each landlord's commission agreement (landlord_agreements). Landlords sign in"
+      "description": "Each landlord's commission agreement: one master agreement (landlord_agreements)"
     },
     {
       "file": "src/lib/billing/agreements.test.js",
@@ -360,8 +360,20 @@
       "description": "Versions of the commission agreement document (agreement_versions). An admin"
     },
     {
+      "file": "src/lib/billing/autopay.js",
+      "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
+    },
+    {
+      "file": "src/lib/billing/autopay.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
       "file": "src/lib/billing/balance.js",
       "description": "A landlord's outstanding balance: Approved charges not yet on an invoice, which"
+    },
+    {
+      "file": "src/lib/billing/billingAddress.js",
+      "description": "The landlord's own address for the agreement's optional \"Address\" box: the"
     },
     {
       "file": "src/lib/billing/billingEmails.js",
@@ -374,6 +386,10 @@
     {
       "file": "src/lib/billing/billingEmailTemplates.test.js",
       "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/billingFakes.testutil.js",
+      "description": "In-memory stand-ins for Supabase and Documenso, shared by the billing tests"
     },
     {
       "file": "src/lib/billing/billingLogic.test.js",
@@ -393,6 +409,34 @@
     },
     {
       "file": "src/lib/billing/billingRun.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/businessDays.js",
+      "description": "Business days on the America/Chicago calendar, for autopay: an invoice sent on"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFileRules.js",
+      "description": "Checks on a file a landlord (or an admin) attaches to a change request: their"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFiles.js",
+      "description": "Storing and opening change request attachments in Cloudflare R2, in the same"
+    },
+    {
+      "file": "src/lib/billing/changeRequestHttp.js",
+      "description": "Reading a change request message from a route: JSON, or multipart/form-data"
+    },
+    {
+      "file": "src/lib/billing/changeRequestNotify.js",
+      "description": "The emails a change request sends, wired to the real senders and passed to"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.js",
+      "description": "Landlords asking for changes to the commission agreement (agreement_change_requests"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.test.js",
       "description": "Run with: npm test (from apps/web)."
     },
     {
@@ -416,6 +460,14 @@
       "description": "The billing rules that are numbers, in one place. Each comes from the In-App"
     },
     {
+      "file": "src/lib/billing/coverage.js",
+      "description": "Which of a landlord's properties their commission agreement covers, and what"
+    },
+    {
+      "file": "src/lib/billing/coverage.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
       "file": "src/lib/billing/customers.js",
       "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
     },
@@ -436,12 +488,16 @@
       "description": "An expected billing failure the caller can act on. Routes turn it into an"
     },
     {
+      "file": "src/lib/billing/exhibitPdf.js",
+      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy as a"
+    },
+    {
       "file": "src/lib/billing/http.js",
       "description": "Shared plumbing for the billing API routes: an expected BillingError becomes"
     },
     {
       "file": "src/lib/billing/invoiceAccess.js",
-      "description": "A landlord's invoices, and paying one: Pay now (or Retry payment) on an invoice"
+      "description": "A landlord's invoices, paying one (Pay now, or Retry payment after a failure),"
     },
     {
       "file": "src/lib/billing/invoiceHandlers.js",
@@ -477,7 +533,7 @@
     },
     {
       "file": "src/lib/billing/overdueJob.js",
-      "description": "The overdue job: an invoice unpaid for more than 30 days after its invoice date"
+      "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
     },
     {
       "file": "src/lib/billing/paymentMethodHandlers.js",

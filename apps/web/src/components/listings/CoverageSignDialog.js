@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import toast from "react-hot-toast";
 import SignAgreementDialog from "@/app/dashboard/landlord/_sections/SignAgreementDialog";
 
 const PAYMENTS_URL = "/dashboard/landlord?tab=payments#commission-agreement";
@@ -78,8 +79,11 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
         kind={signing.kind}
         onClose={onClose}
         onFinished={(result) => {
-          if (result === "signed") onSigned();
-          else onClose("pending");
+          if (result === "signed") return onSigned();
+          // Signed, but Documenso has not finished sealing it yet: the webhook will
+          // record it shortly, and publishing again then goes straight through.
+          toast("Signed. We are still saving your copy. Publish again in a minute.", { duration: 10000 });
+          onClose("pending");
         }}
       />
     );

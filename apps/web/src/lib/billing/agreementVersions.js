@@ -256,6 +256,10 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
   if (version.status !== "ready") {
     throw new BillingError("not_ready", "Check the signature boxes before making this version live.", 409);
   }
+  // The rate fills the document and shows on invoices, so a version cannot go live without one.
+  if (version.commission_rate_percent == null) {
+    throw new BillingError("rate_required", "This version has no commission rate. Upload it again with the rate.", 409);
+  }
   let retire = db.from("agreement_versions").update({ status: "retired" }).eq("status", "live").eq("kind", version.kind);
   retire = version.landlord_id ? retire.eq("landlord_id", version.landlord_id) : retire.is("landlord_id", null);
   const { error: retireError } = await retire;

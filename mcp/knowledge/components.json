@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-04T19:26:12.462Z",
-  "count": 174,
+  "_generated": "2026-11-04T20:52:23.032Z",
+  "count": 177,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -94,6 +94,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AdminAutopayLine",
+      "file": "src/components/admin/billing/AdminAutopayLine.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AgreementsPanel",
       "file": "src/components/admin/billing/AgreementsPanel.js",
       "description": "No description. Run generate after adding a description above."
@@ -101,6 +106,11 @@
     {
       "name": "BillingRunPanel",
       "file": "src/components/admin/billing/BillingRunPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChangeRequestsPanel",
+      "file": "src/components/admin/billing/ChangeRequestsPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -421,6 +431,11 @@
     {
       "name": "BrowseContent",
       "file": "src/components/listings/BrowseContent.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CoverageSignDialog",
+      "file": "src/components/listings/CoverageSignDialog.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
