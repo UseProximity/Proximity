@@ -163,7 +163,7 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
 
       <label className="block">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Description</span>
-        <textarea rows={4} className={`mt-1 ${field}`} value={draft.description} disabled={!canEdit}
+        <textarea rows={4} className={`mt-1 ${field}`} value={draft.description} disabled={!canEdit} data-gap="description"
           aria-invalid={descriptionProblem ? true : undefined}
           onChange={(e) => set({ description: e.target.value })} />
         {descriptionProblem && (
@@ -222,7 +222,7 @@ export default function EditorOverview({ listing, canEdit, onChanged }) {
         </div>
       </div>
 
-      <div>
+      <div data-gap="utilities">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Utilities included</span>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {UTILITIES.map(([value, label]) => (

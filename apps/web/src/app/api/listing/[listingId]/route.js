@@ -31,6 +31,7 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getListing } from "@/lib/listings/getListing";
+import { isSandboxContact } from "@/lib/contactTracking";
 
 // ---------------------------------------------------------------------------
 // GET /api/listing/[listingId]
@@ -57,17 +58,18 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    // Track view metric via RPC — fire-and-forget with new v4 signature
-    supabase
-      .rpc("increment_listing_metric", {
+    // Track view metric via RPC, fire-and-forget with new v4 signature. A review
+    // sandbox account's views are not counted (checked off the response path).
+    isSandboxContact(currentUserId)
+      .then((sandbox) => sandbox ? null : supabase.rpc("increment_listing_metric", {
         p_listing_id: listingId,
         p_metric_name: "clicks",
-      })
-      .then(({ error: rpcErr }) => {
-        if (rpcErr)
+      }))
+      .then((res) => {
+        if (res?.error)
           console.error(
             "[listing GET] increment_listing_metric failed:",
-            rpcErr.message
+            res.error.message
           );
       });
 

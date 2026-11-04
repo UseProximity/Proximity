@@ -24,9 +24,9 @@ const transporter = nodemailer.createTransport({
 });
 
 /*
- * Amazon SES, for chat alerts and alert-address confirmations. It can send as
- * info@useproximity.org with a reply+token Reply-To on our own reply domain,
- * which Gmail SMTP cannot, and it reports bounces and complaints back to
+ * Amazon SES, for chat alerts and alert-address confirmations. It can send
+ * from a reply+token address on our own reply domain, which Gmail SMTP cannot
+ * (Gmail can only set it as the Reply-To), and it reports bounces and complaints back to
  * /api/ses/events. Null when the AWS_SES_* variables are missing, in which case
  * those emails go through Gmail like everything else.
  */
@@ -168,7 +168,9 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // listing's owner with the student CC'd and set as reply-to, so the landlord replies
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
-export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req }) {
+// `sandbox` is true when a review sandbox account sent the inquiry: sendMailSafe then
+// does not send it at all (it is only recorded as suppressed).
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req, sandbox = false }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
@@ -188,6 +190,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   };
   return sendMailSafe(transporter, {
     logAs: { kind: "owner_inquiry" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
     to,
     cc: student.email || undefined,
@@ -274,9 +277,17 @@ function chatTimeLabels(list) {
  * person ("Angela Clayton via Proximity") on our own address, or just
  * "Proximity" for an account with no name.
  *
+ * Sent through SES, that address is the private reply+token address itself,
+ * not info@ (Wyatt, 2026-10-29). A forward keeps only the From line, so a
+ * colleague answering a forwarded alert used to reach the shared inbox instead
+ * of the conversation. CHAT_FROM_REPLY_ADDRESS=0 goes back to info@.
+ *
  * With a replyTo (the private reply+token address) the email says it can be
- * answered directly. Without one, or when it falls back to Gmail, it only
- * points to the app, since a reply would land in the shared inbox instead.
+ * answered directly. Without one it only points to the app, since a reply
+ * would land in the shared inbox instead. The Gmail fallback keeps the
+ * replyTo as its Reply-To header (Wyatt, 2026-11-04): it used to drop it, and
+ * when SES refused every send for two days, landlords' replies to those
+ * fallback emails went to info@ and never reached the conversation.
  *
  * The email reads like one the other person wrote, not a notification about
  * one (Wyatt, 2026-10-12): their words first, in plain paragraphs, then a short
@@ -301,6 +312,7 @@ export function buildChatMessageEmail({
   threadUrl,
   canReply,
   reminder = false,
+  action = null,
 }) {
   const named = displayName(senderName, "");
   const other = named || "Someone";
@@ -338,6 +350,7 @@ export function buildChatMessageEmail({
             : `<p style="margin:0 0 14px">${chatMessageHtml(m)}</p>`
         )
         .join("")}
+      ${action ? `<a href="${action.url}" style="display:inline-block;margin:4px 0 8px;padding:10px 18px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px">${escapeHtml(action.label)}</a>` : ""}
       <p style="margin:24px 0 0;color:#6b7280;font-size:14px;line-height:1.5">
         <span style="color:#111827;font-weight:600">${escapeHtml(other)}</span>${company ? `<br>${escapeHtml(company)}` : ""}<br>
         About <a href="${threadUrl}" style="color:#6b7280">${escapeHtml(about)}</a>
@@ -355,6 +368,7 @@ export function buildChatMessageEmail({
     canReply ? `Reply above this line to message ${other}.\n` : null,
     nudge ? `${nudge}\n` : null,
     ...list.map((m, i) => `${labels[i] ? `${labels[i]}\n` : ""}${chatMessageText(m)}\n`),
+    action ? `${action.label}: ${action.url}\n` : null,
     other,
     company || null,
     `About ${about}`,
@@ -391,6 +405,11 @@ export async function sendChatMessageEmail({
   reminder = false,
   threadId = null,
   recipientId = null,
+  // True when a review sandbox account is the sender or the recipient of this alert:
+  // sendMailSafe then does not send it (it is only recorded as suppressed, see
+  // lib/outreach.js). The caller leaves out the reply address and magic link for these.
+  sandbox = false,
+  action = null,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -405,6 +424,7 @@ export async function sendChatMessageEmail({
       threadUrl,
       canReply,
       reminder,
+      action,
     });
   const { subject, fromName } = build(false);
 
@@ -417,7 +437,8 @@ export async function sendChatMessageEmail({
   const headers = chain.length > 0
     ? { References: chain.join(" "), "In-Reply-To": chain[chain.length - 1] }
     : undefined;
-  const from = { name: fromName, address: CHAT_FROM_ADDRESS };
+  const fromAddress = replyTo && process.env.CHAT_FROM_REPLY_ADDRESS !== "0" ? replyTo : CHAT_FROM_ADDRESS;
+  const from = { name: fromName, address: fromAddress };
 
   let sesError = null;
   if (sesTransporter && replyTo) {
@@ -433,6 +454,7 @@ export async function sendChatMessageEmail({
         html,
         text,
         ses: SES_SEND_OPTIONS,
+        sandbox,
       }, testEmailTo);
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
@@ -441,15 +463,19 @@ export async function sendChatMessageEmail({
     }
   }
 
-  const { html, text } = build(false);
+  // Gmail cannot send from the reply address, but it can carry it as the
+  // Reply-To, so a reply still reaches the conversation.
+  const { html, text } = build(Boolean(replyTo));
   const info = await sendMailSafe(transporter, {
     logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
+    ...(replyTo ? { replyTo } : {}),
     subject,
     headers,
     html,
     text,
+    sandbox,
   }, testEmailTo);
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed), sesError };
 }
@@ -823,7 +849,8 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
  * CTA is matchmaking, because a review is the moment a student has proved they
  * care and the moment they are most likely to come back.
  */
-export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken }) {
+// `sandbox`: the reviewer is a review sandbox account, so the email is only recorded.
+export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken, sandbox = false }) {
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
@@ -860,6 +887,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
 
   await sendMailSafe(transporter, {
     logAs: { kind: "review_confirmation" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: OPT_OUT_INBOX,
@@ -948,6 +976,80 @@ export async function sendWaitlistNudgeEmail({ email, name, baseUrl, setupToken 
       </div>
     `,
   });
+}
+
+/*
+ * The WashU parent housing guide, sent to whoever asks for it on /parent-signup.
+ *
+ * Goes through the Gmail transporter so it comes from info@useproximity.org like
+ * the rest of our account mail (Wyatt, 2026-10-30). The highlights are a short
+ * teaser of the guide page, not a copy of it: the page stays the one place the
+ * guide is kept up to date. Anyone can type any address into the form, so the
+ * email asks nothing of the reader and links only to the public guide.
+ */
+export async function sendParentGuideEmail({ email, firstName, baseUrl, req }) {
+  const greetingName = firstName ? escapeHtml(String(firstName).split(" ")[0]) : "";
+  const guideUrl = `${baseUrl}/guides/washu-parent-guide`;
+
+  const highlights = [
+    ["First and second years live on campus.", "WashU requires it, so the real decision starts in sophomore spring."],
+    ["Off-campus can save $7,000+ a year.", "On-campus runs up to $19,500. Students off campus report $800 to $1,000 a month."],
+    ["There are four kinds of off-campus housing.", "Loop walk-ups, Delmar apartments, CWE and Clayton complexes, and houses. Each trades price, space and distance differently."],
+    ["Reviews matter more than listings.", "Most students sign without hearing from anyone who has lived there. Verified student reviews close that gap."],
+  ];
+
+  const highlightsHtml = highlights
+    .map(
+      ([title, body]) => `
+        <tr>
+          <td style="padding:0 0 14px;vertical-align:top;width:22px;color:#ef4444;font-weight:700;font-size:15px">&#10003;</td>
+          <td style="padding:0 0 14px;font-size:15px;line-height:1.55;color:#333">
+            <strong style="color:#111">${title}</strong> ${body}
+          </td>
+        </tr>`
+    )
+    .join("");
+
+  await sendMailSafe(
+    transporter,
+    {
+      logAs: { kind: "parent_guide" },
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      replyTo: OPT_OUT_INBOX,
+      subject: "Your WashU parent housing guide",
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111">
+          <h2 style="color:#111;font-size:22px;line-height:1.3;margin:0 0 12px">
+            ${greetingName ? `Hi ${greetingName}, here` : "Here"} is your WashU housing guide.
+          </h2>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 20px">
+            Everything families should know before their student signs a lease near WashU,
+            from dorm rules to what off-campus really costs.
+          </p>
+          <a href="${guideUrl}"
+             style="display:inline-block;margin:0 0 24px;padding:12px 24px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+            Read the full guide
+          </a>
+          <p style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#ef4444;margin:0 0 12px">
+            The short version
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
+            ${highlightsHtml}
+          </table>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:8px 0 0">
+            When your student starts looking, they can browse vetted listings and read reviews
+            from other WashU students at <a href="${baseUrl}" style="color:#ef4444">useproximity.org</a>.
+          </p>
+          ${emailFooter({
+            reason: "You are receiving this because this address asked for the WashU parent guide on Proximity.",
+            commercial: true,
+          })}
+        </div>
+      `,
+    },
+    req
+  );
 }
 
 // Any value a user typed gets escaped (lib/escapeHtml) before it is interpolated into
@@ -1106,4 +1208,283 @@ export async function sendContentReportEmail({
     },
     req
   );
+}
+
+/*
+ * Source sync (the weekly re-read of landlord websites, lib/sourceImport).
+ *
+ * One digest per run naming every listing that changed, was held for a
+ * person, or failed, with the applied and proposed changes under each. The
+ * failure email goes out immediately, per listing, because a site that
+ * stopped answering is worth knowing about before the digest.
+ */
+
+function describeChange(c) {
+  const where = c.detail?.label ? `${escapeHtml(c.detail.label)}: ` : "";
+  const money = (n) => (n == null ? "no price" : `$${Number(n).toLocaleString("en-US")}`);
+  switch (c.kind) {
+    case "lease_new":
+      return `${where}new lease at ${money(c.new?.rent)}${c.new?.rentIsPerPerson ? " per person" : ""}${(c.new?.leaseTermMonths ?? []).length ? ` (${c.new.leaseTermMonths.join(", ")} months)` : ""}`;
+    case "lease_withdrawn":
+      return `${where}lease at ${money(c.detail?.rent)} no longer offered, marked unavailable`;
+    case "lease_updated":
+      return `${where}lease details updated (${escapeHtml(c.field)})`;
+    case "unit_relisted":
+      return `${where}lease is back on the website`;
+    case "unit_new":
+      return `${where}new floor plan on the website${c.new?.offers ? `, ${c.new.offers} price${c.new.offers === 1 ? "" : "s"}` : ""}`;
+    case "unit_updated":
+      return `${where}unit details filled in (${escapeHtml(c.field)})`;
+    case "spec_mismatch":
+      return `${where}bed/bath/size differ from the website (${escapeHtml(JSON.stringify(c.old))} vs ${escapeHtml(JSON.stringify(c.new))})`;
+    case "missing_unit":
+      return `${where}no longer on the website`;
+    case "property_updated":
+      return `property details filled in`;
+    case "photos_added":
+      return `${where}${c.new} photo${c.new === 1 ? "" : "s"} added`;
+    default:
+      return `${where}${escapeHtml(c.kind)}`;
+  }
+}
+
+export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
+  const block = (i) => {
+    const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
+    const head = `<p style="margin:16px 0 4px"><strong>${escapeHtml(i.listing)}</strong> <span style="color:#666">(${escapeHtml(i.status)}${i.platform ? `, ${escapeHtml(i.platform)}` : ""}${i.confidence ? `, ${escapeHtml(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
+    if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
+    const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
+    const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escapeHtml(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    const hold = i.holdReason
+      ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
+      : "";
+    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+  };
+  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const quiet = items.length - changed.length;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_digest" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync: ${changed.length} listing${changed.length === 1 ? "" : "s"} changed or need a look`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync digest</h2>
+        <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
+        ${changed.map(block).join("")}
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. Held changes can be applied from the import review or the admin console.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourceUrl, error, failures, baseUrl }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_failure" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync failed: ${listing}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync failed</h2>
+        <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
+        <p style="color:#b91c1c">${escapeHtml(error)}</p>
+        <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
+        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+/* The importer hit a site-wide cap: every import is paused until the window passes. */
+export async function sendImportCapAlertEmail({ to, kind, used, limit, hours }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "import_cap_alert" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website imports paused: ${kind} cap reached`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website imports paused</h2>
+        <p>The site-wide cap on ${escapeHtml(kind)} reads was reached: ${Number(used)} of ${Number(limit)} in the last ${Number(hours)} hours.</p>
+        <p style="color:#444">Landlords are told to try again later until the window passes. If this is real demand, raise the cap (IMPORT_GLOBAL_* settings). If it is not, check listing_import_usage for the accounts behind it.</p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing imports on Proximity." })}
+      </div>`,
+  });
+}
+
+/* ─── Per-listing agents (Proxy) ─────────────────────────────────────────── */
+
+function proxyParagraphs(messages) {
+  return (messages ?? []).map((m) =>
+    `<div style="margin:10px 0;padding:12px 14px;background:#f9fafb;border-left:3px solid #ef4444;border-radius:6px;white-space:pre-wrap">${escapeHtml(String(m))}</div>`
+  ).join("");
+}
+
+/*
+ * To a student who has left the listing page: Proxy answered, or relayed the
+ * landlord's answer, or has no answer yet. Never names the landlord.
+ */
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null, replyTo = null, sandbox = false }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  const subject = {
+    proxy_relay: `The landlord answered your question about ${listingLabel}`,
+    proxy_clarifier: `The landlord has a question for you about ${listingLabel}`,
+    proxy_correction: `An update from the landlord about ${listingLabel}`,
+    proxy_no_answer: `No answer yet about ${listingLabel}`,
+    proxy_reply: `Re: your question about ${listingLabel}`,
+  }[kind] ?? `Proxy answered your question about ${listingLabel}`;
+  const intro = {
+    proxy_relay: "The landlord's answer came back.",
+    proxy_clarifier: "The landlord needs one detail from you before they can answer.",
+    proxy_correction: "The landlord updated something Proxy told you.",
+    proxy_no_answer: "An update on your question.",
+    proxy_reply: "Here's Proxy's reply.",
+  }[kind] ?? "Here is what Proxy found.";
+  await sendMailSafe(transporter, {
+    logAs: { kind, threadId, userId },
+    // A review sandbox student is never emailed (same rule as every other email).
+    sandbox,
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    // Replying goes to Proxy in the same conversation (Wyatt, 2026-11-01).
+    ...(replyTo ? { replyTo } : {}),
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${intro} About <strong>${escapeHtml(listingLabel)}</strong>:</p>
+        ${proxyParagraphs(messages)}
+        <a href="${threadUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open the conversation</a>
+        ${replyTo ? `<p style="color:#444">Reply to this email to ask Proxy anything else.</p>` : ""}
+        <p style="color:#666;font-size:12px">Proxy is an automated assistant. Its answers are compiled from several sources and may be inaccurate or out of date; confirm anything important with the landlord before signing.</p>
+        ${emailFooter({ reason: "You are receiving this because you asked Proxy about a listing on Proximity." })}
+      </div>`,
+  }, testEmailTo);
+}
+
+/*
+ * To a signed-out visitor who gave Proxy their email: confirm it is theirs
+ * before anything else is sent there (PR #365 review). Nothing about the
+ * listing's answers is in this email.
+ */
+export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, threadId = null, testEmailTo = null }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind: "proxy_confirm_email", threadId },
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: "Confirm your email for Proxy",
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>Hi,</p>
+        <p>Someone asked Proxy to email this address when the landlord answers a question about <strong>${escapeHtml(listingLabel)}</strong> on Proximity. If that was you, confirm below and the answer will be emailed here.</p>
+        <a href="${confirmUrl}" style="display:inline-block;margin:16px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Confirm my email</a>
+        <p style="color:#666;font-size:12px">If it wasn't you, ignore this email and nothing more will be sent. The link works for 2 days.</p>
+        ${emailFooter({ reason: "You are receiving this because this address was given to Proxy on Proximity." })}
+      </div>`,
+  }, testEmailTo);
+}
+
+/*
+ * To a landlord: a student's question Proxy could not answer (or a reminder,
+ * or the student's reply to a clarifying question). The student is never
+ * named, and the question names the listing, not a lease (2026-10-29).
+ * A contact with no account yet is asked to create one to answer.
+ */
+export async function sendProxyLandlordQuestionEmail({
+  to, name, listingLabel, question, queueUrl, kind = "proxy_question",
+  hasAccount = true, studentReply = null, reminderDay = null, replyTo = null, sandbox = false,
+}) {
+  const first = name ? String(name).split(" ")[0] : "";
+  // With a per-question reply address, answering the email answers the student.
+  const canReply = !!replyTo && hasAccount;
+  const subject = reminderDay
+    ? `Reminder: a student is waiting on an answer about ${listingLabel}`
+    : studentReply
+      ? `The student replied about ${listingLabel}`
+      : `A student has a question about ${listingLabel}`;
+  // One line from Proxy, the question in a box, then how to answer (Wyatt, 2026-10-28).
+  const hello = `${first ? `Hi ${escapeHtml(first)}, it's` : "It's"} Proxy, the assistant on ${escapeHtml(listingLabel)}.`;
+  const lead = reminderDay
+    ? `A student asked me this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting on you:`
+    : studentReply
+      ? "The student got back to you about this question:"
+      : "A student asked me something I don't know yet:";
+  const box = (text, label = null) => `<div style="margin:12px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;white-space:pre-wrap;line-height:1.45">${label ? `<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(label)}</div>` : ""}${escapeHtml(text)}</div>`;
+  await sendMailSafe(transporter, {
+    logAs: { kind },
+    // A review sandbox question (asked by, or sent to, a sandbox account) is never sent.
+    sandbox,
+    from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    replyTo: canReply ? replyTo : CHAT_FROM_ADDRESS,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p style="margin:0">${hello} ${lead}</p>
+        ${box(question)}
+        ${studentReply ? box(studentReply, "Their reply") : ""}
+        ${hasAccount
+          ? `<p style="margin:14px 0 6px">${canReply ? "<strong>Reply to this email</strong> with your answer, or answer in the app. Either way I'll save it and pass it on to the student. If you need a detail from them first, just ask it and I'll check with them." : "Answer in the app and I'll save it and pass it on to the student."}</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Answer in the app</a>`
+          : `<p style="margin:14px 0 6px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Create an account with it to answer students' questions.</p>
+        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Create an account to answer</a>`}
+        ${emailFooter({ reason: "You are receiving this because you are the contact for a listing on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * Tour scheduling emails (per-listing agents): request, proposal,
+ * confirmation (with a calendar file), cancellation, reminders. One shape,
+ * the caller supplies the words.
+ */
+// `sandbox` is true when the student or the landlord is a review sandbox account:
+// sendMailSafe then records the email as suppressed and sends nothing.
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
+  const first = name ? String(name).split(" ")[0] : "";
+  await sendMailSafe(transporter, {
+    logAs: { kind, userId, threadId },
+    sandbox,
+    from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
+    to,
+    // A reply goes into the direct chat when the email carries its reply address.
+    replyTo: replyTo || CHAT_FROM_ADDRESS,
+    subject,
+    ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }] } : {}),
+    html: `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
+        <p>${first ? `Hi ${escapeHtml(first)},` : "Hi,"}</p>
+        <p>${escapeHtml(intro)}</p>
+        ${lines.length ? `<ul style="margin:8px 0 12px 18px;padding:0">${lines.map((l) => `<li style="margin:3px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
+        ${note ? `<p style="color:#444">${escapeHtml(note)}</p>` : ""}
+        ${ctaUrl ? `<a href="${ctaUrl}" style="display:inline-block;margin:12px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${escapeHtml(ctaLabel ?? "Open Proximity")}</a>` : ""}
+        ${emailFooter({ reason: "You are receiving this because of a tour request on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * The per-listing agents' daily rollout digest, to the team: sections of
+ * label and value rows, each with an optional list and note.
+ */
+export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
+  const block = (s) => `
+    <h3 style="margin:18px 0 6px;color:#111;font-size:14px">${escapeHtml(s.title)}</h3>
+    <table style="border-collapse:collapse;font-size:13px">${(s.rows ?? []).map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#444">${escapeHtml(String(k))}</td><td style="padding:2px 0;font-weight:600">${escapeHtml(String(v))}</td></tr>`).join("")}</table>
+    ${s.note ? `<p style="margin:6px 0 2px;color:#666;font-size:12px">${escapeHtml(s.note)}</p>` : ""}
+    ${(s.list ?? []).length ? `<ul style="margin:4px 0 0 18px;padding:0;font-size:12px;color:#333">${s.list.map((l) => `<li style="margin:2px 0">${escapeHtml(l)}</li>`).join("")}</ul>` : ""}`;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "agent_digest" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Agents digest: ${day}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Per-listing agents, ${escapeHtml(day)}</h2>
+        ${(sections ?? []).map(block).join("")}
+        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin" style="color:#dc2626">Open the admin Agents tab</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer the per-listing agents on Proximity." })}
+      </div>`,
+  });
 }

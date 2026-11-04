@@ -15,6 +15,7 @@ import ReferenceView from "@/components/admin/ReferenceView";
 import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 import ConversationsView from "@/components/admin/ConversationsView";
 import SentEmailsView from "@/components/admin/SentEmailsView";
+import AgentsView from "@/components/admin/AgentsView";
 
 const VIEWS = [
   { key: "listings", label: "Listings" },
@@ -26,10 +27,11 @@ const VIEWS = [
   { key: "invites", label: "Review invites" },
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
+  { key: "agents", label: "Agents" },
 ];
 
 // Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails"]);
+const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "agents"]);
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
 
@@ -240,6 +242,12 @@ export default function AdminDashboard() {
     return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
   }
 
+  // A link can open a view directly (?view=conversations, Wyatt, 2026-11-01).
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("view");
+    if (wanted && VIEWS.some((v) => v.key === wanted)) setView(wanted);
+  }, []);
+
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("admin_db_target") : null;
@@ -411,6 +419,9 @@ export default function AdminDashboard() {
               setLoading(true);
               setView(e.target.value);
               setSearch("");
+              if (e.target.value !== "conversations" && window.location.search) {
+                window.history.replaceState(window.history.state, "", window.location.pathname);
+              }
             }}
             className="px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
           >
@@ -451,6 +462,8 @@ export default function AdminDashboard() {
           <ConversationsView search={search} dbTarget={dbTarget} />
         ) : view === "emails" ? (
           <SentEmailsView search={search} dbTarget={dbTarget} />
+        ) : view === "agents" ? (
+          <AgentsView search={search} />
         ) : loading ? (
           <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
         ) : data ? (

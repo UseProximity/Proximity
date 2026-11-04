@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { isSnsUrl, verifySnsMessage } from "@/lib/aws/snsVerify";
 import { processInboundEmail } from "@/lib/chat/inboundEmail";
 
-export const maxDuration = 60;
+// 300: a student's email to Proxy is answered (a model call or several) and
+// emailed back inside this request (Wyatt, 2026-11-01).
+export const maxDuration = 300;
 
 /*
  * Replies to chat alert emails, delivered by Amazon SES through SNS.

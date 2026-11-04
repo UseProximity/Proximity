@@ -25,9 +25,9 @@ export function SuggestedHeading({ label = "Suggested for you" }) {
     <div className="flex items-center gap-2">
       <span
         aria-hidden="true"
-        className="h-2.5 w-2.5 rounded-full bg-[#A1000A]"
+        className="h-2 w-2 rounded-full bg-[#A1000A]"
       />
-      <h2 className="text-sm font-bold text-gray-900">{label}</h2>
+      <h2 className="text-xs font-bold text-gray-900">{label}</h2>
     </div>
   );
 }
@@ -62,7 +62,7 @@ export default function SuggestedStrip({
     <section aria-label={label} className="mb-6">
       <div
         className={
-          layout === "grid" ? "grid grid-cols-2 gap-6" : "space-y-4"
+          layout === "grid" ? "grid grid-cols-2 gap-3" : "space-y-4"
         }
       >
         {listings.map((listing, i) => (

@@ -94,7 +94,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
 
   return (
     <div
-      className={`relative group bg-white rounded-2xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
+      className={`relative group bg-white rounded-xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
       onClick={() => {
         // Server-rendered grids (the /washu landing pages) render this card
         // without a handler — they can't pass one, being server components.
@@ -230,8 +230,8 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-1 shadow-xl border border-white/50 hidden md:block">
-          <HeartIcon listingId={listing._id} />
+        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-0.5 shadow-xl border border-white/50 hidden md:block">
+          <HeartIcon listingId={listing._id} size="sm" />
         </div>
       )}
     </div>

@@ -42,20 +42,46 @@ function Row({ label, value, onChange, missing }) {
 export default function StepReview({ w }) {
   const { form, units } = w;
 
+  /*
+   * Units with their leases underneath, the same shape as the units step and
+   * the listing page. A blank date means available now.
+   */
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const leaseLine = (l) =>
+    [
+      l.rent !== "" && l.rent != null
+        ? `$${Number(l.rent).toLocaleString()}/mo${l.rentIsPerPerson ? " per person" : ""}`
+        : "contact for pricing",
+      (l.leaseTermMonths ?? []).length
+        ? l.leaseTermMonths.map(termLabel).join(", ")
+        : "no lease length",
+      ISO_DATE.test(l.availableFrom ?? "") ? `from ${l.availableFrom}` : "available now",
+    ].join(" · ");
+
   const unitLines = units.map((u, i) => {
     const bits = [];
     if (u.bedrooms !== "") bits.push(Number(u.bedrooms) === 0 ? "Studio" : `${u.bedrooms} bed`);
     if (u.bathrooms !== "") bits.push(`${u.bathrooms} bath`);
-    bits.push(u.rent !== "" ? `$${u.rent}/mo` : "rent not set");
-    const terms = (u.leaseTermMonths ?? []).map(termLabel).join(", ");
+    if (u.area !== "" && u.area != null) bits.push(`${u.area} sq ft`);
     return (
-      <p key={i}>
-        {u.unitNames?.trim() ? `${parseUnitNames(u.unitNames).join(", ")}: ` : ""}
-        {bits.join(" · ")}
-        {terms ? ` · ${terms}` : ""}
-        {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
-        {u.available === false ? " · not available" : ""}
-      </p>
+      <div key={i}>
+        <p className="font-medium">
+          {parseUnitNames(u.unitNames).join(", ") || `Unit ${i + 1}`}
+          <span className="font-normal text-gray-500">
+            {bits.length ? ` · ${bits.join(" · ")}` : ""}
+            {u.floorPlanImageUrl ? " · floor plan ✓" : ""}
+            {(u.photos ?? []).length
+              ? ` · ${u.photos.length} photo${u.photos.length === 1 ? "" : "s"}`
+              : ""}
+            {u.available === false ? " · waitlist only" : ""}
+          </span>
+        </p>
+        <ul className="mt-0.5 space-y-0.5 border-l-2 border-red-100 pl-3 text-gray-600">
+          {(u.leases ?? []).map((l, k) => (
+            <li key={k}>{leaseLine(l)}</li>
+          ))}
+        </ul>
+      </div>
     );
   });
 
@@ -73,9 +99,10 @@ export default function StepReview({ w }) {
       ? "Bedrooms and bathrooms needed"
       : units.some(
           (u) =>
-            u.available !== false && !(u.leaseTermMonths ?? []).length
+            u.available !== false &&
+            (u.leases ?? []).some((l) => !(l.leaseTermMonths ?? []).length)
         )
-      ? "Pick lease terms for each available unit"
+      ? "Pick lease lengths for every lease"
       : null;
 
   return (
@@ -100,16 +127,12 @@ export default function StepReview({ w }) {
             form.home_type.charAt(0).toUpperCase() + form.home_type.slice(1)
           }${form.furnished ? " · Furnished" : ""}${
             form.sublease_friendly ? " · Sublease friendly" : ""
-          }${form.twenty_one_plus ? " · 21+" : ""}${
-            form.move_in_date
-              ? ` · Available from ${form.move_in_date}`
-              : " · Available now"
-          }`}
+          }${form.twenty_one_plus ? " · 21+" : ""}`}
           onChange={() => w.goTo("basics")}
         />
         <Row
           label={`Units (${units.length})`}
-          value={<div className="space-y-0.5">{unitLines}</div>}
+          value={<div className="space-y-2">{unitLines}</div>}
           missing={unitsMissing}
           onChange={() => w.goTo("units")}
         />
@@ -187,37 +210,48 @@ export default function StepReview({ w }) {
         </div>
       )}
 
-      {/*
-        * Two buttons, same listing, same checks: one puts it in front of
-        * students now, the other keeps it on the dashboard until it is
-        * published from there. An import leads with the draft (Wyatt,
-        * 2026-10-16): what a website or PMS said about a building deserves a
-        * read-through, and the Drafts page publishes the complete ones in one
-        * click. Typed-in listings lead with Publish.
-        */}
-      {(() => {
-        const imported = !!w.importInfo || (w.importedFields?.size ?? 0) > 0;
-        const primary =
-          "mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60";
-        const secondary =
-          "mt-2 w-full rounded-lg border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-60";
-        const publishBtn = (cls) => (
-          <button key="publish" type="button" onClick={() => w.publish(false)} disabled={!!w.submitting} className={cls}>
-            {w.submitting === "publish" ? "Publishing…" : imported ? "Publish now" : "Publish listing"}
-          </button>
-        );
-        const draftBtn = (cls) => (
-          <button key="draft" type="button" onClick={() => w.publish(true)} disabled={!!w.submitting} className={cls}>
-            {w.submitting === "draft" ? "Saving…" : "Save as draft"}
-          </button>
-        );
-        return imported
-          ? [draftBtn(primary), publishBtn(secondary)]
-          : [publishBtn(primary), draftBtn(secondary)];
-      })()}
-      <p className="mt-2 text-center text-xs text-gray-500">
-        A draft is only on your dashboard until you publish it.
-      </p>
+      {w.batchMode ? (
+        // In a multi-property import every listing goes out together, from
+        // the workspace's own button.
+        <p className="mt-6 rounded-lg bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
+          Looks right? Check your other properties, then use{" "}
+          <span className="font-semibold text-gray-900">Publish all listings</span> at the top.
+        </p>
+      ) : (
+        <>
+          {/*
+            * Two buttons, same listing, same checks: one puts it in front of
+            * students now, the other keeps it on the dashboard until it is
+            * published from there. An import leads with the draft (Wyatt,
+            * 2026-10-16): what a website or PMS said about a building deserves a
+            * read-through, and the Drafts page publishes the complete ones in one
+            * click. Typed-in listings lead with Publish.
+            */}
+          {(() => {
+            const imported = !!w.importInfo || (w.importedFields?.size ?? 0) > 0;
+            const primary =
+              "mt-6 w-full rounded-lg bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60";
+            const secondary =
+              "mt-2 w-full rounded-lg border border-gray-300 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-60";
+            const publishBtn = (cls) => (
+              <button key="publish" type="button" onClick={() => w.publish(false)} disabled={!!w.submitting} className={cls}>
+                {w.submitting === "publish" ? "Publishing…" : imported ? "Publish now" : "Publish listing"}
+              </button>
+            );
+            const draftBtn = (cls) => (
+              <button key="draft" type="button" onClick={() => w.publish(true)} disabled={!!w.submitting} className={cls}>
+                {w.submitting === "draft" ? "Saving…" : "Save as draft"}
+              </button>
+            );
+            return imported
+              ? [draftBtn(primary), publishBtn(secondary)]
+              : [publishBtn(primary), draftBtn(secondary)];
+          })()}
+          <p className="mt-2 text-center text-xs text-gray-500">
+            A draft is only on your dashboard until you publish it.
+          </p>
+        </>
+      )}
       {w.importQueue.length > 0 && (
         <p className="mt-2 text-center text-xs text-gray-500">
           Up next: {w.importQueue[0].name} ({w.importQueue.length} more to go)

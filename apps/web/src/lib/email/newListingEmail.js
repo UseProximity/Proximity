@@ -18,7 +18,9 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-export async function sendNewListingEmail(toEmail, toName, address, listingId, req) {
+// `sandbox`: the owner is a review sandbox account, so the email is recorded in Sent
+// emails as not sent, never delivered (sendMailSafe).
+export async function sendNewListingEmail(toEmail, toName, address, listingId, req, { sandbox = false } = {}) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn("[sendNewListingEmail] Email env vars not set, skipping in dev mode.");
     return;
@@ -26,6 +28,7 @@ export async function sendNewListingEmail(toEmail, toName, address, listingId, r
   const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
   await sendMailSafe(transporter, {
     logAs: { kind: "new_listing" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "You have a new listing on Proximity!",
@@ -54,12 +57,14 @@ export async function emailNewListingToOwners(supabase, listingId) {
   try {
     const { data: listing } = await supabase
       .from("listings")
-      .select("address, listing_landlords!listing_id(users!user_id(email, name))")
+      .select("address, listing_landlords!listing_id(users!user_id(email, name, review_sandbox))")
       .eq("id", listingId)
       .maybeSingle();
     for (const row of listing?.listing_landlords ?? []) {
       const u = row.users;
-      if (u?.email) await sendNewListingEmail(u.email, u.name, listing.address, listingId);
+      if (u?.email) {
+        await sendNewListingEmail(u.email, u.name, listing.address, listingId, undefined, { sandbox: u.review_sandbox === true });
+      }
     }
   } catch (e) {
     console.error("[sendNewListingEmail] failed:", e?.message);

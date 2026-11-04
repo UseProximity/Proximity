@@ -37,6 +37,10 @@
  *                    scrubbed from the row either way.
  *   - profile photo  every object under profiles/{userId}/ removed from R2.
  *   - action_log     PII payloads redacted, audit skeleton retained (see below).
+ *   - agents         saved tour availability deleted and the contact copies on
+ *                    tour requests cleared; Proxy conversations, tours and
+ *                    questions are kept for three years like other messages
+ *                    (lib/agents/retention.js).
  *
  * Every database step is checked and throws on failure. That matters more here
  * than it looks: the run is made idempotent by the tombstone email, so a step
@@ -58,6 +62,7 @@ import { isProdData } from "@/lib/appEnv";
 import { revokeAppleToken } from "@/lib/appleAuth";
 import { expireAnonymousSessions } from "@/lib/matchmaking/anonymousSessions";
 import { ACCOUNT_GRACE_PERIOD_MS } from "@/lib/auth/accountRestore";
+import { purgeAgentData, eraseAgentRecords, expireVisitorProxyThreads } from "@/lib/agents/retention";
 
 export const dynamic = "force-dynamic";
 
@@ -188,6 +193,7 @@ async function eraseRetainedRecords(userId) {
     "retained matchmaking_preferences",
     supabase.from("matchmaking_preferences").delete().eq("user_id", userId)
   );
+  await eraseAgentRecords(userId);
 
   const { data: links, error } = await supabase
     .from("listing_landlords")
@@ -296,6 +302,8 @@ async function purgeUser(user) {
     );
   }
 
+  await purgeAgentData(userId);
+
   const listingsScrubbed = await scrubListingContacts(user);
 
   // A failure here throws on purpose: the tombstone below is what stops this job
@@ -350,6 +358,11 @@ async function purgeUser(user) {
       apple_account: false,
       apple_sub: null,
       apple_refresh_token: null,
+      preferred_move_in_date: null,
+      preferred_lease_months: null,
+      preferred_beds: null,
+      preferred_beds_list: null,
+      preferred_lease_months_list: null,
     })
     .eq("id", userId);
 
@@ -430,6 +443,16 @@ export async function GET(req) {
     anonymousChatsFailed = true;
   }
 
+  // Signed-out Proxy conversations no account claimed, quiet for 90 days.
+  let visitorProxyExpired = 0;
+  let visitorProxyFailed = false;
+  try {
+    visitorProxyExpired = await expireVisitorProxyThreads();
+  } catch (err) {
+    console.error("[purge-accounts] visitor Proxy cleanup failed:", err);
+    visitorProxyFailed = true;
+  }
+
   return NextResponse.json({
     ok: true,
     cutoff,
@@ -441,5 +464,7 @@ export async function GET(req) {
     retentionFailed: eraseFailed.length + (expiredError ? 1 : 0),
     anonymousChatsExpired,
     anonymousChatsFailed,
+    visitorProxyExpired,
+    visitorProxyFailed,
   });
 }

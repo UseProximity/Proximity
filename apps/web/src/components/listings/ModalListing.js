@@ -36,19 +36,20 @@ export default function ModalListing({ isOpen, onClose, header = null, children 
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative flex flex-col w-full max-w-6xl max-h-[calc(100dvh-107px)] md:max-h-[95vh]"
+        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative flex flex-col overflow-hidden w-full max-w-6xl max-h-[calc(100dvh-107px)] md:max-h-[95vh]"
         onClick={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-600 hover:bg-white/80 text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 z-40 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>
         {header}
-        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
+        {/* No side padding: the listing's photos run to the modal's edges (Wyatt, 2026-10-31). */}
+        <div className="w-full overflow-y-auto [overflow-anchor:none] overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

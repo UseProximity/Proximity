@@ -37,6 +37,8 @@ import { sendChatMessageEmail } from "@/lib/email";
 import { mintChatAccessToken } from "@/lib/chat/accessToken";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+import { pendingProposalFor, proposalKey } from "@/lib/agents/tourProposals";
 
 const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
 const MAX_REFERENCES = 20;
@@ -117,7 +119,7 @@ export async function notifyNewChatMessage({
     }
     if (!data?.recipientEmail) return;
 
-    await deliverAlert(data, { baseUrl, testEmailTo, messageId });
+    await deliverAlert(data, { baseUrl, testEmailTo, messageId, senderId });
   } catch (err) {
     // The message is already delivered in-app, so the sender never sees this.
     // The team does (deliverAlert reports its own failures; this is anything else).
@@ -129,6 +131,37 @@ export async function notifyNewChatMessage({
       action: "Check the conversation in the admin dashboard and make sure the other side has seen the message.",
     });
   }
+}
+
+/*
+ * SES refused an alert and Gmail delivered it (Wyatt, 2026-11-04). The email
+ * still arrived, so nothing else reports it, and on Nov 3 to 4 every chat email
+ * quietly went through Gmail for two days because of an AWS permission. One
+ * team alert per 6 hours: the first fallback in that window (no earlier
+ * 'SES failed' row in chat_email_log) sends it, the rest only log. Runs before
+ * this alert's own log row is written, so that row does not count.
+ */
+const SES_FALLBACK_ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+async function reportSesFallback({ data, sesError }) {
+  const since = new Date(Date.now() - SES_FALLBACK_ALERT_WINDOW_MS).toISOString();
+  const { count, error } = await supabase
+    .from("chat_email_log")
+    .select("id", { count: "exact", head: true })
+    .like("status_detail", "SES failed%")
+    .gte("created_at", since);
+  if (!error && count > 0) return;
+  await alertTeam({
+    subject: "Amazon SES is refusing chat emails",
+    intro: "A message alert could not go through SES, so it went out through the Gmail fallback instead. It was delivered, but bounce tracking is off for it, and SES is likely refusing every chat email until this is fixed. More fallbacks in the next 6 hours will not send another alert.",
+    facts: [
+      ["To", data.recipientEmail],
+      ["Conversation", data.threadId],
+      ["Listing", data.listingTitle || data.listingAddress || data.subject],
+      ["Error", sesError],
+    ],
+    action: "Check the SES error above (an AWS permission or sending limit, usually) and the AWS_SES_* settings in Vercel. chat_email_log rows with a status note starting 'SES failed' show every email affected.",
+  });
 }
 
 async function logAttempt(row) {
@@ -145,10 +178,20 @@ async function logAttempt(row) {
 
 /*
  * Send one alert for a recipient row from rpc_chat_notification_recipient and log it.
- * Returns the send result, or null when nothing was sent. Never throws: a failed
- * send is logged as 'failed' and reported to the team.
+ * Returns the send result, or null when nothing was sent. A failed send is logged as
+ * 'failed' and reported to the team, and is not thrown.
+ *
+ * Review sandbox (App Store review accounts): `senderId` is the person whose message
+ * this alert is about (for a reminder, the person who is waiting). When the sender OR
+ * the recipient is a sandbox account the alert is suppressed: sendMailSafe never sends
+ * it, but still records it in sent_emails (subject and body) so the admin can see it,
+ * and it writes no chat_email_log row (see sendAlert). The flag lookup runs before the
+ * send and, if it fails after its retries, throws to the caller (which reports it to
+ * the team) so nothing is sent on a guess.
  */
-async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null }) {
+async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = null, messageId = null, senderId = null }) {
+  const flagged = await sandboxIdsAmong([senderId, data.recipientId]);
+  const sandbox = flagged.has(senderId) || flagged.has(data.recipientId);
   const attempt = {
     thread_id: data.threadId,
     recipient_id: data.recipientId,
@@ -157,7 +200,7 @@ async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = nul
     message_id: messageId,
   };
   try {
-    return await sendAlert(data, { baseUrl, reminder, testEmailTo, attempt });
+    return await sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbox });
   } catch (err) {
     console.error("deliverAlert: send failed:", err);
     const detail = String(err?.message ?? err).slice(0, 500);
@@ -177,7 +220,7 @@ async function deliverAlert(data, { baseUrl, reminder = false, testEmailTo = nul
   }
 }
 
-async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
+async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbox = false }) {
   // Magic link: raw token only in the URL. Mint failure falls back to a login-gated
   // /messages deep link so the notification still arrives.
   //
@@ -185,17 +228,29 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
   // alert routed to a lease or listing contact (a shared leasing office inbox, say) would
   // hand everyone reading that inbox the landlord's whole account. Contact addresses are
   // alert routes, never accounts: they get the login-gated link and can reply by email.
-  const rawToken = (await isAccountInbox(data.recipientId, data.recipientEmail))
+  //
+  // A sandbox alert is never sent (sendMailSafe suppresses it), so it must not cost a
+  // working credential either: no magic link is minted, no reply address is created
+  // (nothing is written to the real recipient's participant row), and no tour confirm
+  // link is looked up below. The email is still built so sent_emails shows what happened.
+  const rawToken = !sandbox && (await isAccountInbox(data.recipientId, data.recipientEmail))
     ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
     : null;
   const threadUrl = rawToken
     ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
     : `${baseUrl}/messages?thread=${data.threadId}`;
 
-  const [replyTo, references] = await Promise.all([
-    ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
+  const [replyTo, references, proposal] = await Promise.all([
+    sandbox ? null : ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
     earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
+    // No tour confirm link in a sandbox alert: it would act as the real recipient.
+    sandbox ? null : pendingProposalFor({ threadId: data.threadId, userId: data.recipientId }).catch(() => null),
   ]);
+  // A tour time suggested to this person: confirm it from the email (Wyatt, 2026-11-02).
+  const key = proposal ? proposalKey({ messageId: proposal.messageId, userId: data.recipientId }) : null;
+  const action = key
+    ? { label: `${proposal.rebook ? "Move the tour to" : "Confirm the tour for"} ${proposal.text}`, url: `${baseUrl}/api/tours/proposals/${proposal.messageId}/email?u=${data.recipientId}&k=${key}` }
+    : null;
 
   const sent = await sendChatMessageEmail({
     to: data.recipientEmail,
@@ -215,9 +270,12 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt }) {
     threadId: data.threadId,
     recipientId: data.recipientId,
     testEmailTo,
+    sandbox,
+    action,
   });
 
   if (sent && !sent.suppressed) {
+    if (sent.sesError) await reportSesFallback({ data, sesError: sent.sesError });
     await logAttempt({ ...attempt, provider: sent.provider, provider_message_id: sent.messageId, status: "sent", status_detail: sent.sesError ? `SES failed, sent through Gmail: ${sent.sesError}` : null });
   }
   return sent ?? null;
@@ -255,7 +313,7 @@ export async function sendReplyReminder({ threadId, senderId, baseUrl }) {
     }
     if (!data?.recipientEmail) return "no_recipient";
 
-    const sent = await deliverAlert(data, { baseUrl, reminder: true });
+    const sent = await deliverAlert(data, { baseUrl, reminder: true, senderId });
     if (!sent) return "failed";
     return sent.suppressed ? "suppressed" : "sent";
   } catch (err) {

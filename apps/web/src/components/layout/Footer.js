@@ -27,7 +27,10 @@ const NAV_COLS = [
   },
   {
     heading: "Company",
-    links: [{ label: "About Us", href: "/about" }],
+    links: [
+      { label: "About Us", href: "/about" },
+      { label: "Support", href: "/support" },
+    ],
     contactButton: true,
     social: true,
   },

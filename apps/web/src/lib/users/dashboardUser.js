@@ -1,5 +1,7 @@
 import supabase from "@/lib/supabase";
+import { savedList } from "@/lib/listings/leasePrefsColumns";
 import { LISTING_SELECT as SHARED_LISTING_SELECT } from "@/lib/listings/listingSelect";
+import { stripSandboxReviews } from "@/lib/reviewSandbox";
 import {
   isLiveLease,
   isPublished,
@@ -466,6 +468,9 @@ export async function buildDashboardUser({ email, id } = {}) {
       : Promise.resolve({ data: [] }),
   ]);
 
+  // Review sandbox accounts' reviews are not part of any listing's rating here.
+  await stripSandboxReviews([...(favListings ?? []), ...(contactedListings ?? []), ...(ownListings ?? [])]);
+
   const metricsMap = {};
   for (const m of clicksMetrics ?? []) {
     if (m.metric_types?.name === "clicks") {
@@ -508,6 +513,10 @@ export async function buildDashboardUser({ email, id } = {}) {
     _id: user.id?.toString(),
     // Prefer camelCase for clients; snake_case remains via the spread above.
     emailNotifications: user.email_notifications !== false,
+    // The student's move-in month, lease lengths and bed counts (see /api/account/lease-preferences).
+    preferredMoveInDate: user.preferred_move_in_date ?? null,
+    preferredLeaseMonths: savedList(user.preferred_lease_months_list, user.preferred_lease_months),
+    preferredBeds: savedList(user.preferred_beds_list, user.preferred_beds),
     favorites: safeFavorites,
     favoritesIds: safeFavoritesIds,
     listings: safeListings,
@@ -516,5 +525,37 @@ export async function buildDashboardUser({ email, id } = {}) {
     listingsIds,
     createdAt: user.created_at ? new Date(user.created_at).toISOString() : null,
     updatedAt: user.updated_at ? new Date(user.updated_at).toISOString() : null,
+  };
+}
+
+/*
+ * One listing in the dashboard's own shape, for the import workspace.
+ *
+ * The workspace mounts the same editor the dashboard does, so it needs the
+ * same object: units with their offerings, photos by scope, draft flags, and
+ * `ownership`. Built here, by the same serializer, for the same reason the
+ * dashboard and view-as share one: a second copy would drift.
+ */
+export async function loadDashboardListing({ listingId, userId }) {
+  const { data: l } = await supabase
+    .from("listings")
+    .select(LISTING_SELECT)
+    .eq("id", listingId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!l) return null;
+  await stripSandboxReviews([l]);
+  const landlords = (l.listing_landlords ?? []).map((x) => x.user_id);
+  const holdsLease = (l.listing_units ?? []).some((u) => (u.unit_leases ?? []).some((lease) => lease.owner_id === userId && !lease.deleted_at));
+  if (!landlords.includes(userId) && !holdsLease) return null;
+  const coOwnerIds = landlords.filter((id) => id !== userId);
+  let coOwnerMap = {};
+  if (coOwnerIds.length) {
+    const { data: users } = await supabase.from("users").select("id, name, email").in("id", coOwnerIds);
+    for (const u of users ?? []) coOwnerMap[u.id] = u;
+  }
+  return {
+    ...serializeListing(l, userId, coOwnerMap, {}),
+    ownership: landlords.includes(userId) ? "property" : "lease",
   };
 }

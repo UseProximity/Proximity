@@ -1,24 +1,35 @@
 "use client";
 
 /*
- * Lease options for ONE unit, shown directly under that unit's tab.
+ * The listing's lease options (Wyatt, 2026-10-30). There are no unit tabs:
+ * the student says "I want a [beds] for [length] starting [month]" above this
+ * list (LeasePrefsControls), and every matching lease shows as landlord, then
+ * floor plan, then leases (Wyatt, 2026-10-31). A landlord with three matching
+ * plans is said once, with each plan (name, beds and baths, size, floor plan)
+ * and its leases underneath.
  *
  * A unit is a physical place; a lease is one landlord's offering on it. Several
  * landlords can offer the same unit, so a renter is choosing between people as
  * much as between terms. The list is therefore one card per landlord: who they
- * are and one Contact, with every option they offer on this unit inside the
- * card. A landlord with three leases here is one person to talk to, not three
+ * are and one Contact, with every option they offer inside the card. A landlord with three leases here is one person to talk to, not three
  * buttons that all reach the same inbox.
  *
  * Who counts as "one landlord" is decided server-side (landlordKey, standing
  * in for the owning account, or the contact email of an imported lease with no
  * account, neither of which reaches the browser). There is no
  * selection state here: every card is independently actionable.
+ *
+ * The three picks are saved to the student's account, so every listing opens
+ * already narrowed (useListingLeasePrefs). The dropdowns only offer what
+ * exists, so the list is never empty because of them; leases that don't match
+ * are simply not shown. The rules live in lib/listings/leaseFit.js.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, LayoutGrid } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
+import { useLeasePreferences } from "@/context/LeasePreferencesContext";
+import { LEASE_SORTS, compareLeases, listingChoices, listingMatches, listingOfferings, listingPrefs, sortLandlords, sortPlans, sortRent, stableSort } from "@/lib/listings/leaseFit";
 
 const money = (n) =>
   n == null ? null : `$${Number(n).toLocaleString("en-US")}`;
@@ -117,75 +128,67 @@ function DurationCell({ leaseTermMonths }) {
 }
 
 /*
- * How a renter can order a unit's offerings. Each puts unknowns (no price, no
- * start date, no stated term) last: an offering that hasn't said is not the
- * cheapest, soonest or shortest. Ties keep the order the leases arrived in,
- * which is cheapest first.
+ * One card per landlord, holding each matching floor plan of theirs with its
+ * leases. The key is the server's; name and photo are taken from whichever of
+ * their leases has them. On Best match, landlords are ordered by their best
+ * lease, so the closest fit to the student's picks comes first. On any other
+ * sort, each landlord's plans are put in that order and the landlord with the
+ * best plan under it comes first, then all of theirs, then the next
+ * (sortLandlords).
  */
-const lastIfNull = (fn) => (a, b) => {
-  const x = fn(a);
-  const y = fn(b);
-  if (x == null && y == null) return 0;
-  if (x == null) return 1;
-  if (y == null) return -1;
-  return x < y ? -1 : x > y ? 1 : 0;
-};
-
-const SORTS = {
-  price: { label: "Price", compare: lastIfNull((l) => l.rent) },
-  availability: {
-    label: "Availability",
-    // A date already past reads as "Now", so it sorts as today.
-    compare: lastIfNull((l) => {
-      if (!l.availableFrom) return null;
-      const day = String(l.availableFrom).slice(0, 10);
-      const today = new Date().toISOString().slice(0, 10);
-      return day < today ? today : day;
-    }),
-  },
-  duration: {
-    label: "Lease length",
-    // Shortest term on offer first; a lease flexible down to 4 months suits a
-    // renter looking for 4, whatever else it also allows.
-    compare: lastIfNull((l) => leaseTermList(l.leaseTermMonths)[0] ?? null),
-  },
-};
-
-// A stable sort by `compare`, falling back to arrival order (cheapest first).
-const stableSort = (items, compare) =>
-  items
-    .map((item, i) => ({ item, i }))
-    .sort((a, b) => compare(a.item, b.item) || a.i - b.i)
-    .map(({ item }) => item);
-
-/*
- * One card per landlord. The key is the server's; name and photo are taken
- * from whichever of their leases has them, which is all of them once the
- * landlord has saved a contact block, and the first one that does otherwise.
- */
-function groupByLandlord(leases) {
+function groupByLandlord(plans, prefs, sort) {
   const groups = new Map();
-  for (const lease of leases) {
-    const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
-    let g = groups.get(key);
-    if (!g) {
-      g = { key, landlordName: null, landlordImage: null, leases: [] };
-      groups.set(key, g);
+  for (const { unit, leases } of plans) {
+    for (const lease of leases) {
+      const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, landlordName: null, landlordImage: null, plans: [], byUnit: new Map(), best: lease };
+        groups.set(key, g);
+      }
+      let plan = g.byUnit.get(unit);
+      if (!plan) {
+        plan = { unit, leases: [] };
+        g.byUnit.set(unit, plan);
+        g.plans.push(plan);
+      }
+      plan.leases.push(lease);
+      if (compareLeases(lease, g.best, prefs) < 0) g.best = lease;
+      if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
+      if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
     }
-    g.leases.push(lease);
-    if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
-    if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
   }
-  return [...groups.values()];
+  const landlords = [...groups.values()];
+  return sort === "match" ? stableSort(landlords, (a, b) => compareLeases(a.best, b.best, prefs)) : sortLandlords(landlords, sort);
 }
 
-// A long list (of landlords, or of one landlord's options) pushes the rest of
-// the listing out of reach, so it opens on the first few and grows on request.
-const PAGE = 5;
+/*
+ * The list opens on the first LEASES_SHOWN leases in order, across every
+ * landlord and floor plan, and folds the rest behind one "Show N more leases".
+ * A plan or landlord with none of those first leases waits behind the fold
+ * too. When only one or two would be folded it shows them all, since a fold
+ * that hides two rows costs more than it saves (Wyatt, 2026-10-31).
+ */
+const LEASES_SHOWN = 4;
+const LEASES_UNFOLDED = 6;
 
-// How many lease rows open on their own across every landlord on a unit. Past
-// this, landlords start folded so a busy unit still fits on a screen.
-const OPEN_BUDGET = 10;
+// The landlords cut down to their first `limit` leases in order.
+function firstLeases(landlords, limit) {
+  let left = limit;
+  const out = [];
+  for (const g of landlords) {
+    if (left <= 0) break;
+    const plans = [];
+    for (const plan of g.plans) {
+      if (left <= 0) break;
+      const leases = plan.leases.slice(0, left);
+      left -= leases.length;
+      plans.push({ ...plan, leases });
+    }
+    out.push({ ...g, shownPlans: plans });
+  }
+  return out;
+}
 
 function Cell({ label, children, className = "" }) {
   return (
@@ -198,12 +201,81 @@ function Cell({ label, children, className = "" }) {
   );
 }
 
-export default function LeaseOptions({ leases = [], loading = false, onContact }) {
+/*
+ * The student's picks as they apply to this listing, the choices each
+ * dropdown offers, and the matching leases by floor plan. The listing calls it
+ * once and hands the result to the dropdowns and the list.
+ *
+ * `visitBeds` is the bed count of the unit a filtered browse search matched:
+ * it opens the listing on that size for this visit without touching the saved
+ * pick, until the student picks a size themselves.
+ *
+ * A landlord previewing their draft as a student can try the dropdowns, but
+ * nothing is saved: it is not their search.
+ */
+export function useListingLeasePrefs(units, preview = false, visitBeds = null) {
+  const shared = useLeasePreferences();
+  const [previewPrefs, setPreviewPrefs] = useState(shared.prefs);
+  const [visit, setVisit] = useState(visitBeds);
+  useEffect(() => setVisit(visitBeds), [visitBeds]);
+
+  const saved = preview ? previewPrefs : shared.prefs;
+  const offerings = useMemo(() => listingOfferings(units), [units]);
+  const prefs = useMemo(
+    () => listingPrefs(offerings, visit == null ? saved : { ...saved, beds: visit }),
+    [offerings, saved, visit]
+  );
+  const choices = useMemo(() => listingChoices(offerings, prefs), [offerings, prefs]);
+  const groups = useMemo(() => listingMatches(offerings, prefs), [offerings, prefs]);
+
+  // Sort is for this visit only, not saved. Size sorts are offered only when a
+  // matching plan has a size, and no sort at all for a single lease.
+  const [sort, setSort] = useState("match");
+  const sorts = useMemo(() => {
+    const leaseCount = groups.reduce((n, g) => n + g.leases.length, 0);
+    if (leaseCount < 2) return [];
+    const sized = groups.some((g) => g.unit?.area != null);
+    return LEASE_SORTS.filter((o) => sized || !o.value.startsWith("area"));
+  }, [groups]);
+
+  /*
+   * Picking saves only the row that changed. A saved pick this listing
+   * can't offer shows as its closest alternative here, but the account keeps
+   * the saved one for every other listing, so changing the length here never
+   * erases a saved 3 bed (Wyatt, 2026-11-01).
+   */
+  const setPrefs = (patch) => {
+    if ("beds" in patch) setVisit(null);
+    if (preview) setPreviewPrefs((p) => ({ ...p, ...patch }));
+    else shared.setPrefs(patch);
+  };
+  const clear = () => {
+    setVisit(null);
+    if (preview) setPreviewPrefs({ beds: [], moveIn: null, months: [] });
+    else shared.clear();
+  };
+  return { prefs, choices, groups, setPrefs, clear, sort, sorts, setSort };
+}
+
+export default function LeaseOptions({ groups = [], prefs = null, sort = "match", loading = false, empty = false, onContact, onFloorPlan }) {
+  const landlords = useMemo(() => groupByLandlord(sortPlans(groups, sort), prefs, sort), [groups, prefs, sort]);
+  const total = useMemo(() => groups.reduce((n, g) => n + g.leases.length, 0), [groups]);
+  const [expanded, setExpanded] = useState(false);
+  // Different picks or a different sort are a different list: fold it again.
+  useEffect(() => setExpanded(false), [groups, sort]);
+
+  const folded = total > LEASES_UNFOLDED;
+  const visible = useMemo(
+    () => (folded && !expanded ? firstLeases(landlords, LEASES_SHOWN) : landlords.map((g) => ({ ...g, shownPlans: g.plans }))),
+    [landlords, folded, expanded]
+  );
+  const hidden = total - LEASES_SHOWN;
+
   /*
    * "Loading" and "none offered" are different answers and must not be confused:
    * the browse panel paints itself from the listing feed before the detail fetch
-   * lands, and that feed carries no leases at all. Claiming a unit has no lease
-   * during that gap is simply wrong.
+   * lands, and that feed carries no leases at all. Claiming a listing has no
+   * lease during that gap is simply wrong.
    */
   if (loading) {
     return (
@@ -214,155 +286,98 @@ export default function LeaseOptions({ leases = [], loading = false, onContact }
     );
   }
 
-  if (!leases.length) {
-    return (
-      <p className="px-4 py-4 text-xs text-gray-500">
-        No lease is currently being offered on this unit.
-      </p>
-    );
+  if (empty || !landlords.length) {
+    return <p className="px-4 py-4 text-xs text-gray-500">No lease is currently being offered here.</p>;
   }
 
-  return <LeaseList leases={leases} onContact={onContact} />;
-}
-
-function LeaseList({ leases, onContact }) {
-  const [sortBy, setSortBy] = useState("price");
-  const [shown, setShown] = useState(PAGE);
-
-  // A different unit's tab is a different list: start it from the top.
-  useEffect(() => setShown(PAGE), [leases]);
-
-  /*
-   * Sort inside each card, then sort the cards by their best option under the
-   * same rule: on "Price" the landlord with the cheapest lease comes first, and
-   * their cheapest lease heads their card.
-   */
-  const groups = useMemo(() => {
-    const { compare } = SORTS[sortBy];
-    const sortedWithin = groupByLandlord(leases).map((g) => ({
-      ...g,
-      leases: stableSort(g.leases, compare),
-    }));
-    const sorted = stableSort(sortedWithin, (a, b) => compare(a.leases[0], b.leases[0]));
-
-    /*
-     * Open landlords in order until the next one would take the rows on show
-     * past OPEN_BUDGET; from there on every card starts folded. A card shows at
-     * most PAGE rows, so that is what it spends. The first landlord always
-     * opens, so the top option is never hidden.
-     */
-    let spent = 0;
-    let budgetLeft = true;
-    return sorted.map((g, i) => {
-      const cost = Math.min(g.leases.length, PAGE);
-      if (i > 0 && spent + cost > OPEN_BUDGET) budgetLeft = false;
-      const defaultOpen = budgetLeft;
-      if (defaultOpen) spent += cost;
-      return { ...g, defaultOpen };
-    });
-  }, [leases, sortBy]);
-  const visible = groups.slice(0, shown);
-  const remaining = groups.length - visible.length;
-
   return (
-    <div>
-      {leases.length > 1 && (
-        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs text-gray-500">
-          <span>
-            {leases.length} lease options
-            {groups.length > 1 && ` from ${groups.length} landlords`}
-          </span>
-          <label className="flex items-center gap-1.5">
-            <span>Sort by</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-xs font-medium text-gray-700 focus:border-red-400 focus:outline-none"
-            >
-              {Object.entries(SORTS).map(([key, s]) => (
-                <option key={key} value={key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
-      <ul className="divide-y divide-gray-100">
+    <>
+      <ul className="divide-y divide-gray-100 border-t border-gray-100">
         {visible.map((group) => (
-          <LandlordCard key={group.key} group={group} onContact={onContact} />
+          <LandlordCard key={group.key} group={group} onContact={onContact} onFloorPlan={onFloorPlan} />
         ))}
       </ul>
-
-      {groups.length > PAGE && (
-        <div className="flex items-center justify-center gap-4 border-t border-gray-100 px-4 py-2.5">
-          {remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => setShown((n) => n + PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show {Math.min(PAGE, remaining)} more
-              <span className="font-normal text-gray-400"> ({remaining} left)</span>
-            </button>
-          )}
-          {shown > PAGE && (
-            <button
-              type="button"
-              onClick={() => setShown(PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show less
-            </button>
-          )}
+      {folded && (
+        <div className="flex items-center justify-center border-t border-gray-100 px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            {expanded ? "Show less" : `Show ${hidden} more ${hidden === 1 ? "lease" : "leases"}`}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
         </div>
       )}
-    </div>
+    </>
+  );
+}
+
+// "Jade · 2 bed / 2 bath · 793 sq ft · Floor plan". Beds and baths are always
+// said: with no tabs, this is the only place they appear.
+function PlanHeader({ unit, onFloorPlan }) {
+  // An unknown bedroom count says so; it is not a studio.
+  const size = unit.bedrooms === 0
+    ? "Studio"
+    : `${unit.bedrooms ?? "?"} bed / ${unit.bathrooms ?? "?"} bath`;
+  const parts = [
+    unit.name ? <span key="n" className="font-semibold text-gray-900">{unit.name}</span> : null,
+    <span key="s" className={unit.name ? "" : "font-semibold text-gray-900"}>{size}</span>,
+    unit.area != null ? <span key="a">{Number(unit.area).toLocaleString()} sq ft</span> : null,
+    unit.floorPlanImageUrl ? (
+      <button
+        key="f"
+        type="button"
+        onClick={() => onFloorPlan?.(unit)}
+        className="inline-flex items-center gap-1 underline-offset-2 transition hover:text-gray-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+      >
+        <LayoutGrid className="h-3 w-3" />
+        Floor plan
+      </button>
+    ) : null,
+  ].filter(Boolean);
+  return (
+    <p className="flex flex-wrap items-baseline text-xs text-gray-500">
+      {parts.map((p, i) => (
+        <span key={i} className="inline-flex items-baseline">
+          {i > 0 && <span className="mx-1.5 text-gray-300">·</span>}
+          {p}
+        </span>
+      ))}
+    </p>
   );
 }
 
 /*
- * One landlord on this unit: who they are, one Contact, and their options.
+ * One landlord: who they are, one Contact, then each floor plan of theirs that
+ * matches with its options underneath (Wyatt, 2026-10-31). The line under the
+ * name counts everything they offer here ("2 floor plans · 3 lease options
+ * from $900/mo"), including what waits behind the list's fold.
  *
- * The first landlords open with every option showing, so a renter can compare
- * terms without clicking in; once OPEN_BUDGET rows are on show, the rest start
- * folded to a one-line summary ("3 lease options from $900/mo") that opens on
- * request. Inside an open card, past the first PAGE options the rest grow on
- * request so one prolific landlord can't bury the others.
- *
- * Contact carries the landlord's best option under the current sort as the
- * lease the enquiry is about. The chat is routed to the landlord either way,
- * and every option in the card reaches the same person.
+ * Contact carries the landlord's best option across their plans (the closest
+ * fit to the student's picks, then the cheapest) as the lease the enquiry is
+ * about. The chat is routed to the landlord either way.
  */
-function LandlordCard({ group, onContact }) {
-  const { landlordName, landlordImage, leases, defaultOpen } = group;
+function LandlordCard({ group, onContact, onFloorPlan }) {
+  const { landlordName, landlordImage, plans, shownPlans, best } = group;
+  const leases = plans.flatMap((p) => p.leases);
   const single = leases.length === 1;
-  const [open, setOpen] = useState(defaultOpen);
-  const [shown, setShown] = useState(PAGE);
 
-  // A different unit's tab (or a new sort) is a different list: start it from the top.
-  useEffect(() => {
-    setOpen(defaultOpen);
-    setShown(PAGE);
-  }, [leases, defaultOpen]);
-
-  // A lone option that opened on its own has nothing to fold away.
-  const toggleable = !(single && defaultOpen);
-
-  const visible = leases.slice(0, shown);
-  const remaining = leases.length - visible.length;
-
-  const priced = leases.filter((l) => l.rent != null);
+  // Cheapest by whole-apartment rent (sortRent), shown as the landlord priced it.
+  const priced = leases.filter((l) => sortRent(l) != null);
   const cheapest = priced.length
-    ? priced.reduce((a, b) => (b.rent < a.rent ? b : a))
+    ? priced.reduce((a, b) => (sortRent(b) < sortRent(a) ? b : a))
     : null;
   const count = single ? "1 lease option" : `${leases.length} lease options`;
-  const summary = cheapest
-    ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
-        cheapest.rentIsPerPerson ? "/person" : "/mo"
-      }`
-    : count;
+  const planCount = plans.length > 1 ? `${plans.length} floor plans · ` : "";
+  const summary = `${planCount}${
+    cheapest
+      ? `${count}${single ? " · " : " from "}${money(cheapest.rent)}${
+          cheapest.rentIsPerPerson ? "/person" : "/mo"
+        }`
+      : count
+  }`;
 
   return (
     <li className="px-4 py-3">
@@ -376,67 +391,46 @@ function LandlordCard({ group, onContact }) {
           <p className="truncate text-sm font-semibold text-gray-900">
             {landlordName ?? "Landlord"}
           </p>
-          {toggleable ? (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              className="flex items-center gap-0.5 rounded text-left text-xs text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <span className="truncate">{summary}</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-              />
-            </button>
-          ) : (
-            <p className="text-xs text-gray-500">1 lease option</p>
-          )}
+          <p className="truncate text-xs text-gray-500">{summary}</p>
         </div>
         <button
           type="button"
-          onClick={() => onContact?.(leases[0])}
+          onClick={() => onContact?.(best)}
           className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 sm:w-[130px]"
         >
           Contact
         </button>
       </div>
 
-      {open && (
-        <ul
-          className={`mt-3 divide-y divide-gray-100 ${
-            single ? "" : "rounded-lg border border-gray-100 bg-gray-50/60"
-          }`}
-        >
-          {visible.map((lease) => (
-            <LeaseRow key={lease.id} lease={lease} inset={!single} />
-          ))}
-        </ul>
-      )}
-
-      {open && leases.length > PAGE && (
-        <div className="mt-1.5 flex items-center justify-center gap-4">
-          {remaining > 0 && (
-            <button
-              type="button"
-              onClick={() => setShown((n) => n + PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show {Math.min(PAGE, remaining)} more
-              <span className="font-normal text-gray-400"> ({remaining} left)</span>
-            </button>
-          )}
-          {shown > PAGE && (
-            <button
-              type="button"
-              onClick={() => setShown(PAGE)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              Show less
-            </button>
-          )}
-        </div>
-      )}
+      <div className="mt-3 space-y-3">
+        {shownPlans.map((plan) => (
+          <PlanBlock
+            key={plan.unit.id ?? plan.unit.name}
+            unit={plan.unit}
+            leases={plan.leases}
+            onFloorPlan={onFloorPlan}
+          />
+        ))}
+      </div>
     </li>
+  );
+}
+
+/*
+ * One floor plan under a landlord: what it is, then their options on it as
+ * plain rows split by a hairline, no box around them (Wyatt, 2026-10-27).
+ */
+function PlanBlock({ unit, leases, onFloorPlan }) {
+  return (
+    <div>
+      <PlanHeader unit={unit} onFloorPlan={onFloorPlan} />
+      {/* Leases sit a step in from their plan, so the plan reads as their heading (Wyatt, 2026-10-31). */}
+      <ul className="mt-1 divide-y divide-gray-100 pl-2 sm:pl-6">
+        {leases.map((lease) => (
+          <LeaseRow key={lease.id} lease={lease} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -446,7 +440,7 @@ function LandlordCard({ group, onContact }) {
  * they furnish it) lives behind the chevron. Who is offering it is said once,
  * on the card above, and so is how to reach them.
  */
-function LeaseRow({ lease, inset = false }) {
+function LeaseRow({ lease }) {
   const [open, setOpen] = useState(false);
   const details = [
     lease.furnished == null
@@ -456,7 +450,7 @@ function LeaseRow({ lease, inset = false }) {
   const hasDetails = !!lease.description || details.length > 0;
 
   return (
-    <li className={inset ? "px-3 py-2.5" : "py-1"}>
+    <li className="py-2">
       <div className="flex items-center gap-3">
         <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <div className="min-w-0">
@@ -513,6 +507,7 @@ function LeaseRow({ lease, inset = false }) {
           </button>
         )}
       </div>
+
 
       {open && hasDetails && (
         <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2.5">

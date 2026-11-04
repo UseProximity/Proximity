@@ -28,6 +28,8 @@ import {
   normalizeClassYear,
 } from "@/lib/reviews/onboarding";
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
+import { getRequestUser } from "@/lib/getRequestUser";
+import { withoutSandboxReviews } from "@/lib/reviewSandbox";
 
 export const dynamic = "force-dynamic";
 
@@ -78,8 +80,12 @@ export async function GET(req) {
    * author's user_id (and /refer/<id> shows the name for any user id), so the
    * author's identity never goes out with it.
    */
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js).
+  const viewer = await getRequestUser(req).catch(() => null);
+  const shown = await withoutSandboxReviews(reviews || [], viewer?.id ?? null);
+
   return NextResponse.json(
-    (reviews || []).map(({ user_id: _userId, reviewer_email: _email, ...review }) => review)
+    shown.map(({ user_id: _userId, reviewer_email: _email, ...review }) => review)
   );
 }
 

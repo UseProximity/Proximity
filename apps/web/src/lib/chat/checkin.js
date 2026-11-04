@@ -124,7 +124,8 @@ export function excerptMessages(messages, { landlordId, studentId }) {
  * Every thread that is a landlord and student conversation, with its people,
  * listing and messages, oldest message first. `threadIds` limits the load;
  * without it every open thread is returned. Threads whose sides cannot be
- * worked out, or whose people are deleted, are left out.
+ * worked out, whose people are deleted, or where either side is a review
+ * sandbox account, are left out.
  *
  * Returns [{ thread, listing, landlord, student, messages, allMessages }]
  * where `messages` are the two people's own messages and `allMessages` also
@@ -169,7 +170,7 @@ export async function loadConversations(supabase, { threadIds = null, includeDel
       ? fetchAll(
           supabase
             .from("users")
-            .select("id, name, email, company_name, deleted_at, roles!role_id(name)")
+            .select("id, name, email, company_name, deleted_at, review_sandbox, roles!role_id(name)")
             .in("id", userIds)
         )
       : [],
@@ -196,6 +197,10 @@ export async function loadConversations(supabase, { threadIds = null, includeDel
     const sides = sidesOf(t, participantsByThread, userById);
     if (!sides) continue;
     if (sides.landlord.deleted_at || sides.student.deleted_at) continue;
+    // A conversation with a review sandbox account is invisible to the real person, and
+    // its alerts are suppressed, so it must not be chased, reported or audited as a
+    // real landlord gone quiet or an alert that was never sent.
+    if (sides.landlord.review_sandbox || sides.student.review_sandbox) continue;
     const all = messagesByThread.get(t.id) ?? [];
     out.push({
       thread: t,
