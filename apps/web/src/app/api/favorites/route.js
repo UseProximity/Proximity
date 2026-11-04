@@ -4,6 +4,7 @@ import { insertAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchListings } from "@/app/api/listings/route";
 import { isSandboxViewer, SANDBOX_FEED_HEADERS } from "@/lib/reviewSandbox";
+import { isSandboxContact } from "@/lib/contactTracking";
 
 /**
  * @auth GET optional
@@ -132,14 +133,15 @@ export async function POST(req) {
         data: { user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId },
       });
 
-      // Track saves metric (fire-and-forget)
-      supabase
-        .rpc("increment_listing_metric", {
+      // Track saves metric (fire-and-forget). Not for a review sandbox account, so a
+      // reviewer never inflates a real landlord's numbers.
+      isSandboxContact(userId)
+        .then((sandbox) => sandbox ? null : supabase.rpc("increment_listing_metric", {
           p_listing_id: listingId,
           p_metric_name: "saves",
-        })
-        .then(({ error: rpcErr }) => {
-          if (rpcErr) console.error("[metrics] favorite increment failed:", rpcErr.message);
+        }))
+        .then((res) => {
+          if (res?.error) console.error("[metrics] favorite increment failed:", res.error.message);
         });
 
       return NextResponse.json({ favorited: true });

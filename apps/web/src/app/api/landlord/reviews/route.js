@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { resolveDashboardUserId } from "@/lib/users/viewAs";
+import { withoutSandboxReviews } from "@/lib/reviewSandbox";
 
 // GET /api/landlord/reviews — all approved reviews for the current landlord's listings
 export async function GET(req) {
@@ -46,8 +47,11 @@ export async function GET(req) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js).
+  const shown = await withoutSandboxReviews(reviews || []);
+
   return NextResponse.json(
-    (reviews || []).map((r) => ({
+    shown.map((r) => ({
       id: r.id,
       rating: r.rating,
       comment: r.comment,

@@ -35,6 +35,8 @@ import { notifyLandlordQuestion, notifyLandlordStudentReply, notifyStudentThread
 import { stampReplyToken } from "./questionTokens";
 import { ingestLinks } from "./ingest";
 import { heldThreadIds } from "./visitorEmail";
+import { sandboxQuestionIds } from "./sandbox";
+import { allSandboxUserIds } from "@/lib/reviewSandbox";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
 
@@ -61,14 +63,25 @@ const SameQuestion = z.object({
   match: z.number().int().describe("The number of the open question that asks the same thing, or 0 if none does."),
 });
 
-async function findOpenMatch({ listingId, ownerId, leaseId, questionText, normalized }) {
+async function findOpenMatch({ listingId, ownerId, leaseId, questionText, normalized, askerUserId = null }) {
   let q = supabase.from("listing_questions").select("id, question, normalized, lease_id, owner_id, asked_count")
     .eq("listing_id", listingId).eq("status", "open").order("created_at", { ascending: false }).limit(12);
   q = ownerId ? q.eq("owner_id", ownerId) : q.is("owner_id", null);
   const { data: open, error } = await q;
   if (error) throw fail("open questions", error);
-  const candidates = (open ?? []).filter((o) => !o.lease_id || !leaseId || o.lease_id === leaseId);
+  let candidates = (open ?? []).filter((o) => !o.lease_id || !leaseId || o.lease_id === leaseId);
   if (!candidates.length) return null;
+  // Review sandbox: a sandbox student's question never joins a real students' row,
+  // and a real student never joins a sandbox row, so hiding a sandbox question from
+  // a real landlord never hides a real student with it (lib/agents/sandbox.js). A
+  // failed lookup throws, and nothing is asked.
+  const sandboxIds = await allSandboxUserIds();
+  if (sandboxIds.size) {
+    const askerIsSandbox = !!askerUserId && sandboxIds.has(askerUserId);
+    const sandboxRows = await sandboxQuestionIds(candidates.map((o) => o.id), sandboxIds);
+    candidates = candidates.filter((o) => sandboxRows.has(o.id) === askerIsSandbox);
+    if (!candidates.length) return null;
+  }
   const exact = candidates.find((o) => o.normalized === normalized);
   if (exact) return exact;
   try {
@@ -142,7 +155,7 @@ export async function askLandlord({ ctx, thread, messageId, questionText, leaseI
   const lease = leaseId ? ctx.leases.find((l) => l.id === leaseId) : null;
   const context = `${lease ? `About the ${lease.label}` : "About the property"}, from a ${askerUserId ? "signed-in" : "signed-out"} student`;
 
-  const match = await findOpenMatch({ listingId, ownerId, leaseId, questionText: question, normalized });
+  const match = await findOpenMatch({ listingId, ownerId, leaseId, questionText: question, normalized, askerUserId });
   let row = match;
   if (match) {
     await supabase.from("listing_questions").update({ asked_count: (match.asked_count ?? 1) + 1, last_activity_at: new Date().toISOString() }).eq("id", match.id);

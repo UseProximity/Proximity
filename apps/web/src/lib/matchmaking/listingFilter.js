@@ -23,7 +23,7 @@ import {
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import { fetchSaturation } from "./saturation";
 import { stripAiInstructions } from "@/lib/contentRules";
-import { sandboxViewerInScope } from "@/lib/reviewSandbox";
+import { sandboxViewerInScope, stripSandboxReviews } from "@/lib/reviewSandbox";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
@@ -980,6 +980,8 @@ export async function fetchActiveListings() {
     if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
     rows = [...rows, ...(sandboxRows ?? [])];
   }
+  // Review sandbox accounts' reviews never move a listing's rating here.
+  await stripSandboxReviews(rows);
   // Retired units (collapsed by a property merge) are not rentable options, and
   // neither are drafts. Draft offerings are dropped here too, so every check
   // below sees only what students can.
