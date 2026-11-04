@@ -20,6 +20,7 @@ import {
   assertListingContactNotBlocked,
 } from "@/lib/chat/safety";
 import { annotateNoReply } from "@/lib/chat/followups";
+import { allSandboxUserIds } from "@/lib/reviewSandbox";
 import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
 import { landlordProxyOverview } from "@/lib/agents/landlordChat";
 import { agentsEnabled } from "@/lib/agents/flags";
@@ -73,7 +74,20 @@ export async function GET(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    const inbox = await applyBlocksToInbox(authUser.id, data ?? []);
+    const unblocked = await applyBlocksToInbox(authUser.id, data ?? []);
+    // Review sandbox (App Store review accounts): a conversation with a sandbox account
+    // is hidden from everyone who is not one, so a reviewer's message never shows up in
+    // a real person's inbox, previews or unread count (both clients take those from
+    // this list). Decided now from the live flag, so it covers old threads too. If the
+    // lookup fails after its retries it throws into the catch below (a 500), rather
+    // than showing the inbox unfiltered.
+    let inbox = unblocked;
+    if (unblocked.length > 0) {
+      const sandboxIds = await allSandboxUserIds();
+      if (!sandboxIds.has(authUser.id)) {
+        inbox = unblocked.filter((t) => !sandboxIds.has(t.otherUserId));
+      }
+    }
     const direct = await withTours((await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t })));
     // The student's Proxy conversations ride along, on their own tab in the
     // overlay. They never fail the inbox. Only clients that ask for them get

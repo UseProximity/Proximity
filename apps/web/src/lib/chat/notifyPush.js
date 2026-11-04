@@ -21,9 +21,16 @@
  * attachment on its own) gets a fixed line, and an unresolvable name falls back to a
  * generic title. sendPushNotification fans out to all of that user's devices, so one
  * call here is one notification per device and never more than one per recipient.
+ *
+ * Review sandbox (App Store review accounts): no push goes from a sandbox account to
+ * anyone who is not one, so a reviewer's message never buzzes a real landlord's phone.
+ * Unlike email there is nowhere to redirect a push to, so it is simply not sent. If
+ * the flag lookup fails after its retries, the catch below logs it and the push is
+ * skipped rather than sent on a guess.
  */
 import supabase from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/push";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const FALLBACK_TITLE = "New message";
 const FALLBACK_BODY = "You have a new message";
@@ -112,6 +119,9 @@ export async function notifyNewChatMessagePush({ threadId, senderId, messageId }
     const eligible = new Set((users ?? []).map((row) => row.id));
     const recipientId = otherIds.find((id) => eligible.has(id));
     if (!recipientId) return;
+
+    const sandboxIds = await sandboxIdsAmong([senderId, recipientId]);
+    if (sandboxIds.has(senderId) && !sandboxIds.has(recipientId)) return;
 
     const { title, body } = await loadNotificationText(threadId, senderId, messageId);
     const result = await sendPushNotification(recipientId, {

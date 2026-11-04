@@ -1736,9 +1736,11 @@
           "expected_available_confirmed_at:timestamptz",
           "expected_available_asked_at:timestamptz",
           "expected_available_ask_count:int4",
-          "published_at:timestamptz"
+          "published_at:timestamptz",
+          "review_sandbox:bool"
         ],
         "column_notes": {
+          "review_sandbox": "true = created by an App Store review sandbox account (users.review_sandbox); hidden from browse, search, matchmaking, the sitemap and the public listing page, skipped by the availability crons, and ignored by the already-listed, duplicate-name, attach and publish-merge checks for everyone but sandbox accounts. Stamped by the BEFORE INSERT trigger listings_stamp_review_sandbox from the transaction-local app.current_user_id, so a row is never visible unflagged. Migration 202611020001, applied to dev and prod 2026-11-02.",
           "unit_type_status": "jsonb {bedroomCount: {available, leased_via_proximity}} written by the check-in edge function for multi-unit complexes",
           "checkin_response_choice": "available | leased_via_proximity | leased_elsewhere, the last answer from the check-in email",
           "last_verified_source": "e.g. owner_email_checkin, pms:<provider>, import; paired with last_verified_at/last_verified_by",
@@ -1750,7 +1752,7 @@
           "pms_connection_id/pms_stale_flagged_at": "set by rpc_pms_ingest_listing / the PMS sync; no data yet",
           "published_at": "NULL = draft property (owners only); set once on publish, never cleared (trg_keep_published)"
         },
-        "notes": "status=active; pk id; fk home_type_id->home_types.id; school_id->schools.id (set null); primary_landlord_id->users.id (set null); last_verified_by->users.id (set null); pms_connection_id->pms_connections.id (set null); source_added_by->users.id (set null); unique (mongo_id) | (coalesce(school_id, zero-uuid), normalize_property_name(title)) where deleted_at is null and normalized title not null; check lease_structure in (individual,joint) | source_kind in (own_site,portal) or null | source_url and source_kind are both null or both set; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk home_type_id->home_types.id; school_id->schools.id (set null); primary_landlord_id->users.id (set null); last_verified_by->users.id (set null); pms_connection_id->pms_connections.id (set null); source_added_by->users.id (set null); unique (mongo_id) | (coalesce(school_id, zero-uuid), normalize_property_name(title)) where deleted_at is null and not review_sandbox and normalized title not null (review sandbox rows exempt since migration 202611030001, applied to dev and prod 2026-11-03); check lease_structure in (individual,joint) | source_kind in (own_site,portal) or null | source_url and source_kind are both null or both set; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 281,
           "prod_last_write": "2026-10-12"
@@ -2451,7 +2453,8 @@
           "company_name:text",
           "preferred_move_in_date:date",
           "preferred_lease_months:int4",
-          "preferred_beds:int4"
+          "preferred_beds:int4",
+          "review_sandbox:bool"
         ],
         "dev_only_columns": [
           "apple_refresh_token",
@@ -2465,7 +2468,8 @@
           "password_reset_token": "SHA-256 hash of the emailed reset token (lib/auth/tokenHash.js), never the raw value",
           "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
           "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",
-          "apple_refresh_token/company_name": "DEV ONLY columns"
+          "apple_refresh_token/company_name": "DEV ONLY columns",
+          "review_sandbox": "App Store review sandbox account (default false). Set only by the team, by SQL; no API sets it. The server keeps everything a flagged account does away from real users: emails to or from it (chat alerts, owner inquiries, contact verification) are suppressed, never sent or redirected, and recorded in sent_emails as suppressed with the reason 'review sandbox'; no push to non-sandbox users, its threads are hidden from the other person's inbox, its listings are hidden from the public (lib/reviewSandbox.js). Partial index idx_users_review_sandbox. Migration 202611020001, applied to dev and prod 2026-11-02."
         },
         "notes": "status=active; pk id; fk role_id->roles.id; school_id->schools.id (set null); unique (email) | (apple_sub) where not null; check payment_method in (zelle,venmo) or null; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
@@ -3258,6 +3262,15 @@
         "description": "Setting users.deleted_at soft-deletes the listings that user owns."
       },
       {
+        "name": "trg_listings_stamp_review_sandbox",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "users (read), listings.review_sandbox",
+        "called_from": "listings_stamp_review_sandbox on listings (BEFORE INSERT)",
+        "defined_in": "202611020001_review_sandbox.sql",
+        "description": "Sets NEW.review_sandbox when the acting user (transaction-local app.current_user_id, set first thing by rpc_create_listing and rpc_create_listing_v2) is a review sandbox account, so the row is born flagged. SECURITY DEFINER, search_path pinned, service_role only. Ignores an unset or malformed setting."
+      },
+      {
         "name": "fn_queue_listing_notification_events",
         "kind": "trigger_fn",
         "args": "-",
@@ -3408,6 +3421,7 @@
       "other": {
         "listings": [
           "listings_set_property_key (property_key)",
+          "listings_stamp_review_sandbox (BEFORE INSERT: review_sandbox from the acting user)",
           "trg_queue_listing_notification_events (listing_notification_events)",
           "listing_hook (webhook, see webhooks)"
         ],

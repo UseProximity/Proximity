@@ -32,6 +32,7 @@ import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
+import { isSandboxViewer, SANDBOX_FEED_HEADERS } from "@/lib/reviewSandbox";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -268,9 +269,10 @@ export function buildListing(row, owner = null) {
  * specific set of listings (e.g. a user's saved listings) instead of
  * fetching everything; omit it (or leave it empty) to fetch all non-deleted
  * listings, unchanged from before. Throws on a DB error; callers handle
- * the response.
+ * the response. `includeSandbox` is only for a review sandbox viewer
+ * (isSandboxViewer): their feed also carries the sandbox listings.
  */
-export async function fetchListings(listingIds = null) {
+export async function fetchListings(listingIds = null, { includeSandbox = false } = {}) {
   let query = supabase
     .from("listings")
     .select(
@@ -306,6 +308,15 @@ export async function fetchListings(listingIds = null) {
     .is("deleted_at", null)
     // Draft properties belong on their owner's dashboard, not in browse.
     .not("published_at", "is", null);
+
+  // Listings made by an App Store review sandbox account never show to a real user
+  // here (the flag is stamped at creation, see 202611020001_review_sandbox.sql). This
+  // is the feed behind browse, search, the map, popular, saved, the sitemap's price
+  // pages and the website's browse pages. Only a sandbox viewer's own request, from
+  // the app, asks for them too, so a reviewer can find the listing they just made.
+  if (!includeSandbox) {
+    query = query.eq("review_sandbox", false);
+  }
 
   if (listingIds?.length > 0) {
     query = query.in("id", listingIds);
@@ -347,8 +358,13 @@ export async function fetchListings(listingIds = null) {
   });
 }
 
-export async function GET() {
+export async function GET(req) {
   try {
+    // A review sandbox account in the app also sees the sandbox listings. That answer
+    // is theirs alone, so it is never cached.
+    if (await isSandboxViewer(req)) {
+      return Response.json(await fetchListings(null, { includeSandbox: true }), { headers: SANDBOX_FEED_HEADERS });
+    }
     return Response.json(await fetchListings());
   } catch (err) {
     console.error("[listings GET] unexpected error:", err);

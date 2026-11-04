@@ -21,6 +21,7 @@ import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -535,7 +536,7 @@ export async function POST(req) {
       // the new units and their leases are written.
       const { data: target, error: targetError } = await supabase
         .from("listings")
-        .select("id, address, deleted_at")
+        .select("id, address, deleted_at, review_sandbox")
         .eq("id", listingId)
         .maybeSingle();
 
@@ -545,6 +546,30 @@ export async function POST(req) {
       }
       if (!target || target.deleted_at) {
         return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+      }
+
+      /*
+       * A review sandbox account (App Store review) and a real landlord never share a
+       * property, in either direction. A sandbox account adding to a real landlord's
+       * property would change what browse shows for them: answered like an address that
+       * is already taken, without naming the property. A real landlord adding to a
+       * sandbox property would have their units hidden from every student: that property
+       * does not exist for them, so it is answered as not found. The mobile app never
+       * sends attachToListingId, so this is a safety net. A failed flag lookup throws to
+       * the catch at the bottom (a 500).
+       */
+      if (ownerId) {
+        const ownerIsSandbox = (await sandboxIdsAmong([ownerId])).has(ownerId);
+        const targetIsSandbox = target.review_sandbox === true;
+        if (ownerIsSandbox && !targetIsSandbox) {
+          return NextResponse.json(
+            { error: "This address is already on Proximity.", code: "address_taken" },
+            { status: 409 }
+          );
+        }
+        if (!ownerIsSandbox && targetIsSandbox) {
+          return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+        }
       }
 
       /*
@@ -605,7 +630,7 @@ export async function POST(req) {
         );
       }
 
-      const nameConflict = await findPropertyNameConflict(title, { schoolId: null });
+      const nameConflict = await findPropertyNameConflict(title, { schoolId: null, userId: ownerId });
       if (nameConflict) {
         return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
       }
@@ -931,11 +956,14 @@ export async function POST(req) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
-          .select("email, name")
+          .select("email, name, review_sandbox")
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req);
+            // A review sandbox owner's copy is recorded as not sent, never delivered.
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req, {
+              sandbox: landlordUser.review_sandbox === true,
+            });
           }
         }
       } catch (emailErr) {

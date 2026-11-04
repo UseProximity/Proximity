@@ -168,7 +168,9 @@ export async function sendLandlordNudgeEmail({ email, name }) {
 // listing's owner with the student CC'd and set as reply-to, so the landlord replies
 // straight to the student. Routed through sendMailSafe, so on staging it's redirected to
 // the chosen test inbox (and the cc is dropped) — never reaching a real owner.
-export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req }) {
+// `sandbox` is true when a review sandbox account sent the inquiry: sendMailSafe then
+// does not send it at all (it is only recorded as suppressed).
+export async function sendOwnerInquiryEmail({ to, landlordName, student, listingAddress, message, req, sandbox = false }) {
   // The contact flow always supplies the student's note (the editable draft can't be
   // sent empty), so use it directly. The short guard only avoids a blank quote if a
   // future caller omits it — the real default lives in contactNote.js.
@@ -188,6 +190,7 @@ export async function sendOwnerInquiryEmail({ to, landlordName, student, listing
   };
   return sendMailSafe(transporter, {
     logAs: { kind: "owner_inquiry" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || "info@useproximity.org"}>`,
     to,
     cc: student.email || undefined,
@@ -399,6 +402,10 @@ export async function sendChatMessageEmail({
   reminder = false,
   threadId = null,
   recipientId = null,
+  // True when a review sandbox account is the sender or the recipient of this alert:
+  // sendMailSafe then does not send it (it is only recorded as suppressed, see
+  // lib/outreach.js). The caller leaves out the reply address and magic link for these.
+  sandbox = false,
   action = null,
 }) {
   const build = (canReply) =>
@@ -444,6 +451,7 @@ export async function sendChatMessageEmail({
         html,
         text,
         ses: SES_SEND_OPTIONS,
+        sandbox,
       }, testEmailTo);
       return { provider: "ses", messageId: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
     } catch (err) {
@@ -461,6 +469,7 @@ export async function sendChatMessageEmail({
     headers,
     html,
     text,
+    sandbox,
   }, testEmailTo);
   return { provider: "gmail", messageId: info?.messageId || null, suppressed: Boolean(info?.suppressed), sesError };
 }
