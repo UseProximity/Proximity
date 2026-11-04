@@ -144,7 +144,7 @@ export async function notifyTourConfirmed({ tourId }) {
     const file = invite(isStudent);
     const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
     await sendTourEmail({
-    sandbox: r.sandbox,
+      sandbox: r.sandbox,
       kind: "tour_confirmed", to: u.email, name: u.name,
       subject: isStudent ? `Tour confirmed: ${r.listingLabel}, ${when}` : `Tour confirmed: ${r.student?.name || "a student"}, ${when}`,
       intro: isStudent
@@ -187,7 +187,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
       if (!canEmail(u)) continue;
       const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
       await sendTourEmail({
-    sandbox: r.sandbox,
+        sandbox: r.sandbox,
         kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
         lines: [`Address: ${r.address}`],
