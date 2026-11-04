@@ -1,7 +1,10 @@
 /*
  * The monthly billing run. For each landlord it collects every Approved charge
- * that is not yet on an invoice into one Stripe invoice (a line per charge) and
- * charges the landlord's default payment method once.
+ * that is not yet on an invoice into one Stripe invoice (a line per charge),
+ * sends it (send_invoice, due in 30 days) and emails the landlord a summary with
+ * Pay now. It never charges anyone: the landlord pays, or autopay they switched
+ * on charges it AUTOPAY_BUSINESS_DAYS business days later (autopay.js), which
+ * this run only schedules.
  *
  * Safe to run again at any point, including after a crash halfway through:
  *
@@ -11,7 +14,7 @@
  *   - Charges are claimed (Approved -> Invoiced, pointing at that row) before
  *     anything is created in Stripe, so a charge is never on two invoices and one
  *     that changed meanwhile (voided, contested) is simply left out.
- *   - The Stripe steps (draft, items, finalize, pay) each check what already
+ *   - The Stripe steps (draft, items, finalize) each check what already
  *     exists first, so repeating them adds nothing. See invoicing.js.
  *   - A landlord whose total is under the minimum is not invoiced; their charges
  *     stay Approved and roll into the next month.
@@ -28,7 +31,7 @@
  * database. One landlord failing never stops the others.
  *
  * `db` is a service-role Supabase client and `stripe` a Stripe client. `notify`
- * ({ paymentFailed }) sends the emails; `hooks.at(name, ctx)` is a test seam that
+ * ({ invoiceIssued, autopayOff }) sends the emails; `hooks.at(name, ctx)` is a test seam that
  * is called between steps so tests can simulate a crash there.
  */
 import { BillingError } from "./errors.js";
@@ -36,11 +39,12 @@ import { MIN_INVOICE_CENTS } from "./constants.js";
 import { billingPeriodFor } from "./billingPeriod.js";
 import { withSettingsLock } from "./settings.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
+import { scheduleAutopay } from "./autopay.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoicePlan.js";
 import { leaseLabel } from "./chargeDisplay.js";
 import { transitionCharge } from "./charges.js";
 import { getOrCreateBillingAccount } from "./customers.js";
-import { chargeableMethod, defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
+import { defaultActiveMethod as defaultMethod } from "./paymentMethods.js";
 import {
   assertDraftTotal,
   assertInvoiceMatches,
@@ -49,16 +53,13 @@ import {
   finalizeInvoice,
   finalizedFields,
   findInvoiceByKey,
-  payInvoice,
-  paymentFailureMessage,
-  paymentUnderway,
-  recordPaymentFailure,
 } from "./invoicing.js";
 
 const PAGE = 1000;
 
 const CHARGE_COLUMNS = `
   id, landlord_id, amount_cents, trigger_type, status, invoice_id, created_at,
+  signed_rent_cents, commission_rate_percent,
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
   student:users!student_id(name)
@@ -76,6 +77,8 @@ const toPlanningRow = (c) => ({
   listing_label: c.listing?.address ?? c.listing?.title ?? null,
   lease_label: leaseLabel(c.lease),
   student_name: c.student?.name ?? null,
+  signed_rent_cents: c.signed_rent_cents ?? null,
+  commission_rate_percent: c.commission_rate_percent ?? null,
 });
 
 async function pageAll(buildQuery) {
@@ -143,7 +146,7 @@ async function landlordsInvoicedFor(db, billingPeriod, landlordId) {
   return new Set(data.map((r) => r.landlord_id));
 }
 
-// Whether a live run would find a method to charge (chargeableMethod), without changing anything.
+// Whether the landlord has a usable method on file (shown in the dry run; nothing is charged by the run).
 async function hasUsableMethod(db, landlordId, now) {
   if (await defaultMethod(db, landlordId, now)) return true;
   const { data, error } = await db
@@ -205,6 +208,13 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
     amountCents: r.amount_cents,
     description: lineDescription(r),
   }));
+  // What the invoice email lists: each line with its signed rent and rate, when known.
+  const emailLines = claimedRows.map((r, i) => ({
+    description: lines[i].description,
+    amountCents: r.amount_cents,
+    signedRentCents: r.signed_rent_cents,
+    commissionRatePercent: r.commission_rate_percent,
+  }));
   const total = lines.reduce((s, l) => s + l.amountCents, 0);
 
   const landlord = (await usersById(db, [row.landlord_id])).get(row.landlord_id);
@@ -234,6 +244,7 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
   // "unchanged" unless this call actually moves the invoice forward, so a run that
   // only re-checks finished invoices does not report them as new.
   let outcome = "unchanged";
+  let sentNow = false;
 
   const { error: linkError } = await db.from("billing_invoices").update({ stripe_invoice_id: invoice.id }).eq("id", row.id);
   if (linkError) throw linkError;
@@ -255,6 +266,7 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
       .eq("id", row.id);
     if (error) throw error;
     outcome = "invoiced";
+    sentNow = true;
     await hooks.at?.("finalized", { row, invoice });
   } else if (!row.invoice_date || !row.hosted_invoice_url) {
     // An earlier run finalized it in Stripe and stopped before saving the date and
@@ -265,33 +277,44 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
       .update({ total_cents: total, ...finalizedFields(invoice, now) })
       .eq("id", row.id);
     if (error) throw error;
+    sentNow = true;
   }
 
-  // Pay once. An invoice that already had an attempt is not attempted again here;
-  // a failed one is the landlord's (or an admin's) to retry.
-  if (invoice.status === "open" && !invoice.attempted) {
-    const method = await chargeableMethod(db, stripe, row.landlord_id, now);
-    if (!method) {
-      await recordPaymentFailure(db, { invoiceId: row.id, message: "No active payment method on file", notify, now });
-      outcome = "payment_failed";
-    } else {
-      try {
-        await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
-        outcome = "payment_started";
-      } catch (err) {
-        // Refused because it is already paid or a payment is settling is not a
-        // failure, and must not email the landlord that it did not go through.
-        if (await paymentUnderway(stripe, invoice.id)) {
-          outcome = "payment_started";
-        } else {
-          await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
-          outcome = "payment_failed";
-        }
-      }
-    }
-    await hooks.at?.("paid", { row, invoice });
-  }
+  // Sent just now (or finished by this resumed run): schedule autopay and email it.
+  if (sentNow) await announceInvoice({ db, now, notify }, { row, invoice, landlord, emailLines, total });
   return { outcome, stripeInvoiceId: invoice.id, totalCents: total, chargeCount: lines.length };
+}
+
+/*
+ * The invoice was just sent: schedule autopay if the landlord has it on, then
+ * email them the summary with Pay now (and the autopay date). Neither may fail
+ * the run: the invoice exists either way, and an admin can resend the email.
+ */
+async function announceInvoice({ db, now, notify }, { row, invoice, landlord, emailLines, total }) {
+  const sentAt = finalizedFields(invoice, now).sent_at;
+  let autopay = null;
+  try {
+    autopay = await scheduleAutopay(db, { invoiceId: row.id, landlordId: row.landlord_id, sentAt, notify, now });
+  } catch (err) {
+    console.error("billing: could not schedule autopay", row.id, err?.message);
+  }
+  if (!notify?.invoiceIssued || !landlord?.email) return;
+  try {
+    await notify.invoiceIssued({
+      landlord,
+      invoice: {
+        id: row.id,
+        billing_period: row.billing_period,
+        total_cents: total,
+        due_date: finalizedFields(invoice, now).due_date,
+        hosted_invoice_url: invoice.hosted_invoice_url ?? null,
+      },
+      lines: emailLines,
+      autopay,
+    });
+  } catch (err) {
+    console.error("billing: invoice email failed", row.id, err?.message);
+  }
 }
 
 async function billLandlord(ctx, planned) {
@@ -473,8 +496,7 @@ async function liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, op
     billingPeriod,
     results,
     summary: {
-      invoiced: count("payment_started") + count("invoiced"),
-      paymentFailed: count("payment_failed"),
+      invoiced: count("invoiced"),
       deferred: count("deferred"),
       alreadyBilled: count("already_billed"),
       errors: count("error"),
@@ -488,8 +510,7 @@ export const RUN_LOCK_KEY = "billing_run_lock";
 
 /*
  * Two live runs at once (the first-Monday cron and an admin's Run billing now)
- * could both try to pay the same invoice, and Stripe refusing the second would
- * read as a failed payment. The stale limit is longer than the cron's 300s, so a
+ * could both work on the same landlord's invoice and email it twice. The stale limit is longer than the cron's 300s, so a
  * lock left by a run that was killed frees itself, but never while a run could
  * still be going.
  */

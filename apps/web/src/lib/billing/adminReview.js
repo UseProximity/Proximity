@@ -27,6 +27,7 @@ import { DAY_MS } from "./constants.js";
 const ADMIN_COLUMNS = `
   id, landlord_id, amount_cents, description, trigger_type, trigger_ref, status, created_at,
   pending_at, contested_at, contest_reason, resolved_at, resolution_note, is_test,
+  signed_rent_cents, commission_rate_percent,
   landlord:users!landlord_id(name, email),
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
@@ -67,7 +68,7 @@ async function chargebacks(db) {
 }
 
 const INVOICE_COLUMNS =
-  "id, landlord_id, status, total_cents, invoice_date, created_at, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)";
+  "id, landlord_id, status, total_cents, invoice_date, due_date, autopay_scheduled_for, autopay_attempted_at, created_at, last_failure_message, disputed, overdue_actioned_at, landlord:users!landlord_id(name, email)";
 
 // Leases the overdue job withdrew and nobody has restored yet, counted per invoice.
 // Reads as none until the billing_lease_withdrawals migration is applied, so the
@@ -113,12 +114,15 @@ async function invoicesNeedingAttention(db, now) {
     status: inv.status,
     totalCents: inv.total_cents,
     invoiceDate: inv.invoice_date,
+    dueDate: inv.due_date ?? null,
+    autopayDate: inv.autopay_scheduled_for && !inv.autopay_attempted_at ? inv.autopay_scheduled_for : null,
     daysOld: Math.floor((now.getTime() - new Date(inv.invoice_date ?? inv.created_at).getTime()) / DAY_MS),
     failureMessage: inv.last_failure_message ?? null,
     disputed: inv.disputed,
     leasesWithdrawn: !!inv.overdue_actioned_at,
     leasesToRestore: withdrawn.get(inv.id) ?? 0,
-    canRetry: !!inv.invoice_date && (inv.status === "failed" || inv.status === "open"),
+    // Admins never charge a landlord (decisions of 2026-11-04); they can resend the invoice email.
+    canResend: !!inv.invoice_date && (inv.status === "failed" || inv.status === "open"),
     landlord: { id: inv.landlord_id, name: inv.landlord?.name ?? null, email: inv.landlord?.email ?? null },
   }));
 }

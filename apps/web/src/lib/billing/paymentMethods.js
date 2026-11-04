@@ -23,6 +23,7 @@
 import { BillingError } from "./errors.js";
 import { userIdForCustomer } from "./customers.js";
 import { describeMethod, effectiveStatus, needsAttention } from "./paymentMethodState.js";
+import { lazyAutopayNotify, revokeAutopayForMethod } from "./autopay.js";
 
 const LIVE_COLUMNS =
   "id, user_id, stripe_payment_method_id, type, status, is_default, brand, last4, exp_month, exp_year, bank_name, created_at";
@@ -210,15 +211,25 @@ export async function syncCheckoutSession(db, stripe, { sessionId, userId }) {
   return syncSetupIntent(db, stripe, idOf(session.setup_intent));
 }
 
-// A bank account whose verification failed, or a method whose last payment failed.
-export async function markPaymentMethodFailed(db, stripePaymentMethodId) {
+/*
+ * A bank account whose verification failed, or a method whose last payment
+ * failed. `verificationFailed` also switches off autopay on it; a failed payment
+ * does not (autopay's own failure count decides, see autopay.js).
+ */
+export async function markPaymentMethodFailed(db, stripePaymentMethodId, { verificationFailed = false } = {}) {
   if (!stripePaymentMethodId) return;
-  const { error } = await db
+  const { data, error } = await db
     .from("payment_methods")
     .update({ status: "failed" })
     .eq("stripe_payment_method_id", stripePaymentMethodId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id");
   if (error) throw error;
+  if (verificationFailed) {
+    for (const { id } of data ?? []) {
+      await revokeAutopayForMethod(db, { paymentMethodId: id, reason: "verification", notify: lazyAutopayNotify });
+    }
+  }
 }
 
 // Stripe changed a stored method (expiry, or the card updater issued a new
@@ -329,6 +340,9 @@ export async function finishRemoval(db, stripe, method) {
     .eq("id", method.id)
     .is("deleted_at", null);
   if (error) throw error;
+
+  // Autopay on this method stops, and the landlord is told how to turn it back on.
+  await revokeAutopayForMethod(db, { paymentMethodId: method.id, reason: "removed", notify: lazyAutopayNotify });
 
   const { data: remaining, error: listError } = await db
     .from("payment_methods")

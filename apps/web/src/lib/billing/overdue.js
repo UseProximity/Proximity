@@ -1,7 +1,10 @@
 /*
  * When an unpaid invoice is overdue enough to withdraw the landlord's leases.
  *
- * Counted from the invoice date, never from a charge date: Approved charges
+ * Counted from the due date (30 days after the invoice is sent), so a landlord
+ * has 30 days to pay and then 30 more before their leases are withdrawn
+ * (decisions of 2026-11-04). An invoice from before due dates existed counts
+ * from its invoice date. Never counted from a charge date: Approved charges
  * under the minimum can sit for months without an invoice and must never
  * trigger a withdrawal, and this only ever looks at invoices.
  *
@@ -17,14 +20,23 @@ const UNPAID = new Set(["open", "failed"]);
 // An invoice left unfinished by a billing run for this long is flagged to admins.
 const UNFINISHED_AFTER_MS = DAY_MS;
 
+// When the overdue clock starts: the due date, or the invoice date for older invoices. Null if never issued.
+export function overdueClockStart(invoice) {
+  if (!invoice?.invoice_date) return null;
+  return new Date(invoice.due_date ?? invoice.invoice_date);
+}
+
+// The instant before which an invoice's clock must have started for it to be overdue at `now`.
+export const overdueCutoff = (now = new Date()) => new Date(now.getTime() - OVERDUE_DAYS * DAY_MS);
+
 export function isInvoiceOverdue(invoice, now = new Date()) {
   if (!invoice || invoice.overdue_actioned_at) return false;
   if (!UNPAID.has(invoice.status)) return false;
   // No invoice date means Stripe never finalized it: the landlord was never sent
   // anything they could pay, so it can never be overdue.
-  if (!invoice.invoice_date) return false;
-  const age = now.getTime() - new Date(invoice.invoice_date).getTime();
-  return age > OVERDUE_DAYS * DAY_MS;
+  const start = overdueClockStart(invoice);
+  if (!start) return false;
+  return now.getTime() - start.getTime() > OVERDUE_DAYS * DAY_MS;
 }
 
 /*
@@ -45,6 +57,5 @@ export function invoiceAttentionReason(invoice, now = new Date()) {
     const since = now.getTime() - new Date(invoice.created_at ?? now).getTime();
     return since > UNFINISHED_AFTER_MS ? "unfinished" : null;
   }
-  const age = now.getTime() - new Date(invoice.invoice_date).getTime();
-  return age > OVERDUE_DAYS * DAY_MS ? "overdue" : null;
+  return now.getTime() - overdueClockStart(invoice).getTime() > OVERDUE_DAYS * DAY_MS ? "overdue" : null;
 }

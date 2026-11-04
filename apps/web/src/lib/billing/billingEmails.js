@@ -11,7 +11,7 @@
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
 import { emailFooter } from "@/lib/email";
-import { AGREEMENT_REQUEST_KIND, BILLING_TEAM_EMAIL, CHANGE_REQUEST_TEAM_EMAILS } from "./constants";
+import { AGREEMENT_REQUEST_KIND, AUTOPAY_OFF_KIND, BILLING_TEAM_EMAIL, CHANGE_REQUEST_TEAM_EMAILS, INVOICE_ISSUED_KIND } from "./constants";
 import * as t from "./billingEmailTemplates";
 
 const transporter = nodemailer.createTransport({
@@ -107,3 +107,9 @@ export const sendChangeRequestUpdateEmail = (landlord, input, { sandbox = false 
     message: t.changeRequestUpdateEmail({ name: landlord.name, ...input }),
     sandbox,
   });
+
+// Invoices and autopay. Each resolves true when handed to the mailer.
+export const sendInvoiceIssuedEmail = (landlord, input) =>
+  toLandlord(INVOICE_ISSUED_KIND, landlord, t.invoiceIssuedEmail({ name: landlord.name, ...input }));
+export const sendAutopayOffEmail = (landlord, input) =>
+  toLandlord(AUTOPAY_OFF_KIND, landlord, t.autopayOffEmail({ name: landlord.name, ...input }));

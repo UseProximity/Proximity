@@ -22,7 +22,8 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  * dev/prod switch), so a test charge can never land in the wrong environment.
  *
  * Body: { landlordEmail, amount (dollars, "25.00"), triggerType?, description?,
- *         listingId?, leaseId?, studentId?, confirm? (move straight to Pending) }
+ *         listingId?, leaseId?, studentId?, signedRent? (dollars), commissionRate?
+ *         (percent), confirm? (move straight to Pending) }
  *
  * @auth admin
  */
@@ -51,6 +52,13 @@ export async function POST(req) {
       if (body[key] && !isUuid(body[key])) throw new BillingError("bad_reference", `${key} is not a valid id.`);
     }
 
+    const signedRentCents = body.signedRent != null && body.signedRent !== "" ? dollarsToCents(body.signedRent) : null;
+    if (body.signedRent && !signedRentCents) throw new BillingError("bad_rent", "Enter the signed rent in dollars, like 1500.00.");
+    const rate = body.commissionRate != null && body.commissionRate !== "" ? Number(body.commissionRate) : null;
+    if (rate != null && !(Number.isFinite(rate) && rate > 0 && rate <= 100)) {
+      throw new BillingError("bad_rate", "Enter the commission rate as a percent between 0 and 100.");
+    }
+
     const charge = await createCharge(supabase, {
       landlordId: landlord.id,
       amountCents,
@@ -59,6 +67,8 @@ export async function POST(req) {
       listingId: body.listingId || null,
       leaseId: body.leaseId || null,
       studentId: body.studentId || null,
+      signedRentCents,
+      commissionRatePercent: rate,
       createdByType: "admin",
       createdById: session.user.id,
       isTest: true,

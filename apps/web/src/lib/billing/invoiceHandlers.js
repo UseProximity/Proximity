@@ -4,8 +4,11 @@
  * paid, so charges move to Paid here and only here. Each handler is safe to run
  * twice for one event (see webhookEvents.js).
  *
- *   invoice.paid                     row Paid, its charges Paid, a Failed method usable again
- *   invoice.payment_failed           row Failed, landlord and team told once, the method marked Failed
+ *   invoice.paid                     row Paid, its charges Paid, a Failed method usable again,
+ *                                    and an autopay charge resets autopay's failure count
+ *   invoice.payment_failed           row Failed, landlord and team told once, the method marked Failed;
+ *                                    an autopay charge that failed (a bank payment can fail days
+ *                                    later) counts toward switching autopay off
  *   invoice.payment_action_required  the bank needs the landlord to confirm: treated as a failure with that message
  *   payment_intent.processing        an ACH payment started and is settling: row Processing
  *   invoice.voided                   row Void; its charges go back to Approved for the next run
@@ -21,6 +24,7 @@ import { getStripe } from "./stripe.js";
 import { transitionCharge } from "./charges.js";
 import { paymentFailureMessage, recordPaymentFailure } from "./invoicing.js";
 import { markPaymentMethodFailed } from "./paymentMethods.js";
+import { noteAutopayFailure, noteAutopaySuccess } from "./autopay.js";
 
 const idOf = (v) => (v && typeof v === "object" ? v.id : v) ?? null;
 const UNIQUE_VIOLATION = "23505";
@@ -29,7 +33,7 @@ async function localInvoice(db, stripeInvoiceId) {
   if (!stripeInvoiceId) return null;
   const { data, error } = await db
     .from("billing_invoices")
-    .select("id, landlord_id, status, total_cents, hosted_invoice_url")
+    .select("id, landlord_id, status, total_cents, hosted_invoice_url, autopay_payment_method_id, autopay_attempted_at, autopay_skipped_reason")
     .eq("stripe_invoice_id", stripeInvoiceId)
     .maybeSingle();
   if (error) throw error;
@@ -107,6 +111,17 @@ async function markPaid(db, row, stripeInvoice) {
   if (methodError) throw methodError;
 }
 
+// Autopay tried this invoice (not skipped it).
+const autopayCharged = (row) => !!row.autopay_attempted_at && !row.autopay_skipped_reason;
+
+// Whether a failed payment on this invoice was autopay's: autopay tried it, with the method that failed.
+async function failedOnAutopayMethod(db, row, stripePaymentMethodId) {
+  if (!autopayCharged(row) || !row.autopay_payment_method_id) return false;
+  const { data, error } = await db.from("payment_methods").select("stripe_payment_method_id").eq("id", row.autopay_payment_method_id).maybeSingle();
+  if (error) throw error;
+  return !!data && (!stripePaymentMethodId || data.stripe_payment_method_id === stripePaymentMethodId);
+}
+
 async function setInvoiceStatus(db, row, status, onlyFrom) {
   let q = db.from("billing_invoices").update({ status }).eq("id", row.id);
   q = onlyFrom ? q.in("status", onlyFrom) : q.neq("status", "paid");
@@ -117,7 +132,9 @@ async function setInvoiceStatus(db, row, status, onlyFrom) {
 export const invoiceHandlers = {
   "invoice.paid": async (event, { db }) => {
     const row = await localInvoice(db, event.data.object.id);
-    if (row) await markPaid(db, row, event.data.object);
+    if (!row) return;
+    await markPaid(db, row, event.data.object);
+    if (autopayCharged(row)) await noteAutopaySuccess(db, { landlordId: row.landlord_id });
   },
 
   "invoice.payment_failed": async (event, { db }) => {
@@ -126,11 +143,17 @@ export const invoiceHandlers = {
     if (!row) return;
     const failure = await latestFailure(stripe, event.data.object.id);
     if (failure.paymentMethodId) await markPaymentMethodFailed(db, failure.paymentMethodId);
-    await recordPaymentFailure(db, {
+    const notify = await notifier();
+    const recorded = await recordPaymentFailure(db, {
       invoiceId: row.id,
       message: paymentFailureMessage({ message: failure.message }),
-      notify: await notifier(),
+      notify,
     });
+    // Only the call that recorded the failure counts it, so the cron's own record of
+    // a card decline and this webhook for the same decline count once.
+    if (recorded && (await failedOnAutopayMethod(db, row, failure.paymentMethodId))) {
+      await noteAutopayFailure(db, { landlordId: row.landlord_id, notify });
+    }
   },
 
   "invoice.payment_action_required": async (event, { db }) => {

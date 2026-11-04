@@ -1,11 +1,10 @@
 /*
- * The overdue job: an invoice unpaid for more than 30 days after its invoice date
- * withdraws the landlord's leases (hides them from students). The landlord and
- * the team are emailed once.
+ * The overdue job: an invoice unpaid for more than 30 days after its due date
+ * (older invoices: after their invoice date) withdraws the landlord's leases
+ * (hides them from students). The landlord and the team are emailed once.
  *
- * It counts from the invoice date only (see overdue.js), which is set when Stripe
- * finalizes the invoice: a row a crashed run left before that has no date and is
- * never actioned. So Approved charges
+ * The clock (see overdue.js) needs the dates Stripe's finalize sets: a row a
+ * crashed run left before that has no date and is never actioned. So Approved charges
  * under the $5 minimum, which can wait months without an invoice, never trigger
  * it. A payment still settling (Processing) does not count as overdue.
  *
@@ -20,8 +19,7 @@
  *
  * `db` is a service-role Supabase client. `notify` ({ overdue }) sends the emails.
  */
-import { isInvoiceOverdue } from "./overdue.js";
-import { DAY_MS, OVERDUE_DAYS } from "./constants.js";
+import { isInvoiceOverdue, overdueCutoff } from "./overdue.js";
 
 const BATCH = 200;
 
@@ -54,16 +52,17 @@ async function withdrawLeases(db, invoiceId, landlordId) {
 }
 
 export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) {
-  const cutoff = new Date(now.getTime() - OVERDUE_DAYS * DAY_MS).toISOString();
+  const cutoff = overdueCutoff(now).toISOString();
   const result = { checked: 0, actioned: 0, leasesWithdrawn: 0, failed: [] };
 
   const { data: invoices, error } = await db
     .from("billing_invoices")
-    .select("id, landlord_id, status, total_cents, invoice_date, overdue_actioned_at")
+    .select("id, landlord_id, status, total_cents, invoice_date, due_date, overdue_actioned_at")
     .in("status", ["open", "failed"])
     .is("overdue_actioned_at", null)
     .not("stripe_invoice_id", "is", null)
-    .lt("invoice_date", cutoff)
+    // Past the cutoff by due date, or by invoice date for invoices without one.
+    .or(`due_date.lt.${cutoff},and(due_date.is.null,invoice_date.lt.${cutoff})`)
     .order("invoice_date", { ascending: true })
     .limit(BATCH);
   if (error) throw error;

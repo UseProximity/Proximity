@@ -15,6 +15,7 @@
  *
  * `db` is a service-role Supabase client.
  */
+import { autopayByLandlord } from "./autopay.js";
 import { BillingError } from "./errors.js";
 import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
@@ -312,6 +313,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
     pendingAmendmentUsers(db, ids),
   ]);
 
+  const autopays = await autopayByLandlord(db, ids);
   const rows = landlords.map((l) => {
     const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion, cutoff, now });
     const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
@@ -333,6 +335,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       agreement: { ...agreementSummary(state), amendmentPendingSince: amending.get(l.id) ?? null },
       coverage,
       payment,
+      autopay: autopays.get(l.id) ?? null,
       invoices: invoice,
       publishing: { allowed: publishing.allowed, missing: publishing.missing },
       lastAgreementEmailAt: email?.created_at ?? null,

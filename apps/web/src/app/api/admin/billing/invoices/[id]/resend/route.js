@@ -3,14 +3,16 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { getStripe } from "@/lib/billing/stripe";
-import { retryInvoicePayment } from "@/lib/billing/invoiceAccess";
+import { resendInvoiceEmail } from "@/lib/billing/invoiceAccess";
+import { billingNotify } from "@/lib/billing/billingNotify";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
- * An admin retries payment of a failed invoice: one attempt with the landlord's
- * default active payment method, the same as their Pay now button.
+ * An admin re-sends an unpaid invoice's email (summary, due date, Pay now, and
+ * the autopay date if one is coming). Admins never charge a landlord: this
+ * replaced "Retry payment" (decisions of 2026-11-04). Off production the email
+ * goes to the test inbox, like every email.
  *
  * @auth admin
  */
@@ -21,9 +23,9 @@ export async function POST(_req, { params }) {
   try {
     const { id } = await params;
     if (!isUuid(id)) throw new BillingError("not_found", "Invoice not found.", 404);
-    const result = await retryInvoicePayment(supabase, getStripe(), { invoiceId: id });
+    const result = await resendInvoiceEmail(supabase, { invoiceId: id, notify: billingNotify() });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    return billingErrorResponse(err, "retry invoice payment");
+    return billingErrorResponse(err, "resend invoice email");
   }
 }
