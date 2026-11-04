@@ -25,7 +25,9 @@
  *                        the agent), switched with a filter.
  *   Person to person     a student and a landlord; the chats a tour opened
  *                        are marked "From a tour".
- *   Confirmed tours      every confirmed tour, upcoming then past, each
+ *   Tours                every tour request at every stage (waiting on the
+ *                        landlord, landlord wrote instead, upcoming, past,
+ *                        cancelled, expired; Wyatt, 2026-11-03), each
  *                        linking to its conversation here.
  *
  * The tab and what is open live in the URL (?view=conversations&tab=direct&
@@ -222,7 +224,24 @@ function BlockedAttempt({ e, sender }) {
   );
 }
 
-function ThreadDetail({ detail, dbTarget, onChanged, onOpenThread }) {
+// Opens a person's own Messages inbox on this thread, read only (Wyatt,
+// 2026-11-03). Only offered when the admin is looking at the site's own
+// database, since the inbox always reads that one.
+function InboxLink({ person, threadId, label }) {
+  if (!person?.id) return null;
+  return (
+    <a
+      href={`/?messages=1&messagesAs=${person.id}&thread=${threadId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-700 underline underline-offset-2 hover:text-blue-900"
+    >
+      {label}
+    </a>
+  );
+}
+
+function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
   const { thread, people, messages, blockedAttempts, refusedReplies = [], replySenders = [] } = detail;
   const agent = thread.kind === "agent";
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
@@ -274,6 +293,13 @@ function ThreadDetail({ detail, dbTarget, onChanged, onOpenThread }) {
             </p>
           )}
         </div>
+        {dbTarget === siteDb && (student || (!agent && landlord)) && (
+          <p className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
+            <span className="text-gray-400">See it exactly as they do (read only):</span>
+            <InboxLink person={student} threadId={thread.id} label="Student's inbox" />
+            {!agent && <InboxLink person={landlord} threadId={thread.id} label="Landlord's inbox" />}
+          </p>
+        )}
         {thread.tours?.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
             {thread.tours.map((t) => {
@@ -472,57 +498,114 @@ function LandlordChatDetail({ chat, onOpenThread }) {
   );
 }
 
-/* ---- confirmed tours ------------------------------------------------------ */
+/* ---- tours ---------------------------------------------------------------- */
+
+// Every stage a tour request can be in, in the order an admin cares about:
+// what is stuck first, then what is booked, then what ended.
+const TOUR_GROUPS = [
+  { key: "waiting", label: "Waiting on the landlord", match: (t) => t.status === "requested" || t.status === "proposed",
+    note: "The student sent their availability; the landlord has not confirmed a time or written back yet." },
+  { key: "messaging", label: "Landlord wrote instead", match: (t) => t.status === "messaging",
+    note: "The landlord could not make the student's times and is talking it through in their direct chat." },
+  { key: "upcoming", label: "Upcoming", match: (t) => t.status === "confirmed" && t.upcoming },
+  { key: "past", label: "Past", match: (t) => t.status === "confirmed" && !t.upcoming },
+  { key: "cancelled", label: "Cancelled", match: (t) => t.status === "cancelled" },
+  { key: "expired", label: "Expired", match: (t) => t.status === "expired",
+    note: "Nobody confirmed a time before the student's available days passed." },
+];
+
+function ageText(iso) {
+  if (!iso) return "";
+  const hours = (Date.now() - Date.parse(iso)) / 3600000;
+  if (hours < 1) return "under an hour";
+  if (hours < 48) return `${Math.floor(hours)} hour${Math.floor(hours) === 1 ? "" : "s"}`;
+  return `${Math.floor(hours / 24)} days`;
+}
+
+function TourRow({ t, group, onOpenThread }) {
+  const waitingHours = (Date.now() - Date.parse(t.createdAt)) / 3600000;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 border-b border-gray-100 last:border-b-0">
+      <div className="w-56 shrink-0">
+        {t.status === "confirmed" ? (
+          <>
+            <p className="text-sm font-medium text-gray-900">{t.confirmedText ?? "No time"}</p>
+            <p className="text-[11px] text-gray-400">Central time</p>
+          </>
+        ) : group === "waiting" ? (
+          <>
+            <p className={`text-sm font-medium ${waitingHours > 24 ? "text-red-700" : "text-gray-900"}`}>Waiting {ageText(t.createdAt)}</p>
+            <p className="text-[11px] text-gray-400">Asked {fmtWhen(t.createdAt)}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-gray-900">{TOUR_GROUPS.find((g) => g.key === group)?.label}</p>
+            <p className="text-[11px] text-gray-400">Last activity {fmtWhen(t.lastActivityAt)}</p>
+          </>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-gray-900">{listingLabel(t.listing)}</p>
+        <p className="truncate text-[11px] text-gray-500">
+          {personLabel(t.student)} <span className="text-gray-400">with</span> {t.landlord ? personLabel(t.landlord) : <span className="text-red-700">no landlord to ask</span>}
+        </p>
+        {t.status !== "confirmed" && t.availabilityText && (
+          <p className="truncate text-[11px] text-gray-500"><span className="text-gray-400">Student can tour:</span> {t.availabilityText}</p>
+        )}
+        {t.status === "cancelled" && (
+          <p className="truncate text-[11px] text-gray-500">
+            <span className="text-gray-400">Cancelled by</span> {t.cancelledBy ?? "unknown"}{t.cancelReason ? `: "${t.cancelReason}"` : ""}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-3 text-[11px]">
+        {t.directThreadId ? (
+          <button type="button" onClick={() => onOpenThread("direct", t.directThreadId)} className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900">
+            Open conversation
+          </button>
+        ) : (
+          <span className="text-gray-400">No direct chat yet</span>
+        )}
+        {t.proxyThreadId && (
+          <button type="button" onClick={() => onOpenThread("agent", t.proxyThreadId)} className="text-blue-700 underline underline-offset-2 hover:text-blue-900">
+            Proxy chat
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ToursList({ tours, search, onOpenThread }) {
+  const [only, setOnly] = useState(null);
   const q = search.trim().toLowerCase();
   const shown = tours.filter((t) => !q || [t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.listing?.title, t.listing?.address, t.id]
     .some((v) => (v || "").toLowerCase().includes(q)));
-  const upcoming = shown.filter((t) => t.upcoming);
-  const past = shown.filter((t) => !t.upcoming);
-  const block = (title, list) => (
-    <section className="space-y-1.5">
-      <h3 className="text-xs font-semibold text-gray-700">{title} <span className="font-normal text-gray-400">({list.length})</span></h3>
-      {list.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400">None.</p>
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-          {list.map((t) => (
-            <div key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 border-b border-gray-100 last:border-b-0">
-              <div className="w-48 shrink-0">
-                <p className="text-sm font-medium text-gray-900">{t.confirmedText ?? "No time"}</p>
-                <p className="text-[11px] text-gray-400">Central time</p>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-gray-900">{listingLabel(t.listing)}</p>
-                <p className="truncate text-[11px] text-gray-500">
-                  {personLabel(t.student)} <span className="text-gray-400">touring with</span> {personLabel(t.landlord)}
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-3 text-[11px]">
-                {t.directThreadId ? (
-                  <button type="button" onClick={() => onOpenThread("direct", t.directThreadId)} className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900">
-                    Open conversation
-                  </button>
-                ) : (
-                  <span className="text-gray-400">No direct chat</span>
-                )}
-                {t.proxyThreadId && (
-                  <button type="button" onClick={() => onOpenThread("agent", t.proxyThreadId)} className="text-blue-700 underline underline-offset-2 hover:text-blue-900">
-                    Proxy chat
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+  const groups = TOUR_GROUPS.map((g) => ({ ...g, list: shown.filter(g.match) }));
+  const visible = only ? groups.filter((g) => g.key === only) : groups;
   return (
     <div className="space-y-4">
-      {block("Upcoming", upcoming)}
-      {block("Past", past)}
+      <div className="flex flex-wrap items-center gap-1">
+        <Pill on={!only} onClick={() => setOnly(null)}>All ({shown.length})</Pill>
+        {groups.map((g) => (
+          <Pill key={g.key} on={only === g.key} onClick={() => setOnly(only === g.key ? null : g.key)} tone={g.key === "waiting" && g.list.length ? "red" : "gray"}>
+            {g.label} ({g.list.length})
+          </Pill>
+        ))}
+      </div>
+      {visible.map((g) => (
+        <section key={g.key} className="space-y-1.5">
+          <h3 className="text-xs font-semibold text-gray-700">{g.label} <span className="font-normal text-gray-400">({g.list.length})</span></h3>
+          {g.note && <p className="text-[11px] text-gray-400">{g.note}</p>}
+          {g.list.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-gray-300 py-6 text-center text-xs text-gray-400">None.</p>
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              {g.list.map((t) => <TourRow key={t.id} t={t} group={g.key} onOpenThread={onOpenThread} />)}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -532,7 +615,7 @@ function ToursList({ tours, search, onOpenThread }) {
 const TABS = [
   { key: "agent", label: "Agent conversations" },
   { key: "direct", label: "Person to person" },
-  { key: "tours", label: "Confirmed tours" },
+  { key: "tours", label: "Tours" },
 ];
 
 // The tab and what is open, read from and written back to the URL.
@@ -585,6 +668,13 @@ export default function ConversationsView({ search, dbTarget }) {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  const [siteDb, setSiteDb] = useState(null);
+
+  // Which database this site itself reads, so inbox links only show when it
+  // is the one the admin is looking at.
+  useEffect(() => {
+    fetch("/api/admin/db-env").then((r) => r.json()).then((d) => setSiteDb(d?.env ?? null)).catch(() => {});
+  }, []);
 
   // Open on whatever the URL names.
   useEffect(() => {
@@ -630,7 +720,7 @@ export default function ConversationsView({ search, dbTarget }) {
   useEffect(() => {
     if (!ready || tab !== "tours" || tours) return;
     let cancelled = false;
-    adminFetch("/api/admin/tours?status=confirmed", dbTarget)
+    adminFetch("/api/admin/tours?status=all", dbTarget)
       .then((d) => { if (!cancelled) setTours(Array.isArray(d) ? d : []); })
       .catch((err) => { if (!cancelled) setListError(err.message); });
     return () => { cancelled = true; };
@@ -786,7 +876,7 @@ export default function ConversationsView({ search, dbTarget }) {
             ) : !detail ? (
               <p className="py-16 text-center text-sm text-gray-400">Loading conversation…</p>
             ) : (
-              <ThreadDetail detail={detail} dbTarget={dbTarget} onChanged={() => setReloadKey((k) => k + 1)} onOpenThread={openThread} />
+              <ThreadDetail detail={detail} dbTarget={dbTarget} siteDb={siteDb} onChanged={() => setReloadKey((k) => k + 1)} onOpenThread={openThread} />
             )}
           </div>
         </div>
