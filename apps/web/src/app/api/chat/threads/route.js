@@ -24,6 +24,7 @@ import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
 import { landlordProxyOverview } from "@/lib/agents/landlordChat";
 import { agentsEnabled } from "@/lib/agents/flags";
 import { fmtTourTime } from "@/lib/agents/tourTime";
+import { inboxViewAsId } from "@/lib/users/viewAs";
 
 const SAFE_START_CHAT_ERRORS = new Set([
   "listing not found",
@@ -52,13 +53,16 @@ async function withTours(rows) {
   });
 }
 
-// GET /api/chat/threads: inbox for the logged-in user
+// GET /api/chat/threads: inbox for the logged-in user, or for the user an
+// admin is viewing the inbox as (?viewAs=, read only; Wyatt, 2026-11-03)
 export async function GET(req) {
   try {
-    const authUser = await getRequestUser(req);
-    if (!authUser?.id) {
+    const caller = await getRequestUser(req);
+    if (!caller?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const viewAsId = inboxViewAsId(caller, new URL(req.url).searchParams);
+    const authUser = viewAsId ? { id: viewAsId } : caller;
 
     const { data, error } = await supabase.rpc("rpc_list_chat_threads", {
       p_user_id: authUser.id,
@@ -77,7 +81,8 @@ export async function GET(req) {
     // know these rows yet), and only while the agents are on (PR #365 review).
     const wantsProxy = new URL(req.url).searchParams.get("include") === "proxy" && agentsEnabled();
     if (!wantsProxy) return NextResponse.json(direct);
-    await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
+    // Claiming writes, so it is the user's own visit that does it, never an admin's look.
+    if (!viewAsId) await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
     const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
     // A landlord's Proxy chats, one per listing (questions and tour requests).
     const asLandlord = await landlordProxyOverview(authUser.id).catch((err) => { console.error("GET /api/chat/threads landlord proxy rows:", err?.message ?? err); return []; });
