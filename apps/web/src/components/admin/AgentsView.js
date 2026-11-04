@@ -4,11 +4,25 @@
  * Admin: the per-listing agents. Counts, what is waiting for the team
  * (fair-housing flags, new owners' edits), what is waiting for landlords,
  * website changes held by syncs, units and listings gone from a website,
- * and the per-listing switch (off, pilot, on).
+ * and the per-listing switch (off, pilot, on). The Knowledge tab shows what
+ * each listing's agent knows and its sources (AgentsKnowledgeView).
  */
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
+import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
+
+const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
+
+function Tabs({ tab, setTab }) {
+  return (
+    <div className="mb-6 flex gap-1 border-b border-gray-200">
+      {TABS.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => setTab(k)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === k ? "border-gray-900 font-semibold text-gray-900" : "border-transparent text-gray-500 hover:text-gray-800"}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
@@ -26,6 +40,7 @@ export default function AgentsView({ search = "" }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [tab, setTab] = useState("overview");
 
   const load = useCallback(async () => {
     try {
@@ -73,8 +88,9 @@ export default function AgentsView({ search = "" }) {
     }
   };
 
-  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
-  if (!data) return <div className="py-20 text-center text-sm text-gray-400">Loading agents...</div>;
+  if (tab === "knowledge") return <div><Tabs tab={tab} setTab={setTab} /><AgentsKnowledgeView search={search} /></div>;
+  if (error) return <div><Tabs tab={tab} setTab={setTab} /><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div></div>;
+  if (!data) return <div><Tabs tab={tab} setTab={setTab} /><div className="py-20 text-center text-sm text-gray-400">Loading agents...</div></div>;
 
   const q = search.trim().toLowerCase();
   const matches = (s) => !q || String(s ?? "").toLowerCase().includes(q);
@@ -83,6 +99,7 @@ export default function AgentsView({ search = "" }) {
 
   return (
     <div>
+      <Tabs tab={tab} setTab={setTab} />
       <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (

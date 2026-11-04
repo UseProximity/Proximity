@@ -158,6 +158,50 @@ async function stampFailed(source, status, message) {
 }
 
 /*
+ * Read one batch of pages into knowledge. A dense batch can need more facts
+ * than one answer holds, which comes back cut off: split it in half and try
+ * again. Any other failure, or a single page still cut off, stamps the pages
+ * as failed (no fingerprint, so a forced run reads them again) and the
+ * listing's other batches go on.
+ */
+async function readBatch(listingId, batch, rank, out) {
+  try {
+    const ranks = await sourceRanks(listingId);
+    const text = batch.map((p, i) => `=== PAGE ${i + 1}: ${p.url} ===\n${p.text}`).join("\n\n");
+    const pageSources = batch.map((p, i) => ({ n: i + 1, url: p.url, sourceId: p.source.id }));
+    const r = await synthesizeKnowledge({
+      listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url,
+      cause: "seed", pageSources, noRetire: true,
+      // Replace only what came from a source at this rank or worse. A fact
+      // with no recorded source is treated as the landlord's.
+      canReplace: (fact) => (fact.source_id ? ranks.get(fact.source_id) ?? TOP_RANK : TOP_RANK) >= rank,
+    });
+    out.written += r.written ?? 0; out.kept += r.kept ?? 0; out.held += r.held ?? 0;
+    const now = new Date().toISOString();
+    for (const p of batch) {
+      await supabase.from("listing_sources").update({
+        last_checked_at: now, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash,
+        next_check_at: new Date(Date.now() + FOUND_CHECK_INTERVAL_DAYS * 86400000).toISOString(),
+      }).eq("id", p.source.id);
+    }
+    out.read += batch.length;
+  } catch (err) {
+    const message = String(err?.message ?? err).slice(0, 300);
+    if (batch.length > 1 && /parse structured output/i.test(message)) {
+      const half = Math.ceil(batch.length / 2);
+      await readBatch(listingId, batch.slice(0, half), rank, out);
+      await readBatch(listingId, batch.slice(half), rank, out);
+      return;
+    }
+    for (const p of batch) {
+      await stampFailed(p.source, "parse_failed", `${AI_READ_FAILED}: ${message}`);
+      out.errors.push({ url: p.url, error: message });
+    }
+    out.failed += batch.length;
+  }
+}
+
+/*
  * Read one listing's confirmed found pages. Returns
  * { listingId, pages, read, unchanged, failed, written, kept, held, errors }.
  * A page that cannot be fetched or read is stamped with why and counted in
@@ -202,37 +246,7 @@ export async function readFoundPages(listingId, { force = false, pages = null } 
 
   // Best rank first, so a lower source sees what a better one stored.
   for (const rank of [...groups.keys()].sort((a, b) => a - b)) {
-    for (const batch of batchesOf(groups.get(rank))) {
-      try {
-        const ranks = await sourceRanks(listingId);
-        const text = batch.map((p, i) => `=== PAGE ${i + 1}: ${p.url} ===\n${p.text}`).join("\n\n");
-        const pageSources = batch.map((p, i) => ({ n: i + 1, url: p.url, sourceId: p.source.id }));
-        const r = await synthesizeKnowledge({
-          listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url,
-          cause: "seed", pageSources, noRetire: true,
-          // Replace only what came from a source at this rank or worse. A fact
-          // with no recorded source is treated as the landlord's.
-          canReplace: (fact) => (fact.source_id ? ranks.get(fact.source_id) ?? TOP_RANK : TOP_RANK) >= rank,
-        });
-        out.written += r.written ?? 0; out.kept += r.kept ?? 0; out.held += r.held ?? 0;
-        const now = new Date().toISOString();
-        for (const p of batch) {
-          await supabase.from("listing_sources").update({
-            last_checked_at: now, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash,
-            next_check_at: new Date(Date.now() + FOUND_CHECK_INTERVAL_DAYS * 86400000).toISOString(),
-          }).eq("id", p.source.id);
-        }
-        out.read += batch.length;
-      } catch (err) {
-        // No fingerprint is saved, so a forced run reads these pages again.
-        const message = String(err?.message ?? err).slice(0, 300);
-        for (const p of batch) {
-          await stampFailed(p.source, "parse_failed", `${AI_READ_FAILED}: ${message}`);
-          out.errors.push({ url: p.url, error: message });
-        }
-        out.failed += batch.length;
-      }
-    }
+    for (const batch of batchesOf(groups.get(rank))) await readBatch(listingId, batch, rank, out);
   }
   return out;
 }
