@@ -5,6 +5,7 @@ import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
 import InvoicesCard from "./InvoicesCard";
 import AgreementCard from "./AgreementCard";
+import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
 
 const NOTICES = {
@@ -201,6 +202,12 @@ export default function PaymentsSection() {
           hasActivePaymentMethod={methods.some((m) => m.status === "active")}
           onChanged={agreementChanged}
           busy={busy}
+          changeRequests={
+            <ChangeRequestPanel
+              documentKind={gate.agreement?.amendment ? "amendment" : "master"}
+              amendmentId={gate.agreement?.amendment?.id ?? undefined}
+            />
+          }
         />
       )}
       <ChargesCard

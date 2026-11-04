@@ -14,6 +14,7 @@ import { appEnv, isProdData, outreachEnabled } from "@/lib/appEnv";
 import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured, documensoSetting } from "./documenso.js";
 import { storeSignedAgreement } from "./agreementFiles.js";
 import { stripeBillingAddress } from "./billingAddress.js";
+import { resolveChangeRequestOnSigned } from "./changeRequests.js";
 import supabase from "@/lib/supabase";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
 
@@ -34,6 +35,8 @@ export function agreementServices() {
       storeSigned: storeSignedAgreement,
       storeExhibit: storeSignedAgreement,
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
+      // A negotiated version signed: the change request it answered is resolved.
+      onSigned: ({ userId, versionId }) => resolveChangeRequestOnSigned(supabase, { userId, versionId }),
       notify: {
         declined: ({ landlord, reason, kind }) =>
           sendAgreementDeclinedTeamEmail({ landlordName: landlord?.name, landlordEmail: landlord?.email, reason, kind }),
