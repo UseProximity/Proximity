@@ -87,20 +87,21 @@ async function agreementRows(db, ids) {
  * leaseId, listingId, address, unit }. Review sandbox listings are left out.
  */
 async function liveOfferings(db, ids) {
-  const rows = await inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("unit_leases")
-      .select(
-        "id, owner_id, listing_units!unit_id(listing_id, name, unit_number, unit_designator, title, published_at, deleted_at, listings!listing_id(id, address, city, state, zipcode, published_at, deleted_at, review_sandbox))"
-      )
-      .in("owner_id", chunk)
-      .eq("is_active", true)
-      .eq("unavailable", false)
-      .is("deleted_at", null)
-      .not("published_at", "is", null);
-    if (error) throw error;
-    return data;
-  });
+  const rows = await inChunks(ids, (chunk) =>
+    pageAll(() =>
+      db
+        .from("unit_leases")
+        .select(
+          "id, owner_id, listing_units!unit_id(listing_id, name, unit_number, unit_designator, title, published_at, deleted_at, listings!listing_id(id, address, city, state, zipcode, published_at, deleted_at, review_sandbox))"
+        )
+        .in("owner_id", chunk)
+        .eq("is_active", true)
+        .eq("unavailable", false)
+        .is("deleted_at", null)
+        .not("published_at", "is", null)
+        .order("id")
+    )
+  );
   return rows
     .filter((r) => {
       const u = r.listing_units;
@@ -118,14 +119,19 @@ async function liveOfferings(db, ids) {
 
 async function coverageRowsFor(db, ids) {
   return inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("agreement_coverage")
-      .select("user_id, listing_id, address, agreement_id, amendment_id, status")
-      .in("user_id", chunk)
-      .eq("status", "covered");
-    if (missingSchema(error)) return [];
-    if (error) throw error;
-    return data;
+    try {
+      return await pageAll(() =>
+        db
+          .from("agreement_coverage")
+          .select("user_id, listing_id, address, agreement_id, amendment_id, status")
+          .in("user_id", chunk)
+          .eq("status", "covered")
+          .order("id")
+      );
+    } catch (error) {
+      if (missingSchema(error)) return [];
+      throw error;
+    }
   });
 }
 

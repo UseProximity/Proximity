@@ -36,6 +36,18 @@ export function unitLabel(unit) {
 
 const byAddress = (a, b) => a.address.localeCompare(b.address, "en", { numeric: true });
 
+// Supabase answers at most 1,000 rows a request; a large landlord has more leases than that.
+const PAGE = 1000;
+async function allRows(build) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 /*
  * Every property the landlord has a stake in, with its units: { listingId, address,
  * units, live, draft }. `live` means students can see it now. Review sandbox
@@ -43,19 +55,20 @@ const byAddress = (a, b) => a.address.localeCompare(b.address, "en", { numeric: 
  */
 export async function loadLandlordProperties(db, userId) {
   const [owned, leases] = await Promise.all([
-    db.from("listing_landlords").select("listing_id").eq("user_id", userId),
-    db
-      .from("unit_leases")
-      .select("id, published_at, deleted_at, listing_units!unit_id(id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at)")
-      .eq("owner_id", userId)
-      .is("deleted_at", null),
+    allRows(() => db.from("listing_landlords").select("listing_id").eq("user_id", userId).order("listing_id")),
+    allRows(() =>
+      db
+        .from("unit_leases")
+        .select("id, published_at, deleted_at, listing_units!unit_id(id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at)")
+        .eq("owner_id", userId)
+        .is("deleted_at", null)
+        .order("id")
+    ),
   ]);
-  if (owned.error) throw owned.error;
-  if (leases.error) throw leases.error;
 
-  const ownedIds = new Set((owned.data ?? []).map((r) => r.listing_id).filter(Boolean));
+  const ownedIds = new Set(owned.map((r) => r.listing_id).filter(Boolean));
   const myUnits = new Map(); // listingId -> Map(unitId -> { unit, published })
-  for (const lease of leases.data ?? []) {
+  for (const lease of leases) {
     const unit = lease.listing_units;
     if (!unit?.listing_id || unit.deleted_at) continue;
     const units = myUnits.get(unit.listing_id) ?? new Map();
@@ -66,27 +79,28 @@ export async function loadLandlordProperties(db, userId) {
   const ids = [...new Set([...ownedIds, ...myUnits.keys()])];
   if (!ids.length) return [];
 
-  const [{ data: listings, error }, ownedUnits] = await Promise.all([
-    db.from("listings").select("id, address, city, state, zipcode, published_at, deleted_at, review_sandbox").in("id", ids),
+  const [listings, ownedUnits] = await Promise.all([
+    allRows(() => db.from("listings").select("id, address, city, state, zipcode, published_at, deleted_at, review_sandbox").in("id", ids).order("id")),
     ownedIds.size
-      ? db
-          .from("listing_units")
-          .select("id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at")
-          .in("listing_id", [...ownedIds])
-          .is("deleted_at", null)
-      : Promise.resolve({ data: [], error: null }),
+      ? allRows(() =>
+          db
+            .from("listing_units")
+            .select("id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at")
+            .in("listing_id", [...ownedIds])
+            .is("deleted_at", null)
+            .order("id")
+        )
+      : Promise.resolve([]),
   ]);
-  if (error) throw error;
-  if (ownedUnits.error) throw ownedUnits.error;
 
   const unitsByListing = new Map();
-  for (const u of ownedUnits.data ?? []) {
+  for (const u of ownedUnits) {
     const list = unitsByListing.get(u.listing_id) ?? [];
     list.push(u);
     unitsByListing.set(u.listing_id, list);
   }
 
-  return (listings ?? [])
+  return listings
     .filter((l) => !l.deleted_at && l.review_sandbox !== true)
     .map((l) => {
       const mine = [...(myUnits.get(l.id)?.values() ?? [])];
