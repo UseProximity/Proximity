@@ -53,9 +53,10 @@ module.exports = {
           microphonePermission: false,
         },
       ],
-      // Registers the APNs entitlement (iOS) and default notification
-      // channel (Android) at build time. There is no local ios/android project to
-      // hand-edit, this is the only place that config is set.
+      // Registers the APNs entitlement (iOS) at build time. It does not create an
+      // Android notification channel: the "default" channel is created at runtime
+      // in src/lib/pushNotifications.js. There is no local ios/android project to
+      // hand-edit, this is the only place native config is set.
       "expo-notifications",
       // Excludes SecureStore's encrypted values from Android Auto Backup.
       // Face ID is disabled (faceIDPermission: false): src/lib/secureStorage.js
