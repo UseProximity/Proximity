@@ -809,3 +809,19 @@ export async function documentFileKey(db, { userId, kind = "master", id = null, 
   if (!row) return null;
   return part === "exhibit" ? row.signed_exhibit_file_key ?? null : row.signed_file_key ?? null;
 }
+
+/*
+ * The signed agreement covering one of a landlord's properties now, for a charge
+ * on it: { agreementId, amendmentId, commissionRatePercent } (the master's rate,
+ * which a negotiated version may set differently), or null when it is not
+ * covered. Whatever creates the charge decides whether to charge at all; this
+ * only records which agreement it falls under.
+ */
+export async function coveringAgreement(db, userId, listingId, now = new Date()) {
+  if (!listingId) return null;
+  const [state, rows] = await Promise.all([agreementState(db, userId, now), loadCoverageRows(db, userId)]);
+  const row = coveredMap(rows, { master: state.signed, masterValid: state.valid }).get(listingId);
+  if (!row) return null;
+  const rate = state.signed?.commission_rate_percent ?? state.signed?.agreement_version?.commission_rate_percent ?? null;
+  return { agreementId: row.agreement_id, amendmentId: row.amendment_id ?? null, commissionRatePercent: rate == null ? null : Number(rate) };
+}

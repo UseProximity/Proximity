@@ -10,6 +10,7 @@
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { BillingError } from "./errors.js";
+import { coveringAgreement } from "./agreements.js";
 import { canTransition } from "./chargeLifecycle.js";
 import { chargeView } from "./chargeDisplay.js";
 
@@ -92,6 +93,10 @@ export async function createCharge(db, input) {
     throw new BillingError("bad_actor", "An admin charge needs the admin who created it.");
   }
 
+  // The agreement covering the property, recorded on the charge with its rate
+  // unless the caller gave one.
+  const covering = input.listingId ? await coveringAgreement(db, input.landlordId, input.listingId) : null;
+
   const { data: charge, error } = await db
     .from("charges")
     .insert({
@@ -108,7 +113,9 @@ export async function createCharge(db, input) {
       is_test: !!input.isTest,
       // The commission basis, when whatever creates the charge knows it (never guessed here).
       signed_rent_cents: Number.isInteger(input.signedRentCents) && input.signedRentCents >= 0 ? input.signedRentCents : null,
-      commission_rate_percent: validRate(input.commissionRatePercent),
+      commission_rate_percent: validRate(input.commissionRatePercent) ?? validRate(covering?.commissionRatePercent),
+      covered_by_agreement_id: covering?.agreementId ?? null,
+      covered_by_amendment_id: covering?.amendmentId ?? null,
     })
     .select("*")
     .single();

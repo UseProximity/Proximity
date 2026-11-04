@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, coverageFor, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor } from "./agreements.js";
+import { applyEnvelope, coverageFor, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { cleanCommissionRate, formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
@@ -196,6 +196,19 @@ describe("Exhibit A amendments", () => {
     assert.deepEqual([...after.covered.keys()].sort(), ["L1", "L2", "L3"]);
     // The master is untouched: one signature, same term.
     assert.equal(db.tables.landlord_agreements.filter((m) => m.status === "signed").length, 1);
+  });
+
+  it("a charge on a covered property records the agreement and amendment that cover it, with the rate", async () => {
+    const { db, documenso } = await signedMaster();
+    await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
+    assert.equal(await coveringAgreement(db, "u1", "L3", new Date("2027-02-01")), null, "not covered while the amendment is unsigned");
+    documenso.complete("envelope_2", "2027-02-02T00:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
+    const c = await coveringAgreement(db, "u1", "L3", new Date("2027-02-03"));
+    assert.equal(c.agreementId, db.tables.landlord_agreements[0].id);
+    assert.equal(c.amendmentId, db.tables.agreement_amendments[0].id);
+    assert.equal(c.commissionRatePercent, 8.5);
+    assert.equal((await coveringAgreement(db, "u1", "L1", new Date("2027-02-03"))).amendmentId, null, "a property on the master itself");
   });
 
   it("a new unit at a covered address needs nothing", async () => {
