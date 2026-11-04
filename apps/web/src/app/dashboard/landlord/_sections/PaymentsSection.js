@@ -176,16 +176,10 @@ export default function PaymentsSection() {
 
   // After the signing dialog: refresh, and say where things stand.
   const agreementChanged = (result) => {
-    if (result === "signed") setNotice({ tone: "green", text: "Thank you. Your commission agreement is signed." });
+    if (result === "signed") setNotice({ tone: "green", text: "Thank you. It is signed, and the properties on it are covered." });
     else if (result === "pending") setNotice({ tone: "gray", text: "Signed. Your copy is being saved and will appear here in a minute." });
     load().catch((e) => setError(e.message));
   };
-
-  const openSignedCopy = () =>
-    run(async () => {
-      const { url } = await call("/api/billing/agreement/file");
-      window.open(url, "_blank", "noopener,noreferrer");
-    });
 
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
@@ -205,7 +199,6 @@ export default function PaymentsSection() {
         <AgreementCard
           gate={gate}
           hasActivePaymentMethod={methods.some((m) => m.status === "active")}
-          onOpenSigned={openSignedCopy}
           onChanged={agreementChanged}
           busy={busy}
         />

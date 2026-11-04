@@ -23,9 +23,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
  * page runs in the frame; when it says the landlord finished (or declined) we ask
  * our server, which checks with Documenso directly, so the card updates at once
  * instead of waiting for the webhook. `token` and `host` come from
- * /api/billing/agreement/sign.
+ * /api/billing/agreement/sign. `kind` is master (the agreement with Exhibit A) or
+ * amendment (an Exhibit A amendment), as that route answered.
  */
-export default function SignAgreementDialog({ token, host, name, email, onClose, onFinished }) {
+export default function SignAgreementDialog({ token, host, name, email, kind = "master", onClose, onFinished }) {
   const [phase, setPhase] = useState("signing"); // signing | saving | declined | error
   const [message, setMessage] = useState(null);
   const closeRef = useRef(null);
@@ -41,11 +42,14 @@ export default function SignAgreementDialog({ token, host, name, email, onClose,
   const confirm = useCallback(async () => {
     for (let i = 0; i < 6; i += 1) {
       const r = await post("/api/billing/agreement/sync").catch(() => null);
-      if (r?.agreement?.status === "signed") return r.agreement;
+      const done =
+        r?.result === "signed" ||
+        (kind === "amendment" ? r?.agreement?.status === "signed" && !r?.agreement?.amendment : r?.agreement?.status === "signed");
+      if (done) return r.agreement;
       await wait(2000);
     }
     return null;
-  }, []);
+  }, [kind]);
 
   const completed = useCallback(async () => {
     setPhase("saving");
@@ -62,7 +66,9 @@ export default function SignAgreementDialog({ token, host, name, email, onClose,
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="Sign the commission agreement">
       <div className="flex h-full max-h-[56rem] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
-          <h2 className="flex-1 text-base font-semibold text-gray-900">Commission agreement</h2>
+          <h2 className="flex-1 text-base font-semibold text-gray-900">
+            {kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"}
+          </h2>
           <button
             ref={closeRef}
             type="button"
@@ -97,7 +103,10 @@ export default function SignAgreementDialog({ token, host, name, email, onClose,
         {phase === "declined" && (
           <div className="space-y-2 px-6 py-16 text-center text-sm text-gray-700">
             <p>You declined to sign. We have let the team know, and someone will be in touch.</p>
-            <p>You can sign later from this page. Until then you cannot publish new listings if the agreement is required.</p>
+            <p>
+              You can sign later from Payments, or ask for changes there. Until then the properties it covers stay as
+              drafts if the agreement is required.
+            </p>
           </div>
         )}
         {phase === "error" && (
