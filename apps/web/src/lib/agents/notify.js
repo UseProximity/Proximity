@@ -19,6 +19,10 @@
  *
  * Every send goes through lib/email.js, so off production it is redirected
  * or suppressed like every other email.
+ *
+ * Review sandbox (App Store review accounts, lib/agents/sandbox.js): an email
+ * about a question only sandbox students wait on, or to a sandbox landlord or
+ * student, is suppressed. A failed lookup throws, so nothing is sent.
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendProxyStudentEmail, sendProxyLandlordQuestionEmail } from "@/lib/email";
@@ -27,6 +31,7 @@ import { ALERT_QUIET_MS } from "@/lib/chat/notifyEmail";
 import { PROXY_USER_ID, postProxyMessage } from "./threads";
 import { questionReplyAddress } from "./questionTokens";
 import { proxyReplyAddress } from "./replyTokens";
+import { isSandboxQuestion, isSandboxUser } from "./sandbox";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,7 +78,9 @@ export async function notifyStudentThread({ threadId, kind = "proxy_relay", quie
     if (!msgs.length) return "nothing";
     // A landlord who only asked the student something is not an answer.
     const asking = kind === "proxy_relay" && msgs.every((m) => m.metadata?.clarifier && !m.metadata?.answered);
+    const sandbox = await isSandboxUser(r.userId);
     await sendProxyStudentEmail({
+      sandbox,
       to: r.email, name: r.name, kind: asking ? "proxy_clarifier" : kind, listingLabel: r.listingLabel,
       messages: msgs.map((m) => m.body),
       threadUrl: `${getBaseUrl()}/listings/${r.thread.listing_id}?listingTab=contact`,
@@ -96,7 +103,8 @@ async function questionWithOwner(questionId) {
   const { data: u } = await supabase.from("users").select(`id, email, name, email_notifications, deleted_at, ${ACCOUNT_FIELDS}`).eq("id", q.owner_id).maybeSingle();
   if (!u?.email || u.deleted_at || u.email_notifications === false) return null;
   const hasAccount = completedAccount(u);
-  return { q, owner: u, hasAccount, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
+  const sandbox = (await isSandboxUser(u.id)) || (await isSandboxQuestion(q.id));
+  return { q, owner: u, hasAccount, sandbox, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
 }
 
 // Every landlord email about a question can be answered by replying to it.
@@ -106,6 +114,7 @@ export async function notifyLandlordQuestion({ questionId }) {
   const r = await questionWithOwner(questionId);
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
+    sandbox: r.sandbox,
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
@@ -119,6 +128,7 @@ export async function notifyLandlordStudentReply({ questionId }) {
   const { data: last } = await supabase.from("listing_question_messages").select("body").eq("question_id", questionId).eq("sender", "student")
     .order("created_at", { ascending: false }).limit(1);
   await sendProxyLandlordQuestionEmail({
+    sandbox: r.sandbox,
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, studentReply: last?.[0]?.body ?? null, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
@@ -130,6 +140,7 @@ export async function remindLandlord({ questionId, day }) {
   const r = await questionWithOwner(questionId);
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
+    sandbox: r.sandbox,
     to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_reminder", hasAccount: r.hasAccount, reminderDay: day, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,

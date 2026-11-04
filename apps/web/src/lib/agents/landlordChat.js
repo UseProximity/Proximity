@@ -24,6 +24,7 @@ import { parseStructured, HAIKU } from "./model";
 import { answerQuestion } from "./questions";
 import { agentChat, confirmProposal } from "./landlordAgent";
 import { screenLandlordText, CONTACT_NOTE } from "./screen";
+import { sandboxViewFor } from "./sandbox";
 
 const fail = (where, error) => new Error(`${where}: ${error.message}`);
 // Waiting on the landlord. A tour they are messaging about lives in that chat,
@@ -44,14 +45,17 @@ const ACK = {
 
 /* Listings this landlord has Proxy activity on, with what is waiting. */
 export async function landlordProxyOverview(userId, { studentsOnly = false } = {}) {
-  const [{ data: qs, error }, tours, { data: notes }] = await Promise.all([
-    supabase.from("listing_questions").select("listing_id, status, pending_clarifier, question, created_at, last_activity_at, listings!listing_id(title, address, listing_images(url, sort_order))")
+  const [{ data: allQs, error }, tours, { data: notes }, view] = await Promise.all([
+    supabase.from("listing_questions").select("id, listing_id, status, pending_clarifier, question, created_at, last_activity_at, listings!listing_id(title, address, listing_images(url, sort_order))")
       .eq("owner_id", userId).in("status", ["open", "answered"]).order("last_activity_at", { ascending: false }).limit(500),
     listLandlordTours(userId),
     supabase.from("landlord_agent_messages").select("listing_id, sender, body, created_at, listings!listing_id(title, address, listing_images(url, sort_order))")
       .eq("landlord_id", userId).order("created_at", { ascending: false }).limit(300),
+    sandboxViewFor(userId),
   ]);
   if (error) throw fail("landlord overview", error);
+  // Review sandbox students' questions never show to a real landlord (lib/agents/sandbox.js).
+  const qs = await view.questions(allQs ?? []);
   const rows = new Map();
   const touch = (listingId, title, address, images, at, text) => {
     if (!rows.has(listingId)) {
@@ -83,11 +87,24 @@ export async function landlordProxyOverview(userId, { studentsOnly = false } = {
 
 /* What needs the landlord: open questions not waiting on a student, plus tour requests. */
 export async function landlordWaitingCount(userId) {
-  const [{ count: q }, { count: t }] = await Promise.all([
-    supabase.from("listing_questions").select("id", { count: "exact", head: true }).eq("owner_id", userId).eq("status", "open").eq("pending_clarifier", false),
-    supabase.from("tour_requests").select("id", { count: "exact", head: true }).eq("landlord_id", userId).eq("status", "requested"),
+  const view = await sandboxViewFor(userId);
+  if (view.hidesNothing) {
+    const [{ count: q }, { count: t }] = await Promise.all([
+      supabase.from("listing_questions").select("id", { count: "exact", head: true }).eq("owner_id", userId).eq("status", "open").eq("pending_clarifier", false),
+      supabase.from("tour_requests").select("id", { count: "exact", head: true }).eq("landlord_id", userId).eq("status", "requested"),
+    ]);
+    return { questions: q ?? 0, tours: t ?? 0, total: (q ?? 0) + (t ?? 0) };
+  }
+  // Sandbox accounts exist and this landlord is not one: count only what they may see.
+  const [{ data: qRows, error: qe }, { data: tRows, error: te }] = await Promise.all([
+    supabase.from("listing_questions").select("id").eq("owner_id", userId).eq("status", "open").eq("pending_clarifier", false).limit(1000),
+    supabase.from("tour_requests").select("id, student_id").eq("landlord_id", userId).eq("status", "requested").limit(1000),
   ]);
-  return { questions: q ?? 0, tours: t ?? 0, total: (q ?? 0) + (t ?? 0) };
+  if (qe) throw fail("waiting questions", qe);
+  if (te) throw fail("waiting tours", te);
+  const q = (await view.questions(qRows ?? [])).length;
+  const t = view.tours(tRows ?? []).length;
+  return { questions: q, tours: t, total: q + t };
 }
 
 /*
@@ -95,15 +112,17 @@ export async function landlordWaitingCount(userId) {
  * cards, and the agent talk. A card's place is its latest activity.
  */
 export async function landlordProxyTimeline(userId, listingId) {
-  const [{ data: listing }, { data: qs, error }, tours, { data: notes }] = await Promise.all([
+  const [{ data: listing }, { data: allQs, error }, tours, { data: notes }, view] = await Promise.all([
     supabase.from("listings").select("id, title, address").eq("id", listingId).maybeSingle(),
     supabase.from("listing_questions").select("id, status, question, asked_count, answer, answered_at, pending_clarifier, created_at, last_activity_at")
       .eq("owner_id", userId).eq("listing_id", listingId).in("status", ["open", "answered"]).order("created_at", { ascending: true }).limit(200),
     listLandlordTours(userId),
     supabase.from("landlord_agent_messages").select("id, sender, body, question_id, tour_id, proposal, proposal_status, created_at")
       .eq("landlord_id", userId).eq("listing_id", listingId).order("created_at", { ascending: true }).limit(300),
+    sandboxViewFor(userId),
   ]);
   if (error) throw fail("landlord timeline", error);
+  const qs = await view.questions(allQs ?? []);
   const ids = (qs ?? []).map((q) => q.id);
   const { data: msgs } = ids.length
     ? await supabase.from("listing_question_messages").select("question_id, sender, kind, thread_id, body, raw_body, screened, via, created_at").in("question_id", ids).order("created_at", { ascending: true })
@@ -186,9 +205,11 @@ const Route = z.object({
 export async function routeLandlordMessage({ userId, listingId, text }) {
   const body = String(text ?? "").trim();
   if (!body) return { questionId: null, sure: true };
-  const { data: open } = await supabase.from("listing_questions").select("id, question, created_at")
+  const { data: openRows } = await supabase.from("listing_questions").select("id, question, created_at")
     .eq("owner_id", userId).eq("listing_id", listingId).eq("status", "open").order("created_at", { ascending: true }).limit(20);
-  if (!open?.length) return { questionId: null, sure: true };
+  // Only the questions this landlord can see (a sandbox student's are hidden from a real one).
+  const open = await (await sandboxViewFor(userId)).questions(openRows ?? []);
+  if (!open.length) return { questionId: null, sure: true };
   // Recent agent talk, so "yes" after the agent asked something stays with the agent.
   const { data: last } = await supabase.from("landlord_agent_messages").select("sender, body, created_at")
     .eq("landlord_id", userId).eq("listing_id", listingId).order("created_at", { ascending: false }).limit(2);
