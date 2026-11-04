@@ -7,11 +7,13 @@ import { runOverdueJob } from "@/lib/billing/overdueJob";
 import { runMethodAttentionJob } from "@/lib/billing/methodAttentionJob";
 import { enforceEnrollmentDeadline } from "@/lib/billing/enrollment";
 import { billingNotify } from "@/lib/billing/billingNotify";
+import { runAutopayJob } from "@/lib/billing/autopay";
+import { getStripe } from "@/lib/billing/stripe";
 
 /*
- * Daily cron: an invoice still unpaid more than 30 days after its invoice date
+ * Daily cron: an invoice still unpaid more than 30 days after its due date
  * withdraws the landlord's leases (hidden from students), and the landlord and
- * the team are emailed. It counts from the invoice date only, so Approved charges
+ * the team are emailed. It counts from invoice due dates only, so Approved charges
  * under the $5 minimum never trigger it, and a payment still settling is not
  * overdue. An admin restores the leases once the invoice is paid. Safe to run
  * repeatedly: an invoice is actioned once.
@@ -22,6 +24,11 @@ import { billingNotify } from "@/lib/billing/billingNotify";
  *
  * And on the enrollment deadline it switches the listing requirements on
  * (enforceEnrollmentDeadline), once.
+ *
+ * And it charges invoices whose autopay date has come, for landlords who turned
+ * autopay on (autopay.js), and switches off autopay whose method was removed or
+ * has expired. Each invoice is claimed before Stripe is called, so a second run
+ * the same day charges nothing twice.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -46,6 +53,14 @@ export async function GET(req) {
       console.error("billing method check failed", err);
       methods = { error: "failed" };
     }
+    let autopay;
+    try {
+      autopay = await runAutopayJob(supabase, getStripe(), { notify });
+      if (autopay.errors.length) console.error("billing autopay: some invoices failed", autopay.errors);
+    } catch (err) {
+      console.error("billing autopay job failed", err);
+      autopay = { error: "failed" };
+    }
     let enrollment = null;
     try {
       enrollment = await enforceEnrollmentDeadline(supabase);
@@ -54,7 +69,7 @@ export async function GET(req) {
       console.error("billing enrollment deadline check failed", err);
       enrollment = { error: "failed" };
     }
-    return NextResponse.json({ ok: true, ...result, methods, enrollment });
+    return NextResponse.json({ ok: true, ...result, methods, autopay, enrollment });
   } catch (err) {
     console.error("billing overdue job failed", err);
     return NextResponse.json({ error: "Overdue job failed" }, { status: 500 });

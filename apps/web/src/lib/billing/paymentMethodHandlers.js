@@ -5,7 +5,7 @@
  *
  *   checkout.session.completed     the landlord finished Checkout in setup mode
  *   setup_intent.succeeded         a bank account that was Verifying is now usable
- *   setup_intent.setup_failed      verification failed: the method is marked Failed
+ *   setup_intent.setup_failed      verification failed: the method is marked Failed, and autopay on it stops
  *   payment_method.updated         expiry or card number refreshed on Stripe's side
  *   payment_method.card_automatically_updated   the card updater replaced an expired card
  *   payment_method.detached        removed on Stripe (our Remove button or the dashboard)
@@ -40,7 +40,7 @@ export const paymentMethodHandlers = {
   "setup_intent.setup_failed": async (event, { db }) => {
     const si = event.data.object;
     // Once verification fails the intent may no longer point at the method, but its error does.
-    await markPaymentMethodFailed(db, idOf(si.payment_method) ?? si.last_setup_error?.payment_method?.id);
+    await markPaymentMethodFailed(db, idOf(si.payment_method) ?? si.last_setup_error?.payment_method?.id, { verificationFailed: true });
   },
 
   "payment_method.updated": refresh,

@@ -45,11 +45,11 @@ const REASON_BADGE = {
 /*
  * Invoices that need an admin: failed, past the 30 day overdue limit, or whose
  * leases were withdrawn and are still waiting to be put back, or that a billing
- * run started but never issued in Stripe (Run billing now finishes it). Retry makes one
- * attempt with the landlord's default method; Restore puts back the leases the
- * overdue job withdrew (do this once the invoice is settled).
+ * run started but never issued in Stripe (Run billing now finishes it). Admins never
+ * charge a landlord: Resend emails the invoice again (with Pay now); Restore puts
+ * back the leases the overdue job withdrew (do this once the invoice is settled).
  */
-export function InvoiceList({ invoices, busy, onRetry, onRestore }) {
+export function InvoiceList({ invoices, busy, onResend, onRestore }) {
   if (invoices.length === 0) return <Empty>No failed or overdue invoices.</Empty>;
   return (
     <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
@@ -60,7 +60,7 @@ export function InvoiceList({ invoices, busy, onRetry, onRestore }) {
               <Landlord landlord={inv.landlord} />
               <p className="mt-0.5 text-xs text-gray-500">
                 {inv.invoiceDate
-                  ? `Invoiced ${fmtDate(inv.invoiceDate)} (${inv.daysOld} days ago) · ${inv.status}`
+                  ? `Invoiced ${fmtDate(inv.invoiceDate)} (${inv.daysOld} days ago)${inv.dueDate ? ` · due ${fmtDate(inv.dueDate)}` : ""} · ${inv.status}${inv.autopayDate ? ` · autopay ${fmtDate(inv.autopayDate)}` : ""}`
                   : `Started ${inv.daysOld} days ago, never issued in Stripe. Run billing now to finish it.`}
                 {inv.failureMessage ? ` · ${inv.failureMessage}` : ""}
               </p>
@@ -70,16 +70,16 @@ export function InvoiceList({ invoices, busy, onRetry, onRestore }) {
             {inv.leasesToRestore > 0 && <Badge color="gray">{inv.leasesToRestore} lease(s) withdrawn</Badge>}
             <p className="text-sm font-semibold text-gray-900">{formatCents(inv.totalCents)}</p>
           </div>
-          {(inv.canRetry || inv.leasesToRestore > 0) && (
+          {(inv.canResend || inv.leasesToRestore > 0) && (
             <div className="flex flex-wrap gap-2">
-              {inv.canRetry && (
+              {inv.canResend && (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onRetry(inv)}
+                  onClick={() => onResend(inv)}
                   className="px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm hover:bg-gray-700 disabled:opacity-60"
                 >
-                  Retry payment
+                  Resend invoice email
                 </button>
               )}
               {inv.leasesToRestore > 0 && (

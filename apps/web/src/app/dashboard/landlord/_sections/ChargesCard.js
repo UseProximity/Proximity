@@ -1,7 +1,7 @@
 "use client";
 
 import { formatCents } from "@/lib/billing/money";
-import { statusMessage } from "@/lib/billing/chargeDisplay";
+import { basisLabel, statusMessage } from "@/lib/billing/chargeDisplay";
 
 const STATUS = {
   unconfirmed: { label: "Unconfirmed", className: "bg-gray-100 text-gray-700" },
@@ -49,6 +49,7 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
             <Detail label="Listing" value={charge.listingLabel} />
             <Detail label="Lease" value={charge.leaseLabel} />
             <Detail label="Student" value={charge.studentName} />
+            <Detail label="Basis" value={basisLabel(charge)} />
           </p>
           {charge.description && <p className="mt-0.5 text-xs text-gray-500">{charge.description}</p>}
         </div>

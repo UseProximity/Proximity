@@ -108,8 +108,11 @@ export default function BillingView({ search }) {
   const confirm = (charge) =>
     act(() => post(`/api/admin/billing/charges/${charge.id}/confirm`), "Charge confirmed. The 7 day review has started.");
 
-  const retryInvoice = (invoice) =>
-    act(() => post(`/api/admin/billing/invoices/${invoice.id}/retry`), "Payment attempt started. The result arrives shortly.");
+  const resendInvoice = (invoice) =>
+    act(async () => {
+      const r = await post(`/api/admin/billing/invoices/${invoice.id}/resend`);
+      setNotice(`Invoice email sent to ${r.to}.`);
+    }, null);
 
   const restoreLeases = (invoice) => {
     if (!window.confirm("Put this landlord's withdrawn leases back on the market? Only do this once the invoice is settled.")) return;
@@ -205,7 +208,7 @@ export default function BillingView({ search }) {
       )}
       {tab === "chargebacks" && <ChargebackList chargebacks={filtered.chargebacks} />}
       {tab === "invoices" && (
-        <InvoiceList invoices={filtered.invoices} busy={busy} onRetry={retryInvoice} onRestore={restoreLeases} />
+        <InvoiceList invoices={filtered.invoices} busy={busy} onResend={resendInvoice} onRestore={restoreLeases} />
       )}
       {tab === "corrections" && <CorrectionsPanel search={search} />}
       {tab === "agreements" && <AgreementsPanel search={search} />}

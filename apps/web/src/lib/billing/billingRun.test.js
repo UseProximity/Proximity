@@ -231,6 +231,15 @@ describe("finalizedFields (PR #370 review)", () => {
   it("falls back to now when Stripe gives no finalize time", () => {
     assert.equal(finalizedFields({}, new Date("2026-11-02T18:00:00Z")).invoice_date, "2026-11-02T18:00:00.000Z");
   });
+
+  it("records when it was sent and when it is due (send_invoice, 30 days)", () => {
+    const f = finalizedFields({ status_transitions: { finalized_at: 1793664000 }, due_date: 1796256000, collection_method: "send_invoice" });
+    assert.equal(f.sent_at, new Date(1793664000 * 1000).toISOString());
+    assert.equal(f.due_date, new Date(1796256000 * 1000).toISOString());
+    assert.equal(f.collection_method, "send_invoice");
+    const noDue = finalizedFields({ status_transitions: { finalized_at: 1793664000 } });
+    assert.equal(new Date(noDue.due_date) - new Date(noDue.sent_at), 30 * 24 * 60 * 60 * 1000);
+  });
 });
 
 // A stand-in Stripe: one invoice in `status`, paid by intents in `intentStatuses`.
@@ -370,7 +379,7 @@ describe("retryInvoicePayment while a payment is settling (PR #370 review)", () 
   it("refuses to pay again, without recording a failure, while an ACH payment is in flight", async () => {
     const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], payment_methods: methods });
     const stripe = fakeStripe({ intentStatuses: ["processing"] });
-    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1" }), (e) => e.code === "in_progress");
+    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "l1" }), (e) => e.code === "in_progress");
     assert.equal(stripe.calls.pay, 0);
     assert.equal(db.tables.billing_invoices[0].status, "open");
   });
@@ -382,13 +391,21 @@ describe("retryInvoicePayment while a payment is settling (PR #370 review)", () 
     // The racing attempt's intent shows up only after our pay call is refused.
     const pay = stripe.invoices.pay;
     stripe.invoices.pay = async (...a) => { intentStatuses.push("processing"); return pay(...a); };
-    assert.deepEqual(await retryInvoicePayment(db, stripe, { invoiceId: "i1" }), { started: true });
+    assert.deepEqual(await retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "l1" }), { started: true });
     assert.equal(db.tables.billing_invoices[0].status, "open");
   });
 
   it("refuses an invoice a run never issued", async () => {
     const db = memoryDb({ billing_invoices: [{ ...invoiceRow, invoice_date: null }] });
-    await assert.rejects(() => retryInvoicePayment(db, fakeStripe(), { invoiceId: "i1" }), (e) => e.code === "not_payable");
+    await assert.rejects(() => retryInvoicePayment(db, fakeStripe(), { invoiceId: "i1", landlordId: "l1" }), (e) => e.code === "not_payable");
+  });
+
+  it("never pays without the landlord: there is no admin payment (decisions of 2026-11-04)", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], payment_methods: methods });
+    const stripe = fakeStripe();
+    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1" }), (e) => e.status === 403);
+    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "someone-else" }), (e) => e.code === "not_found");
+    assert.equal(stripe.calls.pay, 0);
   });
 });
 

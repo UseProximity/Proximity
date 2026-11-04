@@ -15,6 +15,7 @@
 import { escapeHtml } from "../escapeHtml.js";
 import { formatCents } from "./money.js";
 import { triggerLabel } from "./invoicePlan.js";
+import { basisLabel } from "./chargeDisplay.js";
 
 const WRAP = 'font-family:sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.5';
 const BUTTON =
@@ -117,12 +118,13 @@ export function paymentMethodAttentionEmail({ name, state, description, payments
   };
 }
 
-export function overdueEmail({ name, totalCents, invoiceDate, paymentsUrl }) {
+export function overdueEmail({ name, totalCents, invoiceDate, dueDate = null, paymentsUrl }) {
+  const when = dueDate ? `was due on ${e(dateOnly(dueDate))} and` : `dated ${e(dateOnly(invoiceDate))}`;
   return {
     subject: "Your Proximity listings have been hidden",
     html: wrap(`
       ${hello(name)}
-      <p>Your invoice of <strong>${e(formatCents(totalCents))}</strong> dated ${e(dateOnly(invoiceDate))} is more than 30 days overdue, so your leases have been hidden from students.</p>
+      <p>Your invoice of <strong>${e(formatCents(totalCents))}</strong> ${when} is more than 30 days overdue, so your leases have been hidden from students.</p>
       <p>Pay the invoice and let us know, and we will restore them.</p>
       ${button(paymentsUrl, "Pay now")}
     `),
@@ -134,7 +136,7 @@ export function overdueTeamEmail({ landlordName, landlordEmail, totalCents, invo
     subject: `Leases withdrawn for overdue invoice: ${landlordName || landlordEmail}`,
     html: wrap(`
       <p>Leases were withdrawn automatically for <strong>${e(landlordName || "a landlord")}</strong> (${e(landlordEmail)}).</p>
-      <p>Invoice: ${e(formatCents(totalCents))}, dated ${e(dateOnly(invoiceDate))}, unpaid for more than 30 days.<br/>
+      <p>Invoice: ${e(formatCents(totalCents))}, dated ${e(dateOnly(invoiceDate))}, unpaid more than 30 days past its due date.<br/>
          Leases withdrawn: ${e(withdrawnCount)}</p>
     `),
   };
@@ -209,6 +211,65 @@ export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason
       <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the commission agreement in Documenso.</p>
       <p>Reason given: ${reason ? e(reason) : "none"}</p>
       <p>They cannot publish new listings while the agreement is required. Reach out to them, then send the agreement again from Admin, Billing, Agreements.</p>
+    `),
+  };
+}
+
+// ── Invoices and autopay (decisions of 2026-11-04) ──────────────────────────
+
+const longDate = (d) =>
+  new Date(d).toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "long", day: "numeric" });
+
+/*
+ * The monthly invoice: what is on it, when it is due, and Pay now. With autopay
+ * on it says which method will be charged and on what date, which is the notice
+ * the landlord gets before the debit. `payUrl` is their Payments tab;
+ * `hostedUrl` is Stripe's invoice page, offered to pay another way.
+ */
+export function invoiceIssuedEmail({ name, periodLabel, lines = [], totalCents, dueDate, payUrl, hostedUrl = null, autopay = null }) {
+  const rows = lines
+    .map((l) => {
+      const basis = basisLabel(l);
+      return `<tr>
+        <td style="padding:6px 12px 6px 0;border-top:1px solid #e5e7eb;vertical-align:top">${e(l.description)}${
+          basis ? `<br/><span style="color:#6b7280;font-size:13px">${e(basis)}</span>` : ""
+        }</td>
+        <td style="padding:6px 0;border-top:1px solid #e5e7eb;text-align:right;vertical-align:top;white-space:nowrap">${e(formatCents(l.amountCents))}</td>
+      </tr>`;
+    })
+    .join("");
+  return {
+    subject: `Your Proximity invoice for ${periodLabel}: ${formatCents(totalCents)}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>Here is your Proximity invoice for ${e(periodLabel)}. It is due by <strong>${e(longDate(dueDate))}</strong>.</p>
+      <table style="border-collapse:collapse;width:100%;margin:12px 0">${rows}
+        <tr><td style="padding:8px 12px 0 0;border-top:2px solid #111827;font-weight:600">Total</td>
+        <td style="padding:8px 0 0;border-top:2px solid #111827;text-align:right;font-weight:600">${e(formatCents(totalCents))}</td></tr>
+      </table>
+      ${
+        autopay
+          ? `<p><strong>Autopay is on.</strong> We will charge ${e(autopay.methodDescription)} for ${e(formatCents(totalCents))} on ${e(longDate(autopay.scheduledFor))}. To pay another way first, or to turn autopay off, open your Payments page before then.</p>`
+          : "<p>Nothing is charged automatically. Pay it from your Payments page when you are ready.</p>"
+      }
+      ${button(payUrl, autopay ? "View invoice" : "Pay now")}
+      ${hostedUrl ? `<p style="font-size:13px;color:#6b7280">You can also <a href="${e(hostedUrl)}">pay on Stripe's invoice page</a>, with a different card or bank account.</p>` : ""}
+      <p>Questions about a charge? Just reply to this email.</p>
+    `),
+  };
+}
+
+// Autopay was switched off for a reason the landlord did not choose themselves.
+export function autopayOffEmail({ name, reason, methodDescription = null, paymentsUrl }) {
+  return {
+    subject: "Autopay is off for your Proximity invoices",
+    html: wrap(`
+      ${hello(name)}
+      <p>Autopay for your Proximity invoices is now off, because ${e(reason)}${
+        methodDescription ? ` (${e(methodDescription)})` : ""
+      }.</p>
+      <p>Your next invoices will not be charged automatically. To turn autopay back on, choose a payment method on your Payments page.</p>
+      ${button(paymentsUrl, "Choose a payment method")}
     `),
   };
 }

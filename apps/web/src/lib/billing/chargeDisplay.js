@@ -5,6 +5,16 @@
  */
 import { landlordActions, reviewEndsAt } from "./chargeLifecycle.js";
 import { triggerLabel } from "./invoicePlan.js";
+import { formatCents } from "./money.js";
+
+// "8% of $1,500.00 signed rent" when both are known, either part alone otherwise, else null.
+export function basisLabel({ signedRentCents = null, commissionRatePercent = null }) {
+  const rate = commissionRatePercent != null ? `${Number(commissionRatePercent)}%` : null;
+  const rent = signedRentCents != null ? `${formatCents(signedRentCents)} signed rent` : null;
+  if (rate && rent) return `${rate} of ${rent}`;
+  if (rate) return `Commission rate ${rate}`;
+  return rent;
+}
 
 // "Unit 2, 12-month", "Whole property, 10 or 12-month", "2 bed"
 export function leaseLabel(lease) {
@@ -81,6 +91,9 @@ export function chargeView(row, now = new Date()) {
     listingLabel: row.listing?.address ?? row.listing?.title ?? null,
     leaseLabel: leaseLabel(row.lease),
     studentName: row.student?.name ?? null,
+    // The commission basis: the rent signed for and the agreement's rate, when known.
+    signedRentCents: row.signed_rent_cents ?? null,
+    commissionRatePercent: row.commission_rate_percent != null ? Number(row.commission_rate_percent) : null,
     actions: landlordActions(row),
   };
 }

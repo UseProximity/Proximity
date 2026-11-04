@@ -4,7 +4,10 @@
  * code stays free of the email transport and can be tested with a stand-in.
  */
 import { getBaseUrl } from "@/lib/email";
+import { periodLabel } from "./invoicing";
 import {
+  sendAutopayOffEmail,
+  sendInvoiceIssuedEmail,
   sendPaymentMethodAttentionEmail,
   sendOverdueEmail,
   sendOverdueTeamEmail,
@@ -14,6 +17,29 @@ import {
 
 export function billingNotify() {
   return {
+    // The monthly invoice was sent (or an admin resent it). Resolves whether it was handed to the mailer.
+    invoiceIssued({ landlord, invoice, lines, autopay }) {
+      const payUrl = `${getBaseUrl()}/dashboard/landlord?tab=payments#invoices`;
+      return sendInvoiceIssuedEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        {
+          periodLabel: periodLabel(invoice.billing_period),
+          lines,
+          totalCents: invoice.total_cents,
+          dueDate: invoice.due_date,
+          payUrl,
+          hostedUrl: invoice.hosted_invoice_url ?? null,
+          autopay,
+        }
+      );
+    },
+
+    // Autopay was switched off for a reason the landlord did not choose (method gone, failures, an admin).
+    autopayOff({ landlord, reason, methodDescription }) {
+      const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=payments#autopay`;
+      return sendAutopayOffEmail({ id: landlord.id, email: landlord.email, name: landlord.name }, { reason, methodDescription, paymentsUrl });
+    },
+
     // Landlord and team are both told once, when the failure is first recorded.
     async paymentFailed({ invoice, landlord, message }) {
       const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=payments`;
@@ -46,7 +72,7 @@ export function billingNotify() {
       if (landlord?.email) {
         await sendOverdueEmail(
           { id: landlord.id, email: landlord.email, name: landlord.name },
-          { totalCents: invoice.total_cents, invoiceDate: invoice.invoice_date, paymentsUrl }
+          { totalCents: invoice.total_cents, invoiceDate: invoice.invoice_date, dueDate: invoice.due_date ?? null, paymentsUrl }
         );
       }
       await sendOverdueTeamEmail({

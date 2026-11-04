@@ -9,16 +9,20 @@
  *   items      each charge becomes one invoice item tagged with its charge id; items
  *              already on the draft are reused, never added twice.
  *   finalize   a draft is finalized; anything else is left alone.
- *   pay        attempted once, by us, with the landlord's default method.
  *
- * Invoices are created with auto_advance off, so Stripe never finalizes, charges
- * or retries one on its own. "A failed payment is not retried automatically" then
- * holds regardless of the dashboard's retry settings: the only attempts are the
- * ones this code (or a landlord's Pay now) makes.
+ * Invoices are send_invoice (decisions of 2026-11-04): the landlord pays them,
+ * due INVOICE_DUE_DAYS after they are sent. Nothing here ever charges a saved
+ * method. Money moves only when the landlord presses Pay now, or when autopay,
+ * which the landlord switched on with a recorded authorisation, charges it
+ * (autopay.js). Invoices are finalized with auto_advance off and Stripe's own
+ * "send invoice" is never called, so Stripe neither emails the invoice nor
+ * retries anything; our invoice email (billingEmails.sendInvoiceIssuedEmail) is
+ * the only one.
  *
  * `stripe` is a Stripe client, passed in so this stays testable.
  */
 import { BillingError } from "./errors.js";
+import { DAY_MS, INVOICE_DUE_DAYS } from "./constants.js";
 
 const CURRENCY = "usd";
 
@@ -48,7 +52,8 @@ export function createDraftInvoice(stripe, { customerId, key, landlordId, billin
   return stripe.invoices.create(
     {
       customer: customerId,
-      collection_method: "charge_automatically",
+      collection_method: "send_invoice",
+      days_until_due: INVOICE_DUE_DAYS,
       auto_advance: false,
       pending_invoice_items_behavior: "exclude",
       currency: CURRENCY,
@@ -138,14 +143,21 @@ export function finalizeInvoice(stripe, invoiceId) {
 
 /*
  * What the local row should hold once Stripe has finalized the invoice. The
- * invoice date is when Stripe finalized it, not when the run started: the overdue
- * clock counts from it. Also used to fill in a row whose run crashed between
- * finalizing and saving these, so a resumed run never leaves them blank.
+ * invoice date (and sent_at, when our invoice email goes out) is when Stripe
+ * finalized it, not when the run started. The due date is Stripe's, or
+ * INVOICE_DUE_DAYS after that; the overdue clock counts from it. Also used to
+ * fill in a row whose run crashed between finalizing and saving these, so a
+ * resumed run never leaves them blank.
  */
 export function finalizedFields(invoice, now = new Date()) {
   const finalized = invoice.status_transitions?.finalized_at;
+  const issued = finalized ? new Date(finalized * 1000) : now;
+  const due = invoice.due_date ? new Date(invoice.due_date * 1000) : new Date(issued.getTime() + INVOICE_DUE_DAYS * DAY_MS);
   return {
-    invoice_date: finalized ? new Date(finalized * 1000).toISOString() : now.toISOString(),
+    invoice_date: issued.toISOString(),
+    sent_at: issued.toISOString(),
+    due_date: due.toISOString(),
+    collection_method: invoice.collection_method ?? "send_invoice",
     hosted_invoice_url: invoice.hosted_invoice_url ?? null,
     invoice_pdf_url: invoice.invoice_pdf ?? null,
   };
@@ -180,9 +192,17 @@ export async function paymentUnderway(stripe, invoiceId) {
   return null;
 }
 
-// Pay with a specific method (the landlord's default). One attempt, no retries.
-export function payInvoice(stripe, invoiceId, paymentMethodId) {
-  return stripe.invoices.pay(invoiceId, { payment_method: paymentMethodId, off_session: true });
+/*
+ * Pay with a specific saved method. Called only for a landlord's Pay now (their
+ * click is the consent) and for autopay they authorised. One attempt, no retries.
+ * `idempotencyKey` makes a repeated autopay call for the same invoice one charge.
+ */
+export function payInvoice(stripe, invoiceId, paymentMethodId, { idempotencyKey } = {}) {
+  return stripe.invoices.pay(
+    invoiceId,
+    { payment_method: paymentMethodId, off_session: true },
+    ...(idempotencyKey ? [{ idempotencyKey }] : [])
+  );
 }
 
 const NEEDS_ACTION_MESSAGE = "Your bank needs you to confirm this payment. Open the invoice to complete it.";

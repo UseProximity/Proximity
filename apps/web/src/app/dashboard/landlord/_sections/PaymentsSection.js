@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
 import InvoicesCard from "./InvoicesCard";
+import AutopayCard from "./AutopayCard";
 import AgreementCard from "./AgreementCard";
 import ContestChargeModal from "./ContestChargeModal";
 
@@ -218,6 +219,7 @@ export default function PaymentsSection() {
         onContest={setContesting}
       />
       <InvoicesCard invoices={invoices} busy={busy} onPay={payInvoice} />
+      <AutopayCard methods={methods} />
       <PaymentMethodsCard
         methods={methods}
         busy={busy}

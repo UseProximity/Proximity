@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { formatCents } from "@/lib/billing/money";
 import { BUTTON, call, openFile, postJson } from "./shared";
+import AdminAutopayLine from "../AdminAutopayLine";
 
 const FILTERS = [
   ["all", "All"],
@@ -95,6 +96,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
                   {m.isDefault ? " (default)" : ""} · {m.status}
                 </p>
               ))}
+          <AdminAutopayLine key={row.autopay?.authorizedAt ?? "off"} landlordId={row.id} autopay={row.autopay ?? null} />
         </div>
         <div>
           {row.invoices.unpaidCount === 0 ? (

@@ -13,7 +13,7 @@ const STATUS = {
 };
 
 const NOTE = {
-  open: "Waiting for payment.",
+  open: "Waiting for payment. Nothing is charged until you pay, unless autopay is on.",
   preparing: "This invoice is still being prepared. Nothing is due yet.",
   processing: "Your bank payment is being processed. This takes a few business days.",
   paid: "Paid. Thank you.",
@@ -34,6 +34,9 @@ function InvoiceRow({ invoice, busy, onPay }) {
             {invoice.invoiceDate && (
               <span className="ml-2 text-xs font-normal text-gray-400">Invoiced {dateOnly(invoice.invoiceDate)}</span>
             )}
+            {invoice.dueDate && invoice.canPay && (
+              <span className="ml-2 text-xs font-normal text-gray-500">Due {dateOnly(invoice.dueDate)}</span>
+            )}
           </p>
         </div>
         <p className="text-sm font-semibold text-gray-900">{formatCents(invoice.totalCents)}</p>
@@ -45,10 +48,13 @@ function InvoiceRow({ invoice, busy, onPay }) {
           ? invoice.failureMessage || "The payment did not go through."
           : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
       </p>
+      {invoice.autopayDate && (
+        <p className="mt-1 text-xs text-gray-700">Autopay will charge it on {dateOnly(invoice.autopayDate)}.</p>
+      )}
       {invoice.status === "failed" && (
         <p className="mt-1 text-xs text-gray-500">
           It will not be retried automatically. Update your payment method if needed, then pay it here. Invoices unpaid
-          for more than 30 days hide your listings from students.
+          for more than 30 days past their due date hide your listings from students.
         </p>
       )}
 
@@ -90,12 +96,12 @@ function InvoiceRow({ invoice, busy, onPay }) {
 
 export default function InvoicesCard({ invoices, busy, onPay }) {
   return (
-    <section className="bg-white rounded-lg border border-gray-100 shadow-sm">
+    <section id="invoices" className="bg-white rounded-lg border border-gray-100 shadow-sm">
       <div className="px-4 py-4 border-b border-gray-100">
         <h2 className="text-base font-semibold text-gray-900">Invoices</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Approved charges are collected once a month, on the first Monday, as one invoice. It is paid automatically
-          from your default payment method.
+          Approved charges are put on one invoice a month, on the first Monday. We email it to you and it is due 30
+          days later. Nothing is charged until you press Pay now, unless you turn on autopay.
         </p>
       </div>
       {invoices.length === 0 ? (

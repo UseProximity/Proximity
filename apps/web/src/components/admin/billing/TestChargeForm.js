@@ -16,6 +16,8 @@ export default function TestChargeForm({ onCreated }) {
   const [amount, setAmount] = useState("25.00");
   const [triggerType, setTriggerType] = useState("test_charge");
   const [description, setDescription] = useState("");
+  const [signedRent, setSignedRent] = useState("");
+  const [commissionRate, setCommissionRate] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +32,7 @@ export default function TestChargeForm({ onCreated }) {
       const res = await fetch("/api/admin/billing/test-charges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ landlordEmail: email, amount, triggerType, description, confirm }),
+        body: JSON.stringify({ landlordEmail: email, amount, triggerType, description, signedRent, commissionRate, confirm }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Could not create the charge.");
@@ -66,6 +68,16 @@ export default function TestChargeForm({ onCreated }) {
         Description (optional)
         <input className={`${FIELD} mt-1`} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
+      <div className="flex gap-3">
+        <label className="block flex-1 text-sm font-medium text-gray-700">
+          Signed rent (optional, dollars)
+          <input className={`${FIELD} mt-1`} value={signedRent} placeholder="1500.00" onChange={(e) => setSignedRent(e.target.value)} />
+        </label>
+        <label className="block flex-1 text-sm font-medium text-gray-700">
+          Commission rate (optional, %)
+          <input className={`${FIELD} mt-1`} value={commissionRate} placeholder="8" onChange={(e) => setCommissionRate(e.target.value)} />
+        </label>
+      </div>
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
         Confirm it straight away (start the 7 day review)

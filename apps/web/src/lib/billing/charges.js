@@ -19,7 +19,7 @@ const MAX_REASON_LENGTH = 2000;
 // is never sent to a landlord.
 const LANDLORD_COLUMNS = `
   id, landlord_id, amount_cents, description, trigger_type, status, created_at,
-  pending_at, contest_reason,
+  pending_at, contest_reason, signed_rent_cents, commission_rate_percent,
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
   student:users!student_id(name)
@@ -62,6 +62,12 @@ export async function transitionCharge(
  * the admin test tool today and by the Triggering project later: billing only
  * provides the fields, the rules for when and for whom come from that project.
  */
+// A commission rate in percent (0 < rate <= 100), or null.
+function validRate(v) {
+  const n = Number(v);
+  return v != null && v !== "" && Number.isFinite(n) && n > 0 && n <= 100 ? n : null;
+}
+
 export async function createCharge(db, input) {
   const amount = input.amountCents;
   if (!Number.isInteger(amount) || amount <= 0) {
@@ -100,6 +106,9 @@ export async function createCharge(db, input) {
       created_by_type: createdByType,
       created_by_id: createdById,
       is_test: !!input.isTest,
+      // The commission basis, when whatever creates the charge knows it (never guessed here).
+      signed_rent_cents: Number.isInteger(input.signedRentCents) && input.signedRentCents >= 0 ? input.signedRentCents : null,
+      commission_rate_percent: validRate(input.commissionRatePercent),
     })
     .select("*")
     .single();
