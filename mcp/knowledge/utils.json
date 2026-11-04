@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-04T03:34:13.754Z",
-  "count": 237,
+  "_generated": "2026-11-04T20:52:23.091Z",
+  "count": 300,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -322,6 +322,258 @@
     {
       "file": "src/lib/aws/snsVerify.js",
       "description": "Verify that a message posted to one of our endpoints really came from Amazon SNS."
+    },
+    {
+      "file": "src/lib/billing/adjustments.js",
+      "description": "Correcting a Paid charge that turns out to be wrong. The original charge is"
+    },
+    {
+      "file": "src/lib/billing/adminReview.js",
+      "description": "The admin side of the charge lifecycle, behind the admin review view:"
+    },
+    {
+      "file": "src/lib/billing/agreementFiles.js",
+      "description": "Storing and fetching a signed agreement PDF in Cloudflare R2."
+    },
+    {
+      "file": "src/lib/billing/agreementPdf.js",
+      "description": "Checks on a signed agreement file before it is stored. Pure, so it can be"
+    },
+    {
+      "file": "src/lib/billing/agreements.js",
+      "description": "Each landlord's commission agreement: one master agreement (landlord_agreements)"
+    },
+    {
+      "file": "src/lib/billing/agreements.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementServices.js",
+      "description": "The real Documenso client, signed-PDF storage and team email, wired together for"
+    },
+    {
+      "file": "src/lib/billing/agreementSigning.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementVersions.js",
+      "description": "Versions of the commission agreement document (agreement_versions). An admin"
+    },
+    {
+      "file": "src/lib/billing/autopay.js",
+      "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
+    },
+    {
+      "file": "src/lib/billing/autopay.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/balance.js",
+      "description": "A landlord's outstanding balance: Approved charges not yet on an invoice, which"
+    },
+    {
+      "file": "src/lib/billing/billingAddress.js",
+      "description": "The landlord's own address for the agreement's optional \"Address\" box: the"
+    },
+    {
+      "file": "src/lib/billing/billingEmails.js",
+      "description": "Sends the billing emails. Copy lives in billingEmailTemplates.js; this adds the"
+    },
+    {
+      "file": "src/lib/billing/billingEmailTemplates.js",
+      "description": "The words of every billing email, as pure functions returning { subject, html }."
+    },
+    {
+      "file": "src/lib/billing/billingEmailTemplates.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/billingFakes.testutil.js",
+      "description": "In-memory stand-ins for Supabase and Documenso, shared by the billing tests"
+    },
+    {
+      "file": "src/lib/billing/billingLogic.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/billingNotify.js",
+      "description": "The emails a failed invoice payment sends, wired to the real senders. Passed to"
+    },
+    {
+      "file": "src/lib/billing/billingPeriod.js",
+      "description": "When the monthly billing run happens. It runs on the first Monday of each"
+    },
+    {
+      "file": "src/lib/billing/billingRun.js",
+      "description": "The monthly billing run. For each landlord it collects every Approved charge"
+    },
+    {
+      "file": "src/lib/billing/billingRun.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/businessDays.js",
+      "description": "Business days on the America/Chicago calendar, for autopay: an invoice sent on"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFileRules.js",
+      "description": "Checks on a file a landlord (or an admin) attaches to a change request: their"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFiles.js",
+      "description": "Storing and opening change request attachments in Cloudflare R2, in the same"
+    },
+    {
+      "file": "src/lib/billing/changeRequestHttp.js",
+      "description": "Reading a change request message from a route: JSON, or multipart/form-data"
+    },
+    {
+      "file": "src/lib/billing/changeRequestNotify.js",
+      "description": "The emails a change request sends, wired to the real senders and passed to"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.js",
+      "description": "Landlords asking for changes to the commission agreement (agreement_change_requests"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/chargeDisplay.js",
+      "description": "How a charge row is shown to a landlord. Pure, so the labels can be tested:"
+    },
+    {
+      "file": "src/lib/billing/chargeLifecycle.js",
+      "description": "The charge lifecycle as plain functions, for the dashboard, admin view and"
+    },
+    {
+      "file": "src/lib/billing/charges.js",
+      "description": "Charges: creating them and the landlord's side of their lifecycle."
+    },
+    {
+      "file": "src/lib/billing/charges.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/constants.js",
+      "description": "The billing rules that are numbers, in one place. Each comes from the In-App"
+    },
+    {
+      "file": "src/lib/billing/coverage.js",
+      "description": "Which of a landlord's properties their commission agreement covers, and what"
+    },
+    {
+      "file": "src/lib/billing/coverage.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/customers.js",
+      "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
+    },
+    {
+      "file": "src/lib/billing/documenso.js",
+      "description": "Documenso, the e-signature provider for the commission agreement (Teams plan)."
+    },
+    {
+      "file": "src/lib/billing/enrollment.js",
+      "description": "Launch enrollment: telling existing landlords that fees are now collected in the"
+    },
+    {
+      "file": "src/lib/billing/enrollment.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/errors.js",
+      "description": "An expected billing failure the caller can act on. Routes turn it into an"
+    },
+    {
+      "file": "src/lib/billing/exhibitPdf.js",
+      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy as a"
+    },
+    {
+      "file": "src/lib/billing/http.js",
+      "description": "Shared plumbing for the billing API routes: an expected BillingError becomes"
+    },
+    {
+      "file": "src/lib/billing/invoiceAccess.js",
+      "description": "A landlord's invoices, paying one (Pay now, or Retry payment after a failure),"
+    },
+    {
+      "file": "src/lib/billing/invoiceHandlers.js",
+      "description": "Webhook handlers for invoice and payment events, registered in"
+    },
+    {
+      "file": "src/lib/billing/invoicePlan.js",
+      "description": "Turns charges into the invoices the monthly run will create. Pure: it reads"
+    },
+    {
+      "file": "src/lib/billing/invoicing.js",
+      "description": "The Stripe side of a monthly invoice, one step per function. Every step is safe"
+    },
+    {
+      "file": "src/lib/billing/landlordOverview.js",
+      "description": "The admin dashboard's view of every landlord's commission agreement and"
+    },
+    {
+      "file": "src/lib/billing/listingGate.js",
+      "description": "The listing gate: before a landlord puts a new listing, unit or offering in"
+    },
+    {
+      "file": "src/lib/billing/methodAttentionJob.js",
+      "description": "The daily \"update your payment method\" check. A landlord whose default method"
+    },
+    {
+      "file": "src/lib/billing/money.js",
+      "description": "Money is integer cents everywhere in billing (Stripe's unit). Convert only at"
+    },
+    {
+      "file": "src/lib/billing/overdue.js",
+      "description": "When an unpaid invoice is overdue enough to withdraw the landlord's leases."
+    },
+    {
+      "file": "src/lib/billing/overdueJob.js",
+      "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
+    },
+    {
+      "file": "src/lib/billing/paymentMethodHandlers.js",
+      "description": "Webhook handlers for payment method events, registered in webhookHandlers.js."
+    },
+    {
+      "file": "src/lib/billing/paymentMethods.js",
+      "description": "A landlord's payment methods. Card and bank details are entered only on"
+    },
+    {
+      "file": "src/lib/billing/paymentMethods.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/paymentMethodState.js",
+      "description": "Payment method states and how to show them. Only Stripe ids and display"
+    },
+    {
+      "file": "src/lib/billing/reviewClock.js",
+      "description": "The review clock. A confirmed charge sits in Pending for 7 days, counted from"
+    },
+    {
+      "file": "src/lib/billing/settings.js",
+      "description": "Billing switches kept in billing_settings (key/value). A missing key reads as"
+    },
+    {
+      "file": "src/lib/billing/stripe.js",
+      "description": "The one Stripe client for the app, and the three env vars it reads:"
+    },
+    {
+      "file": "src/lib/billing/webhookEvents.js",
+      "description": "Idempotent processing of a verified Stripe event, backed by"
+    },
+    {
+      "file": "src/lib/billing/webhookEvents.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/webhookHandlers.js",
+      "description": "What to do for each Stripe event. handleStripeEvent is called once per event"
     },
     {
       "file": "src/lib/chat/accessToken.js",

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   BarChart3,
+  CreditCard,
   CalendarDays,
   MapPin,
   MessageCircleQuestion,
@@ -18,6 +19,7 @@ import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
 import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
+import PaymentsSection from "./_sections/PaymentsSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
 import QuestionsSection from "./_sections/QuestionsSection";
@@ -114,6 +116,13 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   // Sections that belong to running a property business, not to holding one lease.
   const LANDLORD_ONLY = new Set(["analytics", "reviews", "integrations"]);
   const isLandlord = role === "landlord" || role === "super";
+  /*
+   * Payments are for landlord-role users only: not a super user, and not a
+   * student subletting a room. Never while an admin is viewing as someone, so an
+   * admin cannot add or remove that landlord's payment methods (the billing
+   * routes act on the signed-in user, not the viewed one).
+   */
+  const canSeePayments = role === "landlord" && !isViewingAs;
 
   const renderContent = () => {
     if (selectedProperty)
@@ -134,7 +143,10 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
      * blank panel or an error.
      */
     const view =
-      LANDLORD_ONLY.has(activeView) && !isLandlord ? "properties" : activeView;
+      (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
+      (activeView === "payments" && !canSeePayments)
+        ? "properties"
+        : activeView;
 
     switch (view) {
       case "properties":
@@ -164,6 +176,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
+      case "payments":
+        return <PaymentsSection />;
       case "profile":
       default:
         return (
@@ -417,6 +431,19 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     )}
                   </button>
                   </>)}
+                  {canSeePayments && (
+                  <button
+                    onClick={() => handleNavigation("payments")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "payments"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Payments
+                  </button>
+                  )}
                   {isLandlord && (
                   <button
                     onClick={() => handleNavigation("integrations")}

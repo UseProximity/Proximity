@@ -1,0 +1,56 @@
+export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import supabase from "@/lib/supabase";
+import { requireDbRole } from "@/lib/userRole";
+import { startSigning } from "@/lib/billing/agreements";
+import { agreementServices } from "@/lib/billing/agreementServices";
+import { documensoHost } from "@/lib/billing/documenso";
+import { BillingError } from "@/lib/billing/errors";
+import { billingErrorResponse } from "@/lib/billing/http";
+
+/*
+ * Start signing inside the app: the master agreement with Exhibit A, or an
+ * Exhibit A amendment, whichever covers the properties asked for.
+ * Body: { signerTitle, authorized: true, listingIds?: [uuid] }
+ *   listingIds  the properties being published (from the publish dialog); left
+ *               out when the landlord signs from the Payments tab
+ * Answers { token, host, kind } for Documenso's embedded signing page, or
+ * { alreadySigned: true } when everything asked for is covered. A copy already
+ * in progress for the same document is reused.
+ *
+ * @auth landlord (own agreement only)
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Only well-formed ids, at most 200. Which of them are really the landlord's is
+// decided by the coverage plan, which ignores anything they have no stake in.
+const ownListingIds = (ids) => (Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && UUID.test(id)).slice(0, 200) : []);
+
+export async function POST(req) {
+  const session = await requireDbRole(["landlord"]);
+  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const { documenso, signingAvailable, options } = agreementServices();
+    if (!signingAvailable) {
+      throw new BillingError("not_available", "Signing in the app is not set up yet. Email info@useproximity.org and we will send you the agreement.", 503);
+    }
+    const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
+    if (error) throw error;
+    const result = await startSigning(supabase, documenso, {
+      user,
+      signerTitle: body.signerTitle,
+      authorized: body.authorized === true,
+      listingIds: ownListingIds(body.listingIds),
+      ...options,
+    });
+    return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);
+  } catch (err) {
+    if (err?.name === "DocumensoError") {
+      console.error("billing: start signing failed", err.message);
+      return NextResponse.json({ error: "We could not open the agreement right now. Please try again in a few minutes." }, { status: 502 });
+    }
+    return billingErrorResponse(err, "start signing");
+  }
+}

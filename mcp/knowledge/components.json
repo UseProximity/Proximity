@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-03T04:37:35.606Z",
-  "count": 161,
+  "_generated": "2026-11-04T20:52:23.032Z",
+  "count": 177,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -21,6 +21,11 @@
     {
       "name": "AgentsView",
       "file": "src/components/admin/AgentsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingView",
+      "file": "src/components/admin/BillingView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -86,6 +91,71 @@
     {
       "name": "adminShared",
       "file": "src/components/admin/adminShared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AdminAutopayLine",
+      "file": "src/components/admin/billing/AdminAutopayLine.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementsPanel",
+      "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingRunPanel",
+      "file": "src/components/admin/billing/BillingRunPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChangeRequestsPanel",
+      "file": "src/components/admin/billing/ChangeRequestsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChargeQueue",
+      "file": "src/components/admin/billing/ChargeQueue.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CorrectionsPanel",
+      "file": "src/components/admin/billing/CorrectionsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "EnrollmentPanel",
+      "file": "src/components/admin/billing/EnrollmentPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NoteDialog",
+      "file": "src/components/admin/billing/NoteDialog.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProblemLists",
+      "file": "src/components/admin/billing/ProblemLists.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TestChargeForm",
+      "file": "src/components/admin/billing/TestChargeForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementVersions",
+      "file": "src/components/admin/billing/agreements/AgreementVersions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordAgreementList",
+      "file": "src/components/admin/billing/agreements/LandlordAgreementList.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/billing/agreements/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -364,6 +434,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "CoverageSignDialog",
+      "file": "src/components/listings/CoverageSignDialog.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "FilterComponents",
       "file": "src/components/listings/FilterComponents.js",
       "description": "No description. Run generate after adding a description above."
@@ -541,6 +616,11 @@
     {
       "name": "listingFormOptions",
       "file": "src/components/listings/listingFormOptions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "publishErrorToast",
+      "file": "src/components/listings/publishErrorToast.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
