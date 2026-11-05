@@ -19,6 +19,7 @@ import { availabilityText, fmtTourTime } from "./tourTime";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
 import { tourReplyAddress } from "./replyTokens";
+import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const TZ = "America/Chicago";
@@ -77,7 +78,9 @@ export async function notifyTourRequested({ tourId }) {
   if (!r || !canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_request", to: r.landlord.email, name: r.landlord.name,
+    kind: "tour_request",
+    to: await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email }),
+    name: r.landlord.name,
     subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
     intro: `${r.studentLabel || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
     lines: rangeLines(r.t.student_slots),
