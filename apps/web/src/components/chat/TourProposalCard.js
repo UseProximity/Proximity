@@ -10,7 +10,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDays } from "lucide-react";
 
-export default function TourProposalCard({ messageId, proposal, mine, otherName = "them" }) {
+export default function TourProposalCard({ messageId, proposal, mine, otherName = "them", readOnly = false }) {
   const [state, setState] = useState(proposal.status);
   const [busy, setBusy] = useState(false);
   const status = state ?? proposal.status;
@@ -41,8 +41,8 @@ export default function TourProposalCard({ messageId, proposal, mine, otherName 
         <CalendarDays className="h-4 w-4 text-red-600" /> {proposal.rebook ? "Move your tour to" : "Book your tour for"} {proposal.text}?
       </p>
       <div className="mt-2 flex gap-2">
-        <button type="button" disabled={busy} onClick={() => answer("confirm")} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Confirm</button>
-        <button type="button" disabled={busy} onClick={() => answer("decline")} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50">Not now</button>
+        <button type="button" disabled={busy || readOnly} title={readOnly ? "Read only" : undefined} onClick={() => answer("confirm")} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Confirm</button>
+        <button type="button" disabled={busy || readOnly} title={readOnly ? "Read only" : undefined} onClick={() => answer("decline")} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50">Not now</button>
       </div>
     </div>
   );

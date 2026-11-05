@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-05T21:10:20.024Z",
-  "count": 234,
+  "_generated": "2026-11-05T21:25:19.319Z",
+  "count": 236,
   "routes": [
     {
       "path": "/api/account",
@@ -549,6 +549,22 @@
       },
       "tables": [],
       "file": "src/app/api/admin/db-env/route.js"
+    },
+    {
+      "path": "/api/admin/errors",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "app_errors"
+      ],
+      "file": "src/app/api/admin/errors/route.js"
     },
     {
       "path": "/api/admin/export",
@@ -1898,6 +1914,18 @@
         "roles"
       ],
       "file": "src/app/api/editProfile/route.js"
+    },
+    {
+      "path": "/api/errors",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/errors/route.js"
     },
     {
       "path": "/api/favorites",

@@ -29,3 +29,19 @@ export function resolveDashboardUserId(session, searchParams) {
   const viewAsId = searchParams?.get("viewAs");
   return viewAsId && canViewAs(session?.user?.role) ? viewAsId : session?.user?.id;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * For the Messages inbox (Wyatt, 2026-11-03): the user an admin is viewing
+ * the inbox as, or null when this is an ordinary request. Only reads honour
+ * it; a route that writes (send, mark read, block, report, start a chat)
+ * never looks at it, so viewing someone's inbox cannot act for them or tell
+ * the other person anything was seen. `user` is getRequestUser's shape
+ * ({ id, role }).
+ */
+export function inboxViewAsId(user, searchParams) {
+  const id = searchParams?.get("viewAs");
+  if (!id || !UUID_RE.test(id) || !canViewAs(user?.role) || id === user?.id) return null;
+  return id;
+}

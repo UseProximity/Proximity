@@ -12,7 +12,8 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import ChatAvatar from "@/components/chat/ChatAvatar";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
-import ProxyPanel from "@/components/proxy/ProxyPanel";
+import ProxyPanel, { ProxyReadOnlyTranscript } from "@/components/proxy/ProxyPanel";
+import { useMessages } from "@/context/MessagesContext";
 
 function leaseOf(listing, leaseId) {
   for (const u of listing?.unitTypes ?? []) {
@@ -25,6 +26,7 @@ function leaseOf(listing, leaseId) {
 
 export default function ProxyThread({ thread, onBack }) {
   const { data: session } = useSession();
+  const { viewAs } = useMessages();
   const [listing, setListing] = useState(null);
   const [failed, setFailed] = useState(false);
   const listingId = thread?.listingId ?? null;
@@ -60,7 +62,9 @@ export default function ProxyThread({ thread, onBack }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col p-4">
-        {failed ? (
+        {viewAs ? (
+          <ProxyReadOnlyTranscript threadId={thread?.threadId} viewAsId={viewAs} fill />
+        ) : failed ? (
           <p className="text-sm text-gray-500">This listing is no longer available.</p>
         ) : !listing ? (
           <ChatSkeleton />
