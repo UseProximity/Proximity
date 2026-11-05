@@ -242,7 +242,7 @@ function QuestionCard({ item, extra, folded, onToggle, canFold, replying, onRepl
   );
 }
 
-function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, replying, onReply, highlight }) {
+function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, replying, onReply, highlight, readOnly = false }) {
   const t = item.tour;
   const first = t.studentName?.split(" ")[0] || "them";
   const unit = t.lease ? ` ${t.lease.unit}${t.lease.rent ? ` at $${Number(t.lease.rent).toLocaleString("en-US")}/mo` : ""}` : "";
@@ -267,7 +267,8 @@ function TourCard({ item, extra, viewAsId, onDone, folded, onToggle, canFold, re
       {/* Once they're talking directly the time picker is gone for good: the
           tour is arranged in that chat (Wyatt, 2026-11-01). */}
       {t.status === "messaging" && <p>You&apos;re talking with them directly. Arrange the tour in your chat with {first}.</p>}
-      {["requested", "proposed"].includes(t.status) && <TourControls tour={t} viewAsId={viewAsId} onDone={onDone} onReply={onReply} />}
+      {["requested", "proposed"].includes(t.status) && !readOnly && <TourControls tour={t} viewAsId={viewAsId} onDone={onDone} onReply={onReply} />}
+      {["requested", "proposed"].includes(t.status) && readOnly && <p className="mt-2 text-xs text-gray-500">The landlord sees buttons here to confirm a time, message the student or decline. Hidden while you view their inbox.</p>}
       {t.status === "confirmed" && <p>Confirmed for {t.confirmedText}. I let them know.</p>}
       {t.status === "cancelled" && <p>{t.cancelledByMe ? "You declined this tour." : "They cancelled this request."}</p>}
       {t.status === "expired" && <p>Their times passed without a confirmation.</p>}
@@ -318,7 +319,7 @@ const labelOf = (i) => (i.kind === "tour" ? `${i.tour.studentName}'s tour reques
 const aimsAt = (p, i) => !!p && ((i.kind === "question" && p.questionId === i.id) || (i.kind === "tour" && p.tourId === i.id));
 
 // `fill` makes the chat take its parent's height, with the box pinned to the bottom.
-export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeight = "max-h-[560px]", fill = false, onChanged = null }) {
+export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeight = "max-h-[560px]", fill = false, onChanged = null, readOnly = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   // The card the box is aimed at: { kind, id, label }
@@ -559,13 +560,13 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
             const props = {
               item: i, extra, folded, canFold, onToggle: toggle, highlight: flash === key,
               replying: target?.kind === i.kind && target?.id === i.id,
-              onReply: writable(i) ? () => aim(i) : null,
+              onReply: !readOnly && writable(i) ? () => aim(i) : null,
             };
             return (
               <div key={key} className={gap}>
                 {i.kind === "question"
                   ? <QuestionCard {...props} />
-                  : <TourCard {...props} viewAsId={viewAsId} onDone={() => { load(); onChanged?.(); announceLandlordChange({ listingId, source: selfRef.current }); }} />}
+                  : <TourCard {...props} viewAsId={viewAsId} readOnly={readOnly} onDone={() => { load(); onChanged?.(); announceLandlordChange({ listingId, source: selfRef.current }); }} />}
               </div>
             );
           }
@@ -573,7 +574,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
             <div key={`a${i.id}`} className={gap}>
               {i.sender === "landlord"
                 ? <MyBubble>{i.body}</MyBubble>
-                : <ProxyBubble first={first} footer={i.proposal ? <Proposal item={i} busy={working} onDecide={decide} /> : null}>{i.body}</ProxyBubble>}
+                : <ProxyBubble first={first} footer={i.proposal ? <Proposal item={i} busy={working || readOnly} onDecide={decide} /> : null}>{i.body}</ProxyBubble>}
             </div>
           );
         })}
@@ -610,6 +611,11 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
         )}
         {(sent || working || incoming) && <div className="mt-3"><TypingBubble /></div>}
       </div>
+      {readOnly ? (
+        <div className="shrink-0 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-400">
+          Their message box. Read only while you view their inbox.
+        </div>
+      ) : (
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex shrink-0 items-end gap-2">
         <div className="flex min-h-11 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400">
           {target && (
@@ -633,6 +639,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
           <Send className="h-5 w-5" />
         </button>
       </form>
+      )}
     </div>
   );
 }

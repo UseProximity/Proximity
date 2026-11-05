@@ -12,7 +12,7 @@ import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
 import { useMessages } from "@/context/MessagesContext";
 
 export default function LandlordProxyThread({ thread, onBack }) {
-  const { refreshThreads } = useMessages();
+  const { refreshThreads, viewAs, readOnly } = useMessages();
   const title = thread?.listingTitle?.trim() || thread?.listingAddress?.trim() || "Listing";
   const address = thread?.listingTitle && thread?.listingAddress && thread.listingAddress !== thread.listingTitle ? thread.listingAddress : "";
   return (
@@ -30,7 +30,7 @@ export default function LandlordProxyThread({ thread, onBack }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col p-4">
-        {thread?.listingId && <LandlordProxyChat listingId={thread.listingId} fill onChanged={() => refreshThreads().catch(() => {})} />}
+        {thread?.listingId && <LandlordProxyChat listingId={thread.listingId} viewAsId={viewAs} readOnly={readOnly} fill onChanged={() => refreshThreads().catch(() => {})} />}
       </div>
     </div>
   );

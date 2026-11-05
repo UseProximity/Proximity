@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-04T19:26:12.568Z",
-  "count": 106,
+  "_generated": "2026-11-05T21:25:19.458Z",
+  "count": 108,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -300,6 +300,10 @@
       "public": false
     },
     {
+      "name": "NEXT_PHASE",
+      "public": false
+    },
+    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
@@ -314,6 +318,10 @@
     {
       "name": "NEXT_PUBLIC_SUPABASE_URL",
       "public": true
+    },
+    {
+      "name": "NEXT_RUNTIME",
+      "public": false
     },
     {
       "name": "NODE_ENV",
