@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-05T21:25:19.325Z",
-  "count": 180,
+  "_generated": "2026-11-05T21:50:02.371Z",
+  "count": 181,
   "components": [
     {
       "name": "ErrorReporter",
