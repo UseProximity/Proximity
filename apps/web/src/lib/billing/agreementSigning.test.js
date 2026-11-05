@@ -195,8 +195,39 @@ describe("template checks", () => {
       titleFieldId: 3,
       rateFieldId: null,
       addressFieldId: null,
+      nameFieldId: null,
+      fields: { title: { id: 3, type: "text", readOnly: false }, rate: null, address: null, name: null },
+      rateReadOnly: null,
       ok: true,
     });
+  });
+
+  it("takes the only Number box as the commission rate, even with no label (Wyatt 2026-11-05)", () => {
+    const s = templateFieldSummary({ ...envelope, fields: [...envelope.fields, { id: 7, type: "NUMBER", recipientId: 11, fieldMeta: { label: "", readOnly: false } }] });
+    assert.equal(s.rateFieldId, 7);
+    assert.deepEqual(s.fields.rate, { id: 7, type: "number", readOnly: false });
+    assert.equal(s.rateReadOnly, false);
+  });
+
+  it("prefers a box labelled Commission or Rate over a lone Number box, and finds a Name text box", () => {
+    const s = templateFieldSummary({
+      ...envelope,
+      fields: [
+        ...envelope.fields,
+        { id: 7, type: "NUMBER", recipientId: 11, fieldMeta: { label: "Units" } },
+        { id: 8, type: "TEXT", recipientId: 11, fieldMeta: { label: "Rate", readOnly: true } },
+        { id: 9, type: "TEXT", recipientId: 11, fieldMeta: { label: "Company name" } },
+        { id: 10, type: "TEXT", recipientId: 11, fieldMeta: { label: "Full name" } },
+      ],
+    });
+    assert.equal(s.rateFieldId, 8);
+    assert.equal(s.rateReadOnly, true);
+    assert.equal(s.nameFieldId, 10, "a company name box is not the signer's name");
+  });
+
+  it("with two unlabelled Number boxes, guesses neither", () => {
+    const n = (id) => ({ id, type: "NUMBER", recipientId: 11, fieldMeta: {} });
+    assert.equal(templateFieldSummary({ ...envelope, fields: [...envelope.fields, n(7), n(8)] }).rateFieldId, null);
   });
 
   it("is not ready without a signature box for the signer", () => {
@@ -234,11 +265,20 @@ describe("startSigning", () => {
     const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
     const documenso = fakeDocumenso();
     await sign(db, documenso);
-    const again = await sign(db, documenso, { signerTitle: "Manager" });
+    const again = await sign(db, documenso);
     assert.equal(again.token, "token_1");
     assert.equal(documenso.calls.copies, 1);
     assert.equal(db.tables.landlord_agreements.length, 1);
-    assert.equal(db.tables.landlord_agreements[0].signer_title, "Manager");
+  });
+
+  it("a changed title makes a fresh copy, so the document shows what they typed (2026-11-05)", async () => {
+    const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
+    const documenso = fakeDocumenso();
+    await sign(db, documenso);
+    const again = await sign(db, documenso, { signerTitle: "Manager" });
+    assert.equal(again.token, "token_2");
+    assert.deepEqual(documenso.calls.cancelled, ["envelope_1"]);
+    assert.equal(documenso.calls.lastCopy.signerTitle, "Manager");
   });
 
   it("replaces a copy of an older version, cancelling it in Documenso", async () => {

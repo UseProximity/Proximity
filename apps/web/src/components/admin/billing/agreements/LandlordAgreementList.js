@@ -62,14 +62,32 @@ function AgreementDetail({ a }) {
 }
 
 // One landlord's documents: every master and amendment, with what each covered and its files.
-function DocumentHistory({ landlordId, busy, run }) {
+const VOIDABLE = ["signed", "sent", "not_sent"];
+
+function DocumentHistory({ landlordId, landlordName, busy, run }) {
   const [docs, setDocs] = useState(null);
   const [error, setError] = useState(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     call(`/api/admin/billing/landlords/${landlordId}/documents`)
       .then((d) => setDocs(d.documents))
       .catch((e) => setError(e.message));
-  }, [landlordId]);
+  }, [landlordId, tick]);
+  const voidDoc = (d) => {
+    const what = d.kind === "amendment" ? "this Exhibit A amendment" : "this commission agreement";
+    const effect =
+      d.status === "signed"
+        ? d.kind === "amendment"
+          ? "The properties it added stop being covered."
+          : "Every property on its Exhibit A stops being covered, and the landlord has to sign again before publishing new properties while the agreement requirement is on."
+        : "The copy waiting in Documenso is cancelled.";
+    if (!window.confirm(`Void ${what} for ${landlordName}?\n\n${effect} The signed PDFs are kept. This cannot be undone.`)) return;
+    return run(async () => {
+      const r = await postJson(`/api/admin/billing/landlords/${landlordId}/documents`, { action: "void", kind: d.kind, id: d.id });
+      setTick((t) => t + 1);
+      return `Voided${r.released ? `. ${r.released} ${r.released === 1 ? "property is" : "properties are"} no longer covered.` : "."}`;
+    });
+  };
   if (error) return <p className="text-xs text-red-700">{error}</p>;
   if (!docs) return <p className="text-xs text-gray-400">Loading documents...</p>;
   if (!docs.length) return <p className="text-xs text-gray-500">No agreement documents yet.</p>;
@@ -98,6 +116,11 @@ function DocumentHistory({ landlordId, busy, run }) {
               {d.hasSignedExhibit && (
                 <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d, "exhibit")}>
                   Exhibit A
+                </button>
+              )}
+              {VOIDABLE.includes(d.status) && (
+                <button type="button" disabled={busy} className={`${BUTTON} text-red-700`} onClick={() => voidDoc(d)}>
+                  Void
                 </button>
               )}
             </div>
@@ -242,7 +265,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
           </button>
         )}
       </div>
-      {showDocs && <DocumentHistory landlordId={row.id} busy={busy} run={run} />}
+      {showDocs && <DocumentHistory landlordId={row.id} landlordName={row.name || row.email || "this landlord"} busy={busy} run={run} />}
     </li>
   );
 }
