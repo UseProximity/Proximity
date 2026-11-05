@@ -30,7 +30,7 @@ import { BillingError } from "./errors.js";
 import { DocumensoError, templateEditorUrl, templateFieldSummary } from "./documenso.js";
 
 export const VERSION_COLUMNS =
-  "id, label, kind, landlord_id, commission_rate_percent, change_request_id, based_on_version_id, file_key, file_name, file_bytes, status, requires_resign, provider_template_id, provider_recipient_id, provider_title_field_id, provider_rate_field_id, provider_address_field_id, provider_editor_url, provider_error, fields_checked_at, published_at, created_at";
+  "id, label, kind, landlord_id, commission_rate_percent, change_request_id, based_on_version_id, file_key, file_name, file_bytes, status, requires_resign, provider_template_id, provider_recipient_id, provider_title_field_id, provider_rate_field_id, provider_address_field_id, provider_brokerage_field_id, provider_license_field_id, provider_editor_url, provider_error, fields_checked_at, published_at, created_at";
 
 export const VERSION_KINDS = ["master", "amendment"];
 
@@ -230,6 +230,8 @@ export async function checkVersionFields(db, documenso, versionId) {
       provider_title_field_id: summary.titleFieldId,
       provider_rate_field_id: summary.rateFieldId,
       provider_address_field_id: summary.addressFieldId,
+      provider_brokerage_field_id: summary.brokerageFieldId,
+      provider_license_field_id: summary.licenseFieldId,
       provider_editor_url: templateEditorUrl(envelope),
       fields_checked_at: new Date().toISOString(),
       provider_error: null,
@@ -259,6 +261,15 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
   // The rate fills the document and shows on invoices, so a version cannot go live without one.
   if (version.commission_rate_percent == null) {
     throw new BillingError("rate_required", "This version has no commission rate. Upload it again with the rate.", 409);
+  }
+  // Missouri: the agreement's signature page carries the brokerage name and license
+  // number (or "N/A"), so a master agreement cannot go live without both boxes.
+  if (version.kind === "master" && (!version.provider_brokerage_field_id || !version.provider_license_field_id)) {
+    throw new BillingError(
+      "license_boxes_required",
+      'Add text boxes labelled "Brokerage" and "License" to the signature page in Documenso, then check the boxes again.',
+      409
+    );
   }
   let retire = db.from("agreement_versions").update({ status: "retired" }).eq("status", "live").eq("kind", version.kind);
   retire = version.landlord_id ? retire.eq("landlord_id", version.landlord_id) : retire.is("landlord_id", null);
@@ -303,6 +314,8 @@ export function versionView(v, signedCounts = new Map(), landlordNames = new Map
     commissionRatePercent: v.commission_rate_percent == null ? null : Number(v.commission_rate_percent),
     hasRateBox: !!v.provider_rate_field_id,
     hasAddressBox: !!v.provider_address_field_id,
+    hasBrokerageBox: !!v.provider_brokerage_field_id,
+    hasLicenseBox: !!v.provider_license_field_id,
     fileName: v.file_name,
     fileBytes: v.file_bytes,
     status: v.status,

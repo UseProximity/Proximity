@@ -72,3 +72,18 @@ DROP TRIGGER IF EXISTS trg_set_updated_at_landlord_license_disclosures ON public
 CREATE TRIGGER trg_set_updated_at_landlord_license_disclosures
   BEFORE UPDATE ON public.landlord_license_disclosures
   FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+-- ── Signature page boxes ────────────────────────────────────────────────────
+-- The agreement's signature page carries the licensee's brokerage name and
+-- Missouri license number ("N/A" in both for a landlord who is not licensed).
+-- Admins place two text boxes in Documenso, labelled "Brokerage" and "License",
+-- found by label like the commission rate box. A master version cannot go live
+-- without them.
+ALTER TABLE public.agreement_versions
+  ADD COLUMN IF NOT EXISTS provider_brokerage_field_id text,
+  ADD COLUMN IF NOT EXISTS provider_license_field_id text;
+
+-- What was filled into each landlord's copy, so a copy in progress is only
+-- reused while the landlord's answer is unchanged. {"brokerage": ..., "license": ...}
+ALTER TABLE public.landlord_agreements ADD COLUMN IF NOT EXISTS license_prefill jsonb;
+ALTER TABLE public.agreement_amendments ADD COLUMN IF NOT EXISTS license_prefill jsonb;

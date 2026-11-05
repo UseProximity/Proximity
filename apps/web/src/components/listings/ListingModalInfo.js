@@ -1134,8 +1134,6 @@ function ContactTab({
     ? {
         name: selectedLease.landlordName ?? listing.owner?.name,
         image: selectedLease.landlordImage ?? listing.owner?.image,
-        // A lease with no account behind it falls back to the property's owner.
-        listedBy: selectedLease.ownerId ? selectedLease.listedBy ?? null : listing.owner?.listedBy ?? null,
       }
     : listing.owner;
 
@@ -1206,7 +1204,6 @@ function ContactTab({
             <span className="text-lg font-semibold text-gray-900">
               {owner.name}
             </span>
-            <ListedBy listedBy={owner.listedBy} className="mt-0.5" />
           </div>
         </div>
       )}
@@ -2275,20 +2272,6 @@ export default function ListingModalInfo({
                       {cityStateZip}
                     </p>
                   )}
-                  {/* Licensed agents behind this property's offerings (MREC: name,
-                      company and company phone on every listing). Hidden once the
-                      header is stuck, like the address. */}
-                  {listedByAll.length > 0 && (
-                    <div
-                      className={`overflow-hidden transition-all duration-200 ${
-                        headStuck ? "max-h-0 opacity-0" : "max-h-24 mt-1 opacity-100"
-                      }`}
-                    >
-                      {listedByAll.map((l) => (
-                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} className="truncate" />
-                      ))}
-                    </div>
-                  )}
                   {/*
                     * No property-level "Available <date>" pill here on purpose.
                     * It used to read from listing.availableFrom, a rollup that
@@ -2567,6 +2550,16 @@ export default function ListingModalInfo({
                       onOpenThread={openThread}
                       preview={preview}
                     />
+                  )}
+                  {/* Licensed agents behind this property (MREC: name, company
+                      and company phone on every listing), at the bottom of
+                      Contact for every visitor, whatever shows above it. */}
+                  {listedByAll.length > 0 && (
+                    <div className="mt-8 border-t border-gray-100 pt-3">
+                      {listedByAll.map((l) => (
+                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} />
+                      ))}
+                    </div>
                   )}
                 </Section>
               )}

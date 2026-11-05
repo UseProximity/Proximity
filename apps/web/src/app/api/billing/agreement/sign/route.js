@@ -51,6 +51,8 @@ export async function POST(req) {
       signerTitle: body.signerTitle,
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
+      // Fills the signature page's Brokerage and License boxes ("N/A" if not licensed).
+      licenseDisclosure: disclosure,
       ...options,
     });
     return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);

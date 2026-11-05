@@ -99,6 +99,10 @@ export function templateFieldSummary(envelope) {
     titleFieldId: textField(/\btitle\b/i),
     rateFieldId: textField(/\bcommission\b/i),
     addressFieldId: textField(/\baddress\b/i),
+    // The signature page's licensee details (MREC): brokerage name and Missouri
+    // license number, "N/A" for a landlord who is not licensed.
+    brokerageFieldId: textField(/\bbrokerage\b/i),
+    licenseFieldId: textField(/\blicen[cs]e\b/i),
     ok: !!signer && count("SIGNATURE") > 0,
   };
 }

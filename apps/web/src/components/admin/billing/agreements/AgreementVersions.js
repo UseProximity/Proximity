@@ -73,7 +73,9 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
         <p className="text-xs text-gray-500">
           Add a Signature box for the signer (required). Name and Date boxes are recommended. Text boxes we fill in, by
           their label: &quot;Title&quot; (the signer&apos;s title), &quot;Commission rate&quot; (the rate entered with
-          this upload) and &quot;Address&quot; (the landlord&apos;s billing address). Exhibit A is added to each
+          this upload), &quot;Address&quot; (the landlord&apos;s billing address), and on the signature page
+          &quot;Brokerage&quot; and &quot;License&quot; (the licensee&apos;s brokerage and Missouri license number, or
+          &quot;N/A&quot; when the landlord is not licensed; required on the agreement). Exhibit A is added to each
           landlord&apos;s copy automatically, with an initials box on every page: do not add it here.
         </p>
         {version.connected && version.editorUrl && (
@@ -91,9 +93,16 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
           <p className={`mt-1 text-xs ${summary.ok ? "text-green-700" : "text-red-700"}`}>
             {summary.ok
               ? `Found ${summary.signature} signature, ${summary.name} name and ${summary.date} date box(es). Filled in for each landlord: ${
-                  [summary.titleFieldId && "Title", summary.rateFieldId && "Commission rate", summary.addressFieldId && "Address"].filter(Boolean).join(", ") || "none"
+                  [summary.titleFieldId && "Title", summary.rateFieldId && "Commission rate", summary.addressFieldId && "Address", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"].filter(Boolean).join(", ") || "none"
                 }.`
               : "No signature box for the signer yet. Add one in Documenso, save, then check again."}
+          </p>
+        )}
+        {summary?.ok && version.kind === "master" && (!summary.brokerageFieldId || !summary.licenseFieldId) && (
+          <p className="mt-1 text-xs text-amber-800">
+            Missing on the signature page: {[!summary.brokerageFieldId && "Brokerage", !summary.licenseFieldId && "License"].filter(Boolean).join(" and ")}.
+            Add {!summary.brokerageFieldId && !summary.licenseFieldId ? "these text boxes" : "this text box"} in Documenso, then check again. The
+            agreement cannot go live without them.
           </p>
         )}
       </Step>

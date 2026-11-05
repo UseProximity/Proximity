@@ -37,14 +37,14 @@ import { buildExhibitPdf, INITIALS_BOX } from "./exhibitPdf.js";
 import { coveredMap, loadCoverageRows, loadLandlordProperties, planCoverage, resolvePublishedIds } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
-const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, created_at, updated_at, ${VERSION_JOIN}`;
+const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, created_at, updated_at, ${VERSION_JOIN}`;
 // Before the coverage migration (202611050001).
 const PRE_COVERAGE_COLUMNS =
   "id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, published_at)";
 // Before the agreement_versions migration: the columns 202610310001 created.
 const LEGACY_COLUMNS =
   "id, user_id, version, status, signed_at, signer_name, signed_file_key, provider, provider_envelope_id, created_at, updated_at";
-const AMENDMENT_COLUMNS = `id, user_id, agreement_id, version_id, status, previous_exhibit, proposed_exhibit, exhibit_file_key, provider_envelope_id, signed_file_key, signed_exhibit_file_key, signer_name, signer_title, authorized_at, signed_at, ended_reason, ended_at, created_at, updated_at, ${VERSION_JOIN}`;
+const AMENDMENT_COLUMNS = `id, user_id, agreement_id, version_id, status, previous_exhibit, proposed_exhibit, exhibit_file_key, provider_envelope_id, signed_file_key, signed_exhibit_file_key, signer_name, signer_title, authorized_at, signed_at, ended_reason, ended_at, license_prefill, created_at, updated_at, ${VERSION_JOIN}`;
 
 const UNIQUE_VIOLATION = "23505";
 const SIGNER_TITLE_MAX = 100;
@@ -308,7 +308,7 @@ const sameIds = (a, b) => {
 export async function startSigning(
   db,
   documenso,
-  { user, signerTitle, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, ...options }
+  { user, signerTitle, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, licenseDisclosure = null, ...options }
 ) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
@@ -363,9 +363,15 @@ export async function startSigning(
         throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
       }
 
-      // Reuse the copy in progress when it is exactly this document.
+      // Reuse the copy in progress when it is exactly this document, with the
+      // same licensee details on its signature page.
+      const licensePrefill = licensePrefillFor(licenseDisclosure);
       if (inProgress?.row.provider_envelope_id) {
-        const same = inProgress.kind === plan.kind && inProgress.row.version_id === version.id && sameIds(inProgress.entries, plan.entries);
+        const same =
+          inProgress.kind === plan.kind &&
+          inProgress.row.version_id === version.id &&
+          sameIds(inProgress.entries, plan.entries) &&
+          samePrefill(inProgress.row.license_prefill, licensePrefill);
         if (same) {
           const envelope = await documenso.getEnvelope(inProgress.row.provider_envelope_id);
           if (envelope.status === "PENDING") {
@@ -397,10 +403,25 @@ export async function startSigning(
         now,
         storeExhibit,
         landlordAddress,
+        licensePrefill,
       });
     }
   );
 }
+
+/*
+ * What goes in the signature page's Brokerage and License boxes, from the license
+ * disclosure given right before signing (lib/users/licenseDisclosure.js): the
+ * licensee's brokerage and Missouri license number, or "N/A" in both for a
+ * landlord who is not licensed. Null when no answer was passed (nothing filled).
+ */
+export function licensePrefillFor(disclosure) {
+  if (!disclosure) return null;
+  if (!disclosure.is_licensee) return { brokerage: "N/A", license: "N/A" };
+  return { brokerage: disclosure.company_name, license: disclosure.license_number };
+}
+
+const samePrefill = (a, b) => (a?.brokerage ?? null) === (b?.brokerage ?? null) && (a?.license ?? null) === (b?.license ?? null);
 
 async function currentStatus(db, doc) {
   const { data, error } = await db.from(TABLE[doc.kind]).select("id, status").eq("id", doc.row.id).maybeSingle();
@@ -418,7 +439,7 @@ async function landlordNameOf(db, user) {
 }
 
 // Make the record, its proposed coverage, the Exhibit A and the Documenso copy.
-async function createDocument(db, documenso, { user, title, plan, version, master, now, storeExhibit, landlordAddress }) {
+async function createDocument(db, documenso, { user, title, plan, version, master, now, storeExhibit, landlordAddress, licensePrefill = null }) {
   const nowIso = now.toISOString();
   const landlordName = await landlordNameOf(db, user);
   const isAmendment = plan.kind === "amendment";
@@ -434,6 +455,7 @@ async function createDocument(db, documenso, { user, title, plan, version, maste
         proposed_exhibit: plan.entries,
         signer_title: title,
         authorized_at: nowIso,
+        license_prefill: licensePrefill,
       }
     : {
         user_id: user.id,
@@ -445,6 +467,7 @@ async function createDocument(db, documenso, { user, title, plan, version, maste
         authorized_at: nowIso,
         exhibit: plan.entries,
         commission_rate_percent: version.commission_rate_percent ?? null,
+        license_prefill: licensePrefill,
       };
   const { data: row, error } = await db.from(TABLE[plan.kind]).insert(fields).select("id").single();
   if (error) {
@@ -488,6 +511,8 @@ async function createDocument(db, documenso, { user, title, plan, version, maste
     prefill: [
       { id: version.provider_rate_field_id, value: formatRate(version.commission_rate_percent) },
       { id: version.provider_address_field_id, value: address },
+      { id: version.provider_brokerage_field_id, value: licensePrefill?.brokerage },
+      { id: version.provider_license_field_id, value: licensePrefill?.license },
     ],
     exhibit: {
       bytes: exhibit.bytes,
