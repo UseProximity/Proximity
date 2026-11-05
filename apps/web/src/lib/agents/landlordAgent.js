@@ -23,6 +23,7 @@
  * admin instead of being applied. (The 14-day new-owner hold was dropped
  * on 2026-10-27; only the fair-housing screen holds a change now.)
  */
+import { describeChanges } from "@/lib/sourceImport/describeChange";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { applyEvents, rejectEvents } from "@/lib/sourceImport/apply";
@@ -90,7 +91,9 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
 
   // Changes waiting on the landlord: held fact changes and open source events.
   const { data: heldFacts } = await supabase.from("listing_fact_events").select("*").eq("listing_id", listingId).in("status", ["held", "proposed"]).order("created_at", { ascending: false }).limit(100);
-  const { data: openEvents } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, confidence, detail, created_at").eq("listing_id", listingId).eq("status", "open").order("created_at", { ascending: false }).limit(100);
+  const { data: openEvents } = await supabase.from("listing_source_events").select("id, listing_id, kind, unit_key, field, old_value, new_value, confidence, detail, created_at").eq("listing_id", listingId).eq("status", "open").order("created_at", { ascending: false }).limit(100);
+  // Website changes as Proximity now next to the website (Wyatt, 2026-11-05).
+  const views = await describeChanges(openEvents ?? []);
   const held = [
     ...(heldFacts ?? []).filter((e) => !e.detail?.adminReview || isAdmin).map((e) => ({
       kind: "fact", id: e.id, status: e.status, title: e.detail?.summary ?? e.field_key ?? "A fact", current: e.detail?.oldSummary ?? null, cause: e.cause, createdAt: e.created_at,
@@ -98,7 +101,7 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
     })),
     ...(openEvents ?? []).filter((e) => e.detail?.op !== "none" && !["churn_hold", "low_confidence"].includes(e.kind)).map((e) => ({
       kind: "source", id: e.id, status: "proposed", title: describeSourceEvent(e), current: e.old_value != null && e.kind !== "unit_new" ? plain(e.old_value) : null, proposed: e.new_value != null ? plain(e.new_value) : null,
-      cause: "sync", createdAt: e.created_at, unit: e.detail?.label ?? null,
+      cause: "sync", createdAt: e.created_at, unit: e.detail?.label ?? null, view: views.get(e.id) ?? null,
     })),
   ];
 
