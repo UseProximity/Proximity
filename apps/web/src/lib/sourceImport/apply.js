@@ -56,6 +56,8 @@ export async function loadListingState(listingId) {
     .maybeSingle();
   if (error) throw new Error(`load listing: ${error.message}`);
   if (!row || row.deleted_at) return null;
+  // Units a person removed, by name: a sync must not quietly put them back.
+  row.removedUnitNames = (row.listing_units ?? []).filter((u) => u.deleted_at && u.name).map((u) => u.name);
   row.listing_units = (row.listing_units ?? []).filter((u) => !u.deleted_at);
   for (const u of row.listing_units) u.unit_leases = (u.unit_leases ?? []).filter((l) => !l.deleted_at);
   return row;
@@ -650,6 +652,56 @@ async function withdrawnBySyncFor(listingId) {
 // ---------------------------------------------------------------- entry
 
 /*
+ * A website can show more than one building (Wyatt, 2026-11-05): Mac
+ * Properties' Coronado Place page also lists Lindell Tower East's floor plans,
+ * which are their own listing on Proximity, and the 11/4 sync added all of
+ * them to Coronado Place. And a sync used to put back any unit a person had
+ * deleted, since it only compares the website with the units still there.
+ *
+ * So a new unit from the website is held for a person, never added, when
+ *   - a unit with the same name is on another listing this landlord owns, or
+ *   - a unit with the same name was removed from this listing.
+ * Held, not dropped: it shows once in the review queue with the reason, and
+ * applying it there still adds it on purpose.
+ */
+export async function holdUnitsBelongingElsewhere({ state, changes, ownerIds }) {
+  const fresh = changes.filter((c) => c.kind === "unit_new" && c.auto !== false);
+  if (!fresh.length) return;
+  const removed = new Set((state.removedUnitNames ?? []).map(unitKeyOf));
+  const elsewhere = new Map();
+  if (ownerIds.length) {
+    const { data: links } = await supabase.from("listing_landlords").select("listing_id").in("user_id", ownerIds).limit(2000);
+    const others = [...new Set((links ?? []).map((l) => l.listing_id))].filter((id) => id !== state.id);
+    for (let i = 0; i < others.length; i += 100) {
+      const { data: units } = await supabase
+        .from("listing_units")
+        .select("name, listings!listing_id(title, address, deleted_at)")
+        .in("listing_id", others.slice(i, i + 100))
+        .is("deleted_at", null)
+        .not("name", "is", null)
+        .limit(5000);
+      for (const u of units ?? []) {
+        if (u.listings?.deleted_at) continue;
+        const key = unitKeyOf(u.name);
+        if (key && !elsewhere.has(key)) elsewhere.set(key, u.listings?.title || u.listings?.address || "another listing");
+      }
+    }
+  }
+  for (const c of fresh) {
+    const key = unitKeyOf(c.new?.name ?? c.detail?.unit?.name);
+    if (!key) continue;
+    const where = elsewhere.get(key);
+    if (where || removed.has(key)) {
+      c.auto = false;
+      c.judge = false;
+      c.note = where ? `already on ${where}; held instead of added` : "removed from this listing before; held instead of added back";
+    }
+  }
+}
+
+const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
+
+/*
  * Apply a snapshot. Returns { applied, held, holdReason, summary }.
  *
  *   mode       "import" onto a draft, "sync" onto a listing with data
@@ -666,6 +718,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover });
   const label = listingLabel ?? state.title ?? state.address;
+  if (mode === "sync") await holdUnitsBelongingElsewhere({ state, changes, ownerIds });
 
   // Holds: a snapshot the reader was unsure of, or too much churn at once.
   let holdReason = null;
