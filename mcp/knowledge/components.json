@@ -489,6 +489,11 @@
       "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
     },
     {
+      "name": "MapErrorBoundary",
+      "file": "src/components/listings/MapErrorBoundary.js",
+      "description": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails"
+    },
+    {
       "name": "MapPopupCard",
       "file": "src/components/listings/MapPopupCard.js",
       "description": "No description. Run generate after adding a description above."
