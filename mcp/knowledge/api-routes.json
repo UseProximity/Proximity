@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-04T20:52:23.024Z",
-  "count": 234,
+  "_generated": "2026-11-05T21:28:29.405Z",
+  "count": 236,
   "routes": [
     {
       "path": "/api/account",
@@ -402,6 +402,18 @@
       },
       "tables": [],
       "file": "src/app/api/admin/billing/landlords/[id]/documents/file/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/license-disclosure",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/license-disclosure/route.js"
     },
     {
       "path": "/api/admin/billing/landlords/agreement-email",
@@ -2075,6 +2087,20 @@
         "users"
       ],
       "file": "src/app/api/landlord/import/start/route.js"
+    },
+    {
+      "path": "/api/landlord/license-disclosure",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super",
+        "PUT": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/license-disclosure/route.js"
     },
     {
       "path": "/api/landlord/listing-draft",

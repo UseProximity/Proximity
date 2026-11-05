@@ -24,6 +24,7 @@ import { summarizeAgreementRows } from "./agreements.js";
 import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
 import { gateDecision, getGateSettings } from "./listingGate.js";
+import { disclosuresFor } from "../users/licenseDisclosure.js";
 
 const PAGE = 1000;
 const CHUNK = 150;
@@ -314,6 +315,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   ]);
 
   const autopays = await autopayByLandlord(db, ids);
+  const licenses = await disclosuresFor(db, ids);
   const rows = landlords.map((l) => {
     const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion, cutoff, now });
     const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
@@ -336,6 +338,8 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       coverage,
       payment,
       autopay: autopays.get(l.id) ?? null,
+      // Real estate license disclosure (lib/users/licenseDisclosure.js); null until answered.
+      license: licenses.get(l.id) ?? null,
       invoices: invoice,
       publishing: { allowed: publishing.allowed, missing: publishing.missing },
       lastAgreementEmailAt: email?.created_at ?? null,

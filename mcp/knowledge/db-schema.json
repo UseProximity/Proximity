@@ -3243,6 +3243,42 @@
           "created_at:timestamptz"
         ],
         "notes": "status=unreleased (202611050003); fk request_id->agreement_change_requests (restrict); check author_role in (landlord,admin); rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosures",
+        "status": "unreleased",
+        "description": "A landlord's current real estate license answer, given right before signing the commission agreement (MREC). Licensees' agent_name, company_name and company_phone show on their listings as 'Listed by'; license_number is never public.",
+        "columns": [
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "confirmed_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); pk user_id fk->users (cascade); check: a licensee row has every field and owner_agreement_confirmed; rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosure_history",
+        "status": "unreleased",
+        "description": "Append-only history of license answers: every Profile save and every confirmation given right before signing.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "source:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); source in (signing,profile); fk user_id->users (restrict); rls on, service role only"
       }
     ],
     "functions": [

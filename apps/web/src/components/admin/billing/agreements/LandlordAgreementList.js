@@ -113,6 +113,45 @@ function DocumentHistory({ landlordId, busy, run }) {
   );
 }
 
+// Real estate license disclosure: the current answer (row.license) on the row.
+function LicenseLine({ license }) {
+  if (!license) return <p>License: not answered yet (asked right before signing).</p>;
+  if (!license.isLicensee) return <p>License: not a licensee (confirmed {fmtDate(license.confirmedAt)}).</p>;
+  return (
+    <p>
+      License: {license.agentName}, {license.companyName}, {license.companyPhone} · MO #{license.licenseNumber} · owner listing
+      agreement confirmed {fmtDate(license.confirmedAt)}
+    </p>
+  );
+}
+
+// Every license answer they have given, newest first.
+function LicenseHistory({ landlordId }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    call(`/api/admin/billing/landlords/${landlordId}/license-disclosure`)
+      .then((d) => setRows(d.history))
+      .catch((e) => setError(e.message));
+  }, [landlordId]);
+  if (error) return <p className="text-xs text-red-700">{error}</p>;
+  if (!rows) return <p className="text-xs text-gray-400">Loading license history...</p>;
+  if (!rows.length) return <p className="text-xs text-gray-500">No license answers yet.</p>;
+  return (
+    <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">
+      <p className="font-medium text-gray-900">License disclosure history</p>
+      <ul className="mt-1 space-y-0.5">
+        {rows.map((r, i) => (
+          <li key={`${r.createdAt}-${i}`}>
+            {fmtDate(r.createdAt)} · {r.source === "signing" ? "before signing" : "from Profile"} ·{" "}
+            {r.isLicensee ? `${r.agentName}, ${r.companyName}, ${r.companyPhone}, MO #${r.licenseNumber}` : "not a licensee"}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CoverageDetail({ c, a }) {
   if (!c) return null;
   return (
@@ -220,6 +259,10 @@ function LandlordRow({ row, busy, run, canEmail }) {
         </div>
       </div>
 
+      <div className="text-xs text-gray-600">
+        <LicenseLine license={row.license} />
+      </div>
+
       <CoverageDetail c={row.coverage} a={row.agreement} />
 
       <div className="flex flex-wrap gap-2">
@@ -242,7 +285,12 @@ function LandlordRow({ row, busy, run, canEmail }) {
           </button>
         )}
       </div>
-      {showDocs && <DocumentHistory landlordId={row.id} busy={busy} run={run} />}
+      {showDocs && (
+        <>
+          <DocumentHistory landlordId={row.id} busy={busy} run={run} />
+          <LicenseHistory landlordId={row.id} />
+        </>
+      )}
     </li>
   );
 }

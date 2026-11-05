@@ -28,6 +28,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, LayoutGrid } from "lucide-react";
 import { availabilityLabel } from "@/utils/availability";
+import ListedBy from "@/components/listings/ListedBy";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 import { LEASE_SORTS, compareLeases, listingChoices, listingMatches, listingOfferings, listingPrefs, sortLandlords, sortPlans, sortRent, stableSort } from "@/lib/listings/leaseFit";
 
@@ -143,7 +144,7 @@ function groupByLandlord(plans, prefs, sort) {
       const key = lease.landlordKey ?? lease.ownerId ?? lease.id;
       let g = groups.get(key);
       if (!g) {
-        g = { key, landlordName: null, landlordImage: null, plans: [], byUnit: new Map(), best: lease };
+        g = { key, landlordName: null, landlordImage: null, listedBy: null, plans: [], byUnit: new Map(), best: lease };
         groups.set(key, g);
       }
       let plan = g.byUnit.get(unit);
@@ -156,6 +157,7 @@ function groupByLandlord(plans, prefs, sort) {
       if (compareLeases(lease, g.best, prefs) < 0) g.best = lease;
       if (!g.landlordName && lease.landlordName) g.landlordName = lease.landlordName;
       if (!g.landlordImage && lease.landlordImage) g.landlordImage = lease.landlordImage;
+      if (!g.listedBy && lease.listedBy) g.listedBy = lease.listedBy;
     }
   }
   const landlords = [...groups.values()];
@@ -360,7 +362,7 @@ function PlanHeader({ unit, onFloorPlan }) {
  * about. The chat is routed to the landlord either way.
  */
 function LandlordCard({ group, onContact, onFloorPlan }) {
-  const { landlordName, landlordImage, plans, shownPlans, best } = group;
+  const { landlordName, landlordImage, listedBy, plans, shownPlans, best } = group;
   const leases = plans.flatMap((p) => p.leases);
   const single = leases.length === 1;
 
@@ -392,6 +394,8 @@ function LandlordCard({ group, onContact, onFloorPlan }) {
             {landlordName ?? "Landlord"}
           </p>
           <p className="truncate text-xs text-gray-500">{summary}</p>
+          {/* Licensed agent (MREC): name, company and company phone. */}
+          <ListedBy listedBy={listedBy} className="truncate" />
         </div>
         <button
           type="button"

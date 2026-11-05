@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import SignAgreementDialog from "./SignAgreementDialog";
+import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -33,19 +34,26 @@ function Requirement({ done, children }) {
   );
 }
 
-// The title and "authorised to sign" confirmation, then the button that opens the document.
+// The real estate license disclosure, the title and "authorised to sign"
+// confirmation, then the button that opens the document. The server refuses to
+// open it without a complete license answer.
 function SignForm({ intro, button, busy, onStart }) {
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
+  const license = useLicenseDisclosure();
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onStart({ signerTitle: title, authorized });
+        if (!license.ready) return;
+        onStart({ signerTitle: title, authorized, licenseDisclosure: license.payload() });
       }}
     >
       {intro && <p className="text-sm text-gray-700">{intro}</p>}
+      <div className="max-w-2xl">
+        <LicenseDisclosureFields state={license} />
+      </div>
       <label className="block max-w-sm text-sm font-medium text-gray-700">
         Your title
         <input className={`${FIELD} mt-1`} value={title} maxLength={100} placeholder="Owner, Property Manager, ..." onChange={(e) => setTitle(e.target.value)} required />
@@ -56,7 +64,7 @@ function SignForm({ intro, button, busy, onStart }) {
       </label>
       <button
         type="submit"
-        disabled={busy || !title.trim() || !authorized}
+        disabled={busy || !title.trim() || !authorized || !license.ready}
         className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
       >
         {button}

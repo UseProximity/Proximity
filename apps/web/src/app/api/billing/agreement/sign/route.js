@@ -8,11 +8,16 @@ import { agreementServices } from "@/lib/billing/agreementServices";
 import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
+import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
  * Exhibit A amendment, whichever covers the properties asked for.
- * Body: { signerTitle, authorized: true, listingIds?: [uuid] }
+ * Body: { signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure }
+ *   licenseDisclosure  required: the real estate license answer given in the
+ *               step right before signing (lib/users/licenseDisclosure.js). It is
+ *               saved, and recorded in the history as given at signing, before
+ *               the document opens. Without a complete answer nothing opens.
  *   listingIds  the properties being published (from the publish dialog); left
  *               out when the landlord signs from the Payments tab
  * Answers { token, host, kind } for Documenso's embedded signing page, or
@@ -32,12 +37,15 @@ export async function POST(req) {
 
   try {
     const body = await req.json().catch(() => ({}));
+    // Checked before anything else, so an incomplete answer never opens a document.
+    const disclosure = cleanDisclosure(body.licenseDisclosure);
     const { documenso, signingAvailable, options } = agreementServices();
     if (!signingAvailable) {
       throw new BillingError("not_available", "Signing in the app is not set up yet. Email info@useproximity.org and we will send you the agreement.", 503);
     }
     const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
     if (error) throw error;
+    await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,
       signerTitle: body.signerTitle,

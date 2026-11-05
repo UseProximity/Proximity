@@ -42,6 +42,7 @@ import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
+import ListedBy from "@/components/listings/ListedBy";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -1133,6 +1134,8 @@ function ContactTab({
     ? {
         name: selectedLease.landlordName ?? listing.owner?.name,
         image: selectedLease.landlordImage ?? listing.owner?.image,
+        // A lease with no account behind it falls back to the property's owner.
+        listedBy: selectedLease.ownerId ? selectedLease.listedBy ?? null : listing.owner?.listedBy ?? null,
       }
     : listing.owner;
 
@@ -1203,6 +1206,7 @@ function ContactTab({
             <span className="text-lg font-semibold text-gray-900">
               {owner.name}
             </span>
+            <ListedBy listedBy={owner.listedBy} className="mt-0.5" />
           </div>
         </div>
       )}
@@ -1944,6 +1948,14 @@ export default function ListingModalInfo({
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
     listing.address
   );
+  // Every licensed agent behind this property: the owner and each offering's landlord, once each.
+  const listedByAll = (() => {
+    const seen = new Map();
+    const add = (l) => l && seen.set(`${l.agentName}|${l.companyName}|${l.companyPhone}`, l);
+    add(listing.owner?.listedBy);
+    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) add(l.listedBy);
+    return [...seen.values()];
+  })();
   const cityStateZip =
     listing.title && listing.title !== street
       ? listing.address
@@ -2262,6 +2274,20 @@ export default function ListingModalInfo({
                     >
                       {cityStateZip}
                     </p>
+                  )}
+                  {/* Licensed agents behind this property's offerings (MREC: name,
+                      company and company phone on every listing). Hidden once the
+                      header is stuck, like the address. */}
+                  {listedByAll.length > 0 && (
+                    <div
+                      className={`overflow-hidden transition-all duration-200 ${
+                        headStuck ? "max-h-0 opacity-0" : "max-h-24 mt-1 opacity-100"
+                      }`}
+                    >
+                      {listedByAll.map((l) => (
+                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} className="truncate" />
+                      ))}
+                    </div>
                   )}
                   {/*
                     * No property-level "Available <date>" pill here on purpose.
