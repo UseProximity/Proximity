@@ -28,6 +28,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useUrlTab } from "@/components/admin/adminShared";
 import ChargeQueue from "@/components/admin/billing/ChargeQueue";
 import NoteDialog from "@/components/admin/billing/NoteDialog";
 import TestChargeForm from "@/components/admin/billing/TestChargeForm";
@@ -37,6 +38,8 @@ import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
 import ChangeRequestsPanel from "@/components/admin/billing/ChangeRequestsPanel";
 import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
+
+const TAB_KEYS = ["confirm", "contest", "chargebacks", "invoices", "corrections", "agreements", "changes", "enrollment", "run", "test"];
 
 async function call(url, options) {
   const res = await fetch(url, options);
@@ -77,7 +80,7 @@ export default function BillingView({ search }) {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState("confirm");
+  const [urlTab, setTab] = useUrlTab(TAB_KEYS, "confirm");
   const [dialog, setDialog] = useState(null); // { key, charge, outcome? }
   const [changeCounts, setChangeCounts] = useState(null);
 
@@ -171,6 +174,9 @@ export default function BillingView({ search }) {
     { key: "run", label: "Billing run" },
     ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
   ];
+
+  // The test tool can be switched off, so a saved ?tab=test falls back.
+  const tab = tabs.some((t) => t.key === urlTab) ? urlTab : "confirm";
 
   const dialogKey = dialog ? (dialog.key === "resolve" ? `resolve:${dialog.outcome}` : "void") : null;
 

@@ -1,6 +1,31 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+
+// ─── URL-backed tab ───────────────────────────────────────────────────────────
+// A view's inner tab lives in ?tab= so a reload (or a shared link) opens the
+// same tab. The default tab is left out of the URL. Unknown values fall back.
+
+export function useUrlTab(allowed, fallback) {
+  const [tab, setTabState] = useState(fallback);
+  const allowedKey = allowed.join("|");
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && allowedKey.split("|").includes(wanted)) setTabState(wanted);
+  }, [allowedKey]);
+
+  const setTab = useCallback((next) => {
+    setTabState(next);
+    const p = new URLSearchParams(window.location.search);
+    if (next === fallback) p.delete("tab");
+    else p.set("tab", next);
+    const qs = p.toString();
+    window.history.replaceState(window.history.state, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, [fallback]);
+
+  return [tab, setTab];
+}
 
 // ─── Pending-changes store ────────────────────────────────────────────────────
 // Edits made anywhere in the dashboard are staged here (and highlighted) but

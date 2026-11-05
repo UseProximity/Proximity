@@ -12,8 +12,10 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
+import { useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
+const TAB_KEYS = TABS.map(([k]) => k);
 
 function Tabs({ tab, setTab }) {
   return (
@@ -41,7 +43,7 @@ export default function AgentsView({ search = "" }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useUrlTab(TAB_KEYS, "overview");
 
   const load = useCallback(async () => {
     try {

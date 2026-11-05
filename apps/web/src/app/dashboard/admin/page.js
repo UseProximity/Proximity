@@ -196,7 +196,8 @@ export default function AdminDashboard() {
   const { data: session } = useSession();
   const isReadOnly = session?.user?.role === "admin";
 
-  const [view, setView] = useState("listings");
+  // null until the URL has been read, so a reload never flashes (or fetches) Listings first.
+  const [view, setView] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -255,11 +256,20 @@ export default function AdminDashboard() {
     return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
   }
 
-  // A link can open a view directly (?view=conversations, Wyatt, 2026-11-01).
+  // The open view lives in ?view= so a reload or a shared link reopens it
+  // (Wyatt, 2026-11-05). Views with inner tabs keep those in ?tab=.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("view");
-    if (wanted && VIEWS.some((v) => v.key === wanted)) setView(wanted);
+    setView(wanted && VIEWS.some((v) => v.key === wanted) ? wanted : "listings");
   }, []);
+
+  function switchView(next) {
+    setView(next);
+    // A new view starts on its default tab with nothing open, so drop every
+    // other param (tab, thread, error...) and keep only the view.
+    const url = next === "listings" ? window.location.pathname : `${window.location.pathname}?view=${next}`;
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
@@ -341,6 +351,7 @@ export default function AdminDashboard() {
     // fetches its own data from an endpoint that ignores the dev/prod switch.
     // Conversations are a thread list plus a thread body, two requests the
     // view makes itself (against the dev/prod switch).
+    if (!view) return;
     if (SELF_LOADING_VIEWS.has(view)) { setLoading(false); setError(null); return; }
     if (!silent) { setLoading(true); setData(null); }
     setError(null);
@@ -422,7 +433,7 @@ export default function AdminDashboard() {
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <select
-            value={view}
+            value={view ?? ""}
             onChange={(e) => {
               if (!confirmDiscardForSwitch()) { e.target.value = view; return; }
               setPendingRows({});
@@ -430,11 +441,8 @@ export default function AdminDashboard() {
               // Clear synchronously so the next render never sees the old view's data shape
               setData(null);
               setLoading(true);
-              setView(e.target.value);
+              switchView(e.target.value);
               setSearch("");
-              if (e.target.value !== "conversations" && window.location.search) {
-                window.history.replaceState(window.history.state, "", window.location.pathname);
-              }
             }}
             className="px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
           >
@@ -469,7 +477,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {view === "invites" ? (
+        {!view ? null : view === "invites" ? (
           <ReviewInvitesView search={search} />
         ) : view === "conversations" ? (
           <ConversationsView search={search} dbTarget={dbTarget} />
