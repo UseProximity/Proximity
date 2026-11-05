@@ -12,7 +12,8 @@ import { billingErrorResponse } from "@/lib/billing/http";
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
  * Exhibit A amendment, whichever covers the properties asked for.
- * Body: { signerTitle, authorized: true, listingIds?: [uuid] }
+ * Body: { signerName, signerTitle, authorized: true, listingIds?: [uuid] }. signerName is
+ *       the full name (first and last) that goes on the document.
  *   listingIds  the properties being published (from the publish dialog); left
  *               out when the landlord signs from the Payments tab
  * Answers { token, host, kind } for Documenso's embedded signing page, or
@@ -41,6 +42,7 @@ export async function POST(req) {
     const result = await startSigning(supabase, documenso, {
       user,
       signerTitle: body.signerTitle,
+      ...(body.signerName !== undefined && { signerName: body.signerName }),
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
       ...options,

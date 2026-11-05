@@ -27,6 +27,7 @@ async function getJson(url, init) {
  */
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const [view, setView] = useState(null);
+  const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,7 +38,10 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   useEffect(() => {
     closeRef.current?.focus();
     getJson("/api/billing/gate")
-      .then((d) => setView(d.agreement ?? null))
+      .then((d) => {
+        setView(d.agreement ?? null);
+        setName((n) => n || d.accountName || "");
+      })
       .catch(() => setView({}));
   }, []);
 
@@ -60,7 +64,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
       const r = await getJson("/api/billing/agreement/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signerTitle: title, authorized, listingIds: ids }),
+        body: JSON.stringify({ signerName: name, signerTitle: title, authorized, listingIds: ids }),
       });
       if (r.alreadySigned) return onSigned();
       setSigning(r);
@@ -142,6 +146,19 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 .
               </p>
               <label className="block">
+                Your full name
+                <input
+                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                  value={name}
+                  maxLength={100}
+                  autoComplete="name"
+                  placeholder="First and last name"
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+                <span className="mt-1 block text-xs text-gray-500">First and last, as it should appear on the agreement.</span>
+              </label>
+              <label className="block">
                 Your title
                 <input
                   className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -159,7 +176,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
               <button
                 type="submit"
-                disabled={busy || !authorized || !title.trim()}
+                disabled={busy || !authorized || !title.trim() || name.trim().split(/\s+/).length < 2}
                 className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
                 {busy ? "Opening..." : hasMaster ? "Review and sign the amendment" : "Review and sign"}

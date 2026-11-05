@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { listVersions, uploadVersion, versionView } from "@/lib/billing/agreementVersions";
+import { listVersions, resignCutoff, signatureStillValid, uploadVersion, versionView } from "@/lib/billing/agreementVersions";
 import { storeAgreementVersion } from "@/lib/billing/agreementFiles";
 import { documensoConfigured } from "@/lib/billing/documenso";
 import { documensoClient } from "@/lib/billing/agreementServices";
@@ -13,8 +13,9 @@ import { billingErrorResponse } from "@/lib/billing/http";
 /*
  * The commission agreement's versions.
  *
- * GET   every version, newest first, with how many landlords signed each and,
- *       for a negotiated version, its landlord's name.
+ * GET   every version, newest first, with how many landlords signed each,
+ *       whether a retired one is still in force (landlords signed on it whose
+ *       signature still counts) and, for a negotiated version, its landlord's name.
  * POST  multipart/form-data: a new draft, pushed to Documenso straight away when
  *       Documenso is connected.
  *         label                  the version's name
@@ -50,7 +51,15 @@ export async function GET() {
         for (const u of data) names.set(u.id, u.company_name || u.name || u.email);
       }
     }
-    return NextResponse.json({ versions: versions.map((v) => versionView(v, counts, names)), documensoConnected: documensoConfigured() });
+    // A signature on a retired standard agreement stops counting once a later version
+    // required everyone to sign again; amendments and negotiated versions never do.
+    const cutoff = versions.length ? await resignCutoff(supabase) : null;
+    const inForce = (v) =>
+      (counts.get(v.id) ?? 0) > 0 && (v.kind === "amendment" || !!v.landlord_id || signatureStillValid(v.published_at, cutoff));
+    return NextResponse.json({
+      versions: versions.map((v) => ({ ...versionView(v, counts, names), stillInForce: v.status === "retired" && inForce(v) })),
+      documensoConnected: documensoConfigured(),
+    });
   } catch (err) {
     return billingErrorResponse(err, "list agreement versions");
   }
