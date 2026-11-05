@@ -31,6 +31,7 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
+import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
@@ -46,7 +47,7 @@ export async function loadListingState(listingId) {
        contact_name, contact_email, contact_phone, source_url,
        listing_landlords(user_id, is_primary),
        listing_units(id, name, bedrooms, bathrooms, area, floor_plan_image_url, published_at, deleted_at, sort_order,
-         unit_leases(id, rent, rent_is_per_person, lease_term_months, available_from, unavailable, is_active, owner_id, description, deleted_at, published_at)),
+         unit_leases(id, rent, rent_is_per_person, lease_term_months, available_from, unavailable, is_active, owner_id, description, deleted_at, published_at, contact_email)),
        listing_images(id, url, unit_id, sort_order, source),
        listing_amenities(*), listing_utilities(*),
        listing_custom_amenities(id, label),
@@ -56,6 +57,8 @@ export async function loadListingState(listingId) {
     .maybeSingle();
   if (error) throw new Error(`load listing: ${error.message}`);
   if (!row || row.deleted_at) return null;
+  // Units a person removed, by name: a sync must not quietly put them back.
+  row.removedUnitNames = (row.listing_units ?? []).filter((u) => u.deleted_at && u.name).map((u) => u.name);
   row.listing_units = (row.listing_units ?? []).filter((u) => !u.deleted_at);
   for (const u of row.listing_units) u.unit_leases = (u.unit_leases ?? []).filter((l) => !l.deleted_at);
   return row;
@@ -452,6 +455,25 @@ export function leaseBlurb(offer) {
   return parts.join(". ").replace(/\.\.(\s|$)/g, ".$1").slice(0, 300);
 }
 
+/**
+ * The lead address a new apartment should take when the property itself has no
+ * contact email: the one this owner already uses on the rest of the building.
+ * Landlords can set the address per apartment rather than per property, and an
+ * apartment added by a later sync would otherwise fall back to their account inbox.
+ * Two or more different addresses is ambiguous, so it stays empty.
+ */
+export function buildingContactEmail(state, userId) {
+  const emails = new Set();
+  for (const unit of state.listing_units ?? []) {
+    if (unit.deleted_at) continue;
+    for (const lease of unit.unit_leases ?? []) {
+      const email = lease.contact_email?.trim().toLowerCase();
+      if (email && !lease.deleted_at && lease.owner_id === userId) emails.add(email);
+    }
+  }
+  return emails.size === 1 ? [...emails][0] : null;
+}
+
 function leaseRow({ state, userId, unitId, offer, available, draft }) {
   return {
     unit_id: unitId,
@@ -465,7 +487,7 @@ function leaseRow({ state, userId, unitId, offer, available, draft }) {
     unavailable: !available,
     description: leaseBlurb(offer),
     furnished: state.furnished ?? null,
-    contact_email: state.contact_email ?? null,
+    contact_email: state.contact_email ?? buildingContactEmail(state, userId),
     contact_phone: state.contact_phone ?? null,
     contact_name: state.contact_name ?? null,
     ...(draft ? { published_at: null } : {}),
@@ -568,6 +590,9 @@ export async function executeChange(change, { state, userId }) {
     }
     case "lease_update": {
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
+      // The database keeps a lease withdrawn for an overdue invoice off the market
+      // until an admin restores it (202611010002_billing_holds.sql).
+      if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       return Object.keys(d.patch).join(", ");
     }
@@ -650,6 +675,56 @@ async function withdrawnBySyncFor(listingId) {
 // ---------------------------------------------------------------- entry
 
 /*
+ * A website can show more than one building (Wyatt, 2026-11-05): Mac
+ * Properties' Coronado Place page also lists Lindell Tower East's floor plans,
+ * which are their own listing on Proximity, and the 11/4 sync added all of
+ * them to Coronado Place. And a sync used to put back any unit a person had
+ * deleted, since it only compares the website with the units still there.
+ *
+ * So a new unit from the website is held for a person, never added, when
+ *   - a unit with the same name is on another listing this landlord owns, or
+ *   - a unit with the same name was removed from this listing.
+ * Held, not dropped: it shows once in the review queue with the reason, and
+ * applying it there still adds it on purpose.
+ */
+export async function holdUnitsBelongingElsewhere({ state, changes, ownerIds }) {
+  const fresh = changes.filter((c) => c.kind === "unit_new" && c.auto !== false);
+  if (!fresh.length) return;
+  const removed = new Set((state.removedUnitNames ?? []).map(unitKeyOf));
+  const elsewhere = new Map();
+  if (ownerIds.length) {
+    const { data: links } = await supabase.from("listing_landlords").select("listing_id").in("user_id", ownerIds).limit(2000);
+    const others = [...new Set((links ?? []).map((l) => l.listing_id))].filter((id) => id !== state.id);
+    for (let i = 0; i < others.length; i += 100) {
+      const { data: units } = await supabase
+        .from("listing_units")
+        .select("name, listings!listing_id(title, address, deleted_at)")
+        .in("listing_id", others.slice(i, i + 100))
+        .is("deleted_at", null)
+        .not("name", "is", null)
+        .limit(5000);
+      for (const u of units ?? []) {
+        if (u.listings?.deleted_at) continue;
+        const key = unitKeyOf(u.name);
+        if (key && !elsewhere.has(key)) elsewhere.set(key, u.listings?.title || u.listings?.address || "another listing");
+      }
+    }
+  }
+  for (const c of fresh) {
+    const key = unitKeyOf(c.new?.name ?? c.detail?.unit?.name);
+    if (!key) continue;
+    const where = elsewhere.get(key);
+    if (where || removed.has(key)) {
+      c.auto = false;
+      c.judge = false;
+      c.note = where ? `already on ${where}; held instead of added` : "removed from this listing before; held instead of added back";
+    }
+  }
+}
+
+const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
+
+/*
  * Apply a snapshot. Returns { applied, held, holdReason, summary }.
  *
  *   mode       "import" onto a draft, "sync" onto a listing with data
@@ -666,6 +741,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover });
   const label = listingLabel ?? state.title ?? state.address;
+  if (mode === "sync") await holdUnitsBelongingElsewhere({ state, changes, ownerIds });
 
   // Holds: a snapshot the reader was unsure of, or too much churn at once.
   let holdReason = null;

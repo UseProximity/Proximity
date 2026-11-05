@@ -32,7 +32,7 @@ import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
-import { isSandboxViewer, SANDBOX_FEED_HEADERS } from "@/lib/reviewSandbox";
+import { isSandboxViewer, SANDBOX_FEED_HEADERS, stripSandboxReviews } from "@/lib/reviewSandbox";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -300,7 +300,7 @@ export async function fetchListings(listingIds = null, { includeSandbox = false 
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
       listing_images(url, sort_order, source),
-      listing_reviews(rating, legitimacy, deleted_at),
+      listing_reviews(rating, legitimacy, deleted_at, user_id),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `
@@ -325,6 +325,10 @@ export async function fetchListings(listingIds = null, { includeSandbox = false 
   const { data: listings, error } = await query;
 
   if (error) throw error;
+
+  // Ratings and counts leave out reviews by review sandbox accounts (seen only by
+  // their author, on the listing page).
+  await stripSandboxReviews(listings);
 
   // Collect unique primary-landlord user IDs for a single batch fetch
   const primaryLandlordIds = [

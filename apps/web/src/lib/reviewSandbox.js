@@ -10,6 +10,10 @@
  *     is a sandbox user.
  *   - Push and the inbox: acted on when the actor is a sandbox user and the other side
  *     is not.
+ *   - Reviews: a review written by a sandbox account is seen only by its author. It is
+ *     left out of every other reader's list, rating, count and the landlord's views
+ *     (withoutSandboxReviews below), so a reviewer testing "write a review" on a real
+ *     listing never changes what real users see.
  *   - Listings: a sandbox listing is invisible to everyone but sandbox accounts, and in
  *     the "is it already listed" checks it never blocks or absorbs a real landlord
  *     (withoutSandboxRows below). In the app's listing feeds (browse, popular, saved,
@@ -149,3 +153,46 @@ export function sandboxViewerInScope() {
 
 /** Response headers for a feed that may include sandbox listings: never cached. */
 export const SANDBOX_FEED_HEADERS = { "Cache-Control": "private, no-store" };
+
+/*
+ * Reviews (see the rules above): `rows` without the ones a sandbox account wrote,
+ * except the viewer's own. `authorOf` reads a row's author id (user_id by default).
+ * No sandbox accounts, or no rows, means no filtering. A failed lookup is logged by
+ * readRows and the rows come back unfiltered: these lists sit behind listing pages,
+ * browse and ratings, which must not fail over this, and the worst case is a
+ * reviewer's test review showing until the next request.
+ */
+export async function withoutSandboxReviews(rows, viewerId = null, { authorOf = (r) => r?.user_id, client } = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows ?? [];
+  let sandbox;
+  try {
+    sandbox = await allSandboxUserIds({ client });
+  } catch {
+    return rows;
+  }
+  if (sandbox.size === 0) return rows;
+  return rows.filter((r) => {
+    const author = authorOf(r);
+    return !author || !sandbox.has(author) || (viewerId && author === viewerId);
+  });
+}
+
+/*
+ * The same for listing rows that embed their reviews (listing_reviews with user_id):
+ * every row's listing_reviews is narrowed in place to what everyone may see, so
+ * ratings and counts built from them leave sandbox reviews out. One lookup for all.
+ */
+export async function stripSandboxReviews(listingRows, { client } = {}) {
+  if (!Array.isArray(listingRows) || !listingRows.some((l) => l?.listing_reviews?.length)) return listingRows;
+  let sandbox;
+  try {
+    sandbox = await allSandboxUserIds({ client });
+  } catch {
+    return listingRows;
+  }
+  if (sandbox.size === 0) return listingRows;
+  for (const l of listingRows) {
+    if (Array.isArray(l?.listing_reviews)) l.listing_reviews = l.listing_reviews.filter((r) => !r?.user_id || !sandbox.has(r.user_id));
+  }
+  return listingRows;
+}

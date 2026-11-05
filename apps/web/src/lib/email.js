@@ -24,9 +24,9 @@ const transporter = nodemailer.createTransport({
 });
 
 /*
- * Amazon SES, for chat alerts and alert-address confirmations. It can send as
- * info@useproximity.org with a reply+token Reply-To on our own reply domain,
- * which Gmail SMTP cannot, and it reports bounces and complaints back to
+ * Amazon SES, for chat alerts and alert-address confirmations. It can send
+ * from a reply+token address on our own reply domain, which Gmail SMTP cannot
+ * (Gmail can only set it as the Reply-To), and it reports bounces and complaints back to
  * /api/ses/events. Null when the AWS_SES_* variables are missing, in which case
  * those emails go through Gmail like everything else.
  */
@@ -283,8 +283,11 @@ function chatTimeLabels(list) {
  * of the conversation. CHAT_FROM_REPLY_ADDRESS=0 goes back to info@.
  *
  * With a replyTo (the private reply+token address) the email says it can be
- * answered directly. Without one, or when it falls back to Gmail, it only
- * points to the app, since a reply would land in the shared inbox instead.
+ * answered directly. Without one it only points to the app, since a reply
+ * would land in the shared inbox instead. The Gmail fallback keeps the
+ * replyTo as its Reply-To header (Wyatt, 2026-11-04): it used to drop it, and
+ * when SES refused every send for two days, landlords' replies to those
+ * fallback emails went to info@ and never reached the conversation.
  *
  * The email reads like one the other person wrote, not a notification about
  * one (Wyatt, 2026-10-12): their words first, in plain paragraphs, then a short
@@ -460,11 +463,14 @@ export async function sendChatMessageEmail({
     }
   }
 
-  const { html, text } = build(false);
+  // Gmail cannot send from the reply address, but it can carry it as the
+  // Reply-To, so a reply still reaches the conversation.
+  const { html, text } = build(Boolean(replyTo));
   const info = await sendMailSafe(transporter, {
     logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
+    ...(replyTo ? { replyTo } : {}),
     subject,
     headers,
     html,
@@ -843,7 +849,8 @@ export async function sendPmsSyncDigestEmail({ to, items, baseUrl }) {
  * CTA is matchmaking, because a review is the moment a student has proved they
  * care and the moment they are most likely to come back.
  */
-export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken }) {
+// `sandbox`: the reviewer is a review sandbox account, so the email is only recorded.
+export async function sendReviewConfirmationEmail({ email, name, baseUrl, places, setupToken, sandbox = false }) {
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
@@ -880,6 +887,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
 
   await sendMailSafe(transporter, {
     logAs: { kind: "review_confirmation" },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: email,
     replyTo: OPT_OUT_INBOX,
@@ -1317,7 +1325,7 @@ function proxyParagraphs(messages) {
  * To a student who has left the listing page: Proxy answered, or relayed the
  * landlord's answer, or has no answer yet. Never names the landlord.
  */
-export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null, replyTo = null }) {
+export async function sendProxyStudentEmail({ to, name, kind, listingLabel, messages, threadUrl, threadId = null, userId = null, testEmailTo = null, replyTo = null, sandbox = false }) {
   const first = name ? String(name).split(" ")[0] : "";
   const subject = {
     proxy_relay: `The landlord answered your question about ${listingLabel}`,
@@ -1335,6 +1343,8 @@ export async function sendProxyStudentEmail({ to, name, kind, listingLabel, mess
   }[kind] ?? "Here is what Proxy found.";
   await sendMailSafe(transporter, {
     logAs: { kind, threadId, userId },
+    // A review sandbox student is never emailed (same rule as every other email).
+    sandbox,
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     // Replying goes to Proxy in the same conversation (Wyatt, 2026-11-01).
@@ -1383,7 +1393,7 @@ export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, thre
  */
 export async function sendProxyLandlordQuestionEmail({
   to, name, listingLabel, question, queueUrl, kind = "proxy_question",
-  hasAccount = true, studentReply = null, reminderDay = null, replyTo = null,
+  hasAccount = true, studentReply = null, reminderDay = null, replyTo = null, sandbox = false,
 }) {
   const first = name ? String(name).split(" ")[0] : "";
   // With a per-question reply address, answering the email answers the student.
@@ -1403,6 +1413,8 @@ export async function sendProxyLandlordQuestionEmail({
   const box = (text, label = null) => `<div style="margin:12px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;white-space:pre-wrap;line-height:1.45">${label ? `<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(label)}</div>` : ""}${escapeHtml(text)}</div>`;
   await sendMailSafe(transporter, {
     logAs: { kind },
+    // A review sandbox question (asked by, or sent to, a sandbox account) is never sent.
+    sandbox,
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     replyTo: canReply ? replyTo : CHAT_FROM_ADDRESS,
@@ -1427,10 +1439,13 @@ export async function sendProxyLandlordQuestionEmail({
  * confirmation (with a calendar file), cancellation, reminders. One shape,
  * the caller supplies the words.
  */
-export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null }) {
+// `sandbox` is true when the student or the landlord is a review sandbox account:
+// sendMailSafe then records the email as suppressed and sends nothing.
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
   const first = name ? String(name).split(" ")[0] : "";
   await sendMailSafe(transporter, {
     logAs: { kind, userId, threadId },
+    sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
     // A reply goes into the direct chat when the email carries its reply address.

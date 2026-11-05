@@ -133,6 +133,37 @@ export async function notifyNewChatMessage({
   }
 }
 
+/*
+ * SES refused an alert and Gmail delivered it (Wyatt, 2026-11-04). The email
+ * still arrived, so nothing else reports it, and on Nov 3 to 4 every chat email
+ * quietly went through Gmail for two days because of an AWS permission. One
+ * team alert per 6 hours: the first fallback in that window (no earlier
+ * 'SES failed' row in chat_email_log) sends it, the rest only log. Runs before
+ * this alert's own log row is written, so that row does not count.
+ */
+const SES_FALLBACK_ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+async function reportSesFallback({ data, sesError }) {
+  const since = new Date(Date.now() - SES_FALLBACK_ALERT_WINDOW_MS).toISOString();
+  const { count, error } = await supabase
+    .from("chat_email_log")
+    .select("id", { count: "exact", head: true })
+    .like("status_detail", "SES failed%")
+    .gte("created_at", since);
+  if (!error && count > 0) return;
+  await alertTeam({
+    subject: "Amazon SES is refusing chat emails",
+    intro: "A message alert could not go through SES, so it went out through the Gmail fallback instead. It was delivered, but bounce tracking is off for it, and SES is likely refusing every chat email until this is fixed. More fallbacks in the next 6 hours will not send another alert.",
+    facts: [
+      ["To", data.recipientEmail],
+      ["Conversation", data.threadId],
+      ["Listing", data.listingTitle || data.listingAddress || data.subject],
+      ["Error", sesError],
+    ],
+    action: "Check the SES error above (an AWS permission or sending limit, usually) and the AWS_SES_* settings in Vercel. chat_email_log rows with a status note starting 'SES failed' show every email affected.",
+  });
+}
+
 async function logAttempt(row) {
   const { error } = await supabase.from("chat_email_log").insert({ ...row, status_at: new Date().toISOString() });
   if (error) {
@@ -244,6 +275,7 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbo
   });
 
   if (sent && !sent.suppressed) {
+    if (sent.sesError) await reportSesFallback({ data, sesError: sent.sesError });
     await logAttempt({ ...attempt, provider: sent.provider, provider_message_id: sent.messageId, status: "sent", status_detail: sent.sesError ? `SES failed, sent through Gmail: ${sent.sesError}` : null });
   }
   return sent ?? null;

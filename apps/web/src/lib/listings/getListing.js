@@ -30,7 +30,7 @@ import { sortUnits } from "@/utils/unitOrder";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
 import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
 import { agentIsLive } from "@/lib/agents/flags";
-import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+import { sandboxIdsAmong, withoutSandboxReviews } from "@/lib/reviewSandbox";
 
 function amenitiesRowToArray(row) {
   if (!row) return [];
@@ -523,7 +523,9 @@ async function fetchListing(listingId, currentUserId, { includeDrafts, preview =
    * breakdown match what every other visitor sees, and a block can't be used to
    * raise a property's rating.
    */
-  const reviewRows = allReviewRows;
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js),
+  // so it is left out of the list, the rating and the counts for everyone else.
+  const reviewRows = await withoutSandboxReviews(allReviewRows ?? [], currentUserId);
   let blockedAuthors = new Set();
   if (currentUserId && reviewRows?.length) {
     const { data: blocks, error: blocksErr } = await supabase

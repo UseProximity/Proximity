@@ -1,6 +1,6 @@
 import supabase from "@/lib/supabase";
 import { fetchListings } from "../route";
-import { isSandboxViewer, SANDBOX_FEED_HEADERS } from "@/lib/reviewSandbox";
+import { isSandboxViewer, SANDBOX_FEED_HEADERS, allSandboxUserIds } from "@/lib/reviewSandbox";
 
 // GET /api/listings/popular
 // Ranks available listings by engagement (saves + contacts, each worth 1 point)
@@ -43,10 +43,15 @@ export async function getPopularListings({ includeSandbox = false } = {}) {
     // listingId -> { week, month, all } interaction counts
     const counts = new Map();
     if (typeIds.length > 0) {
-      const { data: rows, error } = await supabase
-        .from("user_listing_interactions")
-        .select("listing_id, created_at")
-        .in("interaction_type_id", typeIds);
+      const [{ data: rows, error }, sandboxUsers] = await Promise.all([
+        supabase
+          .from("user_listing_interactions")
+          .select("listing_id, user_id, created_at")
+          .in("interaction_type_id", typeIds),
+        // Review sandbox accounts' saves and contacts never move the real ranking.
+        // A failed lookup counts everyone, like the feeds serving the public view.
+        allSandboxUserIds().catch(() => new Set()),
+      ]);
 
       if (error) {
         console.error("[listings/popular GET] interaction fetch error:", error);
@@ -54,6 +59,7 @@ export async function getPopularListings({ includeSandbox = false } = {}) {
 
       const now = Date.now();
       for (const r of rows ?? []) {
+        if (sandboxUsers.has(r.user_id)) continue;
         const c = counts.get(r.listing_id) ?? { week: 0, month: 0, all: 0 };
         const age = now - new Date(r.created_at).getTime();
         if (age <= WEEK_MS) c.week += 1;

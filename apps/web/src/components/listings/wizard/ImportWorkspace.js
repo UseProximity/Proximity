@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ChangeCompare from "@/components/listings/ChangeCompare";
 import toast from "react-hot-toast";
 import { AlertCircle, Building2, Check, ExternalLink, Info, Loader2, RotateCw, X } from "lucide-react";
 import EditorOverview from "@/components/listings/editor/EditorOverview";
@@ -186,19 +187,22 @@ function Proposed({ listingId, proposed, flagged, onApplied, claimed = false }) 
           : "This listing is already on Proximity, so nothing changed yet. Tick what to apply."}
       </p>
       {proposed.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
+        <ul className="mt-3 space-y-3">
           {proposed.map((e) => (
             <li key={e.id} className="flex items-start gap-2 text-sm text-gray-800">
               <input type="checkbox" checked={picked.has(e.id)} onChange={() => toggle(e.id)} className="mt-1 accent-red-600" />
-              <span>{describe(e)}</span>
+              {e.view ? <div className="min-w-0 flex-1"><ChangeCompare view={e.view} /></div> : <span>{describe(e)}</span>}
             </li>
           ))}
         </ul>
       )}
       {flagged.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-amber-200 pt-3 text-sm text-amber-800">
+        <ul className="mt-3 space-y-3 border-t border-amber-200 pt-3 text-sm text-amber-800">
           {flagged.map((e) => (
-            <li key={e.id}>{describe(e)}. Left as it is; change it below if you want.</li>
+            <li key={e.id}>
+              {e.view ? <ChangeCompare view={e.view} /> : <>{describe(e)}.</>}
+              <span className="mt-0.5 block text-xs">Left as it is; change it below if you want.</span>
+            </li>
           ))}
         </ul>
       )}

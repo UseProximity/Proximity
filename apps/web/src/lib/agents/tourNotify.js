@@ -6,6 +6,11 @@
  * from the request on. Contact details are never sent (Wyatt, 2026-10-27):
  * once a tour is confirmed or the landlord reaches out, the two talk in the
  * direct chat, and replying to these emails posts into that chat.
+ *
+ * Review sandbox (App Store review accounts): when the student or the landlord
+ * is a sandbox account, every tour email is suppressed (sendMailSafe records it
+ * and sends nothing), so a reviewer touring a real listing never reaches the
+ * real landlord. A failed lookup throws out of loadTour, so nothing is sent.
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendTourEmail } from "@/lib/email";
@@ -14,6 +19,8 @@ import { availabilityText, fmtTourTime } from "./tourTime";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { completedAccount, ACCOUNT_FIELDS } from "./visitorEmail";
 import { tourReplyAddress } from "./replyTokens";
+import { routedInquiryEmail } from "@/lib/chat/contactVerification";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 const TZ = "America/Chicago";
 const fmt = (iso) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -36,8 +43,9 @@ async function loadTour(tourId) {
     t.landlord_id ? supabase.from("users").select(`id, name, email, phone, email_notifications, deleted_at, ${ACCOUNT_FIELDS}`).eq("id", t.landlord_id).maybeSingle() : { data: null },
   ]);
   const unit = t.unit_leases?.listing_units;
+  const sandbox = (await sandboxIdsAmong([t.student_id, t.landlord_id])).size > 0;
   return {
-    t, student: student.data, landlord: landlord.data,
+    t, student: student.data, landlord: landlord.data, sandbox,
     // What the landlord may call the student: their name only once it is shown.
     studentLabel: (nameShown(t) && student.data?.name) || null,
     listingLabel: t.listings?.title || t.listings?.address || "the listing",
@@ -69,7 +77,10 @@ export async function notifyTourRequested({ tourId }) {
   const r = await loadTour(tourId);
   if (!r || !canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
-    kind: "tour_request", to: r.landlord.email, name: r.landlord.name,
+    sandbox: r.sandbox,
+    kind: "tour_request",
+    to: await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email }),
+    name: r.landlord.name,
     subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
     intro: `${r.studentLabel || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
     lines: rangeLines(r.t.student_slots),
@@ -91,6 +102,7 @@ export async function notifyTourProposed({ tourId }) {
     .is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const replyTo = await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.student.id }).catch(() => null);
   await sendTourEmail({
+    sandbox: r.sandbox,
     kind: "tour_proposal", to: r.student.email, name: r.student.name,
     subject: `The landlord at ${r.listingLabel} wrote to you about your tour`,
     intro: `The landlord couldn't make the times you offered for ${r.listingLabel}, so they wrote to you directly:`,
@@ -135,6 +147,7 @@ export async function notifyTourConfirmed({ tourId }) {
     const file = invite(isStudent);
     const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
     await sendTourEmail({
+      sandbox: r.sandbox,
       kind: "tour_confirmed", to: u.email, name: u.name,
       subject: isStudent ? `Tour confirmed: ${r.listingLabel}, ${when}` : `Tour confirmed: ${r.student?.name || "a student"}, ${when}`,
       intro: isStudent
@@ -156,6 +169,7 @@ export async function notifyTourCancelled({ tourId, by }) {
   const target = by === "student" ? r.landlord : r.student;
   if (!canEmail(target)) return "no_recipient";
   await sendTourEmail({
+    sandbox: r.sandbox,
     kind: "tour_cancelled", to: target.email, name: target.name,
     subject: `Tour request cancelled: ${r.listingLabel}`,
     intro: by === "student" ? `${r.studentLabel || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
@@ -176,6 +190,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
       if (!canEmail(u)) continue;
       const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
       await sendTourEmail({
+        sandbox: r.sandbox,
         kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
         lines: [`Address: ${r.address}`],
@@ -187,6 +202,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
   }
   if (!canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
+    sandbox: r.sandbox,
     kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name,
     subject: `Reminder: ${r.studentLabel || "a student"} is waiting to tour ${r.listingLabel}`,
     intro: `${r.studentLabel || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
@@ -207,6 +223,7 @@ export async function notifyTourNoAnswer({ tourId }) {
   }
   if (!canEmail(r.student)) return "posted";
   await sendTourEmail({
+    sandbox: r.sandbox,
     kind: "tour_no_answer", to: r.student.email, name: r.student.name,
     subject: `No answer yet on your tour request for ${r.listingLabel}`,
     intro: `The landlord hasn't responded to your tour request for ${r.listingLabel} yet.`,

@@ -29,7 +29,9 @@ import { extractReplyText } from "@/lib/chat/emailReplyText";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
 import { getBaseUrl, sendProxyStudentEmail } from "@/lib/email";
+import { isSandboxUser } from "./sandbox";
 import { landlordAct } from "./tours";
+import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { getThread, PROXY_USER_ID } from "./threads";
 import { handleStudentMessage } from "./proxy";
 
@@ -68,7 +70,7 @@ export async function handleAgentReplyEmail({ parsed, fromEmail, token, logId = 
 }
 
 async function tourReply({ parsed, fromEmail, token, logId, finish }) {
-  const { data: t } = await supabase.from("tour_requests").select("id, landlord_id, status, listing_id").eq("id", token.id).maybeSingle();
+  const { data: t } = await supabase.from("tour_requests").select("id, landlord_id, status, listing_id, lease_id").eq("id", token.id).maybeSingle();
   if (!t || sign("t", t.id, t.landlord_id) !== token.sig) {
     await finish(logId, { status: "unknown_address", reason: "token matches no tour" });
     return { status: "unknown_address" };
@@ -77,6 +79,10 @@ async function tourReply({ parsed, fromEmail, token, logId, finish }) {
   const own = String(landlord?.email ?? "").trim().toLowerCase();
   const sameCompany = own && !SHARED_DOMAINS.has(domainOf(fromEmail)) && domainOf(own) === domainOf(fromEmail);
   let allowed = !landlord?.deleted_at && (fromEmail === own || testers().includes(fromEmail) || sameCompany);
+  // The address this tour's request was sent to, such as a building's leasing inbox.
+  if (!allowed && landlord && !landlord.deleted_at) {
+    allowed = (await routedInquiryEmail({ landlordId: landlord.id, listingId: t.listing_id, leaseId: t.lease_id, accountEmail: own })) === fromEmail;
+  }
   if (!allowed && landlord) allowed = (await senderDecision(supabase, landlord.id, fromEmail)) === "approved";
   if (!allowed) {
     await finish(logId, { user_id: t.landlord_id, status: "wrong_sender", reason: "from address is not this landlord" });
@@ -134,6 +140,8 @@ async function proxyReply({ parsed, fromEmail, token, logId, finish }) {
   if (replies.length) {
     const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
     await sendProxyStudentEmail({
+      // A review sandbox student is never emailed (lib/reviewSandbox.js).
+      sandbox: await isSandboxUser(student?.id ?? null).catch(() => true),
       to: recipient, name: student?.name ?? null, kind: "proxy_reply", listingLabel: listing?.title || listing?.address || "a listing",
       messages: replies, threadUrl: `${getBaseUrl()}/listings/${thread.listing_id}?listingTab=contact`, threadId: thread.id,
       userId: student?.id ?? null, replyTo: proxyReplyAddress({ threadId: thread.id, recipientKey: key }),

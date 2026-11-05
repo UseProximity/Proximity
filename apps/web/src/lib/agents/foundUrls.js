@@ -71,3 +71,67 @@ export function classifyUrl(url) {
   if (OTHER_PORTALS.some((d) => onDomain(host, d))) return null;
   return { site: "own_site", pageType: path.replace(/\/+$/, "") === "" ? "home" : "building" };
 }
+
+/*
+ * Found pages and the landlord's own pages (lib/agents/foundRead.js).
+ *
+ * Source search lists the pages a listing already has next to the ones it
+ * finds, and found_by says how it came to each one. "imported from" and
+ * "agent reads it" mean the landlord gave us the page before any search: it
+ * stays the landlord's (read by the daily sync, rank 1), and the found reader
+ * leaves it alone.
+ *
+ * The found reader is the only code that creates a page source with a
+ * FOUND_CHECK_INTERVAL_DAYS interval, and a source's interval is never changed
+ * after it is created. So a page source counts as found only when the found
+ * reader created it AND its found row is not one the landlord gave. A
+ * landlord page that search also turned up keeps its landlord rank and its
+ * place in the daily sync, whatever the found row's status.
+ */
+export const SITE_RANK = { own_site: 2, company_site: 2, apartments_com: 3, zillow: 4 };
+export const LANDLORD_PAGE_RANK = 1;
+export const TOP_RANK = 0;
+export const FOUND_CHECK_INTERVAL_DAYS = 30;
+// Pages read per listing, the most likely first.
+export const MAX_FOUND_PAGES = 8;
+
+const LANDLORD_FOUND_BY = ["imported from", "agent reads it"];
+const PAGE_ORDER = { building: 0, unit: 1, home: 2 };
+
+export function landlordGave(foundBy) {
+  return String(foundBy ?? "").split(";").map((s) => s.trim()).some((s) => LANDLORD_FOUND_BY.includes(s));
+}
+
+/* A page source the found reader made for a page the landlord did not give. */
+export function isFoundSource(source, foundRow) {
+  return Boolean(foundRow) && !landlordGave(foundRow.found_by) && source?.check_interval_days === FOUND_CHECK_INTERVAL_DAYS;
+}
+
+/* The rank of one source. `foundRow` is the listing's found row for its url, any status. */
+export function sourceRank(source, foundRow) {
+  if (source.kind !== "page") return TOP_RANK;
+  if (isFoundSource(source, foundRow) && SITE_RANK[foundRow.site]) return SITE_RANK[foundRow.site];
+  return LANDLORD_PAGE_RANK;
+}
+
+/*
+ * The found pages the reader reads for one listing: confirmed, on a site we
+ * rank, not given by the landlord, and not already a landlord page source
+ * (`sourceByUrl`: the listing's page sources by url). Best first, at most
+ * MAX_FOUND_PAGES.
+ */
+export function pagesToRead(foundRows, sourceByUrl = new Map()) {
+  return foundRows
+    .filter((r) => r.status === "confirmed" && SITE_RANK[r.site] && !landlordGave(r.found_by))
+    .filter((r) => { const s = sourceByUrl.get(r.url); return !s || isFoundSource(s, r); })
+    .sort((a, b) => SITE_RANK[a.site] - SITE_RANK[b.site]
+      || (PAGE_ORDER[a.page_type] ?? 9) - (PAGE_ORDER[b.page_type] ?? 9)
+      || Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
+    .slice(0, MAX_FOUND_PAGES);
+}
+
+/* Whether the reader has looked at a page (since `since`, when given). A failed read counts. */
+export function pageLooked(source, since = null) {
+  if (!source?.last_checked_at) return false;
+  return !since || new Date(source.last_checked_at) >= new Date(since);
+}

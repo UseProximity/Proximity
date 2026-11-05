@@ -42,6 +42,18 @@
       "schedule": "0 14 * * 1"
     },
     {
+      "path": "/api/cron/billing-review-clock",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/billing-run",
+      "schedule": "0 15 * * 1"
+    },
+    {
+      "path": "/api/cron/billing-overdue",
+      "schedule": "0 14 * * *"
+    },
+    {
       "path": "/api/cron/import-jobs",
       "schedule": "*/2 * * * *"
     },

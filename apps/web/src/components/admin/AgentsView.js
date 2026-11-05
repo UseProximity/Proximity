@@ -4,11 +4,26 @@
  * Admin: the per-listing agents. Counts, what is waiting for the team
  * (fair-housing flags, new owners' edits), what is waiting for landlords,
  * website changes held by syncs, units and listings gone from a website,
- * and the per-listing switch (off, pilot, on).
+ * and the per-listing switch (off, pilot, on). The Knowledge tab shows what
+ * each listing's agent knows and its sources (AgentsKnowledgeView).
  */
+import ChangeCompare from "@/components/listings/ChangeCompare";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
+import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
+
+const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
+
+function Tabs({ tab, setTab }) {
+  return (
+    <div className="mb-6 flex gap-1 border-b border-gray-200">
+      {TABS.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => setTab(k)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === k ? "border-gray-900 font-semibold text-gray-900" : "border-transparent text-gray-500 hover:text-gray-800"}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
@@ -26,6 +41,7 @@ export default function AgentsView({ search = "" }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [tab, setTab] = useState("overview");
 
   const load = useCallback(async () => {
     try {
@@ -73,8 +89,9 @@ export default function AgentsView({ search = "" }) {
     }
   };
 
-  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
-  if (!data) return <div className="py-20 text-center text-sm text-gray-400">Loading agents...</div>;
+  if (tab === "knowledge") return <div><Tabs tab={tab} setTab={setTab} /><AgentsKnowledgeView search={search} /></div>;
+  if (error) return <div><Tabs tab={tab} setTab={setTab} /><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div></div>;
+  if (!data) return <div><Tabs tab={tab} setTab={setTab} /><div className="py-20 text-center text-sm text-gray-400">Loading agents...</div></div>;
 
   const q = search.trim().toLowerCase();
   const matches = (s) => !q || String(s ?? "").toLowerCase().includes(q);
@@ -83,6 +100,7 @@ export default function AgentsView({ search = "" }) {
 
   return (
     <div>
+      <Tabs tab={tab} setTab={setTab} />
       <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (
@@ -107,9 +125,19 @@ export default function AgentsView({ search = "" }) {
       </Section>
 
       <Section title="Waiting for landlords" count={data.forLandlords.length + data.website.length}>
-        {[...data.forLandlords.map((e) => ({ ...e, kind: "fact", title: e.summary })), ...data.website.map((e) => ({ ...e, kind: "source", title: `${e.unit ? `${e.unit}: ` : ""}${e.kind.replace(/_/g, " ")}${e.field ? ` (${e.field})` : ""}` }))].filter((e) => matches(e.listing)).slice(0, 100).map((e) => (
-          <div key={e.id} className="mb-1 flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
-            <div><span className="text-xs text-gray-500">{e.listing} · {when(e.createdAt)}</span><div className="text-gray-900">{e.title}</div></div>
+        {[...data.forLandlords.map((e) => ({ ...e, kind: "fact", title: e.summary })), ...data.website.map((e) => ({ ...e, kind: "source", title: `${e.unit ? `${e.unit}: ` : ""}${e.kind.replace(/_/g, " ")}${e.field ? ` (${e.field})` : ""}` }))].filter((e) => matches(e.listing)).slice(0, 300).map((e) => (
+          <div key={e.id} className="mb-1 flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
+            <div className="min-w-0 flex-1">
+              <span className="text-xs text-gray-500">{e.listing} · {when(e.createdAt)}{e.kind === "source" ? " · from the website sync" : ""}</span>
+              {e.view ? (
+                <div className="mt-0.5"><ChangeCompare view={e.view} /></div>
+              ) : e.kind === "fact" ? (
+                <div className="text-gray-900">{e.title}{e.current ? <div className="mt-0.5 text-xs text-gray-500">Now: {e.current}</div> : null}</div>
+              ) : (
+                <div className="text-gray-900">{e.title}</div>
+              )}
+              {e.heldBecause && <p className="mt-1 text-[11px] text-amber-700">Held: {e.heldBecause}</p>}
+            </div>
             <div className="flex shrink-0 gap-2"><button disabled={busy === e.id} onClick={() => decide(e.kind, e, "approve")} className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-semibold text-white">Apply</button><button disabled={busy === e.id} onClick={() => decide(e.kind, e, "reject")} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">Reject</button></div>
           </div>
         ))}
