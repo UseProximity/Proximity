@@ -18,6 +18,7 @@ import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
 import { replyDomain, hashReplyToken } from "@/lib/chat/replyAddress";
 import { extractReplyText } from "@/lib/chat/emailReplyText";
+import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
 import { answerQuestion, classifyReply, holdingReply } from "./questions";
@@ -66,6 +67,8 @@ export async function handleQuestionEmail({ parsed, fromEmail, token, attachment
   const fromDomain = domainOf(fromEmail);
   const sameCompany = ownerEmail && !SHARED_DOMAINS.has(fromDomain) && domainOf(ownerEmail) === fromDomain;
   let allowed = fromEmail === ownerEmail || testers.includes(fromEmail) || sameCompany;
+  // The address this question was sent to, such as a building's leasing inbox.
+  if (!allowed) allowed = (await routedInquiryEmail({ landlordId: q.owner_id, listingId: q.listing_id, accountEmail: ownerEmail })) === fromEmail;
   if (!allowed) allowed = (await senderDecision(supabase, q.owner_id, fromEmail)) === "approved";
   if (!allowed) {
     await finish(logId, { ...base, status: "wrong_sender", reason: "from address is not this landlord" });

@@ -19,6 +19,7 @@
  * published. Every write goes through the agent routes, which check
  * ownership.
  */
+import ChangeCompare from "@/components/listings/ChangeCompare";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, FileText, Globe } from "lucide-react";
@@ -172,8 +173,12 @@ function HeldChanges({ listingId, held, onDone }) {
       <div className="space-y-2">
         {held.map((h) => (
           <div key={h.id} className="rounded-lg bg-white p-3 text-sm">
-            <p className="text-gray-900">{h.title}</p>
-            {h.current && <p className="text-xs text-gray-500">Currently: {h.current}</p>}
+            {h.view ? <ChangeCompare view={h.view} /> : (
+              <>
+                <p className="text-gray-900">{h.title}</p>
+                {h.current && <p className="text-xs text-gray-500">Currently: {h.current}</p>}
+              </>
+            )}
             {h.forAdmin ? <p className="mt-1 text-xs text-gray-500">Being reviewed by the Proximity team.</p> : (
               <div className="mt-2 flex gap-2">
                 <button disabled={busy === h.id} onClick={() => decide(h, "approve")} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-3 w-3" /> Apply</button>

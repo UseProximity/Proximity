@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 // Create a lease on a unit that already exists — step 3 of the
@@ -50,6 +51,14 @@ export async function POST(req) {
 
   if (!unitId) {
     return Response.json({ error: "A unit is required." }, { status: 400 });
+  }
+
+  // Adding a live offering needs a payment method and, when required, a signed
+  // agreement (lib/billing/listingGate.js). A draft offering is never blocked.
+  if (body.draft !== true) {
+    const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [] });
+    if (!gate.allowed) return Response.json(gateResponseBody(gate), { status: 403 });
   }
 
   // Terms Section 5: a subletter confirms their own lease lets them sublet.

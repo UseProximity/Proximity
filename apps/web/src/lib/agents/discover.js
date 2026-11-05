@@ -139,9 +139,12 @@ export function canonicalUrl(u) {
 const cleanAddress = (a) => String(a ?? "").replace(/,?\s*United States$/i, "").trim();
 const cityOf = (listing) => listing.city || String(listing.address ?? "").split(",")[1]?.trim() || "St. Louis";
 
+// Inboxes that only receive leads for a leasing tool. The domain is the tool's, not the landlord's.
+const LEAD_ROUTING_DOMAINS = new Set(["leads.eliseai.com"]);
+
 function companyDomain(email) {
   const d = String(email ?? "").toLowerCase().split("@")[1]?.trim();
-  if (!d || FREE_EMAIL.has(d) || !d.includes(".")) return null;
+  if (!d || FREE_EMAIL.has(d) || LEAD_ROUTING_DOMAINS.has(d) || !d.includes(".")) return null;
   return d;
 }
 

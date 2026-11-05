@@ -6,12 +6,20 @@
  * website. The same run tells each landlord about units or listings that
  * vanished from their website (an availability-gone event never hides a
  * listing on its own).
+ *
+ * PAUSED 2026-11-04 (Wyatt): the landlord notices are off. They started going
+ * out once the agents switch was on in production, and found pages (Zillow,
+ * Apartments.com) may not show every unit, so a sync can flag units that are
+ * still available. Events are still recorded and still listed in the team
+ * digest and the admin queue. To turn the notices back on, set
+ * LANDLORD_GONE_NOTICES to true.
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendAgentDigestEmail, sendTourEmail } from "@/lib/email";
 import { ALERT_TO } from "@/lib/sourceImport/sync";
 
 const DAY = 24 * 3600 * 1000;
+const LANDLORD_GONE_NOTICES = false;
 
 function window(now = new Date()) {
   const end = new Date(now);
@@ -131,7 +139,7 @@ export async function buildDigest({ now = new Date() } = {}) {
 
   // Gone from a website
   const { data: gone } = await supabase.from("listing_source_events").select("id, kind, detail, listing_id, listings!listing_id(title, address)").in("kind", ["missing_unit", "listing_gone"]).eq("status", "open").gte("created_at", w.start).lt("created_at", w.end).limit(200);
-  sections.push({ title: "Gone from a website", rows: [["Units or listings no longer on their website", (gone ?? []).length]], list: (gone ?? []).map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), note: (gone ?? []).length ? "Nothing is hidden on its own; the landlord was told." : "" });
+  sections.push({ title: "Gone from a website", rows: [["Units or listings no longer on their website", (gone ?? []).length]], list: (gone ?? []).map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), note: (gone ?? []).length ? `Nothing is hidden on its own; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
 
   return { day: w.label, sections, gone: gone ?? [], baseUrl, inquiries: L.length, syncs: syncs.length };
 }
@@ -161,7 +169,7 @@ export async function notifyGone(gone) {
 export async function runDigest({ now = new Date(), email = true } = {}) {
   const digest = await buildDigest({ now });
   let landlordsTold = 0;
-  try { landlordsTold = await notifyGone(digest.gone); } catch (err) { console.error("[agent-digest] gone notices failed:", err?.message ?? err); }
+  if (LANDLORD_GONE_NOTICES) try { landlordsTold = await notifyGone(digest.gone); } catch (err) { console.error("[agent-digest] gone notices failed:", err?.message ?? err); }
   if (email) await sendAgentDigestEmail({ to: ALERT_TO, day: digest.day, sections: digest.sections, baseUrl: digest.baseUrl });
   return { day: digest.day, sections: digest.sections.map((s) => ({ title: s.title, rows: s.rows, list: s.list })), landlordsTold };
 }
