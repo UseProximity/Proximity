@@ -42,6 +42,7 @@ import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
+import ListedBy from "@/components/listings/ListedBy";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -1944,6 +1945,14 @@ export default function ListingModalInfo({
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
     listing.address
   );
+  // Every licensed agent behind this property: the owner and each offering's landlord, once each.
+  const listedByAll = (() => {
+    const seen = new Map();
+    const add = (l) => l && seen.set(`${l.agentName}|${l.companyName}|${l.companyPhone}`, l);
+    add(listing.owner?.listedBy);
+    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) add(l.listedBy);
+    return [...seen.values()];
+  })();
   const cityStateZip =
     listing.title && listing.title !== street
       ? listing.address
@@ -2541,6 +2550,16 @@ export default function ListingModalInfo({
                       onOpenThread={openThread}
                       preview={preview}
                     />
+                  )}
+                  {/* Licensed agents behind this property (MREC: name, company
+                      and company phone on every listing), at the bottom of
+                      Contact for every visitor, whatever shows above it. */}
+                  {listedByAll.length > 0 && (
+                    <div className="mt-8 border-t border-gray-100 pt-3">
+                      {listedByAll.map((l) => (
+                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} />
+                      ))}
+                    </div>
                   )}
                 </Section>
               )}

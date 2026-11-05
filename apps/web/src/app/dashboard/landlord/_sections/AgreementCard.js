@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import SignAgreementDialog from "./SignAgreementDialog";
+import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -33,22 +34,29 @@ function Requirement({ done, children }) {
   );
 }
 
-// The signer's full name and title, the "authorised to sign" confirmation, then the button that opens the document.
+// The real estate license disclosure, the signer's full name and title, the
+// "authorised to sign" confirmation, then the button that opens the document.
+// The server refuses to open it without a complete license answer.
 const fullName = (n) => n.trim().split(/\s+/).length >= 2;
 
 function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
   const [name, setName] = useState(defaultName);
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
+  const license = useLicenseDisclosure();
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onStart({ signerName: name, signerTitle: title, authorized });
+        if (!license.ready) return;
+        onStart({ signerName: name, signerTitle: title, authorized, licenseDisclosure: license.payload() });
       }}
     >
       {intro && <p className="text-sm text-gray-700">{intro}</p>}
+      <div className="max-w-2xl">
+        <LicenseDisclosureFields state={license} />
+      </div>
       <label className="block max-w-sm text-sm font-medium text-gray-700">
         Your full name
         <input className={`${FIELD} mt-1`} value={name} maxLength={100} autoComplete="name" placeholder="First and last name" onChange={(e) => setName(e.target.value)} required />
@@ -64,7 +72,7 @@ function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
       </label>
       <button
         type="submit"
-        disabled={busy || !fullName(name) || !title.trim() || !authorized}
+        disabled={busy || !fullName(name) || !title.trim() || !authorized || !license.ready}
         className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
       >
         {button}

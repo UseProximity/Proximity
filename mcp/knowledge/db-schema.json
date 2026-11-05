@@ -535,7 +535,9 @@
           "provider_rate_field_id:int4",
           "change_request_id:uuid",
           "based_on_version_id:uuid",
-          "provider_address_field_id:int4"
+          "provider_address_field_id:int4",
+          "provider_brokerage_field_id:text",
+          "provider_license_field_id:text"
         ],
         "notes": "Migration 202611030001_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team)."
       },
@@ -566,7 +568,8 @@
           "exhibit_file_key:text",
           "signed_exhibit_file_key:text",
           "provider_exhibit_item_id:text",
-          "commission_rate_percent:numeric"
+          "commission_rate_percent:numeric",
+          "license_prefill:jsonb"
         ],
         "notes": "Migrations 202610310001_billing_core and 202611030001_agreement_versions (both applied to dev only; prod with billing). pk id; fk user_id->users.id (restrict), version_id->agreement_versions.id (restrict); partial unique (user_id) where status in (not_sent, sent); partial unique (user_id) where status = signed; partial unique (provider_envelope_id) where not null (the Documenso webhook finds the record by it); check signed rows have signed_at. Audited by fn_action_log. rls: service role only. The prod->dev snapshot voids copies in progress and nulls provider_envelope_id (dev uses its own Documenso team)."
       },
@@ -3182,7 +3185,8 @@
           "ended_reason:text",
           "ended_at:timestamptz",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "license_prefill:jsonb"
         ],
         "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per user (uq_agreement_amendments_pending); unique provider_envelope_id; rls on, service role only"
       },
@@ -3266,6 +3270,42 @@
           "created_at:timestamptz"
         ],
         "notes": "status=unreleased (202611050003); fk request_id->agreement_change_requests (restrict); check author_role in (landlord,admin); rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosures",
+        "status": "unreleased",
+        "description": "A landlord's current real estate license answer, given right before signing the commission agreement (MREC). Licensees' agent_name, company_name and company_phone show on their listings as 'Listed by'; license_number is never public.",
+        "columns": [
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "confirmed_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); pk user_id fk->users (cascade); check: a licensee row has every field and owner_agreement_confirmed; rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosure_history",
+        "status": "unreleased",
+        "description": "Append-only history of license answers: every Profile save and every confirmation given right before signing.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "source:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); source in (signing,profile); fk user_id->users (restrict); rls on, service role only"
       }
     ],
     "functions": [

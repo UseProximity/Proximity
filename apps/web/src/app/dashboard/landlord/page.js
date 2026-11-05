@@ -19,6 +19,7 @@ import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
 import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
+import LicenseDisclosureCard from "./_sections/LicenseDisclosureCard";
 import PaymentsSection from "./_sections/PaymentsSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
@@ -181,17 +182,22 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       case "profile":
       default:
         return (
-          <ProfileSection
-            user={user}
-            isEditing={isEditing}
-            form={form}
-            onChange={onChange}
-            saving={saving}
-            cancelEdit={cancelEdit}
-            saveProfile={saveProfile}
-            setIsEditing={setIsEditing}
-            canDeleteAccount={!viewAsId}
-          />
+          <>
+            <ProfileSection
+              user={user}
+              isEditing={isEditing}
+              form={form}
+              onChange={onChange}
+              saving={saving}
+              cancelEdit={cancelEdit}
+              saveProfile={saveProfile}
+              setIsEditing={setIsEditing}
+              canDeleteAccount={!viewAsId}
+            />
+            {/* Same audience as Payments: the route acts on the signed-in landlord,
+                so never while an admin is viewing as someone. */}
+            {canSeePayments && <LicenseDisclosureCard />}
+          </>
         );
     }
   };

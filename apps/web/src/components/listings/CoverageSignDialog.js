@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import toast from "react-hot-toast";
 import SignAgreementDialog from "@/app/dashboard/landlord/_sections/SignAgreementDialog";
+import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 const PAYMENTS_URL = "/dashboard/landlord?tab=payments#commission-agreement";
 
@@ -34,6 +35,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const [error, setError] = useState(null);
   const [signing, setSigning] = useState(null);
   const closeRef = useRef(null);
+  const license = useLicenseDisclosure();
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -58,13 +60,14 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   const start = async (e) => {
     e.preventDefault();
+    if (!license.ready) return;
     setBusy(true);
     setError(null);
     try {
       const r = await getJson("/api/billing/agreement/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signerName: name, signerTitle: title, authorized, listingIds: ids }),
+        body: JSON.stringify({ signerName: name, signerTitle: title, authorized, listingIds: ids, licenseDisclosure: license.payload() }),
       });
       if (r.alreadySigned) return onSigned();
       setSigning(r);
@@ -95,7 +98,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Add to your commission agreement">
-      <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
           <h2 className="flex-1 text-base font-semibold text-gray-900">
             {hasMaster ? "Add to your commission agreement" : "Sign your commission agreement"}
@@ -111,7 +114,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
           </button>
         </div>
 
-        <form onSubmit={start} className="space-y-4 px-5 py-4 text-sm text-gray-700">
+        <form onSubmit={start} className="space-y-4 overflow-y-auto px-5 py-4 text-sm text-gray-700">
           {view === null ? (
             <p className="text-gray-400">Checking your agreement...</p>
           ) : (
@@ -145,6 +148,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 </a>
                 .
               </p>
+              <LicenseDisclosureFields state={license} idPrefix="coverage-license" />
               <label className="block">
                 Your full name
                 <input
@@ -176,7 +180,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
               <button
                 type="submit"
-                disabled={busy || !authorized || !title.trim() || name.trim().split(/\s+/).length < 2}
+                disabled={busy || !authorized || !title.trim() || name.trim().split(/\s+/).length < 2 || !license.ready}
                 className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
                 {busy ? "Opening..." : hasMaster ? "Review and sign the amendment" : "Review and sign"}

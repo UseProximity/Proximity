@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-05T21:50:02.371Z",
-  "count": 181,
+  "_generated": "2026-11-05T21:59:57.685Z",
+  "count": 183,
   "components": [
     {
       "name": "ErrorReporter",
@@ -11,6 +11,11 @@
     {
       "name": "DeleteAccountButton",
       "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LicenseDisclosureFields",
+      "file": "src/components/account/LicenseDisclosureFields.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -481,6 +486,11 @@
     {
       "name": "ListDetailPanel",
       "file": "src/components/listings/ListDetailPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListedBy",
+      "file": "src/components/listings/ListedBy.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

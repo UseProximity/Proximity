@@ -103,7 +103,11 @@ export function templateFieldSummary(envelope) {
   const address = labelled(["TEXT"], /\baddress\b/i);
   // A Text box for the signer's full name; Documenso's own Name box fills from the
   // recipient's name, which is the same full name.
-  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|property)\b/i);
+  // Not "Brokerage name" or "Licensee name": those are the licensee boxes below.
+  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|property|brokerage|licen[cs]ee?)\b/i);
+  // The signature page's licensee details (MREC).
+  const brokerage = labelled(["TEXT"], /\bbrokerage\b/i);
+  const license = labelled(["TEXT"], /\blicen[cs]e\b/i);
   return {
     recipientId: signer?.id ?? null,
     signature: count("SIGNATURE"),
@@ -114,7 +118,11 @@ export function templateFieldSummary(envelope) {
     rateFieldId: rate?.id ?? null,
     addressFieldId: address?.id ?? null,
     nameFieldId: fullName?.id ?? null,
-    fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName) },
+    // The signature page's licensee details (MREC): brokerage name and Missouri
+    // license number, "N/A" for a landlord who is not licensed.
+    brokerageFieldId: brokerage?.id ?? null,
+    licenseFieldId: license?.id ?? null,
+    fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), brokerage: ref(brokerage), license: ref(license) },
     rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
     ok: !!signer && count("SIGNATURE") > 0,
   };
