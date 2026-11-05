@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-05T21:28:29.465Z",
-  "count": 301,
+  "_generated": "2026-11-05T21:49:49.984Z",
+  "count": 302,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1030,6 +1030,10 @@
     {
       "file": "src/lib/sourceImport/assets.js",
       "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
+    },
+    {
+      "file": "src/lib/sourceImport/describeChange.js",
+      "description": "A website change, side by side (Wyatt, 2026-11-05): for every change a"
     },
     {
       "file": "src/lib/sourceImport/jobs.js",

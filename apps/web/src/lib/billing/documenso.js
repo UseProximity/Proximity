@@ -85,24 +85,45 @@ export function verifyWebhookSecret(received, expected = documensoSetting("DOCUM
 export const signerOf = (envelope) => (envelope?.recipients ?? []).find((r) => r.role === "SIGNER") ?? null;
 
 // What the admin dashboard's "Check signature boxes" step reports for a template.
+// Also read again when each landlord's copy is made, so the boxes we fill in are
+// always the ones on the template now, with their type.
 export function templateFieldSummary(envelope) {
   const signer = signerOf(envelope);
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
   const count = (type) => mine.filter((f) => f.type === type).length;
-  const textField = (re) => mine.find((f) => f.type === "TEXT" && re.test(f.fieldMeta?.label ?? ""))?.id ?? null;
+  const labelOf = (f) => String(f.fieldMeta?.label ?? "").trim();
+  const labelled = (types, re, not = null) => mine.find((f) => types.includes(f.type) && re.test(labelOf(f)) && !(not && not.test(labelOf(f))));
+  const ref = (f) => (f ? { id: f.id, type: f.type === "NUMBER" ? "number" : "text", readOnly: f.fieldMeta?.readOnly === true } : null);
+
+  // The commission rate: a Text or Number box labelled "Commission" or "Rate", or
+  // else the template's only Number box (its label left blank).
+  const numbers = mine.filter((f) => f.type === "NUMBER");
+  const rate = labelled(["TEXT", "NUMBER"], /\b(commission|rate)\b/i) ?? (numbers.length === 1 ? numbers[0] : null);
+  const title = labelled(["TEXT"], /\btitle\b/i);
+  const address = labelled(["TEXT"], /\baddress\b/i);
+  // A Text box for the signer's full name; Documenso's own Name box fills from the
+  // recipient's name, which is the same full name.
+  // Not "Brokerage name" or "Licensee name": those are the licensee boxes below.
+  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|property|brokerage|licen[cs]ee?)\b/i);
+  // The signature page's licensee details (MREC).
+  const brokerage = labelled(["TEXT"], /\bbrokerage\b/i);
+  const license = labelled(["TEXT"], /\blicen[cs]e\b/i);
   return {
     recipientId: signer?.id ?? null,
     signature: count("SIGNATURE"),
     name: count("NAME"),
     date: count("DATE"),
     // Text boxes we fill in, found by their label in Documenso's editor.
-    titleFieldId: textField(/\btitle\b/i),
-    rateFieldId: textField(/\bcommission\b/i),
-    addressFieldId: textField(/\baddress\b/i),
+    titleFieldId: title?.id ?? null,
+    rateFieldId: rate?.id ?? null,
+    addressFieldId: address?.id ?? null,
+    nameFieldId: fullName?.id ?? null,
     // The signature page's licensee details (MREC): brokerage name and Missouri
     // license number, "N/A" for a landlord who is not licensed.
-    brokerageFieldId: textField(/\bbrokerage\b/i),
-    licenseFieldId: textField(/\blicen[cs]e\b/i),
+    brokerageFieldId: brokerage?.id ?? null,
+    licenseFieldId: license?.id ?? null,
+    fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), brokerage: ref(brokerage), license: ref(license) },
+    rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
     ok: !!signer && count("SIGNATURE") > 0,
   };
 }
@@ -215,8 +236,8 @@ export function createDocumensoClient({
      * first and then distributed with distributionMethod NONE, so Documenso sends
      * no email of its own; distributing is what issues the signing token.
      *
-     * `prefill` fills text boxes on the template: [{ id, value }] (title, commission
-     * rate, address). `exhibit` ({ bytes, fileName, pageCount, initialsBox }) is
+     * `prefill` fills boxes on the template: [{ id, value, type }] (title, commission
+     * rate, address, name); type is "text" (the default) or "number". `exhibit` ({ bytes, fileName, pageCount, initialsBox }) is
      * attached to the draft as a second document, with an initials box for the
      * signer on each of its pages, before it is distributed.
      */
@@ -224,7 +245,7 @@ export function createDocumensoClient({
       const prefillFields = [
         ...(titleFieldId && signerTitle ? [{ id: titleFieldId, value: signerTitle }] : []),
         ...prefill.filter((p) => p?.id && p.value != null && String(p.value).trim()),
-      ].map((p) => ({ id: p.id, type: "text", value: String(p.value).slice(0, 500) }));
+      ].map((p) => ({ id: p.id, type: p.type === "number" ? "number" : "text", value: String(p.value).slice(0, 500) }));
       const used = await request("POST", "/envelope/use", {
         form: multipart({
           envelopeId: templateId,

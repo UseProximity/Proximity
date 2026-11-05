@@ -34,10 +34,13 @@ function Requirement({ done, children }) {
   );
 }
 
-// The real estate license disclosure, the title and "authorised to sign"
-// confirmation, then the button that opens the document. The server refuses to
-// open it without a complete license answer.
-function SignForm({ intro, button, busy, onStart }) {
+// The real estate license disclosure, the signer's full name and title, the
+// "authorised to sign" confirmation, then the button that opens the document.
+// The server refuses to open it without a complete license answer.
+const fullName = (n) => n.trim().split(/\s+/).length >= 2;
+
+function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
+  const [name, setName] = useState(defaultName);
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const license = useLicenseDisclosure();
@@ -47,13 +50,18 @@ function SignForm({ intro, button, busy, onStart }) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!license.ready) return;
-        onStart({ signerTitle: title, authorized, licenseDisclosure: license.payload() });
+        onStart({ signerName: name, signerTitle: title, authorized, licenseDisclosure: license.payload() });
       }}
     >
       {intro && <p className="text-sm text-gray-700">{intro}</p>}
       <div className="max-w-2xl">
         <LicenseDisclosureFields state={license} />
       </div>
+      <label className="block max-w-sm text-sm font-medium text-gray-700">
+        Your full name
+        <input className={`${FIELD} mt-1`} value={name} maxLength={100} autoComplete="name" placeholder="First and last name" onChange={(e) => setName(e.target.value)} required />
+        <span className="mt-1 block text-xs font-normal text-gray-500">First and last, as it should appear on the agreement.</span>
+      </label>
       <label className="block max-w-sm text-sm font-medium text-gray-700">
         Your title
         <input className={`${FIELD} mt-1`} value={title} maxLength={100} placeholder="Owner, Property Manager, ..." onChange={(e) => setTitle(e.target.value)} required />
@@ -64,7 +72,7 @@ function SignForm({ intro, button, busy, onStart }) {
       </label>
       <button
         type="submit"
-        disabled={busy || !title.trim() || !authorized || !license.ready}
+        disabled={busy || !fullName(name) || !title.trim() || !authorized || !license.ready}
         className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
       >
         {button}
@@ -266,7 +274,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
               {agreement.amendment.adding.length === 1 ? "that property" : "those properties"}.
             </p>
-            <SignForm button="Continue signing" busy={busy || starting} onStart={(b) => start(b)} />
+            <SignForm button="Continue signing" defaultName={gate.accountName ?? ""} busy={busy || starting} onStart={(b) => start(b)} />
           </div>
         )}
 
@@ -278,6 +286,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
             </p>
             <PropertyList items={uncoveredLive} />
             <SignForm
+              defaultName={gate.accountName ?? ""}
               button="Review and sign the amendment"
               busy={busy || starting}
               onStart={(b) => start({ ...b, listingIds: uncoveredLive.map((p) => p.listingId) })}
@@ -300,6 +309,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               </div>
             )}
             <SignForm
+              defaultName={gate.accountName ?? ""}
               intro={masterIntro}
               button={agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
               busy={busy || starting}

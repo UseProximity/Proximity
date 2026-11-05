@@ -13,7 +13,8 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
  * Exhibit A amendment, whichever covers the properties asked for.
- * Body: { signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure }
+ * Body: { signerName, signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure }. signerName is
+ *       the full name (first and last) that goes on the document.
  *   licenseDisclosure  required: the real estate license answer given in the
  *               step right before signing (lib/users/licenseDisclosure.js). It is
  *               saved, and recorded in the history as given at signing, before
@@ -49,6 +50,7 @@ export async function POST(req) {
     const result = await startSigning(supabase, documenso, {
       user,
       signerTitle: body.signerTitle,
+      ...(body.signerName !== undefined && { signerName: body.signerName }),
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
       // Fills the signature page's Brokerage and License boxes ("N/A" if not licensed).

@@ -32,7 +32,7 @@
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { formatRate, getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
-import { signerOf } from "./documenso.js";
+import { signerOf, templateFieldSummary } from "./documenso.js";
 import { buildExhibitPdf, INITIALS_BOX } from "./exhibitPdf.js";
 import { coveredMap, loadCoverageRows, loadLandlordProperties, planCoverage, resolvePublishedIds } from "./coverage.js";
 
@@ -48,6 +48,7 @@ const AMENDMENT_COLUMNS = `id, user_id, agreement_id, version_id, status, previo
 
 const UNIQUE_VIOLATION = "23505";
 const SIGNER_TITLE_MAX = 100;
+const SIGNER_NAME_MAX = 100;
 const PENDING = ["not_sent", "sent"];
 
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
@@ -269,6 +270,18 @@ export function cleanSignerTitle(title) {
   return t;
 }
 
+/*
+ * The signer's full name, first and last, as it goes on the document (Documenso's
+ * Name box and any "Name" text box). At least two words.
+ */
+export function cleanSignerName(name) {
+  const n = String(name ?? "").trim().replace(/\s+/g, " ");
+  if (!n) throw new BillingError("name_required", "Enter your full name, first and last.");
+  if (n.length > SIGNER_NAME_MAX) throw new BillingError("name_too_long", `Keep your name under ${SIGNER_NAME_MAX} characters.`);
+  if (n.split(" ").length < 2) throw new BillingError("full_name_required", "Enter your first and last name.");
+  return n;
+}
+
 const TABLE = { master: "landlord_agreements", amendment: "agreement_amendments" };
 
 // End a document in progress and release the properties it proposed.
@@ -308,12 +321,14 @@ const sameIds = (a, b) => {
 export async function startSigning(
   db,
   documenso,
-  { user, signerTitle, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, licenseDisclosure = null, ...options }
+  { user, signerTitle, signerName, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, licenseDisclosure = null, ...options }
 ) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
   }
   const title = cleanSignerTitle(signerTitle);
+  // Older clients send no name: the account name, which may be one word.
+  const name = signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
   return withSettingsLock(
@@ -375,8 +390,10 @@ export async function startSigning(
         if (same) {
           const envelope = await documenso.getEnvelope(inProgress.row.provider_envelope_id);
           if (envelope.status === "PENDING") {
-            const token = signerOf(envelope)?.token;
-            if (token) {
+            const signer = signerOf(envelope);
+            const token = signer?.token;
+            // A changed name or title means a fresh copy, so the document shows what they typed.
+            if (token && (signer.name ?? "") === name && (inProgress.row.signer_title ?? "") === title) {
               const { error } = await db
                 .from(TABLE[inProgress.kind])
                 .update({ signer_title: title, authorized_at: now.toISOString() })
@@ -397,6 +414,7 @@ export async function startSigning(
       return createDocument(db, documenso, {
         user,
         title,
+        name,
         plan,
         version,
         master: state.signed,
@@ -439,7 +457,40 @@ async function landlordNameOf(db, user) {
 }
 
 // Make the record, its proposed coverage, the Exhibit A and the Documenso copy.
-async function createDocument(db, documenso, { user, title, plan, version, master, now, storeExhibit, landlordAddress, licensePrefill = null }) {
+/*
+ * The boxes to fill on this version's template, read from Documenso now (so a box
+ * the admin moved, or a Number box for the rate, is filled correctly), falling back
+ * to the ids saved when the version was checked.
+ */
+async function templateBoxes(documenso, version) {
+  const saved = {
+    title: version.provider_title_field_id ? { id: version.provider_title_field_id, type: "text" } : null,
+    rate: version.provider_rate_field_id ? { id: version.provider_rate_field_id, type: "text" } : null,
+    address: version.provider_address_field_id ? { id: version.provider_address_field_id, type: "text" } : null,
+    name: null,
+    brokerage: version.provider_brokerage_field_id ? { id: version.provider_brokerage_field_id, type: "text" } : null,
+    license: version.provider_license_field_id ? { id: version.provider_license_field_id, type: "text" } : null,
+  };
+  try {
+    const live = templateFieldSummary(await documenso.getEnvelope(version.provider_template_id))?.fields;
+    if (!live) return saved;
+    return {
+      title: live.title ?? saved.title,
+      rate: live.rate ?? saved.rate,
+      address: live.address ?? saved.address,
+      name: live.name,
+      brokerage: live.brokerage ?? saved.brokerage,
+      license: live.license ?? saved.license,
+    };
+  } catch {
+    return saved;
+  }
+}
+
+// The rate as a box shows it: "8.5" in a Number box, "8.5%" in a Text box.
+const rateValue = (box, rate) => (rate == null ? null : box?.type === "number" ? String(Number(rate)) : formatRate(rate));
+
+async function createDocument(db, documenso, { user, title, name, plan, version, master, now, storeExhibit, landlordAddress, licensePrefill = null }) {
   const nowIso = now.toISOString();
   const landlordName = await landlordNameOf(db, user);
   const isAmendment = plan.kind === "amendment";
@@ -503,16 +554,18 @@ async function createDocument(db, documenso, { user, title, plan, version, maste
   const exhibitKey = storeExhibit ? await storeExhibit({ userId: user.id, bytes: exhibit.bytes }) : null;
 
   const address = landlordAddress ? await landlordAddress(user.id).catch(() => null) : null;
+  const boxes = await templateBoxes(documenso, version);
   const copy = await documenso.createSigningCopy({
     templateId: version.provider_template_id,
     recipientId: version.provider_recipient_id,
-    titleFieldId: version.provider_title_field_id,
+    titleFieldId: boxes.title?.id ?? null,
     signerTitle: title,
     prefill: [
-      { id: version.provider_rate_field_id, value: formatRate(version.commission_rate_percent) },
-      { id: version.provider_address_field_id, value: address },
-      { id: version.provider_brokerage_field_id, value: licensePrefill?.brokerage },
-      { id: version.provider_license_field_id, value: licensePrefill?.license },
+      { id: boxes.rate?.id, type: boxes.rate?.type, value: rateValue(boxes.rate, version.commission_rate_percent) },
+      { id: boxes.address?.id, value: address },
+      { id: boxes.name?.id, value: name },
+      { id: boxes.brokerage?.id, value: licensePrefill?.brokerage },
+      { id: boxes.license?.id, value: licensePrefill?.license },
     ],
     exhibit: {
       bytes: exhibit.bytes,
@@ -521,7 +574,7 @@ async function createDocument(db, documenso, { user, title, plan, version, maste
       initialsBox: INITIALS_BOX,
     },
     email: user.email,
-    name: user.name || user.email,
+    name: name || user.name || user.email,
     title: isAmendment ? "Exhibit A amendment" : "Commission agreement",
     externalId: `${isAmendment ? "agreement-amendment" : "landlord-agreement"}:${row.id}`,
   });
@@ -797,6 +850,71 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
  * the current master. A Documenso copy still waiting is cancelled there too, best
  * effort. Voiding a signed master ends its coverage with it.
  */
+/*
+ * Void one of a landlord's documents from the admin dashboard: a master agreement
+ * or an Exhibit A amendment, signed or still being signed.
+ *   - A copy still being signed is cancelled in Documenso too, and the properties
+ *     it proposed are released.
+ *   - A signed one stops counting, and the properties it covered are released (a
+ *     master: everything on its Exhibit A, including what amendments added; an
+ *     amendment: only what it added). An amendment still being signed on a voided
+ *     master is cancelled too. The signed PDFs are kept.
+ * Returns { id, kind, status: "voided", released } (properties released).
+ */
+export async function voidDocument(db, documenso, { userId, kind, id, now = new Date() }) {
+  if (!TABLE[kind]) throw new BillingError("bad_kind", "Choose the agreement or an amendment.");
+  const { data: row, error } = await db
+    .from(TABLE[kind])
+    .select("id, user_id, status, provider_envelope_id")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw new BillingError("not_found", "That document was not found.", 404);
+  if (row.status !== "signed" && !PENDING.includes(row.status)) {
+    throw new BillingError("already_ended", "That document has already ended.", 409);
+  }
+  const nowIso = now.toISOString();
+  const reason = "voided by an admin";
+
+  if (row.status !== "signed") {
+    if (documenso) await cancelInDocumenso(documenso, row, "Voided by Proximity");
+    await endDocument(db, kind, row, reason, now);
+    return { id: row.id, kind, status: "voided", released: 0 };
+  }
+
+  if (kind === "master") {
+    const { data: pending, error: pendingError } = await db
+      .from("agreement_amendments")
+      .select("id, status, provider_envelope_id")
+      .eq("agreement_id", row.id)
+      .in("status", PENDING);
+    if (pendingError && !missingSchema(pendingError)) throw pendingError;
+    for (const a of pending ?? []) {
+      if (documenso) await cancelInDocumenso(documenso, a, "Voided by Proximity");
+      await endDocument(db, "amendment", a, "its agreement was voided", now);
+    }
+  }
+
+  const { data: ended, error: endError } = await db
+    .from(TABLE[kind])
+    .update({ status: "voided", ended_reason: reason, ended_at: nowIso })
+    .eq("id", row.id)
+    .eq("status", "signed")
+    .select("id");
+  if (endError) throw endError;
+  if (!ended?.length) throw new BillingError("status_changed", "That document just changed. Reload and try again.", 409);
+
+  let release = db
+    .from("agreement_coverage")
+    .update({ status: "released", released_at: nowIso })
+    .in("status", ["proposed", "covered"]);
+  release = kind === "master" ? release.eq("agreement_id", row.id) : release.eq("amendment_id", row.id);
+  const { data: released, error: releaseError } = await release.select("id");
+  if (releaseError && !missingSchema(releaseError)) throw releaseError;
+  return { id: row.id, kind, status: "voided", released: released?.length ?? 0 };
+}
+
 export async function voidAgreement(db, documenso, { userId }) {
   const state = await agreementState(db, userId);
   if (state.pendingAmendment) {
@@ -806,6 +924,8 @@ export async function voidAgreement(db, documenso, { userId }) {
   }
   const target = state.pending ?? state.signed;
   if (!target) throw new BillingError("not_found", "This landlord has no agreement to void.", 404);
+  // A signed agreement also releases what it covered.
+  if (target.status === "signed") return voidDocument(db, documenso, { userId, kind: "master", id: target.id });
   if (target.provider_envelope_id && target.status !== "signed" && documenso) {
     await cancelInDocumenso(documenso, target, "Voided by Proximity");
   }

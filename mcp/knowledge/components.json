@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-05T21:28:29.411Z",
-  "count": 179,
+  "_generated": "2026-11-05T21:49:49.941Z",
+  "count": 181,
   "components": [
     {
       "name": "DeleteAccountButton",
@@ -439,6 +439,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ChangeCompare",
+      "file": "src/components/listings/ChangeCompare.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "CoverageSignDialog",
       "file": "src/components/listings/CoverageSignDialog.js",
       "description": "No description. Run generate after adding a description above."
@@ -492,6 +497,11 @@
       "name": "ListingModalInfo",
       "file": "src/components/listings/ListingModalInfo.js",
       "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
+    },
+    {
+      "name": "MapErrorBoundary",
+      "file": "src/components/listings/MapErrorBoundary.js",
+      "description": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails"
     },
     {
       "name": "MapPopupCard",

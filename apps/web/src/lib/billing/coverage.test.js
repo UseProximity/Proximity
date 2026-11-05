@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, coverageFor, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor } from "./agreements.js";
+import { applyEnvelope, cleanSignerName, coverageFor, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { cleanCommissionRate, formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
@@ -125,7 +125,7 @@ describe("master agreement with Exhibit A", () => {
     assert.ok(copy.exhibit.bytes.length > 500);
     assert.equal(copy.exhibit.pageCount, 1);
     assert.ok(copy.exhibit.initialsBox.width > 0);
-    assert.deepEqual(copy.prefill.find((p) => p.id === 43), { id: 43, value: "8.5%" });
+    assert.deepEqual(copy.prefill.find((p) => p.id === 43), { id: 43, type: "text", value: "8.5%" });
     assert.equal(copy.signerTitle, "Owner");
     // Proposed, not covered, until signed.
     assert.deepEqual(coverage(db).map((c) => c.status), ["proposed", "proposed", "proposed"]);
@@ -279,7 +279,7 @@ describe("negotiated versions", () => {
     const documenso = fakeDocumenso();
     await sign(db, documenso);
     assert.equal(documenso.calls.lastCopy.templateId, "envelope_neg");
-    assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 43), { id: 43, value: "6%" });
+    assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 43), { id: 43, type: "text", value: "6%" });
   });
 
   it("a negotiated signature is flagged, not invalidated, when the standard version asks everyone to re-sign", () => {
@@ -349,5 +349,118 @@ describe("commission rate", () => {
     assert.throws(() => cleanCommissionRate("120"), (e) => e.code === "bad_rate");
     assert.equal(formatRate(8.5), "8.5%");
     assert.equal(formatRate(null), null);
+  });
+});
+
+describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
+  const template = (fields) => ({ id: "envelope_master", recipients: [{ id: 11, role: "SIGNER" }], fields: [{ id: 1, type: "SIGNATURE", recipientId: 11 }, ...fields] });
+
+  it("a Number box for the rate gets the bare number, read from the template as it is now", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set("envelope_master", template([{ id: 77, type: "NUMBER", recipientId: 11, fieldMeta: { label: "" } }]));
+    await sign(db, documenso, { listingIds: ["L2"] });
+    assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 77), { id: 77, type: "number", value: "8.5" });
+    assert.equal(documenso.calls.lastCopy.prefill.some((p) => p.id === 43), false, "the stale saved id is not used");
+  });
+
+  it("the signer's full name goes on the copy and in a Name text box", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set("envelope_master", template([{ id: 78, type: "TEXT", recipientId: 11, fieldMeta: { label: "Name" } }]));
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "  Pat   Q. Landlord " });
+    assert.equal(documenso.calls.lastCopy.name, "Pat Q. Landlord");
+    assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 78), { id: 78, value: "Pat Q. Landlord" });
+  });
+
+  it("needs a first and last name", async () => {
+    assert.equal(cleanSignerName("Pat Landlord"), "Pat Landlord");
+    assert.throws(() => cleanSignerName("Pat"), (e) => e.code === "full_name_required");
+    assert.throws(() => cleanSignerName(" "), (e) => e.code === "name_required");
+    await assert.rejects(() => sign(world(), fakeDocumenso(), { signerName: "Pat" }), (e) => e.code === "full_name_required");
+  });
+
+  it("a changed name makes a fresh copy instead of reusing the one in progress", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord" });
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord" });
+    assert.equal(documenso.calls.copies, 1, "same name: reused");
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Patricia Landlord" });
+    assert.equal(documenso.calls.copies, 2);
+    assert.equal(documenso.calls.lastCopy.name, "Patricia Landlord");
+  });
+
+  it("falls back to the saved box ids when the template cannot be read", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    documenso.getEnvelope = async () => {
+      throw new Error("down");
+    };
+    await sign(db, documenso, { listingIds: ["L2"] });
+    assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 43), { id: 43, type: "text", value: "8.5%" });
+  });
+});
+
+describe("voiding a document from the admin dashboard", () => {
+  async function signedMaster() {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L2"] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    return { db, documenso, master: db.tables.landlord_agreements[0] };
+  }
+
+  it("a signed master: voided, everything it covered released, its amendment in progress cancelled", async () => {
+    const { db, documenso, master } = await signedMaster();
+    await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
+    const r = await voidDocument(db, documenso, { userId: "u1", kind: "master", id: master.id });
+    assert.equal(r.status, "voided");
+    assert.equal(r.released, 2);
+    assert.equal(db.tables.landlord_agreements[0].status, "voided");
+    assert.equal(db.tables.agreement_amendments[0].status, "voided");
+    assert.ok(documenso.calls.cancelled.includes("envelope_2"));
+    assert.deepEqual(coverage(db).map((c) => c.status), ["released", "released", "released"]);
+    const { state, covered } = await coverageFor(db, "u1", new Date("2027-02-02"));
+    assert.equal(state.signed, null);
+    assert.equal(covered.size, 0);
+    assert.ok(db.tables.landlord_agreements[0].signed_file_key, "the signed PDF is kept");
+  });
+
+  it("a signed amendment: only the properties it added stop being covered", async () => {
+    const { db, documenso } = await signedMaster();
+    await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
+    documenso.complete("envelope_2", "2027-02-02T00:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
+    const amendment = db.tables.agreement_amendments[0];
+    const r = await voidDocument(db, documenso, { userId: "u1", kind: "amendment", id: amendment.id });
+    assert.equal(r.released, 1);
+    const { covered } = await coverageFor(db, "u1", new Date("2027-02-03"));
+    assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
+  });
+
+  it("a copy still being signed is cancelled in Documenso", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L2"] });
+    const row = db.tables.landlord_agreements[0];
+    await voidDocument(db, documenso, { userId: "u1", kind: "master", id: row.id });
+    assert.equal(row.status, "voided");
+    assert.deepEqual(documenso.calls.cancelled, ["envelope_1"]);
+    assert.deepEqual(coverage(db).map((c) => c.status), ["released", "released"]);
+  });
+
+  it("refuses another landlord's document and one already ended", async () => {
+    const { db, documenso, master } = await signedMaster();
+    await assert.rejects(() => voidDocument(db, documenso, { userId: "someone-else", kind: "master", id: master.id }), (e) => e.code === "not_found");
+    await voidDocument(db, documenso, { userId: "u1", kind: "master", id: master.id });
+    await assert.rejects(() => voidDocument(db, documenso, { userId: "u1", kind: "master", id: master.id }), (e) => e.code === "already_ended");
+  });
+
+  it("the older Void by email also releases what a signed agreement covered", async () => {
+    const { db, documenso } = await signedMaster();
+    await voidAgreement(db, documenso, { userId: "u1" });
+    assert.deepEqual(coverage(db).map((c) => c.status), ["released", "released"]);
   });
 });
