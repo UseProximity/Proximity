@@ -87,6 +87,65 @@ export const signerOf = (envelope) => (envelope?.recipients ?? []).find((r) => r
 // What the admin dashboard's "Check signature boxes" step reports for a template.
 // Also read again when each landlord's copy is made, so the boxes we fill in are
 // always the ones on the template now, with their type.
+/*
+ * The Text boxes we fill in, by the words in their label in Documenso's editor:
+ * [what the label must contain, what it must not]. An admin labels a box "Owner",
+ * "Company", "Name", "Title", "Email", "Address 1", "Address 2" or "Exhibit A"
+ * (and, on an amendment, "Exhibit A before") and it is filled for each landlord.
+ */
+export const BOX_RULES = {
+  title: [/\btitle\b/i, null],
+  // One box for the whole address, when the template has not split it.
+  address: [/\baddress\b/i, /\baddress\s*(line\s*)?[12]\b/i],
+  address1: [/\baddress\s*(line\s*)?1\b/i, null],
+  address2: [/\baddress\s*(line\s*)?2\b/i, null],
+  email: [/\be-?mail\b/i, null],
+  // The signer's full name. Not "Company name", "Owner name", "Brokerage name".
+  name: [/\bname\b/i, /\b(company|business|owner|landlord|property|brokerage|licen[cs]ee?)\b/i],
+  // Who the agreement is with: the company, or the signer's name without one.
+  owner: [/\b(owner|landlord)\b/i, null],
+  company: [/\b(company|business)\b/i, null],
+  // The covered properties, one per line; on an amendment, the list after it.
+  exhibit: [/\bexhibit\s*a\b/i, /\b(before|previous|old|prior)\b/i],
+  // An amendment's list before it.
+  exhibitBefore: [/\bexhibit\s*a\b.*\b(before|previous|old|prior)\b|\b(before|previous|old|prior)\b.*\bexhibit\s*a\b/i, null],
+};
+
+/*
+ * A copy's boxes, matched to the template's, by kind. Documenso gives a copy new
+ * box ids and drops the labels, so each template box is matched to the copy box
+ * in the same place (page, position, size); among identical places, by order.
+ * Returns { kind: [copy field] }.
+ */
+export function copyBoxesByKind(templateEnvelope, copyEnvelope) {
+  const ids = templateFieldSummary(templateEnvelope).allIds ?? {};
+  const place = (f) => [f.type, f.page, f.positionX, f.positionY, f.width, f.height].map(String).join("|");
+  const copyByPlace = new Map();
+  for (const f of copyEnvelope?.fields ?? []) {
+    const list = copyByPlace.get(place(f)) ?? [];
+    list.push(f);
+    copyByPlace.set(place(f), list);
+  }
+  const seen = new Map();
+  const copyOf = (tf) => {
+    const key = place(tf);
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    return copyByPlace.get(key)?.[n] ?? null;
+  };
+  const byId = new Map((templateEnvelope?.fields ?? []).map((f) => [f.id, f]));
+  // Walk the template's boxes in order so the "by order" tie-break is stable.
+  const kindOf = new Map();
+  for (const [kind, list] of Object.entries(ids)) for (const id of list) if (!kindOf.has(id)) kindOf.set(id, kind);
+  const out = Object.fromEntries(Object.keys(ids).map((k) => [k, []]));
+  for (const tf of templateEnvelope?.fields ?? []) {
+    const copy = copyOf(tf);
+    const kind = kindOf.get(tf.id);
+    if (kind && copy && byId.has(tf.id)) out[kind].push(copy);
+  }
+  return out;
+}
+
 export function templateFieldSummary(envelope) {
   const signer = signerOf(envelope);
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
@@ -103,18 +162,14 @@ export function templateFieldSummary(envelope) {
   // else the template's only Number box (its label left blank).
   const numbers = mine.filter((f) => f.type === "NUMBER");
   const rate = labelled(["TEXT", "NUMBER"], /\b(commission|rate)\b/i) ?? (numbers.length === 1 ? numbers[0] : null);
-  const title = labelled(["TEXT"], /\btitle\b/i);
-  const address = labelled(["TEXT"], /\baddress\b/i);
-  // A Text box for the signer's full name; Documenso's own Name box fills from the
-  // recipient's name, which is the same full name.
-  // Not "Brokerage name" or "Licensee name": those are the licensee boxes below.
-  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|owner|landlord|property|brokerage|licen[cs]ee?)\b/i);
-  // A Text box labelled "Owner" (or "Landlord"): who the agreement is with, the
-  // company when they gave one, otherwise the signer's own name.
-  const owner = labelled(["TEXT"], /\b(owner|landlord)\b/i);
-  // A Text box labelled "Company" (or "Business"): the company the landlord signs for.
-  const company = labelled(["TEXT"], /\b(company|business)\b/i);
-  // The signature page's licensee details (MREC).
+  // Each Text box we fill is found by the words in its label (BOX_RULES).
+  const kind = (k) => labelled(["TEXT"], ...BOX_RULES[k]);
+  const title = kind("title");
+  const address = kind("address");
+  const fullName = kind("name");
+  const owner = kind("owner");
+  const company = kind("company");
+  // The signature page's licensee details (MREC), no longer filled (2026-11-06).
   const brokerage = labelled(["TEXT"], /\bbrokerage\b/i);
   const license = labelled(["TEXT"], /\blicen[cs]e\b/i);
   return {
@@ -136,13 +191,7 @@ export function templateFieldSummary(envelope) {
     fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), company: ref(company), owner: ref(owner), brokerage: ref(brokerage), license: ref(license) },
     rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
     // Every box each value goes in, by kind.
-    allIds: {
-      title: allLabelled(["TEXT"], /\btitle\b/i),
-      address: allLabelled(["TEXT"], /\baddress\b/i),
-      name: allLabelled(["TEXT"], /\bname\b/i, /\b(company|business|owner|landlord|property|brokerage|licen[cs]ee?)\b/i),
-      company: allLabelled(["TEXT"], /\b(company|business)\b/i),
-      owner: allLabelled(["TEXT"], /\b(owner|landlord)\b/i),
-    },
+    allIds: Object.fromEntries(Object.keys(BOX_RULES).map((k) => [k, allLabelled(["TEXT"], ...BOX_RULES[k])])),
     ok: !!signer && count("SIGNATURE") > 0,
   };
 }
@@ -242,6 +291,35 @@ export function createDocumensoClient({
     return form;
   }
 
+  /*
+   * The Text boxes we filled (they hold text now): read-only, since the landlord
+   * changes these on our form before signing, and laid out to show it all. A box
+   * sized for a short word lets the text run past its edge instead of cutting it
+   * off; the multi-line "Exhibit A" boxes start at the top.
+   */
+  async function settleFilledBoxes(envelopeId, envelope, signerId) {
+    // A copy's boxes lose their labels, so the multi-line Exhibit A box is known by
+    // its text: more than one line, or a tall box.
+    const isExhibit = (f) => String(f.fieldMeta?.text ?? "").includes("\n") || Number(f.height) > 15;
+    const filled = (envelope.fields ?? []).filter((f) => f.recipientId === signerId && f.type === "TEXT" && String(f.fieldMeta?.text ?? "").trim());
+    if (!filled.length) return;
+    await request("POST", "/envelope/field/update-many", {
+      json: {
+        envelopeId,
+        data: filled.map((f) => ({
+          id: f.id,
+          type: "TEXT",
+          fieldMeta: {
+            ...(f.fieldMeta ?? {}),
+            type: "text",
+            readOnly: true,
+            ...(isExhibit(f) ? { verticalAlign: "top", overflow: "vertical", textAlign: "left" } : { overflow: "horizontal" }),
+          },
+        })),
+      },
+    });
+  }
+
   // Documenso's Name, Email and Date boxes become read-only text in the same place.
   async function replaceAutoBoxes(envelopeId, envelope, signerId, autofill) {
     const value = { NAME: autofill.name, EMAIL: autofill.email, DATE: autofill.date };
@@ -322,7 +400,7 @@ export function createDocumensoClient({
       const prefillFields = [
         ...(titleFieldId && signerTitle ? [{ id: titleFieldId, value: signerTitle }] : []),
         ...prefill.filter((p) => p?.id && p.value != null && String(p.value).trim()),
-      ].map((p) => ({ id: p.id, type: p.type === "number" ? "number" : "text", value: String(p.value).slice(0, 500) }));
+      ].map((p) => ({ id: p.id, type: p.type === "number" ? "number" : "text", value: String(p.value).slice(0, 6000) }));
       const used = await request("POST", "/envelope/use", {
         form: multipart({
           envelopeId: templateId,
@@ -339,6 +417,7 @@ export function createDocumensoClient({
       const signerId = signerOf(envelope)?.id;
       if (!signerId) throw new DocumensoError("The copy has no signer.", 502);
       if (autofill) await replaceAutoBoxes(used.id, envelope, signerId, autofill);
+      await settleFilledBoxes(used.id, envelope, signerId);
       // The rate is in the agreement's text now (2026-11-05): an old template's rate box would sit empty.
       const rateBox = dropRateBox ? templateFieldSummary(envelope).fields.rate : null;
       if (rateBox) await request("POST", "/envelope/field/delete", { json: { fieldId: rateBox.id } });

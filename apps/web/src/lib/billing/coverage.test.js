@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, cleanSignerName, coverageFor, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
+import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, EXHIBIT_BOX_MAX, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
@@ -463,6 +463,45 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     const r = await sign(db, documenso, { listingIds: ["L2"] });
     assert.equal(r.token, "token_1");
     assert.equal(documenso.calls.copies, 1);
+  });
+
+  it("fills Email and Address 1/2 from the form, and Exhibit A into its own box with no separate document (2026-11-06)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set(
+      "envelope_master",
+      template([
+        { id: 90, type: "TEXT", recipientId: 11, fieldMeta: { label: "Email" } },
+        { id: 91, type: "TEXT", recipientId: 11, fieldMeta: { label: "Address 1" } },
+        { id: 92, type: "TEXT", recipientId: 11, fieldMeta: { label: "Address 2" } },
+        { id: 93, type: "TEXT", recipientId: 11, fieldMeta: { label: "Exhibit A" } },
+      ])
+    );
+    await sign(db, documenso, {
+      listingIds: ["L2"],
+      signerEmail: "leasing@patrentals.com",
+      signerAddress1: "8151 Clayton Rd Suite 301",
+      signerAddress2: "St. Louis, MO 63117",
+    });
+    const value = (id) => documenso.calls.lastCopy.prefill.find((p) => p.id === id)?.value;
+    assert.equal(value(90), "leasing@patrentals.com");
+    assert.equal(value(91), "8151 Clayton Rd Suite 301");
+    assert.equal(value(92), "St. Louis, MO 63117");
+    assert.equal(value(93), "1. 100 Live St, St. Louis, Missouri 63130 (Units: Apt 1, Apt 2)\n2. 200 Draft Ave, St. Louis, Missouri 63130 (Units: Studio)");
+    assert.equal(documenso.calls.lastCopy.exhibit, null, "no separate Exhibit A document");
+    // A changed address on the form makes a fresh copy.
+    await sign(db, documenso, { listingIds: ["L2"], signerEmail: "leasing@patrentals.com", signerAddress1: "1 Other St", signerAddress2: "St. Louis, MO 63117" });
+    assert.equal(documenso.calls.copies, 2);
+  });
+
+  it("without an Exhibit A box, or with more properties than it holds, the pages are attached", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L2"] });
+    assert.ok(documenso.calls.lastCopy.exhibit, "no box: attached pages");
+    assert.equal(exhibitText([]), "None.");
+    assert.throws(() => cleanSignerDetails({ email: "not an email" }), (e) => e.code === "bad_email");
+    assert.ok(EXHIBIT_BOX_MAX >= 30);
   });
 
   it("needs a first and last name", async () => {

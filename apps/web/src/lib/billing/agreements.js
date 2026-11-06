@@ -38,7 +38,7 @@
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
-import { signerOf, templateFieldSummary } from "./documenso.js";
+import { copyBoxesByKind, signerOf, templateFieldSummary } from "./documenso.js";
 import { buildExhibitPdf, fmtDate, INITIALS_BOX } from "./exhibitPdf.js";
 import { coveredMap, loadCoverageRows, loadLandlordProperties, planCoverage, resolvePublishedIds } from "./coverage.js";
 
@@ -297,6 +297,54 @@ export function cleanSignerCompany(company) {
   return c;
 }
 
+const oneLine = (v, max, code, what) => {
+  const t = String(v ?? "").trim().replace(/\s+/g, " ");
+  if (t.length > max) throw new BillingError(code, `Keep ${what} under ${max} characters.`);
+  return t;
+};
+
+// The optional details from the signing form: company, email and the address as two lines.
+export function cleanSignerDetails({ company, email, address1, address2 } = {}) {
+  const e = oneLine(email, 254, "email_too_long", "the email");
+  if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new BillingError("bad_email", "Enter a valid email address.");
+  return {
+    company: cleanSignerCompany(company),
+    email: e,
+    address1: oneLine(address1, 150, "address_too_long", "the address"),
+    address2: oneLine(address2, 150, "address_too_long", "the address"),
+  };
+}
+
+// The text each kind of box gets from the form (the ones a changed form must remake).
+const boxValues = ({ name, company, email, address1, address2 }) => ({
+  company,
+  owner: company || name,
+  email,
+  address1,
+  address2,
+});
+
+// Whether a copy's boxes still hold what the form says now (matched to the template's boxes by place).
+function copyBoxesMatch(templateEnvelope, copyEnvelope, values) {
+  const boxes = copyBoxesByKind(templateEnvelope, copyEnvelope);
+  return Object.entries(values).every(([kind, value]) => (boxes[kind] ?? []).every((f) => String(f.fieldMeta?.text ?? "") === (value ?? "")));
+}
+
+// How many properties fit in the agreement's "Exhibit A" box; more go on attached pages.
+export const EXHIBIT_BOX_MAX = 40;
+
+// The covered properties as the "Exhibit A" box shows them, one per line.
+export function exhibitText(entries, { added = null } = {}) {
+  if (!entries.length) return "None.";
+  return entries
+    .map((e, i) => {
+      const units = e.units?.length ? ` (Units: ${e.units.join(", ")})` : "";
+      const isNew = added?.has(e.listingId) ? " (added by this amendment)" : "";
+      return `${i + 1}. ${e.address}${units}${isNew}`;
+    })
+    .join("\n");
+}
+
 const TABLE = { master: "landlord_agreements", amendment: "agreement_amendments" };
 
 // End a document in progress and release the properties it proposed.
@@ -340,7 +388,22 @@ const sameIds = (a, b) => {
 export async function startSigning(
   db,
   documenso,
-  { user, signerTitle, signerName, signerCompany, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, prepare = false, ...options }
+  {
+    user,
+    signerTitle,
+    signerName,
+    signerCompany,
+    signerEmail,
+    signerAddress1,
+    signerAddress2,
+    authorized,
+    listingIds = [],
+    now = new Date(),
+    storeExhibit,
+    landlordAddress,
+    prepare = false,
+    ...options
+  }
 ) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
@@ -348,7 +411,9 @@ export async function startSigning(
   const title = cleanSignerTitle(signerTitle);
   // Older clients send no name: the account name, which may be one word.
   const name = signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
-  const company = cleanSignerCompany(signerCompany);
+  // What the landlord typed on the form (pre-filled with what we know), for the boxes.
+  const details = cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2 });
+  const company = details.company;
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
   return withSettingsLock(
@@ -411,9 +476,9 @@ export async function startSigning(
           const envelope = await documenso.getEnvelope(inProgress.row.provider_envelope_id);
           const signer = signerOf(envelope);
           const sameName = (signer?.name ?? "") === name;
-          // A changed company means a fresh copy too, when the template has a Company box.
-          const companyBox = templateFieldSummary(envelope).fields.company;
-          const sameCompany = !companyBox || (envelope.fields?.find((f) => f.id === companyBox.id)?.fieldMeta?.text ?? "") === company;
+          // Changed company, email or address on the form means a fresh copy too.
+          const template = await documenso.getEnvelope(version.provider_template_id).catch(() => null);
+          const sameCompany = !template || copyBoxesMatch(template, envelope, boxValues({ name, ...details }));
           if (sameName && sameCompany && envelope.status === "DRAFT") {
             const opened = await finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
             return prepare ? { prepared: true, kind: plan.kind } : opened;
@@ -443,7 +508,7 @@ export async function startSigning(
         user,
         title,
         name,
-        company,
+        details,
         plan,
         version,
         master: state.signed,
@@ -535,7 +600,8 @@ async function templateBoxes(documenso, version) {
 }
 
 
-async function createDocument(db, documenso, { user, title, name, company = "", plan, version, master, now, storeExhibit, landlordAddress }) {
+async function createDocument(db, documenso, { user, title, name, details = {}, plan, version, master, now, storeExhibit, landlordAddress }) {
+  const company = details.company ?? "";
   const nowIso = now.toISOString();
   // Exhibit A's "Landlord:" line: the company typed on the form, else the account's.
   const landlordName = company || (await landlordNameOf(db, user));
@@ -591,27 +657,45 @@ async function createDocument(db, documenso, { user, title, name, company = "", 
     if (covError) throw covError;
   }
 
-  // A master's Exhibit A lists every covered property; an amendment's pages show
-  // Exhibit A before and after, the added properties marked.
-  const exhibit = await buildExhibitPdf({
-    kind: plan.kind,
-    landlordName,
-    entries: plan.entries,
-    previous: plan.previous ?? [],
-    agreementSignedAt: master?.signed_at ?? null,
-    preparedAt: now,
-  });
-  const exhibitKey = storeExhibit ? await storeExhibit({ userId: user.id, bytes: exhibit.bytes }) : null;
-  const exhibitFile = {
-    bytes: exhibit.bytes,
-    fileName: isAmendment ? "exhibit-a-before-and-after.pdf" : "exhibit-a.pdf",
-    pageCount: exhibit.pageCount,
-    initialsBox: INITIALS_BOX,
-  };
   const externalId = `${isAmendment ? "agreement-amendment" : "landlord-agreement"}:${row.id}`;
-
-  const address = landlordAddress ? await landlordAddress(user.id).catch(() => null) : null;
   const boxes = await templateBoxes(documenso, version);
+
+  // Exhibit A goes in the document's own "Exhibit A" box when the template has one
+  // (Wyatt, 2026-11-06): every covered property, one per line, and on an
+  // amendment the list before it in an "Exhibit A before" box. Without that box,
+  // or with more properties than it holds, the generated pages are attached as a
+  // second document, with an initials box on each page.
+  const before = new Set((plan.previous ?? []).map((e) => e.listingId));
+  const added = isAmendment ? new Set(plan.entries.filter((e) => !before.has(e.listingId)).map((e) => e.listingId)) : null;
+  const hasBox = idsOf(boxes, "exhibit").length > 0;
+  const fits = plan.entries.length <= EXHIBIT_BOX_MAX && (plan.previous ?? []).length <= EXHIBIT_BOX_MAX;
+  const exhibitBoxText = !hasBox ? null : fits ? exhibitText(plan.entries, { added }) : `See the attached Exhibit A pages (${plan.entries.length} properties).`;
+  const exhibitBeforeText = !hasBox ? null : fits ? exhibitText(plan.previous ?? []) : "See the attached Exhibit A pages.";
+
+  let exhibitFile = null;
+  let exhibitKey = null;
+  if (!hasBox || !fits) {
+    const exhibit = await buildExhibitPdf({
+      kind: plan.kind,
+      landlordName,
+      entries: plan.entries,
+      previous: plan.previous ?? [],
+      agreementSignedAt: master?.signed_at ?? null,
+      preparedAt: now,
+    });
+    exhibitKey = storeExhibit ? await storeExhibit({ userId: user.id, bytes: exhibit.bytes }) : null;
+    exhibitFile = {
+      bytes: exhibit.bytes,
+      fileName: isAmendment ? "exhibit-a-before-and-after.pdf" : "exhibit-a.pdf",
+      pageCount: exhibit.pageCount,
+      initialsBox: INITIALS_BOX,
+    };
+  }
+
+  // The address as typed on the form; without one, the Stripe billing address.
+  const typedAddress = [details.address1, details.address2].filter(Boolean).join(", ");
+  const address = typedAddress || (landlordAddress ? await landlordAddress(user.id).catch(() => null) : null);
+  const values = boxValues({ name, ...details });
   const copy = await documenso.prepareSigningCopy({
     templateId: version.provider_template_id,
     recipientId: version.provider_recipient_id,
@@ -623,11 +707,12 @@ async function createDocument(db, documenso, { user, title, name, company = "", 
       ...idsOf(boxes, "title").filter((id) => id !== boxes.title?.id).map((id) => ({ id, value: title })),
       ...idsOf(boxes, "address").map((id) => ({ id, value: address })),
       ...idsOf(boxes, "name").map((id) => ({ id, value: name })),
-      ...idsOf(boxes, "company").map((id) => ({ id, value: company })),
-      ...idsOf(boxes, "owner").map((id) => ({ id, value: company || name })),
+      ...["company", "owner", "email", "address1", "address2"].flatMap((k) => idsOf(boxes, k).map((id) => ({ id, value: values[k] }))),
+      ...idsOf(boxes, "exhibit").map((id) => ({ id, value: exhibitBoxText })),
+      ...idsOf(boxes, "exhibitBefore").map((id) => ({ id, value: exhibitBeforeText })),
     ],
     // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
-    autofill: { name, email: user.email, date: fmtDate(now) },
+    autofill: { name, email: details.email || user.email, date: fmtDate(now) },
     // A commission rate box left on an older template is taken off the copy.
     dropRateBox: true,
     exhibit: exhibitFile,

@@ -116,7 +116,9 @@ export function fakeDocumenso() {
     // Prefilled values land in the copy's boxes as text, as Documenso does.
     const filled = new Map((input.prefill ?? []).filter((p) => p?.id && p.value != null && String(p.value).trim()).map((p) => [p.id, String(p.value)]));
     const fields = (template?.fields ?? []).map((f, i) => {
+      // Like Documenso: a copy's boxes get new ids and lose their labels.
       const copy = { ...structuredClone(f), id: n * 1000 + i, recipientId: 1 };
+      if (copy.fieldMeta) delete copy.fieldMeta.label;
       if (filled.has(f.id)) copy.fieldMeta = { ...(copy.fieldMeta ?? {}), text: filled.get(f.id) };
       return copy;
     });

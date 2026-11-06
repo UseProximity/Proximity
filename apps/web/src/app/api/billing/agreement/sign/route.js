@@ -13,7 +13,9 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
  * updated Exhibit A, whichever covers the properties asked for.
- * Body: { signerName, signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure, prepare? }.
+ * Body: { signerName, signerTitle, signerCompany?, signerEmail?, signerAddress1?, signerAddress2?,
+ *         authorized: true, listingIds?: [uuid], licenseDisclosure, prepare? }.
+ *       The optional details fill the template's Company, Owner, Email and Address boxes.
  *       signerName is the full name (first and last) that goes on the document.
  *   prepare     true: only get the copy ready, while the landlord answers the
  *               license questions (no licenseDisclosure needed). Answers
@@ -57,6 +59,9 @@ export async function POST(req) {
       signerTitle: body.signerTitle,
       ...(body.signerName !== undefined && { signerName: body.signerName }),
       signerCompany: typeof body.signerCompany === "string" ? body.signerCompany : "",
+      signerEmail: typeof body.signerEmail === "string" ? body.signerEmail : "",
+      signerAddress1: typeof body.signerAddress1 === "string" ? body.signerAddress1 : "",
+      signerAddress2: typeof body.signerAddress2 === "string" ? body.signerAddress2 : "",
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
       prepare,

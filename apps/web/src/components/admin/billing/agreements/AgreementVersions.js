@@ -74,13 +74,18 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
           <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: we fill them in, so the landlord only signs and initials.</p>
           <p>The commission rate is written into the agreement itself. No box is needed for it.</p>
           <p>
-            Other Text boxes we fill in, by their label: &quot;Title&quot; (the signer&apos;s title), &quot;Address&quot;
-            (the landlord&apos;s billing address), &quot;Name&quot; (the signer&apos;s first and last name, which also
-            goes in Documenso&apos;s Name box), &quot;Company&quot; (the company they sign for, as typed on the form;
-            left for them to fill when blank) and &quot;Owner&quot; (the company, or their own name when there is no
-            company). Labels decide which box gets what, so keep these words out of other boxes&apos; labels.
+            Text boxes we fill in, by the word in their label (the landlord types or checks these on the form before
+            signing): &quot;Name&quot; (full name), &quot;Title&quot;, &quot;Company&quot;, &quot;Owner&quot; (the company, or their
+            name when there is none), &quot;Email&quot;, &quot;Address 1&quot; (street), &quot;Address 2&quot; (city, state and ZIP)
+            and &quot;Exhibit A&quot; (every covered property, one per line; on an amendment, the list after it, with
+            &quot;Exhibit A before&quot; for the list before it). A label may repeat: every box with it is filled. Keep
+            these words out of other boxes&apos; labels, and tick Read only on the boxes we fill.
           </p>
-          <p>Exhibit A is added to each landlord&apos;s copy automatically, with an initials box on every page: do not add it here.</p>
+          <p>
+            Make the &quot;Exhibit A&quot; box big (most of a page) with font size 10: it holds up to 40 properties. With
+            no Exhibit A box, or more properties than that, the Exhibit A pages are attached as a second document with an
+            initials box on each page.
+          </p>
         </div>
         {version.connected && version.editorUrl && (
           <a href={version.editorUrl} target="_blank" rel="noopener noreferrer" className={`${BUTTON} mt-1 inline-block`}>

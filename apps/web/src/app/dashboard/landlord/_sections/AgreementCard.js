@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import CollapsibleSection from "./CollapsibleSection";
+import SignerFields, { useSignerDetails } from "./SignerFields";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -15,7 +16,6 @@ const STATUS = {
 const dateOnly = (iso) => new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "America/Chicago" });
 
 const BUTTON = "px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
-const FIELD = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500";
 
 function Requirement({ done, children }) {
   return (
@@ -33,46 +33,29 @@ function Requirement({ done, children }) {
   );
 }
 
-// The signer's full name and title and the "authorised to sign" confirmation.
-// The button opens the license question in a popup, then the document
-// (AgreementSigningFlow).
-const fullName = (n) => n.trim().split(/\s+/).length >= 2;
-
-function SignForm({ intro, button, busy, onStart, defaultName = "", defaultCompany = "" }) {
-  const [name, setName] = useState(defaultName);
-  const [company, setCompany] = useState(defaultCompany);
-  const [title, setTitle] = useState("");
+// The signer's details (SignerFields, pre-filled with what we know) and the
+// "authorised to sign" confirmation. The button opens the license question in a
+// popup, then the document (AgreementSigningFlow).
+function SignForm({ intro, button, busy, onStart }) {
+  const signer = useSignerDetails();
   const [authorized, setAuthorized] = useState(false);
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onStart({ signerName: name, signerCompany: company, signerTitle: title, authorized });
+        onStart({ ...signer.body(), authorized });
       }}
     >
       {intro && <p className="text-sm text-gray-700">{intro}</p>}
-      <label className="block max-w-sm text-sm font-medium text-gray-700">
-        Your full name
-        <input className={`${FIELD} mt-1`} value={name} maxLength={100} autoComplete="name" placeholder="First and last name" onChange={(e) => setName(e.target.value)} required />
-        <span className="mt-1 block text-xs font-normal text-gray-500">First and last, as it should appear on the agreement.</span>
-      </label>
-      <label className="block max-w-sm text-sm font-medium text-gray-700">
-        Company <span className="font-normal text-gray-500">(optional)</span>
-        <input className={`${FIELD} mt-1`} value={company} maxLength={150} autoComplete="organization" placeholder="Company or LLC name" onChange={(e) => setCompany(e.target.value)} />
-        <span className="mt-1 block text-xs font-normal text-gray-500">The company you sign for, as it should appear on the agreement. Leave blank if you own the properties yourself.</span>
-      </label>
-      <label className="block max-w-sm text-sm font-medium text-gray-700">
-        Your title
-        <input className={`${FIELD} mt-1`} value={title} maxLength={100} placeholder="Owner, Property Manager, ..." onChange={(e) => setTitle(e.target.value)} required />
-      </label>
+      <SignerFields state={signer} />
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} required />
         <span>I am authorised to sign this agreement for the landlord or company that owns these listings.</span>
       </label>
       <button
         type="submit"
-        disabled={busy || !fullName(name) || !title.trim() || !authorized}
+        disabled={busy || !signer.ready || !authorized}
         className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
       >
         {button}
@@ -272,7 +255,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
               {agreement.amendment.adding.length === 1 ? "that property" : "those properties"}.
             </p>
-            <SignForm button="Continue signing" defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""} busy={busy || !!signing} onStart={(b) => start(b)} />
+            <SignForm button="Continue signing" busy={busy || !!signing} onStart={(b) => start(b)} />
           </div>
         )}
 
@@ -284,7 +267,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
             </p>
             <PropertyList items={uncoveredLive} />
             <SignForm
-              defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""}
+             
               button="Review and sign the amendment"
               busy={busy || !!signing}
               onStart={(b) => start({ ...b, listingIds: uncoveredLive.map((p) => p.listingId) })}
@@ -307,7 +290,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               </div>
             )}
             <SignForm
-              defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""}
+             
               intro={masterIntro}
               button={agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
               busy={busy || !!signing}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import toast from "react-hot-toast";
 import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSigningFlow";
+import SignerFields, { useSignerDetails } from "@/app/dashboard/landlord/_sections/SignerFields";
 
 const PAYMENTS_URL = "/dashboard/landlord?tab=payments#commission-agreement";
 
@@ -29,9 +30,7 @@ async function getJson(url, init) {
  */
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const [view, setView] = useState(null);
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [title, setTitle] = useState("");
+  const signer = useSignerDetails();
   const [authorized, setAuthorized] = useState(false);
   const [signing, setSigning] = useState(null);
   const closeRef = useRef(null);
@@ -41,8 +40,6 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
     getJson("/api/billing/gate")
       .then((d) => {
         setView(d.agreement ?? null);
-        setName((n) => n || d.accountName || "");
-        setCompany((c) => c || d.accountCompany || "");
       })
       .catch(() => setView({}));
   }, []);
@@ -60,7 +57,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   const start = (e) => {
     e.preventDefault();
-    setSigning({ signerName: name, signerCompany: company, signerTitle: title, authorized, listingIds: ids });
+    setSigning({ ...signer.body(), authorized, listingIds: ids });
   };
 
   if (signing) {
@@ -81,7 +78,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Add to your commission agreement">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
           <h2 className="flex-1 text-base font-semibold text-gray-900">
             {hasMaster ? "Add to your commission agreement" : "Sign your commission agreement"}
@@ -124,55 +121,20 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 </p>
               )}
               <p className="text-xs text-gray-500">
-                You will initial each Exhibit A page. Your drafts stay saved whatever you choose.{" "}
+                Your drafts stay saved whatever you choose.{" "}
                 <a href={PAYMENTS_URL} className="underline">
                   Read it first or ask for changes under Payments
                 </a>
                 .
               </p>
-              <label className="block">
-                Your full name
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                  value={name}
-                  maxLength={100}
-                  autoComplete="name"
-                  placeholder="First and last name"
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-                <span className="mt-1 block text-xs text-gray-500">First and last, as it should appear on the agreement.</span>
-              </label>
-              <label className="block">
-                Company <span className="text-gray-500">(optional)</span>
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                  value={company}
-                  maxLength={150}
-                  autoComplete="organization"
-                  placeholder="Company or LLC name"
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-                <span className="mt-1 block text-xs text-gray-500">Leave blank if you own the properties yourself.</span>
-              </label>
-              <label className="block">
-                Your title
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                  value={title}
-                  maxLength={100}
-                  placeholder="Owner, Property Manager"
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </label>
+              <SignerFields state={signer} />
               <label className="flex items-start gap-2">
                 <input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
                 <span>I am authorised to sign for this landlord or company.</span>
               </label>
               <button
                 type="submit"
-                disabled={!authorized || !title.trim() || name.trim().split(/\s+/).length < 2}
+                disabled={!authorized || !signer.ready}
                 className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
                 {hasMaster ? "Review and sign the amendment" : "Review and sign"}
