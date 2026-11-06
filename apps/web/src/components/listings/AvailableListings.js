@@ -580,7 +580,8 @@ export default function AvailableListings({
             <BackToTop
               scrollRef={panelRef}
               after={600}
-              position="bottom-6 left-[calc(20vw-1.375rem)]"
+              position="bottom-6 left-[calc(40vw-3.75rem)]"
+              tone="light"
             />
             <div
               className={`flex items-center gap-2 px-1 mb-3 ${
