@@ -16,12 +16,12 @@ export default function ListedBy({ listedBy, className = "" }) {
   const { agentName, companyName, companyPhone } = listedBy;
   const tel = String(companyPhone ?? "").replace(/\D/g, "");
   return (
-    <p className={`text-xs text-gray-500 ${className}`}>
+    <p className={`text-[11px] leading-4 text-gray-400 ${className}`}>
       Listed by {agentName}, {companyName}
       {companyPhone && (
         <>
           {", "}
-          <a href={`tel:+1${tel.slice(-10)}`} className="underline hover:text-gray-700">
+          <a href={`tel:+1${tel.slice(-10)}`} className="underline decoration-gray-300 hover:text-gray-600">
             {formatPhone(companyPhone)}
           </a>
         </>
