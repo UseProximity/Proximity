@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { billingFetch } from "@/components/admin/billing/billingFetch";
 
 async function call(url, options) {
-  const res = await fetch(url, options);
+  const res = await billingFetch(url, options);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;

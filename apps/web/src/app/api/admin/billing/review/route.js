@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { isProdData } from "@/lib/appEnv";
 import { requireDbRole } from "@/lib/userRole";
 import { loadAdminReview } from "@/lib/billing/adminReview";
@@ -19,13 +19,20 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth admin
  */
-export async function GET() {
+export async function GET(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
 
   try {
     const review = await loadAdminReview(supabase);
-    return NextResponse.json({ ...review, testToolEnabled: !isProdData() });
+    return NextResponse.json({
+      ...review,
+      testToolEnabled: !isProdData() && billingDb.writable,
+      // Which database this is, and whether this site may change it (lib/billing/adminDb.js).
+      env: { target: billingDb.target, own: billingDb.own, writable: billingDb.writable },
+    });
   } catch (err) {
     return billingErrorResponse(err, "load admin review");
   }

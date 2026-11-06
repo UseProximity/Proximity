@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { getStripe } from "@/lib/billing/stripe";
 import { runBillingRun } from "@/lib/billing/billingRun";
@@ -27,6 +27,9 @@ import { billingErrorResponse } from "@/lib/billing/http";
 export async function POST(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
 
   try {
     const body = await req.json().catch(() => ({}));

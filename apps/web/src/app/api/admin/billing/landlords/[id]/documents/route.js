@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { listAgreementDocuments, voidDocument } from "@/lib/billing/agreements";
 import { documensoConfigured } from "@/lib/billing/documenso";
@@ -22,9 +22,11 @@ import { billingErrorResponse } from "@/lib/billing/http";
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     const { id } = await params;
     if (!UUID.test(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
@@ -37,6 +39,9 @@ export async function GET(_req, { params }) {
 export async function POST(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
   try {
     const { id } = await params;
     if (!UUID.test(id)) throw new BillingError("not_found", "That landlord was not found.", 404);

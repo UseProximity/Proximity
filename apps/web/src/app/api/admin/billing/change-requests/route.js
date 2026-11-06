@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { ACTIVE_STATUSES, CLOSED_STATUSES, countByStatus, listForAdmin } from "@/lib/billing/changeRequests";
 import { billingErrorResponse } from "@/lib/billing/http";
@@ -19,6 +19,8 @@ import { billingErrorResponse } from "@/lib/billing/http";
 export async function GET(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     const url = new URL(req.url);
     if (url.searchParams.get("summary")) return NextResponse.json({ counts: await countByStatus(supabase) });

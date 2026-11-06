@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import {
   checkVersionFields,
@@ -36,9 +36,11 @@ async function versionId(params) {
   return id;
 }
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     const version = await getVersion(supabase, await versionId(params));
     return NextResponse.json({ url: await signedAgreementUrl(version.file_key, version.file_name || "commission-agreement.pdf") });
@@ -50,6 +52,9 @@ export async function GET(_req, { params }) {
 export async function POST(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
   try {
     const id = await versionId(params);
     const body = await req.json().catch(() => ({}));

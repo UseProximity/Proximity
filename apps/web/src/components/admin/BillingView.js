@@ -23,8 +23,10 @@
  *   Test charge  makes a charge on a landlord account (never on production).
  *
  * Every action is recorded in the charge's history with the admin who took it.
- * Always shows this environment's own database: the dashboard's dev/prod switch
- * does not apply, because billing rows go with this environment's Stripe keys.
+ * Follows the dashboard's dev/prod switch (Wyatt, 2026-11-06): agreement versions,
+ * coverage, charges and invoices are that database's. Billing goes with this
+ * site's Stripe and Documenso keys, so the other environment is read-only here
+ * (lib/billing/adminDb.js); a banner says so.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,11 +40,12 @@ import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
 import ChangeRequestsPanel from "@/components/admin/billing/ChangeRequestsPanel";
 import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
+import { billingFetch, setBillingTarget } from "@/components/admin/billing/billingFetch";
 
 const TAB_KEYS = ["confirm", "contest", "chargebacks", "invoices", "corrections", "agreements", "changes", "enrollment", "run", "test"];
 
 async function call(url, options) {
-  const res = await fetch(url, options);
+  const res = await billingFetch(url, options);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;
@@ -75,7 +78,10 @@ function matches(search, ...values) {
   return !q || values.some((v) => String(v ?? "").toLowerCase().includes(q));
 }
 
-export default function BillingView({ search }) {
+export default function BillingView({ search, dbTarget = null }) {
+  // Every billing request from here on carries the switch (billingFetch). The
+  // dashboard remounts this view when the switch changes.
+  setBillingTarget(dbTarget);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -180,8 +186,16 @@ export default function BillingView({ search }) {
 
   const dialogKey = dialog ? (dialog.key === "resolve" ? `resolve:${dialog.outcome}` : "void") : null;
 
+  const env = data?.env;
   return (
     <div className="space-y-4">
+      {env && !env.writable && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Showing <strong>{env.target === "prod" ? "production" : "dev"}</strong> billing, read only. This site runs on{" "}
+          {env.own === "prod" ? "production" : "dev"} Stripe and Documenso keys, so changes to {env.target === "prod" ? "production" : "dev"} billing
+          are made on {env.target === "prod" ? "useproximity.org" : "staging or a local copy"}.
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button

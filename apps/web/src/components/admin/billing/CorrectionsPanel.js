@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { formatCents } from "@/lib/billing/money";
+import { billingFetch } from "@/components/admin/billing/billingFetch";
 
 async function call(url, options) {
-  const res = await fetch(url, options);
+  const res = await billingFetch(url, options);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;

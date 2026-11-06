@@ -484,7 +484,7 @@ export default function AdminDashboard() {
         ) : view === "emails" ? (
           <SentEmailsView search={search} dbTarget={dbTarget} />
         ) : view === "billing" ? (
-          <BillingView search={search} />
+          <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
         ) : view === "agents" ? (
           <AgentsView search={search} />
         ) : view === "errors" ? (

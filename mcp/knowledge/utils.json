@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-06T00:24:30.293Z",
-  "count": 305,
+  "_generated": "2026-11-06T21:03:58.007Z",
+  "count": 306,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -326,6 +326,10 @@
     {
       "file": "src/lib/billing/adjustments.js",
       "description": "Correcting a Paid charge that turns out to be wrong. The original charge is"
+    },
+    {
+      "file": "src/lib/billing/adminDb.js",
+      "description": "Which database an admin billing route reads (Wyatt, 2026-11-06): the admin"
     },
     {
       "file": "src/lib/billing/adminReview.js",

@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-05T21:59:57.685Z",
-  "count": 183,
+  "_generated": "2026-11-06T21:03:57.958Z",
+  "count": 184,
   "components": [
     {
       "name": "ErrorReporter",
@@ -171,6 +171,11 @@
     {
       "name": "shared",
       "file": "src/components/admin/billing/agreements/shared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "billingFetch",
+      "file": "src/components/admin/billing/billingFetch.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { billingFetch } from "@/components/admin/billing/billingFetch";
 
 const FIELD =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500";
@@ -29,7 +30,7 @@ export default function TestChargeForm({ onCreated }) {
     setError(null);
     setDone(null);
     try {
-      const res = await fetch("/api/admin/billing/test-charges", {
+      const res = await billingFetch("/api/admin/billing/test-charges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ landlordEmail: email, amount, triggerType, description, signedRent, commissionRate, confirm }),

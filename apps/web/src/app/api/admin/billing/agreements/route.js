@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { markAgreementSent, markAgreementSigned, voidAgreement } from "@/lib/billing/agreements";
@@ -46,6 +46,9 @@ async function readRequest(req) {
 export async function POST(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
 
   try {
     const { landlordEmail, action, signerName, signerTitle, signedAt, file } = await readRequest(req);

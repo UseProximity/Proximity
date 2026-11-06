@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { autopayState, disableAutopay } from "@/lib/billing/autopay";
 import { billingNotify } from "@/lib/billing/billingNotify";
@@ -22,9 +22,11 @@ async function landlordIdFrom(params) {
   return landlordId;
 }
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     const state = await autopayState(supabase, await landlordIdFrom(params));
     // Admins see the state, not the choices or the consent wording.
@@ -34,9 +36,12 @@ export async function GET(_req, { params }) {
   }
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
   try {
     const result = await disableAutopay(supabase, {
       userId: await landlordIdFrom(params),

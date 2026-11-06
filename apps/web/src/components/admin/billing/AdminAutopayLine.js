@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { fmtDate } from "@/components/admin/adminShared";
+import { billingFetch } from "@/components/admin/billing/billingFetch";
 
 /*
  * One landlord's autopay, in the admin landlord list. Admins can see it and turn
@@ -20,7 +21,7 @@ export default function AdminAutopayLine({ landlordId, autopay }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/billing/autopay/${landlordId}`, { method: "DELETE" });
+      const res = await billingFetch(`/api/admin/billing/autopay/${landlordId}`, { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Could not turn off autopay.");
       setCurrent(null);

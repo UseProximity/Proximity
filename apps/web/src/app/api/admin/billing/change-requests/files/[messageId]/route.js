@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { attachmentFor } from "@/lib/billing/changeRequests";
 import { changeFileUrl } from "@/lib/billing/changeRequestFiles";
@@ -12,9 +12,11 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  *
  * @auth admin
  */
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   const { messageId } = await params;
   if (!isUuid(messageId)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   try {

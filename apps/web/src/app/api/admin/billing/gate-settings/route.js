@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { AGREEMENT_REQUIRED, PAYMENT_METHOD_REQUIRED, getGateSettings } from "@/lib/billing/listingGate";
 import { setBillingSetting } from "@/lib/billing/settings";
@@ -17,9 +17,11 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth admin
  */
-export async function GET() {
+export async function GET(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     return NextResponse.json(await getGateSettings(supabase));
   } catch (err) {
@@ -30,6 +32,9 @@ export async function GET() {
 export async function PUT(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
   try {
     const body = await req.json().catch(() => ({}));
     const changes = [

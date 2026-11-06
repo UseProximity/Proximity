@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabase";
+import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { listVersions, resignCutoff, signatureStillValid, uploadVersion, versionView } from "@/lib/billing/agreementVersions";
 import { storeAgreementVersion } from "@/lib/billing/agreementFiles";
@@ -27,9 +27,11 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth admin
  */
-export async function GET() {
+export async function GET(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  const supabase = billingDb.db;
   try {
     const versions = await listVersions(supabase);
     const counts = new Map();
@@ -73,6 +75,9 @@ function uuidOrNull(value) {
 export async function POST(req) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const billingDb = adminBillingDb(req);
+  if (!billingDb.writable) return readOnlyResponse(billingDb);
+  const supabase = billingDb.db;
   try {
     if (!(req.headers.get("content-type") || "").includes("multipart/form-data")) {
       throw new BillingError("file_required", "Choose the agreement PDF to upload.");

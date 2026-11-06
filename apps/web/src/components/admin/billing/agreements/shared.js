@@ -1,7 +1,7 @@
 // Small helpers shared by the admin agreement panels.
 
 export async function call(url, options) {
-  const res = await fetch(url, options);
+  const res = await billingFetch(url, options);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;
@@ -23,7 +23,7 @@ export const PRIMARY =
 export async function openFile(url) {
   const tab = window.open("", "_blank");
   try {
-    const res = await fetch(url);
+    const res = await billingFetch(url);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${res.status}`);
