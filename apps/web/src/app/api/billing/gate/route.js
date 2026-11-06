@@ -30,7 +30,7 @@ export async function GET() {
       checkListingGate(supabase, session.user.id),
       coverageFor(supabase, session.user.id),
       getEnrollmentWindow(supabase),
-      supabase.from("users").select("name").eq("id", session.user.id).maybeSingle(),
+      supabase.from("users").select("name, company_name").eq("id", session.user.id).maybeSingle(),
     ]);
     return NextResponse.json({
       allowed: gate.allowed,
@@ -41,6 +41,8 @@ export async function GET() {
       agreement: agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
       // The account's name, to start the signing form's "Full name" box with.
       accountName: account.data?.name?.trim() || null,
+      // And its company, for the "Company" box.
+      accountCompany: account.data?.company_name?.trim() || null,
       // The enrollment window, shown as a banner until the landlord has set up.
       enrollment: { deadline: enrollment.deadline, includeAgreement: enrollment.includeAgreement },
     });

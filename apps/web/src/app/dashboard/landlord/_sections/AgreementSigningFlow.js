@@ -31,8 +31,8 @@ async function post(body, { retries = 0 } = {}) {
  * What happens after "Review and sign" (Payments tab and the publish dialog):
  *
  *   1. A popup asks the real estate license question (or shows the saved answer
- *      to confirm). Meanwhile the document is prepared in the background
- *      (prepare: true), so it is ready by the time they answer.
+ *      to confirm). Meanwhile the document is built and opened in Documenso in
+ *      the background (prepare: true), so it is ready by the time they answer.
  *   2. Their answer is saved to their account (never printed on the agreement)
  *      and the document opens in Documenso's signing page, with everything
  *      filled but the signature and initials.

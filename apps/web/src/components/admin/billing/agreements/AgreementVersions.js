@@ -75,8 +75,10 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
           <p>The commission rate is written into the agreement itself. No box is needed for it.</p>
           <p>
             Other Text boxes we fill in, by their label: &quot;Title&quot; (the signer&apos;s title), &quot;Address&quot;
-            (the landlord&apos;s billing address) and &quot;Name&quot; (the signer&apos;s first and last name, which also
-            goes in Documenso&apos;s Name box).
+            (the landlord&apos;s billing address), &quot;Name&quot; (the signer&apos;s first and last name, which also
+            goes in Documenso&apos;s Name box), &quot;Company&quot; (the company they sign for, as typed on the form;
+            left for them to fill when blank) and &quot;Owner&quot; (the company, or their own name when there is no
+            company). Labels decide which box gets what, so keep these words out of other boxes&apos; labels.
           </p>
           <p>Exhibit A is added to each landlord&apos;s copy automatically, with an initials box on every page: do not add it here.</p>
         </div>

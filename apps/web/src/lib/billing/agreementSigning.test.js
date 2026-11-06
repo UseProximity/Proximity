@@ -247,9 +247,11 @@ describe("template checks", () => {
       rateFieldId: null,
       addressFieldId: null,
       nameFieldId: null,
+      companyFieldId: null,
+      ownerFieldId: null,
       brokerageFieldId: null,
       licenseFieldId: null,
-      fields: { title: { id: 3, type: "text", readOnly: false }, rate: null, address: null, name: null, brokerage: null, license: null },
+      fields: { title: { id: 3, type: "text", readOnly: false }, rate: null, address: null, name: null, company: null, owner: null, brokerage: null, license: null },
       rateReadOnly: null,
       ok: true,
     });

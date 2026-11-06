@@ -56,6 +56,7 @@ export async function POST(req) {
       user,
       signerTitle: body.signerTitle,
       ...(body.signerName !== undefined && { signerName: body.signerName }),
+      signerCompany: typeof body.signerCompany === "string" ? body.signerCompany : "",
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
       prepare,

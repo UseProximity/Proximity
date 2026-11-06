@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { documentFileKeys } from "@/lib/billing/agreements";
+import { documentParts } from "@/lib/billing/agreements";
 import { combinedSignedPdf, pdfResponse } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
@@ -26,7 +26,7 @@ export async function GET(req) {
     const kind = params.get("kind") === "amendment" ? "amendment" : "master";
     const id = params.get("id");
     if (id && !UUID.test(id)) throw new BillingError("not_found", "That document was not found.", 404);
-    const keys = await documentFileKeys(supabase, { userId: session.user.id, kind, id });
+    const keys = await documentParts(supabase, { userId: session.user.id, kind, id });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
     return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "commission-agreement.pdf");
   } catch (err) {

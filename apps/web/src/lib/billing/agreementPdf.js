@@ -51,3 +51,34 @@ export async function mergePdfs(parts) {
   }
   return out.save();
 }
+
+/*
+ * One PDF from a signed document's parts, the document first and Documenso's
+ * certificate pages last: `parts` are [{ bytes, bodyPages }], bodyPages being how
+ * many pages the part had before signing (null when unknown: the whole part is
+ * treated as document). Exhibit A therefore follows the agreement directly.
+ */
+export async function mergeSignedParts(parts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const out = await PDFDocument.create();
+  const certificates = [];
+  for (const { bytes, bodyPages } of parts) {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const all = src.getPageIndices();
+    const cut = bodyPages && bodyPages > 0 && bodyPages < all.length ? bodyPages : all.length;
+    (await out.copyPages(src, all.slice(0, cut))).forEach((p) => out.addPage(p));
+    if (cut < all.length) certificates.push(...(await out.copyPages(src, all.slice(cut))));
+  }
+  certificates.forEach((p) => out.addPage(p));
+  return out.save();
+}
+
+// How many pages a PDF has, or null if it cannot be read.
+export async function pageCount(bytes) {
+  try {
+    const { PDFDocument } = await import("pdf-lib");
+    return (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount();
+  } catch {
+    return null;
+  }
+}

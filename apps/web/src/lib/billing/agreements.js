@@ -290,6 +290,13 @@ export function cleanSignerName(name) {
   return n;
 }
 
+// The company the landlord signs for, from the form: optional, at most 150 characters.
+export function cleanSignerCompany(company) {
+  const c = String(company ?? "").trim().replace(/\s+/g, " ");
+  if (c.length > 150) throw new BillingError("company_too_long", "Keep the company name under 150 characters.");
+  return c;
+}
+
 const TABLE = { master: "landlord_agreements", amendment: "agreement_amendments" };
 
 // End a document in progress and release the properties it proposed.
@@ -333,7 +340,7 @@ const sameIds = (a, b) => {
 export async function startSigning(
   db,
   documenso,
-  { user, signerTitle, signerName, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, prepare = false, ...options }
+  { user, signerTitle, signerName, signerCompany, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, prepare = false, ...options }
 ) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
@@ -341,6 +348,7 @@ export async function startSigning(
   const title = cleanSignerTitle(signerTitle);
   // Older clients send no name: the account name, which may be one word.
   const name = signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
+  const company = cleanSignerCompany(signerCompany);
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
   return withSettingsLock(
@@ -403,11 +411,14 @@ export async function startSigning(
           const envelope = await documenso.getEnvelope(inProgress.row.provider_envelope_id);
           const signer = signerOf(envelope);
           const sameName = (signer?.name ?? "") === name;
-          if (sameName && envelope.status === "DRAFT") {
-            if (prepare) return { prepared: true, kind: plan.kind };
-            return finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
+          // A changed company means a fresh copy too, when the template has a Company box.
+          const companyBox = templateFieldSummary(envelope).fields.company;
+          const sameCompany = !companyBox || (envelope.fields?.find((f) => f.id === companyBox.id)?.fieldMeta?.text ?? "") === company;
+          if (sameName && sameCompany && envelope.status === "DRAFT") {
+            const opened = await finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
+            return prepare ? { prepared: true, kind: plan.kind } : opened;
           }
-          if (sameName && envelope.status === "PENDING" && signer?.token) {
+          if (sameName && sameCompany && envelope.status === "PENDING" && signer?.token) {
             if (prepare) return { prepared: true, kind: plan.kind };
             // Opened before: carry on where they left off.
             const { error } = await db
@@ -432,6 +443,7 @@ export async function startSigning(
         user,
         title,
         name,
+        company,
         plan,
         version,
         master: state.signed,
@@ -439,8 +451,11 @@ export async function startSigning(
         storeExhibit,
         landlordAddress,
       });
-      if (prepare) return { prepared: true, kind: plan.kind };
-      return finishDocument(db, documenso, { kind: plan.kind, row: made.row, now });
+      // Nothing from the license answer goes on the document (2026-11-06), so it is
+      // opened (distributed) straight away, while the landlord answers; the call
+      // with their answer then only hands back the signing token.
+      const opened = await finishDocument(db, documenso, { kind: plan.kind, row: made.row, now });
+      return prepare ? { prepared: true, kind: plan.kind } : opened;
     }
   );
 }
@@ -487,6 +502,8 @@ async function templateBoxes(documenso, version) {
     rate: version.provider_rate_field_id ? { id: version.provider_rate_field_id, type: "text" } : null,
     address: version.provider_address_field_id ? { id: version.provider_address_field_id, type: "text" } : null,
     name: null,
+    company: null,
+    owner: null,
     brokerage: version.provider_brokerage_field_id ? { id: version.provider_brokerage_field_id, type: "text" } : null,
     license: version.provider_license_field_id ? { id: version.provider_license_field_id, type: "text" } : null,
   };
@@ -498,6 +515,8 @@ async function templateBoxes(documenso, version) {
       rate: live.rate ?? saved.rate,
       address: live.address ?? saved.address,
       name: live.name,
+      company: live.company,
+      owner: live.owner,
       brokerage: live.brokerage ?? saved.brokerage,
       license: live.license ?? saved.license,
     };
@@ -507,9 +526,10 @@ async function templateBoxes(documenso, version) {
 }
 
 
-async function createDocument(db, documenso, { user, title, name, plan, version, master, now, storeExhibit, landlordAddress }) {
+async function createDocument(db, documenso, { user, title, name, company = "", plan, version, master, now, storeExhibit, landlordAddress }) {
   const nowIso = now.toISOString();
-  const landlordName = await landlordNameOf(db, user);
+  // Exhibit A's "Landlord:" line: the company typed on the form, else the account's.
+  const landlordName = company || (await landlordNameOf(db, user));
   const isAmendment = plan.kind === "amendment";
 
   // The record first, so a Documenso copy is never made without one to find it by.
@@ -592,6 +612,8 @@ async function createDocument(db, documenso, { user, title, name, plan, version,
     prefill: [
       { id: boxes.address?.id, value: address },
       { id: boxes.name?.id, value: name },
+      { id: boxes.company?.id, value: company },
+      { id: boxes.owner?.id, value: company || name },
     ],
     // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
     autofill: { name, email: user.email, date: fmtDate(now) },
@@ -976,6 +998,36 @@ export async function documentFileKeys(db, { userId, kind = "master", id = null 
   if (error) throw error;
   const row = data?.[0];
   return row ? [row.signed_file_key, row.signed_exhibit_file_key].filter(Boolean) : [];
+}
+
+/*
+ * The same document's parts with what is needed to put Documenso's signing
+ * certificates at the end: each signed part, and the unsigned original it was
+ * made from (the uploaded version PDF, the generated Exhibit A pages), whose page
+ * count says where the document ends and its certificate begins. Opened, the
+ * document reads: the agreement, Exhibit A last, then the certificates
+ * (Wyatt, 2026-11-06).
+ */
+export async function documentParts(db, { userId, kind = "master", id = null }) {
+  if (!TABLE[kind]) return [];
+  let q = db
+    .from(TABLE[kind])
+    .select("id, user_id, status, version_id, signed_file_key, signed_exhibit_file_key, exhibit_file_key")
+    .eq("user_id", userId);
+  q = id ? q.eq("id", id) : q.eq("status", "signed");
+  const { data, error } = await q.limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return [];
+  let versionKey = null;
+  if (row.version_id) {
+    const { data: v } = await db.from("agreement_versions").select("file_key").eq("id", row.version_id).maybeSingle();
+    versionKey = v?.file_key ?? null;
+  }
+  return [
+    row.signed_file_key && { key: row.signed_file_key, originalKey: versionKey },
+    row.signed_exhibit_file_key && { key: row.signed_exhibit_file_key, originalKey: row.exhibit_file_key ?? null },
+  ].filter(Boolean);
 }
 
 /*

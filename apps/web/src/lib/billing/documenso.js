@@ -104,7 +104,12 @@ export function templateFieldSummary(envelope) {
   // A Text box for the signer's full name; Documenso's own Name box fills from the
   // recipient's name, which is the same full name.
   // Not "Brokerage name" or "Licensee name": those are the licensee boxes below.
-  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|property|brokerage|licen[cs]ee?)\b/i);
+  const fullName = labelled(["TEXT"], /\bname\b/i, /\b(company|business|owner|landlord|property|brokerage|licen[cs]ee?)\b/i);
+  // A Text box labelled "Owner" (or "Landlord"): who the agreement is with, the
+  // company when they gave one, otherwise the signer's own name.
+  const owner = labelled(["TEXT"], /\b(owner|landlord)\b/i);
+  // A Text box labelled "Company" (or "Business"): the company the landlord signs for.
+  const company = labelled(["TEXT"], /\b(company|business)\b/i);
   // The signature page's licensee details (MREC).
   const brokerage = labelled(["TEXT"], /\bbrokerage\b/i);
   const license = labelled(["TEXT"], /\blicen[cs]e\b/i);
@@ -118,11 +123,13 @@ export function templateFieldSummary(envelope) {
     rateFieldId: rate?.id ?? null,
     addressFieldId: address?.id ?? null,
     nameFieldId: fullName?.id ?? null,
+    companyFieldId: company?.id ?? null,
+    ownerFieldId: owner?.id ?? null,
     // The signature page's licensee details (MREC): brokerage name and Missouri
     // license number, "N/A" for a landlord who is not licensed.
     brokerageFieldId: brokerage?.id ?? null,
     licenseFieldId: license?.id ?? null,
-    fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), brokerage: ref(brokerage), license: ref(license) },
+    fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), company: ref(company), owner: ref(owner), brokerage: ref(brokerage), license: ref(license) },
     rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
     ok: !!signer && count("SIGNATURE") > 0,
   };

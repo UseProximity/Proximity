@@ -113,7 +113,13 @@ export function fakeDocumenso() {
     const id = `envelope_${++n}`;
     // The copy carries the template's boxes (with new ids, like Documenso).
     const template = input.templateId ? envelopes.get(input.templateId) : null;
-    const fields = (template?.fields ?? []).map((f, i) => ({ ...structuredClone(f), id: n * 1000 + i, recipientId: 1 }));
+    // Prefilled values land in the copy's boxes as text, as Documenso does.
+    const filled = new Map((input.prefill ?? []).filter((p) => p?.id && p.value != null && String(p.value).trim()).map((p) => [p.id, String(p.value)]));
+    const fields = (template?.fields ?? []).map((f, i) => {
+      const copy = { ...structuredClone(f), id: n * 1000 + i, recipientId: 1 };
+      if (filled.has(f.id)) copy.fieldMeta = { ...(copy.fieldMeta ?? {}), text: filled.get(f.id) };
+      return copy;
+    });
     envelopes.set(id, {
       id,
       status: "DRAFT",

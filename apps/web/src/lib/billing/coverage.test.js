@@ -13,7 +13,7 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerName, coverageFor, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
-import { mergePdfs } from "./agreementPdf.js";
+import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
 
@@ -268,7 +268,7 @@ describe("Exhibit A amendments", () => {
     const { db, documenso } = await signedMaster();
     const ready = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01"), prepare: true });
     assert.deepEqual(ready, { prepared: true, kind: "amendment" });
-    assert.equal((await documenso.getEnvelope("envelope_2")).status, "DRAFT", "nobody can sign it yet");
+    assert.equal((await documenso.getEnvelope("envelope_2")).status, "PENDING", "opened while they answer");
     const opened = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01"), licenseDisclosure: { is_licensee: false } });
     assert.equal(opened.token, "token_2");
     assert.equal(documenso.calls.copies, 2, "the prepared copy is the one opened");
@@ -358,6 +358,27 @@ describe("Exhibit A pages", () => {
     assert.equal(String.fromCharCode(...bytes.subarray(0, 5)), "%PDF-");
   });
 
+  it("opened, a signed document reads: the agreement, Exhibit A last, then the signing certificates", async () => {
+    const page = async (n) => {
+      const d = await PDFDocument.create();
+      for (let i = 0; i < n; i++) d.addPage([100 + i, 100]);
+      return d.save();
+    };
+    // Agreement: 3 pages + 1 certificate page; Exhibit A: 1 page + 1 certificate page.
+    const agreement = await PDFDocument.create();
+    for (const w of [11, 12, 13, 91]) agreement.addPage([w, 100]);
+    const exhibit = await PDFDocument.create();
+    for (const w of [21, 92]) exhibit.addPage([w, 100]);
+    const merged = await PDFDocument.load(
+      await mergeSignedParts([
+        { bytes: await agreement.save(), bodyPages: 3 },
+        { bytes: await exhibit.save(), bodyPages: 1 },
+      ])
+    );
+    assert.deepEqual(merged.getPages().map((p) => p.getWidth()), [11, 12, 13, 21, 91, 92]);
+    assert.ok(await page(1));
+  });
+
   it("a signed document opens as one PDF: its parts joined in order", async () => {
     const one = await buildExhibitPdf({ entries: [{ listingId: "a", address: "1 A St", units: [] }] });
     const two = await buildExhibitPdf({ kind: "amendment", entries: [{ listingId: "a", address: "1 A St", units: [] }], previous: [] });
@@ -407,6 +428,39 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     await sign(db, documenso, { listingIds: ["L2"], signerName: "  Pat   Q. Landlord " });
     assert.equal(documenso.calls.lastCopy.name, "Pat Q. Landlord");
     assert.deepEqual(documenso.calls.lastCopy.prefill.find((p) => p.id === 78), { id: 78, value: "Pat Q. Landlord" });
+  });
+
+  it("the company typed on the form fills a Company box, separate from the Name box (2026-11-06)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set(
+      "envelope_master",
+      template([
+        { id: 78, type: "TEXT", recipientId: 11, fieldMeta: { label: "Name" } },
+        { id: 79, type: "TEXT", recipientId: 11, fieldMeta: { label: "Company" } },
+        { id: 80, type: "TEXT", recipientId: 11, fieldMeta: { label: "Owner" } },
+      ])
+    );
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord", signerCompany: "  Pat   Rentals LLC " });
+    const prefill = documenso.calls.lastCopy.prefill;
+    assert.deepEqual(prefill.find((p) => p.id === 78), { id: 78, value: "Pat Landlord" });
+    assert.deepEqual(prefill.find((p) => p.id === 79), { id: 79, value: "Pat Rentals LLC" });
+    assert.equal(prefill.find((p) => p.id === 80)?.value, "Pat Rentals LLC", "the Owner box gets the company");
+    // Same company: the copy is reused. A different one: a fresh copy.
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord", signerCompany: "Pat Rentals LLC" });
+    assert.equal(documenso.calls.copies, 1);
+    await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord", signerCompany: "Other Co" });
+    assert.equal(documenso.calls.copies, 2);
+  });
+
+  it("the copy is opened while the license question is answered, so answering only hands back the token", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    assert.deepEqual(await sign(db, documenso, { listingIds: ["L2"], prepare: true }), { prepared: true, kind: "master" });
+    assert.equal((await documenso.getEnvelope("envelope_1")).status, "PENDING", "already signable");
+    const r = await sign(db, documenso, { listingIds: ["L2"] });
+    assert.equal(r.token, "token_1");
+    assert.equal(documenso.calls.copies, 1);
   });
 
   it("needs a first and last name", async () => {

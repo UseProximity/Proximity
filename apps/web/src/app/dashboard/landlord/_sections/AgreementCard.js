@@ -38,8 +38,9 @@ function Requirement({ done, children }) {
 // (AgreementSigningFlow).
 const fullName = (n) => n.trim().split(/\s+/).length >= 2;
 
-function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
+function SignForm({ intro, button, busy, onStart, defaultName = "", defaultCompany = "" }) {
   const [name, setName] = useState(defaultName);
+  const [company, setCompany] = useState(defaultCompany);
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
   return (
@@ -47,7 +48,7 @@ function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onStart({ signerName: name, signerTitle: title, authorized });
+        onStart({ signerName: name, signerCompany: company, signerTitle: title, authorized });
       }}
     >
       {intro && <p className="text-sm text-gray-700">{intro}</p>}
@@ -55,6 +56,11 @@ function SignForm({ intro, button, busy, onStart, defaultName = "" }) {
         Your full name
         <input className={`${FIELD} mt-1`} value={name} maxLength={100} autoComplete="name" placeholder="First and last name" onChange={(e) => setName(e.target.value)} required />
         <span className="mt-1 block text-xs font-normal text-gray-500">First and last, as it should appear on the agreement.</span>
+      </label>
+      <label className="block max-w-sm text-sm font-medium text-gray-700">
+        Company <span className="font-normal text-gray-500">(optional)</span>
+        <input className={`${FIELD} mt-1`} value={company} maxLength={150} autoComplete="organization" placeholder="Company or LLC name" onChange={(e) => setCompany(e.target.value)} />
+        <span className="mt-1 block text-xs font-normal text-gray-500">The company you sign for, as it should appear on the agreement. Leave blank if you own the properties yourself.</span>
       </label>
       <label className="block max-w-sm text-sm font-medium text-gray-700">
         Your title
@@ -266,7 +272,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
               {agreement.amendment.adding.length === 1 ? "that property" : "those properties"}.
             </p>
-            <SignForm button="Continue signing" defaultName={gate.accountName ?? ""} busy={busy || !!signing} onStart={(b) => start(b)} />
+            <SignForm button="Continue signing" defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""} busy={busy || !!signing} onStart={(b) => start(b)} />
           </div>
         )}
 
@@ -278,7 +284,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
             </p>
             <PropertyList items={uncoveredLive} />
             <SignForm
-              defaultName={gate.accountName ?? ""}
+              defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""}
               button="Review and sign the amendment"
               busy={busy || !!signing}
               onStart={(b) => start({ ...b, listingIds: uncoveredLive.map((p) => p.listingId) })}
@@ -301,7 +307,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               </div>
             )}
             <SignForm
-              defaultName={gate.accountName ?? ""}
+              defaultName={gate.accountName ?? ""} defaultCompany={gate.accountCompany ?? ""}
               intro={masterIntro}
               button={agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
               busy={busy || !!signing}

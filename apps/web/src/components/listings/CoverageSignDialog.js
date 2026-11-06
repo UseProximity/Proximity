@@ -30,6 +30,7 @@ async function getJson(url, init) {
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const [view, setView] = useState(null);
   const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const [signing, setSigning] = useState(null);
@@ -41,6 +42,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
       .then((d) => {
         setView(d.agreement ?? null);
         setName((n) => n || d.accountName || "");
+        setCompany((c) => c || d.accountCompany || "");
       })
       .catch(() => setView({}));
   }, []);
@@ -58,7 +60,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   const start = (e) => {
     e.preventDefault();
-    setSigning({ signerName: name, signerTitle: title, authorized, listingIds: ids });
+    setSigning({ signerName: name, signerCompany: company, signerTitle: title, authorized, listingIds: ids });
   };
 
   if (signing) {
@@ -140,6 +142,18 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                   required
                 />
                 <span className="mt-1 block text-xs text-gray-500">First and last, as it should appear on the agreement.</span>
+              </label>
+              <label className="block">
+                Company <span className="text-gray-500">(optional)</span>
+                <input
+                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                  value={company}
+                  maxLength={150}
+                  autoComplete="organization"
+                  placeholder="Company or LLC name"
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+                <span className="mt-1 block text-xs text-gray-500">Leave blank if you own the properties yourself.</span>
               </label>
               <label className="block">
                 Your title

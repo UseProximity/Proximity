@@ -21,12 +21,15 @@ export async function GET(_req, { params }) {
     if (!isUuid(id)) throw new BillingError("not_found", "Agreement not found.", 404);
     const { data, error } = await supabase
       .from("landlord_agreements")
-      .select("signed_file_key, signed_exhibit_file_key")
+      .select("signed_file_key, signed_exhibit_file_key, exhibit_file_key, agreement_version:agreement_versions!version_id(file_key)")
       .eq("id", id)
       .maybeSingle();
     if (error) throw error;
     if (!data?.signed_file_key) throw new BillingError("not_found", "There is no signed copy on file.", 404);
-    const keys = [data.signed_file_key, data.signed_exhibit_file_key].filter(Boolean);
+    const keys = [
+      data.signed_file_key && { key: data.signed_file_key, originalKey: data.agreement_version?.file_key ?? null },
+      data.signed_exhibit_file_key && { key: data.signed_exhibit_file_key, originalKey: data.exhibit_file_key ?? null },
+    ].filter(Boolean);
     return pdfResponse(await combinedSignedPdf(keys), "commission-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open signed agreement");
