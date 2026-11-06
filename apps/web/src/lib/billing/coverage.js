@@ -3,8 +3,7 @@
  * they need to sign to cover more (decisions of 2026-11-04).
  *
  *   - One master agreement per landlord, with an Exhibit A listing the covered
- *     properties, signed once. Its term runs to the next September 15 and renews
- *     by itself every year.
+ *     properties, signed once. It has no end date in the app.
  *   - A property added later is covered by an Exhibit A amendment, its own signed
  *     document each time (the amendment template plus Exhibit A before and after,
  *     Wyatt 2026-11-06); the signed agreement is never changed. Coverage is per

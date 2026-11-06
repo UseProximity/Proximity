@@ -51,7 +51,6 @@ function AgreementDetail({ a }) {
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
         {a.negotiated ? " (negotiated)" : ""}
         {a.commissionRatePercent != null ? ` · ${rate(a.commissionRatePercent)}` : ""}
-        {a.termEnd ? ` · renews ${fmtDate(a.termEnd)}` : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
       </span>
     );

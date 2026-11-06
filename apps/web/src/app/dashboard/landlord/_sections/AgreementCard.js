@@ -205,7 +205,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         : "Review the agreement and sign it here. It takes about two minutes and covers the properties you have live.";
 
   const summary = signedOk
-    ? `Signed ${agreement.signedAt ? dateOnly(agreement.signedAt) : ""}${agreement.termEnd ? `. Renews automatically on ${dateOnly(agreement.termEnd)}` : ""}. Covers ${covered.length} ${covered.length === 1 ? "property" : "properties"}.`
+    ? `Signed ${agreement.signedAt ? dateOnly(agreement.signedAt) : ""}. Covers ${covered.length} ${covered.length === 1 ? "property" : "properties"}.`
     : "The agreement sets out the fee Proximity charges when it brings you a tenant.";
 
   return (
@@ -245,7 +245,6 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               {agreement.signerName ? ` by ${agreement.signerName}` : ""}
               {agreement.signerTitle ? `, ${agreement.signerTitle}` : ""}
               {agreement.signedVersionLabel ? ` (${agreement.signedVersionLabel})` : ""}.
-              {signedOk && agreement.termEnd ? ` Valid until ${dateOnly(agreement.termEnd)}, then renews automatically each year.` : ""}
               {agreement.commissionRatePercent != null ? ` Commission rate ${rate(agreement.commissionRatePercent)}.` : ""}
             </p>
             {(agreement.hasSignedFile || agreement.hasSignedExhibit) && (

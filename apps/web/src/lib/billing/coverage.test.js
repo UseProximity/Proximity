@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, cleanSignerName, coverageFor, currentTermEnd, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor, voidAgreement, voidDocument } from "./agreements.js";
+import { applyEnvelope, cleanSignerName, coverageFor, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs } from "./agreementPdf.js";
@@ -135,7 +135,7 @@ describe("master agreement with Exhibit A", () => {
     assert.equal(covered.size, 0, "an unsigned master covers nothing");
   });
 
-  it("signing it covers every property on Exhibit A, to September 15, renewing every year", async () => {
+  it("signing it covers every property on Exhibit A, with no end date", async () => {
     const db = world();
     const documenso = fakeDocumenso();
     await sign(db, documenso, { listingIds: ["L2"] });
@@ -143,15 +143,14 @@ describe("master agreement with Exhibit A", () => {
     assert.equal(await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned }), "signed");
     const row = db.tables.landlord_agreements[0];
     assert.equal(row.term_start, "2027-01-05T12:00:00.000Z");
-    assert.equal(row.term_end, "2027-09-15T12:00:00.000Z");
+    assert.equal(row.term_end, undefined);
     assert.ok(row.signed_exhibit_file_key, "the signed Exhibit A is stored");
     const { covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
     assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
-    // Past September 15 it renews by itself: still covered, nothing to sign.
+    // Years later it still counts: nothing to sign again.
     const later = await coverageFor(db, "u1", new Date("2028-01-06"));
     assert.equal(later.state.expired, false);
     assert.deepEqual([...later.covered.keys()].sort(), ["L1", "L2"]);
-    assert.equal(currentTermEnd(row.signed_at, new Date("2028-01-06")), "2028-09-15T12:00:00.000Z");
   });
 
   it("a declined master releases the properties it proposed", async () => {
@@ -334,7 +333,7 @@ describe("paper agreements recorded by an admin", () => {
     const db = world();
     await markAgreementSigned(db, { userId: "u1", signerName: "Pat", signedAt: "2026-10-10T00:00:00.000Z" });
     const row = db.tables.landlord_agreements[0];
-    assert.equal(row.term_end, termEndFor("2026-10-10T00:00:00.000Z"));
+    assert.equal(row.term_end, undefined);
     const { covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
     assert.deepEqual([...covered.keys()], ["L1"]);
   });
@@ -348,17 +347,6 @@ describe("the publish check's message", () => {
     assert.equal(gateDecision({ role: "landlord", requireAgreement: true, agreementSigned: false, sandbox: true }).allowed, true);
     const props = [{ listingId: "L3", address: "300 Draft Ave" }];
     assert.deepEqual(uncoveredAmong(props, new Map(), ["L3", "L3"]), uncovered);
-  });
-});
-
-describe("the term (Wyatt, 2026-11-05)", () => {
-  it("ends on the next September 15 in St. Louis, and renews every year", () => {
-    assert.equal(termEndFor("2026-11-05T18:00:00Z"), "2027-09-15T12:00:00.000Z");
-    assert.equal(termEndFor("2027-09-14T18:00:00Z"), "2027-09-15T12:00:00.000Z", "the day before: this September");
-    assert.equal(termEndFor("2027-09-15T18:00:00Z"), "2028-09-15T12:00:00.000Z", "on the day: next September");
-    assert.equal(termEndFor("2027-09-16T03:00:00Z"), "2028-09-15T12:00:00.000Z", "late on the 15th in St. Louis is still the 15th");
-    assert.equal(currentTermEnd("2026-11-05T18:00:00Z", new Date("2027-09-20")), "2028-09-15T12:00:00.000Z");
-    assert.equal(currentTermEnd(null), null);
   });
 });
 

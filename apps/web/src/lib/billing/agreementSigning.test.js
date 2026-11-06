@@ -453,7 +453,7 @@ describe("applyEnvelope", () => {
     assert.equal(row.signer_name, "Pat Landlord");
     assert.equal(row.signed_file_key, "billing/agreements/u1/x.pdf");
     assert.equal(row.signed_exhibit_file_key, "billing/agreements/u1/x.pdf", "the signed Exhibit A is kept too");
-    assert.equal(row.term_end, "2027-09-15T12:00:00.000Z", "the term runs to the next September 15");
+    assert.equal(row.term_end, undefined, "no end date is stored (2026-11-06)");
     assert.equal(stored[0].userId, "u1");
     assert.equal(stored.length, 2);
     // A redelivered webhook changes nothing and stores nothing again.

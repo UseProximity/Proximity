@@ -12,8 +12,8 @@
  * an admin), and the properties it proposed are released.
  *
  * Whether a master still counts: signed, and on a version a later "everyone must
- * sign again" did not invalidate. Its term runs to the next September 15 and
- * renews by itself every year (Wyatt, 2026-11-05), so it never lapses on its own. A version
+ * sign again" did not invalidate. It has no end date in the app: any term is in
+ * the agreement's own wording (Wyatt, 2026-11-06), so it never lapses on its own.
  * negotiated with one landlord is never invalidated that way: those landlords are
  * flagged for review instead (decision 14).
  *
@@ -70,30 +70,10 @@ async function readRows(build) {
   return [];
 }
 
-// The term ends on September 15 and renews by itself each year (Wyatt, 2026-11-05).
-const TERM_END_MONTH = 9;
-const TERM_END_DAY = 15;
 const stlDate = (d) => {
   const [m, day, y] = new Date(d).toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).split("/").map(Number);
   return { y, m, day };
 };
-// Noon UTC, so the date reads the same in every US time zone.
-const termDate = (year) => new Date(Date.UTC(year, TERM_END_MONTH - 1, TERM_END_DAY, 12)).toISOString();
-
-// The first term end: the next September 15 after the signing date (St. Louis time).
-export function termEndFor(signedAt) {
-  const { y, m, day } = stlDate(signedAt);
-  const before = m < TERM_END_MONTH || (m === TERM_END_MONTH && day < TERM_END_DAY);
-  return termDate(before ? y : y + 1);
-}
-
-// When the current term ends, counting the yearly renewals: never in the past.
-export function currentTermEnd(signedAt, now = new Date()) {
-  if (!signedAt) return null;
-  let end = termEndFor(signedAt);
-  while (new Date(end).getTime() <= new Date(now).getTime()) end = termDate(new Date(end).getUTCFullYear() + 1);
-  return end;
-}
 
 // Same calendar day in St. Louis: a copy's date box is only reused on the day it was filled.
 const sameDay = (a, b) => {
@@ -109,7 +89,7 @@ const sameDay = (a, b) => {
  * where they stand.
  *   valid        the master counts: the listing gate and coverage use it
  *   needsResign  signed, but a later standard version asked everyone to sign again
- *   expired      always false now: the term renews by itself every year
+ *   expired      always false: agreements have no end date in the app
  */
 export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null, now = new Date() } = {}) {
   const signed = rows.find((r) => r.status === "signed") ?? null;
@@ -212,7 +192,6 @@ export async function listAgreementDocuments(db, userId) {
       signerName: m.signer_name,
       signerTitle: m.signer_title,
       termStart: m.term_start ?? null,
-      termEnd: m.status === "signed" ? currentTermEnd(m.signed_at) : m.term_end ?? null,
       properties: Array.isArray(m.exhibit) ? m.exhibit : [],
       previous: null,
       hasSignedFile: !!m.signed_file_key,
@@ -233,7 +212,6 @@ export async function listAgreementDocuments(db, userId) {
       signerName: a.signer_name,
       signerTitle: a.signer_title,
       termStart: null,
-      termEnd: null,
       properties: Array.isArray(a.proposed_exhibit) ? a.proposed_exhibit : [],
       previous: Array.isArray(a.previous_exhibit) ? a.previous_exhibit : [],
       hasSignedFile: !!a.signed_file_key,
@@ -273,8 +251,6 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     signerTitle: signed?.signer_title ?? null,
     signedVersionLabel: signed?.agreement_version?.label ?? signed?.version ?? null,
     commissionRatePercent: signed?.commission_rate_percent == null ? null : Number(signed.commission_rate_percent),
-    // The current term, with the yearly renewals counted.
-    termEnd: currentTermEnd(signed?.signed_at ?? null),
     hasSignedFile: !!signed?.signed_file_key,
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
@@ -739,7 +715,7 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
       signed_at: signedAt,
       signer_name: signer?.name || signer?.email || "Signed in Documenso",
       ...files,
-      ...(kind === "master" && { term_start: signedAt, term_end: termEndFor(signedAt) }),
+      ...(kind === "master" && { term_start: signedAt }),
     };
     const { data: signedRow, error: signError } = await db
       .from(TABLE[kind])
@@ -873,7 +849,6 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
     signed_at: when.toISOString(),
     signer_name: name,
     term_start: when.toISOString(),
-    term_end: termEndFor(when),
     exhibit,
     ...(signerTitle && { signer_title: String(signerTitle).trim().slice(0, SIGNER_TITLE_MAX) }),
     ...(signedFileKey && { signed_file_key: signedFileKey }),

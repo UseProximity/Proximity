@@ -160,8 +160,8 @@ export async function validSignerIds(db, ids) {
     return data;
   });
   // Counts while on a version no re-sign invalidated (a negotiated version never
-  // is: those landlords are flagged for review instead). The term renews by itself
-  // every year, so a signed agreement never lapses.
+  // is: those landlords are flagged for review instead). Agreements have no end
+  // date in the app, so a signed one never lapses.
   return new Set(
     rows
       .filter((r) => r.agreement_version?.landlord_id || signatureStillValid(r.agreement_version?.published_at ?? null, cutoff))
