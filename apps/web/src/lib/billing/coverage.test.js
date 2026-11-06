@@ -439,6 +439,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
         { id: 78, type: "TEXT", recipientId: 11, fieldMeta: { label: "Name" } },
         { id: 79, type: "TEXT", recipientId: 11, fieldMeta: { label: "Company" } },
         { id: 80, type: "TEXT", recipientId: 11, fieldMeta: { label: "Owner" } },
+        { id: 81, type: "TEXT", recipientId: 11, fieldMeta: { label: "Owner (signature page)" } },
       ])
     );
     await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord", signerCompany: "  Pat   Rentals LLC " });
@@ -446,6 +447,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.deepEqual(prefill.find((p) => p.id === 78), { id: 78, value: "Pat Landlord" });
     assert.deepEqual(prefill.find((p) => p.id === 79), { id: 79, value: "Pat Rentals LLC" });
     assert.equal(prefill.find((p) => p.id === 80)?.value, "Pat Rentals LLC", "the Owner box gets the company");
+    assert.equal(prefill.find((p) => p.id === 81)?.value, "Pat Rentals LLC", "and so does a second Owner box");
     // Same company: the copy is reused. A different one: a fresh copy.
     await sign(db, documenso, { listingIds: ["L2"], signerName: "Pat Landlord", signerCompany: "Pat Rentals LLC" });
     assert.equal(documenso.calls.copies, 1);

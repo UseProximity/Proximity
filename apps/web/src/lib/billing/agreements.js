@@ -496,6 +496,13 @@ async function landlordNameOf(db, user) {
  * the admin moved, or a Number box for the rate, is filled correctly), falling back
  * to the ids saved when the version was checked.
  */
+// The ids of every box of one kind: all of them when the template was read, else the one saved.
+const idsOf = (boxes, kind) => {
+  const all = boxes.allIds?.[kind];
+  if (all?.length) return all;
+  return boxes[kind]?.id ? [boxes[kind].id] : [];
+};
+
 async function templateBoxes(documenso, version) {
   const saved = {
     title: version.provider_title_field_id ? { id: version.provider_title_field_id, type: "text" } : null,
@@ -508,9 +515,11 @@ async function templateBoxes(documenso, version) {
     license: version.provider_license_field_id ? { id: version.provider_license_field_id, type: "text" } : null,
   };
   try {
-    const live = templateFieldSummary(await documenso.getEnvelope(version.provider_template_id))?.fields;
+    const summary = templateFieldSummary(await documenso.getEnvelope(version.provider_template_id));
+    const live = summary?.fields;
     if (!live) return saved;
     return {
+      allIds: summary.allIds,
       title: live.title ?? saved.title,
       rate: live.rate ?? saved.rate,
       address: live.address ?? saved.address,
@@ -609,11 +618,13 @@ async function createDocument(db, documenso, { user, title, name, company = "", 
     titleFieldId: boxes.title?.id ?? null,
     signerTitle: title,
     // The commission rate is written into the agreement's text (Wyatt, 2026-11-05), so no box is filled for it.
+    // Every box of each kind gets its value (a template may repeat one).
     prefill: [
-      { id: boxes.address?.id, value: address },
-      { id: boxes.name?.id, value: name },
-      { id: boxes.company?.id, value: company },
-      { id: boxes.owner?.id, value: company || name },
+      ...idsOf(boxes, "title").filter((id) => id !== boxes.title?.id).map((id) => ({ id, value: title })),
+      ...idsOf(boxes, "address").map((id) => ({ id, value: address })),
+      ...idsOf(boxes, "name").map((id) => ({ id, value: name })),
+      ...idsOf(boxes, "company").map((id) => ({ id, value: company })),
+      ...idsOf(boxes, "owner").map((id) => ({ id, value: company || name })),
     ],
     // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
     autofill: { name, email: user.email, date: fmtDate(now) },

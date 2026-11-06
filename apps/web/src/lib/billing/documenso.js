@@ -92,7 +92,11 @@ export function templateFieldSummary(envelope) {
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
   const count = (type) => mine.filter((f) => f.type === type).length;
   const labelOf = (f) => String(f.fieldMeta?.label ?? "").trim();
-  const labelled = (types, re, not = null) => mine.find((f) => types.includes(f.type) && re.test(labelOf(f)) && !(not && not.test(labelOf(f))));
+  const matches = (types, re, not) => (f) => types.includes(f.type) && re.test(labelOf(f)) && !(not && not.test(labelOf(f)));
+  const labelled = (types, re, not = null) => mine.find(matches(types, re, not));
+  // Every box with that kind of label: a template may ask for the same value twice
+  // (the owner on page 1 and on the signature page).
+  const allLabelled = (types, re, not = null) => mine.filter(matches(types, re, not)).map((f) => f.id);
   const ref = (f) => (f ? { id: f.id, type: f.type === "NUMBER" ? "number" : "text", readOnly: f.fieldMeta?.readOnly === true } : null);
 
   // The commission rate: a Text or Number box labelled "Commission" or "Rate", or
@@ -131,6 +135,14 @@ export function templateFieldSummary(envelope) {
     licenseFieldId: license?.id ?? null,
     fields: { title: ref(title), rate: ref(rate), address: ref(address), name: ref(fullName), company: ref(company), owner: ref(owner), brokerage: ref(brokerage), license: ref(license) },
     rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
+    // Every box each value goes in, by kind.
+    allIds: {
+      title: allLabelled(["TEXT"], /\btitle\b/i),
+      address: allLabelled(["TEXT"], /\baddress\b/i),
+      name: allLabelled(["TEXT"], /\bname\b/i, /\b(company|business|owner|landlord|property|brokerage|licen[cs]ee?)\b/i),
+      company: allLabelled(["TEXT"], /\b(company|business)\b/i),
+      owner: allLabelled(["TEXT"], /\b(owner|landlord)\b/i),
+    },
     ok: !!signer && count("SIGNATURE") > 0,
   };
 }
