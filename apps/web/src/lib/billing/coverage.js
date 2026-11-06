@@ -126,7 +126,10 @@ export async function loadLandlordProperties(db, userId) {
       // Live for this landlord: the property is published and either it is theirs or
       // one of their own offerings on it is.
       const live = published && (propertyOwner || mine.some((m) => m.published));
-      return { listingId: l.id, address: displayAddress(l), units, unitList, leaseUnits, owner: propertyOwner, live, draft: !published };
+      // Not live for this landlord is a draft for Exhibit A, including a published
+      // building where only their own offerings are unpublished (renters), which
+      // otherwise fell off the document (Wyatt, 2026-11-07).
+      return { listingId: l.id, address: displayAddress(l), units, unitList, leaseUnits, owner: propertyOwner, live, draft: !live };
     })
     .sort(byAddress);
 }

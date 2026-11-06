@@ -400,6 +400,21 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
     assert.match(documenso.calls.lastCopy.prefill.find((p) => p.id === 2).value, /500 Shared Blvd, St\. Louis, Missouri 63130\nUnits: 1A, 1B/);
   });
 
+  it("a published building where the renter's own units are not live yet still goes on, with their units", async () => {
+    const db = world();
+    db.tables.listings.push(listing("L6", "600 Shared Blvd"));
+    const unpub = (id, name) => ({ id, listing_id: "L6", name, published_at: null, deleted_at: null });
+    db.tables.unit_leases.push(
+      { id: "Q6", owner_id: "u1", published_at: null, deleted_at: null, listing_units: unpub("U61", "01") },
+      { id: "Q7", owner_id: "u1", published_at: null, deleted_at: null, listing_units: unpub("U62", "02") }
+    );
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L6", wholeBuilding: false, units: ["01", "02"] }] });
+    const entry = db.tables.landlord_agreements[0].exhibit.find((e) => e.listingId === "L6");
+    assert.deepEqual(entry, { listingId: "L6", address: "600 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["01", "02"] });
+    assert.match(documenso.calls.lastCopy.prefill.find((p) => p.id === 2).value, /600 Shared Blvd, St\. Louis, Missouri 63130\nUnits: 01, 02/);
+  });
+
   it("a lease on another unit there needs an amendment adding that unit", async () => {
     const db = renter();
     const documenso = fakeDocumenso();
