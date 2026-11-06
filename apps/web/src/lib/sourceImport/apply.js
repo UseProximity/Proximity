@@ -31,7 +31,7 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
-import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
+import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
 
 const CHURN_FRACTION = 0.2;
@@ -136,6 +136,33 @@ export function matchUnits(snapUnits, dbUnits) {
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
 const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y) => x - y)) === JSON.stringify([...(b ?? [])].map(Number).sort((x, y) => x - y));
+
+// ---------------------------------------------------------------- the listing gate
+
+/*
+ * A change that puts a lease in front of students: a new published lease, or
+ * a withdrawn one coming back. Those pass the same listing gate a landlord's
+ * publish does (payment method, commission agreement, coverage), Wyatt
+ * 2026-11-06; until then they wait for the landlord.
+ */
+export function putsLeaseLive(c) {
+  const d = c.detail ?? {};
+  if (c.kind === "lease_new") return !d.draft;
+  if (c.kind === "unit_relisted") return true;
+  return d.op === "lease_update" && d.patch?.unavailable === false;
+}
+
+/* The gate for one owner and listing. Fails closed: an error holds the change. */
+async function gateFor(userId, listingId) {
+  if (!userId) return { allowed: true };
+  try {
+    const g = await checkListingGate(supabase, userId, { listingIds: [listingId] });
+    return { allowed: !!g.allowed, message: g.allowed ? null : gateMessage(g.missing ?? [], g.uncovered ?? []) };
+  } catch (err) {
+    console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
+    return { allowed: false, message: "Could not check the listing gate; held for the landlord." };
+  }
+}
 
 // ---------------------------------------------------------------- planning
 
@@ -817,6 +844,20 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     }
   }
 
+  // A lease going live passes the listing gate, as the landlord's own publish
+  // would; the importer and sync used to skip it.
+  if (mode === "sync" && changes.some((c) => c.auto && putsLeaseLive(c))) {
+    const gate = await gateFor(primaryOwner(state), listingId);
+    if (!gate.allowed) {
+      for (const c of changes.filter(putsLeaseLive)) {
+        c.auto = false;
+        c.judge = false;
+        c.gated = true;
+        c.note = `waiting for the landlord to publish: ${gate.message}`;
+      }
+    }
+  }
+
   // The model's second opinion on the changes the rules would not apply.
   // Never on specs (beds, baths, size, name): those are the landlord's call,
   // then admin's (PRD v3).
@@ -896,9 +937,16 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
+  // Accepting a change that puts a lease live is a publish: same gate.
+  const live = (events ?? []).filter((e) => !e.applied && putsLeaseLive(e));
+  const gate = live.length ? await gateFor(userId, listingId) : { allowed: true };
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
+    if (!gate.allowed && putsLeaseLive(e)) {
+      results.push({ id: e.id, ok: false, error: gate.message });
+      continue;
+    }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
       const note = await executeChange(change, { state, userId: userId ?? primaryOwner(state) });
