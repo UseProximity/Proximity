@@ -253,8 +253,13 @@ describe("template checks", () => {
       licenseFieldId: null,
       fields: { title: { id: 3, type: "text", readOnly: false }, rate: null, address: null, name: null, company: null, owner: null, brokerage: null, license: null },
       rateReadOnly: null,
-      allIds: { title: [3], address: [], address1: [], address2: [], email: [], name: [], owner: [], company: [], exhibit: [], exhibitBefore: [] },
-      missing: ['a Text box labelled "Exhibit A"'],
+      allIds: { title: [3], address: [], address1: [], address2: [], email: [], name: [], owner: [], company: [], exhibit: [], agreementDate: [], exhibitBefore: [] },
+      missing: ['[EXHIBIT A] (a Text box labelled "EXHIBIT A")'],
+      boxes: [
+        { type: "SIGNATURE", label: "" },
+        { type: "DATE", label: "" },
+        { type: "TEXT", label: "Title" },
+      ],
       ok: false,
     });
   });

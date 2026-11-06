@@ -249,11 +249,33 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
   const [session, setSession] = useState(null);
   const [error, setError] = useState(null);
   const [preparing, setPreparing] = useState(false);
+  // An Addendum to Exhibit A with the agreement's saved details: only the properties
+  // are asked, then Documenso, where they only sign (Wyatt, 2026-11-07).
+  const [addendum, setAddendum] = useState(false);
   const prepared = useRef(null);
   const closeRef = useRef(null);
+  const ids = listingIds.join(",");
 
+  // What this document is and which properties go on it, read up front.
   useEffect(() => {
     closeRef.current?.focus();
+    let live = true;
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}`)
+      .then((r) => {
+        if (!live) return;
+        if (r.kind === "none") return onFinished("signed");
+        setPreview(r);
+        setChoices(Object.fromEntries(r.properties.map((p) => [p.listingId, p.choice])));
+        if (r.kind === "amendment" && r.signingAs) {
+          setAddendum(true);
+          setStep(1);
+        }
+      })
+      .catch((e) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -263,17 +285,27 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
     return () => window.removeEventListener("keydown", onKey);
   }, [phase, onFinished]);
 
-  const ids = listingIds.join(",");
-  const loadPreview = async () => {
+  const toExhibit = () => {
+    setError(null);
+    if (preview) setStep(1);
+  };
+
+  // An addendum opens straight from the properties step, with the saved details.
+  const openAddendum = async () => {
+    setPhase("opening");
     setError(null);
     try {
-      const r = await call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}`);
-      if (r.kind === "none") return onFinished("signed");
-      setPreview(r);
-      setChoices((old) => Object.fromEntries(r.properties.map((p) => [p.listingId, old[p.listingId] ?? p.choice])));
-      setStep(1);
-    } catch (e) {
-      setError(e.message);
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, exhibit: exhibit() }, retries: 20 });
+      if (r.alreadySigned) return onFinished("signed");
+      setSession(r);
+      setPhase("signing");
+    } catch (err) {
+      // An agreement signed before details were saved: ask for them after all.
+      if (/Confirm your details/.test(err.message)) {
+        setAddendum(false);
+        setStep(0);
+      } else setError(err.message);
+      setPhase("form");
     }
   };
 
@@ -360,7 +392,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
             Cancel
           </button>
         </div>
-        <Progress step={step} />
+        {!addendum && <Progress step={step} />}
 
         {phase === "opening" ? (
           <div className="flex flex-col items-center gap-3 px-5 py-16 text-center">
@@ -379,7 +411,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                   <span>I am authorised to sign this agreement for the landlord or company that owns these listings.</span>
                 </label>
                 <div className="flex justify-end">
-                  <button type="button" className={PRIMARY} disabled={!signer.ready || !authorized} onClick={loadPreview}>
+                  <button type="button" className={PRIMARY} disabled={!signer.ready || !authorized || !preview} onClick={toExhibit}>
                     Continue
                   </button>
                 </div>
@@ -388,9 +420,20 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
 
             {step === 1 && preview && (
               <>
+                {addendum && preview.signingAs && (
+                  <p className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                    Signing as {preview.signingAs.name}
+                    {preview.signingAs.title ? `, ${preview.signingAs.title}` : ""}
+                    {preview.signingAs.company ? ` (${preview.signingAs.company})` : ""}, as on your agreement. Everything but your
+                    signature is filled in for you.{" "}
+                    <button type="button" className="font-medium text-red-700 underline" onClick={() => { setAddendum(false); setStep(0); }}>
+                      Not you? Update details
+                    </button>
+                  </p>
+                )}
                 <p>
                   {isAmendment
-                    ? "These properties are not fully on your agreement yet. For each, choose the whole building or the units to add."
+                    ? "These properties are not fully on your agreement yet. Choose the whole building or the units to add for each; the addendum lists only what you add."
                     : "Exhibit A lists the properties this agreement covers. For each, choose the whole building or the units it covers."}
                 </p>
                 <ul className="space-y-3">
@@ -400,11 +443,15 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                 </ul>
                 {exhibitProblem && <p className="text-xs text-red-700">{exhibitProblem}</p>}
                 <div className="flex justify-between">
-                  <button type="button" className={BUTTON} onClick={() => setStep(0)}>
-                    Back
-                  </button>
-                  <button type="button" className={PRIMARY} disabled={!!exhibitProblem} onClick={confirmExhibit}>
-                    Continue
+                  {addendum ? (
+                    <span />
+                  ) : (
+                    <button type="button" className={BUTTON} onClick={() => setStep(0)}>
+                      Back
+                    </button>
+                  )}
+                  <button type="button" className={PRIMARY} disabled={!!exhibitProblem} onClick={addendum ? openAddendum : confirmExhibit}>
+                    {addendum ? "Open the addendum" : "Continue"}
                   </button>
                 </div>
               </>

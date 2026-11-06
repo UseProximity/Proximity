@@ -14,7 +14,9 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
  * Start signing inside the app: the master agreement with Exhibit A, or an
  * updated Exhibit A, whichever covers the properties asked for.
  * Body: { signerName, signerTitle, signerCompany?, signerEmail?, signerAddress1?, signerAddress2?,
- *         authorized: true, listingIds?: [uuid], exhibit?, licenseDisclosure, prepare? }.
+ *         authorized: true, listingIds?: [uuid], exhibit?, licenseDisclosure, prepare?, fromAgreement? }.
+ *       fromAgreement: an Addendum to Exhibit A signed with the details and license
+ *       answer saved on the agreement (no form): only listingIds and exhibit count.
  *       exhibit: the Exhibit A step's choice per property ({ listingId, include,
  *       wholeBuilding, units }); left out, every property gets its default.
  *       The optional details fill the template's Company, Owner, Email and Address boxes.
@@ -47,8 +49,11 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const prepare = body.prepare === true;
+    // An Addendum to Exhibit A uses what the agreement was signed with: no form,
+    // and the license answer already given then.
+    const fromAgreement = body.fromAgreement === true;
     // Checked before anything else, so an incomplete answer never opens a document.
-    const disclosure = prepare ? null : cleanDisclosure(body.licenseDisclosure);
+    const disclosure = prepare || fromAgreement ? null : cleanDisclosure(body.licenseDisclosure);
     const { documenso, signingAvailable, options } = agreementServices();
     if (!signingAvailable) {
       throw new BillingError("not_available", "Signing in the app is not set up yet. Email info@useproximity.org and we will send you the agreement.", 503);
@@ -69,6 +74,7 @@ export async function POST(req) {
       listingIds: ownListingIds(body.listingIds),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].
       exhibit: Array.isArray(body.exhibit) ? body.exhibit : null,
+      fromAgreement,
       prepare,
       ...options,
     });

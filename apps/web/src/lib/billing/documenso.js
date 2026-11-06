@@ -107,6 +107,8 @@ export const BOX_RULES = {
   company: [/\b(company|business)\b/i, null],
   // The covered properties, one per line; on an amendment, the list after it.
   exhibit: [/\bexhibit\s*a\b/i, /\b(before|previous|old|prior)\b/i],
+  // The agreement's date ("Effective Date") on an addendum: [AGREEMENT DATE].
+  agreementDate: [/\b(agreement|effective)\s*date\b/i, null],
   // An amendment's list before it.
   exhibitBefore: [/\bexhibit\s*a\b.*\b(before|previous|old|prior)\b|\b(before|previous|old|prior)\b.*\bexhibit\s*a\b/i, null],
 };
@@ -195,9 +197,11 @@ export function templateFieldSummary(envelope) {
     // Ready to go live: a signer with a Signature box, and the "Exhibit A" Text box
     // the covered properties go in (every envelope is one document, Wyatt 2026-11-06).
     missing: [
-      ...(!signer || count("SIGNATURE") === 0 ? ["a Signature box for the signer"] : []),
-      ...(!kind("exhibit") ? ['a Text box labelled "Exhibit A"'] : []),
+      ...(!signer || count("SIGNATURE") === 0 ? ["[SIGNATURE] (a Signature box)"] : []),
+      ...(!kind("exhibit") ? ['[EXHIBIT A] (a Text box labelled "EXHIBIT A")'] : []),
     ],
+    // Every box on the template, for the admin's "boxes found" list: its type and label.
+    boxes: mine.map((f) => ({ type: f.type, label: labelOf(f) })),
     ok: !!signer && count("SIGNATURE") > 0 && !!kind("exhibit"),
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
 
@@ -37,6 +37,19 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
       const r = await postJson(`/api/admin/billing/agreement-versions/${version.id}`, { action: "check" });
       setSummary(r.summary);
     });
+
+  // Show which boxes the uploaded document has straight away (its placeholders
+  // became boxes on upload), without waiting for "Check signature boxes".
+  useEffect(() => {
+    if (!version.connected) return;
+    let live = true;
+    postJson(`/api/admin/billing/agreement-versions/${version.id}`, { action: "check" })
+      .then((r) => live && setSummary(r.summary))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [version.id, version.connected]);
 
   // Only the standard agreement asks the re-sign question: an amendment never makes
   // anyone sign again, and a negotiated version is signed by its one landlord.
@@ -86,13 +99,22 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
           <div className="mt-1 space-y-1 text-xs">
             <p className={summary.ok ? "text-green-700" : "text-red-700"}>
               {summary.ok
-                ? `Found ${summary.signature} signature, ${summary.name} name and ${summary.date} date box(es). Filled in for each landlord: ${
-                    [summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name"]
-                      .filter(Boolean)
-                      .join(", ") || "none"
-                  }.`
-                : `Still needed: ${(summary.missing ?? ["a Signature box for the signer"]).join(" and ")}. Add it in Documenso, save, then check again.`}
+                ? "Ready: it has a signature and an Exhibit A box."
+                : `Still needed: ${(summary.missing ?? ["[SIGNATURE]"]).join(" and ")}. Add the placeholder and upload again, or place the box in Documenso and check again.`}
             </p>
+            {summary.boxes?.length > 0 && (
+              <div>
+                <p className="text-gray-500">Boxes found on this document:</p>
+                <ul className="mt-0.5 flex flex-wrap gap-1">
+                  {summary.boxes.map((b, i) => (
+                    <li key={i} className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-gray-700">
+                      {b.label ? `[${b.label}]` : `[${b.type}]`}
+                      <span className="ml-1 font-sans text-gray-400">{b.type === "TEXT" ? "text" : b.type.toLowerCase()}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </Step>
@@ -129,39 +151,46 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
  * (BOX_RULES in lib/billing/documenso.js); Documenso's own box types are used by
  * type. Shown in each version's setup and above the upload form.
  */
-const GUIDE_ROWS = [
-  { ph: "[Signature]", box: "Signature", fills: "The landlord signs here.", need: "Required" },
-  { ph: "[Exhibit A]", box: "Text, \"Exhibit A\"", fills: "Every covered property, one per line. Type it at the top of the last page: the box runs down the page.", need: "Required" },
-  { ph: "[Date]", box: "Date", fills: "The signing date, like 11/06/2026.", need: "Optional" },
-  { ph: "[Initials]", box: "Initials", fills: "The landlord initials here.", need: "Optional" },
-  { ph: "[Name]", box: "Text, \"Name\"", fills: "Their full name.", need: "Optional" },
-  { ph: "[Title]", box: "Text, \"Title\"", fills: "Their title (Owner, Property Manager).", need: "Optional" },
-  { ph: "[Company]", box: "Text, \"Company\"", fills: "The company they sign for (blank if none).", need: "Optional" },
-  { ph: "[Owner]", box: "Text, \"Owner\"", fills: "The company, or their name when there is no company.", need: "Optional" },
-  { ph: "[Email]", box: "Text, \"Email\"", fills: "Their email.", need: "Optional" },
-  { ph: "[Address 1]", box: "Text, \"Address 1\"", fills: "Street, e.g. 8151 Clayton Rd, Suite 301.", need: "Optional" },
-  { ph: "[Address 2]", box: "Text, \"Address 2\"", fills: "City, state and ZIP, e.g. St. Louis, MO 63117.", need: "Optional" },
+// The placeholders, exactly as typed in the document (Wyatt, 2026-11-07). Upper or
+// lower case both work. `box` is the Documenso box it becomes and `label` the
+// label to give that box when placing it by hand instead.
+const AGREEMENT_ROWS = [
+  { ph: "[DATE]", box: "Date", label: "(none)", fills: "The signing date, like 11/07/2026. Pad it with spaces inside the brackets if it sits mid-sentence.", need: "Optional" },
+  { ph: "[COMPANY NAME]", box: "Text", label: "COMPANY NAME", fills: "Their company, from the signing form (blank if none).", need: "Optional" },
+  { ph: "[SIGNATURE]", box: "Signature", label: "(none)", fills: "The landlord signs here.", need: "Required" },
+  { ph: "[REPRESENTATIVE NAME]", box: "Text", label: "REPRESENTATIVE NAME", fills: "Their full name.", need: "Optional" },
+  { ph: "[REPRESENTATIVE TITLE]", box: "Text", label: "REPRESENTATIVE TITLE", fills: "Their title.", need: "Optional" },
+  { ph: "[ADDRESS 1]", box: "Text", label: "ADDRESS 1", fills: "Street and suite, e.g. 8151 Clayton Rd, Suite 301. Use it once.", need: "Optional" },
+  { ph: "[ADDRESS 2]", box: "Text", label: "ADDRESS 2", fills: "City, state and ZIP, e.g. St. Louis, MO 63117 (the line below Address 1).", need: "Optional" },
+  { ph: "[EMAIL]", box: "Text", label: "EMAIL", fills: "Their email.", need: "Optional" },
+  { ph: "[EXHIBIT A]", box: "Text", label: "EXHIBIT A", fills: "Every property: address, then Whole building or Units. Put it where the list starts; the box runs down to the next text below.", need: "Required" },
+  { ph: "[INITIALS]", box: "Initials", label: "(none)", fills: "The landlord initials here.", need: "Optional" },
 ];
-const AMENDMENT_ROWS = [
-  { ph: "[Exhibit A]", box: "Text, \"Exhibit A\"", fills: "The list after this amendment, added properties marked. With no [Exhibit A before], both lists go here.", need: "Required" },
-  { ph: "[Exhibit A before]", box: "Text, \"Exhibit A before\"", fills: "The list before this amendment.", need: "Optional" },
+const ADDENDUM_ROWS = [
+  { ph: "[AGREEMENT DATE]", box: "Text", label: "AGREEMENT DATE", fills: "The date the original agreement was signed (its Effective Date).", need: "Optional" },
+  ...AGREEMENT_ROWS.filter((r) => !["[EXHIBIT A]"].includes(r.ph)).map((r) =>
+    r.ph === "[DATE]" ? { ...r, fills: "The date the addendum is signed." } : r.box === "Text" ? { ...r, fills: `${r.fills.replace(/, from the signing form/, "")} Taken from the original agreement.` } : r
+  ),
+  { ph: "[EXHIBIT A]", box: "Text", label: "EXHIBIT A", fills: "Only the properties (or units) this addendum adds. Put it where the list goes; the box runs down to the next text below.", need: "Required" },
 ];
 
 export function FieldGuide({ kind = "master" }) {
-  const rows = kind === "amendment" ? GUIDE_ROWS.map((r) => (r.ph === "[Exhibit A]" ? AMENDMENT_ROWS[0] : r)).concat(AMENDMENT_ROWS.slice(1)) : GUIDE_ROWS;
+  const rows = kind === "amendment" ? ADDENDUM_ROWS : AGREEMENT_ROWS;
   return (
     <div className="space-y-2 text-xs text-gray-600">
       <p>
-        <strong>Easiest:</strong> type these placeholders in the document (in Word) where each value goes, export it to PDF
-        and upload it. We put the matching Documenso box exactly where each placeholder is, already labelled and set up,
-        and paint the placeholder out. Each envelope is one document, so Exhibit A goes at the end of this PDF.
+        Type each placeholder below, brackets included, exactly where its value goes in the{" "}
+        {kind === "amendment" ? "Addendum to Exhibit A" : "agreement"}, export it to PDF and upload it. We paint each one out
+        and put the box from the second column in its place, already set up. Placing a box by hand instead (a scanned PDF,
+        say): use that box type and give it the label in the third column, in the box&apos;s settings.
       </p>
       <div className="overflow-x-auto rounded-md border border-gray-200">
         <table className="w-full text-left">
           <thead className="bg-gray-50 text-gray-500">
             <tr>
-              <th className="px-2 py-1 font-medium">Type in the PDF</th>
-              <th className="px-2 py-1 font-medium">Becomes (box, label)</th>
+              <th className="px-2 py-1 font-medium">Type in the document</th>
+              <th className="px-2 py-1 font-medium">Becomes this box</th>
+              <th className="px-2 py-1 font-medium">Label (placing by hand)</th>
               <th className="px-2 py-1 font-medium">Filled with</th>
               <th className="px-2 py-1 font-medium" />
             </tr>
@@ -171,6 +200,7 @@ export function FieldGuide({ kind = "master" }) {
               <tr key={r.ph}>
                 <td className="px-2 py-1 font-mono text-gray-900">{r.ph}</td>
                 <td className="px-2 py-1 text-gray-700">{r.box}</td>
+                <td className="px-2 py-1 font-mono text-gray-700">{r.label}</td>
                 <td className="px-2 py-1">{r.fills}</td>
                 <td className={`px-2 py-1 ${r.need === "Required" ? "font-semibold text-red-700" : "text-gray-400"}`}>{r.need}</td>
               </tr>
@@ -179,15 +209,11 @@ export function FieldGuide({ kind = "master" }) {
         </table>
       </div>
       <ul className="list-disc space-y-0.5 pl-4">
-        <li>Make each placeholder about as wide as its value: the box takes its size (short boxes let longer text run past their edge).</li>
-        <li>A placeholder can repeat ([Owner] on page 1 and on the signature page): each becomes a box, and all are filled.</li>
-        <li>Any other text in [brackets], like a drafting note, is left exactly as typed.</li>
-        <li>No placeholder for the commission rate: write it into the agreement.</li>
-        <li>
-          A scanned or flattened PDF has no readable text: place the boxes by hand in Documenso instead, using the labels in
-          the middle column (set in each box&apos;s settings).
-        </li>
-        <li>A version cannot go live without a Signature box and an &quot;Exhibit A&quot; box. A PDF with both placeholders is ready to go live as soon as it uploads.</li>
+        <li>A placeholder can repeat (the same box shows in each place).</li>
+        <li>Any other text in [brackets], like a drafting note, is left as typed.</li>
+        <li>Remove highlighting before exporting: the placeholder is painted white, a highlight around it would show.</li>
+        <li>Everything is filled from the landlord&apos;s signing form; in the document they only sign (and initial).</li>
+        <li>It cannot go live without [SIGNATURE] and [EXHIBIT A]. After upload, check the list of boxes found below.</li>
       </ul>
     </div>
   );

@@ -43,14 +43,14 @@ import { fmtDate } from "./exhibitPdf.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, resolvePublishedIds } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
-const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, created_at, updated_at, ${VERSION_JOIN}`;
+const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
 // Before the coverage migration (202611050001).
 const PRE_COVERAGE_COLUMNS =
   "id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, published_at)";
 // Before the agreement_versions migration: the columns 202610310001 created.
 const LEGACY_COLUMNS =
   "id, user_id, version, status, signed_at, signer_name, signed_file_key, provider, provider_envelope_id, created_at, updated_at";
-const AMENDMENT_COLUMNS = `id, user_id, agreement_id, version_id, status, previous_exhibit, proposed_exhibit, exhibit_file_key, provider_envelope_id, signed_file_key, signed_exhibit_file_key, signer_name, signer_title, authorized_at, signed_at, ended_reason, ended_at, license_prefill, created_at, updated_at, ${VERSION_JOIN}`;
+const AMENDMENT_COLUMNS = `id, user_id, agreement_id, version_id, status, previous_exhibit, proposed_exhibit, exhibit_file_key, provider_envelope_id, signed_file_key, signed_exhibit_file_key, signer_name, signer_title, authorized_at, signed_at, ended_reason, ended_at, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
 
 const UNIQUE_VIOLATION = "23505";
 const SIGNER_TITLE_MAX = 100;
@@ -357,8 +357,8 @@ function exhibitSelections(list) {
     if (!s || typeof s.listingId !== "string") continue;
     out.set(s.listingId, {
       include: s.include !== false,
-      wholeBuilding: s.wholeBuilding === true,
-      units: Array.isArray(s.units) ? s.units.filter((u) => typeof u === "string").map((u) => u.trim()).filter(Boolean).slice(0, 200) : [],
+      ...(typeof s.wholeBuilding === "boolean" && { wholeBuilding: s.wholeBuilding }),
+      ...(Array.isArray(s.units) && { units: s.units.filter((u) => typeof u === "string").map((u) => u.trim()).filter(Boolean).slice(0, 200) }),
     });
   }
   return out;
@@ -440,18 +440,21 @@ export async function startSigning(
     storeExhibit,
     landlordAddress,
     prepare = false,
+    fromAgreement = false,
     ...options
   }
 ) {
-  if (authorized !== true) {
+  // An Addendum to Exhibit A signed with the details saved on the agreement
+  // (`fromAgreement`, Wyatt 2026-11-07): name, title, company, email and address
+  // are not asked again; they are read from the agreement below.
+  if (!fromAgreement && authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
   }
-  const title = cleanSignerTitle(signerTitle);
+  let title = fromAgreement ? null : cleanSignerTitle(signerTitle);
   // Older clients send no name: the account name, which may be one word.
-  const name = signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
+  let name = fromAgreement ? null : signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
   // What the landlord typed on the form (pre-filled with what we know), for the boxes.
-  const details = cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2, city: signerCity });
-  const company = details.company;
+  let details = fromAgreement ? null : cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2, city: signerCity });
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
   return withSettingsLock(
@@ -501,6 +504,19 @@ export async function startSigning(
       if (!version?.provider_template_id || !version.provider_recipient_id) {
         const what = plan.kind === "amendment" ? "The Exhibit A amendment" : "The commission agreement";
         throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
+      }
+
+      // An addendum with the agreement's saved details; anything else, or an
+      // agreement signed before details were saved, asks for them on the popup.
+      if (fromAgreement) {
+        const saved = plan.kind === "amendment" ? state.signed : null;
+        if (!saved?.signer_details || !saved.signer_name) {
+          throw new BillingError("details_required", "Confirm your details to sign.", 409);
+        }
+        const d = saved.signer_details;
+        name = saved.signer_name;
+        title = saved.signer_title ?? "";
+        details = cleanSignerDetails({ company: d.company, email: d.email, address1: d.street, address2: d.suite, city: d.city });
       }
 
       // Reuse the copy in progress when it is exactly this document: same version,
@@ -638,6 +654,7 @@ async function templateBoxes(documenso, version) {
 
 async function createDocument(db, documenso, { user, title, name, details = {}, plan, version, master, now, storeExhibit, landlordAddress }) {
   const company = details.company ?? "";
+  const savedDetails = { company, email: details.email ?? "", street: details.street ?? "", suite: details.suite ?? "", city: details.city ?? "" };
   const nowIso = now.toISOString();
   const isAmendment = plan.kind === "amendment";
 
@@ -654,6 +671,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         proposed_exhibit: plan.entries,
         signer_title: title,
         authorized_at: nowIso,
+        signer_details: savedDetails,
       }
     : {
         user_id: user.id,
@@ -664,6 +682,8 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         provider: "documenso",
         signer_title: title,
         authorized_at: nowIso,
+        // Kept so an Addendum to Exhibit A fills the same signature block (2026-11-07).
+        signer_details: savedDetails,
         exhibit: plan.entries,
         commission_rate_percent: version.commission_rate_percent ?? null,
       };
@@ -706,13 +726,15 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     const what = isAmendment ? "The Exhibit A amendment" : "The commission agreement";
     throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
   }
-  const before = new Set((plan.previous ?? []).map((e) => e.listingId));
-  const added = isAmendment ? new Set(plan.entries.filter((e) => !before.has(e.listingId)).map((e) => e.listingId)) : null;
-  const hasBeforeBox = idsOf(boxes, "exhibitBefore").length > 0;
-  const exhibitBoxText =
-    isAmendment && !hasBeforeBox
-      ? `Before this amendment:\n${exhibitText(plan.previous ?? [])}\n\nAfter this amendment:\n${exhibitText(plan.entries, { added })}`
-      : exhibitText(plan.entries, { added });
+  // An Addendum to Exhibit A lists only what it adds (Wyatt, 2026-11-07): new
+  // properties, and for a property already on it only the units being added.
+  const previousBy = new Map((plan.previous ?? []).map((e) => [e.listingId, e]));
+  const addedOnly = (plan.added ?? []).map((e) => {
+    const was = previousBy.get(e.listingId);
+    if (!was || e.wholeBuilding !== false) return e;
+    return { ...e, units: (e.units ?? []).filter((u) => !(was.units ?? []).includes(u)) };
+  });
+  const exhibitBoxText = exhibitText(isAmendment ? addedOnly : plan.entries);
   const exhibitBeforeText = exhibitText(plan.previous ?? []);
   // The address as typed on the form; without one, the Stripe billing address.
   const { line1, line2 } = addressLines(details);
@@ -733,6 +755,8 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
       ...["company", "owner", "email", "address1", "address2"].flatMap((k) => idsOf(boxes, k).map((id) => ({ id, value: values[k] }))),
       ...idsOf(boxes, "exhibit").map((id) => ({ id, value: exhibitBoxText })),
       ...idsOf(boxes, "exhibitBefore").map((id) => ({ id, value: exhibitBeforeText })),
+      // The agreement's own date ("Effective Date"): an addendum's agreement, or today on the agreement itself.
+      ...idsOf(boxes, "agreementDate").map((id) => ({ id, value: fmtDate(isAmendment ? master?.signed_at ?? now : now) })),
     ],
     // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
     autofill: { name, email: details.email || user.email, date: fmtDate(now) },

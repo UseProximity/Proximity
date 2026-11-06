@@ -220,9 +220,10 @@ export function missingUnits(p, row) {
  */
 export function exhibitChoice(p, s, { locked = false } = {}) {
   const canWhole = !!p.owner;
-  const wholeBuilding = canWhole && (s ? s.wholeBuilding === true : true);
+  // Anything the choice does not say keeps the default.
+  const wholeBuilding = canWhole && (typeof s?.wholeBuilding === "boolean" ? s.wholeBuilding : true);
   const known = new Set(p.units ?? []);
-  const picked = s && Array.isArray(s.units) ? s.units.filter((u) => known.has(u)) : p.leaseUnits ?? [];
+  const picked = Array.isArray(s?.units) ? s.units.filter((u) => known.has(u)) : p.leaseUnits ?? [];
   const units = wholeBuilding ? [] : [...new Set([...picked, ...(locked ? p.leaseUnits ?? [] : [])])].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
   return { include: locked || !s || s.include !== false, wholeBuilding, units };
 }

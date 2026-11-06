@@ -330,6 +330,53 @@ describe("negotiated versions", () => {
   });
 });
 
+describe("Addendum to Exhibit A from the agreement's saved details (2026-11-07)", () => {
+  it("fills the signature block from the agreement, lists only what it adds, with the agreement's date", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, {
+      listingIds: ["L2"],
+      signerName: "Pat Landlord",
+      signerCompany: "Pat Rentals LLC",
+      signerEmail: "leasing@patrentals.com",
+      signerAddress1: "8151 Clayton Rd",
+      signerAddress2: "Suite 301",
+      signerCity: "St. Louis, MO 63117",
+    });
+    assert.deepEqual(db.tables.landlord_agreements[0].signer_details, {
+      company: "Pat Rentals LLC",
+      email: "leasing@patrentals.com",
+      street: "8151 Clayton Rd",
+      suite: "Suite 301",
+      city: "St. Louis, MO 63117",
+    });
+    documenso.complete("envelope_1", "2027-01-05T18:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    const t = (id, label) => ({ id, type: "TEXT", recipientId: 11, fieldMeta: { label } });
+    documenso.envelopes.set("envelope_amend", {
+      id: "envelope_amend",
+      recipients: [{ id: 11, role: "SIGNER" }],
+      fields: [{ id: 1, type: "SIGNATURE", recipientId: 11 }, t(2, "EXHIBIT A"), t(3, "AGREEMENT DATE"), t(4, "COMPANY NAME"), t(5, "REPRESENTATIVE NAME"), t(6, "ADDRESS 1"), t(7, "ADDRESS 2"), t(8, "EMAIL")],
+    });
+    // Nothing asked: no name, title, authorisation or address sent.
+    const r = await startSigning(db, documenso, { user, fromAgreement: true, listingIds: ["L3"], now: new Date("2027-02-01T18:00:00Z") });
+    assert.equal(r.kind, "amendment");
+    const v = (id) => documenso.calls.lastCopy.prefill.find((p) => p.id === id)?.value;
+    assert.equal(v(2), "300 Draft Ave, St. Louis, Missouri 63130\nWhole building");
+    assert.equal(v(3), "01/05/2027", "the agreement's date, not today's");
+    assert.equal(v(4), "Pat Rentals LLC");
+    assert.equal(v(5), "Pat Landlord");
+    assert.equal(v(6), "8151 Clayton Rd, Suite 301");
+    assert.equal(v(7), "St. Louis, MO 63117");
+    assert.equal(v(8), "leasing@patrentals.com");
+    assert.equal(documenso.calls.lastCopy.signerTitle, "Owner");
+  });
+
+  it("an agreement (not an addendum) still asks for the details", async () => {
+    await assert.rejects(() => startSigning(world(), fakeDocumenso(), { user, fromAgreement: true }), (e) => e.code === "details_required");
+  });
+});
+
 describe("Exhibit A by whole building or units (2026-11-07)", () => {
   // Pat rents units 1A and 1B in someone else's building, L5 (2C is not theirs yet).
   const u5 = (id, name) => ({ id, listing_id: "L5", name, published_at: "2026-10-01T00:00:00Z", deleted_at: null });
@@ -381,6 +428,7 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
     assert.deepEqual(exhibitChoice(p, { include: false }, { locked: false }).include, false, "a draft can come off");
     assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Nope"] }).units, [], "only units the property has");
     assert.deepEqual(exhibitChoice(p, null).wholeBuilding, true, "an owner's default: the whole building");
+    assert.deepEqual(exhibitChoice(p, { include: false }).wholeBuilding, true, "a choice that does not say keeps the default");
   });
 });
 
@@ -566,7 +614,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.throws(() => cleanSignerDetails({ email: "not an email" }), (e) => e.code === "bad_email");
   });
 
-  it("an amendment with one Exhibit A box shows the list before and after in it", async () => {
+  it("an addendum's Exhibit A box lists only what it adds, and [AGREEMENT DATE] is the agreement's date (2026-11-07)", async () => {
     const { db, documenso } = await (async () => {
       const db = world();
       const documenso = fakeDocumenso();
@@ -577,8 +625,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     })();
     await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
     const text = documenso.calls.lastCopy.prefill.find((p) => p.id === 2)?.value;
-    assert.match(text, /^Before this amendment:\n100 Live St, St\. Louis, Missouri 63130\nWhole building/);
-    assert.match(text, /After this amendment:\n[\s\S]*300 Draft Ave, St\. Louis, Missouri 63130 \(added by this amendment\)\nWhole building/);
+    assert.equal(text, "300 Draft Ave, St. Louis, Missouri 63130\nWhole building", "only the property being added");
     assert.equal(documenso.calls.lastCopy.exhibit, null, "nothing attached");
   });
 

@@ -25,8 +25,13 @@ export async function exhibitPreview(db, userId, { listingIds = [], now = new Da
   const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId)]);
   // An agreement lists everything; an amendment, what is not fully covered yet.
   const shown = plan.kind === "master" ? properties : properties.filter((p) => !coversProperty(p, covered.get(p.listingId)));
+  // An addendum is signed with the agreement's saved details: who that is, for the popup.
+  const saved = plan.kind === "amendment" && state.signed?.signer_details && state.signed?.signer_name ? state.signed : null;
   return {
     kind: plan.kind,
+    signingAs: saved
+      ? { name: saved.signer_name, title: saved.signer_title ?? "", company: saved.signer_details.company ?? "" }
+      : null,
     properties: shown.map((p) => {
       const cov = plan.kind === "amendment" ? covered.get(p.listingId) : null;
       return {
