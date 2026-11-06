@@ -96,7 +96,8 @@ export function shortId(id) {
 export function fmtDate(v) {
   if (!v) return "—";
   const d = new Date(v);
-  return isNaN(d) ? String(v) : d.toLocaleDateString();
+  // 11/05/2026: dates only, never a time (Wyatt, 2026-11-05).
+  return isNaN(d) ? String(v) : d.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 export function fmtMoney(v) {

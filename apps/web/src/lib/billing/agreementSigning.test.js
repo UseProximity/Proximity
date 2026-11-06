@@ -77,9 +77,12 @@ describe("Documenso client requests", () => {
     assert.ok(sent[0].init.body.get("files"), "the PDF goes in the files part");
   });
 
+  const COPY = { recipients: [{ id: 1, role: "SIGNER" }], fields: [] };
+
   it("makes a landlord's copy, fills in their title, and distributes it silently for the embed", async () => {
     const { sent, fetchImpl } = recordingFetch([
       { body: { id: "envelope_c1" } },
+      { body: COPY },
       { body: { success: true, id: "envelope_c1", recipients: [{ id: 1, role: "SIGNER", token: "tok", signingUrl: "x" }] } },
     ]);
     const client = createDocumensoClient({ apiKey: "k", fetchImpl });
@@ -90,18 +93,62 @@ describe("Documenso client requests", () => {
     assert.deepEqual(used.recipients, [{ id: 11, email: "a@b.c", name: "A" }]);
     assert.deepEqual(used.prefillFields, [{ id: 42, type: "text", value: "Owner" }]);
     assert.equal(used.distributeDocument, false);
-    assert.ok(sent[1].url.endsWith("/envelope/distribute"));
-    assert.deepEqual(JSON.parse(sent[1].init.body), { envelopeId: "envelope_c1", meta: { distributionMethod: "NONE" } });
+    assert.equal(used.override.dateFormat, "MM/dd/yyyy", "dates without a time");
+    assert.equal(used.override.timezone, "America/Chicago");
+    assert.ok(sent[2].url.endsWith("/envelope/distribute"));
+    assert.deepEqual(JSON.parse(sent[2].init.body), { envelopeId: "envelope_c1", meta: { distributionMethod: "NONE" } });
+  });
+
+  it("swaps Documenso's Name, Email and Date boxes for read-only text holding the value", async () => {
+    const box = (id, type) => ({ id, type, recipientId: 1, envelopeItemId: "item_1", page: 2, positionX: "10", positionY: "80", width: "12", height: "3", fieldMeta: { fontSize: 11 } });
+    const { sent, fetchImpl } = recordingFetch([
+      { body: { id: "envelope_c3" } },
+      { body: { ...COPY, fields: [box(5, "NAME"), box(6, "DATE"), box(7, "SIGNATURE")] } },
+      { body: {} },
+      { body: {} },
+      { body: {} },
+    ]);
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl });
+    await client.prepareSigningCopy({ templateId: "t", recipientId: 1, email: "a@b.c", name: "Pat Landlord", externalId: "x", autofill: { name: "Pat Landlord", email: "a@b.c", date: "11/05/2026" } });
+    assert.deepEqual(sent.slice(2, 4).map((r) => JSON.parse(r.init.body).fieldId), [5, 6], "the Name and Date boxes are removed, the signature stays");
+    const made = JSON.parse(sent[4].init.body).data;
+    assert.deepEqual(made.map((f) => [f.type, f.fieldMeta.text, f.fieldMeta.readOnly, f.page, f.positionX]), [
+      ["TEXT", "Pat Landlord", true, 2, 10],
+      ["TEXT", "11/05/2026", true, 2, 10],
+    ]);
+    assert.equal(sent.length, 5, "prepared only: nothing distributed yet");
+  });
+
+  it("opening a prepared copy fills the licensee boxes read-only, then distributes", async () => {
+    const { sent, fetchImpl } = recordingFetch([
+      { body: { fields: [{ id: 9, type: "TEXT", fieldMeta: { label: "Brokerage", type: "text" } }] } },
+      { body: {} },
+      { body: { recipients: [{ id: 1, role: "SIGNER", token: "tok" }] } },
+    ]);
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl });
+    assert.deepEqual(await client.finishSigningCopy({ envelopeId: "e", fill: [{ id: 9, value: "N/A" }, { id: null, value: "x" }] }), { token: "tok" });
+    const updated = JSON.parse(sent[1].init.body).data[0];
+    assert.deepEqual(updated, { id: 9, type: "TEXT", fieldMeta: { label: "Brokerage", type: "text", text: "N/A", readOnly: true } });
+    assert.ok(sent[2].url.endsWith("/envelope/distribute"));
+  });
+
+  it("withdraws a draft by deleting it, since Documenso only cancels sent copies", async () => {
+    const { sent, fetchImpl } = recordingFetch([{ status: 400, body: { message: "Only pending documents can be cancelled" } }, { body: {} }]);
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl });
+    await client.discard("envelope_d", "Replaced");
+    assert.ok(sent[0].url.endsWith("/envelope/cancel"));
+    assert.ok(sent[1].url.endsWith("/envelope/delete"));
   });
 
   it("switches off every Documenso email when asked (staging, previews, local)", async () => {
     const { sent, fetchImpl } = recordingFetch([
       { body: { id: "envelope_c2" } },
+      { body: COPY },
       { body: { success: true, id: "envelope_c2", recipients: [{ id: 1, role: "SIGNER", token: "tok" }] } },
     ]);
     const client = createDocumensoClient({ apiKey: "k", fetchImpl, emailSettings: DOCUMENSO_EMAILS_OFF });
     await client.createSigningCopy({ templateId: "t", recipientId: 1, email: "a@b.c", name: "A", externalId: "x" });
-    const meta = JSON.parse(sent[1].init.body).meta;
+    const meta = JSON.parse(sent[2].init.body).meta;
     assert.equal(meta.distributionMethod, "NONE");
     assert.ok(Object.values(meta.emailSettings).every((v) => v === false));
     assert.equal(Object.keys(meta.emailSettings).length, 9);
@@ -129,7 +176,9 @@ describe("one Documenso team for every environment", () => {
       sent.push({ url, init });
       const body = url.endsWith("/distribute")
         ? { success: true, id: "envelope_c", recipients: [{ id: 1, role: "SIGNER", token: "tok" }] }
-        : { id: url.endsWith("/use") ? "envelope_c" : "envelope_t" };
+        : init.method === "GET"
+          ? { recipients: [{ id: 1, role: "SIGNER" }], fields: [] }
+          : { id: url.endsWith("/use") ? "envelope_c" : "envelope_t" };
       return { ok: true, status: 200, json: async () => body, text: async () => "" };
     };
     const client = createDocumensoClient({ apiKey: "k", fetchImpl, folderId: "folder_test", titlePrefix: "[TEST] ", envTag: "staging" });
@@ -263,36 +312,52 @@ describe("template checks", () => {
 
 describe("startSigning: the signature page's licensee details", () => {
   const licensee = { is_licensee: true, company_name: "West End Realty", license_number: "2026001234" };
-  const prefillOf = (copy) => Object.fromEntries(copy.prefill.filter((f) => f.id).map((f) => [f.id, f.value]));
+  // The template's Brokerage and License boxes; the copy gets them with new ids.
+  const withLicenseBoxes = () => {
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set("envelope_template", {
+      id: "envelope_template",
+      recipients: [{ id: 11, role: "SIGNER" }],
+      fields: [
+        { id: 1, type: "SIGNATURE", recipientId: 11 },
+        { id: 44, type: "TEXT", recipientId: 11, fieldMeta: { label: "Brokerage" } },
+        { id: 45, type: "TEXT", recipientId: 11, fieldMeta: { label: "License" } },
+      ],
+    });
+    return documenso;
+  };
+  // What was filled in when the copy was opened, by box label.
+  const filledOn = async (documenso, id = "envelope_1") =>
+    Object.fromEntries((await documenso.getEnvelope(id)).fields.filter((f) => f.fieldMeta?.text).map((f) => [f.fieldMeta.label, f.fieldMeta.text]));
 
   it("fills the brokerage and license number for a licensee", async () => {
     const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = fakeDocumenso();
+    const documenso = withLicenseBoxes();
     await sign(db, documenso, { licenseDisclosure: licensee });
-    const filled = prefillOf(documenso.calls.lastCopy);
-    assert.equal(filled[44], "West End Realty");
-    assert.equal(filled[45], "2026001234");
+    const filled = await filledOn(documenso);
+    assert.equal(filled.Brokerage, "West End Realty");
+    assert.equal(filled.License, "2026001234");
     assert.deepEqual(db.tables.landlord_agreements[0].license_prefill, { brokerage: "West End Realty", license: "2026001234" });
   });
 
   it('fills "N/A" in both for a landlord who is not licensed', async () => {
     const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = fakeDocumenso();
+    const documenso = withLicenseBoxes();
     await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
-    const filled = prefillOf(documenso.calls.lastCopy);
-    assert.equal(filled[44], "N/A");
-    assert.equal(filled[45], "N/A");
+    const filled = await filledOn(documenso);
+    assert.equal(filled.Brokerage, "N/A");
+    assert.equal(filled.License, "N/A");
   });
 
   it("makes a new copy when the answer changed since the copy in progress", async () => {
     const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = fakeDocumenso();
+    const documenso = withLicenseBoxes();
     await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
     await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
     assert.equal(documenso.calls.copies, 1, "same answer: the copy in progress is reused");
     await sign(db, documenso, { licenseDisclosure: licensee });
     assert.equal(documenso.calls.copies, 2, "new answer: a new copy with the new details");
-    assert.equal(prefillOf(documenso.calls.lastCopy)[44], "West End Realty");
+    assert.equal((await filledOn(documenso, "envelope_2")).Brokerage, "West End Realty");
   });
 });
 
@@ -388,7 +453,7 @@ describe("applyEnvelope", () => {
     assert.equal(row.signer_name, "Pat Landlord");
     assert.equal(row.signed_file_key, "billing/agreements/u1/x.pdf");
     assert.equal(row.signed_exhibit_file_key, "billing/agreements/u1/x.pdf", "the signed Exhibit A is kept too");
-    assert.equal(row.term_end, "2027-12-03T10:00:00.000Z", "the term runs one year from signing");
+    assert.equal(row.term_end, undefined, "no end date is stored (2026-11-06)");
     assert.equal(stored[0].userId, "u1");
     assert.equal(stored.length, 2);
     // A redelivered webhook changes nothing and stores nothing again.

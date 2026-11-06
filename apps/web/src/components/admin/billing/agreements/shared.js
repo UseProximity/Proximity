@@ -17,7 +17,28 @@ export const BUTTON =
 export const PRIMARY =
   "px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 disabled:opacity-60";
 
+// Open a file route in a new tab. A route answers either the PDF itself (signed
+// documents, joined into one) or JSON with a short-lived link. The tab opens
+// straight away so the browser does not block it as a popup.
 export async function openFile(url) {
-  const { url: link } = await call(url);
-  window.open(link, "_blank", "noopener,noreferrer");
+  const tab = window.open("", "_blank");
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    if ((res.headers.get("content-type") ?? "").includes("application/pdf")) {
+      const link = URL.createObjectURL(await res.blob());
+      if (tab) tab.location.href = link;
+      else window.open(link, "_blank");
+      return;
+    }
+    const { url: link } = await res.json();
+    if (tab) tab.location.href = link;
+    else window.open(link, "_blank", "noopener,noreferrer");
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
 }

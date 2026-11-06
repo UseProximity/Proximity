@@ -22,10 +22,11 @@ async function call(url, options) {
 }
 
 /*
- * The landlord's payments page: balance and charges (with Approve and Contest),
- * monthly invoices (with Pay now), the payment method card, and the commission
- * agreement (signed here, through Documenso) with the checklist of what is needed
- * to publish a listing. Emails link to #commission-agreement.
+ * The landlord's payments page, top to bottom: the commission agreement (signed
+ * here, through Documenso) with the checklist of what is needed to publish, the
+ * payment method (both fold away once done), balance and charges (with Approve
+ * and Contest), monthly invoices (with Pay now) and autopay. Emails link to
+ * #commission-agreement.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -211,6 +212,13 @@ export default function PaymentsSection() {
           }
         />
       )}
+      <PaymentMethodsCard
+        methods={methods}
+        busy={busy}
+        onAdd={add}
+        onSetDefault={setDefault}
+        onRemove={remove}
+      />
       <ChargesCard
         charges={charges}
         summary={summary}
@@ -220,13 +228,6 @@ export default function PaymentsSection() {
       />
       <InvoicesCard invoices={invoices} busy={busy} onPay={payInvoice} />
       <AutopayCard methods={methods} />
-      <PaymentMethodsCard
-        methods={methods}
-        busy={busy}
-        onAdd={add}
-        onSetDefault={setDefault}
-        onRemove={remove}
-      />
       {contesting && (
         <ContestChargeModal
           charge={contesting}

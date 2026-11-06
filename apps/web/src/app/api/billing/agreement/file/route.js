@@ -3,15 +3,16 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { documentFileKey } from "@/lib/billing/agreements";
-import { signedAgreementUrl } from "@/lib/billing/agreementFiles";
+import { documentFileKeys } from "@/lib/billing/agreements";
+import { combinedSignedPdf, pdfResponse } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 
 /*
- * A five minute download link for one of the landlord's own signed documents.
- * Query: kind=master|amendment, id (optional; the current master without it),
- * part=agreement|exhibit. Only their own files are ever returned.
+ * One of the landlord's own signed documents, as a single PDF: the commission
+ * agreement with its Exhibit A, or an Exhibit A amendment with its before and
+ * after pages (Wyatt, 2026-11-06). Query: kind=master|amendment, id (optional;
+ * the current master without it). Only their own files are ever returned.
  *
  * @auth landlord (own agreement only)
  */
@@ -23,13 +24,11 @@ export async function GET(req) {
   try {
     const params = new URL(req.url).searchParams;
     const kind = params.get("kind") === "amendment" ? "amendment" : "master";
-    const part = params.get("part") === "exhibit" ? "exhibit" : "agreement";
     const id = params.get("id");
     if (id && !UUID.test(id)) throw new BillingError("not_found", "That document was not found.", 404);
-    const key = await documentFileKey(supabase, { userId: session.user.id, kind, id, part });
-    if (!key) throw new BillingError("not_found", "There is no signed copy on file.", 404);
-    const name = `${kind === "amendment" ? "exhibit-a-amendment" : part === "exhibit" ? "exhibit-a" : "commission-agreement"}${part === "exhibit" && kind === "amendment" ? "-pages" : ""}.pdf`;
-    return NextResponse.json({ url: await signedAgreementUrl(key, name) });
+    const keys = await documentFileKeys(supabase, { userId: session.user.id, kind, id });
+    if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
+    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "commission-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open signed agreement");
   }

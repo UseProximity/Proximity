@@ -100,26 +100,58 @@ export function fakeDb(tables = {}) {
   return { tables, from: query };
 }
 
-// A fake Documenso: one template, copies made from it, and their state.
+// A fake Documenso: one template, copies made from it, and their state. Copies
+// are prepared as drafts and opened by finishSigningCopy, like the real client.
 export function fakeDocumenso() {
   const envelopes = new Map();
-  const calls = { copies: 0, cancelled: [], downloads: 0, lastCopy: null, copiesMade: [] };
+  const calls = { copies: 0, cancelled: [], downloads: 0, lastCopy: null, copiesMade: [], fills: [], lastFill: null };
   let n = 0;
+  const draft = (input, items) => {
+    calls.copies += 1;
+    calls.lastCopy = input;
+    calls.copiesMade.push(input);
+    const id = `envelope_${++n}`;
+    // The copy carries the template's boxes (with new ids, like Documenso).
+    const template = input.templateId ? envelopes.get(input.templateId) : null;
+    const fields = (template?.fields ?? []).map((f, i) => ({ ...structuredClone(f), id: n * 1000 + i, recipientId: 1 }));
+    envelopes.set(id, {
+      id,
+      status: "DRAFT",
+      envelopeItems: items(n),
+      fields,
+      recipients: [{ id: 1, role: "SIGNER", name: input.name, email: input.email, token: null, signedAt: null }],
+    });
+    return id;
+  };
   return {
     calls,
     envelopes,
+    async prepareSigningCopy(input) {
+      const id = draft(input, (k) => [{ id: `item_${k}`, order: 1 }, ...(input.exhibit ? [{ id: `item_${k}_exhibit`, order: 2 }] : [])]);
+      return { envelopeId: id, exhibitItemId: input.exhibit ? `item_${n}_exhibit` : null };
+    },
+    async finishSigningCopy({ envelopeId, fill = [] }) {
+      const e = envelopes.get(envelopeId);
+      const wanted = fill.filter((f) => f?.id && f.value != null);
+      calls.fills.push({ envelopeId, fill: wanted });
+      calls.lastFill = wanted;
+      for (const f of wanted) {
+        const field = e.fields.find((x) => x.id === f.id);
+        if (field) field.fieldMeta = { ...(field.fieldMeta ?? {}), text: String(f.value), readOnly: true };
+      }
+      e.status = "PENDING";
+      const k = envelopeId.split("_")[1];
+      e.recipients[0].token = `token_${k}`;
+      return { token: `token_${k}` };
+    },
     async createSigningCopy(input) {
-      calls.copies += 1;
-      calls.lastCopy = input;
-      calls.copiesMade.push(input);
-      const id = `envelope_${++n}`;
-      envelopes.set(id, {
-        id,
-        status: "PENDING",
-        envelopeItems: [{ id: `item_${n}`, order: 1 }, ...(input.exhibit ? [{ id: `item_${n}_exhibit`, order: 2 }] : [])],
-        recipients: [{ id: 1, role: "SIGNER", name: input.name, email: input.email, token: `token_${n}`, signedAt: null }],
-      });
-      return { envelopeId: id, token: `token_${n}`, exhibitItemId: input.exhibit ? `item_${n}_exhibit` : null };
+      const prepared = await this.prepareSigningCopy(input);
+      const { token } = await this.finishSigningCopy({ envelopeId: prepared.envelopeId });
+      return { ...prepared, token };
+    },
+    async discard(id) {
+      calls.cancelled.push(id);
+      envelopes.get(id).status = "CANCELLED";
     },
     async getEnvelope(id) {
       return structuredClone(envelopes.get(id));

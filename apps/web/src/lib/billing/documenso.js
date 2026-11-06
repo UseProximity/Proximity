@@ -140,6 +140,21 @@ export function templateEditorUrl(envelope, host = documensoHost()) {
   return `${host}/t/${encodeURIComponent(team)}/templates/${encodeURIComponent(envelope.id)}/edit`;
 }
 
+// Dates on our copies: 11/05/2026, no time, in St. Louis time (Wyatt, 2026-11-05).
+export const DATE_SETTINGS = { dateFormat: "MM/dd/yyyy", timezone: "America/Chicago" };
+
+// An initials box on every page of an exhibit.
+function exhibitFields(exhibit, signerId, envelopeItemId) {
+  return Array.from({ length: exhibit.pageCount }, (_, i) => ({
+    type: "INITIALS",
+    recipientId: signerId,
+    envelopeItemId,
+    page: i + 1,
+    ...exhibit.initialsBox,
+    fieldMeta: { type: "initials", required: true, label: "Initials" },
+  }));
+}
+
 // Every Documenso email for a document, switched off.
 export const DOCUMENSO_EMAILS_OFF = {
   recipientSigningRequest: false,
@@ -166,6 +181,7 @@ export function createDocumensoClient({
   // externalId says which environment made a document, e.g. "staging:landlord-agreement:<id>".
   const tagged = (id) => (envTag ? `${envTag}:${id}` : id);
   const titled = (t) => `${titlePrefix}${t}`.slice(0, 255);
+  const copyTitle = (what, name, email) => titled(`${what}: ${name}${email && email !== name ? ` (${email})` : ""}`);
 
   async function request(method, path, { json, form, raw = false } = {}) {
     if (!apiKey) throw new DocumensoError("Documenso is not connected (DOCUMENSO_API_KEY is not set).", 503);
@@ -207,6 +223,40 @@ export function createDocumensoClient({
     return form;
   }
 
+  // Documenso's Name, Email and Date boxes become read-only text in the same place.
+  async function replaceAutoBoxes(envelopeId, envelope, signerId, autofill) {
+    const value = { NAME: autofill.name, EMAIL: autofill.email, DATE: autofill.date };
+    const boxes = (envelope.fields ?? []).filter((f) => f.recipientId === signerId && value[f.type]);
+    if (!boxes.length) return;
+    for (const f of boxes) await request("POST", "/envelope/field/delete", { json: { fieldId: f.id } });
+    await request("POST", "/envelope/field/create-many", {
+      json: {
+        envelopeId,
+        data: boxes.map((f) => ({
+          type: "TEXT",
+          recipientId: signerId,
+          envelopeItemId: f.envelopeItemId,
+          page: f.page,
+          positionX: Number(f.positionX),
+          positionY: Number(f.positionY),
+          width: Number(f.width),
+          height: Number(f.height),
+          fieldMeta: {
+            type: "text",
+            label: { NAME: "Name", EMAIL: "Email", DATE: "Date" }[f.type],
+            text: String(value[f.type]).slice(0, 500),
+            readOnly: true,
+            // The template's box was sized for Documenso's own (shrink to fit)
+            // box: let the text run past its edge rather than be cut off.
+            overflow: "horizontal",
+            ...(f.fieldMeta?.fontSize && { fontSize: f.fieldMeta.fontSize }),
+            ...(f.fieldMeta?.textAlign && { textAlign: f.fieldMeta.textAlign }),
+          },
+        })),
+      },
+    });
+  }
+
   return {
     async createTemplate({ title, pdfBytes, fileName, externalId }) {
       const created = await request("POST", "/envelope/create", {
@@ -232,16 +282,24 @@ export function createDocumensoClient({
     },
 
     /*
-     * A landlord's copy of the template, ready to sign in the embed. Made as a draft
-     * first and then distributed with distributionMethod NONE, so Documenso sends
-     * no email of its own; distributing is what issues the signing token.
+     * A landlord's copy, in two steps so it can be prepared while they answer the
+     * license questions:
      *
-     * `prefill` fills boxes on the template: [{ id, value, type }] (title, commission
-     * rate, address, name); type is "text" (the default) or "number". `exhibit` ({ bytes, fileName, pageCount, initialsBox }) is
-     * attached to the draft as a second document, with an initials box for the
-     * signer on each of its pages, before it is distributed.
+     *   prepareSigningCopy  the copy of the template as a draft (nobody can sign a
+     *                       draft), with every box we can fill already filled,
+     *                       Exhibit A pages attached with an initials box on each
+     *                       page (the agreement's Exhibit A, or an amendment's
+     *                       before and after)
+     *   finishSigningCopy   fills the last boxes (the licensee details), then
+     *                       distributes with distributionMethod NONE, so Documenso
+     *                       emails nobody; distributing issues the signing token
+     *
+     * `prefill` fills Text and Number boxes on the template: [{ id, value, type }].
+     * `autofill` replaces Documenso's own Name, Email and Date boxes, which the
+     * signer would otherwise click one by one, with read-only text holding the
+     * value: { name, email, date }. Dates follow `dateFormat` (MM/dd/yyyy).
      */
-    async createSigningCopy({ templateId, recipientId, email, name, externalId, titleFieldId = null, signerTitle = null, prefill = [], exhibit = null, title = null }) {
+    async prepareSigningCopy({ templateId, recipientId, email, name, externalId, titleFieldId = null, signerTitle = null, prefill = [], exhibit = null, title = null, autofill = null, dropRateBox = false }) {
       const prefillFields = [
         ...(titleFieldId && signerTitle ? [{ id: titleFieldId, value: signerTitle }] : []),
         ...prefill.filter((p) => p?.id && p.value != null && String(p.value).trim()),
@@ -253,11 +311,18 @@ export function createDocumensoClient({
           recipients: [{ id: recipientId, email, name }],
           ...(folderId && { folderId }),
           // Named after the landlord, so it is easy to find in Documenso.
-          override: { title: titled(`${title || "Commission agreement"}: ${name}${email && email !== name ? ` (${email})` : ""}`) },
+          override: { title: copyTitle(title || "Commission agreement", name, email), ...DATE_SETTINGS },
           ...(prefillFields.length && { prefillFields }),
           distributeDocument: false,
         }),
       });
+      const envelope = await request("GET", `/envelope/${encodeURIComponent(used.id)}`);
+      const signerId = signerOf(envelope)?.id;
+      if (!signerId) throw new DocumensoError("The copy has no signer.", 502);
+      if (autofill) await replaceAutoBoxes(used.id, envelope, signerId, autofill);
+      // The rate is in the agreement's text now (2026-11-05): an old template's rate box would sit empty.
+      const rateBox = dropRateBox ? templateFieldSummary(envelope).fields.rate : null;
+      if (rateBox) await request("POST", "/envelope/field/delete", { json: { fieldId: rateBox.id } });
       let exhibitItemId = null;
       if (exhibit) {
         const added = await request("POST", "/envelope/item/create-many", {
@@ -265,29 +330,40 @@ export function createDocumensoClient({
         });
         exhibitItemId = added?.data?.[0]?.id ?? null;
         if (!exhibitItemId) throw new DocumensoError("Documenso did not add the Exhibit A document.", 502, added);
-        const signerId = (await request("GET", `/envelope/${encodeURIComponent(used.id)}`)).recipients?.find((r) => r.role === "SIGNER")?.id;
-        if (!signerId) throw new DocumensoError("The copy has no signer to initial Exhibit A.", 502);
-        const box = exhibit.initialsBox;
         await request("POST", "/envelope/field/create-many", {
-          json: {
-            envelopeId: used.id,
-            data: Array.from({ length: exhibit.pageCount }, (_, i) => ({
-              type: "INITIALS",
-              recipientId: signerId,
-              envelopeItemId: exhibitItemId,
-              page: i + 1,
-              ...box,
-              fieldMeta: { type: "initials", required: true, label: "Initials" },
-            })),
-          },
+          json: { envelopeId: used.id, data: exhibitFields(exhibit, signerId, exhibitItemId) },
         });
       }
+      return { envelopeId: used.id, exhibitItemId };
+    },
+
+    // `fill`: [{ id, value }] Text boxes to fill now, read-only.
+    async finishSigningCopy({ envelopeId, fill = [] }) {
+      const wanted = fill.filter((f) => f?.id && f.value != null && String(f.value).trim());
+      if (wanted.length) {
+        const envelope = await request("GET", `/envelope/${encodeURIComponent(envelopeId)}`);
+        const data = wanted
+          .map((f) => {
+            const field = (envelope.fields ?? []).find((x) => x.id === f.id);
+            if (!field || field.type !== "TEXT") return null;
+            return { id: field.id, type: "TEXT", fieldMeta: { ...(field.fieldMeta ?? {}), type: "text", text: String(f.value).slice(0, 500), readOnly: true } };
+          })
+          .filter(Boolean);
+        if (data.length) await request("POST", "/envelope/field/update-many", { json: { envelopeId, data } });
+      }
       const sent = await request("POST", "/envelope/distribute", {
-        json: { envelopeId: used.id, meta: { distributionMethod: "NONE", ...(emailSettings && { emailSettings }) } },
+        json: { envelopeId, meta: { distributionMethod: "NONE", ...(emailSettings && { emailSettings }) } },
       });
       const signer = (sent.recipients ?? []).find((r) => r.role === "SIGNER") ?? sent.recipients?.[0];
       if (!signer?.token) throw new DocumensoError("Documenso did not return a signing token.", 502, sent);
-      return { envelopeId: used.id, token: signer.token, exhibitItemId };
+      return { token: signer.token };
+    },
+
+    // Both steps at once, for callers that have every value up front.
+    async createSigningCopy(args) {
+      const prepared = await this.prepareSigningCopy(args);
+      const { token } = await this.finishSigningCopy({ envelopeId: prepared.envelopeId });
+      return { ...prepared, token };
     },
 
     // The completed PDF. An envelope holds one item per uploaded file; ours has one.
@@ -311,6 +387,16 @@ export function createDocumensoClient({
 
     cancel(envelopeId, reason) {
       return request("POST", "/envelope/cancel", { json: { envelopeId, reason } });
+    },
+
+    // Withdraw a copy: cancel one that was sent, delete a draft (Documenso cannot cancel a draft).
+    async discard(envelopeId, reason) {
+      try {
+        return await request("POST", "/envelope/cancel", { json: { envelopeId, reason } });
+      } catch (err) {
+        if (err?.status !== 400) throw err;
+        return request("POST", "/envelope/delete", { json: { envelopeId } });
+      }
     },
   };
 }

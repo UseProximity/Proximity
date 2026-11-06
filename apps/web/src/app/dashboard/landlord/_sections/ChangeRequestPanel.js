@@ -38,7 +38,7 @@ const ACTIVE = ["open", "answered", "accepted"];
 const DOC = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
 
 const when = (iso) =>
-  new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
 
 async function call(url, options) {
   const res = await fetch(url, options);

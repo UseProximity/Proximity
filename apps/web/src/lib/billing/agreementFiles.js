@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getBucket, r2 } from "@/lib/r2";
-import { agreementVersionKey, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
+import { agreementVersionKey, mergePdfs, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
 
 const bucket = () => process.env.R2_PRIVATE_BUCKET_NAME || getBucket();
 
@@ -60,4 +60,22 @@ export async function storeAgreementVersion({ bytes }) {
 export async function readAgreementFile(key) {
   const res = await r2.send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
   return new Uint8Array(await res.Body.transformToByteArray());
+}
+
+// A signed document as one PDF: its stored parts (agreement, Exhibit A pages) joined in order.
+export async function combinedSignedPdf(keys) {
+  const parts = [];
+  for (const key of keys) parts.push(await readAgreementFile(key));
+  return parts.length === 1 ? parts[0] : mergePdfs(parts);
+}
+
+// The HTTP response for that PDF, opened in the browser rather than downloaded.
+export function pdfResponse(bytes, filename) {
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${filename.replace(/[^\w.-]+/g, "-")}"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
 }

@@ -107,7 +107,8 @@ export function paymentMethodAttentionEmail({ name, state, description, payments
       ? "expires at the end of this month"
       : state === "expired"
         ? "has expired"
-        : "failed on the last payment";
+        : // We do not record whether verification or a payment failed (Wyatt, 2026-11-06).
+          "can't be used: it failed verification or a payment didn't go through";
   return {
     subject: "Update your payment method on Proximity",
     html: wrap(`

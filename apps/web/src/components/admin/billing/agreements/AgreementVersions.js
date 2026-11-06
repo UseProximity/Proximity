@@ -71,12 +71,8 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
       <Step n={2} done={version.status === "ready"}>
         <p className="text-gray-900">Place the signature boxes in Documenso</p>
         <div className="space-y-1 text-xs text-gray-500">
-          <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: they fill in themselves.</p>
-          <p>
-            <span className="font-medium text-gray-700">Commission rate:</span> add a Number box (or a Text box labelled
-            &quot;Commission rate&quot;). We fill in the rate entered with this upload. Tick &quot;Read only&quot; in its
-            settings so the landlord cannot change it.
-          </p>
+          <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: we fill them in, so the landlord only signs and initials.</p>
+          <p>The commission rate is written into the agreement itself. No box is needed for it.</p>
           <p>
             Other Text boxes we fill in, by their label: &quot;Title&quot; (the signer&apos;s title), &quot;Address&quot;
             (the landlord&apos;s billing address) and &quot;Name&quot; (the signer&apos;s first and last name, which also
@@ -105,20 +101,12 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
             <p className={summary.ok ? "text-green-700" : "text-red-700"}>
               {summary.ok
                 ? `Found ${summary.signature} signature, ${summary.name} name and ${summary.date} date box(es). Filled in for each landlord: ${
-                    [summary.rateFieldId && "Commission rate", summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"]
+                    [summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"]
                       .filter(Boolean)
                       .join(", ") || "none"
                   }.`
                 : "No signature box for the signer yet. Add one in Documenso, save, then check again."}
             </p>
-            {summary.ok && !summary.rateFieldId && (
-              <p className="text-amber-800">
-                No commission rate box found, so the rate will not appear on the document. Add a Number box, save, then check again.
-              </p>
-            )}
-            {summary.ok && summary.rateFieldId && summary.rateReadOnly === false && (
-              <p className="text-amber-800">The commission rate box is not read only, so a landlord could change it. Tick &quot;Read only&quot; on it in Documenso.</p>
-            )}
           </div>
         )}
         {summary?.ok && version.kind === "master" && (!summary.brokerageFieldId || !summary.licenseFieldId) && (
@@ -330,6 +318,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           </label>
           <label className="block w-40 text-sm text-gray-700">
             Commission rate (%)
+            <span className="block text-xs font-normal text-gray-500">For invoices. Must match the agreement&apos;s wording.</span>
             <input
               className={`${FIELD} mt-1`}
               value={commission}

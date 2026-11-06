@@ -2,11 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Spinner from "./Spinner";
 
 // Documenso's signing page, embedded. Loaded only when the dialog opens.
 const EmbedSignDocument = dynamic(() => import("@documenso/embed-react").then((m) => m.EmbedSignDocument), {
   ssr: false,
-  loading: () => <p className="py-20 text-center text-sm text-gray-400">Opening the agreement...</p>,
+  loading: () => (
+    <div className="flex justify-center py-20">
+      <Spinner label="Opening the agreement..." />
+    </div>
+  ),
 });
 
 async function post(url, body) {
@@ -24,7 +29,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
  * our server, which checks with Documenso directly, so the card updates at once
  * instead of waiting for the webhook. `token` and `host` come from
  * /api/billing/agreement/sign. `kind` is master (the agreement with Exhibit A) or
- * amendment (an Exhibit A amendment), as that route answered.
+ * amendment (an Exhibit A amendment: Exhibit A before and after), as that route answered.
  */
 export default function SignAgreementDialog({ token, host, name, email, kind = "master", onClose, onFinished }) {
   const [phase, setPhase] = useState("signing"); // signing | saving | declined | error
@@ -99,7 +104,9 @@ export default function SignAgreementDialog({ token, host, name, email, kind = "
           />
         )}
         {phase === "saving" && (
-          <p className="py-20 text-center text-sm text-gray-600">Signed. Saving your copy...</p>
+          <div className="flex justify-center py-20">
+            <Spinner label="Signed. Saving your copy..." />
+          </div>
         )}
         {phase === "declined" && (
           <div className="space-y-2 px-6 py-16 text-center text-sm text-gray-700">

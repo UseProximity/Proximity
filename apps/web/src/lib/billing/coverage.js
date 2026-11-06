@@ -3,9 +3,11 @@
  * they need to sign to cover more (decisions of 2026-11-04).
  *
  *   - One master agreement per landlord, with an Exhibit A listing the covered
- *     properties, signed once. It runs for a year from signing.
- *   - A property added later is covered by a short Exhibit A amendment listing the
- *     properties before and after. Coverage is per property (address): a new unit
+ *     properties, signed once. It has no end date in the app.
+ *   - A property added later is covered by an Exhibit A amendment, its own signed
+ *     document each time (the amendment template plus Exhibit A before and after,
+ *     Wyatt 2026-11-06); the signed agreement is never changed. Coverage is per
+ *     property (address): a new unit
  *     or lease at a covered address needs nothing.
  *   - Exhibit A holds everything the landlord has live plus whatever they are
  *     publishing now. Drafts join when they are published.

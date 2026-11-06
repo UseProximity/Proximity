@@ -229,7 +229,6 @@ export function agreementSummary(state) {
   const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
   return {
     status,
-    termEnd: signed?.term_end ?? null,
     negotiated: !!signed?.agreement_version?.landlord_id,
     flaggedForReview: !!state.flaggedForReview,
     commissionRatePercent: signed?.commission_rate_percent == null ? null : Number(signed.commission_rate_percent),

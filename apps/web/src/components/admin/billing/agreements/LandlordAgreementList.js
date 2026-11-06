@@ -51,7 +51,6 @@ function AgreementDetail({ a }) {
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
         {a.negotiated ? " (negotiated)" : ""}
         {a.commissionRatePercent != null ? ` · ${rate(a.commissionRatePercent)}` : ""}
-        {a.termEnd ? ` · term ends ${fmtDate(a.termEnd)}` : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
       </span>
     );
@@ -91,8 +90,8 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
   if (error) return <p className="text-xs text-red-700">{error}</p>;
   if (!docs) return <p className="text-xs text-gray-400">Loading documents...</p>;
   if (!docs.length) return <p className="text-xs text-gray-500">No agreement documents yet.</p>;
-  const open = (d, part) =>
-    run(() => openFile(`/api/admin/billing/landlords/${landlordId}/documents/file?${new URLSearchParams({ kind: d.kind, id: d.id, part })}`));
+  const open = (d) =>
+    run(() => openFile(`/api/admin/billing/landlords/${landlordId}/documents/file?${new URLSearchParams({ kind: d.kind, id: d.id })}`));
   return (
     <ul className="space-y-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">
       {docs.map((d) => {
@@ -108,14 +107,9 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
                 {d.signedAt ? ` ${fmtDate(d.signedAt)}` : ` (made ${fmtDate(d.createdAt)})`}
                 {d.endedReason ? ` · ${d.endedReason}` : ""}
               </span>
-              {d.hasSignedFile && (
-                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d, "agreement")}>
-                  {d.kind === "amendment" ? "Amendment" : "Agreement"}
-                </button>
-              )}
-              {d.hasSignedExhibit && (
-                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d, "exhibit")}>
-                  Exhibit A
+              {(d.hasSignedFile || d.hasSignedExhibit) && (
+                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d)}>
+                  View
                 </button>
               )}
               {VOIDABLE.includes(d.status) && (
