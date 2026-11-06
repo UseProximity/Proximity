@@ -1,4 +1,5 @@
 // Small helpers shared by the admin agreement panels.
+import { billingFetch } from "@/components/admin/billing/billingFetch";
 
 export async function call(url, options) {
   const res = await billingFetch(url, options);
