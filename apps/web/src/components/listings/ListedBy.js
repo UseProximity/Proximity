@@ -4,6 +4,13 @@
  * comes from the listing payload (lib/listings/getListing.js) and is only set
  * for landlords who declared a license, so this renders nothing otherwise.
  */
+// (314) 555-0123 for a 10 digit US number (a leading 1 dropped), otherwise as stored.
+export function formatPhone(phone) {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  const ten = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return ten.length === 10 ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : String(phone ?? "");
+}
+
 export default function ListedBy({ listedBy, className = "" }) {
   if (!listedBy) return null;
   const { agentName, companyName, companyPhone } = listedBy;
@@ -15,7 +22,7 @@ export default function ListedBy({ listedBy, className = "" }) {
         <>
           {", "}
           <a href={`tel:+1${tel.slice(-10)}`} className="underline hover:text-gray-700">
-            {companyPhone}
+            {formatPhone(companyPhone)}
           </a>
         </>
       )}

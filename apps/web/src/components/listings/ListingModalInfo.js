@@ -1946,12 +1946,15 @@ export default function ListingModalInfo({
     listing.address
   );
   // Every licensed agent behind this property: the owner and each offering's landlord, once each.
+  // A licensee's "Listed by" shows under their name in the lease options
+  // (LeaseOptions). Contact keeps it only for one with no lease shown there: the
+  // property's owner when they list no lease of their own (Wyatt, 2026-11-06).
   const listedByAll = (() => {
-    const seen = new Map();
-    const add = (l) => l && seen.set(`${l.agentName}|${l.companyName}|${l.companyPhone}`, l);
-    add(listing.owner?.listedBy);
-    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) add(l.listedBy);
-    return [...seen.values()];
+    const keyOf = (l) => `${l.agentName}|${l.companyName}|${l.companyPhone}`;
+    const onLeases = new Set();
+    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) if (l.listedBy) onLeases.add(keyOf(l.listedBy));
+    const owner = listing.owner?.listedBy;
+    return owner && !onLeases.has(keyOf(owner)) ? [owner] : [];
   })();
   const cityStateZip =
     listing.title && listing.title !== street
@@ -2551,9 +2554,9 @@ export default function ListingModalInfo({
                       preview={preview}
                     />
                   )}
-                  {/* Licensed agents behind this property (MREC: name, company
-                      and company phone on every listing), at the bottom of
-                      Contact for every visitor, whatever shows above it. */}
+                  {/* The owner's licensee details when they list no lease of
+                      their own (MREC: name, company and company phone on every
+                      listing). Everyone else's show in the lease options. */}
                   {listedByAll.length > 0 && (
                     <div className="mt-8 border-t border-gray-100 pt-3">
                       {listedByAll.map((l) => (
