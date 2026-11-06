@@ -21,8 +21,6 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *         label                  the version's name
  *         file                   the PDF, 4 MB at most
  *         kind                   master (the agreement) | amendment (Exhibit A amendment)
- *         commissionRatePercent  the rate this document sets, filled into its
- *                                "Commission rate" box and shown on invoices
  *         landlordId             optional: a version negotiated with one landlord
  *         changeRequestId        optional: the change request it answers
  *         basedOnVersionId       optional: the standard version it was edited from
@@ -89,7 +87,6 @@ export async function POST(req) {
       bytes: new Uint8Array(await file.arrayBuffer()),
       storePdf: (bytes) => storeAgreementVersion({ bytes }),
       kind: form.get("kind") === "amendment" ? "amendment" : "master",
-      commissionRatePercent: form.get("commissionRatePercent"),
       landlordId: uuidOrNull(form.get("landlordId")),
       changeRequestId: uuidOrNull(form.get("changeRequestId")),
       basedOnVersionId: uuidOrNull(form.get("basedOnVersionId")),

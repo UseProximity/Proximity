@@ -14,7 +14,7 @@ import { applyEnvelope, cleanSignerName, coverageFor, documentFileKeys, covering
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs } from "./agreementPdf.js";
-import { cleanCommissionRate, formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
+import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
 
 const MASTER = {
@@ -383,12 +383,7 @@ describe("Exhibit A pages", () => {
 });
 
 describe("commission rate", () => {
-  it("is a percentage above 0 and at most 100, shown with a percent sign", () => {
-    assert.equal(cleanCommissionRate("8.5%"), 8.5);
-    assert.equal(cleanCommissionRate(" 10 "), 10);
-    assert.throws(() => cleanCommissionRate(""), (e) => e.code === "rate_required");
-    assert.throws(() => cleanCommissionRate("0"), (e) => e.code === "bad_rate");
-    assert.throws(() => cleanCommissionRate("120"), (e) => e.code === "bad_rate");
+  it("shows with a percent sign", () => {
     assert.equal(formatRate(8.5), "8.5%");
     assert.equal(formatRate(null), null);
   });

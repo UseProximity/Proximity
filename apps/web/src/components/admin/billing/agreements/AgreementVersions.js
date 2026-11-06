@@ -145,7 +145,6 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
 }
 
 const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment" };
-const rate = (r) => (r == null ? "no rate" : `${Number(r).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
 const landlords = (n) => `${n} ${n === 1 ? "landlord" : "landlords"}`;
 
@@ -159,7 +158,7 @@ function LiveRow({ v, kindLabel, busy, run }) {
           {v.landlordName ? <span className="text-xs font-normal text-gray-500"> (only for {v.landlordName})</span> : null}
         </p>
         <p className="text-xs text-gray-600">
-          {v.landlordName ? `Sent to ${v.landlordName} when they sign` : "Sent to every landlord who signs from now on"} · {rate(v.commissionRatePercent)} ·
+          {v.landlordName ? `Sent to ${v.landlordName} when they sign` : "Sent to every landlord who signs from now on"} ·
           current since {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} signed it
           {v.requiresResign ? " · everyone had to re-sign" : ""}
         </p>
@@ -180,7 +179,6 @@ function LiveRow({ v, kindLabel, busy, run }) {
 export default function AgreementVersions({ versions, documensoConnected, busy, run }) {
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState("master");
-  const [commission, setCommission] = useState("");
   const [file, setFile] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.landlordId);
@@ -197,12 +195,10 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
     const form = new FormData();
     form.set("label", label);
     form.set("kind", kind);
-    form.set("commissionRatePercent", commission);
     if (file) form.set("file", file);
     return run(async () => {
       await call("/api/admin/billing/agreement-versions", { method: "POST", body: form });
       setLabel("");
-      setCommission("");
       setFile(null);
       setFileInputKey((k) => k + 1);
     }, "Uploaded. Follow the steps below to make it live.");
@@ -262,7 +258,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
                   {v.landlordName ? <span className="text-xs text-gray-500"> (only for {v.landlordName})</span> : null}
                 </p>
                 <p className="text-xs text-gray-600">
-                  {rate(v.commissionRatePercent)} · became current {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} still signed on it
+                  Became current {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} still signed on it
                 </p>
               </div>
               <Badge color="amber">Still in force</Badge>
@@ -283,7 +279,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
                 {KIND_LABEL[v.kind] ?? "Agreement"}: {v.label}
                 {v.landlordName ? <span className="text-xs font-normal text-gray-500"> (only for {v.landlordName})</span> : null}{" "}
                 <span className="text-xs font-normal text-gray-400">
-                  {rate(v.commissionRatePercent)} · uploaded {fmtDate(v.createdAt)}
+                  uploaded {fmtDate(v.createdAt)}
                 </span>
               </p>
               <Badge color={color}>{text}</Badge>
@@ -316,18 +312,6 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             Name
             <input className={`${FIELD} mt-1`} value={label} maxLength={80} placeholder="December 2026" onChange={(e) => setLabel(e.target.value)} required />
           </label>
-          <label className="block w-40 text-sm text-gray-700">
-            Commission rate (%)
-            <span className="block text-xs font-normal text-gray-500">For invoices. Must match the agreement&apos;s wording.</span>
-            <input
-              className={`${FIELD} mt-1`}
-              value={commission}
-              inputMode="decimal"
-              placeholder="8"
-              onChange={(e) => setCommission(e.target.value)}
-              required
-            />
-          </label>
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
             PDF (up to 4 MB)
             <input
@@ -340,7 +324,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             />
           </label>
         </div>
-        <button type="submit" disabled={busy || !file || !commission.trim()} className={PRIMARY}>
+        <button type="submit" disabled={busy || !file} className={PRIMARY}>
           {busy ? "Working..." : "Upload"}
         </button>
       </form>
@@ -353,7 +337,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
               <li key={v.id} className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                 <span className="flex-1">
                   {KIND_LABEL[v.kind] ?? "Agreement"}: {v.label}
-                  {v.landlordName ? ` (for ${v.landlordName})` : ""} · became current {fmtDate(v.publishedAt)} · {rate(v.commissionRatePercent)}
+                  {v.landlordName ? ` (for ${v.landlordName})` : ""} · became current {fmtDate(v.publishedAt)}
                 </span>
                 <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(`/api/admin/billing/agreement-versions/${v.id}`))}>
                   View PDF

@@ -13,7 +13,6 @@ const STATUS = {
 
 // 11/05/2026: agreement dates never show a time (Wyatt, 2026-11-05).
 const dateOnly = (iso) => new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "America/Chicago" });
-const rate = (r) => (r == null ? null : `${Number(r).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
 const BUTTON = "px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
 const FIELD = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500";
@@ -245,7 +244,6 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               {agreement.signerName ? ` by ${agreement.signerName}` : ""}
               {agreement.signerTitle ? `, ${agreement.signerTitle}` : ""}
               {agreement.signedVersionLabel ? ` (${agreement.signedVersionLabel})` : ""}.
-              {agreement.commissionRatePercent != null ? ` Commission rate ${rate(agreement.commissionRatePercent)}.` : ""}
             </p>
             {(agreement.hasSignedFile || agreement.hasSignedExhibit) && (
               <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master" })}>

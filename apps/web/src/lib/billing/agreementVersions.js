@@ -109,15 +109,6 @@ export function signatureStillValid(signedVersionPublishedAt, cutoff) {
 
 const LABEL_MAX = 80;
 
-// The commission rate an admin types: a percentage above 0 and at most 100, up to 3 decimals.
-export function cleanCommissionRate(value) {
-  const raw = String(value ?? "").trim().replace(/%$/, "").trim();
-  if (!raw) throw new BillingError("rate_required", "Enter the commission rate this agreement sets, like 8 or 8.5.");
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0 || n > 100) throw new BillingError("bad_rate", "The commission rate is a percentage above 0 and at most 100.");
-  return Math.round(n * 1000) / 1000;
-}
-
 // "8.5%": how a rate reads on the document and on invoices.
 export const formatRate = (rate) => (rate == null ? null : `${Number(rate).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
@@ -129,13 +120,12 @@ export const formatRate = (rate) => (rate == null ? null : `${Number(rate).toLoc
 export async function uploadVersion(
   db,
   documenso,
-  { adminId, label, fileName, bytes, storePdf, kind = "master", commissionRatePercent, landlordId = null, changeRequestId = null, basedOnVersionId = null }
+  { adminId, label, fileName, bytes, storePdf, kind = "master", landlordId = null, changeRequestId = null, basedOnVersionId = null }
 ) {
   const name = String(label ?? "").trim();
   if (!name) throw new BillingError("label_required", "Give this version a name, like \"December 2026\".");
   if (name.length > LABEL_MAX) throw new BillingError("label_too_long", `Keep the name under ${LABEL_MAX} characters.`);
   if (!VERSION_KINDS.includes(kind)) throw new BillingError("bad_kind", "Choose whether this is the agreement or the amendment.");
-  const rate = cleanCommissionRate(commissionRatePercent);
   if (landlordId) {
     const { data: landlord, error } = await db.from("users").select("id, deleted_at").eq("id", landlordId).maybeSingle();
     if (error) throw error;
@@ -148,7 +138,8 @@ export async function uploadVersion(
     .insert({
       label: name,
       kind,
-      commission_rate_percent: rate,
+      // The commission rate lives only in the document's wording (Wyatt, 2026-11-06).
+      commission_rate_percent: null,
       landlord_id: landlordId || null,
       change_request_id: changeRequestId || null,
       based_on_version_id: basedOnVersionId || null,
@@ -257,10 +248,6 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
   }
   if (version.status !== "ready") {
     throw new BillingError("not_ready", "Check the signature boxes before making this version live.", 409);
-  }
-  // The rate fills the document and shows on invoices, so a version cannot go live without one.
-  if (version.commission_rate_percent == null) {
-    throw new BillingError("rate_required", "This version has no commission rate. Upload it again with the rate.", 409);
   }
   // Missouri: the agreement's signature page carries the brokerage name and license
   // number (or "N/A"), so a master agreement cannot go live without both boxes.

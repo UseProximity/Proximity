@@ -39,7 +39,6 @@ const MISSING = {
   overdue_invoice: "overdue invoice",
 };
 
-const rate = (r) => (r == null ? null : `${Number(r).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
 function AgreementDetail({ a }) {
   if (a.status === "signed" || a.status === "needs_resign" || a.status === "expired") {
@@ -50,7 +49,6 @@ function AgreementDetail({ a }) {
         {a.signerTitle ? `, ${a.signerTitle}` : ""}
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
         {a.negotiated ? " (negotiated)" : ""}
-        {a.commissionRatePercent != null ? ` · ${rate(a.commissionRatePercent)}` : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
       </span>
     );
