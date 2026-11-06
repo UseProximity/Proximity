@@ -29,6 +29,10 @@ const PLACEHOLDER = /\[([A-Za-z][A-Za-z0-9 ._'/-]{0,39})\]/g;
  */
 export async function findPlaceholders(bytes) {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // pdf.js runs its "worker" in this process when it is handed the module. Loading
+  // it here also makes the deploy include the file: on Vercel pdf.js's own lookup
+  // of pdf.worker.mjs found nothing ("Setting up fake worker failed", 2026-11-07).
+  if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
   const out = [];
   try {

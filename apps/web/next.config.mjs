@@ -14,6 +14,12 @@ const nextConfig = {
   // at runtime with "Cannot find module '../package.json'", so load it from node_modules.
   // pdfjs-dist reads placeholder positions in uploaded agreement PDFs (lib/billing/placeholders.js); bundling breaks its worker.
   serverExternalPackages: ["expo-server-sdk", "pdfjs-dist"],
+  // pdf.js loads pdf.worker.mjs at runtime, which the deploy's file tracing misses:
+  // ship it with the routes that read agreement PDFs (hoisted to the repo root).
+  outputFileTracingIncludes: {
+    "/api/admin/billing/agreement-versions": ["../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+    "/api/admin/billing/agreement-versions/[id]": ["../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+  },
   // Browser Realtime client needs the selected project's public URL + anon key.
   // Resolve at build time; service-role and JWT secrets are never bundled.
   env: {
