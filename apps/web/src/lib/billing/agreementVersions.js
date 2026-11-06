@@ -28,6 +28,7 @@
  */
 import { BillingError } from "./errors.js";
 import { DocumensoError, templateEditorUrl, templateFieldSummary } from "./documenso.js";
+import { preparePlaceholders } from "./placeholders.js";
 
 export const VERSION_COLUMNS =
   "id, label, kind, landlord_id, commission_rate_percent, change_request_id, based_on_version_id, file_key, file_name, file_bytes, status, requires_resign, provider_template_id, provider_recipient_id, provider_title_field_id, provider_rate_field_id, provider_address_field_id, provider_brokerage_field_id, provider_license_field_id, provider_editor_url, provider_error, fields_checked_at, published_at, created_at";
@@ -164,7 +165,9 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
   if (version.provider_template_id) return version;
   if (version.status !== "draft") throw new BillingError("not_draft", "Only a draft can be connected.", 409);
   try {
-    const pdfBytes = bytes ?? (await readPdf(version.file_key));
+    const original = bytes ?? (await readPdf(version.file_key));
+    // [Placeholders] in the PDF become labelled boxes in their place (placeholders.js).
+    const { bytes: pdfBytes, boxes } = await preparePlaceholders(original);
     const what = version.kind === "amendment" ? "Exhibit A amendment" : "commission agreement";
     const templateId = await documenso.createTemplate({
       title: `Proximity ${what} (${version.label})${version.landlord_id ? " [one landlord]" : ""}`,
@@ -172,6 +175,7 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
       fileName: version.file_name || "commission-agreement.pdf",
       externalId: `agreement-version:${version.id}`,
     });
+    if (boxes.length && documenso.addTemplateBoxes) await documenso.addTemplateBoxes(templateId, boxes);
     const envelope = await documenso.getEnvelope(templateId).catch(() => ({ id: templateId }));
     const { data, error } = await db
       .from("agreement_versions")
@@ -180,6 +184,9 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
       .select(VERSION_COLUMNS)
       .single();
     if (error) throw error;
+    // With its boxes in place it can be checked straight away: ready to go live
+    // when the Signature and Exhibit A boxes are there.
+    if (boxes.length) return (await checkVersionFields(db, documenso, data.id)).version;
     return data;
   } catch (err) {
     if (!(err instanceof DocumensoError)) throw err;

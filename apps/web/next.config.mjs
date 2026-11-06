@@ -12,7 +12,8 @@ const nextConfig = {
   // expo-server-sdk is ESM and reads ../package.json through createRequire(import.meta.url).
   // Bundled, that path is frozen to the build machine (/vercel/path0/...) and push sends fail
   // at runtime with "Cannot find module '../package.json'", so load it from node_modules.
-  serverExternalPackages: ["expo-server-sdk"],
+  // pdfjs-dist reads placeholder positions in uploaded agreement PDFs (lib/billing/placeholders.js); bundling breaks its worker.
+  serverExternalPackages: ["expo-server-sdk", "pdfjs-dist"],
   // Browser Realtime client needs the selected project's public URL + anon key.
   // Resolve at build time; service-role and JWT secrets are never bundled.
   env: {

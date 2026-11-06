@@ -396,6 +396,49 @@ export function createDocumensoClient({
     },
 
     /*
+     * Boxes made from the PDF's placeholders (placeholders.js), added to a new
+     * template for its placeholder signer. Text boxes carry their label, so they
+     * are filled for each landlord; the ones we fill are read-only.
+     */
+    async addTemplateBoxes(envelopeId, boxes) {
+      if (!boxes?.length) return 0;
+      const envelope = await request("GET", `/envelope/${encodeURIComponent(envelopeId)}`);
+      const signerId = signerOf(envelope)?.id;
+      const itemId = [...(envelope.envelopeItems ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0]?.id;
+      if (!signerId || !itemId) throw new DocumensoError("The template has no signer or document to add boxes to.", 502);
+      const meta = (b) => {
+        if (b.type === "SIGNATURE") return { type: "signature", required: true };
+        if (b.type === "INITIALS") return { type: "initials", required: true, label: "Initials" };
+        if (b.type === "DATE") return { type: "date", fontSize: b.fontSize };
+        return {
+          type: "text",
+          label: b.label,
+          readOnly: b.readOnly,
+          required: !b.readOnly,
+          fontSize: b.fontSize,
+          ...(b.exhibit ? { overflow: "vertical", verticalAlign: "top", textAlign: "left" } : { overflow: "horizontal" }),
+        };
+      };
+      await request("POST", "/envelope/field/create-many", {
+        json: {
+          envelopeId,
+          data: boxes.map((b) => ({
+            type: b.type,
+            recipientId: signerId,
+            envelopeItemId: itemId,
+            page: b.page,
+            positionX: b.positionX,
+            positionY: b.positionY,
+            width: b.width,
+            height: b.height,
+            fieldMeta: meta(b),
+          })),
+        },
+      });
+      return boxes.length;
+    },
+
+    /*
      * A landlord's copy, in two steps so it can be prepared while they answer the
      * license questions:
      *
@@ -509,7 +552,8 @@ export function createDocumensoClient({
       try {
         return await request("POST", "/envelope/cancel", { json: { envelopeId, reason } });
       } catch (err) {
-        if (err?.status !== 400) throw err;
+        // A draft cannot be cancelled (400), nor a template (404): delete those.
+        if (err?.status !== 400 && err?.status !== 404) throw err;
         return request("POST", "/envelope/delete", { json: { envelopeId } });
       }
     },

@@ -130,47 +130,47 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
  * type. Shown in each version's setup and above the upload form.
  */
 const GUIDE_ROWS = [
-  { box: "Signature", label: "(none)", fills: "The landlord signs here.", need: "Required" },
-  { box: "Text", label: "Exhibit A", fills: "Every covered property, one per line. Make it big, on the last page.", need: "Required" },
-  { box: "Date", label: "(none)", fills: "The signing date, like 11/06/2026.", need: "Optional" },
-  { box: "Initials", label: "(none)", fills: "The landlord initials here, e.g. under Exhibit A.", need: "Optional" },
-  { box: "Text", label: "Name", fills: "Their full name.", need: "Optional" },
-  { box: "Text", label: "Title", fills: "Their title (Owner, Property Manager).", need: "Optional" },
-  { box: "Text", label: "Company", fills: "The company they sign for (blank if none).", need: "Optional" },
-  { box: "Text", label: "Owner", fills: "The company, or their name when there is no company.", need: "Optional" },
-  { box: "Text", label: "Email", fills: "Their email.", need: "Optional" },
-  { box: "Text", label: "Address 1", fills: "Street, e.g. 8151 Clayton Rd, Suite 301.", need: "Optional" },
-  { box: "Text", label: "Address 2", fills: "City, state and ZIP, e.g. St. Louis, MO 63117.", need: "Optional" },
+  { ph: "[Signature]", box: "Signature", fills: "The landlord signs here.", need: "Required" },
+  { ph: "[Exhibit A]", box: "Text, \"Exhibit A\"", fills: "Every covered property, one per line. Type it at the top of the last page: the box runs down the page.", need: "Required" },
+  { ph: "[Date]", box: "Date", fills: "The signing date, like 11/06/2026.", need: "Optional" },
+  { ph: "[Initials]", box: "Initials", fills: "The landlord initials here.", need: "Optional" },
+  { ph: "[Name]", box: "Text, \"Name\"", fills: "Their full name.", need: "Optional" },
+  { ph: "[Title]", box: "Text, \"Title\"", fills: "Their title (Owner, Property Manager).", need: "Optional" },
+  { ph: "[Company]", box: "Text, \"Company\"", fills: "The company they sign for (blank if none).", need: "Optional" },
+  { ph: "[Owner]", box: "Text, \"Owner\"", fills: "The company, or their name when there is no company.", need: "Optional" },
+  { ph: "[Email]", box: "Text, \"Email\"", fills: "Their email.", need: "Optional" },
+  { ph: "[Address 1]", box: "Text, \"Address 1\"", fills: "Street, e.g. 8151 Clayton Rd, Suite 301.", need: "Optional" },
+  { ph: "[Address 2]", box: "Text, \"Address 2\"", fills: "City, state and ZIP, e.g. St. Louis, MO 63117.", need: "Optional" },
 ];
 const AMENDMENT_ROWS = [
-  { box: "Text", label: "Exhibit A", fills: "The list after this amendment, added properties marked. With no \"Exhibit A before\" box, both lists go here.", need: "Required" },
-  { box: "Text", label: "Exhibit A before", fills: "The list before this amendment.", need: "Optional" },
+  { ph: "[Exhibit A]", box: "Text, \"Exhibit A\"", fills: "The list after this amendment, added properties marked. With no [Exhibit A before], both lists go here.", need: "Required" },
+  { ph: "[Exhibit A before]", box: "Text, \"Exhibit A before\"", fills: "The list before this amendment.", need: "Optional" },
 ];
 
 export function FieldGuide({ kind = "master" }) {
-  const rows = kind === "amendment" ? GUIDE_ROWS.map((r) => (r.label === "Exhibit A" ? AMENDMENT_ROWS[0] : r)).concat(AMENDMENT_ROWS.slice(1)) : GUIDE_ROWS;
+  const rows = kind === "amendment" ? GUIDE_ROWS.map((r) => (r.ph === "[Exhibit A]" ? AMENDMENT_ROWS[0] : r)).concat(AMENDMENT_ROWS.slice(1)) : GUIDE_ROWS;
   return (
     <div className="space-y-2 text-xs text-gray-600">
       <p>
-        Place these boxes on the PDF in Documenso. Each envelope is one document, so Exhibit A goes at the end of this PDF.
-        Text boxes are filled by their <strong>label</strong> (set in the box&apos;s settings), from what the landlord confirms
-        on our form before signing:
+        <strong>Easiest:</strong> type these placeholders in the document (in Word) where each value goes, export it to PDF
+        and upload it. We put the matching Documenso box exactly where each placeholder is, already labelled and set up,
+        and paint the placeholder out. Each envelope is one document, so Exhibit A goes at the end of this PDF.
       </p>
       <div className="overflow-x-auto rounded-md border border-gray-200">
         <table className="w-full text-left">
           <thead className="bg-gray-50 text-gray-500">
             <tr>
-              <th className="px-2 py-1 font-medium">Box type</th>
-              <th className="px-2 py-1 font-medium">Label</th>
+              <th className="px-2 py-1 font-medium">Type in the PDF</th>
+              <th className="px-2 py-1 font-medium">Becomes (box, label)</th>
               <th className="px-2 py-1 font-medium">Filled with</th>
               <th className="px-2 py-1 font-medium" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((r) => (
-              <tr key={`${r.box}:${r.label}`}>
+              <tr key={r.ph}>
+                <td className="px-2 py-1 font-mono text-gray-900">{r.ph}</td>
                 <td className="px-2 py-1 text-gray-700">{r.box}</td>
-                <td className="px-2 py-1 font-mono text-gray-900">{r.label}</td>
                 <td className="px-2 py-1">{r.fills}</td>
                 <td className={`px-2 py-1 ${r.need === "Required" ? "font-semibold text-red-700" : "text-gray-400"}`}>{r.need}</td>
               </tr>
@@ -179,11 +179,15 @@ export function FieldGuide({ kind = "master" }) {
         </table>
       </div>
       <ul className="list-disc space-y-0.5 pl-4">
-        <li>A label can repeat (Owner on page 1 and on the signature page): every box with it is filled.</li>
-        <li>Keep these words (Name, Title, Company, Owner, Email, Address, Exhibit A) out of any other box&apos;s label.</li>
-        <li>No box for the commission rate: write it into the agreement.</li>
-        <li>Filled boxes are made read-only and their text may run past a small box. A long Exhibit A list shrinks to fit.</li>
-        <li>A version cannot go live without a Signature box and an &quot;Exhibit A&quot; box.</li>
+        <li>Make each placeholder about as wide as its value: the box takes its size (short boxes let longer text run past their edge).</li>
+        <li>A placeholder can repeat ([Owner] on page 1 and on the signature page): each becomes a box, and all are filled.</li>
+        <li>Any other text in [brackets], like a drafting note, is left exactly as typed.</li>
+        <li>No placeholder for the commission rate: write it into the agreement.</li>
+        <li>
+          A scanned or flattened PDF has no readable text: place the boxes by hand in Documenso instead, using the labels in
+          the middle column (set in each box&apos;s settings).
+        </li>
+        <li>A version cannot go live without a Signature box and an &quot;Exhibit A&quot; box. A PDF with both placeholders is ready to go live as soon as it uploads.</li>
       </ul>
     </div>
   );
