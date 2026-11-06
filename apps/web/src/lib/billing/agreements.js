@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, signerOf, templateFieldSummary } from "./documenso.js";
 import { fmtDate } from "./exhibitPdf.js";
-import { coveredMap, loadCoverageRows, loadLandlordProperties, planCoverage, resolvePublishedIds } from "./coverage.js";
+import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, resolvePublishedIds } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
 const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, created_at, updated_at, ${VERSION_JOIN}`;
@@ -239,10 +239,11 @@ export function agreementView(state, { signingAvailable = true, properties = [],
   const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : inProgress ? "in_progress" : "not_signed";
   const declined =
     !pending && !valid && lastEnded?.ended_reason?.startsWith("declined") ? lastEnded.ended_at ?? lastEnded.updated_at : null;
-  const coveredList = properties.filter((p) => covered.has(p.listingId)).map((p) => ({ listingId: p.listingId, address: p.address, units: p.units }));
+  const view = (p, row) => ({ listingId: p.listingId, address: p.address, wholeBuilding: row.whole_building !== false, units: row.whole_building !== false ? [] : row.units ?? [] });
+  const coveredList = properties.filter((p) => covered.has(p.listingId)).map((p) => view(p, covered.get(p.listingId)));
   // Covered properties the landlord no longer has a stake in stay on the record.
   for (const [listingId, row] of covered) {
-    if (!coveredList.some((c) => c.listingId === listingId)) coveredList.push({ listingId, address: row.address, units: row.units ?? [] });
+    if (!coveredList.some((c) => c.listingId === listingId)) coveredList.push(view({ listingId, address: row.address }, row));
   }
   return {
     status,
@@ -257,7 +258,10 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     canSign: !valid && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
     declinedAt: declined,
     covered: coveredList,
-    uncoveredLive: properties.filter((p) => p.live && !covered.has(p.listingId)).map((p) => ({ listingId: p.listingId, address: p.address })),
+    // Live properties not fully covered: not on Exhibit A, or with units on it missing.
+    uncoveredLive: properties
+      .filter((p) => p.live && !coversProperty(p, covered.get(p.listingId)))
+      .map((p) => ({ listingId: p.listingId, address: p.address, missingUnits: covered.has(p.listingId) ? missingUnits(p, covered.get(p.listingId)) : [] })),
     amendment: pendingAmendment?.provider_envelope_id
       ? { id: pendingAmendment.id, adding: addedBy(pendingAmendment).map((e) => e.address), createdAt: pendingAmendment.created_at }
       : null,
@@ -330,16 +334,34 @@ function copyBoxesMatch(templateEnvelope, copyEnvelope, values) {
   return Object.entries(values).every(([kind, value]) => (boxes[kind] ?? []).every((f) => String(f.fieldMeta?.text ?? "") === (value ?? "")));
 }
 
-// The covered properties as the "Exhibit A" box shows them, one per line.
+// The popup's Exhibit A choices ([{ listingId, include, wholeBuilding, units }]) as a Map, or null.
+function exhibitSelections(list) {
+  if (!Array.isArray(list)) return null;
+  const out = new Map();
+  for (const s of list.slice(0, 500)) {
+    if (!s || typeof s.listingId !== "string") continue;
+    out.set(s.listingId, {
+      include: s.include !== false,
+      wholeBuilding: s.wholeBuilding === true,
+      units: Array.isArray(s.units) ? s.units.filter((u) => typeof u === "string").map((u) => u.trim()).filter(Boolean).slice(0, 200) : [],
+    });
+  }
+  return out;
+}
+
+// What one Exhibit A entry covers, as the document says it: "Whole building" or "Units: 1A, 1B".
+export const coverageLine = (e) => (e.wholeBuilding !== false || !e.units?.length ? "Whole building" : `Units: ${e.units.join(", ")}`);
+
+/*
+ * The covered properties as the "Exhibit A" box shows them (Wyatt, 2026-11-07):
+ * each property's full address, then "Whole building" or its units on the next
+ * line, a blank line between properties. `added` marks what an amendment adds.
+ */
 export function exhibitText(entries, { added = null } = {}) {
   if (!entries.length) return "None.";
   return entries
-    .map((e, i) => {
-      const units = e.units?.length ? ` (Units: ${e.units.join(", ")})` : "";
-      const isNew = added?.has(e.listingId) ? " (added by this amendment)" : "";
-      return `${i + 1}. ${e.address}${units}${isNew}`;
-    })
-    .join("\n");
+    .map((e) => `${e.address}${added?.has(e.listingId) ? " (added by this amendment)" : ""}\n${coverageLine(e)}`)
+    .join("\n\n");
 }
 
 const TABLE = { master: "landlord_agreements", amendment: "agreement_amendments" };
@@ -362,9 +384,11 @@ async function releaseProposed(db, kind, docId, now = new Date()) {
   if (error && !missingSchema(error)) throw error;
 }
 
+// The same Exhibit A: the same properties, each with the same building or units choice.
+const entryKey = (e) => `${e.listingId}|${e.wholeBuilding !== false ? "whole" : [...(e.units ?? [])].sort().join(",")}`;
 const sameIds = (a, b) => {
-  const x = new Set(a.map((e) => e.listingId));
-  return x.size === b.length && b.every((e) => x.has(e.listingId));
+  const x = new Set(a.map(entryKey));
+  return x.size === b.length && b.every((e) => x.has(entryKey(e)));
 };
 
 /*
@@ -395,6 +419,7 @@ export async function startSigning(
     signerAddress2,
     authorized,
     listingIds = [],
+    exhibit = null,
     now = new Date(),
     storeExhibit,
     landlordAddress,
@@ -445,6 +470,8 @@ export async function startSigning(
         masterValid: state.valid,
         requestedIds: requested,
         carry: [...(inProgress?.entries ?? []), ...carryFromAmendment],
+        // The landlord's Exhibit A choices from the signing popup, per property.
+        selections: exhibitSelections(exhibit),
       });
       if (plan.kind === "none") {
         if (inProgress) {
@@ -639,7 +666,8 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         user_id: user.id,
         listing_id: e.listingId,
         address: e.address,
-        units: e.units ?? [],
+        units: e.wholeBuilding !== false ? [] : e.units ?? [],
+        whole_building: e.wholeBuilding !== false,
         agreement_id: isAmendment ? master.id : row.id,
         amendment_id: isAmendment ? row.id : null,
         status: "proposed",
@@ -911,7 +939,9 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
   }
 
   const properties = await loadLandlordProperties(db, userId);
-  const exhibit = properties.filter((p) => p.live).map((p) => ({ listingId: p.listingId, address: p.address, units: p.units }));
+  const exhibit = properties
+    .filter((p) => p.live)
+    .map((p) => ({ listingId: p.listingId, address: p.address, ...exhibitChoice(p, null, { locked: true }) }));
   const fields = {
     status: "signed",
     signed_at: when.toISOString(),
@@ -951,7 +981,8 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
         user_id: userId,
         listing_id: e.listingId,
         address: e.address,
-        units: e.units,
+        units: e.wholeBuilding !== false ? [] : e.units,
+        whole_building: e.wholeBuilding !== false,
         agreement_id: record.id,
         status: "covered",
         covered_at: when.toISOString(),

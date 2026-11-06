@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-06T21:29:44.864Z",
-  "count": 308,
+  "_generated": "2026-11-06T22:08:45.825Z",
+  "count": 309,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -494,6 +494,10 @@
     {
       "file": "src/lib/billing/exhibitPdf.js",
       "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/exhibitUnits.js",
+      "description": "The Exhibit A step of the signing popup (Wyatt, 2026-11-07): what a landlord"
     },
     {
       "file": "src/lib/billing/http.js",

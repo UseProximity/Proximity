@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import CollapsibleSection from "./CollapsibleSection";
-import SignerFields, { useSignerDetails } from "./SignerFields";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -55,34 +54,13 @@ export function PublishChecklist({ gate, hasActivePaymentMethod }) {
   );
 }
 
-// The signer's details (SignerFields, pre-filled with what we know) and the
-// "authorised to sign" confirmation. The button opens the license question in a
-// popup, then the document (AgreementSigningFlow).
-function SignForm({ intro, button, busy, onStart }) {
-  const signer = useSignerDetails();
-  const [authorized, setAuthorized] = useState(false);
+// The button that opens the signing popup (AgreementSigningFlow): details,
+// Exhibit A and the license question all happen there (Wyatt, 2026-11-07).
+function SignButton({ children, busy, onClick }) {
   return (
-    <form
-      className="space-y-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onStart({ ...signer.body(), authorized });
-      }}
-    >
-      {intro && <p className="text-sm text-gray-700">{intro}</p>}
-      <SignerFields state={signer} />
-      <label className="flex items-start gap-2 text-sm text-gray-700">
-        <input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} required />
-        <span>I am authorised to sign this agreement for the landlord or company that owns these listings.</span>
-      </label>
-      <button
-        type="submit"
-        disabled={busy || !signer.ready || !authorized}
-        className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
-      >
-        {button}
-      </button>
-    </form>
+    <button type="button" disabled={busy} onClick={onClick} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+      {children}
+    </button>
   );
 }
 
@@ -92,7 +70,12 @@ function PropertyList({ items }) {
       {items.map((p) => (
         <li key={p.listingId} className="text-gray-800">
           {p.address}
-          {p.units?.length ? <span className="text-xs text-gray-500"> ({p.units.join(", ")})</span> : null}
+          {p.wholeBuilding ? (
+            <span className="text-xs text-gray-500"> (whole building)</span>
+          ) : p.units?.length ? (
+            <span className="text-xs text-gray-500"> (units: {p.units.join(", ")})</span>
+          ) : null}
+          {p.missingUnits?.length ? <span className="text-xs text-amber-700"> (not yet on it: {p.missingUnits.join(", ")})</span> : null}
         </li>
       ))}
     </ul>
@@ -263,23 +246,22 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
               {agreement.amendment.adding.length === 1 ? "that property" : "those properties"}.
             </p>
-            <SignForm button="Continue signing" busy={busy || !!signing} onStart={(b) => start(b)} />
+            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
+              Continue signing
+            </SignButton>
           </div>
         )}
 
         {signedOk && !agreement.amendment && uncoveredLive.length > 0 && (
           <div className="space-y-2 rounded-md border border-amber-200 px-3 py-3">
             <p className="text-sm text-gray-800">
-              {uncoveredLive.length === 1 ? "This live property is" : "These live properties are"} not on your agreement yet. Add{" "}
+              {uncoveredLive.length === 1 ? "This live property is" : "These live properties are"} not fully on your agreement yet. Add{" "}
               {uncoveredLive.length === 1 ? "it" : "them"} with an Exhibit A amendment:
             </p>
             <PropertyList items={uncoveredLive} />
-            <SignForm
-             
-              button="Review and sign the amendment"
-              busy={busy || !!signing}
-              onStart={(b) => start({ ...b, listingIds: uncoveredLive.map((p) => p.listingId) })}
-            />
+            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: uncoveredLive.map((p) => p.listingId) })}>
+              Review and sign the amendment
+            </SignButton>
           </div>
         )}
 
@@ -291,19 +273,10 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
         {!signedOk && agreement.canSign && (
           <>
-            {uncoveredLive.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-gray-900">This agreement covers these properties:</p>
-                <PropertyList items={uncoveredLive} />
-              </div>
-            )}
-            <SignForm
-             
-              intro={masterIntro}
-              button={agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
-              busy={busy || !!signing}
-              onStart={start}
-            />
+            <p className="text-sm text-gray-700">{masterIntro}</p>
+            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
+              {agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
+            </SignButton>
           </>
         )}
 
@@ -325,7 +298,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         {changeRequests}
       </div>
 
-      {signing && <AgreementSigningFlow body={signing} user={user} onFinished={finished} />}
+      {signing && <AgreementSigningFlow listingIds={signing.listingIds ?? []} user={user} onFinished={finished} />}
     </CollapsibleSection>
   );
 }

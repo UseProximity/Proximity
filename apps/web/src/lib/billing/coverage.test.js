@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
-import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
+import { coveredMap, displayAddress, exhibitChoice, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
@@ -53,7 +53,11 @@ function world(extra = {}) {
     ...extra,
   });
 }
-const sign = (db, documenso, over = {}) => startSigning(db, documenso, { user, signerTitle: "Owner", authorized: true, ...over });
+// Drafts go on Exhibit A unless taken off (2026-11-07). These tests take the drafts
+// off unless they are the ones being published (a published one cannot be taken off),
+// so each document lists the live property and what is being published.
+const DRAFTS_OFF = ["L2", "L3", "L4"].map((listingId) => ({ listingId, include: false }));
+const sign = (db, documenso, over = {}) => startSigning(db, documenso, { user, signerTitle: "Owner", authorized: true, exhibit: DRAFTS_OFF, ...over });
 const storeSigned = async ({ userId }) => `billing/agreements/${userId}/signed.pdf`;
 const ids = (entries) => entries.map((e) => e.listingId);
 const coverage = (db, status) => db.tables.agreement_coverage.filter((r) => !status || r.status === status);
@@ -118,13 +122,13 @@ describe("master agreement with Exhibit A", () => {
     assert.equal(r.kind, "master");
     const row = db.tables.landlord_agreements[0];
     assert.deepEqual(ids(row.exhibit), ["L1", "L2", "L3"]);
-    assert.deepEqual(row.exhibit[0].units, ["Apt 1", "Apt 2"]);
+    assert.equal(row.exhibit[0].wholeBuilding, true, "a property they own: the whole building by default");
     assert.equal(row.exhibit[0].address, "100 Live St, St. Louis, Missouri 63130");
     assert.equal(row.commission_rate_percent, 8.5);
     // The copy: one document, Exhibit A in its own box, the title filled in.
     const copy = documenso.calls.lastCopy;
     assert.equal(copy.exhibit, null);
-    assert.match(copy.prefill.find((p) => p.id === 2).value, /^1\. 100 Live St[\s\S]*\n3\. 300 Draft Ave/);
+    assert.match(copy.prefill.find((p) => p.id === 2).value, /^100 Live St, St\. Louis, Missouri 63130\nWhole building\n\n200 Draft Ave[\s\S]*300 Draft Ave/);
     assert.equal(copy.prefill.some((p) => p.id === 43), false, "the rate is in the agreement's text, no box is filled");
     assert.equal(copy.dropRateBox, true, "a leftover rate box is taken off the copy");
     assert.equal(copy.signerTitle, "Owner");
@@ -326,6 +330,60 @@ describe("negotiated versions", () => {
   });
 });
 
+describe("Exhibit A by whole building or units (2026-11-07)", () => {
+  // Pat rents units 1A and 1B in someone else's building, L5 (2C is not theirs yet).
+  const u5 = (id, name) => ({ id, listing_id: "L5", name, published_at: "2026-10-01T00:00:00Z", deleted_at: null });
+  const lease = (id, unit) => ({ id, owner_id: "u1", published_at: "2026-10-01T00:00:00Z", deleted_at: null, listing_units: unit });
+  function renter() {
+    const db = world();
+    db.tables.listings.push(listing("L5", "500 Shared Blvd"));
+    db.tables.unit_leases.push(lease("Q1", u5("U51", "1A")), lease("Q2", u5("U52", "1B")));
+    return db;
+  }
+
+  it("a renter's building lists their units, and they cannot choose the whole building", async () => {
+    const db = renter();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: true }] });
+    const entry = db.tables.landlord_agreements[0].exhibit.find((e) => e.listingId === "L5");
+    assert.deepEqual(entry, { listingId: "L5", address: "500 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["1A", "1B"] });
+    const row = db.tables.agreement_coverage.find((c) => c.listing_id === "L5");
+    assert.equal(row.whole_building, false);
+    assert.deepEqual(row.units, ["1A", "1B"]);
+    assert.match(documenso.calls.lastCopy.prefill.find((p) => p.id === 2).value, /500 Shared Blvd, St\. Louis, Missouri 63130\nUnits: 1A, 1B/);
+  });
+
+  it("a lease on another unit there needs an amendment adding that unit", async () => {
+    const db = renter();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso);
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    assert.equal((await coverageFor(db, "u1", new Date("2027-02-01"))).covered.has("L5"), true);
+    // Pat adds a lease on 2C: L5 is no longer fully covered.
+    db.tables.unit_leases.push(lease("Q3", u5("U53", "2C")));
+    const { properties, covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
+    assert.deepEqual(uncoveredAmong(properties, covered, ["L5"]), [{ listingId: "L5", address: "500 Shared Blvd, St. Louis, Missouri 63130", missingUnits: ["2C"] }]);
+    const r = await sign(db, documenso, { listingIds: ["L5"], now: new Date("2027-02-01") });
+    assert.equal(r.kind, "amendment");
+    const a = db.tables.agreement_amendments[0];
+    assert.deepEqual(a.proposed_exhibit.find((e) => e.listingId === "L5").units, ["1A", "1B", "2C"]);
+    documenso.complete("envelope_2", "2027-02-02T00:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
+    const after = await coverageFor(db, "u1", new Date("2027-02-03"));
+    assert.deepEqual(uncoveredAmong(after.properties, after.covered, ["L5"]), [], "now covered, by the agreement and the amendment together");
+  });
+
+  it("units with the landlord's leases on a live or published property cannot be taken off", () => {
+    const p = { listingId: "L", owner: true, units: ["Apt 1", "Apt 2", "Apt 3"], leaseUnits: ["Apt 2"] };
+    assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Apt 1"] }, { locked: true }), { include: true, wholeBuilding: false, units: ["Apt 1", "Apt 2"] });
+    assert.deepEqual(exhibitChoice(p, { include: false }, { locked: true }).include, true, "a locked property stays on");
+    assert.deepEqual(exhibitChoice(p, { include: false }, { locked: false }).include, false, "a draft can come off");
+    assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Nope"] }).units, [], "only units the property has");
+    assert.deepEqual(exhibitChoice(p, null).wholeBuilding, true, "an owner's default: the whole building");
+  });
+});
+
 describe("paper agreements recorded by an admin", () => {
   it("cover what the landlord has live on the signing date, for a year", async () => {
     const db = world();
@@ -490,7 +548,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.equal(value(90), "leasing@patrentals.com");
     assert.equal(value(91), "8151 Clayton Rd Suite 301");
     assert.equal(value(92), "St. Louis, MO 63117");
-    assert.equal(value(93), "1. 100 Live St, St. Louis, Missouri 63130 (Units: Apt 1, Apt 2)\n2. 200 Draft Ave, St. Louis, Missouri 63130 (Units: Studio)");
+    assert.equal(value(93), "100 Live St, St. Louis, Missouri 63130\nWhole building\n\n200 Draft Ave, St. Louis, Missouri 63130\nWhole building");
     assert.equal(documenso.calls.lastCopy.exhibit, null, "no separate Exhibit A document");
     // A changed address on the form makes a fresh copy.
     await sign(db, documenso, { listingIds: ["L2"], signerEmail: "leasing@patrentals.com", signerAddress1: "1 Other St", signerAddress2: "St. Louis, MO 63117" });
@@ -517,8 +575,8 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     })();
     await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
     const text = documenso.calls.lastCopy.prefill.find((p) => p.id === 2)?.value;
-    assert.match(text, /^Before this amendment:\n1\. 100 Live St/);
-    assert.match(text, /After this amendment:\n[\s\S]*300 Draft Ave, St\. Louis, Missouri 63130 \(Units: Loft\) \(added by this amendment\)/);
+    assert.match(text, /^Before this amendment:\n100 Live St, St\. Louis, Missouri 63130\nWhole building/);
+    assert.match(text, /After this amendment:\n[\s\S]*300 Draft Ave, St\. Louis, Missouri 63130 \(added by this amendment\)\nWhole building/);
     assert.equal(documenso.calls.lastCopy.exhibit, null, "nothing attached");
   });
 

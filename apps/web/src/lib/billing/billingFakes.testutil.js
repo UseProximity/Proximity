@@ -16,7 +16,7 @@ const UNIQUE = {
   // One live standard version per kind, one live negotiated version per kind per landlord.
   agreement_versions: [(r) => (r.status === "live" ? `live:${r.kind ?? "master"}:${r.landlord_id ?? "standard"}` : null)],
   agreement_amendments: [(r) => (r.status === "sent" ? `pending:${r.user_id}` : null)],
-  agreement_coverage: [(r) => (r.status !== "released" ? `${r.agreement_id}:${r.listing_id}` : null)],
+  agreement_coverage: [(r) => (r.status !== "released" ? `${r.agreement_id}:${r.listing_id}:${r.amendment_id ?? ""}` : null)],
 };
 
 // trg_agreement_coverage_requires_signature (202611050001): an unsigned document never covers.

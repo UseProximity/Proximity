@@ -25,6 +25,8 @@ async function agreementPdf() {
   p3.drawText("EXHIBIT A", { x: 270, y: 720, size: 12, font });
   p3.drawText("[Exhibit A]", { x: 72, y: 690, size: 12, font });
   p3.drawText("[Initials]", { x: 450, y: 80, size: 12, font });
+  // The "Adding Properties" paragraph at the bottom of the page: the box stops above it.
+  p3.drawText("Adding Properties. A property may be added only by an addendum.", { x: 72, y: 140, size: 12, font });
   // A drafting note in brackets is not a placeholder: it stays as typed.
   p1.drawText("within [NUMBER] days after it ends", { x: 72, y: 640, size: 12, font });
   return doc.save();
@@ -57,6 +59,7 @@ describe("placeholders in an agreement PDF", () => {
     const ex = by["Exhibit A"];
     assert.ok(ex.height > 50, "most of the page");
     assert.ok(ex.positionY + ex.height < by.Initials.positionY, "above the initials");
+    assert.ok(ex.positionY + ex.height <= ((792 - (140 + 12)) / 792) * 100, "and above the paragraph at the bottom");
     // The placeholders are painted over in white (the text stays underneath, hidden).
     const original = await agreementPdf();
     assert.ok(bytes.length > original.length, "white boxes drawn over the placeholders");

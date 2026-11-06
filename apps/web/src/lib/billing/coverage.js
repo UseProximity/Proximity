@@ -5,12 +5,15 @@
  *   - One master agreement per landlord, with an Exhibit A listing the covered
  *     properties, signed once. It has no end date in the app.
  *   - A property added later is covered by an Exhibit A amendment, its own signed
- *     document each time (the amendment template plus Exhibit A before and after,
- *     Wyatt 2026-11-06); the signed agreement is never changed. Coverage is per
- *     property (address): a new unit
- *     or lease at a covered address needs nothing.
- *   - Exhibit A holds everything the landlord has live plus whatever they are
- *     publishing now. Drafts join when they are published.
+ *     document each time (Wyatt 2026-11-06); the signed agreement is never changed.
+ *   - Each property on Exhibit A is the whole building or named units (Wyatt,
+ *     2026-11-07). The whole building covers every unit there, new ones too; named
+ *     units cover only those. A property counts as covered when the whole building
+ *     is, or every unit holding the landlord's leases is named; a lease on another
+ *     unit needs an amendment adding it. A renamed unit counts as a new one.
+ *   - Exhibit A holds everything the landlord has live, whatever they are
+ *     publishing now, and their drafts unless they take a draft off (then
+ *     publishing it later needs an amendment).
  *   - A property is covered only once the document adding it is signed (the
  *     database refuses anything else, 202611050001), and only while the master it
  *     belongs to is signed, still counts and is inside its term.
@@ -21,7 +24,7 @@
  *
  * `db` is a service-role Supabase client.
  */
-const COVERAGE_COLUMNS = "id, user_id, listing_id, address, units, agreement_id, amendment_id, status, covered_at, released_at, created_at";
+const COVERAGE_COLUMNS = "id, user_id, listing_id, address, units, whole_building, agreement_id, amendment_id, status, covered_at, released_at, created_at";
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200"].includes(error?.code);
 
 // "6105 Delmar Boulevard, St. Louis, Missouri 63112": the stored address without the country.
@@ -108,12 +111,22 @@ export async function loadLandlordProperties(db, userId) {
       const mine = [...(myUnits.get(l.id)?.values() ?? [])];
       const propertyOwner = ownedIds.has(l.id);
       const unitRows = propertyOwner ? unitsByListing.get(l.id) ?? [] : mine.map((m) => m.unit);
-      const units = [...new Set(unitRows.map(unitLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+      const byName = (a, b) => a.localeCompare(b, "en", { numeric: true });
+      // Every unit they can name on Exhibit A (the property's, or their own offerings').
+      const unitList = [];
+      for (const u of unitRows) {
+        const label = unitLabel(u);
+        if (label && !unitList.some((x) => x.label === label)) unitList.push({ id: u.id, label });
+      }
+      unitList.sort((a, b) => byName(a.label, b.label));
+      const units = unitList.map((u) => u.label);
+      // The units holding this landlord's own leases: what coverage must include.
+      const leaseUnits = [...new Set(mine.map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
       const published = !!l.published_at;
       // Live for this landlord: the property is published and either it is theirs or
       // one of their own offerings on it is.
       const live = published && (propertyOwner || mine.some((m) => m.published));
-      return { listingId: l.id, address: displayAddress(l), units, live, draft: !published };
+      return { listingId: l.id, address: displayAddress(l), units, unitList, leaseUnits, owner: propertyOwner, live, draft: !published };
     })
     .sort(byAddress);
 }
@@ -164,71 +177,138 @@ export async function loadCoverageRows(db, userId) {
 }
 
 /*
- * The pure rule: which properties count as covered now. `master` is the
- * landlord's current signed master agreement and `masterValid` whether it still
- * counts (agreementState: version not superseded by a re-sign, term not over).
- * Returns a Map listingId -> the covering row.
+ * The pure rule: what is covered now. `master` is the landlord's current signed
+ * master agreement and `masterValid` whether it still counts. Returns a Map
+ * listingId -> the covering row (the newest), with `units` and `whole_building`
+ * merged across every document covering that property (the agreement and its
+ * amendments).
  */
 export function coveredMap(rows, { master, masterValid }) {
   const out = new Map();
   if (!master || !masterValid) return out;
   for (const r of rows) {
-    if (r.status === "covered" && r.agreement_id === master.id && !out.has(r.listing_id)) out.set(r.listing_id, r);
+    if (r.status !== "covered" || r.agreement_id !== master.id) continue;
+    const prev = out.get(r.listing_id);
+    const units = [...new Set([...(prev?.units ?? []), ...(Array.isArray(r.units) ? r.units : [])])];
+    const whole = (prev?.whole_building ?? false) || r.whole_building !== false;
+    out.set(r.listing_id, { ...(prev ?? r), units, whole_building: whole });
   }
   return out;
 }
 
-const entryOf = (p) => ({ listingId: p.listingId, address: p.address, units: p.units ?? [] });
-const entryFromRow = (r) => ({ listingId: r.listing_id, address: r.address, units: Array.isArray(r.units) ? r.units : [] });
+// Whether a property is covered: the whole building, or every unit with the landlord's leases.
+export function coversProperty(p, row) {
+  if (!row) return false;
+  if (row.whole_building !== false) return true;
+  return (p?.leaseUnits ?? []).every((u) => (row.units ?? []).includes(u));
+}
+
+// The units with the landlord's leases a covering row does not name.
+export function missingUnits(p, row) {
+  if (!row) return p?.leaseUnits ?? [];
+  if (row.whole_building !== false) return [];
+  return (p?.leaseUnits ?? []).filter((u) => !(row.units ?? []).includes(u));
+}
+
+/*
+ * One property's Exhibit A choice, made safe: `s` is what the landlord picked on
+ * the signing popup ({ include, wholeBuilding, units }) or null for the default.
+ * Default: the whole building for a property they own, else the units with their
+ * leases. Only an owner can choose the whole building. Units are names the
+ * property has; units with their leases on a `locked` property (live, or being
+ * published) are always in. A locked property is always included.
+ */
+export function exhibitChoice(p, s, { locked = false } = {}) {
+  const canWhole = !!p.owner;
+  const wholeBuilding = canWhole && (s ? s.wholeBuilding === true : true);
+  const known = new Set(p.units ?? []);
+  const picked = s && Array.isArray(s.units) ? s.units.filter((u) => known.has(u)) : p.leaseUnits ?? [];
+  const units = wholeBuilding ? [] : [...new Set([...picked, ...(locked ? p.leaseUnits ?? [] : [])])].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  return { include: locked || !s || s.include !== false, wholeBuilding, units };
+}
+
+const entryOf = (p, choice) => ({ listingId: p.listingId, address: p.address, wholeBuilding: choice.wholeBuilding, units: choice.units });
+const entryFromRow = (r) => ({
+  listingId: r.listing_id,
+  address: r.address,
+  wholeBuilding: r.whole_building !== false,
+  units: r.whole_building !== false ? [] : Array.isArray(r.units) ? r.units : [],
+});
 
 /*
  * What the landlord needs to sign to cover `requestedIds` (the properties being
  * published; may be empty when they sign from the Payments tab):
  *
- *   { kind: "none" }                          everything asked for is covered
+ *   { kind: "none" }                          everything needed is covered
  *   { kind: "master", entries }               no master that counts: sign one whose
  *                                             Exhibit A lists every live property,
- *                                             the requested ones, and anything a
- *                                             lapsed master covered that is still theirs
+ *                                             the requested ones, their drafts (unless
+ *                                             taken off) and anything a lapsed master
+ *                                             covered that is still theirs
  *   { kind: "amendment", previous, entries, added }
  *                                             a master counts: amend Exhibit A from
  *                                             `previous` (covered now) to `entries`
  *
- * `carry` are entries of a document in progress that is being replaced, so a new
- * copy never drops a property the landlord already asked to add.
+ * Needed: every live property and the requested ones, fully covered. Drafts ride
+ * along on any document being made, unless the landlord takes them off.
+ * `selections` is a Map listingId -> the popup's choice (exhibitChoice). `carry`
+ * are entries of a document in progress that is being replaced.
+ * Entries are { listingId, address, wholeBuilding, units }.
  */
-export function planCoverage({ properties, rows, master, masterValid, requestedIds = [], carry = [] }) {
+export function planCoverage({ properties, rows, master, masterValid, requestedIds = [], carry = [], selections = null }) {
   const byId = new Map(properties.map((p) => [p.listingId, p]));
-  const requested = requestedIds.filter((id) => byId.has(id));
+  const requested = new Set(requestedIds.filter((id) => byId.has(id)));
   const covered = coveredMap(rows, { master, masterValid });
-
-  const want = new Map();
-  const add = (e) => {
-    if (e && byId.has(e.listingId) && !want.has(e.listingId)) want.set(e.listingId, entryOf(byId.get(e.listingId)));
-  };
-  properties.filter((p) => p.live).forEach(add);
-  requested.forEach((id) => add(byId.get(id)));
-  carry.forEach(add);
+  // What must be covered (live, being published, already on a copy being replaced,
+  // or covered by a master being re-signed), then the drafts that may ride along.
+  // Nothing needed can be taken off; its units with the landlord's leases stay in.
+  const needed = new Set([
+    ...requested,
+    ...properties.filter((p) => p.live).map((p) => p.listingId),
+    ...carry.map((e) => e.listingId).filter((id) => byId.has(id)),
+  ]);
+  const choiceFor = (p) => exhibitChoice(p, selections?.get(p.listingId) ?? null, { locked: needed.has(p.listingId) });
+  const drafts = properties.filter((p) => p.draft && !needed.has(p.listingId)).map((p) => p.listingId);
 
   if (!master || !masterValid) {
     // A lapsed or re-sign-required master: what it covered carries into the new one.
-    rows.filter((r) => r.status === "covered" && master && r.agreement_id === master.id).forEach((r) => add({ listingId: r.listing_id }));
-    const entries = [...want.values()].sort(byAddress);
-    if (!entries.length) return { kind: "master", entries: [] };
+    for (const r of rows) if (r.status === "covered" && master && r.agreement_id === master.id && byId.has(r.listing_id)) needed.add(r.listing_id);
+    const entries = [...needed, ...drafts]
+      .map((id) => [byId.get(id), choiceFor(byId.get(id))])
+      .filter(([, c]) => c.include)
+      .map(([p, c]) => entryOf(p, c))
+      .sort(byAddress);
     return { kind: "master", entries };
   }
 
-  const added = [...want.values()].filter((e) => !covered.has(e.listingId));
-  if (!added.length) return { kind: "none" };
+  // Something needed is not fully covered: an amendment (else nothing to sign).
+  const short = [...needed].filter((id) => !coversProperty(byId.get(id), covered.get(id)));
+  if (!short.length) return { kind: "none" };
+  const added = [];
+  for (const id of [...needed, ...drafts]) {
+    const p = byId.get(id);
+    const c = choiceFor(p);
+    if (!c.include) continue;
+    const cov = covered.get(id);
+    const adds = !cov || (c.wholeBuilding && cov.whole_building === false) || (!c.wholeBuilding && cov.whole_building === false && c.units.some((u) => !cov.units.includes(u)));
+    if (!adds) continue;
+    // Merged with what is covered there already, so the "after" list is the whole picture.
+    added.push(cov && !c.wholeBuilding ? { ...entryOf(p, c), units: [...new Set([...cov.units, ...c.units])].sort((a, b) => a.localeCompare(b, "en", { numeric: true })) } : entryOf(p, c));
+  }
   const previous = [...covered.values()].map(entryFromRow).sort(byAddress);
-  const entries = [...previous, ...added].sort(byAddress);
+  const addedIds = new Set(added.map((e) => e.listingId));
+  const entries = [...previous.filter((e) => !addedIds.has(e.listingId)), ...added].sort(byAddress);
   return { kind: "amendment", previous, entries, added: added.sort(byAddress) };
 }
 
-// Requested properties that are not covered now, with their addresses for the publish dialog.
+// Requested properties that are not fully covered now, with their addresses (and the units missing) for the publish dialog.
 export function uncoveredAmong(properties, coverage, listingIds) {
   const byId = new Map(properties.map((p) => [p.listingId, p]));
   return [...new Set(listingIds)]
-    .filter((id) => !coverage.has(id))
-    .map((id) => ({ listingId: id, address: byId.get(id)?.address ?? "New property" }));
+    .filter((id) => !coversProperty(byId.get(id), coverage.get(id)))
+    .map((id) => ({
+      listingId: id,
+      address: byId.get(id)?.address ?? "New property",
+      ...(coverage.has(id) && { missingUnits: missingUnits(byId.get(id), coverage.get(id)) }),
+    }));
 }

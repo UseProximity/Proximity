@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-06T20:58:31.382Z",
-  "count": 239,
+  "_generated": "2026-11-06T22:08:45.754Z",
+  "count": 241,
   "routes": [
     {
       "path": "/api/account",
@@ -1089,6 +1089,18 @@
       "file": "src/app/api/billing/agreement/documents/route.js"
     },
     {
+      "path": "/api/billing/agreement/exhibit",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/exhibit/route.js"
+    },
+    {
       "path": "/api/billing/agreement/file",
       "methods": [
         "GET"
@@ -1139,6 +1151,20 @@
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/sync/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/units",
+      "methods": [
+        "POST",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super",
+        "PATCH": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/units/route.js"
     },
     {
       "path": "/api/billing/autopay",

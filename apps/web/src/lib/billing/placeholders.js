@@ -49,6 +49,10 @@ export async function findPlaceholders(bytes) {
         [...str].forEach((ch, i) => line.chars.push({ ch, x0: x + step * i, x1: x + step * (i + 1), size }));
         lines.set(key, line);
       }
+      // The top of each line of real text, so an Exhibit A box can stop above the next one.
+      const lineTops = [...lines.values()]
+        .filter((l) => l.chars.some((c) => c.ch.trim()))
+        .map((l) => ({ y: l.y, top: l.y + Math.max(...l.chars.map((c) => c.size)) * 0.95 }));
       for (const { y, chars } of lines.values()) {
         chars.sort((m, n) => m.x0 - n.x0);
         const text = chars.map((c) => c.ch).join("");
@@ -56,7 +60,10 @@ export async function findPlaceholders(bytes) {
           const first = chars[m.index];
           const last = chars[m.index + m[0].length - 1];
           const size = Math.max(...chars.slice(m.index, m.index + m[0].length).map((c) => c.size));
-          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight });
+          // The nearest text below this line (another placeholder, a paragraph, the page number).
+          const below = lineTops.filter((l) => l.y < y - 1).map((l) => l.top);
+          const textBelowTop = below.length ? Math.max(...below) : null;
+          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight, textBelowTop });
         }
       }
     }
@@ -109,10 +116,14 @@ export function boxesFor(found) {
       height = Math.max(f.size * 2, 20);
       top = f.y + height - f.size * 0.35;
     } else if (isExhibit(f.label)) {
-      // Down to the next placeholder below on this page, else an inch above the bottom.
+      // Down to just above the next thing below it on the page: a box made from a
+      // placeholder (a signature or initials box reaches above its line), or any
+      // other text, like a paragraph at the bottom of the page (Wyatt, 2026-11-07).
+      // With nothing below, an inch above the bottom of the page.
       const below = found
         .filter((o) => o.page === f.page && o !== f && o.y < f.y)
         .map((o) => o.y + o.size * 1.2 + (boxTypeOf(o.label) === "TEXT" || boxTypeOf(o.label) === "DATE" ? 0 : 26));
+      if (f.textBelowTop != null) below.push(f.textBelowTop);
       const floor = below.length ? Math.max(...below) + 6 : 72;
       top = textTop + 2;
       height = Math.max(top - floor, 60);
