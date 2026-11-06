@@ -26,6 +26,43 @@ function Step({ done, n, children }) {
   );
 }
 
+// How many properties Exhibit A holds, and anything that would go wrong on a landlord's copy.
+function TemplateHealth({ summary }) {
+  if (!summary) return null;
+  const boxes = summary.exhibitBoxes?.length ?? 0;
+  return (
+    <div className="space-y-0.5">
+      {boxes > 0 && (
+        <p className="text-gray-500">
+          Exhibit A holds about {summary.exhibitCapacity} {summary.exhibitCapacity === 1 ? "property" : "properties"}
+          {boxes > 1 ? ` across ${boxes} boxes, filled in order` : ""}. For more, add another [EXHIBIT A] at the top of a following page.
+        </p>
+      )}
+      {(summary.warnings ?? []).map((w) => (
+        <p key={w} className="text-amber-800">
+          {w}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// The quick read of a version's boxes (no test fill), for live versions too.
+function useQuickSummary(version) {
+  const [summary, setSummary] = useState(null);
+  useEffect(() => {
+    if (!version.connected && !version.providerTemplateId) return undefined;
+    let live = true;
+    postJson(`/api/admin/billing/agreement-versions/${version.id}`, { action: "check", quick: true })
+      .then((r) => live && setSummary(r.summary))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [version.id, version.connected, version.providerTemplateId]);
+  return summary;
+}
+
 // A version that is not live yet: the steps from upload to live, with the action for each.
 function DraftSteps({ version, busy, run, documensoConnected }) {
   const [requiresResign, setRequiresResign] = useState(null);
@@ -43,7 +80,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
   useEffect(() => {
     if (!version.connected) return;
     let live = true;
-    postJson(`/api/admin/billing/agreement-versions/${version.id}`, { action: "check" })
+    postJson(`/api/admin/billing/agreement-versions/${version.id}`, { action: "check", quick: true })
       .then((r) => live && setSummary(r.summary))
       .catch(() => {});
     return () => {
@@ -102,6 +139,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
                 ? "Ready: it has a signature and an Exhibit A box."
                 : `Still needed: ${(summary.missing ?? ["[SIGNATURE]"]).join(" and ")}. Add the placeholder and upload again, or place the box in Documenso and check again.`}
             </p>
+            <TemplateHealth summary={summary} />
             {summary.boxes?.length > 0 && (
               <div>
                 <p className="text-gray-500">Boxes found on this document:</p>
@@ -225,6 +263,7 @@ const landlords = (n) => `${n} ${n === 1 ? "landlord" : "landlords"}`;
 
 // The version landlords sign now: the one sent to anyone who signs from today.
 function LiveRow({ v, kindLabel, busy, run }) {
+  const summary = useQuickSummary(v);
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-green-300 bg-green-50 px-3 py-2">
       <div className="min-w-0 flex-1">
@@ -237,6 +276,11 @@ function LiveRow({ v, kindLabel, busy, run }) {
           current since {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} signed it
           {v.requiresResign ? " · everyone had to re-sign" : ""}
         </p>
+        {summary && (
+          <div className="mt-1 text-xs">
+            <TemplateHealth summary={summary} />
+          </div>
+        )}
       </div>
       <Badge color="green">Current</Badge>
       <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(`/api/admin/billing/agreement-versions/${v.id}`))}>

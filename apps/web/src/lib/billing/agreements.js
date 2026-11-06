@@ -38,7 +38,7 @@
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
-import { copyBoxesByKind, signerOf, templateFieldSummary } from "./documenso.js";
+import { copyBoxesByKind, signerOf, splitExhibit, templateFieldSummary } from "./documenso.js";
 import { fmtDate } from "./exhibitPdf.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, resolvePublishedIds } from "./coverage.js";
 
@@ -637,6 +637,7 @@ async function templateBoxes(documenso, version) {
     if (!live) return saved;
     return {
       allIds: summary.allIds,
+      exhibitBoxes: summary.exhibitBoxes,
       title: live.title ?? saved.title,
       rate: live.rate ?? saved.rate,
       address: live.address ?? saved.address,
@@ -734,7 +735,10 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     if (!was || e.wholeBuilding !== false) return e;
     return { ...e, units: (e.units ?? []).filter((u) => !(was.units ?? []).includes(u)) };
   });
-  const exhibitBoxText = exhibitText(isAmendment ? addedOnly : plan.entries);
+  // One block per property; spread over the Exhibit A boxes in order (splitExhibit).
+  const exhibitEntries = isAmendment ? addedOnly : plan.entries;
+  const exhibitBlocks = exhibitEntries.map((e) => `${e.address}\n${coverageLine(e)}`);
+  const exhibitBoxList = boxes.exhibitBoxes?.length ? boxes.exhibitBoxes : idsOf(boxes, "exhibit").map((id) => ({ id, height: 100 }));
   const exhibitBeforeText = exhibitText(plan.previous ?? []);
   // The address as typed on the form; without one, the Stripe billing address.
   const { line1, line2 } = addressLines(details);
@@ -753,7 +757,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
       ...idsOf(boxes, "address").map((id) => ({ id, value: address })),
       ...idsOf(boxes, "name").map((id) => ({ id, value: name })),
       ...["company", "owner", "email", "address1", "address2"].flatMap((k) => idsOf(boxes, k).map((id) => ({ id, value: values[k] }))),
-      ...idsOf(boxes, "exhibit").map((id) => ({ id, value: exhibitBoxText })),
+      ...splitExhibit(exhibitBlocks, exhibitBoxList),
       ...idsOf(boxes, "exhibitBefore").map((id) => ({ id, value: exhibitBeforeText })),
       // The agreement's own date ("Effective Date"): an addendum's agreement, or today on the agreement itself.
       ...idsOf(boxes, "agreementDate").map((id) => ({ id, value: fmtDate(isAmendment ? master?.signed_at ?? now : now) })),

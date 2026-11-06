@@ -10,6 +10,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  DocumensoError,
+  splitExhibit,
   DOCUMENSO_EMAILS_OFF,
   createDocumensoClient,
   documensoSetting,
@@ -18,7 +20,7 @@ import {
   verifyWebhookSecret,
 } from "./documenso.js";
 import { applyEnvelope, startSigning } from "./agreements.js";
-import { publishVersion } from "./agreementVersions.js";
+import { publishVersion, testFillTemplate } from "./agreementVersions.js";
 import { chicagoDate, enforceEnrollmentDeadline } from "./enrollment.js";
 import { BULK_RESEND_GAP_MS, bulkAudience, invoiceSummary, paymentSummary, singleTarget } from "./landlordOverview.js";
 
@@ -260,6 +262,9 @@ describe("template checks", () => {
         { type: "DATE", label: "" },
         { type: "TEXT", label: "Title" },
       ],
+      exhibitBoxes: [],
+      exhibitCapacity: 0,
+      warnings: [],
       ok: false,
     });
   });
@@ -581,5 +586,44 @@ describe("landlord overview", () => {
     assert.throws(() => singleTarget([row({ agreement: { status: "signed" } })], "u1", now), (e) => e.code === "already_signed");
     assert.throws(() => singleTarget([row({ lastAgreementEmailAt: now.toISOString() })], "u1", now), (e) => e.code === "just_sent");
     assert.equal(singleTarget([row()], "u1", now).id, "u1");
+  });
+});
+
+describe("Exhibit A across boxes, and the admin's test fill (2026-11-07)", () => {
+  it("fills the Exhibit A boxes in order without splitting a property, the last taking the rest", () => {
+    const blocks = Array.from({ length: 10 }, (_, i) => `${i} Main St\nWhole building`);
+    // 40 points: 4 lines at 8 point, one property (2 lines) then a second needs 5.
+    const out = splitExhibit(blocks, [{ id: 1, height: (40 / 792) * 100 }, { id: 2, height: 50 }]);
+    assert.equal(out[0].value, "0 Main St\nWhole building");
+    assert.equal(out[1].value.split("\n\n").length, 9, "everything else in the last box");
+    assert.deepEqual(splitExhibit(blocks.slice(0, 2), [{ id: 7, height: 80 }]), [{ id: 7, value: blocks.slice(0, 2).join("\n\n") }]);
+  });
+
+  it("warns about a one-line Exhibit A box and a character limit, and counts what it holds", () => {
+    const s = templateFieldSummary({
+      recipients: [{ id: 11, role: "SIGNER" }],
+      fields: [
+        { id: 1, type: "SIGNATURE", recipientId: 11 },
+        { id: 2, type: "TEXT", recipientId: 11, page: 7, positionY: 10, height: 2.9, fieldMeta: { label: "EXHIBIT A" } },
+        { id: 3, type: "TEXT", recipientId: 11, page: 6, height: 2, fieldMeta: { label: "EMAIL", characterLimit: 20 } },
+      ],
+    });
+    assert.equal(s.ok, true);
+    assert.match(s.warnings.join(" "), /only about 2 line/);
+    assert.match(s.warnings.join(" "), /\[EMAIL\] cuts its text at 20 characters/);
+    assert.equal(s.exhibitCapacity, 1, "one property fits at the smallest type");
+  });
+
+  it("a template Documenso refuses to fill does not become ready", async () => {
+    const refusing = {
+      async prepareSigningCopy() {
+        throw new DocumensoError("refused", 400, { issues: [{ message: "Number must be greater than or equal to 8", path: ["data", 0, "fieldMeta", "fontSize"] }] });
+      },
+    };
+    const env = { id: "t" };
+    const summary = { allIds: {}, exhibitBoxes: [{ id: 2, height: 70 }], recipientId: 11, exhibitCapacity: 20 };
+    assert.equal(await testFillTemplate(refusing, env, summary), "Number must be greater than or equal to 8 (data.0.fieldMeta.fontSize)");
+    const fine = { prepareSigningCopy: async () => ({ envelopeId: "e" }), discard: async () => {} };
+    assert.equal(await testFillTemplate(fine, env, summary), null);
   });
 });

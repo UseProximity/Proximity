@@ -65,7 +65,8 @@ export async function POST(req, { params }) {
       return NextResponse.json({ version: versionView(version) });
     }
     if (body.action === "check") {
-      const { version, summary } = await checkVersionFields(supabase, documenso, id);
+      // quick: only read the boxes (the admin page opening), no test fill.
+      const { version, summary } = await checkVersionFields(supabase, documenso, id, { quick: body.quick === true });
       return NextResponse.json({ version: versionView(version), summary });
     }
     if (body.action === "publish") {

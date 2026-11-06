@@ -148,6 +148,42 @@ export function copyBoxesByKind(templateEnvelope, copyEnvelope) {
   return out;
 }
 
+/*
+ * Exhibit A across several boxes (Wyatt, 2026-11-07): a template can have an
+ * "Exhibit A" box on more than one page, and the list fills them in order (by page,
+ * then down the page) rather than repeating. Each property is two lines (address,
+ * then whole building or units) and a blank line after it. A box holds as many
+ * lines as fit at Documenso's smallest type, 8 points.
+ */
+export const EXHIBIT_MIN_FONT = 8;
+const PAGE_POINTS = 792; // US Letter height
+export const exhibitBoxLines = (heightPct) => Math.max(1, Math.floor(((Number(heightPct) / 100) * PAGE_POINTS) / (EXHIBIT_MIN_FONT * 1.25)));
+
+// The Exhibit A text split over its boxes: `blocks` are one string per property;
+// `boxes` are [{ id, height }] in order. Returns [{ id, value }]; the last box takes
+// whatever is left, so nothing is ever dropped.
+export function splitExhibit(blocks, boxes) {
+  if (!boxes.length) return [];
+  if (boxes.length === 1 || !blocks.length) return boxes.map((b, i) => ({ id: b.id, value: i === 0 ? blocks.join("\n\n") || "None." : "" }));
+  const out = [];
+  let i = 0;
+  boxes.forEach((b, n) => {
+    const last = n === boxes.length - 1;
+    const room = exhibitBoxLines(b.height);
+    const chunk = [];
+    let used = 0;
+    while (i < blocks.length) {
+      const lines = blocks[i].split("\n").length + (chunk.length ? 1 : 0);
+      if (!last && chunk.length && used + lines > room) break;
+      chunk.push(blocks[i]);
+      used += lines;
+      i += 1;
+    }
+    out.push({ id: b.id, value: chunk.join("\n\n") || (n === 0 ? "None." : "") });
+  });
+  return out;
+}
+
 export function templateFieldSummary(envelope) {
   const signer = signerOf(envelope);
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
@@ -202,6 +238,11 @@ export function templateFieldSummary(envelope) {
     ],
     // Every box on the template, for the admin's "boxes found" list: its type and label.
     boxes: mine.map((f) => ({ type: f.type, label: labelOf(f) })),
+    // The Exhibit A boxes in reading order, and about how many properties they hold.
+    exhibitBoxes: exhibitBoxesOf(mine.filter(matches(["TEXT"], ...BOX_RULES.exhibit))),
+    exhibitCapacity: exhibitBoxesOf(mine.filter(matches(["TEXT"], ...BOX_RULES.exhibit))).reduce((n, b) => n + Math.floor((exhibitBoxLines(b.height) + 1) / 3), 0),
+    // Things that would go wrong on a landlord's copy, for the admin to fix first.
+    warnings: templateWarnings(mine, labelOf),
     ok: !!signer && count("SIGNATURE") > 0 && !!kind("exhibit"),
   };
 }
@@ -220,6 +261,27 @@ export function templateEditorUrl(envelope, host = documensoHost()) {
 
 // Dates on our copies: 11/05/2026, no time, in St. Louis time (Wyatt, 2026-11-05).
 export const DATE_SETTINGS = { dateFormat: "MM/dd/yyyy", timezone: "America/Chicago" };
+
+const exhibitBoxesOf = (fields) =>
+  fields
+    .map((f) => ({ id: f.id, page: Number(f.page) || 1, positionY: Number(f.positionY) || 0, height: Number(f.height) || 0 }))
+    .sort((a, b) => a.page - b.page || a.positionY - b.positionY);
+
+// Boxes set up so the filled text would be cut off or refused.
+function templateWarnings(fields, labelOf) {
+  const out = [];
+  const filled = fields.filter((f) => f.type === "TEXT" && Object.values(BOX_RULES).some(([re, not]) => re.test(labelOf(f)) && !(not && not.test(labelOf(f)))));
+  for (const f of filled) {
+    const limit = Number(f.fieldMeta?.characterLimit) || 0;
+    if (limit > 0 && limit < 200) out.push(`[${labelOf(f)}] cuts its text at ${limit} characters. Clear the character limit in its settings.`);
+  }
+  const exhibit = fields.filter((f) => f.type === "TEXT" && BOX_RULES.exhibit[0].test(labelOf(f)) && !BOX_RULES.exhibit[1].test(labelOf(f)));
+  const tall = exhibit.reduce((n, f) => n + ((Number(f.height) || 0) / 100) * PAGE_POINTS, 0);
+  if (exhibit.length && tall < 150) {
+    out.push(`The Exhibit A box is only about ${Math.max(1, Math.round(tall / 15))} line(s) tall, so a longer list runs on below it. Make it most of the page, or type [EXHIBIT A] in the document and upload it again.`);
+  }
+  return out;
+}
 
 // An initials box on every page of an exhibit.
 function exhibitFields(exhibit, signerId, envelopeItemId) {
@@ -308,12 +370,16 @@ export function createDocumensoClient({
    * off; the multi-line "Exhibit A" boxes start at the top.
    */
   // A long Exhibit A list shrinks to fit its box (a US Letter page is 792 points
-  // tall; a line takes about 1.25 times the font size), never below 6 points.
+  // tall; a line takes about 1.25 times the font size), never below Documenso's
+  // smallest, 8 points. A box only a line or two tall (placed by hand) keeps its
+  // font and lets the list run on down the page instead of shrinking to nothing.
   function exhibitFontSize(f) {
-    const lines = String(f.fieldMeta?.text ?? "").split("\n").length;
+    const own = Math.min(Math.max(Number(f.fieldMeta?.fontSize) || 12, 8), 96);
     const boxPoints = (Number(f.height) / 100) * 792;
+    if (boxPoints < 60) return own;
+    const lines = String(f.fieldMeta?.text ?? "").split("\n").length;
     const fits = Math.floor(boxPoints / (lines * 1.25));
-    return Math.max(6, Math.min(Number(f.fieldMeta?.fontSize) || 12, fits));
+    return Math.max(8, Math.min(own, fits));
   }
 
   async function settleFilledBoxes(envelopeId, envelope, signerId) {

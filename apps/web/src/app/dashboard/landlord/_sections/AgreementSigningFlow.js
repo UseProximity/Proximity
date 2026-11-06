@@ -33,15 +33,16 @@ async function call(url, { method = "GET", body, retries = 0 } = {}) {
 
 const STEPS = ["Your details", "Exhibit A", "Real estate license"];
 
+// Three bars, no labels (Wyatt, 2026-11-07); the step names are for screen readers.
 function Progress({ step }) {
   return (
     <ol className="grid grid-cols-3 gap-2 px-5 pt-4" aria-label="Signing steps">
       {STEPS.map((label, i) => (
-        <li key={label} className="min-w-0">
+        <li key={label} className="min-w-0" aria-current={i === step ? "step" : undefined}>
           <div className={`h-1.5 rounded-full ${i <= step ? "bg-red-600" : "bg-gray-200"}`} />
-          <p className={`mt-1 truncate text-xs ${i === step ? "font-semibold text-gray-900" : "text-gray-500"}`} aria-current={i === step ? "step" : undefined}>
-            {i + 1}. {label}
-          </p>
+          <span className="sr-only">
+            Step {i + 1} of {STEPS.length}: {label}
+          </span>
         </li>
       ))}
     </ol>
@@ -69,7 +70,7 @@ function UnitRow({ unit, checked, disabled, note, onToggle, onRenamed }) {
   };
   if (editing) {
     return (
-      <li className="flex flex-wrap items-center gap-2">
+      <li className="flex w-full flex-wrap items-center gap-2">
         <input className={`${FIELD} w-40`} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="Unit name" autoFocus />
         <button type="button" className={BUTTON} disabled={busy || !name.trim()} onClick={save}>
           {busy ? "Saving..." : "Save"}
@@ -82,15 +83,15 @@ function UnitRow({ unit, checked, disabled, note, onToggle, onRenamed }) {
     );
   }
   return (
-    <li className="flex items-center gap-2">
-      <label className="flex min-w-0 items-center gap-2 text-sm text-gray-800">
+    <li className="inline-flex items-center gap-1" title={note ?? undefined}>
+      <label className="flex min-w-0 items-center gap-1.5 text-sm text-gray-800">
         <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onToggle(e.target.checked)} />
         <span className="truncate">{unit.label}</span>
+        {note && <span className="text-xs text-gray-400">({note})</span>}
       </label>
-      <button type="button" className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" onClick={() => setEditing(true)} aria-label={`Rename ${unit.label}`}>
-        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+      <button type="button" className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" onClick={() => setEditing(true)} aria-label={`Rename ${unit.label}`}>
+        <Pencil className="h-3 w-3" aria-hidden="true" />
       </button>
-      {note && <span className="text-xs text-gray-400">{note}</span>}
     </li>
   );
 }
@@ -197,7 +198,8 @@ function PropertyChoice({ p, choice, onChange }) {
           ) : (
             <div className="space-y-2">
               {p.units.length ? (
-                <ul className="space-y-1">
+                // Side by side, wrapping, so a property with many units stays short.
+                <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
                   {p.units.map((u) => (
                     <UnitRow
                       key={u.id}

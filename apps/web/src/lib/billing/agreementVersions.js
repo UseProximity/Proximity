@@ -27,7 +27,7 @@
  * documenso.js, passed in so this stays testable.
  */
 import { BillingError } from "./errors.js";
-import { DocumensoError, templateEditorUrl, templateFieldSummary } from "./documenso.js";
+import { DocumensoError, splitExhibit, templateEditorUrl, templateFieldSummary } from "./documenso.js";
 import { preparePlaceholders } from "./placeholders.js";
 
 export const VERSION_COLUMNS =
@@ -201,17 +201,78 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
   }
 }
 
-// Step 3: read the template back and check its boxes.
-export async function checkVersionFields(db, documenso, versionId) {
+/*
+ * A test fill (Wyatt, 2026-11-07): a throwaway copy of the template filled the way
+ * a landlord's would be, with long sample values and a full Exhibit A, then
+ * deleted. Anything Documenso would refuse on a real copy is refused here first.
+ * Returns null when it went through, else what was refused, in words.
+ */
+export async function testFillTemplate(documenso, envelope, summary) {
+  if (!documenso.prepareSigningCopy) return null;
+  const sample = {
+    title: "Property Manager and Authorized Signatory",
+    name: "Alexandra Testington-Whitmore",
+    company: "Testington Whitmore Property Holdings LLC",
+    owner: "Testington Whitmore Property Holdings LLC",
+    email: "alexandra.testington-whitmore@example.com",
+    address1: "12345 South Brentwood Boulevard, Suite 1200",
+    address2: "St. Louis, MO 63117",
+    address: "12345 South Brentwood Boulevard, Suite 1200, St. Louis, MO 63117",
+    agreementDate: "11/07/2026",
+    exhibitBefore: "6105 Delmar Boulevard, St. Louis, Missouri 63112\nWhole building",
+  };
+  // A full Exhibit A: as many properties as the boxes hold (at least a dozen).
+  const count = Math.max(12, summary.exhibitCapacity || 0);
+  const blocks = Array.from({ length: count }, (_, i) => `${6100 + i} Pershing Avenue, St. Louis, Missouri 63112\nUnits: Apt ${i + 1}A, Apt ${i + 1}B, Apt ${i + 1}C`);
+  const prefill = [
+    ...Object.entries(sample).flatMap(([k, value]) => (summary.allIds?.[k] ?? []).map((id) => ({ id, value }))),
+    ...splitExhibit(blocks, summary.exhibitBoxes ?? []),
+  ];
+  let copy = null;
+  try {
+    copy = await documenso.prepareSigningCopy({
+      templateId: envelope.id,
+      recipientId: summary.recipientId,
+      email: "test-fill@proximity.test",
+      name: sample.name,
+      externalId: `test-fill:${envelope.id}`,
+      prefill,
+      autofill: { name: sample.name, email: sample.email, date: "11/07/2026" },
+      dropRateBox: true,
+      exhibit: null,
+      title: "Test fill (deleted automatically)",
+    });
+    return null;
+  } catch (err) {
+    if (!(err instanceof DocumensoError)) throw err;
+    const issue = err.body?.issues?.[0];
+    return issue ? `${issue.message} (${(issue.path ?? []).join(".")})` : err.message;
+  } finally {
+    if (copy?.envelopeId) await documenso.discard?.(copy.envelopeId, "test fill").catch(() => {});
+  }
+}
+
+// Step 3: read the template back and check its boxes (and, unless `quick`, test-fill it).
+export async function checkVersionFields(db, documenso, versionId, { quick = false } = {}) {
   const version = await getVersion(db, versionId);
   if (!version.provider_template_id) {
     throw new BillingError("not_connected", "Connect this version to Documenso first.", 409);
   }
+  const envelope = await documenso.getEnvelope(version.provider_template_id);
+  const summary = templateFieldSummary(envelope);
+  // Just showing the boxes found (the admin page opening, any version): no test fill, no change.
+  if (quick) return { version, summary };
   if (version.status !== "draft" && version.status !== "ready") {
     throw new BillingError("not_draft", "A live or retired version cannot be changed.", 409);
   }
-  const envelope = await documenso.getEnvelope(version.provider_template_id);
-  const summary = templateFieldSummary(envelope);
+  // A template that has its boxes is test-filled before it can go live.
+  if (summary.ok) {
+    const refused = await testFillTemplate(documenso, envelope, summary);
+    if (refused) {
+      summary.ok = false;
+      summary.missing = [...(summary.missing ?? []), `a test fill to go through (Documenso refused it: ${refused})`];
+    }
+  }
   if (!summary.ok) {
     const { error } = await db
       .from("agreement_versions")
