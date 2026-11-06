@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./agreements/shared";
+import { FieldGuide } from "./agreements/AgreementVersions";
 
 const STATUS = {
   open: ["amber", "Waiting on us"],
@@ -124,6 +125,12 @@ function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
           <input className="mt-2 block w-full text-sm" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
         </label>
       </div>
+      <details className="rounded-md border border-gray-200 px-3 py-2">
+        <summary className="cursor-pointer text-xs font-medium text-gray-700">Boxes to place in Documenso, and their labels</summary>
+        <div className="mt-2">
+          <FieldGuide kind={request.documentKind ?? "master"} />
+        </div>
+      </details>
       <button type="submit" disabled={busy || !file} className={PRIMARY}>
         {busy ? "Uploading..." : "Upload"}
       </button>

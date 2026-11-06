@@ -39,7 +39,7 @@ import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, signerOf, templateFieldSummary } from "./documenso.js";
-import { buildExhibitPdf, fmtDate, INITIALS_BOX } from "./exhibitPdf.js";
+import { fmtDate } from "./exhibitPdf.js";
 import { coveredMap, loadCoverageRows, loadLandlordProperties, planCoverage, resolvePublishedIds } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
@@ -330,9 +330,6 @@ function copyBoxesMatch(templateEnvelope, copyEnvelope, values) {
   return Object.entries(values).every(([kind, value]) => (boxes[kind] ?? []).every((f) => String(f.fieldMeta?.text ?? "") === (value ?? "")));
 }
 
-// How many properties fit in the agreement's "Exhibit A" box; more go on attached pages.
-export const EXHIBIT_BOX_MAX = 40;
-
 // The covered properties as the "Exhibit A" box shows them, one per line.
 export function exhibitText(entries, { added = null } = {}) {
   if (!entries.length) return "None.";
@@ -550,10 +547,6 @@ async function cancelInDocumenso(documenso, row, reason) {
   await withdraw(row.provider_envelope_id, reason).catch(() => {});
 }
 
-async function landlordNameOf(db, user) {
-  const { data } = await db.from("users").select("name, company_name").eq("id", user.id).maybeSingle();
-  return data?.company_name?.trim() || data?.name?.trim() || user.name || user.email;
-}
 
 // Make the record, its proposed coverage, the Exhibit A and the Documenso copy.
 /*
@@ -603,8 +596,6 @@ async function templateBoxes(documenso, version) {
 async function createDocument(db, documenso, { user, title, name, details = {}, plan, version, master, now, storeExhibit, landlordAddress }) {
   const company = details.company ?? "";
   const nowIso = now.toISOString();
-  // Exhibit A's "Landlord:" line: the company typed on the form, else the account's.
-  const landlordName = company || (await landlordNameOf(db, user));
   const isAmendment = plan.kind === "amendment";
 
   // The record first, so a Documenso copy is never made without one to find it by.
@@ -660,38 +651,25 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
   const externalId = `${isAmendment ? "agreement-amendment" : "landlord-agreement"}:${row.id}`;
   const boxes = await templateBoxes(documenso, version);
 
-  // Exhibit A goes in the document's own "Exhibit A" box when the template has one
-  // (Wyatt, 2026-11-06): every covered property, one per line, and on an
-  // amendment the list before it in an "Exhibit A before" box. Without that box,
-  // or with more properties than it holds, the generated pages are attached as a
-  // second document, with an initials box on each page.
+  // Exhibit A is the document's own "Exhibit A" Text box, at its end: every
+  // envelope is one document (Wyatt, 2026-11-06). It lists every covered property,
+  // one per line. On an amendment it is the list after it, the added properties
+  // marked; the list before goes in an "Exhibit A before" box, or, without one,
+  // above it in the same box. A version cannot go live without the box
+  // (templateFieldSummary), so one without it is not offered for signing.
+  if (!idsOf(boxes, "exhibit").length) {
+    console.error(`billing: version ${version.id} has no "Exhibit A" box; not offering it for signing`);
+    const what = isAmendment ? "The Exhibit A amendment" : "The commission agreement";
+    throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
+  }
   const before = new Set((plan.previous ?? []).map((e) => e.listingId));
   const added = isAmendment ? new Set(plan.entries.filter((e) => !before.has(e.listingId)).map((e) => e.listingId)) : null;
-  const hasBox = idsOf(boxes, "exhibit").length > 0;
-  const fits = plan.entries.length <= EXHIBIT_BOX_MAX && (plan.previous ?? []).length <= EXHIBIT_BOX_MAX;
-  const exhibitBoxText = !hasBox ? null : fits ? exhibitText(plan.entries, { added }) : `See the attached Exhibit A pages (${plan.entries.length} properties).`;
-  const exhibitBeforeText = !hasBox ? null : fits ? exhibitText(plan.previous ?? []) : "See the attached Exhibit A pages.";
-
-  let exhibitFile = null;
-  let exhibitKey = null;
-  if (!hasBox || !fits) {
-    const exhibit = await buildExhibitPdf({
-      kind: plan.kind,
-      landlordName,
-      entries: plan.entries,
-      previous: plan.previous ?? [],
-      agreementSignedAt: master?.signed_at ?? null,
-      preparedAt: now,
-    });
-    exhibitKey = storeExhibit ? await storeExhibit({ userId: user.id, bytes: exhibit.bytes }) : null;
-    exhibitFile = {
-      bytes: exhibit.bytes,
-      fileName: isAmendment ? "exhibit-a-before-and-after.pdf" : "exhibit-a.pdf",
-      pageCount: exhibit.pageCount,
-      initialsBox: INITIALS_BOX,
-    };
-  }
-
+  const hasBeforeBox = idsOf(boxes, "exhibitBefore").length > 0;
+  const exhibitBoxText =
+    isAmendment && !hasBeforeBox
+      ? `Before this amendment:\n${exhibitText(plan.previous ?? [])}\n\nAfter this amendment:\n${exhibitText(plan.entries, { added })}`
+      : exhibitText(plan.entries, { added });
+  const exhibitBeforeText = exhibitText(plan.previous ?? []);
   // The address as typed on the form; without one, the Stripe billing address.
   const typedAddress = [details.address1, details.address2].filter(Boolean).join(", ");
   const address = typedAddress || (landlordAddress ? await landlordAddress(user.id).catch(() => null) : null);
@@ -715,7 +693,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     autofill: { name, email: details.email || user.email, date: fmtDate(now) },
     // A commission rate box left on an older template is taken off the copy.
     dropRateBox: true,
-    exhibit: exhibitFile,
+    exhibit: null,
     email: user.email,
     name,
     title: isAmendment ? "Exhibit A amendment" : "Commission agreement",
@@ -724,7 +702,6 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
   const saved = {
     provider_envelope_id: copy.envelopeId,
     ...(copy.exhibitItemId && { provider_exhibit_item_id: copy.exhibitItemId }),
-    ...(exhibitKey && { exhibit_file_key: exhibitKey }),
   };
   const { error: saveError } = await db.from(TABLE[plan.kind]).update(saved).eq("id", row.id);
   if (saveError) throw saveError;

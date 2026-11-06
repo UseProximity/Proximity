@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, EXHIBIT_BOX_MAX, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
+import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
@@ -121,11 +121,10 @@ describe("master agreement with Exhibit A", () => {
     assert.deepEqual(row.exhibit[0].units, ["Apt 1", "Apt 2"]);
     assert.equal(row.exhibit[0].address, "100 Live St, St. Louis, Missouri 63130");
     assert.equal(row.commission_rate_percent, 8.5);
-    // The copy: Exhibit A attached, initials on its pages, rate and title filled in.
+    // The copy: one document, Exhibit A in its own box, the title filled in.
     const copy = documenso.calls.lastCopy;
-    assert.ok(copy.exhibit.bytes.length > 500);
-    assert.equal(copy.exhibit.pageCount, 1);
-    assert.ok(copy.exhibit.initialsBox.width > 0);
+    assert.equal(copy.exhibit, null);
+    assert.match(copy.prefill.find((p) => p.id === 2).value, /^1\. 100 Live St[\s\S]*\n3\. 300 Draft Ave/);
     assert.equal(copy.prefill.some((p) => p.id === 43), false, "the rate is in the agreement's text, no box is filled");
     assert.equal(copy.dropRateBox, true, "a leftover rate box is taken off the copy");
     assert.equal(copy.signerTitle, "Owner");
@@ -144,7 +143,7 @@ describe("master agreement with Exhibit A", () => {
     const row = db.tables.landlord_agreements[0];
     assert.equal(row.term_start, "2027-01-05T12:00:00.000Z");
     assert.equal(row.term_end, undefined);
-    assert.ok(row.signed_exhibit_file_key, "the signed Exhibit A is stored");
+    assert.ok(row.signed_file_key, "the signed agreement, Exhibit A inside it, is stored");
     const { covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
     assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
     // Years later it still counts: nothing to sign again.
@@ -189,7 +188,7 @@ describe("Exhibit A amendments", () => {
     assert.deepEqual(ids(a.proposed_exhibit), ["L1", "L2", "L3"]);
     assert.equal(a.version_id, "va", "the live amendment template");
     assert.equal(documenso.calls.lastCopy.templateId, "envelope_amend");
-    assert.ok(documenso.calls.lastCopy.exhibit, "the before and after pages are attached for initials");
+    assert.equal(documenso.calls.lastCopy.exhibit, null, "one document: the lists are in its Exhibit A box");
     assert.equal(documenso.calls.lastCopy.title, "Exhibit A amendment");
     // L3 is only proposed until the amendment is signed.
     const before = await coverageFor(db, "u1", new Date("2027-02-01"));
@@ -202,8 +201,8 @@ describe("Exhibit A amendments", () => {
     assert.equal(db.tables.landlord_agreements.filter((m) => m.status === "signed").length, 1);
     // The amendment is its own signed document; the agreement keeps its own files untouched.
     const a2 = db.tables.agreement_amendments[0];
-    assert.ok(a2.signed_file_key && a2.signed_exhibit_file_key);
-    assert.deepEqual(await documentFileKeys(db, { userId: "u1", kind: "amendment", id: a2.id }), [a2.signed_file_key, a2.signed_exhibit_file_key]);
+    assert.ok(a2.signed_file_key);
+    assert.deepEqual(await documentFileKeys(db, { userId: "u1", kind: "amendment", id: a2.id }), [a2.signed_file_key]);
   });
 
   it("a charge on a covered property records the agreement and amendment that cover it, with the rate", async () => {
@@ -410,7 +409,11 @@ describe("commission rate", () => {
 });
 
 describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
-  const template = (fields) => ({ id: "envelope_master", recipients: [{ id: 11, role: "SIGNER" }], fields: [{ id: 1, type: "SIGNATURE", recipientId: 11 }, ...fields] });
+  const template = (fields) => ({
+    id: "envelope_master",
+    recipients: [{ id: 11, role: "SIGNER" }],
+    fields: [{ id: 1, type: "SIGNATURE", recipientId: 11 }, ...(fields.some((f) => /exhibit/i.test(f.fieldMeta?.label ?? "")) ? [] : [{ id: 2, type: "TEXT", recipientId: 11, fieldMeta: { label: "Exhibit A" } }]), ...fields],
+  });
 
   it("no commission rate box is filled: the rate is written into the agreement (2026-11-05)", async () => {
     const db = world();
@@ -494,14 +497,29 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.equal(documenso.calls.copies, 2);
   });
 
-  it("without an Exhibit A box, or with more properties than it holds, the pages are attached", async () => {
+  it("one document per envelope: a template without an Exhibit A box is not offered for signing", async () => {
     const db = world();
     const documenso = fakeDocumenso();
-    await sign(db, documenso, { listingIds: ["L2"] });
-    assert.ok(documenso.calls.lastCopy.exhibit, "no box: attached pages");
+    documenso.envelopes.set("envelope_master", { id: "envelope_master", recipients: [{ id: 11, role: "SIGNER" }], fields: [{ id: 1, type: "SIGNATURE", recipientId: 11 }] });
+    await assert.rejects(() => sign(db, documenso, { listingIds: ["L2"] }), (e) => e.code === "not_available");
     assert.equal(exhibitText([]), "None.");
     assert.throws(() => cleanSignerDetails({ email: "not an email" }), (e) => e.code === "bad_email");
-    assert.ok(EXHIBIT_BOX_MAX >= 30);
+  });
+
+  it("an amendment with one Exhibit A box shows the list before and after in it", async () => {
+    const { db, documenso } = await (async () => {
+      const db = world();
+      const documenso = fakeDocumenso();
+      await sign(db, documenso, { listingIds: ["L2"] });
+      documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+      await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+      return { db, documenso };
+    })();
+    await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
+    const text = documenso.calls.lastCopy.prefill.find((p) => p.id === 2)?.value;
+    assert.match(text, /^Before this amendment:\n1\. 100 Live St/);
+    assert.match(text, /After this amendment:\n[\s\S]*300 Draft Ave, St\. Louis, Missouri 63130 \(Units: Loft\) \(added by this amendment\)/);
+    assert.equal(documenso.calls.lastCopy.exhibit, null, "nothing attached");
   });
 
   it("needs a first and last name", async () => {
@@ -522,7 +540,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.equal(documenso.calls.lastCopy.name, "Patricia Landlord");
   });
 
-  it("falls back to the saved box ids when the template cannot be read", async () => {
+  it("is not offered for signing when the template cannot be read (its Exhibit A box cannot be confirmed)", async () => {
     const db = world();
     const documenso = fakeDocumenso();
     const read = documenso.getEnvelope;
@@ -530,8 +548,7 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
       if (id === "envelope_master") throw new Error("down");
       return read(id);
     };
-    await sign(db, documenso, { listingIds: ["L2"] });
-    assert.equal(documenso.calls.lastCopy.titleFieldId, 42, "the saved title box id is used");
+    await assert.rejects(() => sign(db, documenso, { listingIds: ["L2"] }), (e) => e.code === "not_available");
   });
 });
 

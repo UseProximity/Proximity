@@ -17,7 +17,7 @@ const dateOnly = (iso) => new Date(iso).toLocaleDateString("en-US", { year: "num
 
 const BUTTON = "px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
 
-function Requirement({ done, children }) {
+export function Requirement({ done, children }) {
   return (
     <li className="flex items-start gap-2 text-sm">
       <span
@@ -30,6 +30,28 @@ function Requirement({ done, children }) {
       </span>
       <span className={done ? "text-gray-600" : "text-gray-900"}>{children}</span>
     </li>
+  );
+}
+
+/*
+ * "Before you can publish a listing": what the listing gate needs, at the top of
+ * the Payments tab (Wyatt, 2026-11-06). Only requirements that are switched on.
+ */
+export function PublishChecklist({ gate, hasActivePaymentMethod }) {
+  if (!gate.requirePaymentMethod && !gate.requireAgreement) return null;
+  return (
+    <section className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
+      <p className="text-sm font-semibold text-gray-900">Before you can publish a listing</p>
+      <ul className="mt-2 space-y-1.5">
+        {gate.requirePaymentMethod && <Requirement done={hasActivePaymentMethod}>Add an active payment method</Requirement>}
+        {gate.requireAgreement && (
+          <Requirement done={gate.agreement?.status === "signed"}>
+            Sign the commission agreement. New properties are added to it when you publish them.
+          </Requirement>
+        )}
+      </ul>
+      {!gate.allowed && <p className="mt-2 text-xs text-gray-500">Your drafts are saved. You can publish them as soon as these are done.</p>}
+    </section>
   );
 }
 
@@ -135,7 +157,6 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   const agreement = gate.agreement;
   const status = STATUS[agreement.status] ?? STATUS.not_signed;
   const signedOk = agreement.status === "signed";
-  const showChecklist = gate.requirePaymentMethod || gate.requireAgreement;
   const [signing, setSigning] = useState(null);
   const [error, setError] = useState(null);
   const [docsKey, setDocsKey] = useState(0);
@@ -212,19 +233,6 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         ) : null
       }
     >
-      {showChecklist && (
-        <div className="px-4 pt-4">
-          <p className="text-sm font-medium text-gray-900">Before you can publish a listing</p>
-          <ul className="mt-2 space-y-1.5">
-            {gate.requirePaymentMethod && <Requirement done={hasActivePaymentMethod}>Add an active payment method</Requirement>}
-            {gate.requireAgreement && (
-              <Requirement done={signedOk}>Sign the commission agreement. New properties are added to it when you publish them.</Requirement>
-            )}
-          </ul>
-          {!gate.allowed && <p className="mt-2 text-xs text-gray-500">Your drafts are saved. You can publish them as soon as these are done.</p>}
-        </div>
-      )}
-
       <div className="space-y-4 px-4 py-4">
         {(signedOk || agreement.status === "needs_resign") && agreement.signedAt && (
           <div className="flex flex-wrap items-center gap-3">

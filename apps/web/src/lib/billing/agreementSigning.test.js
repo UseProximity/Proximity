@@ -254,7 +254,8 @@ describe("template checks", () => {
       fields: { title: { id: 3, type: "text", readOnly: false }, rate: null, address: null, name: null, company: null, owner: null, brokerage: null, license: null },
       rateReadOnly: null,
       allIds: { title: [3], address: [], address1: [], address2: [], email: [], name: [], owner: [], company: [], exhibit: [], exhibitBefore: [] },
-      ok: true,
+      missing: ['a Text box labelled "Exhibit A"'],
+      ok: false,
     });
   });
 
@@ -322,13 +323,15 @@ describe("startSigning: the license answer is not printed on the agreement (2026
       recipients: [{ id: 11, role: "SIGNER" }],
       fields: [
         { id: 1, type: "SIGNATURE", recipientId: 11 },
+        { id: 2, type: "TEXT", recipientId: 11, fieldMeta: { label: "Exhibit A" } },
         { id: 44, type: "TEXT", recipientId: 11, fieldMeta: { label: "Brokerage" } },
         { id: 45, type: "TEXT", recipientId: 11, fieldMeta: { label: "License" } },
       ],
     });
     await sign(db, documenso, { licenseDisclosure: { is_licensee: true, company_name: "West End Realty", license_number: "2026001234" } });
+    // Only the Exhibit A box (id 2 on the template) holds text.
     const filled = (await documenso.getEnvelope("envelope_1")).fields.filter((f) => f.fieldMeta?.text);
-    assert.deepEqual(filled, []);
+    assert.deepEqual(filled.map((f) => f.fieldMeta.text), ["None."]);
     assert.deepEqual(documenso.calls.lastFill, []);
   });
 });
@@ -424,10 +427,10 @@ describe("applyEnvelope", () => {
     assert.equal(row.signed_at, "2026-12-03T10:00:00.000Z");
     assert.equal(row.signer_name, "Pat Landlord");
     assert.equal(row.signed_file_key, "billing/agreements/u1/x.pdf");
-    assert.equal(row.signed_exhibit_file_key, "billing/agreements/u1/x.pdf", "the signed Exhibit A is kept too");
+    assert.equal(row.signed_exhibit_file_key, undefined, "one document per envelope: Exhibit A is inside it");
     assert.equal(row.term_end, undefined, "no end date is stored (2026-11-06)");
     assert.equal(stored[0].userId, "u1");
-    assert.equal(stored.length, 2);
+    assert.equal(stored.length, 1);
     // A redelivered webhook changes nothing and stores nothing again.
     assert.equal(await applyEnvelope(db, documenso, envelope, { storeSigned }), "unchanged");
     assert.equal(documenso.calls.downloads, 1);

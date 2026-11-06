@@ -70,23 +70,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
       </Step>
       <Step n={2} done={version.status === "ready"}>
         <p className="text-gray-900">Place the signature boxes in Documenso</p>
-        <div className="space-y-1 text-xs text-gray-500">
-          <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: we fill them in, so the landlord only signs and initials.</p>
-          <p>The commission rate is written into the agreement itself. No box is needed for it.</p>
-          <p>
-            Text boxes we fill in, by the word in their label (the landlord types or checks these on the form before
-            signing): &quot;Name&quot; (full name), &quot;Title&quot;, &quot;Company&quot;, &quot;Owner&quot; (the company, or their
-            name when there is none), &quot;Email&quot;, &quot;Address 1&quot; (street), &quot;Address 2&quot; (city, state and ZIP)
-            and &quot;Exhibit A&quot; (every covered property, one per line; on an amendment, the list after it, with
-            &quot;Exhibit A before&quot; for the list before it). A label may repeat: every box with it is filled. Keep
-            these words out of other boxes&apos; labels, and tick Read only on the boxes we fill.
-          </p>
-          <p>
-            Make the &quot;Exhibit A&quot; box big (most of a page) with font size 10: it holds up to 40 properties. With
-            no Exhibit A box, or more properties than that, the Exhibit A pages are attached as a second document with an
-            initials box on each page.
-          </p>
-        </div>
+        <FieldGuide kind={version.kind} />
         {version.connected && version.editorUrl && (
           <a href={version.editorUrl} target="_blank" rel="noopener noreferrer" className={`${BUTTON} mt-1 inline-block`}>
             Open in Documenso
@@ -107,7 +91,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
                       .filter(Boolean)
                       .join(", ") || "none"
                   }.`
-                : "No signature box for the signer yet. Add one in Documenso, save, then check again."}
+                : `Still needed: ${(summary.missing ?? ["a Signature box for the signer"]).join(" and ")}. Add it in Documenso, save, then check again.`}
             </p>
           </div>
         )}
@@ -136,6 +120,72 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
         </button>
       </Step>
     </ol>
+  );
+}
+
+/*
+ * Which boxes to place on a template in Documenso, and the label each needs
+ * (Wyatt, 2026-11-06). Text boxes are filled by the word in their label
+ * (BOX_RULES in lib/billing/documenso.js); Documenso's own box types are used by
+ * type. Shown in each version's setup and above the upload form.
+ */
+const GUIDE_ROWS = [
+  { box: "Signature", label: "(none)", fills: "The landlord signs here.", need: "Required" },
+  { box: "Text", label: "Exhibit A", fills: "Every covered property, one per line. Make it big, on the last page.", need: "Required" },
+  { box: "Date", label: "(none)", fills: "The signing date, like 11/06/2026.", need: "Optional" },
+  { box: "Initials", label: "(none)", fills: "The landlord initials here, e.g. under Exhibit A.", need: "Optional" },
+  { box: "Text", label: "Name", fills: "Their full name.", need: "Optional" },
+  { box: "Text", label: "Title", fills: "Their title (Owner, Property Manager).", need: "Optional" },
+  { box: "Text", label: "Company", fills: "The company they sign for (blank if none).", need: "Optional" },
+  { box: "Text", label: "Owner", fills: "The company, or their name when there is no company.", need: "Optional" },
+  { box: "Text", label: "Email", fills: "Their email.", need: "Optional" },
+  { box: "Text", label: "Address 1", fills: "Street, e.g. 8151 Clayton Rd, Suite 301.", need: "Optional" },
+  { box: "Text", label: "Address 2", fills: "City, state and ZIP, e.g. St. Louis, MO 63117.", need: "Optional" },
+];
+const AMENDMENT_ROWS = [
+  { box: "Text", label: "Exhibit A", fills: "The list after this amendment, added properties marked. With no \"Exhibit A before\" box, both lists go here.", need: "Required" },
+  { box: "Text", label: "Exhibit A before", fills: "The list before this amendment.", need: "Optional" },
+];
+
+export function FieldGuide({ kind = "master" }) {
+  const rows = kind === "amendment" ? GUIDE_ROWS.map((r) => (r.label === "Exhibit A" ? AMENDMENT_ROWS[0] : r)).concat(AMENDMENT_ROWS.slice(1)) : GUIDE_ROWS;
+  return (
+    <div className="space-y-2 text-xs text-gray-600">
+      <p>
+        Place these boxes on the PDF in Documenso. Each envelope is one document, so Exhibit A goes at the end of this PDF.
+        Text boxes are filled by their <strong>label</strong> (set in the box&apos;s settings), from what the landlord confirms
+        on our form before signing:
+      </p>
+      <div className="overflow-x-auto rounded-md border border-gray-200">
+        <table className="w-full text-left">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="px-2 py-1 font-medium">Box type</th>
+              <th className="px-2 py-1 font-medium">Label</th>
+              <th className="px-2 py-1 font-medium">Filled with</th>
+              <th className="px-2 py-1 font-medium" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((r) => (
+              <tr key={`${r.box}:${r.label}`}>
+                <td className="px-2 py-1 text-gray-700">{r.box}</td>
+                <td className="px-2 py-1 font-mono text-gray-900">{r.label}</td>
+                <td className="px-2 py-1">{r.fills}</td>
+                <td className={`px-2 py-1 ${r.need === "Required" ? "font-semibold text-red-700" : "text-gray-400"}`}>{r.need}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="list-disc space-y-0.5 pl-4">
+        <li>A label can repeat (Owner on page 1 and on the signature page): every box with it is filled.</li>
+        <li>Keep these words (Name, Title, Company, Owner, Email, Address, Exhibit A) out of any other box&apos;s label.</li>
+        <li>No box for the commission rate: write it into the agreement.</li>
+        <li>Filled boxes are made read-only and their text may run past a small box. A long Exhibit A list shrinks to fit.</li>
+        <li>A version cannot go live without a Signature box and an &quot;Exhibit A&quot; box.</li>
+      </ul>
+    </div>
   );
 }
 
@@ -295,6 +345,12 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
         <p className="text-xs text-gray-500">
           A version for one landlord (a negotiated change) is uploaded from their change request, under Change requests.
         </p>
+        <details className="rounded-md border border-gray-200 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-gray-700">Boxes to place in Documenso, and their labels</summary>
+          <div className="mt-2">
+            <FieldGuide kind={kind} />
+          </div>
+        </details>
         <div className="flex flex-wrap gap-3">
           <label className="block w-48 text-sm text-gray-700">
             Document

@@ -192,7 +192,13 @@ export function templateFieldSummary(envelope) {
     rateReadOnly: rate ? rate.fieldMeta?.readOnly === true : null,
     // Every box each value goes in, by kind.
     allIds: Object.fromEntries(Object.keys(BOX_RULES).map((k) => [k, allLabelled(["TEXT"], ...BOX_RULES[k])])),
-    ok: !!signer && count("SIGNATURE") > 0,
+    // Ready to go live: a signer with a Signature box, and the "Exhibit A" Text box
+    // the covered properties go in (every envelope is one document, Wyatt 2026-11-06).
+    missing: [
+      ...(!signer || count("SIGNATURE") === 0 ? ["a Signature box for the signer"] : []),
+      ...(!kind("exhibit") ? ['a Text box labelled "Exhibit A"'] : []),
+    ],
+    ok: !!signer && count("SIGNATURE") > 0 && !!kind("exhibit"),
   };
 }
 
@@ -297,6 +303,15 @@ export function createDocumensoClient({
    * sized for a short word lets the text run past its edge instead of cutting it
    * off; the multi-line "Exhibit A" boxes start at the top.
    */
+  // A long Exhibit A list shrinks to fit its box (a US Letter page is 792 points
+  // tall; a line takes about 1.25 times the font size), never below 6 points.
+  function exhibitFontSize(f) {
+    const lines = String(f.fieldMeta?.text ?? "").split("\n").length;
+    const boxPoints = (Number(f.height) / 100) * 792;
+    const fits = Math.floor(boxPoints / (lines * 1.25));
+    return Math.max(6, Math.min(Number(f.fieldMeta?.fontSize) || 12, fits));
+  }
+
   async function settleFilledBoxes(envelopeId, envelope, signerId) {
     // A copy's boxes lose their labels, so the multi-line Exhibit A box is known by
     // its text: more than one line, or a tall box.
@@ -313,7 +328,9 @@ export function createDocumensoClient({
             ...(f.fieldMeta ?? {}),
             type: "text",
             readOnly: true,
-            ...(isExhibit(f) ? { verticalAlign: "top", overflow: "vertical", textAlign: "left" } : { overflow: "horizontal" }),
+            ...(isExhibit(f)
+              ? { verticalAlign: "top", overflow: "vertical", textAlign: "left", fontSize: exhibitFontSize(f) }
+              : { overflow: "horizontal" }),
           },
         })),
       },

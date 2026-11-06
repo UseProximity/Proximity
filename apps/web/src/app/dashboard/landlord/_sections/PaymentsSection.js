@@ -5,7 +5,7 @@ import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
 import InvoicesCard from "./InvoicesCard";
 import AutopayCard from "./AutopayCard";
-import AgreementCard from "./AgreementCard";
+import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
 
@@ -198,6 +198,7 @@ export default function PaymentsSection() {
           {notice.text}
         </div>
       )}
+      {gate && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
       {gate && (
         <AgreementCard
           gate={gate}

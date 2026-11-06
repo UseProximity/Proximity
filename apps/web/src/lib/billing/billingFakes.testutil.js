@@ -100,6 +100,15 @@ export function fakeDb(tables = {}) {
   return { tables, from: query };
 }
 
+const DEFAULT_TEMPLATE = (id) => ({
+  id,
+  recipients: [{ id: 11, role: "SIGNER" }],
+  fields: [
+    { id: 1, type: "SIGNATURE", recipientId: 11 },
+    { id: 2, type: "TEXT", recipientId: 11, page: 7, height: 75, fieldMeta: { label: "Exhibit A" } },
+  ],
+});
+
 // A fake Documenso: one template, copies made from it, and their state. Copies
 // are prepared as drafts and opened by finishSigningCopy, like the real client.
 export function fakeDocumenso() {
@@ -112,7 +121,7 @@ export function fakeDocumenso() {
     calls.copiesMade.push(input);
     const id = `envelope_${++n}`;
     // The copy carries the template's boxes (with new ids, like Documenso).
-    const template = input.templateId ? envelopes.get(input.templateId) : null;
+    const template = input.templateId ? envelopes.get(input.templateId) ?? DEFAULT_TEMPLATE(input.templateId) : null;
     // Prefilled values land in the copy's boxes as text, as Documenso does.
     const filled = new Map((input.prefill ?? []).filter((p) => p?.id && p.value != null && String(p.value).trim()).map((p) => [p.id, String(p.value)]));
     const fields = (template?.fields ?? []).map((f, i) => {
@@ -162,6 +171,8 @@ export function fakeDocumenso() {
       envelopes.get(id).status = "CANCELLED";
     },
     async getEnvelope(id) {
+      // A template nobody set up: a signer, a Signature box and an "Exhibit A" box.
+      if (!envelopes.has(id) && !/^envelope_\d+$/.test(id)) return structuredClone(DEFAULT_TEMPLATE(id));
       return structuredClone(envelopes.get(id));
     },
     async cancel(id) {
