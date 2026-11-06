@@ -29,7 +29,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
  * our server, which checks with Documenso directly, so the card updates at once
  * instead of waiting for the webhook. `token` and `host` come from
  * /api/billing/agreement/sign. `kind` is master (the agreement with Exhibit A) or
- * amendment (an updated Exhibit A listing every covered property), as that route answered.
+ * amendment (an Exhibit A amendment: Exhibit A before and after), as that route answered.
  */
 export default function SignAgreementDialog({ token, host, name, email, kind = "master", onClose, onFinished }) {
   const [phase, setPhase] = useState("signing"); // signing | saving | declined | error
@@ -73,7 +73,7 @@ export default function SignAgreementDialog({ token, host, name, email, kind = "
       <div className="flex h-full max-h-[56rem] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
           <h2 className="flex-1 text-base font-semibold text-gray-900">
-            {kind === "amendment" ? "Updated Exhibit A" : "Commission agreement"}
+            {kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"}
           </h2>
           <button
             ref={closeRef}

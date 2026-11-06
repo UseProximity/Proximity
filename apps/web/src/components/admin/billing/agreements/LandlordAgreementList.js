@@ -74,7 +74,7 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
       .catch((e) => setError(e.message));
   }, [landlordId, tick]);
   const voidDoc = (d) => {
-    const what = d.kind === "amendment" ? "this updated Exhibit A" : "this commission agreement";
+    const what = d.kind === "amendment" ? "this Exhibit A amendment" : "this commission agreement";
     const effect =
       d.status === "signed"
         ? d.kind === "amendment"
@@ -91,8 +91,8 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
   if (error) return <p className="text-xs text-red-700">{error}</p>;
   if (!docs) return <p className="text-xs text-gray-400">Loading documents...</p>;
   if (!docs.length) return <p className="text-xs text-gray-500">No agreement documents yet.</p>;
-  const open = (d, part) =>
-    run(() => openFile(`/api/admin/billing/landlords/${landlordId}/documents/file?${new URLSearchParams({ kind: d.kind, id: d.id, part })}`));
+  const open = (d) =>
+    run(() => openFile(`/api/admin/billing/landlords/${landlordId}/documents/file?${new URLSearchParams({ kind: d.kind, id: d.id })}`));
   return (
     <ul className="space-y-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">
       {docs.map((d) => {
@@ -102,20 +102,15 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
           <li key={`${d.kind}:${d.id}`} className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="flex-1 font-medium text-gray-900">
-                {d.kind === "amendment" ? "Updated Exhibit A" : "Master agreement"}
+                {d.kind === "amendment" ? "Exhibit A amendment" : "Master agreement"}
                 {d.versionLabel ? ` · ${d.versionLabel}` : ""}
                 {d.negotiated ? " (negotiated)" : ""} · {d.status}
                 {d.signedAt ? ` ${fmtDate(d.signedAt)}` : ` (made ${fmtDate(d.createdAt)})`}
                 {d.endedReason ? ` · ${d.endedReason}` : ""}
               </span>
-              {d.hasSignedFile && (
-                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d, "agreement")}>
-                  {d.kind === "amendment" ? "Amendment" : "Agreement"}
-                </button>
-              )}
-              {d.hasSignedExhibit && (
-                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d, "exhibit")}>
-                  Exhibit A
+              {(d.hasSignedFile || d.hasSignedExhibit) && (
+                <button type="button" disabled={busy} className={BUTTON} onClick={() => open(d)}>
+                  View
                 </button>
               )}
               {VOIDABLE.includes(d.status) && (

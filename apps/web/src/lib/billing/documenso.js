@@ -143,9 +143,9 @@ export function templateEditorUrl(envelope, host = documensoHost()) {
 // Dates on our copies: 11/05/2026, no time, in St. Louis time (Wyatt, 2026-11-05).
 export const DATE_SETTINGS = { dateFormat: "MM/dd/yyyy", timezone: "America/Chicago" };
 
-// An initials box on every page of an exhibit, and a signature box on its last page when it has one.
+// An initials box on every page of an exhibit.
 function exhibitFields(exhibit, signerId, envelopeItemId) {
-  const fields = Array.from({ length: exhibit.pageCount }, (_, i) => ({
+  return Array.from({ length: exhibit.pageCount }, (_, i) => ({
     type: "INITIALS",
     recipientId: signerId,
     envelopeItemId,
@@ -153,17 +153,6 @@ function exhibitFields(exhibit, signerId, envelopeItemId) {
     ...exhibit.initialsBox,
     fieldMeta: { type: "initials", required: true, label: "Initials" },
   }));
-  if (exhibit.signatureBox) {
-    fields.push({
-      type: "SIGNATURE",
-      recipientId: signerId,
-      envelopeItemId,
-      page: exhibit.pageCount,
-      ...exhibit.signatureBox,
-      fieldMeta: { type: "signature", required: true, label: "Signature" },
-    });
-  }
-  return fields;
 }
 
 // Every Documenso email for a document, switched off.
@@ -298,10 +287,9 @@ export function createDocumensoClient({
      *
      *   prepareSigningCopy  the copy of the template as a draft (nobody can sign a
      *                       draft), with every box we can fill already filled,
-     *                       Exhibit A attached with an initials box on each page
-     *   prepareExhibitCopy  for a property added later: a draft holding only the
-     *                       updated Exhibit A, initials on each page and one
-     *                       signature on the last (Documenso needs a signature)
+     *                       Exhibit A pages attached with an initials box on each
+     *                       page (the agreement's Exhibit A, or an amendment's
+     *                       before and after)
      *   finishSigningCopy   fills the last boxes (the licensee details), then
      *                       distributes with distributionMethod NONE, so Documenso
      *                       emails nobody; distributing issues the signing token
@@ -347,30 +335,6 @@ export function createDocumensoClient({
         });
       }
       return { envelopeId: used.id, exhibitItemId };
-    },
-
-    async prepareExhibitCopy({ email, name, externalId, exhibit, title = "Updated Exhibit A" }) {
-      const created = await request("POST", "/envelope/create", {
-        form: multipart(
-          {
-            title: copyTitle(title, name, email),
-            type: "DOCUMENT",
-            externalId: tagged(externalId),
-            ...(folderId && { folderId }),
-            recipients: [{ email, name, role: "SIGNER" }],
-            meta: { distributionMethod: "NONE", language: "en", typedSignatureEnabled: true, drawSignatureEnabled: true, ...DATE_SETTINGS },
-          },
-          [{ bytes: exhibit.bytes, name: exhibit.fileName || "exhibit-a.pdf" }]
-        ),
-      });
-      const envelope = await request("GET", `/envelope/${encodeURIComponent(created.id)}`);
-      const signerId = signerOf(envelope)?.id;
-      const itemId = envelope.envelopeItems?.[0]?.id;
-      if (!signerId || !itemId) throw new DocumensoError("Documenso did not set up the Exhibit A copy.", 502);
-      await request("POST", "/envelope/field/create-many", {
-        json: { envelopeId: created.id, data: exhibitFields(exhibit, signerId, itemId) },
-      });
-      return { envelopeId: created.id, exhibitItemId: itemId };
     },
 
     // `fill`: [{ id, value }] Text boxes to fill now, read-only.

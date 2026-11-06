@@ -5,10 +5,10 @@
  *   - One master agreement per landlord, with an Exhibit A listing the covered
  *     properties, signed once. Its term runs to the next September 15 and renews
  *     by itself every year.
- *   - A property added later is covered by an updated Exhibit A (still stored as an
- *     amendment) that the landlord initials and signs: it lists every covered
- *     property, old and new (Wyatt, 2026-11-05). The plan keeps the
- *     properties before and after. Coverage is per property (address): a new unit
+ *   - A property added later is covered by an Exhibit A amendment, its own signed
+ *     document each time (the amendment template plus Exhibit A before and after,
+ *     Wyatt 2026-11-06); the signed agreement is never changed. Coverage is per
+ *     property (address): a new unit
  *     or lease at a covered address needs nothing.
  *   - Exhibit A holds everything the landlord has live plus whatever they are
  *     publishing now. Drafts join when they are published.

@@ -119,27 +119,6 @@ describe("Documenso client requests", () => {
     assert.equal(sent.length, 5, "prepared only: nothing distributed yet");
   });
 
-  it("an updated Exhibit A is its own envelope: initials on every page and one signature", async () => {
-    const { sent, fetchImpl } = recordingFetch([
-      { body: { id: "envelope_x" } },
-      { body: { ...COPY, envelopeItems: [{ id: "item_x" }] } },
-      { body: {} },
-    ]);
-    const client = createDocumensoClient({ apiKey: "k", fetchImpl });
-    const r = await client.prepareExhibitCopy({
-      email: "a@b.c",
-      name: "Pat Landlord",
-      externalId: "agreement-amendment:a1",
-      exhibit: { bytes: new Uint8Array([37]), pageCount: 2, initialsBox: { positionX: 70, positionY: 89, width: 20, height: 5.5 }, signatureBox: { positionX: 10, positionY: 50, width: 36, height: 5 } },
-    });
-    assert.deepEqual(r, { envelopeId: "envelope_x", exhibitItemId: "item_x" });
-    const created = JSON.parse(sent[0].init.body.get("payload"));
-    assert.equal(created.type, "DOCUMENT");
-    assert.equal(created.meta.dateFormat, "MM/dd/yyyy");
-    const fields = JSON.parse(sent[2].init.body).data;
-    assert.deepEqual(fields.map((f) => `${f.type}:${f.page}`), ["INITIALS:1", "INITIALS:2", "SIGNATURE:2"]);
-  });
-
   it("opening a prepared copy fills the licensee boxes read-only, then distributes", async () => {
     const { sent, fetchImpl } = recordingFetch([
       { body: { fields: [{ id: 9, type: "TEXT", fieldMeta: { label: "Brokerage", type: "text" } }] } },

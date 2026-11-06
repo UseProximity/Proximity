@@ -10,9 +10,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, cleanSignerName, coverageFor, currentTermEnd, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor, voidAgreement, voidDocument } from "./agreements.js";
+import { applyEnvelope, cleanSignerName, coverageFor, currentTermEnd, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, termEndFor, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
+import { mergePdfs } from "./agreementPdf.js";
 import { cleanCommissionRate, formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
 
@@ -180,18 +181,17 @@ describe("Exhibit A amendments", () => {
     return { db, documenso };
   }
 
-  it("publishing a new property later: an updated Exhibit A listing every covered property, to initial and sign", async () => {
+  it("publishing a new property later: a separate Exhibit A amendment showing the list before and after", async () => {
     const { db, documenso } = await signedMaster();
     const r = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
     assert.equal(r.kind, "amendment");
     const a = db.tables.agreement_amendments[0];
     assert.deepEqual(ids(a.previous_exhibit), ["L1", "L2"]);
     assert.deepEqual(ids(a.proposed_exhibit), ["L1", "L2", "L3"]);
-    assert.equal(a.version_id, null, "no amendment template");
-    assert.equal(documenso.calls.lastCopy.exhibitOnly, true, "the envelope holds only the updated Exhibit A");
-    assert.equal(documenso.calls.lastCopy.templateId, undefined);
-    assert.ok(documenso.calls.lastCopy.exhibit.signatureBox, "it ends with a signature box");
-    assert.ok(documenso.calls.lastCopy.exhibit.pageCount >= 1);
+    assert.equal(a.version_id, "va", "the live amendment template");
+    assert.equal(documenso.calls.lastCopy.templateId, "envelope_amend");
+    assert.ok(documenso.calls.lastCopy.exhibit, "the before and after pages are attached for initials");
+    assert.equal(documenso.calls.lastCopy.title, "Exhibit A amendment");
     // L3 is only proposed until the amendment is signed.
     const before = await coverageFor(db, "u1", new Date("2027-02-01"));
     assert.equal(before.covered.has("L3"), false);
@@ -201,10 +201,10 @@ describe("Exhibit A amendments", () => {
     assert.deepEqual([...after.covered.keys()].sort(), ["L1", "L2", "L3"]);
     // The master is untouched: one signature, same term.
     assert.equal(db.tables.landlord_agreements.filter((m) => m.status === "signed").length, 1);
-    // Its only document is the signed Exhibit A, which "View Exhibit A" now opens.
+    // The amendment is its own signed document; the agreement keeps its own files untouched.
     const a2 = db.tables.agreement_amendments[0];
-    assert.equal(a2.signed_file_key, undefined);
-    assert.ok(a2.signed_exhibit_file_key);
+    assert.ok(a2.signed_file_key && a2.signed_exhibit_file_key);
+    assert.deepEqual(await documentFileKeys(db, { userId: "u1", kind: "amendment", id: a2.id }), [a2.signed_file_key, a2.signed_exhibit_file_key]);
   });
 
   it("a charge on a covered property records the agreement and amendment that cover it, with the rate", async () => {
@@ -259,12 +259,10 @@ describe("Exhibit A amendments", () => {
     assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
   });
 
-  it("needs no amendment version (2026-11-05)", async () => {
+  it("needs a live amendment version", async () => {
     const { db, documenso } = await signedMaster();
     db.tables.agreement_versions = db.tables.agreement_versions.filter((v) => v.kind !== "amendment");
-    const r = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
-    assert.equal(r.kind, "amendment");
-    assert.ok(r.token);
+    await assert.rejects(() => sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") }), (e) => e.code === "not_available" && /amendment/.test(e.message));
   });
 
   it("prepares the copy first, then the license answer opens it (2026-11-05)", async () => {
@@ -365,12 +363,19 @@ describe("the term (Wyatt, 2026-11-05)", () => {
 });
 
 describe("Exhibit A pages", () => {
-  it("an updated Exhibit A is one plain list with a signature box on its last page", async () => {
-    const entries = Array.from({ length: 40 }, (_, i) => ({ listingId: `L${i}`, address: `${6000 + i} Pershing Avenue`, units: [] }));
-    const { pageCount, signatureBox } = await buildExhibitPdf({ kind: "updated", landlordName: "Pat", entries, signer: { name: "Pat Landlord", title: "Owner" }, agreementSignedAt: "2026-11-05T18:00:00Z" });
+  it("an amendment's pages show Exhibit A before and after, and run onto more pages", async () => {
+    const previous = Array.from({ length: 30 }, (_, i) => ({ listingId: `L${i}`, address: `${6000 + i} Pershing Avenue`, units: [] }));
+    const entries = [...previous, { listingId: "N1", address: "1 New Street", units: [] }];
+    const { bytes, pageCount } = await buildExhibitPdf({ kind: "amendment", landlordName: "Pat", entries, previous, agreementSignedAt: "2026-11-05T18:00:00Z" });
     assert.ok(pageCount >= 2);
-    assert.ok(signatureBox.positionY > 0 && signatureBox.positionY < 89, "above the initials box");
-    assert.equal((await buildExhibitPdf({ entries })).signatureBox, null, "the agreement's own Exhibit A has none");
+    assert.equal(String.fromCharCode(...bytes.subarray(0, 5)), "%PDF-");
+  });
+
+  it("a signed document opens as one PDF: its parts joined in order", async () => {
+    const one = await buildExhibitPdf({ entries: [{ listingId: "a", address: "1 A St", units: [] }] });
+    const two = await buildExhibitPdf({ kind: "amendment", entries: [{ listingId: "a", address: "1 A St", units: [] }], previous: [] });
+    const merged = await mergePdfs([one.bytes, two.bytes]);
+    assert.equal((await PDFDocument.load(merged)).getPageCount(), one.pageCount + two.pageCount);
   });
 
   it("lists every property with its units, runs onto more pages, and keeps text drawable", async () => {

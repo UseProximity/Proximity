@@ -18,8 +18,8 @@ async function getJson(url, init) {
  * Shown when a publish is refused only because the properties are not on the
  * landlord's commission agreement yet (listing gate, `uncovered`). It names the
  * properties, says whether this is the agreement itself (first time: it covers
- * them and everything else they have live) or an updated list of their covered
- * properties to initial (they already signed), and takes their name, title and
+ * them and everything else they have live) or an Exhibit A amendment (they
+ * already signed: Exhibit A before and after), and takes their name, title and
  * authority to sign. Then the license question pops up while the document is
  * prepared, and the signing page opens (AgreementSigningFlow). Once Documenso
  * confirms the signature, `onSigned` runs: the caller publishes again. Closing it
@@ -101,7 +101,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
             <>
               <p>
                 {hasMaster
-                  ? "To publish, add these properties to your commission agreement. You initial an updated list of your properties, not the whole agreement again."
+                  ? "To publish, these properties need to be added to Exhibit A of your commission agreement. You will sign a short Exhibit A amendment, not the whole agreement again."
                   : "To publish, sign the commission agreement. This agreement covers these properties:"}
               </p>
               <ul className="space-y-1 rounded-md bg-gray-50 px-3 py-2">
@@ -122,7 +122,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 </p>
               )}
               <p className="text-xs text-gray-500">
-                You will initial each page of the property list. Your drafts stay saved whatever you choose.{" "}
+                You will initial each Exhibit A page. Your drafts stay saved whatever you choose.{" "}
                 <a href={PAYMENTS_URL} className="underline">
                   Read it first or ask for changes under Payments
                 </a>
@@ -161,7 +161,7 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 disabled={!authorized || !title.trim() || name.trim().split(/\s+/).length < 2}
                 className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
-                Review and sign
+                {hasMaster ? "Review and sign the amendment" : "Review and sign"}
               </button>
             </>
           )}

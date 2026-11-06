@@ -144,7 +144,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
   );
 }
 
-const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment (no longer used)" };
+const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment" };
 const rate = (r) => (r == null ? "no rate" : `${Number(r).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
 const landlords = (n) => `${n} ${n === 1 ? "landlord" : "landlords"}`;
@@ -185,6 +185,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
   const [fileInputKey, setFileInputKey] = useState(0);
   const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.landlordId);
   const live = liveStandard("master");
+  const liveAmendment = liveStandard("amendment");
   const negotiatedLive = versions.filter((v) => v.status === "live" && v.landlordId);
   const drafts = versions.filter((v) => v.status === "draft" || v.status === "ready");
   const retired = versions.filter((v) => v.status === "retired");
@@ -233,9 +234,13 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
       ) : (
         <p className="text-sm text-gray-500">No agreement version is live yet, so landlords cannot sign in the app.</p>
       )}
-      <p className="text-xs text-gray-500">
-        Adding a property after signing needs no template: the landlord initials and signs an updated Exhibit A that we generate.
-      </p>
+      {liveAmendment ? (
+        <LiveRow v={liveAmendment} kindLabel="Exhibit A amendment" busy={busy} run={run} />
+      ) : (
+        <p className="text-sm text-gray-500">
+          No amendment version is live yet. Landlords who already signed cannot add new properties until one is.
+        </p>
+      )}
       {negotiatedLive.map((v) => (
         <LiveRow key={v.id} v={v} kindLabel={`Negotiated ${KIND_LABEL[v.kind].toLowerCase()}`} busy={busy} run={run} />
       ))}
@@ -304,6 +309,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             Document
             <select className={`${FIELD} mt-1`} value={kind} onChange={(e) => setKind(e.target.value)}>
               <option value="master">Commission agreement</option>
+              <option value="amendment">Exhibit A amendment</option>
             </select>
           </label>
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">

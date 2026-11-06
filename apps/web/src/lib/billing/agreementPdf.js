@@ -34,3 +34,20 @@ export function agreementVersionKey(randomId) {
   if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
   return `billing/agreement-versions/${randomId}.pdf`;
 }
+
+/*
+ * One PDF from several, in order: a signed document is kept as Documenso returns
+ * it, one file per part (the agreement, its Exhibit A pages), and shown to people
+ * as a single document (Wyatt, 2026-11-06). Each part keeps its own signing
+ * certificate page.
+ */
+export async function mergePdfs(parts) {
+  const { PDFDocument } = await import("pdf-lib");
+  const out = await PDFDocument.create();
+  for (const bytes of parts) {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = await out.copyPages(src, src.getPageIndices());
+    pages.forEach((p) => out.addPage(p));
+  }
+  return out.save();
+}

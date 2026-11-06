@@ -89,7 +89,9 @@ function PropertyList({ items }) {
   );
 }
 
-// Every signed document: the agreement and Exhibit A of each master, and each updated Exhibit A.
+// The landlord's signed documents, each one PDF (Wyatt, 2026-11-06): the
+// commission agreement with its original Exhibit A, and an Exhibit A amendment
+// for each time properties were added, showing Exhibit A before and after.
 function Documents({ open, busy }) {
   const [docs, setDocs] = useState(null);
   const [error, setError] = useState(null);
@@ -101,33 +103,35 @@ function Documents({ open, busy }) {
   }, []);
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!docs) return <p className="text-sm text-gray-400">Loading...</p>;
-  const shown = docs.filter((d) => d.status === "signed" || d.status === "superseded");
+  // Oldest first: the agreement, then its amendments in the order they were signed.
+  const shown = docs
+    .filter((d) => d.status === "signed" || d.status === "superseded")
+    .sort((a, b) => String(a.signedAt ?? a.createdAt).localeCompare(String(b.signedAt ?? b.createdAt)));
   if (!shown.length) return <p className="text-sm text-gray-500">No signed documents yet.</p>;
   return (
     <ul className="divide-y divide-gray-100 text-sm">
-      {shown.map((d) => (
-        <li key={`${d.kind}:${d.id}`} className="flex flex-wrap items-center gap-2 py-2">
-          <span className="min-w-0 flex-1 text-gray-800">
-            {d.kind === "amendment" ? "Updated Exhibit A" : "Commission agreement"}
-            {d.versionLabel ? ` (${d.versionLabel})` : ""}, signed {d.signedAt ? dateOnly(d.signedAt) : ""}
-            {d.status === "superseded" ? <span className="text-xs text-gray-400"> (replaced)</span> : null}
-            <span className="block text-xs text-gray-500">
-              {d.properties.length} {d.properties.length === 1 ? "property" : "properties"}
-              {d.kind === "amendment" && d.previous ? `, ${d.properties.length - d.previous.length} added` : ""}
+      {shown.map((d) => {
+        const before = new Set((d.previous ?? []).map((e) => e.listingId));
+        const added = d.kind === "amendment" ? d.properties.filter((e) => !before.has(e.listingId)) : [];
+        return (
+          <li key={`${d.kind}:${d.id}`} className="flex flex-wrap items-center gap-2 py-2">
+            <span className="min-w-0 flex-1 text-gray-800">
+              {d.kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"}, signed {d.signedAt ? dateOnly(d.signedAt) : ""}
+              {d.status === "superseded" ? <span className="text-xs text-gray-400"> (replaced)</span> : null}
+              <span className="block text-xs text-gray-500">
+                {d.kind === "amendment"
+                  ? `Adds ${added.map((e) => e.address).join("; ") || "properties"}`
+                  : `Exhibit A: ${d.properties.length} ${d.properties.length === 1 ? "property" : "properties"}`}
+              </span>
             </span>
-          </span>
-          {d.hasSignedFile && (
-            <button type="button" disabled={busy} className={BUTTON} onClick={() => open({ kind: d.kind, id: d.id, part: "agreement" })}>
-              {d.kind === "amendment" ? "Amendment" : "Agreement"}
-            </button>
-          )}
-          {d.hasSignedExhibit && (
-            <button type="button" disabled={busy} className={BUTTON} onClick={() => open({ kind: d.kind, id: d.id, part: "exhibit" })}>
-              Exhibit A
-            </button>
-          )}
-        </li>
-      ))}
+            {(d.hasSignedFile || d.hasSignedExhibit) && (
+              <button type="button" disabled={busy} className={BUTTON} onClick={() => open({ kind: d.kind, id: d.id })}>
+                View
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -146,7 +150,6 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   const showChecklist = gate.requirePaymentMethod || gate.requireAgreement;
   const [signing, setSigning] = useState(null);
   const [error, setError] = useState(null);
-  const [docsOpen, setDocsOpen] = useState(false);
   const [docsKey, setDocsKey] = useState(0);
   const uncoveredLive = agreement.uncoveredLive ?? [];
   const covered = agreement.covered ?? [];
@@ -160,15 +163,22 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   // Open when there is something to sign; folded once it is all done.
   const needsAction = !signedOk || !!agreement.amendment || uncoveredLive.length > 0;
 
-  const openFile = useCallback(async ({ kind, id, part }) => {
+  // Opens one signed document as a single PDF in a new tab (opened first, so it is not blocked as a popup).
+  const openFile = useCallback(async ({ kind, id }) => {
     setError(null);
+    const tab = window.open("", "_blank");
     try {
-      const qs = new URLSearchParams({ kind, part, ...(id ? { id } : {}) });
+      const qs = new URLSearchParams({ kind, ...(id ? { id } : {}) });
       const res = await fetch(`/api/billing/agreement/file?${qs}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Could not open that document.");
-      window.open(data.url, "_blank", "noopener");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not open that document.");
+      }
+      const link = URL.createObjectURL(await res.blob());
+      if (tab) tab.location.href = link;
+      else window.open(link, "_blank");
     } catch (e) {
+      tab?.close();
       setError(e.message);
     }
   }, []);
@@ -238,14 +248,9 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               {signedOk && agreement.termEnd ? ` Valid until ${dateOnly(agreement.termEnd)}, then renews automatically each year.` : ""}
               {agreement.commissionRatePercent != null ? ` Commission rate ${rate(agreement.commissionRatePercent)}.` : ""}
             </p>
-            {agreement.hasSignedFile && (
-              <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master", part: "agreement" })}>
-                View agreement
-              </button>
-            )}
-            {agreement.hasSignedExhibit && (
-              <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master", part: "exhibit" })}>
-                View Exhibit A
+            {(agreement.hasSignedFile || agreement.hasSignedExhibit) && (
+              <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master" })}>
+                View commission agreement
               </button>
             )}
           </div>
@@ -261,7 +266,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         {agreement.amendment && (
           <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
             <p>
-              You started adding {agreement.amendment.adding.join("; ")} to your agreement. Finish signing to publish{" "}
+              You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
               {agreement.amendment.adding.length === 1 ? "that property" : "those properties"}.
             </p>
             <SignForm button="Continue signing" defaultName={gate.accountName ?? ""} busy={busy || !!signing} onStart={(b) => start(b)} />
@@ -272,12 +277,12 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           <div className="space-y-2 rounded-md border border-amber-200 px-3 py-3">
             <p className="text-sm text-gray-800">
               {uncoveredLive.length === 1 ? "This live property is" : "These live properties are"} not on your agreement yet. Add{" "}
-              {uncoveredLive.length === 1 ? "it" : "them"} by initialing your updated list of properties:
+              {uncoveredLive.length === 1 ? "it" : "them"} with an Exhibit A amendment:
             </p>
             <PropertyList items={uncoveredLive} />
             <SignForm
               defaultName={gate.accountName ?? ""}
-              button="Review and sign"
+              button="Review and sign the amendment"
               busy={busy || !!signing}
               onStart={(b) => start({ ...b, listingIds: uncoveredLive.map((p) => p.listingId) })}
             />
@@ -317,14 +322,10 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
         <div className="border-t border-gray-100 pt-3">
-          <button type="button" className="text-sm font-medium text-gray-700 underline" onClick={() => setDocsOpen((o) => !o)}>
-            {docsOpen ? "Hide your signed documents" : "Your signed documents"}
-          </button>
-          {docsOpen && (
-            <div className="mt-2">
-              <Documents key={docsKey} open={openFile} busy={busy} />
-            </div>
-          )}
+          <p className="text-sm font-medium text-gray-900">Your signed documents</p>
+          <div className="mt-1">
+            <Documents key={docsKey} open={openFile} busy={busy} />
+          </div>
         </div>
 
         {changeRequests}

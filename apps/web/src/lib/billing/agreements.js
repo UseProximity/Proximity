@@ -23,8 +23,9 @@
  *                     copy, and returns the embed token. With `prepare` it only gets
  *                     the copy ready while the landlord answers the license
  *                     questions; the call with their answer fills those boxes and
- *                     opens it. Adding properties later means initialing an updated
- *                     Exhibit A listing every covered property (no amendment text).
+ *                     opens it. Adding properties later is a separate Exhibit A
+ *                     amendment: the amendment template plus the old and new
+ *                     Exhibit A. The signed agreement is never changed.
  *   syncAgreement     asks Documenso how a copy in progress stands, so a late or lost
  *                     webhook never leaves a landlord stuck
  *   applyEnvelope     what the webhook and syncAgreement both run. Safe to repeat.
@@ -407,11 +408,10 @@ export async function startSigning(
         return { alreadySigned: true };
       }
 
-      // A new master is a copy of the live template. Adding properties later is an
-      // updated Exhibit A we generate, so it needs no template.
-      const version = plan.kind === "master" ? await getLiveVersion(db, { kind: "master", landlordId: user.id }) : null;
-      if (plan.kind === "master" && (!version?.provider_template_id || !version.provider_recipient_id)) {
-        throw new BillingError("not_available", "The commission agreement is not ready to sign yet. We will email you when it is.", 409);
+      const version = await getLiveVersion(db, { kind: plan.kind, landlordId: user.id });
+      if (!version?.provider_template_id || !version.provider_recipient_id) {
+        const what = plan.kind === "amendment" ? "The Exhibit A amendment" : "The commission agreement";
+        throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
       }
 
       // Reuse the copy in progress when it is exactly this document: same version,
@@ -420,7 +420,7 @@ export async function startSigning(
       if (inProgress?.row.provider_envelope_id) {
         const same =
           inProgress.kind === plan.kind &&
-          (plan.kind === "amendment" || inProgress.row.version_id === version.id) &&
+          inProgress.row.version_id === version.id &&
           sameIds(inProgress.entries, plan.entries) &&
           (inProgress.row.signer_title ?? "") === title &&
           sameDay(inProgress.row.created_at ?? now, now);
@@ -568,7 +568,7 @@ async function createDocument(db, documenso, { user, title, name, plan, version,
     ? {
         user_id: user.id,
         agreement_id: master.id,
-        version_id: null,
+        version_id: version.id,
         status: "sent",
         // The day its date boxes were filled: reuse only on the same day.
         created_at: nowIso,
@@ -596,7 +596,7 @@ async function createDocument(db, documenso, { user, title, name, plan, version,
   }
 
   // The properties this document proposes. A master proposes every entry; an
-  // updated Exhibit A only the ones it adds.
+  // amendment only the ones it adds.
   const proposed = isAmendment ? plan.added : plan.entries;
   if (proposed.length) {
     const { error: covError } = await db.from("agreement_coverage").insert(
@@ -613,52 +613,47 @@ async function createDocument(db, documenso, { user, title, name, plan, version,
     if (covError) throw covError;
   }
 
-  // Exhibit A always lists every property covered once this is signed.
+  // A master's Exhibit A lists every covered property; an amendment's pages show
+  // Exhibit A before and after, the added properties marked.
   const exhibit = await buildExhibitPdf({
-    kind: isAmendment ? "updated" : "master",
+    kind: plan.kind,
     landlordName,
     entries: plan.entries,
-    signer: { name, title },
+    previous: plan.previous ?? [],
     agreementSignedAt: master?.signed_at ?? null,
     preparedAt: now,
   });
   const exhibitKey = storeExhibit ? await storeExhibit({ userId: user.id, bytes: exhibit.bytes }) : null;
   const exhibitFile = {
     bytes: exhibit.bytes,
-    fileName: "exhibit-a.pdf",
+    fileName: isAmendment ? "exhibit-a-before-and-after.pdf" : "exhibit-a.pdf",
     pageCount: exhibit.pageCount,
     initialsBox: INITIALS_BOX,
-    signatureBox: exhibit.signatureBox,
   };
   const externalId = `${isAmendment ? "agreement-amendment" : "landlord-agreement"}:${row.id}`;
 
-  let copy;
-  if (isAmendment) {
-    copy = await documenso.prepareExhibitCopy({ email: user.email, name, externalId, exhibit: exhibitFile, title: "Updated Exhibit A" });
-  } else {
-    const address = landlordAddress ? await landlordAddress(user.id).catch(() => null) : null;
-    const boxes = await templateBoxes(documenso, version);
-    copy = await documenso.prepareSigningCopy({
-      templateId: version.provider_template_id,
-      recipientId: version.provider_recipient_id,
-      titleFieldId: boxes.title?.id ?? null,
-      signerTitle: title,
-      // The commission rate is written into the agreement's text (Wyatt, 2026-11-05), so no box is filled for it.
-      prefill: [
-        { id: boxes.address?.id, value: address },
-        { id: boxes.name?.id, value: name },
-      ],
-      // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
-      autofill: { name, email: user.email, date: fmtDate(now) },
-      // A commission rate box left on an older template is taken off the copy.
-      dropRateBox: true,
-      exhibit: exhibitFile,
-      email: user.email,
-      name,
-      title: "Commission agreement",
-      externalId,
-    });
-  }
+  const address = landlordAddress ? await landlordAddress(user.id).catch(() => null) : null;
+  const boxes = await templateBoxes(documenso, version);
+  const copy = await documenso.prepareSigningCopy({
+    templateId: version.provider_template_id,
+    recipientId: version.provider_recipient_id,
+    titleFieldId: boxes.title?.id ?? null,
+    signerTitle: title,
+    // The commission rate is written into the agreement's text (Wyatt, 2026-11-05), so no box is filled for it.
+    prefill: [
+      { id: boxes.address?.id, value: address },
+      { id: boxes.name?.id, value: name },
+    ],
+    // Documenso's own Name, Email and Date boxes, filled so only the signature and initials are left.
+    autofill: { name, email: user.email, date: fmtDate(now) },
+    // A commission rate box left on an older template is taken off the copy.
+    dropRateBox: true,
+    exhibit: exhibitFile,
+    email: user.email,
+    name,
+    title: isAmendment ? "Exhibit A amendment" : "Commission agreement",
+    externalId,
+  });
   const saved = {
     provider_envelope_id: copy.envelopeId,
     ...(copy.exhibitItemId && { provider_exhibit_item_id: copy.exhibitItemId }),
@@ -686,13 +681,11 @@ async function findDocument(db, envelopeId) {
 }
 
 // Store the signed agreement and the signed Exhibit A (when the envelope has one).
-// An updated Exhibit A's envelope holds only the exhibit.
-async function storeSignedFiles(documenso, envelope, userId, storeSigned, { exhibitOnly = false } = {}) {
+async function storeSignedFiles(documenso, envelope, userId, storeSigned) {
   if (!storeSigned) return {};
   if (documenso.downloadSignedItems) {
     const items = await documenso.downloadSignedItems(envelope);
     const keys = {};
-    if (exhibitOnly && items.length === 1) return { signed_exhibit_file_key: await storeSigned({ userId, bytes: items[0].bytes }) };
     if (items[0]) keys.signed_file_key = await storeSigned({ userId, bytes: items[0].bytes });
     if (items[1]) keys.signed_exhibit_file_key = await storeSigned({ userId, bytes: items[1].bytes });
     return keys;
@@ -714,7 +707,7 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
 
   if (envelope.status === "COMPLETED") {
     const signer = signerOf(envelope);
-    const files = await storeSignedFiles(documenso, envelope, row.user_id, storeSigned, { exhibitOnly: kind === "amendment" && !row.version_id });
+    const files = await storeSignedFiles(documenso, envelope, row.user_id, storeSigned);
     const signedAt = signer?.signedAt ?? envelope.completedAt ?? nowIso;
 
     if (kind === "master") {
@@ -1022,35 +1015,19 @@ export async function voidAgreement(db, documenso, { userId }) {
 }
 
 /*
- * The stored key of one of a landlord's signed files, checked to be theirs:
- *   kind  master | amendment     part  agreement | exhibit
- * Without an id, their current master. Null when there is no such file.
+ * A signed document as people see it: one PDF made of its stored parts, in order
+ * (the agreement or amendment wording, then its Exhibit A pages). Returns the
+ * keys, checked to be this landlord's; empty when nothing is on file. Without an
+ * id, their current master.
  */
-export async function documentFileKey(db, { userId, kind = "master", id = null, part = "agreement" }) {
-  if (!TABLE[kind] || !["agreement", "exhibit"].includes(part)) return null;
-  // "View Exhibit A" on the current agreement: the newest signed Exhibit A, which
-  // lists every property covered, including ones added after the agreement.
-  if (kind === "master" && !id && part === "exhibit") {
-    const master = (await readRows((cols) => db.from("landlord_agreements").select(cols).eq("user_id", userId).eq("status", "signed").limit(1)))[0];
-    if (!master) return null;
-    const { data: latest, error: latestError } = await db
-      .from("agreement_amendments")
-      .select("signed_exhibit_file_key, signed_at")
-      .eq("agreement_id", master.id)
-      .eq("status", "signed")
-      .not("signed_exhibit_file_key", "is", null)
-      .order("signed_at", { ascending: false })
-      .limit(1);
-    if (latestError && !missingSchema(latestError)) throw latestError;
-    return latest?.[0]?.signed_exhibit_file_key ?? master.signed_exhibit_file_key ?? null;
-  }
+export async function documentFileKeys(db, { userId, kind = "master", id = null }) {
+  if (!TABLE[kind]) return [];
   let q = db.from(TABLE[kind]).select("id, user_id, status, signed_file_key, signed_exhibit_file_key").eq("user_id", userId);
   q = id ? q.eq("id", id) : q.eq("status", "signed");
   const { data, error } = await q.limit(1);
   if (error) throw error;
   const row = data?.[0];
-  if (!row) return null;
-  return part === "exhibit" ? row.signed_exhibit_file_key ?? null : row.signed_file_key ?? null;
+  return row ? [row.signed_file_key, row.signed_exhibit_file_key].filter(Boolean) : [];
 }
 
 /*

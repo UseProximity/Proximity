@@ -130,10 +130,6 @@ export function fakeDocumenso() {
       const id = draft(input, (k) => [{ id: `item_${k}`, order: 1 }, ...(input.exhibit ? [{ id: `item_${k}_exhibit`, order: 2 }] : [])]);
       return { envelopeId: id, exhibitItemId: input.exhibit ? `item_${n}_exhibit` : null };
     },
-    async prepareExhibitCopy(input) {
-      const id = draft({ ...input, exhibitOnly: true }, (k) => [{ id: `item_${k}_exhibit`, order: 1 }]);
-      return { envelopeId: id, exhibitItemId: `item_${n}_exhibit` };
-    },
     async finishSigningCopy({ envelopeId, fill = [] }) {
       const e = envelopes.get(envelopeId);
       const wanted = fill.filter((f) => f?.id && f.value != null);

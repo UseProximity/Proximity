@@ -88,7 +88,7 @@ export function cleanMessage({ body, proposedText }) {
 
 export function cleanRequest({ documentKind, section, ...message }) {
   const kind = documentKind ?? "master";
-  if (!DOCUMENT_KINDS.includes(kind)) throw new BillingError("bad_kind", "Choose the agreement or an updated Exhibit A.");
+  if (!DOCUMENT_KINDS.includes(kind)) throw new BillingError("bad_kind", "Choose the agreement or an Exhibit A amendment.");
   const s = text(section);
   if (s.length > SECTION_MAX) throw new BillingError("section_too_long", `Keep the section under ${SECTION_MAX} characters.`);
   return { document_kind: kind, section: s || null, ...cleanMessage(message) };
