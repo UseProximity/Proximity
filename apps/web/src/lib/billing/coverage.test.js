@@ -264,7 +264,7 @@ describe("Exhibit A amendments", () => {
     await assert.rejects(() => sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") }), (e) => e.code === "not_available" && /amendment/.test(e.message));
   });
 
-  it("prepares the copy first, then the license answer opens it (2026-11-05)", async () => {
+  it("prepares the copy first, then the call with the license answer opens it (2026-11-05)", async () => {
     const { db, documenso } = await signedMaster();
     const ready = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01"), prepare: true });
     assert.deepEqual(ready, { prepared: true, kind: "amendment" });
@@ -272,7 +272,6 @@ describe("Exhibit A amendments", () => {
     const opened = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01"), licenseDisclosure: { is_licensee: false } });
     assert.equal(opened.token, "token_2");
     assert.equal(documenso.calls.copies, 2, "the prepared copy is the one opened");
-    assert.deepEqual(db.tables.agreement_amendments[0].license_prefill, { brokerage: "N/A", license: "N/A" });
   });
 
   it("a copy prepared on an earlier day is replaced, so its dates are today's", async () => {

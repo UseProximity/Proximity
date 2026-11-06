@@ -20,7 +20,8 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
  *               { prepared: true, kind } or { alreadySigned: true }.
  *   licenseDisclosure  required: the real estate license answer given in the
  *               step right before signing (lib/users/licenseDisclosure.js). It is
- *               saved, and recorded in the history as given at signing, before
+ *               saved to the account and recorded in the history as given at
+ *               signing (never printed on the agreement), before
  *               the document opens. Without a complete answer nothing opens.
  *   listingIds  the properties being published (from the publish dialog); left
  *               out when the landlord signs from the Payments tab
@@ -57,8 +58,6 @@ export async function POST(req) {
       ...(body.signerName !== undefined && { signerName: body.signerName }),
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
-      // Fills the signature page's Brokerage and License boxes ("N/A" if not licensed).
-      licenseDisclosure: disclosure,
       prepare,
       ...options,
     });

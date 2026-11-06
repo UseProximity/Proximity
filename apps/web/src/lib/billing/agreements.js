@@ -333,7 +333,7 @@ const sameIds = (a, b) => {
 export async function startSigning(
   db,
   documenso,
-  { user, signerTitle, signerName, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, licenseDisclosure = null, prepare = false, ...options }
+  { user, signerTitle, signerName, authorized, listingIds = [], now = new Date(), storeExhibit, landlordAddress, prepare = false, ...options }
 ) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Confirm that you are authorised to sign for this landlord or company.");
@@ -392,7 +392,6 @@ export async function startSigning(
 
       // Reuse the copy in progress when it is exactly this document: same version,
       // properties, name and title, and made today (its date box shows today).
-      const licensePrefill = licensePrefillFor(licenseDisclosure);
       if (inProgress?.row.provider_envelope_id) {
         const same =
           inProgress.kind === plan.kind &&
@@ -406,19 +405,17 @@ export async function startSigning(
           const sameName = (signer?.name ?? "") === name;
           if (sameName && envelope.status === "DRAFT") {
             if (prepare) return { prepared: true, kind: plan.kind };
-            return finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, envelope, licensePrefill, now });
+            return finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
           }
           if (sameName && envelope.status === "PENDING" && signer?.token) {
             if (prepare) return { prepared: true, kind: plan.kind };
-            // Opened before with the same licensee details: carry on where they left off.
-            if (samePrefill(inProgress.row.license_prefill, licensePrefill)) {
-              const { error } = await db
-                .from(TABLE[inProgress.kind])
-                .update({ signer_title: title, authorized_at: now.toISOString() })
-                .eq("id", inProgress.row.id);
-              if (error) throw error;
-              return { token: signer.token, kind: plan.kind };
-            }
+            // Opened before: carry on where they left off.
+            const { error } = await db
+              .from(TABLE[inProgress.kind])
+              .update({ signer_title: title, authorized_at: now.toISOString() })
+              .eq("id", inProgress.row.id);
+            if (error) throw error;
+            return { token: signer.token, kind: plan.kind };
           }
           if (!["DRAFT", "PENDING"].includes(envelope.status)) {
             const applied = await applyEnvelope(db, documenso, envelope, { ...options, now });
@@ -443,46 +440,22 @@ export async function startSigning(
         landlordAddress,
       });
       if (prepare) return { prepared: true, kind: plan.kind };
-      return finishDocument(db, documenso, { kind: plan.kind, row: made.row, licensePrefill, now });
+      return finishDocument(db, documenso, { kind: plan.kind, row: made.row, now });
     }
   );
 }
 
 /*
- * Open a prepared copy: fill the signature page's licensee boxes (found on the
- * copy by their labels) and distribute it, which issues the signing token.
+ * Open a prepared copy: distribute it, which issues the signing token. The
+ * license answer given in the popup is saved to the account, never printed on the
+ * agreement (Wyatt, 2026-11-06): its wording says they provide it when asked.
  */
-async function finishDocument(db, documenso, { kind, row, envelope = null, licensePrefill, now }) {
-  const copy = envelope ?? (await documenso.getEnvelope(row.provider_envelope_id));
-  const boxes = templateFieldSummary(copy).fields;
-  const { token } = await documenso.finishSigningCopy({
-    envelopeId: row.provider_envelope_id,
-    fill: [
-      { id: boxes.brokerage?.id, value: licensePrefill?.brokerage },
-      { id: boxes.license?.id, value: licensePrefill?.license },
-    ],
-  });
-  const { error } = await db
-    .from(TABLE[kind])
-    .update({ license_prefill: licensePrefill, authorized_at: now.toISOString() })
-    .eq("id", row.id);
+async function finishDocument(db, documenso, { kind, row, now }) {
+  const { token } = await documenso.finishSigningCopy({ envelopeId: row.provider_envelope_id });
+  const { error } = await db.from(TABLE[kind]).update({ authorized_at: now.toISOString() }).eq("id", row.id);
   if (error) throw error;
   return { token, kind };
 }
-
-/*
- * What goes in the signature page's Brokerage and License boxes, from the license
- * disclosure given right before signing (lib/users/licenseDisclosure.js): the
- * licensee's brokerage and Missouri license number, or "N/A" in both for a
- * landlord who is not licensed. Null when no answer was passed (nothing filled).
- */
-export function licensePrefillFor(disclosure) {
-  if (!disclosure) return null;
-  if (!disclosure.is_licensee) return { brokerage: "N/A", license: "N/A" };
-  return { brokerage: disclosure.company_name, license: disclosure.license_number };
-}
-
-const samePrefill = (a, b) => (a?.brokerage ?? null) === (b?.brokerage ?? null) && (a?.license ?? null) === (b?.license ?? null);
 
 async function currentStatus(db, doc) {
   const { data, error } = await db.from(TABLE[doc.kind]).select("id, status").eq("id", doc.row.id).maybeSingle();
