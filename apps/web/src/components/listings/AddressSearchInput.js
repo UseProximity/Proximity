@@ -72,6 +72,9 @@ const AddressSearchInput = forwardRef(function AddressSearchInput(
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const timerRef = useRef(null);
+  // The value a picked suggestion put in the box: no new search for it, so the
+  // list does not open again over the choice just made.
+  const pickedRef = useRef(null);
 
   const center =
     near && near.latitude != null && near.longitude != null
@@ -82,6 +85,8 @@ const AddressSearchInput = forwardRef(function AddressSearchInput(
 
   useEffect(() => {
     clearTimeout(timerRef.current);
+    if (pickedRef.current !== null && value === pickedRef.current) return;
+    pickedRef.current = null;
     if (!value || value.length < 2) {
       setSuggestions([]);
       setOpen(false);
@@ -124,7 +129,9 @@ const AddressSearchInput = forwardRef(function AddressSearchInput(
   const handleSelect = (feature) => {
     setOpen(false);
     setSuggestions([]);
-    onSelectSuggestion(feature);
+    const next = onSelectSuggestion(feature);
+    // The caller may put a value in the box (a street, say); remember it so it is not searched.
+    pickedRef.current = typeof next === "string" ? next : null;
   };
 
   return (

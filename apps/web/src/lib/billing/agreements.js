@@ -307,25 +307,40 @@ const oneLine = (v, max, code, what) => {
   return t;
 };
 
-// The optional details from the signing form: company, email and the address as two lines.
-export function cleanSignerDetails({ company, email, address1, address2 } = {}) {
+/*
+ * The optional details from the signing form: company, email, and the address as
+ * the street (picked from the address search), the suite or unit, and the city
+ * line ("St. Louis, MO 63117") that came with the street. On the document
+ * (Wyatt, 2026-11-07): "Address 1" is the street and suite on one line, "Address 2"
+ * the city line, as a letter's address reads:
+ *     8151 Clayton Rd, Suite 301
+ *     St. Louis, MO 63117
+ */
+export function cleanSignerDetails({ company, email, address1, address2, city } = {}) {
   const e = oneLine(email, 254, "email_too_long", "the email");
   if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new BillingError("bad_email", "Enter a valid email address.");
   return {
     company: cleanSignerCompany(company),
     email: e,
-    address1: oneLine(address1, 150, "address_too_long", "the address"),
-    address2: oneLine(address2, 150, "address_too_long", "the address"),
+    street: oneLine(address1, 150, "address_too_long", "the address"),
+    suite: oneLine(address2, 60, "address_too_long", "the suite or unit"),
+    city: oneLine(city, 150, "address_too_long", "the address"),
   };
 }
 
 // The text each kind of box gets from the form (the ones a changed form must remake).
-const boxValues = ({ name, company, email, address1, address2 }) => ({
+// The two address lines a document prints.
+export const addressLines = ({ street = "", suite = "", city = "" } = {}) => ({
+  line1: [street, suite].filter(Boolean).join(", "),
+  line2: city,
+});
+
+const boxValues = ({ name, company, email, street, suite, city }) => ({
   company,
   owner: company || name,
   email,
-  address1,
-  address2,
+  address1: addressLines({ street, suite, city }).line1,
+  address2: addressLines({ street, suite, city }).line2,
 });
 
 // Whether a copy's boxes still hold what the form says now (matched to the template's boxes by place).
@@ -417,6 +432,7 @@ export async function startSigning(
     signerEmail,
     signerAddress1,
     signerAddress2,
+    signerCity,
     authorized,
     listingIds = [],
     exhibit = null,
@@ -434,7 +450,7 @@ export async function startSigning(
   // Older clients send no name: the account name, which may be one word.
   const name = signerName === undefined ? String(user?.name ?? "").trim() || user?.email : cleanSignerName(signerName);
   // What the landlord typed on the form (pre-filled with what we know), for the boxes.
-  const details = cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2 });
+  const details = cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2, city: signerCity });
   const company = details.company;
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
@@ -699,7 +715,8 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
       : exhibitText(plan.entries, { added });
   const exhibitBeforeText = exhibitText(plan.previous ?? []);
   // The address as typed on the form; without one, the Stripe billing address.
-  const typedAddress = [details.address1, details.address2].filter(Boolean).join(", ");
+  const { line1, line2 } = addressLines(details);
+  const typedAddress = [line1, line2].filter(Boolean).join(", ");
   const address = typedAddress || (landlordAddress ? await landlordAddress(user.id).catch(() => null) : null);
   const values = boxValues({ name, ...details });
   const copy = await documenso.prepareSigningCopy({

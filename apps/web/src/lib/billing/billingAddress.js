@@ -15,13 +15,14 @@ export function formatStripeAddress(a) {
   return out || null;
 }
 
-// The same address as two lines, as a signature block prints it:
-// { line1: "8151 Clayton Rd Suite 301", line2: "St. Louis, MO 63117" }.
+// The same address in the signing form's parts: { street: "8151 Clayton Rd",
+// suite: "Suite 301", city: "St. Louis, MO 63117" }.
 export function splitStripeAddress(a) {
   if (!a) return null;
-  const line1 = [a.line1, a.line2].filter(Boolean).join(" ").trim();
-  const line2 = [a.city, [a.state, a.postal_code].filter(Boolean).join(" ")].filter(Boolean).join(", ").trim();
-  return line1 || line2 ? { line1, line2 } : null;
+  const street = String(a.line1 ?? "").trim();
+  const suite = String(a.line2 ?? "").trim();
+  const city = [a.city, [a.state, a.postal_code].filter(Boolean).join(" ")].filter(Boolean).join(", ").trim();
+  return street || city ? { street, suite, city } : null;
 }
 
 // The Stripe address object behind the landlord's billing address, or null.

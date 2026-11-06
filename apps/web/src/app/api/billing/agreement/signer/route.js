@@ -10,7 +10,8 @@ import { billingErrorResponse } from "@/lib/billing/http";
  * What we already know about the signed-in landlord, to start the signing form
  * with (Wyatt, 2026-11-06): full name, company, email and the billing address on
  * their Stripe account as two lines. Every field stays editable on the form.
- * Answers { name, company, email, address1, address2 } (empty strings when unknown).
+ * Answers { name, company, email, address1 (street), address2 (suite or unit),
+ * city ("St. Louis, MO 63117") } (empty strings when unknown).
  *
  * @auth landlord (own details only)
  */
@@ -26,8 +27,9 @@ export async function GET() {
       name: user?.name?.trim() ?? "",
       company: user?.company_name?.trim() ?? "",
       email: user?.email?.trim() ?? "",
-      address1: address?.line1 ?? "",
-      address2: address?.line2 ?? "",
+      address1: address?.street ?? "",
+      address2: address?.suite ?? "",
+      city: address?.city ?? "",
     });
   } catch (err) {
     return billingErrorResponse(err, "load signer details");

@@ -64,6 +64,7 @@ export async function POST(req) {
       signerEmail: typeof body.signerEmail === "string" ? body.signerEmail : "",
       signerAddress1: typeof body.signerAddress1 === "string" ? body.signerAddress1 : "",
       signerAddress2: typeof body.signerAddress2 === "string" ? body.signerAddress2 : "",
+      signerCity: typeof body.signerCity === "string" ? body.signerCity : "",
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].

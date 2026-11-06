@@ -541,17 +541,19 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     await sign(db, documenso, {
       listingIds: ["L2"],
       signerEmail: "leasing@patrentals.com",
-      signerAddress1: "8151 Clayton Rd Suite 301",
-      signerAddress2: "St. Louis, MO 63117",
+      // The street from the address search, the suite, and the city line that came with the street.
+      signerAddress1: "8151 Clayton Rd",
+      signerAddress2: "Suite 301",
+      signerCity: "St. Louis, MO 63117",
     });
     const value = (id) => documenso.calls.lastCopy.prefill.find((p) => p.id === id)?.value;
     assert.equal(value(90), "leasing@patrentals.com");
-    assert.equal(value(91), "8151 Clayton Rd Suite 301");
-    assert.equal(value(92), "St. Louis, MO 63117");
+    assert.equal(value(91), "8151 Clayton Rd, Suite 301", "street and suite on one line");
+    assert.equal(value(92), "St. Louis, MO 63117", "the city line below it");
     assert.equal(value(93), "100 Live St, St. Louis, Missouri 63130\nWhole building\n\n200 Draft Ave, St. Louis, Missouri 63130\nWhole building");
     assert.equal(documenso.calls.lastCopy.exhibit, null, "no separate Exhibit A document");
     // A changed address on the form makes a fresh copy.
-    await sign(db, documenso, { listingIds: ["L2"], signerEmail: "leasing@patrentals.com", signerAddress1: "1 Other St", signerAddress2: "St. Louis, MO 63117" });
+    await sign(db, documenso, { listingIds: ["L2"], signerEmail: "leasing@patrentals.com", signerAddress1: "1 Other St", signerAddress2: "Suite 301", signerCity: "St. Louis, MO 63117" });
     assert.equal(documenso.calls.copies, 2);
   });
 
