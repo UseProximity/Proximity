@@ -2,7 +2,7 @@
  * Redeems an email-verification token. Shared by GET (the web link) and POST (the mobile
  * app) in api/auth/verify-email, which differ only in how they answer.
  *
- * Resolves to { status: "ok" } only once the verification is persisted, { status:
+ * Resolves to { status: "ok", userId } only once the verification is persisted, { status:
  * "invalid" } for a token that is unknown, used or expired, and { status: "error" } for a
  * database failure, which the caller should treat as retryable. `db` is the Supabase
  * client, passed in so the logic can be tested without one.
@@ -37,5 +37,5 @@ export async function redeemVerificationToken(db, token) {
 
   if (updateError) return { status: "error", error: updateError };
   if (!updated || updated.length === 0) return { status: "invalid" };
-  return { status: "ok" };
+  return { status: "ok", userId: user.id };
 }

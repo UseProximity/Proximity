@@ -30,6 +30,7 @@ export const KINDS = {
   waitlist_nudge: ["reviews", "Waitlist nudge"],
   parent_guide: ["account", "Parent guide"],
   landlord_nudge: ["landlords", "Landlord nudge"],
+  mrec_disclosure_form: ["landlords", "Missouri Broker Disclosure Form"],
   owner_inquiry: ["landlords", "Owner inquiry"],
   new_listing: ["landlords", "New listing notice"],
   co_landlord_added: ["landlords", "Co-landlord added"],

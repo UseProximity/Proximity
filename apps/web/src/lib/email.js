@@ -13,6 +13,7 @@ import { sendMailSafe } from "./outreach";
 import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
+import { MREC_FORM_FILENAME, MREC_FORM_KIND, MREC_FORM_SUBJECT } from "./users/mrecForm";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -162,6 +163,37 @@ export async function sendLandlordNudgeEmail({ email, name }) {
       </div>
     `,
   });
+}
+
+/*
+ * The MREC Broker Disclosure Form, attached, for a new landlord's records
+ * (lib/users/mrecForm.js decides who gets it and when). Nothing to sign or send
+ * back, which the subject says so nobody replies to ask.
+ */
+export async function sendMrecFormEmail({ email, name, userId, pdf, req }) {
+  const firstName = name ? name.split(" ")[0] : "";
+  await sendMailSafe(
+    transporter,
+    {
+      logAs: { kind: MREC_FORM_KIND, userId },
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: MREC_FORM_SUBJECT,
+      attachments: [{ filename: MREC_FORM_FILENAME, content: Buffer.from(pdf), contentType: "application/pdf" }],
+      html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <p>Hi${firstName ? ` ${escapeHtml(firstName)}` : ""},</p>
+        <p>Attached is the Missouri Real Estate Commission&#39;s Broker Disclosure Form, for your records.</p>
+        <p>There is nothing to sign, fill in or send back, and no need to reply.</p>
+        <p style="color:#999;font-size:12px">The Proximity team</p>
+        ${emailFooter({
+          reason: "You are receiving this because you created a landlord account on Proximity.",
+        })}
+      </div>
+    `,
+    },
+    req
+  );
 }
 
 // Inquiry sent on a student's behalf by the matchmaking chatbot ("Proxy"). Goes to the

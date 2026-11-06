@@ -82,3 +82,9 @@ export async function pageCount(bytes) {
     return null;
   }
 }
+
+// Where the uploaded MREC Broker Disclosure Form is kept.
+export function mrecFormKey(randomId) {
+  if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
+  return `billing/mrec-form/${randomId}.pdf`;
+}

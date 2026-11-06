@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-07T00:44:22.133Z",
-  "count": 241,
+  "_generated": "2026-11-07T22:23:34.171Z",
+  "count": 242,
   "routes": [
     {
       "path": "/api/account",
@@ -428,6 +428,20 @@
       },
       "tables": [],
       "file": "src/app/api/admin/billing/landlords/agreement-email/route.js"
+    },
+    {
+      "path": "/api/admin/billing/mrec-form",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/mrec-form/route.js"
     },
     {
       "path": "/api/admin/billing/paid-charges",
@@ -1957,9 +1971,9 @@
       "methods": [
         "PATCH"
       ],
-      "auth": "any",
+      "auth": "landlord+",
       "methodAuth": {
-        "PATCH": "any"
+        "PATCH": "landlord+"
       },
       "tables": [
         "users",

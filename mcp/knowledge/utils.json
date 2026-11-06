@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-07T00:19:40.255Z",
-  "count": 309,
+  "_generated": "2026-11-07T22:23:34.237Z",
+  "count": 310,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1166,6 +1166,10 @@
     {
       "file": "src/lib/users/licenseDisclosure.js",
       "description": "Real estate license disclosure (MREC compliance, 2026-11-04)."
+    },
+    {
+      "file": "src/lib/users/mrecForm.js",
+      "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
     },
     {
       "file": "src/lib/users/viewAs.js",
