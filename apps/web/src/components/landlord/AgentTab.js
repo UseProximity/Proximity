@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, FileText, Globe } from "lucide-react";
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
+import UnitPages from "@/components/landlord/UnitPages";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
@@ -52,7 +53,7 @@ function Panel({ title, icon = null, count = null, children, defaultOpen = true 
 
 /* ---- sources (side) ------------------------------------------------------ */
 
-function SourcesSide({ listingId, owner, sync, sources, onChanged }) {
+function SourcesSide({ listingId, owner, sync, sources, unitPages, onChanged }) {
   const [menu, setMenu] = useState(false);
   const [mode, setMode] = useState(null);
   const [url, setUrl] = useState("");
@@ -142,6 +143,7 @@ function SourcesSide({ listingId, owner, sync, sources, onChanged }) {
               </>
             )}
             {pages.length > 1 && <p className="text-[11px] text-gray-500">{pages.length} pages read</p>}
+            <UnitPages listingId={listingId} unitPages={unitPages} owner={owner} onChanged={onChanged} />
           </div>
         )}
         {docs.map((d) => (
@@ -330,7 +332,7 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <div id="agent-chat-panel" className="flex h-[70dvh] min-h-[420px] min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 md:h-[calc(100dvh-319px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-343px)]">
           <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} fill onChanged={load} />
         </div>
-        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} onChanged={load} />
+        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />

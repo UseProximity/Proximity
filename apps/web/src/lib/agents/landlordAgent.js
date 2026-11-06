@@ -27,6 +27,7 @@ import { describeChanges } from "@/lib/sourceImport/describeChange";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { applyEvents, rejectEvents } from "@/lib/sourceImport/apply";
+import { unitPagesView } from "@/lib/sourceSync/unitPages";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
 import { currentFacts, listSources, factHistory, setFact, recordEvent, findOrCreateSource } from "./store";
@@ -57,8 +58,9 @@ function sourceLabel(s) {
 }
 
 export async function knowledgeView({ listingId, userId, isAdmin = false }) {
-  const [ctx, facts, sources, history, sync] = await Promise.all([
+  const [ctx, facts, sources, history, sync, unitPages] = await Promise.all([
     buildProxyContext(listingId), currentFacts(listingId), listSources(listingId), factHistory(listingId, { limit: 60 }), agentSyncStatus(listingId),
+    unitPagesView(listingId).catch(() => []),
   ]);
   const owner = isAdmin || (await isPropertyOwner(userId, listingId));
   const srcById = new Map(sources.map((s) => [s.id, s]));
@@ -120,7 +122,7 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
     held, history: history.filter((e) => e.status === "applied" || e.status === "reverted").map((e) => ({
       id: e.id, cause: e.cause, status: e.status, section: e.section, key: e.field_key, summary: e.detail?.summary ?? null, oldSummary: e.detail?.oldSummary ?? null, core: !!e.detail?.core, createdAt: e.created_at, canRevert: e.status === "applied" && (!!e.previous_fact_id || (!!e.detail?.core && hasOld(e.detail))),
     })),
-    sync, openQuestions: openQuestions ?? 0, leases: (ctx?.leases ?? []).map((l) => ({ id: l.id, index: l.index, label: l.label, owner: l.ownerLabel, mine: l.ownerId === userId })),
+    sync, unitPages, openQuestions: openQuestions ?? 0, leases: (ctx?.leases ?? []).map((l) => ({ id: l.id, index: l.index, label: l.label, owner: l.ownerLabel, mine: l.ownerId === userId })),
   };
 }
 

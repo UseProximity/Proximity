@@ -1838,6 +1838,29 @@
         }
       },
       {
+        "table": "listing_unit_pages",
+        "status": "unreleased",
+        "description": "A page per unit (feat/unit-source-pages, Wyatt 2026-11-06). The listing's monitor keeps the building-level page, where new units appear; a unit with its own page is read from that page alone (readProperty onlyThisPage, no crawling) by lib/sourceSync/unitPages.js mergeUnitPages inside syncMonitor, and that read wins over the building page for the unit (pinned by unit id, so the unit is never renamed). A page that 404s/410s or no longer shows the unit marks it let: the unit goes into the snapshot as not offered and the usual sync rules withdraw its leases (unavailable, never deleted); unit-page changes skip the churn hold and still apply when the rest of the run is held. A priced offer with a future date keeps the unit offered. Set by the property's primary owner or the team from the Agent tab (POST/DELETE /api/landlord/listings/[listingId]/agent/unit-pages); replacing a page soft-deletes the old row. Migration 202611060001_listing_unit_pages.sql.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "unit_id:uuid",
+          "url:text",
+          "source_kind:text",
+          "added_by:uuid",
+          "enabled:bool",
+          "last_status:text",
+          "last_error:text",
+          "last_checked_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "consecutive_failures:int4",
+          "deleted_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unit_id->listing_units.id (cascade); added_by->users.id (set null); unique (unit_id) where deleted_at is null; check source_kind in (own_site,portal) | last_status in (ok,gone,failed); rls: service role only (no policies)"
+      },
+      {
         "table": "listing_source_snapshots",
         "status": "unreleased",
         "description": "Listing source monitor: the normalized extraction from each fetch (normalized, rollup jsonb). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo.",
@@ -3159,8 +3182,8 @@
           "resolved_by:uuid",
           "reopened_at:timestamptz"
         ]
-        },
-        {
+      },
+      {
         "table": "agreement_amendments",
         "status": "unreleased",
         "description": "Exhibit A amendments: a landlord adds properties to their signed master agreement later. Frozen previous and proposed address lists; Documenso envelope with the generated amendment pages; signed PDFs.",

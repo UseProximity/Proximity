@@ -87,7 +87,18 @@ export function matchUnits(snapUnits, dbUnits) {
    * listing's existing "12" (786 sq ft) by size; the real 12 then looked new.
    */
   const byName = new Map();
+  // A unit read off its own page (listing_unit_pages) already knows which
+  // unit it is.
   for (const s of snapUnits) {
+    if (!s.pinnedUnitId) continue;
+    const hit = pool.find((p) => !p.used && p.u.id === s.pinnedUnitId);
+    if (hit) {
+      hit.used = true;
+      byName.set(s, hit.u);
+    }
+  }
+  for (const s of snapUnits) {
+    if (byName.has(s) || s.pinnedUnitId) continue;
     const sName = norm(s.name);
     const hit = sName ? pool.find((p) => !p.used && norm(p.u.name) === sName) : null;
     if (hit) {
@@ -101,6 +112,8 @@ export function matchUnits(snapUnits, dbUnits) {
       pairs.push({ snap: s, db: byName.get(s) });
       continue;
     }
+    // Pinned to a unit that is no longer on the listing: nothing to do.
+    if (s.pinnedUnitId) continue;
     const sName = norm(s.name);
     let hit = null;
     if (s.bedrooms != null && s.bathrooms != null) {
@@ -412,6 +425,17 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     for (const u of unmatched) {
       if (!u.unit_leases.some((l) => isMine(l, ownerIds) && !l.unavailable)) continue;
       push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, detail: { op: "none", unitId: u.id, label: u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath` } });
+    }
+  }
+  // Which changes came from a unit's own page, and whether that page is gone
+  // (the unit is let: its leases are withdrawn, never deleted).
+  const pinned = new Map((snapshot.units ?? []).filter((u) => u.pinnedUnitId).map((u) => [u.pinnedUnitId, u]));
+  if (pinned.size) {
+    for (const c of changes) {
+      const u = pinned.get(c.unitId ?? c.detail?.unitId);
+      if (!u) continue;
+      c.detail = { ...c.detail, fromUnitPage: u.fromUnitPage, ...(u.unitPageGone ? { unitPageGone: true } : {}) };
+      if (u.unitPageGone && c.kind === "lease_withdrawn") c.note = "the unit's own page is gone, so it is treated as let";
     }
   }
   return changes;
@@ -761,7 +785,11 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     // or lengths were reworded is the same lease; counting those once held
     // a building because every lease gained the words "Available now".
     const touched = changes.filter(
-      (c) => ["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? ""))
+      (c) =>
+        // A unit's own page speaks for that unit alone, so its changes are
+        // not the building-wide churn this hold exists for.
+        !c.detail?.fromUnitPage &&
+        (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
     ).length;
     if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
   }
@@ -820,11 +848,13 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         held.push(c);
       }
     }
-  } else if (!autoApply || holdReason) {
+  } else if (!autoApply) {
     held.push(...changes);
   } else {
     for (const c of changes) {
-      if (!c.auto) {
+      // A held run still applies what a unit's own page said: the landlord
+      // pointed at that page for that unit (Wyatt, 2026-11-06).
+      if (!c.auto || (holdReason && !c.detail?.fromUnitPage)) {
         held.push(c);
         continue;
       }

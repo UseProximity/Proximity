@@ -710,7 +710,12 @@ export function readProperty(args) {
   return readCounters.run({ render: {}, cache: {} }, () => readPropertyInner(args));
 }
 
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, _crawl = null, _brandName = null, _modelDraft = null }) {
+/*
+ * onlyThisPage: a unit's own page (listing_unit_pages). The landlord told us
+ * where that unit's data lives, so nothing else is opened: no own-site hop,
+ * no floor plan index, no per-apartment pages, no exploring for gaps.
+ */
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
@@ -756,7 +761,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (page && targetUrl) propPage = page;
     else if (!page) console.log(`[source-import] ${target.name}: could not open ${targetUrl ?? unverified}`);
   }
-  if (propPage) {
+  if (propPage && !onlyThisPage) {
     const ownSite = findPropertyOwnSite(crawl.structureOf(propPage), propPage.finalUrl, target.name);
     if (ownSite) {
       const ownPage = await crawl.follow(ownSite);
@@ -783,7 +788,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
 
   // A small landlord's page per apartment, only the ones carrying this
   // property's street number when a number is known.
-  if (!targetUrl || targetUrl === main.finalUrl) {
+  if (!onlyThisPage && (!targetUrl || targetUrl === main.finalUrl)) {
     const readable = (l) => {
       try {
         return `${l.text} ${decodeURIComponent(l.url)}`;
@@ -945,7 +950,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    */
   const flyers = [];
   const MAX_EXPLORED = 8;
-  let explored = 0;
+  let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
     if (explored >= MAX_EXPLORED) return 0;

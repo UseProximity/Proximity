@@ -24,6 +24,7 @@ import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
 import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
+import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -130,6 +131,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    // Units with their own page: read those pages alone and trust them for
+    // their unit (lib/sourceSync/unitPages.js).
+    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
     await keepSnapshot(m.id, { ok: true, snapshot });
     const fp = fingerprint(snapshot);
     const unchanged = !force && m.last_fingerprint === fp;
@@ -145,7 +149,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       // Every page this listing already knows (found by earlier whole-site reads), plus the start page and flyers.
       const { knownPageUrls } = await import("@/lib/agents/pages");
       const known = await knownPageUrls(listing.id).catch(() => []);
-      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...flyers, ...known], cause: "sync", actorId, force, maxPages: 50 });
+      const unitUrls = unitPages.filter((p) => p.status === "ok").map((p) => p.url);
+      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...unitUrls, ...flyers, ...known], cause: "sync", actorId, force, maxPages: 50 });
     }
     const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
     await supabase
@@ -173,6 +178,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       holdReason: result?.holdReason ?? null,
       summary: summarize(snapshot),
       pages,
+      unitPages,
     };
     console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${item.seconds}s, ${pages.filter((p) => p.written).length} page${pages.length === 1 ? "" : "s"} with new knowledge)`);
     return item;

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-07T00:19:40.255Z",
-  "count": 309,
+  "_generated": "2026-11-07T22:19:31.704Z",
+  "count": 310,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1138,6 +1138,10 @@
     {
       "file": "src/lib/sourceSync/classify.js",
       "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
+      "file": "src/lib/sourceSync/unitPages.js",
+      "description": "A page per unit (Wyatt, 2026-11-06)."
     },
     {
       "file": "src/lib/streetview.js",
