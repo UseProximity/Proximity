@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
-import LicenseDisclosureFields, { DisclosureSummary, useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
+import LicenseDisclosureFields, { DisclosureSummary, MissingHint, useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 /*
  * The landlord's real estate license disclosure on their Profile: what they told
@@ -71,6 +71,7 @@ export default function LicenseDisclosureCard() {
           <form onSubmit={save} className="max-w-2xl space-y-3">
             <LicenseDisclosureFields state={license} allowSummary={false} idPrefix="profile-license" />
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            <MissingHint state={license} />
             <div className="flex gap-2">
               <button
                 type="submit"

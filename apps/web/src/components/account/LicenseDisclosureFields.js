@@ -60,6 +60,29 @@ export function disclosureReady(draft, { summary = false, stillCorrect = false }
   );
 }
 
+/** What still stops the answer from being saved, in words, for the line next to the button. */
+export function disclosureMissing(draft, { summary = false, stillCorrect = false } = {}) {
+  if (summary) return stillCorrect ? [] : ["tick that your details are still correct"];
+  if (draft.isLicensee === false) return draft.notLicensedConfirmed ? [] : ["tick the confirmation box"];
+  if (draft.isLicensee !== true) return ["answer whether a licensee lists these properties"];
+  const out = [];
+  if (!draft.agentName.trim()) out.push("the agent's name");
+  if (!draft.companyName.trim()) out.push("the company");
+  if (phoneDigits(draft.companyPhone).length !== 10) out.push("a 10 digit company phone");
+  if (!draft.licenseNumber.trim()) out.push("the license number");
+  if (!draft.ownerAgreementConfirmed) out.push("tick the listing agreement box");
+  return out;
+}
+
+// "Still needed: the company and tick the listing agreement box."
+export function MissingHint({ state, className = "" }) {
+  if (state.loading || state.ready) return null;
+  const missing = disclosureMissing(state.draft, { summary: state.mode === "summary", stillCorrect: state.stillCorrect });
+  if (!missing.length) return null;
+  const list = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+  return <p className={`text-xs text-gray-500 ${className}`}>Still needed: {list}.</p>;
+}
+
 /** The request body for the draft (or, from the summary, the saved answer re-confirmed). */
 export function disclosurePayload(draft) {
   if (draft.isLicensee === false) return { isLicensee: false, notLicensedConfirmed: true };
@@ -114,10 +137,14 @@ export function useLicenseDisclosure() {
     ready: saved !== undefined && disclosureReady(draft, { summary, stillCorrect }),
     // From the summary the saved answer is sent again, confirmed.
     payload: () => disclosurePayload(summary ? { ...fromSaved(saved), notLicensedConfirmed: true, ownerAgreementConfirmed: true } : draft),
+    // Start editing from `next` (the Profile card's Edit): the full form, judged on
+    // what is typed. Leaving the "still correct" summary mode matters: in it, Save
+    // waited for a box the full form does not show (fixed 2026-11-06).
     reset: (next) => {
       setSaved(next);
       setDraft(fromSaved(next));
       setStillCorrect(false);
+      setMode("edit");
     },
   };
 }

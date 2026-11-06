@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import SignAgreementDialog from "./SignAgreementDialog";
 import Spinner from "./Spinner";
-import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
+import LicenseDisclosureFields, { MissingHint, useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -128,6 +128,7 @@ export default function AgreementSigningFlow({ body, user = null, onFinished }) 
             <p>We ask this before you sign and keep it on your account. It is not printed on the agreement.</p>
             {license.loading ? <Spinner label="Loading..." /> : <LicenseDisclosureFields state={license} idPrefix="sign-license" />}
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+            <MissingHint state={license} />
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
