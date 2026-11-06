@@ -1,19 +1,20 @@
 /*
- * The Exhibit A pages we generate and attach to a landlord's Documenso copy as a
- * second document in the same envelope (Wyatt, 2026-11-04). The legal wording of
- * the agreement is the uploaded PDF and is never touched; these pages only list
- * the covered properties.
+ * The Exhibit A pages we generate and attach to a landlord's Documenso copy (Wyatt,
+ * 2026-11-04). The legal wording of the agreement is the uploaded PDF and is never
+ * touched; these pages only list the covered properties.
  *
- *   master     "Exhibit A: Covered Properties", every property the agreement covers
- *   amendment  "Amendment to Exhibit A", the properties covered before and after,
- *              the new ones marked as added
+ *   master   "Exhibit A: Covered Properties", every property the agreement covers,
+ *            the second document in the agreement's envelope
+ *   updated  the same list, recreated when properties are added later: every
+ *            property covered once it is signed, old and new in one plain list
+ *            (Wyatt, 2026-11-05). It is the only document in its envelope, so it
+ *            ends with a signature box (Documenso needs one) and the signer's name
  *
  * Every page has an initials box in the same place (INITIALS_BOX, in Documenso's
- * percent coordinates), so the landlord initials each page of the exhibit when
- * they sign. Nothing is drawn under it.
+ * percent coordinates), so the landlord initials each page. Nothing is drawn under it.
  *
  * Entries are { listingId, address, units: [label] }, frozen when the document is
- * made (landlord_agreements.exhibit, agreement_amendments.*_exhibit).
+ * made (landlord_agreements.exhibit, agreement_amendments.proposed_exhibit).
  */
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
@@ -53,19 +54,26 @@ function wrap(text, font, size, maxWidth) {
   return lines.length ? lines : [""];
 }
 
-const fmtDate = (d) =>
-  new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "America/Chicago" });
+// 11/05/2026 in St. Louis time, the format every agreement date uses.
+export const fmtDate = (d) =>
+  new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "America/Chicago" });
+
+const SIGNATURE_HEIGHT = 40; // points
 
 /*
- * Build the exhibit. Returns { bytes, pageCount }.
- *   kind          master | amendment
+ * Build the exhibit. Returns { bytes, pageCount, signatureBox }.
+ *   kind          master | updated
  *   landlordName  who the agreement is with (company name if they gave one)
- *   entries       master: the covered properties
- *   previous      amendment: covered before; entries: covered after
+ *   entries       every covered property
+ *   signer        updated: { name, title } printed under the signature box
+ *   agreementSignedAt  updated: when the agreement it belongs to was signed
+ * signatureBox is where Documenso's signature box goes on the last page (percent
+ * coordinates), null for a master exhibit.
  */
-export async function buildExhibitPdf({ kind = "master", landlordName, entries = [], previous = [], preparedAt = new Date() }) {
+export async function buildExhibitPdf({ kind = "master", landlordName, entries = [], signer = null, agreementSignedAt = null, preparedAt = new Date() }) {
+  const updated = kind === "updated";
   const doc = await PDFDocument.create();
-  doc.setTitle(kind === "amendment" ? "Amendment to Exhibit A" : "Exhibit A: Covered Properties");
+  doc.setTitle(updated ? "Exhibit A: Covered Properties (updated)" : "Exhibit A: Covered Properties");
   doc.setProducer("Proximity");
   doc.setCreator("Proximity");
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -92,37 +100,40 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
   };
 
   newPage();
-  text(kind === "amendment" ? "AMENDMENT TO EXHIBIT A" : "EXHIBIT A", { size: 16, f: bold, gap: 6 });
-  text(kind === "amendment" ? "Covered Properties, as amended" : "Covered Properties", { size: 12, f: bold });
+  text("EXHIBIT A", { size: 16, f: bold, gap: 6 });
+  text("Covered Properties", { size: 12, f: bold });
   space(6);
   text(`Landlord: ${landlordName || "Landlord"}`);
-  text(`Prepared: ${fmtDate(preparedAt)}`);
+  if (updated && agreementSignedAt) text(`Commission agreement signed: ${fmtDate(agreementSignedAt)}`);
+  text(`${updated ? "Updated" : "Prepared"}: ${fmtDate(preparedAt)}`);
   space(14);
 
-  const list = (items, { added = new Set() } = {}) => {
-    if (!items.length) {
-      text("None.", { color: rgb(0.35, 0.35, 0.35) });
-      return;
-    }
-    items.forEach((e, i) => {
-      if (y - 30 < CONTENT_BOTTOM) newPage();
-      const tag = added.has(e.listingId) ? "  (added by this amendment)" : "";
-      text(`${i + 1}. ${e.address}${tag}`, { f: added.has(e.listingId) ? bold : font });
-      if (e.units?.length) text(`Units: ${e.units.join(", ")}`, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
-      space(4);
-    });
-  };
+  if (!entries.length) text("None.", { color: rgb(0.35, 0.35, 0.35) });
+  entries.forEach((e, i) => {
+    if (y - 30 < CONTENT_BOTTOM) newPage();
+    text(`${i + 1}. ${e.address}`);
+    if (e.units?.length) text(`Units: ${e.units.join(", ")}`, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
+    space(4);
+  });
 
-  if (kind === "amendment") {
-    const before = new Set(previous.map((e) => e.listingId));
-    const added = new Set(entries.filter((e) => !before.has(e.listingId)).map((e) => e.listingId));
-    text("Properties covered before this amendment", { size: 12, f: bold, gap: 8 });
-    list(previous);
-    space(12);
-    text("Properties covered after this amendment", { size: 12, f: bold, gap: 8 });
-    list(entries, { added });
-  } else {
-    list(entries);
+  // The signature block of an updated exhibit: the box Documenso fills, then who signs.
+  let signatureBox = null;
+  if (updated) {
+    const needed = SIGNATURE_HEIGHT + 60;
+    if (y - needed < CONTENT_BOTTOM) newPage();
+    space(16);
+    text("Signature", { size: 9, color: rgb(0.3, 0.3, 0.3), gap: 2 });
+    const top = y;
+    const boxWidth = 220;
+    page.drawLine({ start: { x: MARGIN, y: top - SIGNATURE_HEIGHT }, end: { x: MARGIN + boxWidth, y: top - SIGNATURE_HEIGHT }, thickness: 0.75, color: rgb(0.6, 0.6, 0.6) });
+    signatureBox = {
+      positionX: (MARGIN / PAGE.width) * 100,
+      positionY: ((PAGE.height - top) / PAGE.height) * 100,
+      width: (boxWidth / PAGE.width) * 100,
+      height: (SIGNATURE_HEIGHT / PAGE.height) * 100,
+    };
+    y = top - SIGNATURE_HEIGHT - 6;
+    if (signer?.name) text(`${signer.name}${signer.title ? `, ${signer.title}` : ""}`, { size: 10 });
   }
 
   // Footer on every page: page numbers and the initials box Documenso fills.
@@ -145,5 +156,5 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
     });
   });
 
-  return { bytes: await doc.save(), pageCount: pages.length };
+  return { bytes: await doc.save(), pageCount: pages.length, signatureBox };
 }

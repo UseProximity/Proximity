@@ -205,9 +205,9 @@ export function agreementRequestEmail({ name, versionLabel, signUrl, resign = fa
 }
 
 export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason, kind = "master" }) {
-  const what = kind === "amendment" ? "Exhibit A amendment" : "commission agreement";
+  const what = kind === "amendment" ? "updated Exhibit A" : "commission agreement";
   return {
-    subject: `${kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
+    subject: `${kind === "amendment" ? "Updated Exhibit A" : "Commission agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
     html: wrap(`
       <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the ${what} in Documenso.</p>
       <p>Reason given: ${reason ? e(reason) : "none"}</p>
@@ -218,7 +218,7 @@ export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason
 
 // ── Agreement change requests ───────────────────────────────────────────────
 
-const DOC_LABEL = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
+const DOC_LABEL = { master: "the commission agreement", amendment: "an updated Exhibit A" };
 const quote = (s) =>
   `<blockquote style="margin:0 0 12px;padding-left:12px;border-left:3px solid #e5e7eb;white-space:pre-wrap">${e(s)}</blockquote>`;
 

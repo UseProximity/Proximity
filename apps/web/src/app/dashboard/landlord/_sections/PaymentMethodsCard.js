@@ -1,6 +1,7 @@
 "use client";
 
 import { Building2, CreditCard } from "lucide-react";
+import CollapsibleSection from "./CollapsibleSection";
 
 const STATUS = {
   active: { label: "Active", className: "bg-green-100 text-green-800" },
@@ -59,16 +60,26 @@ function MethodRow({ method, busy, onSetDefault, onRemove }) {
 export default function PaymentMethodsCard({ methods, busy, onAdd, onSetDefault, onRemove }) {
   const needsAttention = methods.filter((m) => m.needsAttention);
   const hasActive = methods.some((m) => m.status === "active");
+  const current = methods.find((m) => m.isDefault && m.status === "active") ?? methods.find((m) => m.status === "active");
+  // Folded when an active method is on file and nothing needs fixing.
+  const needsAction = !hasActive || needsAttention.length > 0;
 
   return (
-    <section className="bg-white rounded-lg border border-gray-100 shadow-sm">
-      <div className="px-4 py-4 border-b border-gray-100">
-        <h2 className="text-base font-semibold text-gray-900">Payment method</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Your monthly invoice is charged automatically to your default payment method. A bank account (ACH) is
-          recommended. Card and bank details are entered on Stripe&apos;s secure page and never reach Proximity.
-        </p>
-      </div>
+    <CollapsibleSection
+      id="payment-method"
+      title="Payment method"
+      defaultOpen={needsAction}
+      badge={
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${needsAction ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}>
+          {needsAction ? (methods.length ? "Needs attention" : "Not added") : "Active"}
+        </span>
+      }
+      summary={current ? `${current.description} is charged for your monthly invoice.` : "No active payment method yet."}
+    >
+      <p className="px-4 pt-4 text-sm text-gray-500">
+        Your monthly invoice is charged automatically to your default payment method. A bank account (ACH) is
+        recommended. Card and bank details are entered on Stripe&apos;s secure page and never reach Proximity.
+      </p>
 
       {needsAttention.map((m) => (
         <div key={m.id} className="mx-4 mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -112,6 +123,6 @@ export default function PaymentMethodsCard({ methods, busy, onAdd, onSetDefault,
           Add card
         </button>
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }

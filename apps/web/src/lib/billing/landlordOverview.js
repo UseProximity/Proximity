@@ -20,7 +20,7 @@ import { BillingError } from "./errors.js";
 import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
 import { getLiveVersion, resignCutoff } from "./agreementVersions.js";
-import { summarizeAgreementRows } from "./agreements.js";
+import { currentTermEnd, summarizeAgreementRows } from "./agreements.js";
 import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
 import { gateDecision, getGateSettings } from "./listingGate.js";
@@ -229,7 +229,7 @@ export function agreementSummary(state) {
   const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
   return {
     status,
-    termEnd: signed?.term_end ?? null,
+    termEnd: currentTermEnd(signed?.signed_at ?? null),
     negotiated: !!signed?.agreement_version?.landlord_id,
     flaggedForReview: !!state.flaggedForReview,
     commissionRatePercent: signed?.commission_rate_percent == null ? null : Number(signed.commission_rate_percent),

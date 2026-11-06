@@ -36,7 +36,7 @@ const FILTERS = [
   { key: "closed", label: "Closed" },
 ];
 const CLOSED = ["resolved", "declined", "withdrawn"];
-const DOC = { master: "Commission agreement", amendment: "Exhibit A amendment" };
+const DOC = { master: "Commission agreement", amendment: "Updated Exhibit A" };
 
 function Thread({ request }) {
   return (

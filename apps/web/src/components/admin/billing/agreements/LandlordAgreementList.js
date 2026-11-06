@@ -51,7 +51,7 @@ function AgreementDetail({ a }) {
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
         {a.negotiated ? " (negotiated)" : ""}
         {a.commissionRatePercent != null ? ` · ${rate(a.commissionRatePercent)}` : ""}
-        {a.termEnd ? ` · term ends ${fmtDate(a.termEnd)}` : ""}
+        {a.termEnd ? ` · renews ${fmtDate(a.termEnd)}` : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
       </span>
     );
@@ -74,7 +74,7 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
       .catch((e) => setError(e.message));
   }, [landlordId, tick]);
   const voidDoc = (d) => {
-    const what = d.kind === "amendment" ? "this Exhibit A amendment" : "this commission agreement";
+    const what = d.kind === "amendment" ? "this updated Exhibit A" : "this commission agreement";
     const effect =
       d.status === "signed"
         ? d.kind === "amendment"
@@ -102,7 +102,7 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
           <li key={`${d.kind}:${d.id}`} className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="flex-1 font-medium text-gray-900">
-                {d.kind === "amendment" ? "Exhibit A amendment" : "Master agreement"}
+                {d.kind === "amendment" ? "Updated Exhibit A" : "Master agreement"}
                 {d.versionLabel ? ` · ${d.versionLabel}` : ""}
                 {d.negotiated ? " (negotiated)" : ""} · {d.status}
                 {d.signedAt ? ` ${fmtDate(d.signedAt)}` : ` (made ${fmtDate(d.createdAt)})`}

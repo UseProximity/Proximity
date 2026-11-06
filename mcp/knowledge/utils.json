@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-05T21:59:57.739Z",
+  "_generated": "2026-11-06T00:24:30.293Z",
   "count": 305,
   "utils": [
     {
@@ -489,7 +489,7 @@
     },
     {
       "file": "src/lib/billing/exhibitPdf.js",
-      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy as a"
+      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy (Wyatt,"
     },
     {
       "file": "src/lib/billing/http.js",

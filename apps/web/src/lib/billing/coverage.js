@@ -3,8 +3,11 @@
  * they need to sign to cover more (decisions of 2026-11-04).
  *
  *   - One master agreement per landlord, with an Exhibit A listing the covered
- *     properties, signed once. It runs for a year from signing.
- *   - A property added later is covered by a short Exhibit A amendment listing the
+ *     properties, signed once. Its term runs to the next September 15 and renews
+ *     by itself every year.
+ *   - A property added later is covered by an updated Exhibit A (still stored as an
+ *     amendment) that the landlord initials and signs: it lists every covered
+ *     property, old and new (Wyatt, 2026-11-05). The plan keeps the
  *     properties before and after. Coverage is per property (address): a new unit
  *     or lease at a covered address needs nothing.
  *   - Exhibit A holds everything the landlord has live plus whatever they are

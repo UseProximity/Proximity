@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import toast from "react-hot-toast";
-import SignAgreementDialog from "@/app/dashboard/landlord/_sections/SignAgreementDialog";
-import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
+import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSigningFlow";
 
 const PAYMENTS_URL = "/dashboard/landlord?tab=payments#commission-agreement";
 
@@ -18,11 +17,13 @@ async function getJson(url, init) {
 /*
  * Shown when a publish is refused only because the properties are not on the
  * landlord's commission agreement yet (listing gate, `uncovered`). It names the
- * properties, says whether this is the agreement itself (first time: Exhibit A
- * lists them and everything else they have live) or a short Exhibit A amendment
- * (they already signed), takes their title and authority to sign, and opens the
- * signing page. Once Documenso confirms the signature, `onSigned` runs: the
- * caller publishes again. Closing it leaves everything as a draft.
+ * properties, says whether this is the agreement itself (first time: it covers
+ * them and everything else they have live) or an updated list of their covered
+ * properties to initial (they already signed), and takes their name, title and
+ * authority to sign. Then the license question pops up while the document is
+ * prepared, and the signing page opens (AgreementSigningFlow). Once Documenso
+ * confirms the signature, `onSigned` runs: the caller publishes again. Closing it
+ * leaves everything as a draft.
  *
  * Props: uncovered [{ listingId, address }], onSigned(), onClose().
  */
@@ -31,11 +32,8 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [authorized, setAuthorized] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
   const [signing, setSigning] = useState(null);
   const closeRef = useRef(null);
-  const license = useLicenseDisclosure();
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -49,44 +47,27 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
   useEffect(() => {
     if (signing) return undefined;
-    const onKey = (e) => e.key === "Escape" && !busy && onClose();
+    const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose, signing]);
+  }, [onClose, signing]);
 
   const hasMaster = view?.status === "signed";
   const ids = uncovered.map((u) => u.listingId).filter(Boolean);
   const alsoLive = (view?.uncoveredLive ?? []).filter((p) => !ids.includes(p.listingId));
 
-  const start = async (e) => {
+  const start = (e) => {
     e.preventDefault();
-    if (!license.ready) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await getJson("/api/billing/agreement/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signerName: name, signerTitle: title, authorized, listingIds: ids, licenseDisclosure: license.payload() }),
-      });
-      if (r.alreadySigned) return onSigned();
-      setSigning(r);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    setSigning({ signerName: name, signerTitle: title, authorized, listingIds: ids });
   };
 
   if (signing) {
     return (
-      <SignAgreementDialog
-        token={signing.token}
-        host={signing.host}
-        kind={signing.kind}
-        onClose={onClose}
+      <AgreementSigningFlow
+        body={signing}
         onFinished={(result) => {
           if (result === "signed") return onSigned();
+          if (result === "closed") return onClose();
           // Signed, but Documenso has not finished sealing it yet: the webhook will
           // record it shortly, and publishing again then goes straight through.
           toast("Signed. We are still saving your copy. Publish again in a minute.", { duration: 10000 });
@@ -106,7 +87,6 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
           <button
             ref={closeRef}
             type="button"
-            disabled={busy}
             onClick={() => onClose()}
             className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
           >
@@ -121,8 +101,8 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
             <>
               <p>
                 {hasMaster
-                  ? "To publish, these properties need to be added to Exhibit A of your commission agreement. You will sign a short amendment, not the whole agreement again."
-                  : "To publish, sign the commission agreement. Its Exhibit A lists the properties it covers:"}
+                  ? "To publish, add these properties to your commission agreement. You initial an updated list of your properties, not the whole agreement again."
+                  : "To publish, sign the commission agreement. This agreement covers these properties:"}
               </p>
               <ul className="space-y-1 rounded-md bg-gray-50 px-3 py-2">
                 {uncovered.map((u) => (
@@ -142,13 +122,12 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 </p>
               )}
               <p className="text-xs text-gray-500">
-                You will initial each Exhibit A page. Your drafts stay saved whatever you choose.{" "}
+                You will initial each page of the property list. Your drafts stay saved whatever you choose.{" "}
                 <a href={PAYMENTS_URL} className="underline">
                   Read it first or ask for changes under Payments
                 </a>
                 .
               </p>
-              <LicenseDisclosureFields state={license} idPrefix="coverage-license" />
               <label className="block">
                 Your full name
                 <input
@@ -177,13 +156,12 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
                 <input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
                 <span>I am authorised to sign for this landlord or company.</span>
               </label>
-              {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
               <button
                 type="submit"
-                disabled={busy || !authorized || !title.trim() || name.trim().split(/\s+/).length < 2 || !license.ready}
+                disabled={!authorized || !title.trim() || name.trim().split(/\s+/).length < 2}
                 className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
               >
-                {busy ? "Opening..." : hasMaster ? "Review and sign the amendment" : "Review and sign"}
+                Review and sign
               </button>
             </>
           )}

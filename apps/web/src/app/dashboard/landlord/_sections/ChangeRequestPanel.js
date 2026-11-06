@@ -35,10 +35,10 @@ export const CHANGE_STATUS = {
   withdrawn: { label: "Withdrawn", className: "bg-gray-100 text-gray-700" },
 };
 const ACTIVE = ["open", "answered", "accepted"];
-const DOC = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
+const DOC = { master: "the commission agreement", amendment: "your updated list of properties" };
 
 const when = (iso) =>
-  new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
 
 async function call(url, options) {
   const res = await fetch(url, options);

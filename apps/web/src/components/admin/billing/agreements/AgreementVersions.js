@@ -71,12 +71,8 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
       <Step n={2} done={version.status === "ready"}>
         <p className="text-gray-900">Place the signature boxes in Documenso</p>
         <div className="space-y-1 text-xs text-gray-500">
-          <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: they fill in themselves.</p>
-          <p>
-            <span className="font-medium text-gray-700">Commission rate:</span> add a Number box (or a Text box labelled
-            &quot;Commission rate&quot;). We fill in the rate entered with this upload. Tick &quot;Read only&quot; in its
-            settings so the landlord cannot change it.
-          </p>
+          <p>Add a Signature box for the signer (required). Name and Date boxes are recommended: we fill them in, so the landlord only signs and initials.</p>
+          <p>The commission rate is written into the agreement itself. No box is needed for it.</p>
           <p>
             Other Text boxes we fill in, by their label: &quot;Title&quot; (the signer&apos;s title), &quot;Address&quot;
             (the landlord&apos;s billing address) and &quot;Name&quot; (the signer&apos;s first and last name, which also
@@ -105,20 +101,12 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
             <p className={summary.ok ? "text-green-700" : "text-red-700"}>
               {summary.ok
                 ? `Found ${summary.signature} signature, ${summary.name} name and ${summary.date} date box(es). Filled in for each landlord: ${
-                    [summary.rateFieldId && "Commission rate", summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"]
+                    [summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"]
                       .filter(Boolean)
                       .join(", ") || "none"
                   }.`
                 : "No signature box for the signer yet. Add one in Documenso, save, then check again."}
             </p>
-            {summary.ok && !summary.rateFieldId && (
-              <p className="text-amber-800">
-                No commission rate box found, so the rate will not appear on the document. Add a Number box, save, then check again.
-              </p>
-            )}
-            {summary.ok && summary.rateFieldId && summary.rateReadOnly === false && (
-              <p className="text-amber-800">The commission rate box is not read only, so a landlord could change it. Tick &quot;Read only&quot; on it in Documenso.</p>
-            )}
           </div>
         )}
         {summary?.ok && version.kind === "master" && (!summary.brokerageFieldId || !summary.licenseFieldId) && (
@@ -156,7 +144,7 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
   );
 }
 
-const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment" };
+const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment (no longer used)" };
 const rate = (r) => (r == null ? "no rate" : `${Number(r).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`);
 
 const landlords = (n) => `${n} ${n === 1 ? "landlord" : "landlords"}`;
@@ -197,7 +185,6 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
   const [fileInputKey, setFileInputKey] = useState(0);
   const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.landlordId);
   const live = liveStandard("master");
-  const liveAmendment = liveStandard("amendment");
   const negotiatedLive = versions.filter((v) => v.status === "live" && v.landlordId);
   const drafts = versions.filter((v) => v.status === "draft" || v.status === "ready");
   const retired = versions.filter((v) => v.status === "retired");
@@ -246,13 +233,9 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
       ) : (
         <p className="text-sm text-gray-500">No agreement version is live yet, so landlords cannot sign in the app.</p>
       )}
-      {liveAmendment ? (
-        <LiveRow v={liveAmendment} kindLabel="Exhibit A amendment" busy={busy} run={run} />
-      ) : (
-        <p className="text-sm text-gray-500">
-          No amendment version is live yet. Landlords who already signed cannot add new properties until one is.
-        </p>
-      )}
+      <p className="text-xs text-gray-500">
+        Adding a property after signing needs no template: the landlord initials and signs an updated Exhibit A that we generate.
+      </p>
       {negotiatedLive.map((v) => (
         <LiveRow key={v.id} v={v} kindLabel={`Negotiated ${KIND_LABEL[v.kind].toLowerCase()}`} busy={busy} run={run} />
       ))}
@@ -321,7 +304,6 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             Document
             <select className={`${FIELD} mt-1`} value={kind} onChange={(e) => setKind(e.target.value)}>
               <option value="master">Commission agreement</option>
-              <option value="amendment">Exhibit A amendment</option>
             </select>
           </label>
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
@@ -330,6 +312,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           </label>
           <label className="block w-40 text-sm text-gray-700">
             Commission rate (%)
+            <span className="block text-xs font-normal text-gray-500">For invoices. Must match the agreement&apos;s wording.</span>
             <input
               className={`${FIELD} mt-1`}
               value={commission}

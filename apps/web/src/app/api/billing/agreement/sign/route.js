@@ -12,9 +12,12 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
- * Exhibit A amendment, whichever covers the properties asked for.
- * Body: { signerName, signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure }. signerName is
- *       the full name (first and last) that goes on the document.
+ * updated Exhibit A, whichever covers the properties asked for.
+ * Body: { signerName, signerTitle, authorized: true, listingIds?: [uuid], licenseDisclosure, prepare? }.
+ *       signerName is the full name (first and last) that goes on the document.
+ *   prepare     true: only get the copy ready, while the landlord answers the
+ *               license questions (no licenseDisclosure needed). Answers
+ *               { prepared: true, kind } or { alreadySigned: true }.
  *   licenseDisclosure  required: the real estate license answer given in the
  *               step right before signing (lib/users/licenseDisclosure.js). It is
  *               saved, and recorded in the history as given at signing, before
@@ -38,15 +41,16 @@ export async function POST(req) {
 
   try {
     const body = await req.json().catch(() => ({}));
+    const prepare = body.prepare === true;
     // Checked before anything else, so an incomplete answer never opens a document.
-    const disclosure = cleanDisclosure(body.licenseDisclosure);
+    const disclosure = prepare ? null : cleanDisclosure(body.licenseDisclosure);
     const { documenso, signingAvailable, options } = agreementServices();
     if (!signingAvailable) {
       throw new BillingError("not_available", "Signing in the app is not set up yet. Email info@useproximity.org and we will send you the agreement.", 503);
     }
     const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
     if (error) throw error;
-    await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
+    if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,
       signerTitle: body.signerTitle,
@@ -55,6 +59,7 @@ export async function POST(req) {
       listingIds: ownListingIds(body.listingIds),
       // Fills the signature page's Brokerage and License boxes ("N/A" if not licensed).
       licenseDisclosure: disclosure,
+      prepare,
       ...options,
     });
     return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);
