@@ -74,7 +74,6 @@ function Thread({ request }) {
 // The negotiated document for one accepted request: a version for this landlord only.
 function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
   const [label, setLabel] = useState(`${request.landlord?.name || request.landlord?.email || "Landlord"} (negotiated)`.slice(0, 80));
-  const [rate, setRate] = useState("");
   const [file, setFile] = useState(null);
   const [done, setDone] = useState(false);
 
@@ -100,7 +99,6 @@ function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
         const form = new FormData();
         form.set("label", label);
         form.set("kind", request.documentKind);
-        form.set("commissionRatePercent", rate);
         form.set("landlordId", request.landlord.id);
         form.set("changeRequestId", request.id);
         if (request.versionId) form.set("basedOnVersionId", request.versionId);
@@ -121,25 +119,12 @@ function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
           Name
           <input className={`${FIELD} mt-1`} value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} required />
         </label>
-        <label className="block w-40 text-sm text-gray-700">
-          Commission rate (%)
-          <input
-            className={`${FIELD} mt-1`}
-            type="number"
-            min="0.001"
-            max="100"
-            step="0.001"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            required
-          />
-        </label>
         <label className="block min-w-[12rem] flex-1 text-sm text-gray-700">
           PDF (up to 4 MB)
           <input className="mt-2 block w-full text-sm" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
         </label>
       </div>
-      <button type="submit" disabled={busy || !file || !rate} className={PRIMARY}>
+      <button type="submit" disabled={busy || !file} className={PRIMARY}>
         {busy ? "Uploading..." : "Upload"}
       </button>
     </form>

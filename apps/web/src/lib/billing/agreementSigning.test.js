@@ -496,6 +496,12 @@ describe("publishVersion", () => {
     assert.deepEqual(db.tables.agreement_versions.map((x) => x.status), ["retired", "live"]);
   });
 
+  it("makes a version live with no commission rate: the rate is only in the document (2026-11-06)", async () => {
+    const db = fakeDb({ agreement_versions: [{ ...LIVE, id: "v2", status: "ready", published_at: null, commission_rate_percent: null }] });
+    const v = await publishVersion(db, { versionId: "v2", adminId: "a", requiresResign: false });
+    assert.equal(v.status, "live");
+  });
+
   it("will not make an agreement live without the Brokerage and License boxes", async () => {
     const db = fakeDb({ agreement_versions: [{ ...LIVE, id: "v2", status: "ready", published_at: null, provider_license_field_id: null }] });
     await assert.rejects(
