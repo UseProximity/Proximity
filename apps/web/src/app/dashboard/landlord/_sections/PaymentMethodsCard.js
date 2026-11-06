@@ -10,9 +10,11 @@ const STATUS = {
   failed: { label: "Failed", className: "bg-red-100 text-red-800" },
 };
 
+// "Failed" covers a bank account that failed verification and a method whose
+// payment failed; which one is not recorded, so the wording covers both (Wyatt, 2026-11-06).
 const ATTENTION_COPY = {
   expired: "has expired",
-  failed: "failed on the last payment",
+  failed: "can't be used: it failed verification or a payment didn't go through",
 };
 
 function MethodRow({ method, busy, onSetDefault, onRemove }) {
@@ -26,6 +28,11 @@ function MethodRow({ method, busy, onSetDefault, onRemove }) {
         {method.status === "verifying" && (
           <p className="text-xs text-gray-500">
             Stripe is verifying this bank account. This can take 1 to 2 business days.
+          </p>
+        )}
+        {ATTENTION_COPY[method.status] && (
+          <p className="text-xs text-red-700">
+            This {method.type === "card" ? "card" : "bank account"} {ATTENTION_COPY[method.status]}. Remove it, or add it again.
           </p>
         )}
       </div>
@@ -61,8 +68,13 @@ export default function PaymentMethodsCard({ methods, busy, onAdd, onSetDefault,
   const needsAttention = methods.filter((m) => m.needsAttention);
   const hasActive = methods.some((m) => m.status === "active");
   const current = methods.find((m) => m.isDefault && m.status === "active") ?? methods.find((m) => m.status === "active");
-  // Folded when an active method is on file and nothing needs fixing.
-  const needsAction = !hasActive || needsAttention.length > 0;
+  // The red banner only when nothing active can pay the invoices: the default
+  // failed or expired, or no method is active. A failed method beside an active
+  // default just says so on its own row (Wyatt, 2026-11-06).
+  const defaultBroken = methods.some((m) => m.isDefault && m.needsAttention);
+  const showBanner = needsAttention.length > 0 && (!hasActive || defaultBroken);
+  // Folded when an active method can pay and nothing needs fixing.
+  const needsAction = !hasActive || showBanner;
 
   return (
     <CollapsibleSection
@@ -81,11 +93,17 @@ export default function PaymentMethodsCard({ methods, busy, onAdd, onSetDefault,
         recommended. Card and bank details are entered on Stripe&apos;s secure page and never reach Proximity.
       </p>
 
-      {needsAttention.map((m) => (
-        <div key={m.id} className="mx-4 mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
-          Your {m.description} {ATTENTION_COPY[m.status]}. Please add a new payment method so your invoices can be paid.
+      {/* One line: each method's own row says what is wrong with it. */}
+      {showBanner && (
+        <div className="mx-4 mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          {needsAttention.length === 1 && !hasActive
+            ? `Your ${needsAttention[0].description} ${ATTENTION_COPY[needsAttention[0].status]}.`
+            : hasActive
+              ? "Your default payment method can't be used."
+              : "None of your payment methods can be used right now."}{" "}
+          Please add a new payment method{hasActive ? " or make another one the default" : ""} so your invoices can be paid.
         </div>
-      ))}
+      )}
 
       {methods.length === 0 ? (
         <p className="px-4 py-6 text-sm text-gray-600">
