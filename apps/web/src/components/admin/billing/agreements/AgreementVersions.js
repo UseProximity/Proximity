@@ -78,11 +78,6 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
             (the landlord&apos;s billing address) and &quot;Name&quot; (the signer&apos;s first and last name, which also
             goes in Documenso&apos;s Name box).
           </p>
-          <p>
-            <span className="font-medium text-gray-700">Signature page (required on the agreement):</span> two Text boxes
-            labelled &quot;Brokerage&quot; and &quot;License&quot;. We fill in the licensee&apos;s brokerage and Missouri
-            license number, or &quot;N/A&quot; in both when the landlord is not licensed. Tick &quot;Read only&quot; on both.
-          </p>
           <p>Exhibit A is added to each landlord&apos;s copy automatically, with an initials box on every page: do not add it here.</p>
         </div>
         {version.connected && version.editorUrl && (
@@ -101,20 +96,13 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
             <p className={summary.ok ? "text-green-700" : "text-red-700"}>
               {summary.ok
                 ? `Found ${summary.signature} signature, ${summary.name} name and ${summary.date} date box(es). Filled in for each landlord: ${
-                    [summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name", summary.brokerageFieldId && "Brokerage", summary.licenseFieldId && "License"]
+                    [summary.titleFieldId && "Title", summary.addressFieldId && "Address", summary.nameFieldId && "Name"]
                       .filter(Boolean)
                       .join(", ") || "none"
                   }.`
                 : "No signature box for the signer yet. Add one in Documenso, save, then check again."}
             </p>
           </div>
-        )}
-        {summary?.ok && version.kind === "master" && (!summary.brokerageFieldId || !summary.licenseFieldId) && (
-          <p className="mt-1 text-xs text-amber-800">
-            Missing on the signature page: {[!summary.brokerageFieldId && "Brokerage", !summary.licenseFieldId && "License"].filter(Boolean).join(" and ")}.
-            Add {!summary.brokerageFieldId && !summary.licenseFieldId ? "these text boxes" : "this text box"} in Documenso, then check again. The
-            agreement cannot go live without them.
-          </p>
         )}
       </Step>
       <Step n={4} done={false}>

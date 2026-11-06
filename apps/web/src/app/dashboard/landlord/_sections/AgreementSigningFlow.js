@@ -33,9 +33,9 @@ async function post(body, { retries = 0 } = {}) {
  *   1. A popup asks the real estate license question (or shows the saved answer
  *      to confirm). Meanwhile the document is prepared in the background
  *      (prepare: true), so it is ready by the time they answer.
- *   2. Their answer fills the signature page's Brokerage and License boxes and
- *      the document opens in Documenso's signing page, with everything filled
- *      but the signature and initials.
+ *   2. Their answer is saved to their account (never printed on the agreement)
+ *      and the document opens in Documenso's signing page, with everything
+ *      filled but the signature and initials.
  *
  * `body` is what the sign route needs besides the license answer: signerName,
  * signerTitle, authorized and, from the publish dialog, listingIds.
@@ -125,7 +125,7 @@ export default function AgreementSigningFlow({ body, user = null, onFinished }) 
           </div>
         ) : (
           <form onSubmit={open} className="space-y-4 overflow-y-auto px-5 py-4 text-sm text-gray-700">
-            <p>Your answer goes on the agreement&apos;s signature page. We fill in the rest, so you only sign and initial.</p>
+            <p>We ask this before you sign and keep it on your account. It is not printed on the agreement.</p>
             {license.loading ? <Spinner label="Loading..." /> : <LicenseDisclosureFields state={license} idPrefix="sign-license" />}
             {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
             <div className="flex flex-wrap items-center gap-3">

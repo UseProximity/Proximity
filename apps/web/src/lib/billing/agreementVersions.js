@@ -249,15 +249,6 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
   if (version.status !== "ready") {
     throw new BillingError("not_ready", "Check the signature boxes before making this version live.", 409);
   }
-  // Missouri: the agreement's signature page carries the brokerage name and license
-  // number (or "N/A"), so a master agreement cannot go live without both boxes.
-  if (version.kind === "master" && (!version.provider_brokerage_field_id || !version.provider_license_field_id)) {
-    throw new BillingError(
-      "license_boxes_required",
-      'Add text boxes labelled "Brokerage" and "License" to the signature page in Documenso, then check the boxes again.',
-      409
-    );
-  }
   let retire = db.from("agreement_versions").update({ status: "retired" }).eq("status", "live").eq("kind", version.kind);
   retire = version.landlord_id ? retire.eq("landlord_id", version.landlord_id) : retire.is("landlord_id", null);
   const { error: retireError } = await retire;

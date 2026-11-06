@@ -310,10 +310,9 @@ describe("template checks", () => {
 
 // ── Signing ─────────────────────────────────────────────────────────────────
 
-describe("startSigning: the signature page's licensee details", () => {
-  const licensee = { is_licensee: true, company_name: "West End Realty", license_number: "2026001234" };
-  // The template's Brokerage and License boxes; the copy gets them with new ids.
-  const withLicenseBoxes = () => {
+describe("startSigning: the license answer is not printed on the agreement (2026-11-06)", () => {
+  it("fills no Brokerage or License box, even on a template that has them", async () => {
+    const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
     const documenso = fakeDocumenso();
     documenso.envelopes.set("envelope_template", {
       id: "envelope_template",
@@ -324,40 +323,10 @@ describe("startSigning: the signature page's licensee details", () => {
         { id: 45, type: "TEXT", recipientId: 11, fieldMeta: { label: "License" } },
       ],
     });
-    return documenso;
-  };
-  // What was filled in when the copy was opened, by box label.
-  const filledOn = async (documenso, id = "envelope_1") =>
-    Object.fromEntries((await documenso.getEnvelope(id)).fields.filter((f) => f.fieldMeta?.text).map((f) => [f.fieldMeta.label, f.fieldMeta.text]));
-
-  it("fills the brokerage and license number for a licensee", async () => {
-    const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = withLicenseBoxes();
-    await sign(db, documenso, { licenseDisclosure: licensee });
-    const filled = await filledOn(documenso);
-    assert.equal(filled.Brokerage, "West End Realty");
-    assert.equal(filled.License, "2026001234");
-    assert.deepEqual(db.tables.landlord_agreements[0].license_prefill, { brokerage: "West End Realty", license: "2026001234" });
-  });
-
-  it('fills "N/A" in both for a landlord who is not licensed', async () => {
-    const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = withLicenseBoxes();
-    await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
-    const filled = await filledOn(documenso);
-    assert.equal(filled.Brokerage, "N/A");
-    assert.equal(filled.License, "N/A");
-  });
-
-  it("makes a new copy when the answer changed since the copy in progress", async () => {
-    const db = fakeDb({ agreement_versions: [{ ...LIVE }] });
-    const documenso = withLicenseBoxes();
-    await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
-    await sign(db, documenso, { licenseDisclosure: { is_licensee: false } });
-    assert.equal(documenso.calls.copies, 1, "same answer: the copy in progress is reused");
-    await sign(db, documenso, { licenseDisclosure: licensee });
-    assert.equal(documenso.calls.copies, 2, "new answer: a new copy with the new details");
-    assert.equal((await filledOn(documenso, "envelope_2")).Brokerage, "West End Realty");
+    await sign(db, documenso, { licenseDisclosure: { is_licensee: true, company_name: "West End Realty", license_number: "2026001234" } });
+    const filled = (await documenso.getEnvelope("envelope_1")).fields.filter((f) => f.fieldMeta?.text);
+    assert.deepEqual(filled, []);
+    assert.deepEqual(documenso.calls.lastFill, []);
   });
 });
 
@@ -502,12 +471,10 @@ describe("publishVersion", () => {
     assert.equal(v.status, "live");
   });
 
-  it("will not make an agreement live without the Brokerage and License boxes", async () => {
-    const db = fakeDb({ agreement_versions: [{ ...LIVE, id: "v2", status: "ready", published_at: null, provider_license_field_id: null }] });
-    await assert.rejects(
-      () => publishVersion(db, { versionId: "v2", adminId: "a", requiresResign: false }),
-      (e) => e.code === "license_boxes_required"
-    );
+  it("makes an agreement live without Brokerage and License boxes: that info is not on the agreement", async () => {
+    const db = fakeDb({ agreement_versions: [{ ...LIVE, id: "v2", status: "ready", published_at: null, provider_brokerage_field_id: null, provider_license_field_id: null }] });
+    const v = await publishVersion(db, { versionId: "v2", adminId: "a", requiresResign: false });
+    assert.equal(v.status, "live");
   });
 
   it("needs the re-sign choice and a checked version", async () => {
