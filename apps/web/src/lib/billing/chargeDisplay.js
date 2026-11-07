@@ -86,6 +86,8 @@ export function chargeView(row, now = new Date()) {
     triggerLabel: triggerLabel(row.trigger_type),
     status: row.status,
     createdAt: row.created_at,
+    // When it was settled (Paid or Removed), which decides where it is listed.
+    settledAt: settledAt(row),
     reviewEndsAt: ends ? ends.toISOString() : null,
     contestReason: row.contest_reason ?? null,
     listingLabel: row.listing?.address ?? row.listing?.title ?? null,
@@ -100,4 +102,44 @@ export function chargeView(row, now = new Date()) {
       .map((a) => ({ kind: a.kind, amountCents: a.amount_cents, createdAt: a.created_at }))
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
   };
+}
+
+// When a Paid or Removed charge was settled, or null while it is still in progress.
+function settledAt(row) {
+  if (row.status === "paid") return row.paid_at ?? row.created_at;
+  if (row.status === "voided") return row.voided_at ?? row.created_at;
+  return null;
+}
+
+const MONTH_KEY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit" });
+const MONTH_LABEL = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "long" });
+const monthOf = (d) => MONTH_KEY.format(new Date(d)).slice(0, 7);
+
+/*
+ * The landlord's Charges card, split so the list does not grow forever (Simão,
+ * 2026-11-07; Wyatt chose grouping by month). `current` is everything still in
+ * progress plus what was paid or removed this month (Central time); `past` is
+ * the rest, one group per month it was settled in, newest month first, each
+ * with how many charges and how much was paid. Charges keep their order inside.
+ */
+export function splitChargeHistory(charges, now = new Date()) {
+  const thisMonth = monthOf(now);
+  const current = [];
+  const months = new Map();
+  for (const c of charges) {
+    if (!c.settledAt || monthOf(c.settledAt) >= thisMonth) {
+      current.push(c);
+      continue;
+    }
+    const key = monthOf(c.settledAt);
+    if (!months.has(key)) {
+      months.set(key, { month: key, label: MONTH_LABEL.format(new Date(c.settledAt)), charges: [], paidCents: 0, removedCount: 0 });
+    }
+    const group = months.get(key);
+    group.charges.push(c);
+    if (c.status === "paid") group.paidCents += c.amountCents;
+    else group.removedCount += 1;
+  }
+  const past = [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
+  return { current, past };
 }

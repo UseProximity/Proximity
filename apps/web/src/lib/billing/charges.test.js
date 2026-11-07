@@ -3,7 +3,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { leaseLabel, chargeView, statusMessage, adminChargeView } from "./chargeDisplay.js";
+import { leaseLabel, chargeView, statusMessage, adminChargeView, splitChargeHistory } from "./chargeDisplay.js";
 import { adminResolveContest, adminVoidCharge } from "./adminReview.js";
 import { CHARGE_STATUSES } from "./constants.js";
 import { createCharge, landlordApprove, landlordContest, transitionError } from "./charges.js";
@@ -147,5 +147,44 @@ describe("landlord actions", () => {
   it("a contest needs a reason, and not an endless one", async () => {
     await assert.rejects(() => landlordContest(emptyDb, { userId: "u", chargeId: "c", reason: "   " }), /why you are contesting/);
     await assert.rejects(() => landlordContest(emptyDb, { userId: "u", chargeId: "c", reason: "x".repeat(2001) }), /under 2000/);
+  });
+});
+
+describe("splitChargeHistory (Charges card past months, 2026-11-07)", () => {
+  const now = new Date("2026-11-07T18:00:00Z");
+  const c = (id, status, settledAt, amountCents = 1000) => ({ id, status, settledAt, amountCents });
+
+  it("keeps what is in progress and this month's settled charges in the main list", () => {
+    const { current, past } = splitChargeHistory(
+      [c("a", "pending", null), c("b", "invoiced", null), c("c", "paid", "2026-11-02T15:00:00Z")],
+      now
+    );
+    assert.deepEqual(current.map((x) => x.id), ["a", "b", "c"]);
+    assert.deepEqual(past, []);
+  });
+
+  it("groups older Paid and Removed charges by the month they settled, newest first, with totals", () => {
+    const { current, past } = splitChargeHistory(
+      [
+        c("n", "approved", null),
+        c("o1", "paid", "2026-10-20T15:00:00Z", 2500),
+        c("o2", "voided", "2026-10-03T15:00:00Z", 9900),
+        c("s1", "paid", "2026-09-10T15:00:00Z", 4000),
+      ],
+      now
+    );
+    assert.deepEqual(current.map((x) => x.id), ["n"]);
+    assert.deepEqual(
+      past.map((g) => [g.label, g.charges.map((x) => x.id), g.paidCents, g.removedCount]),
+      [
+        ["October 2026", ["o1", "o2"], 2500, 1],
+        ["September 2026", ["s1"], 4000, 0],
+      ]
+    );
+  });
+
+  it("uses Central time: paid late on Oct 31 in St. Louis is October, not November", () => {
+    const { past } = splitChargeHistory([c("x", "paid", "2026-11-01T03:00:00Z")], now);
+    assert.equal(past[0].label, "October 2026");
   });
 });
