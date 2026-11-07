@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import PaymentMethodsCard from "./PaymentMethodsCard";
 import ChargesCard from "./ChargesCard";
 import InvoicesCard from "./InvoicesCard";
@@ -43,6 +44,11 @@ export default function PaymentsSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  // Pay now: the invoice being paid (its button spins), and each invoice's last
+  // result, shown on the invoice itself rather than at the top of the page,
+  // which is off screen by the time the Invoices card is reached (Simão, 2026-11-07).
+  const [payingId, setPayingId] = useState(null);
+  const [payResults, setPayResults] = useState({});
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
@@ -90,6 +96,8 @@ export default function PaymentsSection() {
     })();
   }, [load]);
 
+  // An action's outcome is a toast, seen wherever the landlord has scrolled to.
+  // The banner at the top is kept for what greets them on arrival (back from Stripe, a load failure).
   const run = async (fn) => {
     setBusy(true);
     setError(null);
@@ -97,7 +105,7 @@ export default function PaymentsSection() {
     try {
       await fn();
     } catch (e) {
-      setError(e.message);
+      toast.error(e.message);
     } finally {
       setBusy(false);
     }
@@ -135,7 +143,7 @@ export default function PaymentsSection() {
     run(async () => {
       await call(`/api/billing/charges/${charge.id}/approve`, { method: "POST" });
       await load();
-      setNotice({ tone: "green", text: "Charge approved. It will be on your next monthly invoice." });
+      toast.success("Charge approved. It will be on your next monthly invoice.");
     });
 
   const contest = (reason) =>
@@ -150,24 +158,35 @@ export default function PaymentsSection() {
         setContesting(null);
         await load().catch(() => {});
       }
-      setNotice({ tone: "gray", text: "Charge contested. We will email you the outcome." });
+      toast.success("Charge contested. We will email you the outcome.");
     });
 
-  const payInvoice = (invoice) =>
-    run(async () => {
-      try {
-        const result = await call(`/api/billing/invoices/${invoice.id}/pay`, { method: "POST" });
-        setNotice({
-          tone: "green",
-          text: result.alreadyPaid
-            ? "That invoice is already paid."
-            : "Payment started. A bank payment can take a few business days to complete.",
-        });
-      } finally {
-        // A decline still changes the invoice (its reason), so always show the latest.
-        await load().catch(() => {});
-      }
-    });
+  const PAID_TEXT = {
+    paid: "Paid. Thank you. A receipt is on its way to your email.",
+    processing: "Payment started. Bank payments take a few business days to clear, and the invoice shows Processing until then.",
+    started: "Payment started. This invoice will update in a moment.",
+    alreadyPaid: "This invoice is already paid.",
+  };
+
+  const payInvoice = async (invoice) => {
+    setBusy(true);
+    setPayingId(invoice.id);
+    setPayResults((r) => ({ ...r, [invoice.id]: null }));
+    try {
+      const result = await call(`/api/billing/invoices/${invoice.id}/pay`, { method: "POST" });
+      const key = result.paid ? "paid" : result.processing ? "processing" : result.alreadyPaid ? "alreadyPaid" : "started";
+      setPayResults((r) => ({ ...r, [invoice.id]: { tone: "green", text: PAID_TEXT[key] } }));
+      toast.success(key === "paid" ? "Payment received. Thank you." : PAID_TEXT[key]);
+    } catch (e) {
+      setPayResults((r) => ({ ...r, [invoice.id]: { tone: "red", text: e.message } }));
+      toast.error(e.message);
+    } finally {
+      // A decline still changes the invoice (its reason), so always show the latest.
+      await load().catch(() => {});
+      setPayingId(null);
+      setBusy(false);
+    }
+  };
 
   // The signing email links to #marketing-agreement (#commission-agreement in emails
   // sent before 2026-11-07); the card only exists once loaded.
@@ -180,9 +199,9 @@ export default function PaymentsSection() {
 
   // After the signing dialog: refresh, and say where things stand.
   const agreementChanged = (result) => {
-    if (result === "signed") setNotice({ tone: "green", text: "Thank you. It is signed, and the properties on it are covered." });
-    else if (result === "pending") setNotice({ tone: "gray", text: "Signed. Your copy is being saved and will appear here in a minute." });
-    load().catch((e) => setError(e.message));
+    if (result === "signed") toast.success("Thank you. It is signed, and the properties on it are covered.");
+    else if (result === "pending") toast.success("Signed. Your copy is being saved and will appear here in a minute.");
+    load().catch((e) => toast.error(e.message));
   };
 
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
@@ -228,7 +247,7 @@ export default function PaymentsSection() {
         onApprove={approve}
         onContest={setContesting}
       />
-      <InvoicesCard invoices={invoices} busy={busy} onPay={payInvoice} />
+      <InvoicesCard invoices={invoices} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
       <AutopayCard methods={methods} />
       {contesting && (
         <ContestChargeModal

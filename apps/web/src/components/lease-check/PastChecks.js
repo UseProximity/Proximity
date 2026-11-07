@@ -40,11 +40,13 @@ export default function PastChecks({ checks, onSelect }) {
                 </p>
               </div>
               <div className="flex shrink-0 gap-2 text-xs font-semibold">
-                {counts.red > 0 && <span className="text-red-600">{counts.red} red</span>}
-                {counts.yellow > 0 && <span className="text-amber-600">{counts.yellow} yellow</span>}
-                {counts.green > 0 && <span className="text-emerald-600">{counts.green} green</span>}
-                {counts.red + counts.yellow + counts.green === 0 && (
-                  <span className="text-gray-400">no flags</span>
+                {counts.red + counts.yellow + counts.green === 0 ? (
+                  <span className="text-gray-400">nothing flagged</span>
+                ) : (
+                  <span className="text-gray-500">
+                    {counts.red + counts.yellow + counts.green}{" "}
+                    {counts.red + counts.yellow + counts.green === 1 ? "term" : "terms"} flagged
+                  </span>
                 )}
               </div>
             </button>

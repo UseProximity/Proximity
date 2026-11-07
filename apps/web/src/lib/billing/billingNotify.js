@@ -7,7 +7,9 @@ import { getBaseUrl } from "@/lib/email";
 import { periodLabel } from "./invoicing";
 import {
   sendAutopayOffEmail,
+  sendChargeAdjustedEmail,
   sendInvoiceIssuedEmail,
+  sendInvoicePaidEmail,
   sendPaymentMethodAttentionEmail,
   sendOverdueEmail,
   sendOverdueTeamEmail,
@@ -40,10 +42,13 @@ export function billingNotify() {
       return sendAutopayOffEmail({ id: landlord.id, email: landlord.email, name: landlord.name }, { reason, methodDescription, paymentsUrl });
     },
 
-    // Landlord and team are both told once, when the failure is first recorded.
-    async paymentFailed({ invoice, landlord, message }) {
+    /*
+     * Landlord and team are both told once, when the failure is first recorded.
+     * `emailLandlord` is false for a decline the landlord just saw on screen (Pay now).
+     */
+    async paymentFailed({ invoice, landlord, message, emailLandlord = true }) {
       const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=billing`;
-      if (landlord?.email) {
+      if (emailLandlord && landlord?.email) {
         await sendPaymentFailedEmail(
           { id: landlord.id, email: landlord.email, name: landlord.name },
           { totalCents: invoice.total_cents, retryUrl: invoice.hosted_invoice_url || paymentsUrl, reason: message }
@@ -55,6 +60,31 @@ export function billingNotify() {
         totalCents: invoice.total_cents,
         reason: message,
       });
+    },
+
+    // The receipt, once per invoice, from whichever of Pay now and the webhook marked it Paid.
+    invoicePaid({ landlord, invoice, paidCents, creditCents = 0, paidAt, methodDescription }) {
+      return sendInvoicePaidEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        {
+          periodLabel: periodLabel(invoice.billing_period),
+          totalCents: invoice.total_cents,
+          paidCents: paidCents ?? invoice.total_cents,
+          creditCents,
+          methodDescription,
+          paidAt: paidAt ?? new Date(),
+          pdfUrl: invoice.invoice_pdf_url ?? null,
+          paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing#invoices`,
+        }
+      );
+    },
+
+    // An admin refunded or credited a Paid charge. `charge` is in chargeDetails' shape.
+    chargeAdjusted({ landlord, kind, amountCents, charge, reason }) {
+      return sendChargeAdjustedEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        { kind, amountCents, charge, reason, paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` }
+      );
     },
 
     // Their default method will not pay the next invoice (expiring, expired or failed).

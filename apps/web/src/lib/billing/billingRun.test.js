@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { nextBillingDay } from "./billingPeriod.js";
 import { assertInvoiceMatches, finalizedFields, paymentFailureMessage, paymentUnderway, periodLabel, recordPaymentFailure } from "./invoicing.js";
 import { invoiceView, retryInvoicePayment } from "./invoiceAccess.js";
+import { settleInvoicePaid } from "./invoiceHandlers.js";
 import { adjustPaidCharge } from "./adjustments.js";
 import { BILLING_RUN_ENABLED, getBillingSetting, withSettingsLock } from "./settings.js";
 import { chargeableMethod } from "./paymentMethods.js";
@@ -134,7 +135,7 @@ describe("invoiceView", () => {
 
 describe("adjustPaidCharge validation", () => {
   const db = { from() { throw new Error("should not reach the database"); } };
-  const base = { chargeId: "c", adminId: "a", kind: "refund", amountCents: 100, reason: "wrong" };
+  const base = { chargeId: "c", adminId: "a", kind: "refund", amountCents: 100, reason: "wrong", requestId: "req-00000001" };
 
   it("refuses an unknown kind, a bad amount and a missing reason before touching anything", async () => {
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, kind: "chargeback" }), /refund or a credit/);
@@ -143,6 +144,59 @@ describe("adjustPaidCharge validation", () => {
     }
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "  " }), /reason is required/);
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "x".repeat(1001) }), /under 1000/);
+    await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, requestId: undefined }), /Reload the page/);
+  });
+});
+
+describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
+  // Stripe returns the refund it already made for a key it has seen.
+  function stripeWithRefunds() {
+    const made = new Map();
+    return {
+      made,
+      invoices: { retrieve: async () => ({ payments: { data: [{ status: "paid", payment: { payment_intent: "pi_1" } }] } }) },
+      refunds: {
+        create: async (params, { idempotencyKey }) => {
+          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount });
+          return made.get(idempotencyKey);
+        },
+      },
+    };
+  }
+  const setup = () =>
+    memoryDb({
+      charges: [{ id: "c", landlord_id: "l1", status: "paid", amount_cents: 10000, invoice_id: "i1" }],
+      billing_invoices: [{ id: "i1", stripe_invoice_id: "in_1" }],
+      charge_adjustments: [],
+    });
+  const req = { chargeId: "c", adminId: "a", kind: "refund", reason: "wrong", requestId: "req-00000001" };
+
+  it("sending the same refund again makes no second refund and is marked repeated", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    const first = await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    const again = await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    assert.equal(first.repeated, undefined);
+    assert.equal(again.repeated, true);
+    assert.equal(stripe.made.size, 1);
+    assert.equal(db.tables.charge_adjustments.length, 1);
+  });
+
+  it("a repeat of a refund that used up the charge is refused before Stripe", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    await adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 });
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }), /already fully refunded/);
+    assert.equal(stripe.made.size, 1);
+  });
+
+  it("a new request for the rest is its own refund", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    await adjustPaidCharge(db, stripe, { ...req, requestId: "req-00000002", amountCents: 2500 });
+    assert.equal(stripe.made.size, 2);
+    assert.equal(db.tables.charge_adjustments.length, 2);
   });
 });
 
@@ -293,15 +347,20 @@ function memoryDb(tables) {
       range() { return api; },
       or() { return api; },
       insert(row) {
-        if (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) {
-          return Promise.resolve({ error: { code: "23505" } });
-        }
-        rows(table).push({ ...row });
-        return Promise.resolve({ error: null });
+        // The unique keys these tests lean on.
+        const conflict =
+          (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) ||
+          (table === "charge_adjustments" && rows(table).some((r) => r.stripe_refund_id === row.stripe_refund_id));
+        const stored = { id: `${table}_${rows(table).length + 1}`, created_at: "2026-11-07T00:00:00Z", ...row };
+        if (!conflict) rows(table).push(stored);
+        const result = conflict ? { data: null, error: { code: "23505" } } : { data: stored, error: null };
+        const done = Promise.resolve({ error: result.error });
+        return { then: done.then.bind(done), select: () => ({ single: async () => result }) };
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },
       async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
+      async single() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       then(res, rej) { return api.run().then(res, rej); },
       async run() {
         const hit = rows(table).filter(matches);
@@ -490,5 +549,156 @@ describe("dry run matches the live run (PR #370 review)", () => {
     assert.equal(r.grandTotalCents, 4000);
     assert.equal(r.invoices.find((i) => i.landlord.id === "paid-already").waitsForNextMonth, true);
     assert.equal(r.invoices.find((i) => i.landlord.id === "fresh").waitsForNextMonth, false);
+  });
+});
+
+// Simão's billing test notes (2026-11-07): who is told, and which method is proven.
+describe("paying an invoice: receipts, failures and the method that paid", () => {
+  const invoiceRow = { id: "i1", landlord_id: "l1", billing_period: "2026-11-01", stripe_invoice_id: "in_1", status: "open", total_cents: 5000, invoice_date: "2026-11-02", hosted_invoice_url: null };
+  const method = (over) => ({ id: "m", user_id: "l1", type: "card", status: "active", is_default: true, exp_month: 12, exp_year: 2030, deleted_at: null, stripe_payment_method_id: "pm_card", created_at: "2026-01-01", ...over });
+  const landlord = { id: "l1", name: "Lee", email: "lee@example.com" };
+
+  // Stripe where the invoice is paid by `paidBy` (a card), or a bank payment is settling.
+  function stripeFor({ paidBy = "pm_card", outcome = "paid", payError = null, already = false } = {}) {
+    let status = already ? "paid" : "open";
+    let attempted = already;
+    return {
+      invoices: {
+        retrieve: async (id) => ({
+          id,
+          status,
+          // No payment on it until Pay now is pressed.
+          payments: { data: attempted ? [{ status: status === "paid" ? "paid" : "open", payment: { payment_intent: "pi_1" } }] : [] },
+        }),
+        pay: async (id) => {
+          attempted = true;
+          if (payError) throw payError;
+          if (outcome === "paid") status = "paid";
+          return { id, status, invoice_pdf: status === "paid" ? "https://pdf" : null };
+        },
+      },
+      paymentIntents: {
+        retrieve: async () => ({
+          id: "pi_1",
+          status: outcome === "paid" ? "succeeded" : "processing",
+          payment_method: { id: paidBy, type: "card", card: { brand: "visa", last4: "4242", exp_month: 12, exp_year: 2030 } },
+        }),
+      },
+      customers: { update: async () => ({}) },
+    };
+  }
+
+  function recorder() {
+    const sent = { paid: [], failed: [] };
+    return {
+      sent,
+      invoicePaid: async (x) => { sent.paid.push(x); },
+      paymentFailed: async (x) => { sent.failed.push(x); },
+    };
+  }
+
+  it("a paid invoice brings back only the method that paid it, not a failed bank", async () => {
+    const db = memoryDb({
+      billing_invoices: [{ ...invoiceRow }],
+      users: [landlord],
+      payment_methods: [
+        method({ id: "bank", type: "us_bank_account", status: "failed", is_default: true, stripe_payment_method_id: "pm_bank" }),
+        method({ id: "card", status: "failed", is_default: false, stripe_payment_method_id: "pm_card" }),
+      ],
+    });
+    await settleInvoicePaid(db, stripeFor({ paidBy: "pm_card", already: true }), invoiceRow, { id: "in_1" });
+    const status = Object.fromEntries(db.tables.payment_methods.map((m) => [m.id, m.status]));
+    assert.deepEqual(status, { bank: "failed", card: "active" });
+  });
+
+  it("emails one receipt, from whichever of Pay now and the webhook marks it Paid first", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const notify = recorder();
+    const stripe = stripeFor({ already: true });
+    assert.equal(await settleInvoicePaid(db, stripe, invoiceRow, { id: "in_1", invoice_pdf: "https://pdf" }, { notify }), true);
+    assert.equal(await settleInvoicePaid(db, stripe, invoiceRow, { id: "in_1" }, { notify }), false);
+    assert.equal(notify.sent.paid.length, 1);
+    assert.equal(notify.sent.paid[0].methodDescription, "Visa ending 4242");
+    assert.equal(notify.sent.paid[0].invoice.invoice_pdf_url, "https://pdf");
+  });
+
+  it("Pay now with a card shows Paid at once and sends the receipt", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const notify = recorder();
+    const result = await retryInvoicePayment(db, stripeFor(), { invoiceId: "i1", landlordId: "l1", notify });
+    assert.deepEqual(result, { paid: true, method: "card" });
+    assert.equal(db.tables.billing_invoices[0].status, "paid");
+    assert.equal(notify.sent.paid.length, 1);
+  });
+
+  it("Pay now from a bank shows Processing straight away, with no receipt yet", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method({ type: "us_bank_account" })] });
+    const notify = recorder();
+    const result = await retryInvoicePayment(db, stripeFor({ outcome: "processing" }), { invoiceId: "i1", landlordId: "l1", notify });
+    assert.deepEqual(result, { processing: true, method: "bank" });
+    assert.equal(db.tables.billing_invoices[0].status, "processing");
+    assert.equal(notify.sent.paid.length, 0);
+  });
+
+  it("a declined Pay now tells the team once and never re-emails on Retry (Wyatt, 2026-11-07)", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const notify = recorder();
+    const stripe = stripeFor({ payError: Object.assign(new Error("Your card was declined."), { code: "card_declined" }) });
+    stripe.paymentIntents.retrieve = async () => ({ id: "pi_1", status: "requires_payment_method" });
+    await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "l1", notify }), (e) => e.code === "payment_failed");
+    assert.equal(db.tables.billing_invoices[0].status, "failed");
+    assert.equal(notify.sent.failed.length, 1);
+    assert.equal(notify.sent.failed[0].message, "Your card was declined.");
+    // The landlord saw it on screen: only the team is emailed.
+    assert.equal(notify.sent.failed[0].emailLandlord, false);
+    for (let i = 0; i < 4; i++) {
+      await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "l1", notify }), (e) => e.code === "payment_failed");
+    }
+    assert.equal(notify.sent.failed.length, 1, "Retry declines send nothing more");
+    assert.equal(db.tables.billing_invoices[0].status, "failed");
+  });
+
+  it("paying with the same card on Stripe's page brings a Failed saved card back (new id, same fingerprint)", async () => {
+    const db = memoryDb({
+      billing_invoices: [{ ...invoiceRow }],
+      users: [landlord],
+      payment_methods: [method({ id: "card", status: "failed", stripe_payment_method_id: "pm_saved" })],
+    });
+    const stripe = stripeFor({ paidBy: "pm_typed", already: true });
+    stripe.paymentIntents.retrieve = async () => ({
+      id: "pi_1",
+      status: "succeeded",
+      payment_method: { id: "pm_typed", type: "card", card: { brand: "visa", last4: "4242", fingerprint: "fp_1" } },
+    });
+    stripe.paymentMethods = { retrieve: async (id) => ({ id, type: "card", card: { fingerprint: id === "pm_saved" ? "fp_1" : "fp_x" } }) };
+    await settleInvoicePaid(db, stripe, invoiceRow, { id: "in_1" });
+    assert.equal(db.tables.payment_methods[0].status, "active");
+  });
+
+  it("the receipt says what was charged after a credit, not the invoice total", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const notify = recorder();
+    const paid = { id: "in_1", amount_paid: 31200, starting_balance: -10000, ending_balance: 0, status_transitions: { paid_at: 1794067200 } };
+    await settleInvoicePaid(db, stripeFor({ already: true }), invoiceRow, paid, { notify });
+    assert.equal(notify.sent.paid[0].paidCents, 31200);
+    assert.equal(notify.sent.paid[0].creditCents, 10000);
+    assert.equal(notify.sent.paid[0].paidAt.getTime(), 1794067200 * 1000);
+  });
+
+  it("a Pay now the card paid stays a success even when settling it here fails", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const failingDb = new Proxy(db, {
+      get(target, key) {
+        if (key !== "from") return target[key];
+        return (table) => {
+          if (table === "charges") throw new Error("database hiccup");
+          return target.from(table);
+        };
+      },
+    });
+    const notify = recorder();
+    const result = await retryInvoicePayment(failingDb, stripeFor(), { invoiceId: "i1", landlordId: "l1", notify });
+    assert.deepEqual(result, { paid: true, method: "card" });
+    assert.equal(notify.sent.paid.length, 1, "the receipt still goes out");
   });
 });
