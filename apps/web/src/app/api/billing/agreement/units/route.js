@@ -5,7 +5,7 @@ import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { addUnit, renameUnit } from "@/lib/billing/exhibitUnits";
 import { BillingError } from "@/lib/billing/errors";
-import { billingErrorResponse } from "@/lib/billing/http";
+import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
  * Units named on the signing popup's Exhibit A step (lib/billing/exhibitUnits.js).
@@ -15,14 +15,13 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth landlord (own properties only)
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req) {
   const session = await requireDbRole(["landlord"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
-    if (!UUID.test(String(body.listingId ?? ""))) throw new BillingError("not_found", "That property was not found.", 404);
+    if (!isUuid(String(body.listingId ?? ""))) throw new BillingError("not_found", "That property was not found.", 404);
     const unit = await addUnit(supabase, session.user.id, body);
     return NextResponse.json({ unit });
   } catch (err) {
@@ -35,7 +34,7 @@ export async function PATCH(req) {
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
-    if (!UUID.test(String(body.unitId ?? ""))) throw new BillingError("not_found", "That unit was not found.", 404);
+    if (!isUuid(String(body.unitId ?? ""))) throw new BillingError("not_found", "That unit was not found.", 404);
     const unit = await renameUnit(supabase, session.user.id, body);
     return NextResponse.json({ unit });
   } catch (err) {

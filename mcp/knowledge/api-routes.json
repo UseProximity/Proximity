@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-07T00:08:15.573Z",
-  "count": 242,
+  "_generated": "2026-11-07T00:44:22.133Z",
+  "count": 241,
   "routes": [
     {
       "path": "/api/account",
@@ -1087,18 +1087,6 @@
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/documents/route.js"
-    },
-    {
-      "path": "/api/billing/agreement/exclude",
-      "methods": [
-        "POST"
-      ],
-      "auth": "super",
-      "methodAuth": {
-        "POST": "super"
-      },
-      "tables": [],
-      "file": "src/app/api/billing/agreement/exclude/route.js"
     },
     {
       "path": "/api/billing/agreement/exhibit",
@@ -3427,9 +3415,7 @@
       "methodAuth": {
         "POST": "public"
       },
-      "tables": [
-        "landlord_agreements"
-      ],
+      "tables": [],
       "file": "src/app/api/webhooks/documenso/route.js"
     },
     {

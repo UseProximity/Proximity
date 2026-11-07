@@ -6,7 +6,7 @@ import { requireDbRole } from "@/lib/userRole";
 import { documentParts } from "@/lib/billing/agreements";
 import { combinedSignedPdf, pdfResponse } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
-import { billingErrorResponse } from "@/lib/billing/http";
+import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
  * A five minute link to one of a landlord's signed files, for the admin.
@@ -16,7 +16,6 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth admin
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
@@ -27,7 +26,7 @@ export async function GET(req, { params }) {
     const { id: landlordId } = await params;
     const q = new URL(req.url).searchParams;
     const docId = q.get("id");
-    if (!UUID.test(landlordId) || (docId && !UUID.test(docId))) throw new BillingError("not_found", "That document was not found.", 404);
+    if (!isUuid(landlordId) || (docId && !isUuid(docId))) throw new BillingError("not_found", "That document was not found.", 404);
     const kind = q.get("kind") === "amendment" ? "amendment" : "master";
     const keys = await documentParts(supabase, { userId: landlordId, kind, id: docId });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);

@@ -8,7 +8,7 @@ import { storeAgreementVersion } from "@/lib/billing/agreementFiles";
 import { documensoConfigured } from "@/lib/billing/documenso";
 import { documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
-import { billingErrorResponse } from "@/lib/billing/http";
+import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
  * The commission agreement's versions.
@@ -65,10 +65,9 @@ export async function GET(req) {
   }
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuidOrNull(value) {
   if (value == null || value === "") return null;
-  if (typeof value !== "string" || !UUID.test(value)) throw new BillingError("bad_id", "That landlord or request id is not valid.");
+  if (typeof value !== "string" || !isUuid(value)) throw new BillingError("bad_id", "That landlord or request id is not valid.");
   return value;
 }
 

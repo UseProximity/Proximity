@@ -7,7 +7,7 @@ import { listAgreementDocuments, voidDocument } from "@/lib/billing/agreements";
 import { documensoConfigured } from "@/lib/billing/documenso";
 import { documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
-import { billingErrorResponse } from "@/lib/billing/http";
+import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
  * One landlord's agreement history for the admin dashboard: every master
@@ -20,7 +20,6 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth admin
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
@@ -29,7 +28,7 @@ export async function GET(req, { params }) {
   const supabase = billingDb.db;
   try {
     const { id } = await params;
-    if (!UUID.test(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
+    if (!isUuid(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
     return NextResponse.json({ documents: await listAgreementDocuments(supabase, id) });
   } catch (err) {
     return billingErrorResponse(err, "list a landlord's agreement documents");
@@ -44,10 +43,10 @@ export async function POST(req, { params }) {
   const supabase = billingDb.db;
   try {
     const { id } = await params;
-    if (!UUID.test(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
+    if (!isUuid(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
     const body = await req.json().catch(() => ({}));
     if (body.action !== "void") throw new BillingError("bad_action", "Choose void.");
-    if (!["master", "amendment"].includes(body.kind) || !UUID.test(String(body.id ?? ""))) {
+    if (!["master", "amendment"].includes(body.kind) || !isUuid(String(body.id ?? ""))) {
       throw new BillingError("not_found", "That document was not found.", 404);
     }
     const result = await voidDocument(supabase, documensoConfigured() ? documensoClient() : null, {

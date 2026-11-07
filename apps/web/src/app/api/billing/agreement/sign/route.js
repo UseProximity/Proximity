@@ -7,7 +7,7 @@ import { startSigning } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
-import { billingErrorResponse } from "@/lib/billing/http";
+import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
@@ -37,10 +37,9 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
  *
  * @auth landlord (own agreement only)
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Only well-formed ids, at most 200. Which of them are really the landlord's is
 // decided by the coverage plan, which ignores anything they have no stake in.
-const ownListingIds = (ids) => (Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && UUID.test(id)).slice(0, 200) : []);
+const ownListingIds = (ids) => (Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && isUuid(id)).slice(0, 200) : []);
 
 export async function POST(req) {
   const session = await requireDbRole(["landlord"]);
