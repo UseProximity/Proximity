@@ -135,7 +135,7 @@ describe("invoiceView", () => {
 
 describe("adjustPaidCharge validation", () => {
   const db = { from() { throw new Error("should not reach the database"); } };
-  const base = { chargeId: "c", adminId: "a", kind: "refund", amountCents: 100, reason: "wrong" };
+  const base = { chargeId: "c", adminId: "a", kind: "refund", amountCents: 100, reason: "wrong", requestId: "req-00000001" };
 
   it("refuses an unknown kind, a bad amount and a missing reason before touching anything", async () => {
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, kind: "chargeback" }), /refund or a credit/);
@@ -144,6 +144,59 @@ describe("adjustPaidCharge validation", () => {
     }
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "  " }), /reason is required/);
     await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, reason: "x".repeat(1001) }), /under 1000/);
+    await assert.rejects(() => adjustPaidCharge(db, {}, { ...base, requestId: undefined }), /Reload the page/);
+  });
+});
+
+describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
+  // Stripe returns the refund it already made for a key it has seen.
+  function stripeWithRefunds() {
+    const made = new Map();
+    return {
+      made,
+      invoices: { retrieve: async () => ({ payments: { data: [{ status: "paid", payment: { payment_intent: "pi_1" } }] } }) },
+      refunds: {
+        create: async (params, { idempotencyKey }) => {
+          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount });
+          return made.get(idempotencyKey);
+        },
+      },
+    };
+  }
+  const setup = () =>
+    memoryDb({
+      charges: [{ id: "c", landlord_id: "l1", status: "paid", amount_cents: 10000, invoice_id: "i1" }],
+      billing_invoices: [{ id: "i1", stripe_invoice_id: "in_1" }],
+      charge_adjustments: [],
+    });
+  const req = { chargeId: "c", adminId: "a", kind: "refund", reason: "wrong", requestId: "req-00000001" };
+
+  it("sending the same refund again makes no second refund and is marked repeated", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    const first = await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    const again = await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    assert.equal(first.repeated, undefined);
+    assert.equal(again.repeated, true);
+    assert.equal(stripe.made.size, 1);
+    assert.equal(db.tables.charge_adjustments.length, 1);
+  });
+
+  it("a repeat of a refund that used up the charge is refused before Stripe", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    await adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 });
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }), /already fully refunded/);
+    assert.equal(stripe.made.size, 1);
+  });
+
+  it("a new request for the rest is its own refund", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    await adjustPaidCharge(db, stripe, { ...req, amountCents: 2500 });
+    await adjustPaidCharge(db, stripe, { ...req, requestId: "req-00000002", amountCents: 2500 });
+    assert.equal(stripe.made.size, 2);
+    assert.equal(db.tables.charge_adjustments.length, 2);
   });
 });
 
@@ -294,15 +347,20 @@ function memoryDb(tables) {
       range() { return api; },
       or() { return api; },
       insert(row) {
-        if (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) {
-          return Promise.resolve({ error: { code: "23505" } });
-        }
-        rows(table).push({ ...row });
-        return Promise.resolve({ error: null });
+        // The unique keys these tests lean on.
+        const conflict =
+          (table === "billing_settings" && rows(table).some((r) => r.key === row.key)) ||
+          (table === "charge_adjustments" && rows(table).some((r) => r.stripe_refund_id === row.stripe_refund_id));
+        const stored = { id: `${table}_${rows(table).length + 1}`, created_at: "2026-11-07T00:00:00Z", ...row };
+        if (!conflict) rows(table).push(stored);
+        const result = conflict ? { data: null, error: { code: "23505" } } : { data: stored, error: null };
+        const done = Promise.resolve({ error: result.error });
+        return { then: done.then.bind(done), select: () => ({ single: async () => result }) };
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },
       async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
+      async single() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       then(res, rej) { return api.run().then(res, rej); },
       async run() {
         const hit = rows(table).filter(matches);

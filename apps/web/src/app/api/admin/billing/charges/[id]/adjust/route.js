@@ -11,7 +11,11 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { billingNotify } from "@/lib/billing/billingNotify";
 import { leaseLabel } from "@/lib/billing/chargeDisplay";
 
-// Tell the landlord about a refund or credit. Best effort: the correction is done either way.
+/*
+ * Tell the landlord about a refund or credit. Best effort: the correction is done
+ * either way. Says what happened ("sent", "no_email", "failed") so the admin is
+ * told the truth and can follow up by hand.
+ */
 async function emailLandlord(db, chargeId, adjustment, reason) {
   try {
     const { data: charge } = await db
@@ -25,8 +29,8 @@ async function emailLandlord(db, chargeId, adjustment, reason) {
       )
       .eq("id", chargeId)
       .maybeSingle();
-    if (!charge?.landlord?.email) return;
-    await billingNotify().chargeAdjusted({
+    if (!charge?.landlord?.email) return "no_email";
+    const sent = await billingNotify().chargeAdjusted({
       landlord: charge.landlord,
       kind: adjustment.kind,
       amountCents: adjustment.amount_cents,
@@ -39,8 +43,10 @@ async function emailLandlord(db, chargeId, adjustment, reason) {
         studentName: charge.student?.name ?? null,
       },
     });
+    return sent === false ? "failed" : "sent";
   } catch (err) {
     console.error("[billing] adjustment email failed:", err?.message);
+    return "failed";
   }
 }
 
@@ -49,7 +55,8 @@ async function emailLandlord(db, chargeId, adjustment, reason) {
  * default) or a credit on their next invoice. The charge itself is never edited;
  * the correction is recorded against it, and the adjustments never add up to more
  * than the charge.
- * Body: { kind: "refund" | "credit", amount (dollars, "25.00"), reason }
+ * Body: { kind: "refund" | "credit", amount (dollars, "25.00"), reason, requestId }
+ * `requestId` is made once per attempt by the form, so sending it again is one correction.
  *
  * @auth admin
  */
@@ -73,10 +80,11 @@ export async function POST(req, { params }) {
       kind: body.kind,
       amountCents,
       reason: body.reason,
+      requestId: body.requestId,
     });
     // Once per correction: a repeated request finds the one already made and says nothing new.
-    if (!adjustment.repeated) await emailLandlord(supabase, id, adjustment, String(body.reason ?? "").trim());
-    return NextResponse.json({ ok: true, adjustment });
+    const email = adjustment.repeated ? "repeated" : await emailLandlord(supabase, id, adjustment, String(body.reason ?? "").trim());
+    return NextResponse.json({ ok: true, adjustment, email });
   } catch (err) {
     return billingErrorResponse(err, "adjust charge");
   }

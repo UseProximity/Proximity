@@ -12,12 +12,30 @@ async function call(url, options) {
   return body;
 }
 
+// What the admin is told about the landlord's email, by the route's `email` answer.
+const EMAIL_NOTE = {
+  sent: "The landlord has been emailed.",
+  repeated: "This was already done, so the landlord was not emailed again.",
+  no_email: "The landlord has no email address on file, so let them know another way.",
+  failed: "The email to the landlord did not send, so let them know another way.",
+};
+
 const FIELD =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500";
 
 function AdjustDialog({ charge, kind, busy, error, onCancel, onSubmit }) {
   const [amount, setAmount] = useState((charge.remainingCents / 100).toFixed(2));
   const [reason, setReason] = useState("");
+  /*
+   * One id per correction, sent with every try of it: pressing Refund again after
+   * a lost response is the same refund, not a second. A new one when the amount
+   * or reason changes, since that is a different correction.
+   */
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const edit = (set) => (e) => {
+    set(e.target.value);
+    setRequestId(crypto.randomUUID());
+  };
   const isRefund = kind === "refund";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -32,11 +50,11 @@ function AdjustDialog({ charge, kind, busy, error, onCancel, onSubmit }) {
         </p>
         <label className="block text-sm font-medium text-gray-700">
           Amount (dollars)
-          <input className={`${FIELD} mt-1`} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <input className={`${FIELD} mt-1`} value={amount} onChange={edit(setAmount)} />
         </label>
         <label className="block text-sm font-medium text-gray-700">
           Reason (required, included in the email to the landlord)
-          <textarea className={`${FIELD} mt-1`} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <textarea className={`${FIELD} mt-1`} rows={3} value={reason} onChange={edit(setReason)} />
         </label>
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         <div className="flex gap-2 justify-end">
@@ -51,7 +69,7 @@ function AdjustDialog({ charge, kind, busy, error, onCancel, onSubmit }) {
           <button
             type="button"
             disabled={busy || !reason.trim()}
-            onClick={() => onSubmit({ amount, reason: reason.trim() })}
+            onClick={() => onSubmit({ amount, reason: reason.trim(), requestId })}
             className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg disabled:opacity-60"
           >
             {busy ? "Working..." : isRefund ? "Refund" : "Credit"}
@@ -96,16 +114,17 @@ export default function CorrectionsPanel({ search }) {
       : charges;
   }, [charges, search]);
 
-  async function submit({ amount, reason }) {
+  async function submit({ amount, reason, requestId }) {
     setBusy(true);
     setDialogError(null);
     try {
-      await call(`/api/admin/billing/charges/${dialog.charge.id}/adjust`, {
+      const result = await call(`/api/admin/billing/charges/${dialog.charge.id}/adjust`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: dialog.kind, amount, reason }),
+        body: JSON.stringify({ kind: dialog.kind, amount, reason, requestId }),
       });
-      setNotice(dialog.kind === "refund" ? "Refund issued. The landlord has been emailed." : "Credit added to the landlord's next invoice. The landlord has been emailed.");
+      const done = dialog.kind === "refund" ? "Refund issued." : "Credit added to the landlord's next invoice.";
+      setNotice({ text: `${done} ${EMAIL_NOTE[result.email] ?? EMAIL_NOTE.failed}`, warn: result.email === "failed" || result.email === "no_email" });
       setDialog(null);
       await load();
     } catch (e) {
@@ -120,7 +139,11 @@ export default function CorrectionsPanel({ search }) {
   return (
     <div className="space-y-3">
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
-      {notice && <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</div>}
+      {notice && (
+        <div className={`rounded-lg px-3 py-2 text-sm ${notice.warn ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-800"}`}>
+          {notice.text}
+        </div>
+      )}
       {charges && shown.length === 0 && (
         <p className="rounded-lg border border-gray-100 bg-white px-4 py-6 text-sm text-gray-500">No paid charges.</p>
       )}

@@ -10,10 +10,14 @@
  * The adjustments on one charge never add up to more than the charge. Corrections
  * on one charge run one at a time (a per-charge lock), so two admins correcting
  * the same charge at once cannot both read the same remaining amount and refund
- * more than was paid; the second is told to try again. Each call
- * has a deterministic idempotency key (charge, amount already adjusted, amount),
- * so repeating a request that half-failed returns the same refund or credit
- * instead of making a second.
+ * more than was paid; the second is told to try again.
+ *
+ * Each correction carries a `requestId` the admin's form makes once per attempt,
+ * and the Stripe idempotency key is built from it. Sending the same request
+ * again (the response was lost, the button pressed twice) gets back the refund
+ * or credit already made, which is recorded once and emailed once. A key built
+ * from the amount already adjusted could not do that: the first correction
+ * changes that amount, so a repeat made a second refund.
  *
  * For a credit, charge_adjustments.stripe_refund_id holds the Stripe customer
  * balance transaction id (cbtxn_...); the id's prefix says which kind it is.
@@ -23,6 +27,7 @@
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { paidPaymentIntentId } from "./invoicing.js";
+import { formatCents } from "./money.js";
 
 const MAX_REASON_LENGTH = 1000;
 
@@ -40,12 +45,15 @@ async function paymentIntentForInvoice(stripe, stripeInvoiceId) {
   return id;
 }
 
-export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, amountCents, reason }) {
+export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, amountCents, reason, requestId }) {
   if (kind !== "refund" && kind !== "credit") {
     throw new BillingError("bad_kind", "A correction is a refund or a credit.");
   }
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     throw new BillingError("bad_amount", "Enter an amount in dollars, like 25.00.");
+  }
+  if (typeof requestId !== "string" || !/^[A-Za-z0-9-]{8,64}$/.test(requestId)) {
+    throw new BillingError("bad_request", "Reload the page and try again.");
   }
   const why = String(reason ?? "").trim();
   if (!why) throw new BillingError("note_required", "A reason is required.");
@@ -71,19 +79,27 @@ export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, am
       staleMs: 2 * 60 * 1000,
       busyMessage: "Someone else is correcting this charge right now. Refresh and check what is left before trying again.",
     },
-    () => adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why })
+    () => adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why, requestId })
   );
 }
 
-async function adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why }) {
+async function adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why, requestId }) {
   // Read inside the lock, so it includes any correction that just finished.
   const already = await adjustedSoFar(db, chargeId);
   const remaining = charge.amount_cents - already;
   if (amountCents > remaining) {
-    throw new BillingError("too_much", `At most ${remaining} cents can still be adjusted on this charge.`, 409);
+    // A repeat of a correction that used up the charge lands here, before Stripe: nothing more is moved.
+    throw new BillingError(
+      "too_much",
+      remaining > 0
+        ? `At most ${formatCents(remaining)} can still be adjusted on this charge.`
+        : "This charge is already fully refunded or credited. Refresh to see it.",
+      409
+    );
   }
 
-  const key = `adjust:${kind}:${chargeId}:${already}:${amountCents}`;
+  // The amount is in the key too, so the same request id with a different amount is a new correction.
+  const key = `adjust:${kind}:${chargeId}:${requestId}:${amountCents}`;
   let stripeId;
   if (kind === "refund") {
     const { data: invoice, error: invError } = await db
