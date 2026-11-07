@@ -82,3 +82,15 @@ export async function pageCount(bytes) {
     return null;
   }
 }
+
+// Where a PDF attached to an admin mass email is kept (lib/massEmail/templates.js).
+export function massEmailFileKey(randomId) {
+  if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
+  return `mass-email/${randomId}.pdf`;
+}
+
+// Where the uploaded MREC Broker Disclosure Form is kept.
+export function mrecFormKey(randomId) {
+  if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
+  return `billing/mrec-form/${randomId}.pdf`;
+}

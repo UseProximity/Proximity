@@ -317,7 +317,7 @@
         "columns": [
           "id:uuid",
           "created_at:timestamptz",
-          "category:text (chat|account|reviews|landlords|billing|team|other)",
+          "category:text (chat|account|reviews|landlords|billing|mass|team|other)",
           "kind:text",
           "to_email:text",
           "cc:text",
@@ -3329,6 +3329,75 @@
           "created_at:timestamptz"
         ],
         "notes": "status=unreleased (202611050004); source in (signing,profile); fk user_id->users (restrict); rls on, service role only"
+      },
+      {
+        "table": "mass_email_templates",
+        "status": "unreleased",
+        "description": "Admin mass email (Wyatt, 2026-11-07): a named email. Its wording lives in mass_email_versions. Archiving hides it, history stays.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_by:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "archived_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk created_by->users (set null)"
+      },
+      {
+        "table": "mass_email_versions",
+        "status": "unreleased",
+        "description": "One saved wording of a mass email, never edited (a change is a new version). Body is plain text with light formatting and {{merge_fields}} (lib/massEmail/render.js).",
+        "columns": [
+          "id:uuid",
+          "template_id:uuid",
+          "version:int",
+          "subject:text",
+          "body:text",
+          "button_label:text",
+          "button_target:text (billing|dashboard|custom|none)",
+          "button_url:text",
+          "attachments:jsonb ([{kind:mrec}|{kind:file,key,fileName,size}])",
+          "footer_reason:text",
+          "commercial:bool",
+          "created_by:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk template_id->mass_email_templates (cascade); unique (template_id, version)"
+      },
+      {
+        "table": "mass_email_batches",
+        "status": "unreleased",
+        "description": "One press of Send: which version, who sent it, whether it also switched Proxy on for the recipients' live listings.",
+        "columns": [
+          "id:uuid",
+          "version_id:uuid",
+          "created_by:uuid",
+          "turn_proxy_on:bool",
+          "recipient_count:int",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk version_id->mass_email_versions (restrict)"
+      },
+      {
+        "table": "mass_email_recipients",
+        "status": "unreleased",
+        "description": "One row per person per batch. provider_message_id joins sent_emails.provider_message_id for SES delivery status. A delivered row for the template means the person is skipped unless the admin sends again on purpose.",
+        "columns": [
+          "id:uuid",
+          "batch_id:uuid",
+          "version_id:uuid",
+          "template_id:uuid",
+          "user_id:uuid",
+          "email:text",
+          "status:text (sent|redirected|suppressed|failed)",
+          "status_detail:text",
+          "provider_message_id:text",
+          "setup_link:bool",
+          "proxy_listings:int",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk batch_id->mass_email_batches (cascade), user_id->users (set null); index (template_id,user_id)"
       }
     ],
     "functions": [

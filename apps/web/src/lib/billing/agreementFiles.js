@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getBucket, r2 } from "@/lib/r2";
-import { agreementVersionKey, mergeSignedParts, pageCount, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
+import { agreementVersionKey, massEmailFileKey, mergeSignedParts, mrecFormKey, pageCount, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
 
 const bucket = () => process.env.R2_PRIVATE_BUCKET_NAME || getBucket();
 
@@ -52,6 +52,22 @@ export function signedAgreementUrl(key, filename = "marketing-agreement.pdf") {
 export async function storeAgreementVersion({ bytes }) {
   validateSignedPdf(bytes, "agreement");
   const key = agreementVersionKey(randomUUID());
+  await r2.send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: "application/pdf" }));
+  return key;
+}
+
+// The MREC Broker Disclosure Form an admin uploaded. Validates it, stores it, returns its key.
+export async function storeMrecForm({ bytes }) {
+  validateSignedPdf(bytes, "Broker Disclosure Form");
+  const key = mrecFormKey(randomUUID());
+  await r2.send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: "application/pdf" }));
+  return key;
+}
+
+// A PDF an admin attached to a mass email version. Validates it, stores it, returns its key.
+export async function storeMassEmailFile({ bytes }) {
+  validateSignedPdf(bytes, "attachment");
+  const key = massEmailFileKey(randomUUID());
   await r2.send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: "application/pdf" }));
   return key;
 }

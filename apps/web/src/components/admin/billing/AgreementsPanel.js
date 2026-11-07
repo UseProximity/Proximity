@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import AgreementVersions from "./agreements/AgreementVersions";
 import LandlordAgreementList from "./agreements/LandlordAgreementList";
+import MrecFormUpload from "./agreements/MrecFormUpload";
 import { FIELD, PRIMARY, call } from "./agreements/shared";
 
 function GateSwitch({ label, help, on, busy, onToggle }) {
@@ -206,6 +207,8 @@ export default function AgreementsPanel({ search }) {
       )}
 
       <LandlordAgreementList search={search} busy={busy} run={run} reloadKey={reloadKey} />
+
+      <MrecFormUpload busy={busy} run={run} />
 
       <ManualRecord busy={busy} run={run} />
     </div>
