@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { exhibitPreview } from "@/lib/billing/exhibitUnits";
+import { cleanRequiredUnits } from "@/lib/billing/coverage";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
 /*
@@ -20,9 +21,17 @@ export async function GET(req) {
   const session = await requireDbRole(["landlord"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
-    const raw = new URL(req.url).searchParams.get("listingIds") ?? "";
+    const params = new URL(req.url).searchParams;
+    const raw = params.get("listingIds") ?? "";
     const listingIds = raw.split(",").filter((id) => isUuid(id)).slice(0, 200);
-    return NextResponse.json(await exhibitPreview(supabase, session.user.id, { listingIds }));
+    // Units being published right now: { listingId: [unit name] } as JSON.
+    let units = null;
+    try {
+      units = JSON.parse(params.get("units") || "null");
+    } catch {
+      units = null;
+    }
+    return NextResponse.json(await exhibitPreview(supabase, session.user.id, { listingIds, requiredUnits: cleanRequiredUnits(units) }));
   } catch (err) {
     return billingErrorResponse(err, "load Exhibit A");
   }

@@ -16,13 +16,15 @@
  */
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
-import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel } from "./coverage.js";
+import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
 
-export async function exhibitPreview(db, userId, { listingIds = [], now = new Date() } = {}) {
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date() } = {}) {
   const requested = await resolvePublishedIds(db, listingIds);
-  const { state, properties, rows, covered } = await coverageFor(db, userId, now);
+  const loaded = await coverageFor(db, userId, now);
+  const { state, rows, covered } = loaded;
+  const properties = withRequiredUnits(loaded.properties, requiredUnits);
   const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested });
   if (plan.kind === "none") return { kind: "none", properties: [] };
   const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId)]);
@@ -50,6 +52,7 @@ export async function exhibitPreview(db, userId, { listingIds = [], now = new Da
         canExclude: !requested.includes(p.listingId) && !cov,
         units: p.unitList,
         leaseUnits: p.leaseUnits,
+        requiredUnits: p.requiredUnits ?? [],
         covered: cov ? { wholeBuilding: cov.whole_building !== false, units: cov.units ?? [] } : null,
         choice: exhibitChoice(p, null, { locked: locked.has(p.listingId), covered: cov ?? null }),
       };

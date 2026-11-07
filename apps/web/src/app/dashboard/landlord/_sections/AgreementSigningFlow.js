@@ -156,7 +156,8 @@ function AddUnit({ listingId, onAdded }) {
 function droppedUnits(p, c) {
   if (!c?.include || c.wholeBuilding) return [];
   const covered = new Set(p.covered && !p.covered.wholeBuilding ? p.covered.units : []);
-  return (p.leaseUnits ?? []).filter((u) => !c.units.includes(u) && !covered.has(u));
+  const required = new Set(p.requiredUnits ?? []);
+  return (p.leaseUnits ?? []).filter((u) => !c.units.includes(u) && !covered.has(u) && !required.has(u));
 }
 const hasListings = (p) => p.live || (p.leaseUnits ?? []).length > 0;
 const listWords = (xs) => (xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
@@ -168,6 +169,8 @@ function PropertyChoice({ p, choice, onChange }) {
   const covered = p.covered;
   const coveredUnits = new Set(covered?.wholeBuilding ? [] : covered?.units ?? []);
   const leaseUnits = new Set(p.leaseUnits ?? []);
+  // Units being published right now stay on (the reason this popup opened).
+  const required = new Set(p.requiredUnits ?? []);
   const dropped = droppedUnits(p, choice);
   const toggleUnit = (label, on) => {
     const set = new Set(choice.units);
@@ -226,9 +229,9 @@ function PropertyChoice({ p, choice, onChange }) {
                     <UnitRow
                       key={u.id}
                       unit={u}
-                      checked={coveredUnits.has(u.label) || choice.units.includes(u.label)}
-                      disabled={coveredUnits.has(u.label)}
-                      note={coveredUnits.has(u.label) ? "already covered" : leaseUnits.has(u.label) ? "has your listings" : null}
+                      checked={coveredUnits.has(u.label) || required.has(u.label) || choice.units.includes(u.label)}
+                      disabled={coveredUnits.has(u.label) || required.has(u.label)}
+                      note={coveredUnits.has(u.label) ? "already covered" : required.has(u.label) ? "being published" : leaseUnits.has(u.label) ? "has your listings" : null}
                       onToggle={(on) => toggleUnit(u.label, on)}
                       onRenamed={(from, to) => onChange({ ...choice, units: choice.units.map((x) => (x === from ? to : x)), renamed: [from, to] })}
                     />
@@ -268,7 +271,7 @@ function PropertyChoice({ p, choice, onChange }) {
  * and initials. `listingIds` are the properties being published (publish dialog).
  * onFinished(result): "signed" | "pending" (signed, still saving) | "closed".
  */
-export default function AgreementSigningFlow({ listingIds = [], intro = null, user = null, onFinished }) {
+export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, onFinished }) {
   const signer = useSignerDetails();
   const license = useLicenseDisclosure();
   const [step, setStep] = useState(0);
@@ -292,7 +295,8 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
   useEffect(() => {
     closeRef.current?.focus();
     let live = true;
-    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}`)
+    const units = requiredUnits && Object.keys(requiredUnits).length ? `&units=${encodeURIComponent(JSON.stringify(requiredUnits))}` : "";
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}`)
       .then((r) => {
         if (!live) return;
         if (r.kind === "none") return onFinished("signed");
@@ -327,7 +331,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
     setPhase("opening");
     setError(null);
     try {
-      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, exhibit: exhibit() }, retries: 20 });
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit() }, retries: 20 });
       if (r.alreadySigned) return onFinished("signed");
       setSession(r);
       setPhase("signing");
@@ -359,7 +363,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
     setError(null);
     return addendum ? openAddendum() : confirmExhibit();
   };
-  const body = () => ({ ...signer.body(), authorized, listingIds, exhibit: exhibit() });
+  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit() });
 
   // Units the landlord added or renamed show in the next preview; keep the list in step.
   const updateChoice = (p, next) => {

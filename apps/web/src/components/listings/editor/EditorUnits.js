@@ -385,6 +385,47 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
 
   const myLeases = (unit.leases ?? []).filter((l) => l.mine);
+  const myWithdrawn = myLeases.filter((l) => l.unavailable);
+
+  /*
+   * Every one of this landlord's withdrawn listings on the unit back on the market
+   * at once (Wyatt, 2026-11-07). One at a time through the same route as Publish
+   * again; if the unit needs adding to their agreement first, the signing popup
+   * opens once and this runs again after they sign.
+   */
+  const republishAll = async () => {
+    setSaving(true);
+    let done = 0;
+    let failed = 0;
+    try {
+      for (const lease of myWithdrawn) {
+        const res = await fetch(`/api/leases/${lease.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: true, unavailable: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          done += 1;
+          continue;
+        }
+        // Not covered, no payment method, an overdue invoice: the same for every
+        // listing here, so stop and show it (the popup re-runs this once signed).
+        if (data?.code === "billing_setup_required") {
+          if (done) await onChanged();
+          return publishErrorToast(data, "Couldn't publish these listings.", { retry: republishAll });
+        }
+        failed += 1;
+      }
+      if (done) toast.success(`Published ${done} ${done === 1 ? "listing" : "listings"}. Students can see ${done === 1 ? "it" : "them"} again.`);
+      if (failed) toast.error(`${failed} ${failed === 1 ? "listing" : "listings"} could not be published again.`);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
   const otherLeases = (unit.leases ?? []).filter((l) => !l.mine);
   // Marked only on a live property; in a draft property everything is a draft.
   const unitIsDraft = !!unit.isDraft && !listing?.isDraft;
@@ -462,6 +503,12 @@ function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged
           )
         )}
         <div className="ml-auto flex items-center gap-2">
+          {myWithdrawn.length > 1 && !dirty && (
+            <button onClick={republishAll} disabled={saving} type="button"
+              className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+              {saving ? "Publishing…" : `Publish all again (${myWithdrawn.length})`}
+            </button>
+          )}
           {/* Save first: publishing half-edited specs would put the old ones live. */}
           {unitIsDraft && !dirty && (
             <PublishButton kind="unit" id={unit.id} label="Publish unit" onPublished={onChanged}

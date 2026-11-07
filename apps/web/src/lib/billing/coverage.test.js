@@ -882,6 +882,22 @@ describe("deselected units and addenda that only add (Wyatt, 2026-11-07)", () =>
     assert.deepEqual(uncoveredAmong(properties, covered, ["L1"], { extraUnits: new Map([["L1", ["Apt 2"]]]) })[0].missingUnits, ["Apt 2"]);
   });
 
+  it("putting a withdrawn unit back opens an addendum for that unit, not a loop", async () => {
+    const db = twoUnits();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1"] }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    assert.equal(leaseOf(db, "Q2").is_active, false);
+    // Without the unit, there is nothing to sign: that was the loop.
+    const plain = await sign(db, documenso, { listingIds: ["L1"], now: new Date("2027-02-01") });
+    assert.equal(plain.alreadySigned, true);
+    // The publish check names Apt 2; the popup passes it on.
+    const r = await sign(db, documenso, { listingIds: ["L1"], requiredUnits: new Map([["L1", ["Apt 2"]]]), now: new Date("2027-02-01") });
+    assert.equal(r.kind, "amendment");
+    assert.deepEqual(db.tables.agreement_amendments[0].proposed_exhibit.find((e) => e.listingId === "L1").units, ["Apt 1", "Apt 2"]);
+  });
+
   it("a rebuilt copy keeps the units picked (a carried property does not force its leased units back in)", async () => {
     const db = twoUnits();
     const documenso = fakeDocumenso();

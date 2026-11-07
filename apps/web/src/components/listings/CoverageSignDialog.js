@@ -16,11 +16,15 @@ import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSi
  */
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const ids = uncovered.map((u) => u.listingId).filter(Boolean);
+  // The units the publish check found uncovered (a withdrawn listing put back, say):
+  // they go on the document so the retry goes through (Wyatt, 2026-11-07).
+  const requiredUnits = Object.fromEntries(uncovered.filter((u) => u.listingId && u.missingUnits?.length).map((u) => [u.listingId, u.missingUnits]));
   const names = uncovered.map((u) => (u.missingUnits?.length ? `${u.address} (units ${u.missingUnits.join(", ")})` : u.address));
   const intro = `To publish ${names.join("; ")}, ${names.length === 1 ? "it needs" : "they need"} to be covered by your marketing agreement. Your drafts stay saved whatever you choose.`;
   return (
     <AgreementSigningFlow
       listingIds={ids}
+      requiredUnits={requiredUnits}
       intro={intro}
       onFinished={(result) => {
         if (result === "signed") return onSigned();

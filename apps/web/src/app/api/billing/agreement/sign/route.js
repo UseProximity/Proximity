@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { startSigning } from "@/lib/billing/agreements";
+import { cleanRequiredUnits } from "@/lib/billing/coverage";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
@@ -71,6 +72,8 @@ export async function POST(req) {
       signerCity: typeof body.signerCity === "string" ? body.signerCity : "",
       authorized: body.authorized === true,
       listingIds: ownListingIds(body.listingIds),
+      // Units being published right now: { listingId: [unit name] }.
+      requiredUnits: cleanRequiredUnits(body.requiredUnits),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].
       exhibit: Array.isArray(body.exhibit) ? body.exhibit : null,
       fromAgreement,

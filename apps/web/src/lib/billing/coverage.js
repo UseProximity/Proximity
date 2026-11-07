@@ -281,11 +281,42 @@ export function exhibitChoice(p, s, { locked = false, covered = null } = {}) {
   const wholeBuilding = coveredWhole || (canWhole && (typeof s?.wholeBuilding === "boolean" ? s.wholeBuilding : defaultWhole));
   const known = new Set(p.units ?? []);
   const picked = Array.isArray(s?.units) ? s.units.filter((u) => known.has(u)) : [...coveredUnits, ...(p.leaseUnits ?? [])];
-  const units = wholeBuilding ? [] : [...new Set([...picked, ...coveredUnits])].sort(byName);
+  // Units being published right now always stay on.
+  const units = wholeBuilding ? [] : [...new Set([...picked, ...coveredUnits, ...(p.requiredUnits ?? [])])].sort(byName);
   // Units with the landlord's leases left uncovered: those leases are withdrawn
   // once the document is signed (Wyatt, 2026-11-07).
   const dropped = wholeBuilding ? [] : (p.leaseUnits ?? []).filter((u) => !units.includes(u));
   return { include: locked || !s || s.include !== false, wholeBuilding, units, dropped };
+}
+
+/*
+ * Units going on the market now that must be covered (the publish check's
+ * `missingUnits`, e.g. a withdrawn lease put back): { listingId: [unit name] }
+ * from the client, cleaned to a Map. A unit whose leases are all withdrawn is not
+ * in leaseUnits, so without this the popup saw nothing to cover and the publish
+ * was refused again, round and round (Wyatt, 2026-11-07).
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function cleanRequiredUnits(raw) {
+  const out = new Map();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [id, names] of Object.entries(raw).slice(0, 200)) {
+    if (!UUID_RE.test(id) || !Array.isArray(names)) continue;
+    const clean = names.filter((n) => typeof n === "string" && n.trim()).map((n) => n.trim().slice(0, 100)).slice(0, 200);
+    if (clean.length) out.set(id, clean);
+  }
+  return out;
+}
+
+// The properties with those units counted as holding the landlord's leases, and
+// kept on Exhibit A (`requiredUnits`). Only names the property has count.
+export function withRequiredUnits(properties, required) {
+  if (!required?.size) return properties;
+  return properties.map((p) => {
+    const names = (required.get(p.listingId) ?? []).filter((n) => (p.units ?? []).includes(n));
+    if (!names.length) return p;
+    return { ...p, leaseUnits: [...new Set([...(p.leaseUnits ?? []), ...names])].sort(byName), requiredUnits: names };
+  });
 }
 
 // The ids of the units these names are on this property now.
