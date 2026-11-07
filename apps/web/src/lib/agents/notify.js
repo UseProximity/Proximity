@@ -32,6 +32,7 @@ import { PROXY_USER_ID, postProxyMessage } from "./threads";
 import { questionReplyAddress } from "./questionTokens";
 import { proxyReplyAddress } from "./replyTokens";
 import { isSandboxQuestion, isSandboxUser } from "./sandbox";
+import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -104,7 +105,8 @@ async function questionWithOwner(questionId) {
   if (!u?.email || u.deleted_at || u.email_notifications === false) return null;
   const hasAccount = completedAccount(u);
   const sandbox = (await isSandboxUser(u.id)) || (await isSandboxQuestion(q.id));
-  return { q, owner: u, hasAccount, sandbox, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
+  const to = await routedInquiryEmail({ landlordId: u.id, listingId: q.listing_id, accountEmail: u.email });
+  return { q, owner: u, to, hasAccount, sandbox, listingLabel: q.listings?.title || q.listings?.address || "your listing" };
 }
 
 // Every landlord email about a question can be answered by replying to it.
@@ -115,7 +117,7 @@ export async function notifyLandlordQuestion({ questionId }) {
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
     sandbox: r.sandbox,
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
+    to: r.to, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
@@ -129,7 +131,7 @@ export async function notifyLandlordStudentReply({ questionId }) {
     .order("created_at", { ascending: false }).limit(1);
   await sendProxyLandlordQuestionEmail({
     sandbox: r.sandbox,
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
+    to: r.to, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_question", hasAccount: r.hasAccount, studentReply: last?.[0]?.body ?? null, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });
@@ -141,7 +143,7 @@ export async function remindLandlord({ questionId, day }) {
   if (!r) return "no_recipient";
   await sendProxyLandlordQuestionEmail({
     sandbox: r.sandbox,
-    to: r.owner.email, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
+    to: r.to, name: r.owner.name, listingLabel: r.listingLabel, question: r.q.question,
     kind: "proxy_reminder", hasAccount: r.hasAccount, reminderDay: day, replyTo: replyTo(r),
     queueUrl: `${getBaseUrl()}/dashboard/landlord?tab=questions`,
   });

@@ -17,6 +17,8 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
+import { displayAddress } from "@/lib/billing/coverage";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
@@ -118,7 +120,10 @@ export async function POST(req) {
      * that is already live, the new units are the drafts instead, so the
      * building students can see is left exactly as it was.
      */
-    const draft = body.draft === true;
+    let draft = body.draft === true;
+    // Set when the property must be added to the landlord's marketing agreement
+    // before it can go live: it is saved as a draft and the page asks them to sign.
+    let needsCoverage = false;
 
     // The add forms hold their state in snake_case and spread it straight into
     // the body, so any field this route read only in camelCase never arrived:
@@ -233,6 +238,30 @@ export async function POST(req) {
       ownerId = requestUser.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Putting a listing in front of students needs a payment method and, when
+       * required, a signed marketing agreement (lib/billing/listingGate.js).
+       * Only landlords are checked, and saving a draft is never blocked, so
+       * nothing a landlord has typed is lost.
+       */
+      if (!draft) {
+        const gate = await checkListingGate(
+          supabase,
+          ownerId,
+          attachToListingId ? { listingIds: [attachToListingId] } : { newProperty: true }
+        );
+        if (!gate.allowed) {
+          // Only the agreement stands in the way: keep what they typed as a draft and
+          // let the page open signing for this property. Anything else (no payment
+          // method, an overdue invoice) is refused as before.
+          if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
+            draft = true;
+            needsCoverage = true;
+          } else {
+            return NextResponse.json(gateResponseBody(gate), { status: 403 });
+          }
+        }
       }
       /*
        * Someone has to be reachable about the offering. Not asked of the
@@ -979,6 +1008,24 @@ export async function POST(req) {
       const baseUrl = getBaseUrl(req);
       const testEmailTo = stagingEmailHeader(req);
       after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl, testEmailTo }));
+    }
+
+    if (needsCoverage) {
+      // Saved as a draft. The page signs the agreement for this property, then
+      // publishes the draft (api/landlord/publish).
+      return NextResponse.json(
+        {
+          message: "Draft saved. Sign your marketing agreement for this property to publish it.",
+          code: "agreement_needed",
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
+          uncovered: [{ listingId, address: displayAddress({ address }) }],
+          // What to publish once signed: the new property, or the new units added to a live one.
+          publish: attachToListingId
+            ? createdUnitIds.filter(Boolean).map((id) => ({ kind: "unit", id }))
+            : [{ kind: "property", id: listingId }],
+        },
+        { status: 202 }
+      );
     }
 
     return NextResponse.json(

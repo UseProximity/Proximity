@@ -42,6 +42,7 @@ import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
 import { withMessages } from "@/lib/chat/messagesUrl";
 import { compareUnits } from "@/utils/unitOrder";
+import ListedBy from "@/components/listings/ListedBy";
 
 const CHAT_MAX_BODY = 5000;
 
@@ -469,7 +470,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
  * scroll highlight reads where it sits. Every section after the first opens
  * with a hairline so the page still reads as distinct parts.
  */
-function Section({ id, label = null, sectionRefs, children }) {
+// `aside` sits at the far right of the heading row. It must not make the row
+// taller or wider than the heading itself.
+function Section({ id, label = null, aside = null, sectionRefs, children }) {
   return (
     <section
       id={`listing-${id}`}
@@ -478,7 +481,12 @@ function Section({ id, label = null, sectionRefs, children }) {
       }}
       className="py-8 first:pt-0 border-t border-gray-100 first:border-t-0"
     >
-      {label && <h2 className="text-xl font-bold text-gray-900 mb-4">{label}</h2>}
+      {label && (
+        <div className="mb-4 flex h-7 items-center justify-between gap-3">
+          <h2 className="min-w-0 text-xl font-bold text-gray-900">{label}</h2>
+          {aside}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -1944,6 +1952,17 @@ export default function ListingModalInfo({
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
     listing.address
   );
+  // Every licensed agent behind this property: the owner and each offering's landlord, once each.
+  // A licensee's "Listed by" shows under their name in the lease options
+  // (LeaseOptions). Contact keeps it only for one with no lease shown there: the
+  // property's owner when they list no lease of their own (Wyatt, 2026-11-06).
+  const listedByAll = (() => {
+    const keyOf = (l) => `${l.agentName}|${l.companyName}|${l.companyPhone}`;
+    const onLeases = new Set();
+    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) if (l.listedBy) onLeases.add(keyOf(l.listedBy));
+    const owner = listing.owner?.listedBy;
+    return owner && !onLeases.has(keyOf(owner)) ? [owner] : [];
+  })();
   const cityStateZip =
     listing.title && listing.title !== street
       ? listing.address
@@ -2202,12 +2221,8 @@ export default function ListingModalInfo({
             transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
           >
             {/* ── Header Info ── */}
-            {listing.unavailable && (
-              <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                This listing is currently unavailable
-              </div>
-            )}
+            {/* No "currently unavailable" banner: the leases section already says no
+                lease is being offered (Wyatt, 2026-11-07). */}
             {/* PMS-synced listings: availability comes straight from the landlord's
                 management system, refreshed daily — Proximity's freshness guarantee. */}
             {listing.verifiedLive && (
@@ -2426,7 +2441,20 @@ export default function ListingModalInfo({
                   are not shown here (Wyatt, 2026-10-27): Proxy quotes current
                   ones when asked, and expired ones never. */}
               {show("pricing") && (
-                <Section id="pricing" label="Pricing" sectionRefs={sectionRefs}>
+                <Section
+                  id="pricing"
+                  label="Pricing"
+                  sectionRefs={sectionRefs}
+                  aside={
+                    <Image
+                      src="/assets/equal-housing-opportunity.png"
+                      alt="Equal Housing Opportunity"
+                      width={149}
+                      height={160}
+                      className="h-7 w-auto shrink-0"
+                    />
+                  }
+                >
                   {!leasesLoading && hasLeases && (
                     <div className="pb-3">
                       <LeasePrefsControls
@@ -2541,6 +2569,16 @@ export default function ListingModalInfo({
                       onOpenThread={openThread}
                       preview={preview}
                     />
+                  )}
+                  {/* The owner's licensee details when they list no lease of
+                      their own (MREC: name, company and company phone on every
+                      listing). Everyone else's show in the lease options. */}
+                  {listedByAll.length > 0 && (
+                    <div className="mt-8 border-t border-gray-100 pt-3">
+                      {listedByAll.map((l) => (
+                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} />
+                      ))}
+                    </div>
                   )}
                 </Section>
               )}

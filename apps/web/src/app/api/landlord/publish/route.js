@@ -6,6 +6,7 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { emailNewListingToOwners } from "@/lib/email/newListingEmail";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
 import { unitNameKey } from "@/utils/unitName";
 
 /*
@@ -282,6 +283,45 @@ async function publishLease(userId, isSuper, id) {
 }
 
 /*
+ * The properties a publish would put live, for the agreement check: coverage is
+ * per property, so the landlord's agreement must cover each one (the gate maps a
+ * draft that merges into a live twin to that twin). Best effort: anything it
+ * cannot read is left for the publish itself to refuse.
+ */
+async function publishTargets(userId, kind, id, scope) {
+  if (kind === "property") return [id];
+  if (kind === "unit") {
+    const { data } = await supabase.from("listing_units").select("listing_id").eq("id", id).maybeSingle();
+    return data?.listing_id ? [data.listing_id] : [];
+  }
+  if (kind === "lease") {
+    const { data } = await supabase.from("unit_leases").select("listing_units!unit_id(listing_id)").eq("id", id).maybeSingle();
+    return data?.listing_units?.listing_id ? [data.listing_units.listing_id] : [];
+  }
+  const { data: owned } = await supabase
+    .from("listing_landlords")
+    .select("listings!listing_id(id, published_at, deleted_at, listing_units(id, deleted_at, unit_leases(rent, deleted_at)))")
+    .eq("user_id", userId);
+  const properties = (owned ?? []).map((r) => r.listings).filter((l) => l && !l.deleted_at);
+  if (scope === "new") {
+    return properties.filter((l) => l.published_at === null && hasPricedLease(l.listing_units)).map((l) => l.id);
+  }
+  // scope "live": live properties where the caller has a draft offering waiting.
+  const { data: myDrafts } = await supabase
+    .from("unit_leases")
+    .select("listing_units!unit_id(listing_id, deleted_at, listings!listing_id(published_at, deleted_at))")
+    .eq("owner_id", userId)
+    .is("published_at", null)
+    .is("deleted_at", null);
+  const ids = new Set();
+  for (const l of myDrafts ?? []) {
+    const u = l.listing_units;
+    if (u && !u.deleted_at && u.listings && !u.listings.deleted_at && u.listings.published_at !== null) ids.add(u.listing_id);
+  }
+  return [...ids];
+}
+
+/*
  * Bulk publish for the Drafts page. Always scoped to what the caller owns,
  * including for a super: "publish all" never reaches across other accounts.
  */
@@ -337,6 +377,11 @@ export async function POST(req) {
   if (!valid) {
     return NextResponse.json({ error: "Say what to publish." }, { status: 400 });
   }
+
+  // Publishing needs a payment method and, when required, a signed agreement
+  // (lib/billing/listingGate.js). Drafts stay saved; only going live is refused.
+  const gate = await checkListingGate(supabase, userId, { listingIds: await publishTargets(userId, kind, id, scope) });
+  if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
 
   try {
     if (kind === "all") {

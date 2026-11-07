@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -10,6 +10,7 @@ import MapPopupCard, {
   MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
+import BackToTop from "@/components/ui/BackToTop";
 import SuggestedStrip, {
   SuggestedHeading,
 } from "@/components/listings/SuggestedStrip";
@@ -121,6 +122,26 @@ export default function AvailableListings({
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
   const panelRef = useRef(null);
+  // The first visible card, and how far below the column top it sat, when a
+  // panel opened, so closing it (button or browser back) puts the reader back
+  // there instead of at the top. A card, not a pixel offset: the grid is wider
+  // while the column is still narrowing, so a pixel offset points elsewhere.
+  const gridScroll = useRef(null);
+  // True from a close until the column's width transition ends: the card above
+  // is held in place on every resize of the column meanwhile (see below).
+  const anchoring = useRef(false);
+  // Set by a map pin click. If it closes the panel, that close ends in the
+  // smooth scroll to the pin's card (below), so the saved card is only restored,
+  // not held. Not guarded on an open panel: the marker listener keeps the
+  // handler from when the markers were built, so it can't see that.
+  const pinClose = useRef(false);
+  // True while a pin-click close waits for the width slide to end before
+  // scrolling to the pin's card: scrolled any earlier, the target is worked out
+  // against the wider grid and misses once the grid narrows.
+  const scrollAtSlideEnd = useRef(false);
+  // Ticks when the column's width transition ends, so MapView can carry out a
+  // pending pin-click centring.
+  const [slideEnd, setSlideEnd] = useState(0);
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -203,6 +224,15 @@ export default function AvailableListings({
   }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
+    const col = panelRef.current;
+    const colTop = col?.getBoundingClientRect().top;
+    const card = [...(col?.querySelectorAll("[data-listing-id]") ?? [])].find(
+      (c) => c.getBoundingClientRect().bottom > colTop
+    );
+    gridScroll.current = card && {
+      id: card.dataset.listingId,
+      offset: card.getBoundingClientRect().top - colTop,
+    };
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
@@ -231,25 +261,58 @@ export default function AvailableListings({
   };
 
   /*
-   * Scroll the panel to top when a listing is expanded, keyed on the listing's
+   * Scroll the panel to top when a listing is expanded (and back to where the
+   * grid was when it closes), keyed on the listing's
    * id, not on the object. The detail fetch replaces the feed object with a
    * fresh one for the SAME listing, and watching the object meant that second
    * arrival yanked the reader back to the top a couple of seconds after they
-   * started reading.
+   * started reading. A layout effect, so the position is set before the
+   * browser paints and the grid never shows at the top first.
    */
-  useEffect(() => {
-    if (expandedListing && panelRef.current) {
-      panelRef.current.scrollTop = 0;
-    }
+  useLayoutEffect(() => {
+    const col = panelRef.current;
+    if (!col) return;
+    col.scrollTop = 0;
+    anchoring.current = !expandedListing && !pinClose.current;
+    scrollAtSlideEnd.current = !expandedListing && pinClose.current;
+    pinClose.current = false;
+    if (!expandedListing) anchorGrid();
   }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll panel to the selected listing card when a pin is clicked (centered)
+  // Scroll the saved card back to where it was. Relative to where it is now,
+  // so it is right at any column width.
+  const anchorGrid = () => {
+    const col = panelRef.current;
+    const { id, offset } = gridScroll.current ?? {};
+    const card = id && col?.querySelector(`[data-listing-id="${id}"]`);
+    if (card)
+      col.scrollTop +=
+        card.getBoundingClientRect().top - col.getBoundingClientRect().top - offset;
+  };
+
+  // While the column slides narrower the grid reflows and the saved card would
+  // drift. A ResizeObserver runs after layout and before paint, so re-pinning
+  // it here means no frame shows it anywhere else.
   useEffect(() => {
-    if (!selectedListing || expandedListing || !panelRef.current) return;
-    const card = panelRef.current.querySelector(
+    const col = panelRef.current;
+    if (!col) return;
+    const observer = new ResizeObserver(() => {
+      if (anchoring.current) anchorGrid();
+    });
+    observer.observe(col);
+    return () => observer.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll panel to the selected listing card when a pin is clicked (centered)
+  const scrollToSelected = () => {
+    const card = panelRef.current?.querySelector(
       `[data-listing-id="${selectedListing._id}"]`
     );
     if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  useEffect(() => {
+    if (!selectedListing || expandedListing || !panelRef.current) return;
+    if (!scrollAtSlideEnd.current) scrollToSelected();
   }, [selectedListing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Viewport / "Browse this area" filter ── */
@@ -379,6 +442,8 @@ export default function AvailableListings({
     }
     lastQuery.current = { filters, search };
     setSelectedListing(null);
+    gridScroll.current = null; // a different result set starts at the top
+    if (panelRef.current) panelRef.current.scrollTop = 0;
     clearPanel();
     if (panelId) {
       const params = new URLSearchParams(searchParams.toString());
@@ -460,6 +525,19 @@ export default function AvailableListings({
           expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
         }`}
         style={{ height: "100%", minHeight: 0 }}
+        onTransitionEnd={(e) => {
+          // transitionend fires before the final frame's resize callback, so
+          // pin the card once more here before letting go.
+          if (e.target === e.currentTarget && e.propertyName === "width") {
+            if (anchoring.current) anchorGrid();
+            anchoring.current = false;
+            if (scrollAtSlideEnd.current && selectedListing) {
+              scrollAtSlideEnd.current = false;
+              scrollToSelected();
+            }
+            setSlideEnd((n) => n + 1);
+          }
+        }}
       >
         {/*
          * No AnimatePresence here, deliberately. Swapping the grid and the
@@ -499,6 +577,12 @@ export default function AvailableListings({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
+            <BackToTop
+              scrollRef={panelRef}
+              after={600}
+              position="bottom-6 left-[calc(40vw-3.75rem)]"
+              tone="light"
+            />
             <div
               className={`flex items-center gap-2 px-1 mb-3 ${
                 showSuggested ? "justify-between" : ""
@@ -568,6 +652,8 @@ export default function AvailableListings({
           setFilters={setFilters}
           handleReset={handleReset}
           onListingSelect={(listing) => {
+            pinClose.current = true;
+            scrollAtSlideEnd.current = false;
             setSelectedListing(listing);
             closePanel();
           }}
@@ -577,6 +663,7 @@ export default function AvailableListings({
           isActive={isDesktop}
           onBrowseArea={handleBrowseArea}
           panelExpanded={!!expandedListing}
+          panelSlideEnd={slideEnd}
           suggestedIds={suggestedIdSet}
         />
         {selectedListing && !expandedListing && (

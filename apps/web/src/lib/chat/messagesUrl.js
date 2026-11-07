@@ -20,6 +20,14 @@
  */
 export const MESSAGES_PARAM = "messages";
 export const THREAD_PARAM = "thread";
+// An admin reading someone else's inbox (Wyatt, 2026-11-03). Its own name, not
+// the dashboards' viewAs, so opening Messages on a viewed dashboard does not
+// silently switch whose inbox it is, and closing does not drop the dashboard's.
+export const MESSAGES_AS_PARAM = "messagesAs";
+
+export function messagesAsId(searchParams) {
+  return searchParams?.get(MESSAGES_AS_PARAM) || null;
+}
 
 /** True when the overlay should be open for these params. */
 export function messagesOpen(searchParams) {
@@ -53,6 +61,7 @@ export function withoutMessages(searchParams) {
   const params = new URLSearchParams(searchParams?.toString() ?? "");
   params.delete(MESSAGES_PARAM);
   params.delete(THREAD_PARAM);
+  params.delete(MESSAGES_AS_PARAM);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

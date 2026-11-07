@@ -15,6 +15,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useRouter } from "next/navigation";
 import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
+import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 
 // Pin body for "Suggested for you" listings. Matches the swatch in
 // SuggestedStrip's heading (bg-[#A1000A]); change both together.
@@ -60,7 +61,15 @@ function percentile(values, p) {
   return sorted[idx];
 }
 
-export default function MapView({
+export default function MapView(props) {
+  return (
+    <MapErrorBoundary className="w-full h-full">
+      <MapViewInner {...props} />
+    </MapErrorBoundary>
+  );
+}
+
+function MapViewInner({
   listings = [],
   filters,
   setFilters,
@@ -73,6 +82,8 @@ export default function MapView({
   heroMode = false,
   onBrowseArea = null,
   panelExpanded = false,
+  // Ticks each time the listings column finishes its width slide.
+  panelSlideEnd = 0,
   // Set of listing ids in the browse "Suggested for you" strip; their pins get
   // a deeper red body (same size) so the strip can be found on the map.
   suggestedIds = null,
@@ -81,6 +92,13 @@ export default function MapView({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const preSelectZoomRef = useRef(null);
+  // Set by a pin click, read when the panel next opens or closes: a close
+  // caused by a pin flies onto that pin; any other close leaves the map where
+  // it is.
+  const pinClickedRef = useRef(false);
+  // Where to fly onto a pin picked as the panel closed, held until the column's
+  // slide ends (see the panelSlideEnd effect).
+  const pendingPinRef = useRef(null);
   const listingsRef = useRef(listings);
   // Set synchronously at the top of the panelExpanded effect so the
   // selectedListingId effect (which runs after, in definition order) can
@@ -448,6 +466,7 @@ export default function MapView({
       marker._suggested = isSuggested;
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
+          pinClickedRef.current = true;
           onListingSelect(listing);
         });
       }
@@ -600,6 +619,22 @@ export default function MapView({
 
     panelIsTransitioningRef.current = true;
 
+    // Closing the panel by clicking a pin flies onto that pin once the slide
+    // has ended. Any other close leaves the map where it is.
+    const pickedPin = !panelExpanded && pinClickedRef.current;
+    pinClickedRef.current = false;
+    const pin =
+      pickedPin &&
+      listingsRef.current.find((l) => String(l._id) === String(selectedListingId));
+    pendingPinRef.current =
+      pin?.longitude && pin?.latitude
+        ? {
+            center: [pin.longitude, pin.latitude],
+            zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+            offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
+          }
+        : null;
+
     const TRANSITION_MS = 300;
     const timer = setTimeout(() => {
       panelIsTransitioningRef.current = false;
@@ -626,6 +661,18 @@ export default function MapView({
       panelIsTransitioningRef.current = false;
     };
   }, [panelExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fly onto the pin picked as the panel closed once the column's width slide
+  // has ended (panelSlideEnd ticks), not on a timer: flown mid-slide, the camera
+  // lands in a narrower map and ends off-centre when the map then widens.
+  useEffect(() => {
+    const map = mapRef.current;
+    const target = pendingPinRef.current;
+    if (!map || !target) return;
+    pendingPinRef.current = null;
+    map.resize();
+    map.flyTo({ ...target, duration: 700, essential: true });
+  }, [panelSlideEnd]);
 
   /*
    * Paint the selected pin, and lift it above its neighbours.

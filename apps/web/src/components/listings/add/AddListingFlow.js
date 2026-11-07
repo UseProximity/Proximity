@@ -30,6 +30,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
+import { openCoverageDialog } from "@/components/listings/CoverageSignDialog";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
@@ -389,11 +391,45 @@ export default function AddListingFlow({ user }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return toast.error(data.error || (asDraft ? "Couldn't save that draft." : "Couldn't publish that listing."));
+        return publishErrorToast(data, asDraft ? "Couldn't save that draft." : "Couldn't publish that listing.", {
+          // Adding a lease to a known property: sign for it, then submit again.
+          retry: () => submit(asDraft),
+        });
       }
-      toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       clearPendingDraft();
       const listingId = data.listing?.id ?? data.lease?.listingId ?? place.property?.id;
+
+      /*
+       * A new property the landlord's agreement does not cover yet: it was saved as
+       * a draft. Sign for it now and it is published; close the dialog and it stays
+       * a draft they can publish later.
+       */
+      if (data.code === "agreement_needed") {
+        let live = false;
+        await openCoverageDialog({
+          uncovered: data.uncovered ?? [],
+          onSigned: async () => {
+            for (const target of data.publish ?? []) {
+              const r = await fetch("/api/landlord/publish", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(target),
+              });
+              if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                toast.error(err.error || "Signed, but we couldn't publish it. Publish it from your drafts.");
+                return;
+              }
+            }
+            live = true;
+          },
+        });
+        toast.success(live ? "Signed and published. Your listing is live." : "Saved as a draft. Sign the agreement to publish it.");
+        setPublished({ listingId, unitId: unit?.id ?? null, draft: !live });
+        return;
+      }
+
+      toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       /*
        * A landlord often has more than one offering on the same apartment —
        * a 10-month and a 12-month, or a sublease beside their own lease. Ending

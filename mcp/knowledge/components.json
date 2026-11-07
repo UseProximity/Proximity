@@ -1,11 +1,21 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-03T04:37:35.606Z",
-  "count": 161,
+  "_generated": "2026-11-06T21:03:57.958Z",
+  "count": 184,
   "components": [
+    {
+      "name": "ErrorReporter",
+      "file": "src/components/ErrorReporter.js",
+      "description": "No description. Run generate after adding a description above."
+    },
     {
       "name": "DeleteAccountButton",
       "file": "src/components/account/DeleteAccountButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LicenseDisclosureFields",
+      "file": "src/components/account/LicenseDisclosureFields.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -24,6 +34,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "BillingView",
+      "file": "src/components/admin/BillingView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ConversationsView",
       "file": "src/components/admin/ConversationsView.js",
       "description": "No description. Run generate after adding a description above."
@@ -31,6 +46,11 @@
     {
       "name": "DormsView",
       "file": "src/components/admin/DormsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ErrorsView",
+      "file": "src/components/admin/ErrorsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -86,6 +106,76 @@
     {
       "name": "adminShared",
       "file": "src/components/admin/adminShared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AdminAutopayLine",
+      "file": "src/components/admin/billing/AdminAutopayLine.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementsPanel",
+      "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingRunPanel",
+      "file": "src/components/admin/billing/BillingRunPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChangeRequestsPanel",
+      "file": "src/components/admin/billing/ChangeRequestsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ChargeQueue",
+      "file": "src/components/admin/billing/ChargeQueue.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CorrectionsPanel",
+      "file": "src/components/admin/billing/CorrectionsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "EnrollmentPanel",
+      "file": "src/components/admin/billing/EnrollmentPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NoteDialog",
+      "file": "src/components/admin/billing/NoteDialog.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ProblemLists",
+      "file": "src/components/admin/billing/ProblemLists.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "TestChargeForm",
+      "file": "src/components/admin/billing/TestChargeForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgreementVersions",
+      "file": "src/components/admin/billing/agreements/AgreementVersions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordAgreementList",
+      "file": "src/components/admin/billing/agreements/LandlordAgreementList.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/billing/agreements/shared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "billingFetch",
+      "file": "src/components/admin/billing/billingFetch.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -364,6 +454,16 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ChangeCompare",
+      "file": "src/components/listings/ChangeCompare.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CoverageSignDialog",
+      "file": "src/components/listings/CoverageSignDialog.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "FilterComponents",
       "file": "src/components/listings/FilterComponents.js",
       "description": "No description. Run generate after adding a description above."
@@ -394,6 +494,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ListedBy",
+      "file": "src/components/listings/ListedBy.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ListingDraftImport",
       "file": "src/components/listings/ListingDraftImport.js",
       "description": "No description. Run generate after adding a description above."
@@ -407,6 +512,11 @@
       "name": "ListingModalInfo",
       "file": "src/components/listings/ListingModalInfo.js",
       "description": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat"
+    },
+    {
+      "name": "MapErrorBoundary",
+      "file": "src/components/listings/MapErrorBoundary.js",
+      "description": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails"
     },
     {
       "name": "MapPopupCard",
@@ -541,6 +651,11 @@
     {
       "name": "listingFormOptions",
       "file": "src/components/listings/listingFormOptions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "publishErrorToast",
+      "file": "src/components/listings/publishErrorToast.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

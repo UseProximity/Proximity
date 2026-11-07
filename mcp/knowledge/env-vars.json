@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-03T13:35:06.109Z",
-  "count": 101,
+  "_generated": "2026-11-05T21:25:19.458Z",
+  "count": 108,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -145,6 +145,10 @@
     },
     {
       "name": "DEV_SUPABASE_URL",
+      "public": false
+    },
+    {
+      "name": "DOCUMENSO_API_KEY_DEV",
       "public": false
     },
     {
@@ -296,6 +300,10 @@
       "public": false
     },
     {
+      "name": "NEXT_PHASE",
+      "public": false
+    },
+    {
       "name": "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
       "public": true
     },
@@ -310,6 +318,10 @@
     {
       "name": "NEXT_PUBLIC_SUPABASE_URL",
       "public": true
+    },
+    {
+      "name": "NEXT_RUNTIME",
+      "public": false
     },
     {
       "name": "NODE_ENV",
@@ -364,6 +376,10 @@
       "public": false
     },
     {
+      "name": "R2_PRIVATE_BUCKET_NAME",
+      "public": false
+    },
+    {
       "name": "R2_PUBLIC_BASE_URL",
       "public": false
     },
@@ -389,6 +405,18 @@
     },
     {
       "name": "STAGING_EMAIL_ALLOWLIST",
+      "public": false
+    },
+    {
+      "name": "STRIPE_PUBLISHABLE_KEY",
+      "public": false
+    },
+    {
+      "name": "STRIPE_SECRET_KEY",
+      "public": false
+    },
+    {
+      "name": "STRIPE_WEBHOOK_SECRET",
       "public": false
     },
     {

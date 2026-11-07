@@ -569,3 +569,47 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     </div>
   );
 }
+
+/*
+ * A student's Proxy conversation as they see it, for an admin viewing their
+ * inbox (Wyatt, 2026-11-03). Loaded by thread id from the read-only route
+ * (?viewAs=), never through openThread, which can create, claim and mark
+ * read. Same bubbles; the message box is shown shut and Report does nothing.
+ */
+export function ProxyReadOnlyTranscript({ threadId, viewAsId, fill = false }) {
+  const [messages, setMessages] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!threadId || !viewAsId) return;
+    let cancelled = false;
+    setMessages(null);
+    setFailed(false);
+    fetch(`/api/proxy/threads/${threadId}?viewAs=${encodeURIComponent(viewAsId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) { if (d) setMessages(d.messages ?? []); else setFailed(true); } })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [threadId, viewAsId]);
+  if (failed) return <p className="text-sm text-gray-500">Could not load this conversation.</p>;
+  if (!messages) return <ChatSkeleton rows={3} />;
+  const sideOf = (m) => (m.isMine ? "me" : "proxy");
+  const all = [GREETING_MSG, ...messages];
+  return (
+    <div className={`flex flex-col gap-3 ${fill ? "min-h-0 flex-1" : ""}`}>
+      <div className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
+        {all.map((m, i) => {
+          const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+          const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
+          return (
+            <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+              <Bubble msg={m} onReport={() => {}} first={first} last={last} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="shrink-0 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-400">
+        Their message box. Read only while you view their inbox.
+      </div>
+    </div>
+  );
+}

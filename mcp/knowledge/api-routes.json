@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-04T03:34:13.705Z",
-  "count": 184,
+  "_generated": "2026-11-07T00:08:15.573Z",
+  "count": 242,
   "routes": [
     {
       "path": "/api/account",
@@ -146,6 +146,354 @@
       "file": "src/app/api/admin/agents/queue/route.js"
     },
     {
+      "path": "/api/admin/billing/agreement-versions",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "landlord_agreements",
+        "agreement_amendments",
+        "users"
+      ],
+      "file": "src/app/api/admin/billing/agreement-versions/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreement-versions/[id]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/agreement-versions/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreements",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/admin/billing/agreements/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreements/[id]/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [
+        "landlord_agreements"
+      ],
+      "file": "src/app/api/admin/billing/agreements/[id]/file/route.js"
+    },
+    {
+      "path": "/api/admin/billing/autopay/[landlordId]",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "DELETE": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/autopay/[landlordId]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/change-requests",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/change-requests/route.js"
+    },
+    {
+      "path": "/api/admin/billing/change-requests/[id]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/change-requests/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/change-requests/files/[messageId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/change-requests/files/[messageId]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/adjust",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/charges/[id]/adjust/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/confirm",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/charges/[id]/confirm/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/resolve",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/charges/[id]/resolve/route.js"
+    },
+    {
+      "path": "/api/admin/billing/charges/[id]/void",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/charges/[id]/void/route.js"
+    },
+    {
+      "path": "/api/admin/billing/enrollment",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PUT": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/enrollment/route.js"
+    },
+    {
+      "path": "/api/admin/billing/enrollment/send",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/enrollment/send/route.js"
+    },
+    {
+      "path": "/api/admin/billing/gate-settings",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PUT": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/gate-settings/route.js"
+    },
+    {
+      "path": "/api/admin/billing/invoices/[id]/resend",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/invoices/[id]/resend/route.js"
+    },
+    {
+      "path": "/api/admin/billing/invoices/[id]/restore-leases",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/invoices/[id]/restore-leases/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/documents",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/documents/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/documents/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/documents/file/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/license-disclosure",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/license-disclosure/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/agreement-email",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/agreement-email/route.js"
+    },
+    {
+      "path": "/api/admin/billing/paid-charges",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/paid-charges/route.js"
+    },
+    {
+      "path": "/api/admin/billing/review",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/review/route.js"
+    },
+    {
+      "path": "/api/admin/billing/run",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/run/route.js"
+    },
+    {
+      "path": "/api/admin/billing/run-settings",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PUT": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/run-settings/route.js"
+    },
+    {
+      "path": "/api/admin/billing/test-charges",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/admin/billing/test-charges/route.js"
+    },
+    {
       "path": "/api/admin/chat/reply-senders",
       "methods": [
         "POST",
@@ -213,6 +561,22 @@
       },
       "tables": [],
       "file": "src/app/api/admin/db-env/route.js"
+    },
+    {
+      "path": "/api/admin/errors",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "app_errors"
+      ],
+      "file": "src/app/api/admin/errors/route.js"
     },
     {
       "path": "/api/admin/export",
@@ -671,6 +1035,300 @@
       "file": "src/app/api/availability/confirm/route.js"
     },
     {
+      "path": "/api/billing/agreement/change-requests",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "public"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/agreement/change-requests/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/change-requests/[id]",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/agreement/change-requests/[id]/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/change-requests/files/[messageId]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/change-requests/files/[messageId]/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/documents",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/documents/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/exclude",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/exclude/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/exhibit",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/exhibit/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/file/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/sign",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/agreement/sign/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/signer",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/agreement/signer/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/sync",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/sync/route.js"
+    },
+    {
+      "path": "/api/billing/agreement/units",
+      "methods": [
+        "POST",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super",
+        "PATCH": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/agreement/units/route.js"
+    },
+    {
+      "path": "/api/billing/autopay",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super",
+        "POST": "super",
+        "DELETE": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/autopay/route.js"
+    },
+    {
+      "path": "/api/billing/charges",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/charges/route.js"
+    },
+    {
+      "path": "/api/billing/charges/[id]/approve",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/charges/[id]/approve/route.js"
+    },
+    {
+      "path": "/api/billing/charges/[id]/contest",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/charges/[id]/contest/route.js"
+    },
+    {
+      "path": "/api/billing/gate",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/gate/route.js"
+    },
+    {
+      "path": "/api/billing/invoices",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/invoices/route.js"
+    },
+    {
+      "path": "/api/billing/invoices/[id]/pay",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/invoices/[id]/pay/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/payment-methods/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/[id]",
+      "methods": [
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "DELETE": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/payment-methods/[id]/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/[id]/default",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/payment-methods/[id]/default/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/setup",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/payment-methods/setup/route.js"
+    },
+    {
+      "path": "/api/billing/payment-methods/sync",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/payment-methods/sync/route.js"
+    },
+    {
       "path": "/api/chat/access-token",
       "methods": [
         "GET"
@@ -926,6 +1584,42 @@
         "users"
       ],
       "file": "src/app/api/cron/availability-check/route.js"
+    },
+    {
+      "path": "/api/cron/billing-overdue",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/billing-overdue/route.js"
+    },
+    {
+      "path": "/api/cron/billing-review-clock",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/billing-review-clock/route.js"
+    },
+    {
+      "path": "/api/cron/billing-run",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/billing-run/route.js"
     },
     {
       "path": "/api/cron/chat-checkin",
@@ -1286,6 +1980,18 @@
       "file": "src/app/api/editProfile/route.js"
     },
     {
+      "path": "/api/errors",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/errors/route.js"
+    },
+    {
       "path": "/api/favorites",
       "methods": [
         "GET",
@@ -1465,6 +2171,20 @@
         "users"
       ],
       "file": "src/app/api/landlord/import/start/route.js"
+    },
+    {
+      "path": "/api/landlord/license-disclosure",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super",
+        "PUT": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/license-disclosure/route.js"
     },
     {
       "path": "/api/landlord/listing-draft",
@@ -2699,6 +3419,20 @@
       "file": "src/app/api/waitlist/[listingId]/route.js"
     },
     {
+      "path": "/api/webhooks/documenso",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [
+        "landlord_agreements"
+      ],
+      "file": "src/app/api/webhooks/documenso/route.js"
+    },
+    {
       "path": "/api/webhooks/new-listing",
       "methods": [
         "POST"
@@ -2724,6 +3458,18 @@
       },
       "tables": [],
       "file": "src/app/api/webhooks/new-user/route.js"
+    },
+    {
+      "path": "/api/webhooks/stripe",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/webhooks/stripe/route.js"
     }
   ]
 }

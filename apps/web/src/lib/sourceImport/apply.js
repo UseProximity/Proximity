@@ -31,6 +31,7 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
+import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
@@ -46,7 +47,7 @@ export async function loadListingState(listingId) {
        contact_name, contact_email, contact_phone, source_url,
        listing_landlords(user_id, is_primary),
        listing_units(id, name, bedrooms, bathrooms, area, floor_plan_image_url, published_at, deleted_at, sort_order,
-         unit_leases(id, rent, rent_is_per_person, lease_term_months, available_from, unavailable, is_active, owner_id, description, deleted_at, published_at)),
+         unit_leases(id, rent, rent_is_per_person, lease_term_months, available_from, unavailable, is_active, owner_id, description, deleted_at, published_at, contact_email)),
        listing_images(id, url, unit_id, sort_order, source),
        listing_amenities(*), listing_utilities(*),
        listing_custom_amenities(id, label),
@@ -454,6 +455,25 @@ export function leaseBlurb(offer) {
   return parts.join(". ").replace(/\.\.(\s|$)/g, ".$1").slice(0, 300);
 }
 
+/**
+ * The lead address a new apartment should take when the property itself has no
+ * contact email: the one this owner already uses on the rest of the building.
+ * Landlords can set the address per apartment rather than per property, and an
+ * apartment added by a later sync would otherwise fall back to their account inbox.
+ * Two or more different addresses is ambiguous, so it stays empty.
+ */
+export function buildingContactEmail(state, userId) {
+  const emails = new Set();
+  for (const unit of state.listing_units ?? []) {
+    if (unit.deleted_at) continue;
+    for (const lease of unit.unit_leases ?? []) {
+      const email = lease.contact_email?.trim().toLowerCase();
+      if (email && !lease.deleted_at && lease.owner_id === userId) emails.add(email);
+    }
+  }
+  return emails.size === 1 ? [...emails][0] : null;
+}
+
 function leaseRow({ state, userId, unitId, offer, available, draft }) {
   return {
     unit_id: unitId,
@@ -467,7 +487,7 @@ function leaseRow({ state, userId, unitId, offer, available, draft }) {
     unavailable: !available,
     description: leaseBlurb(offer),
     furnished: state.furnished ?? null,
-    contact_email: state.contact_email ?? null,
+    contact_email: state.contact_email ?? buildingContactEmail(state, userId),
     contact_phone: state.contact_phone ?? null,
     contact_name: state.contact_name ?? null,
     ...(draft ? { published_at: null } : {}),
@@ -570,6 +590,9 @@ export async function executeChange(change, { state, userId }) {
     }
     case "lease_update": {
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
+      // The database keeps a lease withdrawn for an overdue invoice off the market
+      // until an admin restores it (202611010002_billing_holds.sql).
+      if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       return Object.keys(d.patch).join(", ");
     }

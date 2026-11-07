@@ -237,3 +237,19 @@ export async function confirmContactVerification(rawToken) {
   }
   return { email: row.email };
 }
+
+/**
+ * Where a landlord's emails about a student inquiry should go: the lease's confirmed
+ * contact, else the listing's, else their account email. Same rule as chat alerts
+ * (fn_landlord_contact_email). A failed lookup returns the account email passed in, so
+ * an inquiry is never dropped.
+ */
+export async function routedInquiryEmail({ landlordId, listingId, leaseId = null, accountEmail }) {
+  const { data, error } = await supabase.rpc("fn_landlord_contact_email", {
+    p_landlord_id: landlordId,
+    p_listing_id: listingId,
+    p_lease_id: leaseId,
+  });
+  if (error) console.error("routedInquiryEmail failed:", error);
+  return (typeof data === "string" && data.trim()) || accountEmail;
+}

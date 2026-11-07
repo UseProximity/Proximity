@@ -223,6 +223,14 @@ export default function Footer() {
             >
               Terms of Service
             </Link>
+            <a
+              href="/legal/missouri-broker-disclosure-form.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+            >
+              Broker Disclosure Form
+            </a>
           </div>
           <div className="flex items-center gap-4">
             <button
