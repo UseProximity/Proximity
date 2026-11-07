@@ -25,6 +25,8 @@ import { fingerprint, summarize } from "./snapshot.js";
 import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
 import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
+import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
+import { syncTeamReview } from "@/lib/agents/flags";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -124,7 +126,11 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
   const baseUrl = getBaseUrl();
   try {
     await ensureAgent(listing.id);
+    // Only the sites the landlord gave us (Wyatt, 2026-11-07).
+    const allowUrl = await givenSiteFilterFor(listing.id);
+    const teamReview = syncTeamReview();
     const snapshot = await readProperty({
+      allowUrl,
       pastedUrl: m.index_url ?? m.source_url,
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
@@ -140,7 +146,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     let result = null;
     if (!unchanged) {
       onStep("Saving");
-      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId });
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, teamReview, listingLabel: label, userId: actorId });
     }
     let pages = [];
     if (knowledge) {
@@ -150,7 +156,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       const { knownPageUrls } = await import("@/lib/agents/pages");
       const known = await knownPageUrls(listing.id).catch(() => []);
       const unitUrls = unitPages.filter((p) => p.status === "ok").map((p) => p.url);
-      pages = await synthesizePages({ listingId: listing.id, urls: [snapshot.sourceUrl ?? m.source_url, ...unitUrls, ...flyers, ...known], cause: "sync", actorId, force, maxPages: 50 });
+      const urls = [snapshot.sourceUrl ?? m.source_url, ...unitUrls, ...flyers, ...known].filter((u) => u && allowUrl(u));
+      pages = await synthesizePages({ listingId: listing.id, urls, cause: "sync", actorId, force, maxPages: 50 });
     }
     const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
     await supabase
@@ -176,6 +183,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       applied: result?.applied ?? [],
       held: result?.held ?? [],
       holdReason: result?.holdReason ?? null,
+      teamReview,
+      refused: snapshot.trace?.refused ?? [],
       summary: summarize(snapshot),
       pages,
       unitPages,

@@ -100,7 +100,13 @@ const IMAGE_CAP = 120;
 // ---------------------------------------------------------------- helpers
 
 class Crawl {
-  constructor() {
+  /*
+   * allowUrl: when set, the only pages this read may open (a sync reads the
+   * sites a landlord gave us and nothing else, lib/sourceSync/givenSites.js).
+   */
+  constructor({ allowUrl = null } = {}) {
+    this.allowUrl = allowUrl;
+    this.refused = [];
     this.pages = []; // [{ url, text }] for the model, first = main
     this.fetched = []; // raw fetched pages, same order
     this.imageMap = new Map(); // url -> { alt, pages:Set }
@@ -160,9 +166,12 @@ class Crawl {
     // Already read: hand back the page rather than nothing, so a floor plans
     // link that points at the page we are on still counts as found.
     if (this.has(url)) return this.fetched.find((f) => f.finalUrl === url) ?? null;
+    if (this.allowUrl && !this.allowUrl(url)) return this.refuse(url);
     if (isDocumentUrl(url)) return this.readFile(url);
     try {
       const sub = await fetchPageSmart(url);
+      // A redirect off the given sites counts as leaving them.
+      if (this.allowUrl && !this.allowUrl(sub.finalUrl)) return this.refuse(sub.finalUrl);
       if (this.has(sub.finalUrl)) return sub;
       return this.add(sub);
     } catch (err) {
@@ -170,6 +179,10 @@ class Crawl {
       if (err?.code === "document") return this.readFile(url);
       return null;
     }
+  }
+  refuse(url) {
+    if (this.refused.length < 50 && !this.refused.includes(url)) this.refused.push(url);
+    return null;
   }
   /* A linked file, read into text (readers/document.js); four per read. */
   async readFile(url) {
@@ -711,21 +724,28 @@ export function readProperty(args) {
 }
 
 /*
+ * allowUrl: the only pages the read may open (the sync passes the sites the
+ * landlord gave us, lib/sourceSync/givenSites.js); refused ones are listed
+ * in trace.refused.
+ *
  * onlyThisPage: a unit's own page (listing_unit_pages). The landlord told us
  * where that unit's data lives, so nothing else is opened: no own-site hop,
  * no floor plan index, no per-apartment pages, no exploring for gaps.
  */
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, _crawl = null, _brandName = null, _modelDraft = null }) {
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
-  const crawl = _crawl ?? new Crawl();
+  const crawl = _crawl ?? new Crawl({ allowUrl });
   let main = crawl.fetched[0] ?? null;
   let modelCost = 0;
 
   if (!main) {
     onStep("Reading your website");
     main = await fetchMain(startUrl); // throws DraftFetchError
+    // The given page now redirects to another site: the team decides whether
+    // that site is the landlord's, the sync does not follow it on its own.
+    if (allowUrl && !allowUrl(main.finalUrl)) throw new DraftFetchError("redirected_off_site");
     crawl.add(main);
   }
   const brandName = _brandName ?? extractSiteBrand(main.html);
@@ -1169,6 +1189,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       concessions: (listing?.concessions ?? []).length + embeddedConcessions.length + g5Concessions.length,
     },
     scrubbed: cleaned.removed,
+    // Pages the read wanted but may not open (off the given sites).
+    refused: crawl.refused,
   };
   /*
    * The notes, checked by the model against what the read finally found:

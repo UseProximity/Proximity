@@ -53,7 +53,7 @@ function Panel({ title, icon = null, count = null, children, defaultOpen = true 
 
 /* ---- sources (side) ------------------------------------------------------ */
 
-function SourcesSide({ listingId, owner, sync, sources, unitPages, onChanged }) {
+function SourcesSide({ listingId, owner, sync, sources, unitPages, teamReview, onChanged }) {
   const [menu, setMenu] = useState(false);
   const [mode, setMode] = useState(null);
   const [url, setUrl] = useState("");
@@ -138,6 +138,7 @@ function SourcesSide({ listingId, owner, sync, sources, unitPages, onChanged }) 
             ) : (
               <>
                 <p className="text-xs text-gray-500">Last read {when(sync.lastCheckedAt) || "never"}. Checked every day.</p>
+                {teamReview && <p className="text-[11px] text-gray-500">While we launch, the Proximity team checks each change from your website before students see it.</p>}
                 <button disabled={busy === "sync"} onClick={syncNow} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"><RefreshCw className="h-3 w-3" /> Read the whole site now ({sync.manualLeft} left today)</button>
                 <p className="text-[11px] text-gray-400">Takes {minutes(sync.estimateSeconds ?? 180)}. You can leave while it runs.</p>
               </>
@@ -332,7 +333,7 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <div id="agent-chat-panel" className="flex h-[70dvh] min-h-[420px] min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 md:h-[calc(100dvh-319px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-343px)]">
           <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} fill onChanged={load} />
         </div>
-        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} onChanged={load} />
+        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} teamReview={data.teamReview} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />

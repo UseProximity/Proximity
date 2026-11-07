@@ -36,6 +36,7 @@ import { sameSite } from "@/lib/listingDraft/fetchSite";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
+const REJECTED_QUIET_DAYS = 30;
 const MAX_LEASES_PER_UNIT = 40;
 
 // ---------------------------------------------------------------- state
@@ -665,8 +666,16 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
   let fresh = changes;
   if (status === "open") {
     // The same held change, run after run, is one open event, not a pile.
-    const { data: open } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open");
-    const seen = new Set((open ?? []).map((e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`));
+    // A change a person rejected stays rejected while the website still says
+    // the same thing (a month, then it is asked again); a new value on the
+    // website is a new change. Rejections from a bulk clear-out do not count.
+    const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
+    const [{ data: open }, { data: rejected }] = await Promise.all([
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open"),
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "rejected").gte("verdict_at", since).limit(2000),
+    ]);
+    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
+    const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy)].map(keyOf));
     fresh = changes.filter((c) => {
       const key = `${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
       if (seen.has(key)) return false;
@@ -789,7 +798,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, teamReview = false, listingLabel = null, takeover = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -846,7 +855,8 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   // A lease going live passes the listing gate, as the landlord's own publish
   // would; the importer and sync used to skip it.
-  if (mode === "sync" && changes.some((c) => c.auto && putsLeaseLive(c))) {
+  // Under launch review it still runs, so the team sees why one would wait.
+  if (mode === "sync" && changes.some((c) => (c.auto || teamReview) && putsLeaseLive(c))) {
     const gate = await gateFor(primaryOwner(state), listingId);
     if (!gate.allowed) {
       for (const c of changes.filter(putsLeaseLive)) {
@@ -855,6 +865,20 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         c.gated = true;
         c.note = `waiting for the landlord to publish: ${gate.message}`;
       }
+    }
+  }
+
+  /*
+   * Launch review (Wyatt, 2026-11-07, lib/agents/flags.js syncTeamReview):
+   * nothing a sync finds changes what students see on its own. Every change,
+   * a unit's own page included, waits for the Proximity team, and the
+   * landlord does not see it.
+   */
+  if (mode === "sync" && teamReview) {
+    for (const c of changes) {
+      c.auto = false;
+      c.judge = false;
+      c.detail = { ...(c.detail ?? {}), teamReview: true };
     }
   }
 
@@ -913,7 +937,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
   if (holdReason && monitorId) {
-    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
+    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label, ...(teamReview ? { teamReview: true } : {}) } }], applied: false, status: "open" });
   }
   if (applied.length && mode === "sync") {
     await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
@@ -937,9 +961,10 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
-  // Accepting a change that puts a lease live is a publish: same gate.
+  // Accepting a change that puts a lease live is a publish: the same gate,
+  // checked for the listing's landlord even when the team accepts it.
   const live = (events ?? []).filter((e) => !e.applied && putsLeaseLive(e));
-  const gate = live.length ? await gateFor(userId, listingId) : { allowed: true };
+  const gate = live.length ? await gateFor(primaryOwner(state) ?? userId, listingId) : { allowed: true };
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;

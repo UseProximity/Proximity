@@ -16,6 +16,7 @@ import supabase from "@/lib/supabase";
 import { readProperty, DraftFetchError } from "@/lib/sourceImport/read";
 import { matchUnits } from "@/lib/sourceImport/apply";
 import { classifySourceUrl } from "./classify.js";
+import { givenSiteFilter } from "./givenSites.js";
 
 // A page that answers with these is gone, not just unreachable today.
 const GONE_CODES = new Set(["http_404", "http_410"]);
@@ -99,6 +100,8 @@ export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
         pastedUrl: p.url,
         target: { name: listing.title ?? listing.address, address: listing.address, url: p.url, levelUrl: null },
         onlyThisPage: true,
+        // The page itself and nothing beyond its site.
+        allowUrl: givenSiteFilter([p.url]),
         onStep: () => {},
       });
       const units = snap.units ?? [];
