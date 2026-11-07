@@ -30,7 +30,7 @@ describe("gate: overdue invoice (PR #370 review)", () => {
 
   it("names every reason at once", () => {
     const d = gateDecision({ role: "landlord", requirePaymentMethod: true, requireAgreement: false, hasPaymentMethod: false, agreementSigned: true, overdueInvoice: true });
-    assert.equal(gateMessage(d.missing), "Before you can publish a listing you need to pay your overdue invoice and add an active payment method. You can do this under Payments in your landlord dashboard. Your drafts are saved.");
+    assert.equal(gateMessage(d.missing), "Before you can publish a listing you need to pay your overdue invoice and add an active payment method. You can do this under Billing in your landlord dashboard. Your drafts are saved.");
   });
 });
 
@@ -66,10 +66,10 @@ describe("gateDecision", () => {
 describe("gate messages", () => {
   it("say what to do, in plain words, and that drafts are safe", () => {
     assert.match(gateMessage(["payment_method"]), /add an active payment method/);
-    assert.match(gateMessage(["agreement"]), /sign the commission agreement/);
+    assert.match(gateMessage(["agreement"]), /sign the marketing agreement/);
     const both = gateMessage(["payment_method", "agreement"]);
-    assert.match(both, /add an active payment method and sign the commission agreement/);
-    assert.match(both, /Payments/);
+    assert.match(both, /add an active payment method and sign the marketing agreement/);
+    assert.match(both, /Billing/);
     assert.match(both, /drafts are saved/i);
   });
 

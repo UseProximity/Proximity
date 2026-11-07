@@ -121,7 +121,7 @@ export async function POST(req) {
      * building students can see is left exactly as it was.
      */
     let draft = body.draft === true;
-    // Set when the property must be added to the landlord's commission agreement
+    // Set when the property must be added to the landlord's marketing agreement
     // before it can go live: it is saved as a draft and the page asks them to sign.
     let needsCoverage = false;
 
@@ -241,7 +241,7 @@ export async function POST(req) {
       }
       /*
        * Putting a listing in front of students needs a payment method and, when
-       * required, a signed commission agreement (lib/billing/listingGate.js).
+       * required, a signed marketing agreement (lib/billing/listingGate.js).
        * Only landlords are checked, and saving a draft is never blocked, so
        * nothing a landlord has typed is lost.
        */
@@ -1015,7 +1015,7 @@ export async function POST(req) {
       // publishes the draft (api/landlord/publish).
       return NextResponse.json(
         {
-          message: "Draft saved. Sign your commission agreement for this property to publish it.",
+          message: "Draft saved. Sign your marketing agreement for this property to publish it.",
           code: "agreement_needed",
           listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
           uncovered: [{ listingId, address: displayAddress({ address }) }],

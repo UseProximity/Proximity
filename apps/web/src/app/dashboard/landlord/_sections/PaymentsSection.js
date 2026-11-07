@@ -68,7 +68,7 @@ export default function PaymentsSection() {
         const params = new URLSearchParams(window.location.search);
         const setup = params.get("setup");
         const sessionId = params.get("session_id");
-        if (setup) window.history.replaceState(null, "", "?tab=payments");
+        if (setup) window.history.replaceState(null, "", "?tab=billing");
 
         if (setup === "success" && sessionId) {
           const result = await call("/api/billing/payment-methods/sync", {

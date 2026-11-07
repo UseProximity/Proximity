@@ -6,7 +6,7 @@ import LicenseDisclosureFields, { DisclosureSummary, MissingHint, useLicenseDisc
 
 /*
  * The landlord's real estate license disclosure on their Profile: what they told
- * us before signing the commission agreement, and the place to change it. A
+ * us before signing the marketing agreement, and the place to change it. A
  * licensee's name, company and company phone show on their listings, so a save
  * changes what students see straight away. Every save is kept in the history.
  */
@@ -104,7 +104,7 @@ export default function LicenseDisclosureCard() {
           </>
         ) : (
           <p className="text-sm text-gray-600">
-            Not answered yet. You will be asked before you sign the commission agreement, or you can add it now.
+            Not answered yet. You will be asked before you sign the marketing agreement, or you can add it now.
           </p>
         )}
       </div>

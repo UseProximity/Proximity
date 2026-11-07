@@ -64,7 +64,7 @@ export async function loadLandlordProperties(db, userId) {
     allRows(() =>
       db
         .from("unit_leases")
-        .select("id, published_at, deleted_at, listing_units!unit_id(id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at)")
+        .select("id, published_at, deleted_at, is_active, listing_units!unit_id(id, listing_id, name, unit_number, unit_designator, title, published_at, deleted_at)")
         .eq("owner_id", userId)
         .is("deleted_at", null)
         .order("id")
@@ -78,7 +78,8 @@ export async function loadLandlordProperties(db, userId) {
     if (!unit?.listing_id || unit.deleted_at) continue;
     const units = myUnits.get(unit.listing_id) ?? new Map();
     const prev = units.get(unit.id);
-    units.set(unit.id, { unit, published: !!prev?.published || (!!lease.published_at && !!unit.published_at) });
+    // On the market: published and not withdrawn (Withdraw sets is_active false).
+    units.set(unit.id, { unit, published: !!prev?.published || (!!lease.published_at && !!unit.published_at && lease.is_active !== false) });
     myUnits.set(unit.listing_id, units);
   }
   const ids = [...new Set([...ownedIds, ...myUnits.keys()])];
@@ -123,9 +124,11 @@ export async function loadLandlordProperties(db, userId) {
       // The units holding this landlord's own leases: what coverage must include.
       const leaseUnits = [...new Set(mine.map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
       const published = !!l.published_at;
-      // Live for this landlord: the property is published and either it is theirs or
-      // one of their own offerings on it is.
-      const live = published && (propertyOwner || mine.some((m) => m.published));
+      // Live for this landlord: the property is published and one of their own
+      // offerings on it is on the market, or it is theirs with no offerings of
+      // theirs at all. A building whose offerings they all withdrew (for one,
+      // by leaving it off Exhibit A) is not live (Wyatt, 2026-11-07).
+      const live = published && (mine.some((m) => m.published) || (propertyOwner && !mine.length));
       // Not live for this landlord is a draft for Exhibit A, including a published
       // building where only their own offerings are unpublished (renters), which
       // otherwise fell off the document (Wyatt, 2026-11-07).
@@ -271,7 +274,14 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
     ...properties.filter((p) => p.live).map((p) => p.listingId),
     ...carry.map((e) => e.listingId).filter((id) => byId.has(id)),
   ]);
-  const choiceFor = (p) => exhibitChoice(p, selections?.get(p.listingId) ?? null, { locked: needed.has(p.listingId) });
+  // Needed properties stay on, except one the landlord excluded on the popup that is
+  // no longer live (its offerings were withdrawn) and is not being published: a
+  // property carried from a copy being replaced can then come off (2026-11-07).
+  const choiceFor = (p) => {
+    const s = selections?.get(p.listingId) ?? null;
+    const released = s?.excluded === true && !p.live && !requested.has(p.listingId);
+    return exhibitChoice(p, released ? { ...s, include: false } : s, { locked: needed.has(p.listingId) && !released });
+  };
   const drafts = properties.filter((p) => p.draft && !needed.has(p.listingId)).map((p) => p.listingId);
 
   if (!master || !masterValid) {

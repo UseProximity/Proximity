@@ -1,5 +1,5 @@
 /*
- * Documenso, the e-signature provider for the commission agreement (Teams plan).
+ * Documenso, the e-signature provider for the marketing agreement (Teams plan).
  * Written against Documenso's v2 API (https://app.documenso.com/api/v2/openapi.json,
  * the envelope endpoints), using fetch so nothing extra is installed.
  *
@@ -538,7 +538,7 @@ export function createDocumensoClient({
           recipients: [{ id: recipientId, email, name }],
           ...(folderId && { folderId }),
           // Named after the landlord, so it is easy to find in Documenso.
-          override: { title: copyTitle(title || "Commission agreement", name, email), ...DATE_SETTINGS },
+          override: { title: copyTitle(title || "Marketing agreement", name, email), ...DATE_SETTINGS },
           ...(prefillFields.length && { prefillFields }),
           distributeDocument: false,
         }),

@@ -4,7 +4,7 @@
  * amendment template) and is never touched; these pages only list properties.
  *
  *   master     "Exhibit A: Covered Properties", every property the agreement
- *              covers, the end of the commission agreement. It never changes.
+ *              covers, the end of the marketing agreement. It never changes.
  *   amendment  the pages of an Exhibit A amendment, its own document each time
  *              properties are added (Wyatt, 2026-11-06): Exhibit A before and
  *              after, the added properties marked
@@ -100,7 +100,7 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
   text("Covered Properties", { size: 12, f: bold });
   space(6);
   text(`Landlord: ${landlordName || "Landlord"}`);
-  if (amendment && agreementSignedAt) text(`Commission agreement signed: ${fmtDate(agreementSignedAt)}`);
+  if (amendment && agreementSignedAt) text(`Marketing agreement signed: ${fmtDate(agreementSignedAt)}`);
   text(`Prepared: ${fmtDate(preparedAt)}`);
   space(14);
 

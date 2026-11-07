@@ -46,7 +46,7 @@ export async function POST(req, { params }) {
               leaseLabel: view.leaseLabel,
               studentName: view.studentName,
             },
-            paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=payments`,
+            paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing`,
           }
         );
       }

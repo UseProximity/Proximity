@@ -5,7 +5,7 @@
  * mail transport.
  *
  * Landlord emails: contest outcome, failed payment, payment method needs
- * attention, overdue notice, launch enrollment, commission agreement to sign.
+ * attention, overdue notice, launch enrollment, marketing agreement to sign.
  * Team emails (to info@useproximity.org): contest submitted, failed payment,
  * chargeback, only payment method removed, overdue withdrawal, agreement declined.
  *
@@ -167,10 +167,10 @@ export function methodRemovedTeamEmail({ landlordName, landlordEmail, outstandin
   };
 }
 
-// includeAgreement is false until the commission agreement is ready, so the email
+// includeAgreement is false until the marketing agreement is ready, so the email
 // only asks for what a landlord can actually do yet.
 export function enrollmentEmail({ name, deadline, includeAgreement = true, paymentsUrl }) {
-  const ask = includeAgreement ? "add a payment method and sign the commission agreement" : "add a payment method";
+  const ask = includeAgreement ? "add a payment method and sign the marketing agreement" : "add a payment method";
   return {
     subject: "Set up payments on Proximity",
     html: wrap(`
@@ -185,41 +185,41 @@ export function enrollmentEmail({ name, deadline, includeAgreement = true, payme
 }
 
 /*
- * Asking a landlord to sign the commission agreement (sent by an admin from the
+ * Asking a landlord to sign the marketing agreement (sent by an admin from the
  * dashboard). The PDF is attached so they can read it anywhere; signing happens
- * on their Payments tab. `resign` when a new version replaces one they signed.
+ * on their Billing tab. `resign` when a new version replaces one they signed.
  */
 export function agreementRequestEmail({ name, versionLabel, signUrl, resign = false, deadline = null }) {
   const what = resign
-    ? `We have updated the Proximity commission agreement${versionLabel ? ` (${e(versionLabel)})` : ""}. Please review and sign the new version`
-    : `Please review and sign the Proximity commission agreement${versionLabel ? ` (${e(versionLabel)})` : ""}`;
+    ? `We have updated the Proximity marketing agreement${versionLabel ? ` (${e(versionLabel)})` : ""}. Please review and sign the new version`
+    : `Please review and sign the Proximity marketing agreement${versionLabel ? ` (${e(versionLabel)})` : ""}`;
   return {
-    subject: resign ? "Please sign the updated Proximity commission agreement" : "Please sign your Proximity commission agreement",
+    subject: resign ? "Please sign the updated Proximity marketing agreement" : "Please sign your Proximity marketing agreement",
     html: wrap(`
       ${hello(name)}
       <p>${what}${deadline ? ` by ${e(deadline)}` : ""}. It sets out the fee Proximity charges when it brings you a tenant. A copy is attached for your records.</p>
       ${button(signUrl, "Review and sign")}
-      <p>You sign it in your Proximity landlord dashboard, under Payments. It takes about two minutes, and you can view your signed copy there at any time.</p>
+      <p>You sign it in your Proximity landlord dashboard, under Billing. It takes about two minutes, and you can view your signed copy there at any time.</p>
       <p>Questions about the terms? Just reply to this email.</p>
     `),
   };
 }
 
 export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason, kind = "master" }) {
-  const what = kind === "amendment" ? "Exhibit A amendment" : "commission agreement";
+  const what = kind === "amendment" ? "Exhibit A amendment" : "marketing agreement";
   return {
-    subject: `${kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
+    subject: `${kind === "amendment" ? "Exhibit A amendment" : "Marketing agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
     html: wrap(`
       <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the ${what} in Documenso.</p>
       <p>Reason given: ${reason ? e(reason) : "none"}</p>
-      <p>The properties it would have covered stay as drafts while the agreement is required. Reach out to them; they can sign again from their Payments tab, or ask for changes there.</p>
+      <p>The properties it would have covered stay as drafts while the agreement is required. Reach out to them; they can sign again from their Billing tab, or ask for changes there.</p>
     `),
   };
 }
 
 // ── Agreement change requests ───────────────────────────────────────────────
 
-const DOC_LABEL = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
+const DOC_LABEL = { master: "the marketing agreement", amendment: "an Exhibit A amendment" };
 const quote = (s) =>
   `<blockquote style="margin:0 0 12px;padding-left:12px;border-left:3px solid #e5e7eb;white-space:pre-wrap">${e(s)}</blockquote>`;
 
@@ -255,7 +255,7 @@ export function changeRequestReminderEmail({ requests, adminUrl }) {
   return {
     subject: `${requests.length} agreement change request${requests.length === 1 ? "" : "s"} waiting for an answer`,
     html: wrap(`
-      <p>These landlords asked for changes to the commission agreement and have not heard back in 5 days or more:</p>
+      <p>These landlords asked for changes to the marketing agreement and have not heard back in 5 days or more:</p>
       <ul>${rows}</ul>
       ${button(adminUrl, "Answer in admin")}
     `),
@@ -265,19 +265,19 @@ export function changeRequestReminderEmail({ requests, adminUrl }) {
 // To the landlord: the team replied, accepted or declined.
 export function changeRequestUpdateEmail({ name, outcome, message, paymentsUrl }) {
   const lead = {
-    replied: "We replied to your request to change the commission agreement.",
+    replied: "We replied to your request to change the marketing agreement.",
     accepted:
-      "We agreed to your requested changes. We are preparing a version of the agreement for you, and you will be able to sign it in your Payments tab once it is ready.",
+      "We agreed to your requested changes. We are preparing a version of the agreement for you, and you will be able to sign it in your Billing tab once it is ready.",
     declined:
-      "We are not able to make the changes you asked for. You can still sign the standard agreement in your Payments tab, or reply with a new request.",
-  }[outcome] ?? "There is an update on your request to change the commission agreement.";
+      "We are not able to make the changes you asked for. You can still sign the standard agreement in your Billing tab, or reply with a new request.",
+  }[outcome] ?? "There is an update on your request to change the marketing agreement.";
   return {
     subject:
       outcome === "accepted"
-        ? "Your commission agreement change request was accepted"
+        ? "Your marketing agreement change request was accepted"
         : outcome === "declined"
-          ? "About your commission agreement change request"
-          : "We replied to your commission agreement change request",
+          ? "About your marketing agreement change request"
+          : "We replied to your marketing agreement change request",
     html: wrap(`
       ${hello(name)}
       <p>${lead}</p>
@@ -295,7 +295,7 @@ const longDate = (d) =>
 /*
  * The monthly invoice: what is on it, when it is due, and Pay now. With autopay
  * on it says which method will be charged and on what date, which is the notice
- * the landlord gets before the debit. `payUrl` is their Payments tab;
+ * the landlord gets before the debit. `payUrl` is their Billing tab;
  * `hostedUrl` is Stripe's invoice page, offered to pay another way.
  */
 export function invoiceIssuedEmail({ name, periodLabel, lines = [], totalCents, dueDate, payUrl, hostedUrl = null, autopay = null }) {
@@ -321,8 +321,8 @@ export function invoiceIssuedEmail({ name, periodLabel, lines = [], totalCents, 
       </table>
       ${
         autopay
-          ? `<p><strong>Autopay is on.</strong> We will charge ${e(autopay.methodDescription)} for ${e(formatCents(totalCents))} on ${e(longDate(autopay.scheduledFor))}. To pay another way first, or to turn autopay off, open your Payments page before then.</p>`
-          : "<p>Nothing is charged automatically. Pay it from your Payments page when you are ready.</p>"
+          ? `<p><strong>Autopay is on.</strong> We will charge ${e(autopay.methodDescription)} for ${e(formatCents(totalCents))} on ${e(longDate(autopay.scheduledFor))}. To pay another way first, or to turn autopay off, open your Billing page before then.</p>`
+          : "<p>Nothing is charged automatically. Pay it from your Billing page when you are ready.</p>"
       }
       ${button(payUrl, autopay ? "View invoice" : "Pay now")}
       ${hostedUrl ? `<p style="font-size:13px;color:#6b7280">You can also <a href="${e(hostedUrl)}">pay on Stripe's invoice page</a>, with a different card or bank account.</p>` : ""}
@@ -340,7 +340,7 @@ export function autopayOffEmail({ name, reason, methodDescription = null, paymen
       <p>Autopay for your Proximity invoices is now off, because ${e(reason)}${
         methodDescription ? ` (${e(methodDescription)})` : ""
       }.</p>
-      <p>Your next invoices will not be charged automatically. To turn autopay back on, choose a payment method on your Payments page.</p>
+      <p>Your next invoices will not be charged automatically. To turn autopay back on, choose a payment method on your Billing page.</p>
       ${button(paymentsUrl, "Choose a payment method")}
     `),
   };

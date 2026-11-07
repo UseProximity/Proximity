@@ -115,7 +115,7 @@ export default function EnrollmentPanel() {
               Also ask them to sign the commission agreement (tick once the agreement is ready)
             </label>
             <p className="text-xs text-gray-500">
-              The deadline is in the email and shown as a banner on each landlord&apos;s Payments tab until they have set up.
+              The deadline is in the email and shown as a banner on each landlord&apos;s Billing tab until they have set up.
               On the deadline, publishing requires a payment method (and a signed agreement, if ticked) automatically.
               Listings already live stay up.
             </p>

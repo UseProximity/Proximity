@@ -13,6 +13,7 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, exhibitChoice, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
+import { withdrawExcluded } from "./exhibitUnits.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
@@ -461,7 +462,7 @@ describe("paper agreements recorded by an admin", () => {
 describe("the publish check's message", () => {
   it("names the property to add, and stays out of the way for review sandbox accounts", () => {
     const uncovered = [{ listingId: "L3", address: "300 Draft Ave" }];
-    assert.match(gateMessage(["agreement"], uncovered), /add 300 Draft Ave to your commission agreement/);
+    assert.match(gateMessage(["agreement"], uncovered), /add 300 Draft Ave to your marketing agreement/);
     assert.match(gateMessage(["agreement"], [...uncovered, { listingId: "L4", address: "x" }]), /add 2 properties/);
     assert.equal(gateDecision({ role: "landlord", requireAgreement: true, agreementSigned: false, sandbox: true }).allowed, true);
     const props = [{ listingId: "L3", address: "300 Draft Ave" }];
@@ -734,5 +735,49 @@ describe("voiding a document from the admin dashboard", () => {
     const { db, documenso } = await signedMaster();
     await voidAgreement(db, documenso, { userId: "u1" });
     assert.deepEqual(coverage(db).map((c) => c.status), ["released", "released"]);
+  });
+});
+
+describe("leaving a live property off Exhibit A (2026-11-07)", () => {
+  // Pat owns L1 (live, an offering on Apt 1) and rents Apt 9 in L5, someone else's
+  // live building where Sam also lists Apt 8.
+  function liveWorld() {
+    const db = world();
+    db.tables.listings.push(listing("L5", "500 Shared Blvd"));
+    const lease = (id, owner, u) => ({ id, owner_id: owner, published_at: "2026-10-01T00:00:00Z", deleted_at: null, is_active: true, unavailable: false, listing_units: u });
+    db.tables.unit_leases.push(
+      lease("Q1", "u1", unit("U1", "L1", "Apt 1")),
+      lease("Q9", "u1", unit("U9", "L5", "Apt 9")),
+      lease("Q8", "u2", unit("U8", "L5", "Apt 8"))
+    );
+    return db;
+  }
+  const leaseOf = (db, id) => db.tables.unit_leases.find((l) => l.id === id);
+
+  it("withdraws the landlord's own offerings there, and the property can then come off", async () => {
+    const db = liveWorld();
+    const r = await withdrawExcluded(db, "u1", { listingIds: ["L1", "L5"] });
+    assert.deepEqual(r.listingIds.sort(), ["L1", "L5"]);
+    assert.equal(leaseOf(db, "Q1").is_active, false);
+    assert.equal(leaseOf(db, "Q1").unavailable, true);
+    assert.equal(leaseOf(db, "Q9").is_active, false);
+    assert.equal(leaseOf(db, "Q8").is_active, true, "another landlord's offering in the same building stays live");
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }, { listingId: "L5", include: false, excluded: true }] });
+    assert.deepEqual(ids(db.tables.landlord_agreements[0].exhibit), []);
+  });
+
+  it("a live property that was not withdrawn stays on, whatever the popup says", async () => {
+    const db = liveWorld();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }] });
+    assert.deepEqual(ids(db.tables.landlord_agreements[0].exhibit).sort(), ["L1", "L5"]);
+  });
+
+  it("never withdraws a property being published, or one that is not live", async () => {
+    const db = liveWorld();
+    const r = await withdrawExcluded(db, "u1", { listingIds: ["L1", "L2"], requestedIds: ["L1"] });
+    assert.deepEqual(r, { withdrawn: 0, listingIds: [] });
+    assert.equal(leaseOf(db, "Q1").is_active, true);
   });
 });

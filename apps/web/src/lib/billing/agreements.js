@@ -1,5 +1,5 @@
 /*
- * Each landlord's commission agreement: one master agreement (landlord_agreements)
+ * Each landlord's marketing agreement: one master agreement (landlord_agreements)
  * with an Exhibit A of covered properties, and Exhibit A amendments
  * (agreement_amendments) for properties added later. Landlords sign in the app
  * through Documenso; admins can still record a paper-signed master by hand.
@@ -357,6 +357,7 @@ function exhibitSelections(list) {
     if (!s || typeof s.listingId !== "string") continue;
     out.set(s.listingId, {
       include: s.include !== false,
+      ...(s.excluded === true && { excluded: true }),
       ...(typeof s.wholeBuilding === "boolean" && { wholeBuilding: s.wholeBuilding }),
       ...(Array.isArray(s.units) && { units: s.units.filter((u) => typeof u === "string").map((u) => u.trim()).filter(Boolean).slice(0, 200) }),
     });
@@ -502,7 +503,7 @@ export async function startSigning(
 
       const version = await getLiveVersion(db, { kind: plan.kind, landlordId: user.id });
       if (!version?.provider_template_id || !version.provider_recipient_id) {
-        const what = plan.kind === "amendment" ? "The Exhibit A amendment" : "The commission agreement";
+        const what = plan.kind === "amendment" ? "The Exhibit A amendment" : "The marketing agreement";
         throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
       }
 
@@ -724,7 +725,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
   // (templateFieldSummary), so one without it is not offered for signing.
   if (!idsOf(boxes, "exhibit").length) {
     console.error(`billing: version ${version.id} has no "Exhibit A" box; not offering it for signing`);
-    const what = isAmendment ? "The Exhibit A amendment" : "The commission agreement";
+    const what = isAmendment ? "The Exhibit A amendment" : "The marketing agreement";
     throw new BillingError("not_available", `${what} is not ready to sign yet. We will email you when it is.`, 409);
   }
   // An Addendum to Exhibit A lists only what it adds (Wyatt, 2026-11-07): new
@@ -769,7 +770,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     exhibit: null,
     email: user.email,
     name,
-    title: isAmendment ? "Exhibit A amendment" : "Commission agreement",
+    title: isAmendment ? "Exhibit A amendment" : "Marketing agreement",
     externalId,
   });
   const saved = {

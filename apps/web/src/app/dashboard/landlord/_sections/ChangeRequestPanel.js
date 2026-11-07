@@ -1,7 +1,7 @@
 "use client";
 
 /*
- * "Request changes" for the commission agreement, on the landlord's Payments tab.
+ * "Request changes" for the marketing agreement, on the landlord's Payments tab.
  * Documenso has no redlining, so a landlord who wants different wording asks here:
  * which section, what and why, their proposed wording, and optionally their
  * marked-up copy (PDF or Word, 4 MB). The team answers in the same thread.
@@ -35,7 +35,7 @@ export const CHANGE_STATUS = {
   withdrawn: { label: "Withdrawn", className: "bg-gray-100 text-gray-700" },
 };
 const ACTIVE = ["open", "answered", "accepted"];
-const DOC = { master: "the commission agreement", amendment: "an Exhibit A amendment" };
+const DOC = { master: "the marketing agreement", amendment: "an Exhibit A amendment" };
 
 const when = (iso) =>
   new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });

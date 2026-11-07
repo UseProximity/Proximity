@@ -33,9 +33,9 @@ describe("setupSessionParams", () => {
     const p = setupSessionParams({ ...base, type: "card" });
     assert.equal(
       p.success_url,
-      "http://localhost:3000/dashboard/landlord?tab=payments&setup=success&session_id={CHECKOUT_SESSION_ID}"
+      "http://localhost:3000/dashboard/landlord?tab=billing&setup=success&session_id={CHECKOUT_SESSION_ID}"
     );
-    assert.equal(p.cancel_url, "http://localhost:3000/dashboard/landlord?tab=payments&setup=cancelled");
+    assert.equal(p.cancel_url, "http://localhost:3000/dashboard/landlord?tab=billing&setup=cancelled");
   });
 
   it("refuses any other payment method type", () => {

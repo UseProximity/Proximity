@@ -8,6 +8,9 @@
  *       property (unpublished, no leases) or a new name for one (a floor plan or
  *       unit). Only on a property they own, or, for a renter, one where they have
  *       leases (renaming: a unit holding their leases).
+ *   withdrawExcluded(db, userId, { listingIds, requestedIds })  a live property
+ *       the landlord leaves off Exhibit A comes off the site: their own offerings
+ *       on it are withdrawn, as the dashboard's Withdraw does (Wyatt, 2026-11-07).
  *
  * `db` is a service-role Supabase client.
  */
@@ -41,6 +44,8 @@ export async function exhibitPreview(db, userId, { listingIds = [], now = new Da
         draft: p.draft,
         canWholeBuilding: !!p.owner,
         locked: locked.has(p.listingId),
+        // Anything but a property being published can be left off; a live one then comes off the site.
+        canExclude: !requested.includes(p.listingId),
         units: p.unitList,
         leaseUnits: p.leaseUnits,
         covered: cov ? { wholeBuilding: cov.whole_building !== false, units: cov.units ?? [] } : null,
@@ -124,4 +129,33 @@ export async function renameUnit(db, userId, { unitId, name }) {
   const { error: saveError } = await db.from("listing_units").update({ name: label }).eq("id", unit.id);
   if (saveError) throw saveError;
   return { id: unit.id, label };
+}
+
+/*
+ * Leaving a live property off Exhibit A takes it off the site (Wyatt, 2026-11-07):
+ * the landlord's own offerings on it are withdrawn (is_active false, unavailable
+ * true, the same edit as the dashboard's Withdraw). On a building they do not own
+ * only their offerings come off; other landlords' stay. Putting one back is
+ * publishing again, which asks for an Exhibit A addendum. A property being
+ * published (requestedIds) is never withdrawn here. Returns { withdrawn, listingIds }.
+ */
+export async function withdrawExcluded(db, userId, { listingIds = [], requestedIds = [] } = {}) {
+  const { properties } = await coverageFor(db, userId);
+  const requested = new Set(await resolvePublishedIds(db, requestedIds));
+  const targets = new Set(
+    properties.filter((p) => p.live && listingIds.includes(p.listingId) && !requested.has(p.listingId)).map((p) => p.listingId)
+  );
+  if (!targets.size) return { withdrawn: 0, listingIds: [] };
+  const { data, error } = await db
+    .from("unit_leases")
+    .select("id, is_active, listing_units!unit_id(listing_id)")
+    .eq("owner_id", userId)
+    .is("deleted_at", null);
+  if (error) throw error;
+  const ids = (data ?? []).filter((l) => l.is_active !== false && targets.has(l.listing_units?.listing_id)).map((l) => l.id);
+  if (ids.length) {
+    const { error: upError } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids).eq("owner_id", userId);
+    if (upError) throw upError;
+  }
+  return { withdrawn: ids.length, listingIds: [...targets] };
 }

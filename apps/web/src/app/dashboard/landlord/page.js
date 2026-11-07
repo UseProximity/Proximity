@@ -145,7 +145,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
      */
     const view =
       (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
-      (activeView === "payments" && !canSeePayments)
+      (activeView === "billing" && !canSeePayments)
         ? "properties"
         : activeView;
 
@@ -177,7 +177,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
-      case "payments":
+      case "billing":
         return <PaymentsSection />;
       case "profile":
       default:
@@ -439,15 +439,15 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                   </>)}
                   {canSeePayments && (
                   <button
-                    onClick={() => handleNavigation("payments")}
+                    onClick={() => handleNavigation("billing")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                      activeView === "payments"
+                      activeView === "billing"
                         ? "bg-red-50 text-red-700"
                         : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
                     <CreditCard className="h-4 w-4" />
-                    Payments
+                    Billing
                   </button>
                   )}
                   {isLandlord && (

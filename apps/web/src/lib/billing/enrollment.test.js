@@ -55,23 +55,23 @@ describe("sendEnrollmentEmails", () => {
 });
 
 describe("enrollmentEmail", () => {
-  const url = "https://useproximity.org/dashboard/landlord?tab=payments";
+  const url = "https://useproximity.org/dashboard/landlord?tab=billing";
 
   it("asks for a payment method and the agreement when the agreement is ready", () => {
     const { html } = enrollmentEmail({ name: "Pat", deadline: "December 15, 2026", includeAgreement: true, paymentsUrl: url });
-    assert.match(html, /add a payment method and sign the commission agreement by December 15, 2026/);
+    assert.match(html, /add a payment method and sign the marketing agreement by December 15, 2026/);
     assert.ok(html.includes(url));
   });
 
   it("asks only for a payment method until the agreement is ready", () => {
     const { html } = enrollmentEmail({ name: "Pat", deadline: "December 15, 2026", includeAgreement: false, paymentsUrl: url });
     assert.match(html, /add a payment method by December 15, 2026/);
-    assert.ok(!/commission agreement/.test(html));
+    assert.ok(!/marketing agreement/.test(html));
   });
 
   it("works without a deadline and never uses an em dash", () => {
     const { html, subject } = enrollmentEmail({ name: "Pat", paymentsUrl: url });
-    assert.match(html, /sign the commission agreement\. A bank account/);
+    assert.match(html, /sign the marketing agreement\. A bank account/);
     assert.ok(!html.includes("undefined"));
     const dash = String.fromCharCode(0x2014);
     assert.ok(!html.includes(dash) && !subject.includes(dash));

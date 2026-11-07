@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-06T22:08:45.825Z",
+  "_generated": "2026-11-07T00:08:15.640Z",
   "count": 309,
   "utils": [
     {
@@ -345,7 +345,7 @@
     },
     {
       "file": "src/lib/billing/agreements.js",
-      "description": "Each landlord's commission agreement: one master agreement (landlord_agreements)"
+      "description": "Each landlord's marketing agreement: one master agreement (landlord_agreements)"
     },
     {
       "file": "src/lib/billing/agreements.test.js",
@@ -477,7 +477,7 @@
     },
     {
       "file": "src/lib/billing/documenso.js",
-      "description": "Documenso, the e-signature provider for the commission agreement (Teams plan)."
+      "description": "Documenso, the e-signature provider for the marketing agreement (Teams plan)."
     },
     {
       "file": "src/lib/billing/enrollment.js",

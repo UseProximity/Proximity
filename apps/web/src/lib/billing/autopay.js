@@ -58,7 +58,7 @@ export function consentText(methodDescription) {
   return (
     `I authorise Proximity to charge ${methodDescription} for the full amount of each monthly Proximity invoice, ` +
     `${AUTOPAY_BUSINESS_DAYS} business days after the invoice is emailed to me, until I turn autopay off. ` +
-    "I can turn autopay off at any time on my Payments page."
+    "I can turn autopay off at any time on my Billing page."
   );
 }
 

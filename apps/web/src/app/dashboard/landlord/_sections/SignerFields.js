@@ -108,8 +108,15 @@ export default function SignerFields({ state }) {
         onChange={(e) => set({ company: e.target.value })}
       />
       <Field label="Email" type="email" value={v.email} maxLength={254} autoComplete="email" onChange={(e) => set({ email: e.target.value })} />
+      {/* The agreement sends formal notices to this address (its Notices clause). */}
+      <div className="sm:col-span-2">
+        <p className="text-sm font-medium text-gray-900">Mailing address for notices</p>
+        <p className="text-xs text-gray-500">
+          Where we send formal notices about this agreement. Usually your office or home address.
+        </p>
+      </div>
       <label className="block text-sm font-medium text-gray-700">
-        Address line 1
+        Street address
         <div className="mt-1">
           <AddressSearchInput
             value={v.address1}
@@ -131,7 +138,7 @@ export default function SignerFields({ state }) {
         ) : null}
       </label>
       <Field
-        label="Address line 2"
+        label="Suite or unit"
         optional
         value={v.address2}
         maxLength={60}

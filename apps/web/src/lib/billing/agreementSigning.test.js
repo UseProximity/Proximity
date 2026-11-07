@@ -1,7 +1,7 @@
 /*
  * Run with: npm test (from apps/web).
  *
- * Signing the commission agreement in the app through Documenso, against a fake
+ * Signing the marketing agreement in the app through Documenso, against a fake
  * Documenso and an in-memory database: the request shapes we send Documenso, the
  * webhook secret, starting and resuming a signing, finishing it (signed, declined,
  * cancelled), the enrollment deadline switching the requirements on, and the admin
@@ -184,14 +184,14 @@ describe("one Documenso team for every environment", () => {
       return { ok: true, status: 200, json: async () => body, text: async () => "" };
     };
     const client = createDocumensoClient({ apiKey: "k", fetchImpl, folderId: "folder_test", titlePrefix: "[TEST] ", envTag: "staging" });
-    await client.createTemplate({ title: "Proximity commission agreement (Dec)", pdfBytes: new Uint8Array([37]), externalId: "agreement-version:v1" });
+    await client.createTemplate({ title: "Proximity marketing agreement (Dec)", pdfBytes: new Uint8Array([37]), externalId: "agreement-version:v1" });
     await client.createSigningCopy({ templateId: "envelope_t", recipientId: 1, email: "pat@x.com", name: "Pat", externalId: "landlord-agreement:a1" });
     const template = JSON.parse(sent[0].init.body.get("payload"));
-    assert.equal(template.title, "[TEST] Proximity commission agreement (Dec)");
+    assert.equal(template.title, "[TEST] Proximity marketing agreement (Dec)");
     assert.equal(template.folderId, undefined, "templates are not filed in the document folder");
     assert.equal(template.externalId, "staging:agreement-version:v1");
     const copy = JSON.parse(sent[1].init.body.get("payload"));
-    assert.equal(copy.override.title, "[TEST] Commission agreement: Pat (pat@x.com)");
+    assert.equal(copy.override.title, "[TEST] Marketing agreement: Pat (pat@x.com)");
     assert.equal(copy.folderId, "folder_test");
     assert.equal(copy.externalId, "staging:landlord-agreement:a1");
   });

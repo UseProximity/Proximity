@@ -45,7 +45,7 @@ export function PublishChecklist({ gate, hasActivePaymentMethod }) {
         {gate.requirePaymentMethod && <Requirement done={hasActivePaymentMethod}>Add an active payment method</Requirement>}
         {gate.requireAgreement && (
           <Requirement done={gate.agreement?.status === "signed"}>
-            Sign the commission agreement. New properties are added to it when you publish them.
+            Sign the marketing agreement. New properties are added to it when you publish them.
           </Requirement>
         )}
       </ul>
@@ -83,7 +83,7 @@ function PropertyList({ items }) {
 }
 
 // The landlord's signed documents, each one PDF (Wyatt, 2026-11-06): the
-// commission agreement with its original Exhibit A, and an Exhibit A amendment
+// marketing agreement with its original Exhibit A, and an Exhibit A amendment
 // for each time properties were added, showing Exhibit A before and after.
 function Documents({ open, busy }) {
   const [docs, setDocs] = useState(null);
@@ -109,7 +109,7 @@ function Documents({ open, busy }) {
         return (
           <li key={`${d.kind}:${d.id}`} className="flex flex-wrap items-center gap-2 py-2">
             <span className="min-w-0 flex-1 text-gray-800">
-              {d.kind === "amendment" ? "Exhibit A amendment" : "Commission agreement"}, signed {d.signedAt ? dateOnly(d.signedAt) : ""}
+              {d.kind === "amendment" ? "Exhibit A amendment" : "Marketing agreement"}, signed {d.signedAt ? dateOnly(d.signedAt) : ""}
               {d.status === "superseded" ? <span className="text-xs text-gray-400"> (replaced)</span> : null}
               <span className="block text-xs text-gray-500">
                 {d.kind === "amendment"
@@ -130,7 +130,7 @@ function Documents({ open, busy }) {
 }
 
 /*
- * The commission agreement on the Payments tab: where the landlord stands, which
+ * The marketing agreement on the Payments tab: where the landlord stands, which
  * properties it covers, signing it (or initialing an updated Exhibit A for
  * properties not covered yet), and every signed document. It folds to its header
  * when there is nothing to do. The checklist only lists a requirement that is
@@ -203,14 +203,14 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   return (
     <CollapsibleSection
       id="commission-agreement"
-      title="Commission agreement"
+      title="Marketing agreement"
       defaultOpen={needsAction}
       badge={<span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>}
       summary={summary}
       banner={
         showWindow ? (
           <div className="rounded-t-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Proximity now collects fees in the app. Please {needsAgreement ? "add a payment method and sign the commission agreement" : "add a payment method"} by{" "}
+            Proximity now collects fees in the app. Please {needsAgreement ? "add a payment method and sign the marketing agreement" : "add a payment method"} by{" "}
             <strong>{deadline}</strong>. A bank account (ACH) is the recommended option.
           </div>
         ) : null
@@ -227,7 +227,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
             </p>
             {(agreement.hasSignedFile || agreement.hasSignedExhibit) && (
               <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master" })}>
-                View commission agreement
+                View marketing agreement
               </button>
             )}
           </div>

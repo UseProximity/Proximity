@@ -1,7 +1,7 @@
 /*
  * Run with: npm test (from apps/web).
  *
- * Landlords' requests to change the commission agreement, against an in-memory
+ * Landlords' requests to change the marketing agreement, against an in-memory
  * database: the status rules, opening, replying, withdrawing, the admin answers,
  * resolving on signing, who may open an attachment, the 5 day reminder, and the
  * attachment checks. No database, bucket or email needed.

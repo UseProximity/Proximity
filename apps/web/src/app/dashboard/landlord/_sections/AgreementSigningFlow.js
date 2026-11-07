@@ -151,7 +151,8 @@ function AddUnit({ listingId, onAdded }) {
   );
 }
 
-// One property on the Exhibit A step: on it or off it (drafts only), the whole building or its units.
+// One property on the Exhibit A step: on it or left off (anything not being
+// published; a live one then comes off the site), the whole building or its units.
 function PropertyChoice({ p, choice, onChange }) {
   const covered = p.covered;
   const coveredUnits = new Set(covered?.wholeBuilding ? [] : covered?.units ?? []);
@@ -169,14 +170,21 @@ function PropertyChoice({ p, choice, onChange }) {
         <p className="min-w-0 flex-1 text-sm font-medium text-gray-900">{p.address}</p>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.locked ? "bg-green-50 text-green-800" : "bg-gray-100 text-gray-600"}`}>{status}</span>
       </div>
-      {!p.locked && (
+      {p.canExclude && (
         <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={choice.include} onChange={(e) => onChange({ ...choice, include: e.target.checked })} />
-          Put this draft on Exhibit A
+          <input type="checkbox" checked={!choice.include} onChange={(e) => onChange({ ...choice, include: !e.target.checked })} />
+          Exclude this property from Exhibit A
         </label>
       )}
-      {!p.locked && !choice.include ? (
-        <p className="text-xs text-gray-500">Left off. Publishing it later will need a short Exhibit A amendment.</p>
+      {!choice.include ? (
+        p.live ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            This property is live. Excluding it takes your listings there off the site, so students will no longer see them. You can publish them
+            again later with a short Exhibit A addendum.
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">Excluded. Publishing it later will need a short Exhibit A addendum.</p>
+        )
       ) : (
         <>
           {p.canWholeBuilding ? (
@@ -225,7 +233,7 @@ function PropertyChoice({ p, choice, onChange }) {
 }
 
 /*
- * Signing the commission agreement, or an Exhibit A amendment, all in one popup
+ * Signing the marketing agreement, or an Exhibit A amendment, all in one popup
  * (Payments tab and the publish dialog; Wyatt, 2026-11-07), with a progress bar:
  *
  *   1. Your details  name, title, company, email and address, pre-filled from the
@@ -254,6 +262,8 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
   // An Addendum to Exhibit A with the agreement's saved details: only the properties
   // are asked, then Documenso, where they only sign (Wyatt, 2026-11-07).
   const [addendum, setAddendum] = useState(false);
+  // Live properties left off: confirmed before they come off the site.
+  const [confirmingOff, setConfirmingOff] = useState(false);
   const prepared = useRef(null);
   const closeRef = useRef(null);
   const ids = listingIds.join(",");
@@ -311,7 +321,25 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
     }
   };
 
-  const exhibit = () => Object.entries(choices).map(([listingId, c]) => ({ listingId, include: c.include, wholeBuilding: c.wholeBuilding, units: c.units }));
+  const exhibit = () =>
+    Object.entries(choices).map(([listingId, c]) => ({ listingId, include: c.include, ...(c.include === false && { excluded: true }), wholeBuilding: c.wholeBuilding, units: c.units }));
+  // Live properties the landlord is leaving off, which come off the site on Continue.
+  const liveExcluded = (preview?.properties ?? []).filter((p) => p.live && p.canExclude && choices[p.listingId]?.include === false);
+
+  // Continue from Exhibit A: a live property left off is confirmed, then withdrawn, first.
+  const continueExhibit = async ({ confirmed = false } = {}) => {
+    if (liveExcluded.length && !confirmed) return setConfirmingOff(true);
+    setConfirmingOff(false);
+    setError(null);
+    if (liveExcluded.length) {
+      try {
+        await call("/api/billing/agreement/exclude", { method: "POST", body: { listingIds: liveExcluded.map((p) => p.listingId), requestedIds: listingIds } });
+      } catch (err) {
+        return setError(err.message);
+      }
+    }
+    return addendum ? openAddendum() : confirmExhibit();
+  };
   const body = () => ({ ...signer.body(), authorized, listingIds, exhibit: exhibit() });
 
   // Units the landlord added or renamed show in the next preview; keep the list in step.
@@ -386,10 +414,10 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
 
   const isAmendment = preview?.kind === "amendment";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Sign the commission agreement">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Sign the marketing agreement">
       <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
-          <h2 className="flex-1 text-base font-semibold text-gray-900">{isAmendment ? "Add to your commission agreement" : "Sign the commission agreement"}</h2>
+          <h2 className="flex-1 text-base font-semibold text-gray-900">{isAmendment ? "Add to your marketing agreement" : "Sign the marketing agreement"}</h2>
           <button ref={closeRef} type="button" disabled={phase === "opening"} onClick={() => onFinished("closed")} className={BUTTON}>
             Cancel
           </button>
@@ -444,6 +472,27 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                   ))}
                 </ul>
                 {exhibitProblem && <p className="text-xs text-red-700">{exhibitProblem}</p>}
+                {confirmingOff ? (
+                  <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900">
+                    <p className="font-medium">
+                      Take {liveExcluded.length === 1 ? "this property" : `these ${liveExcluded.length} properties`} off the site?
+                    </p>
+                    <ul className="list-disc pl-5 text-xs">
+                      {liveExcluded.map((p) => (
+                        <li key={p.listingId}>{p.address}</li>
+                      ))}
+                    </ul>
+                    <p className="text-xs">Your listings there are withdrawn now, so students will no longer see them. You can publish them again later with a short Exhibit A addendum.</p>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
+                        Go back
+                      </button>
+                      <button type="button" className={PRIMARY} onClick={() => continueExhibit({ confirmed: true })}>
+                        Take off the site and continue
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="flex justify-between">
                   {addendum ? (
                     <span />
@@ -452,10 +501,11 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                       Back
                     </button>
                   )}
-                  <button type="button" className={PRIMARY} disabled={!!exhibitProblem} onClick={addendum ? openAddendum : confirmExhibit}>
+                  <button type="button" className={PRIMARY} disabled={!!exhibitProblem} onClick={() => continueExhibit()}>
                     {addendum ? "Open the addendum" : "Continue"}
                   </button>
                 </div>
+                )}
               </>
             )}
 

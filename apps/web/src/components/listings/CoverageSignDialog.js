@@ -6,7 +6,7 @@ import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSi
 
 /*
  * Shown when a publish is refused only because the properties are not on the
- * landlord's commission agreement yet (listing gate, `uncovered`). It is the
+ * landlord's marketing agreement yet (listing gate, `uncovered`). It is the
  * signing popup (AgreementSigningFlow: details, Exhibit A, license), opened for
  * the properties being published, which are always on Exhibit A. Once Documenso
  * confirms the signature, `onSigned` runs: the caller publishes again. Closing it
@@ -17,7 +17,7 @@ import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSi
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const ids = uncovered.map((u) => u.listingId).filter(Boolean);
   const names = uncovered.map((u) => (u.missingUnits?.length ? `${u.address} (units ${u.missingUnits.join(", ")})` : u.address));
-  const intro = `To publish ${names.join("; ")}, ${names.length === 1 ? "it needs" : "they need"} to be on your commission agreement's Exhibit A. Your drafts stay saved whatever you choose.`;
+  const intro = `To publish ${names.join("; ")}, ${names.length === 1 ? "it needs" : "they need"} to be on your marketing agreement's Exhibit A. Your drafts stay saved whatever you choose.`;
   return (
     <AgreementSigningFlow
       listingIds={ids}

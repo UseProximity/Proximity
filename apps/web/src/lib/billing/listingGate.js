@@ -1,7 +1,7 @@
 /*
  * The listing gate: before a landlord puts a new listing, unit or offering in
  * front of students they need an Active payment method and, when that
- * requirement is on, a Signed commission agreement. Landlords may skip both when
+ * requirement is on, a Signed marketing agreement. Landlords may skip both when
  * they create an account; this is where it bites.
  *
  * Scope (the PRD's open question, answered with its recommendation):
@@ -58,7 +58,7 @@ export function gateDecision({ role, requirePaymentMethod, requireAgreement, has
 const PARTS = {
   overdue_invoice: "pay your overdue invoice",
   payment_method: "add an active payment method",
-  agreement: "sign the commission agreement",
+  agreement: "sign the marketing agreement",
 };
 
 // What to tell a landlord who is blocked. Plain words, and where to fix it.
@@ -68,13 +68,13 @@ export function gateMessage(missing, uncovered = []) {
     .map((m) =>
       m === "agreement" && uncovered.length
         ? named.length
-          ? `add ${named.length === 1 ? named[0] : `${named.length} properties`} to your commission agreement`
-          : "add this property to your commission agreement"
+          ? `add ${named.length === 1 ? named[0] : `${named.length} properties`} to your marketing agreement`
+          : "add this property to your marketing agreement"
         : PARTS[m]
     )
     .filter(Boolean);
   const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
-  return `Before you can publish a listing you need to ${list}. You can do this under Payments in your landlord dashboard. Your drafts are saved.`;
+  return `Before you can publish a listing you need to ${list}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
 }
 
 // The body a route returns when the gate says no. `uncovered` lets the page open
@@ -197,4 +197,4 @@ export async function isLeaseHeldForBilling(db, leaseId) {
 }
 
 export const HELD_FOR_BILLING_MESSAGE =
-  "This listing was withdrawn because an invoice is overdue. Pay the invoice under Payments and we will put it back.";
+  "This listing was withdrawn because an invoice is overdue. Pay the invoice under Billing and we will put it back.";

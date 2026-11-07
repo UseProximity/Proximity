@@ -37,7 +37,7 @@ export const SETUP_TYPES = ["us_bank_account", "card"];
 // depending on how Stripe orders the choices.
 export function setupSessionParams({ customerId, userId, type, baseUrl }) {
   if (!SETUP_TYPES.includes(type)) throw new BillingError("bad_type", "Unsupported payment method type.");
-  const back = `${baseUrl}/dashboard/landlord?tab=payments`;
+  const back = `${baseUrl}/dashboard/landlord?tab=billing`;
   return {
     mode: "setup",
     customer: customerId,

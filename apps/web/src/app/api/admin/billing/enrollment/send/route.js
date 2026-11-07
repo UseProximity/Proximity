@@ -40,7 +40,7 @@ export async function POST(req) {
     const input = {
       deadline: formatDeadline(window.deadline),
       includeAgreement: window.includeAgreement,
-      paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=payments`,
+      paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing`,
     };
 
     if (mode === "test") {
