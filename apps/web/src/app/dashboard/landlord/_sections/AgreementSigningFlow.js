@@ -179,8 +179,8 @@ function PropertyChoice({ p, choice, onChange }) {
       {!choice.include ? (
         p.live ? (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            This property is live. Leaving it uncovered takes your listings there off the site, so students will no longer see them. You can publish them
-            again later by adding it to your agreement with a short addendum.
+            This property is live. Leaving it uncovered takes your listings there off the site once you sign, so students will no longer see them. You
+            can publish them again later by adding it to your agreement with a short addendum.
           </p>
         ) : (
           <p className="text-xs text-gray-500">Not covered. To publish it later, you will add it to your agreement with a short addendum.</p>
@@ -323,21 +323,15 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
 
   const exhibit = () =>
     Object.entries(choices).map(([listingId, c]) => ({ listingId, include: c.include, ...(c.include === false && { excluded: true }), wholeBuilding: c.wholeBuilding, units: c.units }));
-  // Live properties the landlord is leaving off, which come off the site on Continue.
+  // Live properties the landlord is leaving off, which come off the site once the document is signed.
   const liveExcluded = (preview?.properties ?? []).filter((p) => p.live && p.canExclude && choices[p.listingId]?.include === false);
 
-  // Continue from Exhibit A: a live property left off is confirmed, then withdrawn, first.
-  const continueExhibit = async ({ confirmed = false } = {}) => {
+  // Continue from Exhibit A: a live property left off is confirmed first. It comes
+  // off the site only when the document is signed, so closing the popup changes nothing.
+  const continueExhibit = ({ confirmed = false } = {}) => {
     if (liveExcluded.length && !confirmed) return setConfirmingOff(true);
     setConfirmingOff(false);
     setError(null);
-    if (liveExcluded.length) {
-      try {
-        await call("/api/billing/agreement/exclude", { method: "POST", body: { listingIds: liveExcluded.map((p) => p.listingId), requestedIds: listingIds } });
-      } catch (err) {
-        return setError(err.message);
-      }
-    }
     return addendum ? openAddendum() : confirmExhibit();
   };
   const body = () => ({ ...signer.body(), authorized, listingIds, exhibit: exhibit() });
@@ -482,13 +476,13 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                         <li key={p.listingId}>{p.address}</li>
                       ))}
                     </ul>
-                    <p className="text-xs">Your listings there are withdrawn now, so students will no longer see them. You can publish them again later by adding them to your agreement with a short addendum.</p>
+                    <p className="text-xs">Your listings there are withdrawn when you sign, so students will no longer see them. Until then nothing changes. You can publish them again later by adding them to your agreement with a short addendum.</p>
                     <div className="flex justify-end gap-2">
                       <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
                         Go back
                       </button>
                       <button type="button" className={PRIMARY} onClick={() => continueExhibit({ confirmed: true })}>
-                        Take off the site and continue
+                        Leave off and continue
                       </button>
                     </div>
                   </div>

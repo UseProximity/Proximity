@@ -8,9 +8,9 @@
  *       property (unpublished, no leases) or a new name for one (a floor plan or
  *       unit). Only on a property they own, or, for a renter, one where they have
  *       leases (renaming: a unit holding their leases).
- *   withdrawExcluded(db, userId, { listingIds, requestedIds })  a live property
- *       the landlord leaves off Exhibit A comes off the site: their own offerings
- *       on it are withdrawn, as the dashboard's Withdraw does (Wyatt, 2026-11-07).
+ *   A live property the landlord leaves off Exhibit A comes off the site once the
+ *       document is signed (planCoverage's `withdraw`, applied in applyEnvelope),
+ *       never on Continue, so an abandoned popup changes nothing.
  *
  * `db` is a service-role Supabase client.
  */
@@ -144,34 +144,4 @@ export async function renameUnit(db, userId, { unitId, name }) {
   const { error: saveError } = await db.from("listing_units").update({ name: label }).eq("id", unit.id);
   if (saveError) throw saveError;
   return { id: unit.id, label };
-}
-
-/*
- * Leaving a live property off Exhibit A takes it off the site (Wyatt, 2026-11-07):
- * the landlord's own offerings on it are withdrawn (is_active false, unavailable
- * true, the same edit as the dashboard's Withdraw). On a building they do not own
- * only their offerings come off; other landlords' stay. Putting one back is
- * publishing again, which asks for an Exhibit A addendum. A property being
- * published (requestedIds) is never withdrawn here. Returns { withdrawn, listingIds }.
- */
-export async function withdrawExcluded(db, userId, { listingIds = [], requestedIds = [] } = {}) {
-  const { properties } = await coverageFor(db, userId);
-  const requested = new Set(await resolvePublishedIds(db, requestedIds));
-  const targets = new Set(
-    properties.filter((p) => p.live && listingIds.includes(p.listingId) && !requested.has(p.listingId)).map((p) => p.listingId)
-  );
-  if (!targets.size) return { withdrawn: 0, listingIds: [] };
-  const ids = (await leasesOn(db, userId, [...targets])).filter((l) => l.is_active !== false).map((l) => l.id);
-  for (let i = 0; i < ids.length; i += 200) {
-    const { error: upError } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids.slice(i, i + 200)).eq("owner_id", userId);
-    if (upError) throw upError;
-  }
-  // Never let a property the landlord excluded quietly stay live and go on the document.
-  const after = await coverageFor(db, userId);
-  const stillLive = after.properties.filter((p) => targets.has(p.listingId) && p.live);
-  if (stillLive.length) {
-    console.error(`billing: excluded properties still live for ${userId}: ${stillLive.map((p) => p.listingId).join(", ")}`);
-    throw new BillingError("withdraw_failed", `We could not take ${stillLive.map((p) => p.address).join("; ")} off the site. Try again, or contact us.`, 500);
-  }
-  return { withdrawn: ids.length, listingIds: [...targets] };
 }

@@ -13,7 +13,6 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, displayAddress, exhibitChoice, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
-import { withdrawExcluded } from "./exhibitUnits.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
@@ -107,6 +106,12 @@ describe("planCoverage (the pure rule)", () => {
     const plan = planCoverage({ properties: gone, rows, master: { id: "m1" }, masterValid: false });
     assert.equal(plan.kind, "master");
     assert.deepEqual(ids(plan.entries), ["L1"]);
+  });
+
+  it("an uncovered live property left off, with nothing else to add: nothing to sign, withdrawn at once", () => {
+    const plan = planCoverage({ properties, rows: [], master: { id: "m1" }, masterValid: true, selections: new Map([["L1", { include: false, excluded: true }]]) });
+    assert.equal(plan.kind, "none");
+    assert.deepEqual(plan.withdraw, ["L1"]);
   });
 
   it("keeps what a replaced copy proposed (carry)", () => {
@@ -769,30 +774,35 @@ describe("leaving a live property off Exhibit A (2026-11-07)", () => {
   }
   const leaseOf = (db, id) => db.tables.unit_leases.find((l) => l.id === id);
 
-  it("withdraws the landlord's own offerings there, and the property can then come off", async () => {
+  it("leaves it off the document but keeps it live until the document is signed", async () => {
     const db = liveWorld();
-    const r = await withdrawExcluded(db, "u1", { listingIds: ["L1", "L5"] });
-    assert.deepEqual(r.listingIds.sort(), ["L1", "L5"]);
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }, { listingId: "L5", include: false, excluded: true }] });
+    const doc = db.tables.landlord_agreements[0];
+    assert.deepEqual(ids(doc.exhibit), []);
+    assert.deepEqual([...doc.withdraw_on_sign].sort(), ["L1", "L5"]);
+    assert.equal(leaseOf(db, "Q1").is_active, true, "an unsigned (or abandoned) popup changes nothing");
+    documenso.complete("envelope_1");
+    assert.equal(await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned }), "signed");
     assert.equal(leaseOf(db, "Q1").is_active, false);
     assert.equal(leaseOf(db, "Q1").unavailable, true);
     assert.equal(leaseOf(db, "Q9").is_active, false);
     assert.equal(leaseOf(db, "Q8").is_active, true, "another landlord's offering in the same building stays live");
-    const documenso = fakeDocumenso();
-    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }, { listingId: "L5", include: false, excluded: true }] });
-    assert.deepEqual(ids(db.tables.landlord_agreements[0].exhibit), []);
   });
 
-  it("a live property that was not withdrawn stays on, whatever the popup says", async () => {
+  it("a live property the popup does not exclude stays on the document", async () => {
     const db = liveWorld();
     const documenso = fakeDocumenso();
-    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }] });
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false }] });
     assert.deepEqual(ids(db.tables.landlord_agreements[0].exhibit).sort(), ["L1", "L5"]);
+    assert.deepEqual(db.tables.landlord_agreements[0].withdraw_on_sign, []);
   });
 
-  it("never withdraws a property being published, or one that is not live", async () => {
+  it("never withdraws a property being published", async () => {
     const db = liveWorld();
-    const r = await withdrawExcluded(db, "u1", { listingIds: ["L1", "L2"], requestedIds: ["L1"] });
-    assert.deepEqual(r, { withdrawn: 0, listingIds: [] });
-    assert.equal(leaseOf(db, "Q1").is_active, true);
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L1"], exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }] });
+    assert.ok(ids(db.tables.landlord_agreements[0].exhibit).includes("L1"));
+    assert.deepEqual(db.tables.landlord_agreements[0].withdraw_on_sign, []);
   });
 });

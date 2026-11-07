@@ -41,7 +41,8 @@ function memoryDb(tables) {
       in(col, vs) { filters.push((r) => vs.includes(r[col])); return api; },
       not(col, _op, v) { filters.push((r) => (r[col] ?? null) !== v); return api; },
       lte(col, v) { filters.push((r) => r[col] != null && r[col] <= v); return api; },
-      gt(col, v) { filters.push((r) => r[col] > v); return api; },
+      gt(col, v) { filters.push((r) => r[col] != null && r[col] > v); return api; },
+      lt(col, v) { filters.push((r) => r[col] != null && r[col] < v); return api; },
       order() { return api; },
       limit() { return api; },
       insert(row) {
@@ -273,6 +274,45 @@ describe("runAutopayJob", () => {
     assert.equal(db.tables.autopay_authorizations[0].revoked_at, null, "one failure keeps autopay on");
     await runAutopayJob(db, stripe, { now: new Date("2026-11-10T14:00:00Z"), notify });
     assert.equal(stripe.calls.pay.length, 1, "no automatic retry");
+  });
+
+  it("a Stripe error before charging releases the claim, and the next run charges", async () => {
+    const db = await setup();
+    const stripe = fakeStripe();
+    const realRetrieve = stripe.invoices.retrieve;
+    stripe.invoices.retrieve = async () => {
+      throw new Error("Stripe 500");
+    };
+    const r = await runAutopayJob(db, stripe, { now: new Date("2026-11-09T14:00:00Z") });
+    assert.equal(r.errors.length, 1);
+    assert.equal(db.tables.billing_invoices[0].autopay_attempted_at, null, "claim released");
+    stripe.invoices.retrieve = realRetrieve;
+    const again = await runAutopayJob(db, stripe, { now: new Date("2026-11-10T14:00:00Z") });
+    assert.equal(again.charged, 1);
+    assert.equal(stripe.calls.pay.length, 1);
+  });
+
+  it("a claim cut short by a timeout is taken up again after six hours, once", async () => {
+    const db = await setup();
+    // A run claimed it and died before anything else happened.
+    db.tables.billing_invoices[0].autopay_attempted_at = "2026-11-09T14:00:00.000Z";
+    const stripe = fakeStripe();
+    assert.equal((await runAutopayJob(db, stripe, { now: new Date("2026-11-09T17:00:00Z") })).due, 0, "too soon");
+    const r = await runAutopayJob(db, stripe, { now: new Date("2026-11-09T21:00:00Z") });
+    assert.equal(r.charged, 1);
+    await runAutopayJob(db, stripe, { now: new Date("2026-11-10T21:00:00Z") });
+    assert.equal(stripe.calls.pay.length, 1, "paid: never retried again");
+  });
+
+  it("an abandoned claim with a recorded failure, or one older than five days, is left alone", async () => {
+    const failed = await setup({});
+    Object.assign(failed.tables.billing_invoices[0], { autopay_attempted_at: "2026-11-09T14:00:00.000Z", failed_at: "2026-11-09T14:00:01.000Z" });
+    const old = await setup({});
+    old.tables.billing_invoices[0].autopay_attempted_at = "2026-11-01T14:00:00.000Z";
+    const stripe = fakeStripe();
+    await runAutopayJob(failed, stripe, { now: new Date("2026-11-10T14:00:00Z") });
+    await runAutopayJob(old, stripe, { now: new Date("2026-11-10T14:00:00Z") });
+    assert.equal(stripe.calls.pay.length, 0);
   });
 
   it("a second failure in a row switches autopay off and emails", async () => {

@@ -400,6 +400,20 @@ export function createDocumensoClient({
     return res.json();
   }
 
+  /*
+   * Off production every environment shares production's Documenso team, and a
+   * team key can act on any document in it. Before withdrawing a document, a test
+   * environment checks it is one of its own ([TEST] title), so a stale prod
+   * envelope id (from a snapshot, say) can never cancel a real landlord's copy.
+   */
+  async function assertWithdrawable(envelopeId) {
+    if (!titlePrefix) return;
+    const envelope = await request("GET", `/envelope/${encodeURIComponent(envelopeId)}`);
+    if (!String(envelope?.title ?? "").startsWith(titlePrefix)) {
+      throw new DocumensoError(`Refusing to withdraw ${envelopeId}: not a ${titlePrefix.trim()} document`, 403);
+    }
+  }
+
   // The envelope endpoints that take files are multipart: a "payload" part holding
   // the JSON, plus "files".
   function multipart(payload, files = []) {
@@ -659,12 +673,14 @@ export function createDocumensoClient({
       return out;
     },
 
-    cancel(envelopeId, reason) {
+    async cancel(envelopeId, reason) {
+      await assertWithdrawable(envelopeId);
       return request("POST", "/envelope/cancel", { json: { envelopeId, reason } });
     },
 
     // Withdraw a copy: cancel one that was sent, delete a draft (Documenso cannot cancel a draft).
     async discard(envelopeId, reason) {
+      await assertWithdrawable(envelopeId);
       try {
         return await request("POST", "/envelope/cancel", { json: { envelopeId, reason } });
       } catch (err) {

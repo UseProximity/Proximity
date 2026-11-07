@@ -67,6 +67,24 @@ describe("Documenso client requests", () => {
     return { sent, fetchImpl };
   }
 
+  it("off production, never withdraws a document that is not [TEST] (a prod copy in the shared team)", async () => {
+    const prodDoc = { body: { id: "e1", title: "Marketing agreement: Real Landlord" } };
+    const prod = recordingFetch([prodDoc, prodDoc]);
+    const client = createDocumensoClient({ apiKey: "k", fetchImpl: prod.fetchImpl, titlePrefix: "[TEST] " });
+    await assert.rejects(() => client.discard("e1", "x"), (e) => e.status === 403);
+    await assert.rejects(() => client.cancel("e1", "x"), (e) => e.status === 403);
+    assert.ok(prod.sent.every((r) => r.init.method === "GET"), "nothing cancelled or deleted");
+
+    const test = recordingFetch([{ body: { id: "e2", title: "[TEST] Marketing agreement: Pat" } }, { body: {} }]);
+    const devClient = createDocumensoClient({ apiKey: "k", fetchImpl: test.fetchImpl, titlePrefix: "[TEST] " });
+    await devClient.cancel("e2", "x");
+    assert.ok(test.sent[1].url.endsWith("/envelope/cancel"));
+
+    const live = recordingFetch([{ body: {} }]);
+    await createDocumensoClient({ apiKey: "k", fetchImpl: live.fetchImpl }).cancel("e3", "x");
+    assert.equal(live.sent.length, 1, "production checks nothing extra");
+  });
+
   it("creates a template from the PDF with a placeholder signer and no Documenso emails", async () => {
     const { sent, fetchImpl } = recordingFetch([{ body: { id: "envelope_t1" } }]);
     const client = createDocumensoClient({ apiKey: "api_test", host: "https://docs.example", fetchImpl });

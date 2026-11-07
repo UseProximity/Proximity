@@ -17,6 +17,10 @@
  *                   they were paid meanwhile or autopay was turned off. The row is
  *                   claimed (autopay_attempted_at) before Stripe is called, with a
  *                   per-invoice idempotency key, so a re-run never charges twice.
+ *                   A step that fails before Stripe is asked to charge releases
+ *                   the claim, so the next run tries again. A claim left behind
+ *                   by a crash or a timeout (still open, no skip reason, no
+ *                   failure recorded) is taken up again after STALE_CLAIM_HOURS.
  *   Failing         no automatic retry: the invoice becomes a normal unpaid one
  *                   with Pay now, the landlord is emailed, and the failure counts.
  *                   AUTOPAY_MAX_FAILURES in a row switch autopay off (emailed).
@@ -38,6 +42,10 @@ import { payInvoice, paymentFailureMessage, paymentUnderway, recordPaymentFailur
 const AUTH_COLUMNS = "id, user_id, payment_method_id, consent_text, authorized_at, consecutive_failures, revoked_at, revoked_reason";
 const METHOD_COLUMNS = "id, user_id, stripe_payment_method_id, type, status, brand, last4, exp_month, exp_year, bank_name, deleted_at";
 const BATCH = 200;
+// A claim this old with nothing to show for it was cut short (a crash or a timeout).
+const STALE_CLAIM_HOURS = 6;
+// Abandoned claims older than this are left for an admin rather than retried.
+const STALE_CLAIM_MAX_DAYS = 5;
 const UNIQUE_VIOLATION = "23505";
 
 // Why autopay was switched off, in the words the landlord reads.
@@ -335,17 +343,34 @@ async function skip(db, invoiceId, reason) {
 
 // Charge one invoice whose autopay date has come. Returns what happened.
 async function chargeOne(db, stripe, row, { notify, now }) {
-  // Claim it first: a second run, or a run racing this one, finds it taken.
-  const { data: claimed, error: claimError } = await db
-    .from("billing_invoices")
-    .update({ autopay_attempted_at: now.toISOString() })
-    .eq("id", row.id)
-    .is("autopay_attempted_at", null)
+  // Claim it first: a second run, or a run racing this one, finds it taken. A
+  // stale claim is taken over only if it is still the one this run saw.
+  const stamp = now.toISOString();
+  let claim = db.from("billing_invoices").update({ autopay_attempted_at: stamp }).eq("id", row.id);
+  claim = row.autopay_attempted_at ? claim.eq("autopay_attempted_at", row.autopay_attempted_at) : claim.is("autopay_attempted_at", null);
+  const { data: claimed, error: claimError } = await claim
     .select("id, landlord_id, status, stripe_invoice_id, autopay_payment_method_id")
     .maybeSingle();
   if (claimError) throw claimError;
   if (!claimed) return "taken";
 
+  try {
+    return await chargeClaimed(db, stripe, row, claimed, { notify, now });
+  } catch (err) {
+    // Nothing was charged and nothing recorded: let the next run try again.
+    if (!err?.afterCharge) {
+      await db
+        .from("billing_invoices")
+        .update({ autopay_attempted_at: null })
+        .eq("id", row.id)
+        .eq("autopay_attempted_at", stamp)
+        .is("autopay_skipped_reason", null);
+    }
+    throw err;
+  }
+}
+
+async function chargeClaimed(db, stripe, row, claimed, { notify, now }) {
   if (claimed.status === "paid" || claimed.status === "processing") return skip(db, row.id, "already paid");
   if (!["open", "failed"].includes(claimed.status) || !claimed.stripe_invoice_id) return skip(db, row.id, "not payable");
 
@@ -375,15 +400,29 @@ async function chargeOne(db, stripe, row, { notify, now }) {
   try {
     await payInvoice(stripe, invoice.id, method.stripe_payment_method_id, { idempotencyKey: `autopay:${invoice.id}` });
   } catch (err) {
-    const raced = await paymentUnderway(stripe, invoice.id);
-    if (raced) return "charged";
-    const recorded = await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
-    if (recorded) await noteAutopayFailure(db, { landlordId: claimed.landlord_id, notify, now });
+    try {
+      const raced = await paymentUnderway(stripe, invoice.id);
+      if (raced) return "charged";
+      const recorded = await recordPaymentFailure(db, { invoiceId: row.id, message: paymentFailureMessage(err), notify, now });
+      if (recorded) await noteAutopayFailure(db, { landlordId: claimed.landlord_id, notify, now });
+    } catch (inner) {
+      // Stripe was already asked to charge: the claim stays (the stale-claim
+      // sweep picks it up only if no failure was recorded and it is still open).
+      inner.afterCharge = true;
+      throw inner;
+    }
     return "failed";
   }
   // A card is paid at once; a bank payment is processing and reports by webhook.
   const after = await stripe.invoices.retrieve(invoice.id).catch(() => null);
-  if (after?.status === "paid") await noteAutopaySuccess(db, { landlordId: claimed.landlord_id });
+  if (after?.status === "paid") {
+    try {
+      await noteAutopaySuccess(db, { landlordId: claimed.landlord_id });
+    } catch (err) {
+      err.afterCharge = true;
+      throw err;
+    }
+  }
   return "charged";
 }
 
@@ -406,7 +445,22 @@ export async function runAutopayJob(db, stripe, { now = new Date(), notify = nul
     .limit(BATCH);
   if (error) throw error;
 
-  for (const row of due ?? []) {
+  // Claims cut short by a crash or a timeout: still open, never skipped, no failure on record.
+  const staleBefore = new Date(now.getTime() - STALE_CLAIM_HOURS * 3600 * 1000).toISOString();
+  const staleAfter = new Date(now.getTime() - STALE_CLAIM_MAX_DAYS * 86400 * 1000).toISOString();
+  const { data: stale, error: staleError } = await db
+    .from("billing_invoices")
+    .select("id, autopay_attempted_at")
+    .eq("status", "open")
+    .is("autopay_skipped_reason", null)
+    .is("failed_at", null)
+    .not("autopay_scheduled_for", "is", null)
+    .lt("autopay_attempted_at", staleBefore)
+    .gt("autopay_attempted_at", staleAfter)
+    .limit(BATCH);
+  if (staleError) throw staleError;
+
+  for (const row of [...(due ?? []), ...(stale ?? [])]) {
     result.due += 1;
     try {
       const outcome = await chargeOne(db, stripe, row, { notify, now });

@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { documensoSetting, verifyWebhookSecret } from "@/lib/billing/documenso";
-import { applyEnvelope } from "@/lib/billing/agreements";
+import { applyEnvelope, findDocument } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 
 /*
@@ -49,12 +49,8 @@ export async function POST(req) {
 
   try {
     // Not one of ours (another environment's document, or a template): nothing to do.
-    const { data: known, error } = await supabase
-      .from("landlord_agreements")
-      .select("id")
-      .eq("provider_envelope_id", envelopeId)
-      .maybeSingle();
-    if (error) throw error;
+    // A master agreement or an Exhibit A amendment both count.
+    const known = await findDocument(supabase, envelopeId);
     if (!known) return NextResponse.json({ ok: true, ignored: "not this environment's document" });
 
     const { documenso, options } = agreementServices();

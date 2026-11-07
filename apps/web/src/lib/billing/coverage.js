@@ -256,6 +256,10 @@ const entryFromRow = (r) => ({
  *                                             a master counts: amend Exhibit A from
  *                                             `previous` (covered now) to `entries`
  *
+ * Every plan also carries `withdraw`: live properties the landlord left off, whose
+ * offerings come off the site once the document is signed (or at once, when there
+ * is nothing to sign).
+ *
  * Needed: every live property and the requested ones, fully covered. Drafts ride
  * along on any document being made, unless the landlord takes them off.
  * `selections` is a Map listingId -> the popup's choice (exhibitChoice). `carry`
@@ -269,35 +273,39 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
   // What must be covered (live, being published, already on a copy being replaced,
   // or covered by a master being re-signed), then the drafts that may ride along.
   // Nothing needed can be taken off; its units with the landlord's leases stay in.
-  const needed = new Set([
-    ...requested,
-    ...properties.filter((p) => p.live).map((p) => p.listingId),
-    ...carry.map((e) => e.listingId).filter((id) => byId.has(id)),
-  ]);
-  // Needed properties stay on, except one the landlord excluded on the popup that is
-  // no longer live (its offerings were withdrawn) and is not being published: a
-  // property carried from a copy being replaced can then come off (2026-11-07).
+  // A property the landlord excluded on the popup, and is not publishing, is
+  // released: it is left off. A live one comes off the site once this document is
+  // signed (`withdraw`), never before, so an abandoned popup changes nothing.
+  const released = new Set(
+    properties.filter((p) => selections?.get(p.listingId)?.excluded === true && !requested.has(p.listingId)).map((p) => p.listingId)
+  );
+  const withdraw = properties.filter((p) => p.live && released.has(p.listingId)).map((p) => p.listingId);
+  const needed = new Set(
+    [...requested, ...properties.filter((p) => p.live).map((p) => p.listingId), ...carry.map((e) => e.listingId).filter((id) => byId.has(id))].filter(
+      (id) => !released.has(id)
+    )
+  );
   const choiceFor = (p) => {
     const s = selections?.get(p.listingId) ?? null;
-    const released = s?.excluded === true && !p.live && !requested.has(p.listingId);
-    return exhibitChoice(p, released ? { ...s, include: false } : s, { locked: needed.has(p.listingId) && !released });
+    if (released.has(p.listingId)) return exhibitChoice(p, { ...s, include: false }, { locked: false });
+    return exhibitChoice(p, s, { locked: needed.has(p.listingId) });
   };
   const drafts = properties.filter((p) => p.draft && !needed.has(p.listingId)).map((p) => p.listingId);
 
   if (!master || !masterValid) {
     // A lapsed or re-sign-required master: what it covered carries into the new one.
-    for (const r of rows) if (r.status === "covered" && master && r.agreement_id === master.id && byId.has(r.listing_id)) needed.add(r.listing_id);
+    for (const r of rows) if (r.status === "covered" && master && r.agreement_id === master.id && byId.has(r.listing_id) && !released.has(r.listing_id)) needed.add(r.listing_id);
     const entries = [...needed, ...drafts]
       .map((id) => [byId.get(id), choiceFor(byId.get(id))])
       .filter(([, c]) => c.include)
       .map(([p, c]) => entryOf(p, c))
       .sort(byAddress);
-    return { kind: "master", entries };
+    return { kind: "master", entries, withdraw };
   }
 
   // Something needed is not fully covered: an amendment (else nothing to sign).
   const short = [...needed].filter((id) => !coversProperty(byId.get(id), covered.get(id)));
-  if (!short.length) return { kind: "none" };
+  if (!short.length) return { kind: "none", withdraw };
   const added = [];
   for (const id of [...needed, ...drafts]) {
     const p = byId.get(id);
@@ -312,7 +320,38 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
   const previous = [...covered.values()].map(entryFromRow).sort(byAddress);
   const addedIds = new Set(added.map((e) => e.listingId));
   const entries = [...previous.filter((e) => !addedIds.has(e.listingId)), ...added].sort(byAddress);
-  return { kind: "amendment", previous, entries, added: added.sort(byAddress) };
+  return { kind: "amendment", previous, entries, added: added.sort(byAddress), withdraw };
+}
+
+/*
+ * Take a landlord's own offerings on these properties off the site (is_active
+ * false, unavailable true, the same edit as the dashboard's Withdraw). Other
+ * landlords' offerings on a shared building stay. Returns how many were withdrawn.
+ */
+export async function withdrawOfferings(db, userId, listingIds = []) {
+  // Looked up per property, by its units: one query over all of a landlord's
+  // leases stops at 1,000 rows, and a big landlord has more (2026-11-07).
+  const ids = [];
+  for (const listingId of new Set(listingIds)) {
+    const { data: units, error: unitError } = await db.from("listing_units").select("id").eq("listing_id", listingId);
+    if (unitError) throw unitError;
+    const unitIds = (units ?? []).map((u) => u.id);
+    for (let i = 0; i < unitIds.length; i += 200) {
+      const { data, error } = await db
+        .from("unit_leases")
+        .select("id, is_active")
+        .eq("owner_id", userId)
+        .is("deleted_at", null)
+        .in("unit_id", unitIds.slice(i, i + 200));
+      if (error) throw error;
+      ids.push(...(data ?? []).filter((l) => l.is_active !== false).map((l) => l.id));
+    }
+  }
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids.slice(i, i + 200)).eq("owner_id", userId);
+    if (error) throw error;
+  }
+  return ids.length;
 }
 
 // Requested properties that are not fully covered now, with their addresses (and the units missing) for the publish dialog.
