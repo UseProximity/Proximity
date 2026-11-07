@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, resolvePublishedIds, withdrawOfferings } from "./coverage.js";
+import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
 const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
@@ -148,11 +148,13 @@ export async function agreementState(db, userId, now = new Date()) {
  * their properties, coverage rows, and the Map of listings covered now.
  */
 export async function coverageFor(db, userId, now = new Date()) {
-  const [state, properties, rows] = await Promise.all([
+  const [state, properties, loaded] = await Promise.all([
     agreementState(db, userId, now),
     loadLandlordProperties(db, userId),
     loadCoverageRows(db, userId),
   ]);
+  // Named units are matched by id: each row names its units as they are called today.
+  const rows = refreshCoverageNames(loaded, properties);
   return { state, properties, rows, covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }) };
 }
 
@@ -366,7 +368,11 @@ function exhibitSelections(list) {
 }
 
 // What one Exhibit A entry covers, as the document says it: "Whole building" or "Units: 1A, 1B".
-export const coverageLine = (e) => (e.wholeBuilding !== false || !e.units?.length ? "Whole building" : `Units: ${e.units.join(", ")}`);
+// A unit renamed since it was signed for shows its old name too (Wyatt, 2026-11-06).
+export const coverageLine = (e) =>
+  e.wholeBuilding !== false || !e.units?.length
+    ? "Whole building"
+    : `Units: ${e.units.join(", ")}${e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : ""}`;
 
 /*
  * The covered properties as the "Exhibit A" box shows them (Wyatt, 2026-11-07):
@@ -711,6 +717,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         listing_id: e.listingId,
         address: e.address,
         units: e.wholeBuilding !== false ? [] : e.units ?? [],
+        unit_ids: e.wholeBuilding !== false || !e.unitIds?.length ? null : e.unitIds,
         whole_building: e.wholeBuilding !== false,
         agreement_id: isAmendment ? master.id : row.id,
         amendment_id: isAmendment ? row.id : null,
@@ -739,8 +746,10 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
   const previousBy = new Map((plan.previous ?? []).map((e) => [e.listingId, e]));
   const addedOnly = (plan.added ?? []).map((e) => {
     const was = previousBy.get(e.listingId);
-    if (!was || e.wholeBuilding !== false) return e;
-    return { ...e, units: (e.units ?? []).filter((u) => !(was.units ?? []).includes(u)) };
+    // An old name belongs with the units already covered (the "before" list), not the added ones.
+    const { formerNames, ...entry } = e;
+    if (!was || entry.wholeBuilding !== false) return entry;
+    return { ...entry, units: (entry.units ?? []).filter((u) => !(was.units ?? []).includes(u)) };
   });
   // One block per property; spread over the Exhibit A boxes in order, and what does
   // not fit goes on generated "Exhibit A (continued)" pages attached to the copy (fitExhibit).
@@ -1015,7 +1024,11 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
   const properties = await loadLandlordProperties(db, userId);
   const exhibit = properties
     .filter((p) => p.live)
-    .map((p) => ({ listingId: p.listingId, address: p.address, ...exhibitChoice(p, null, { locked: true }) }));
+    .map((p) => {
+      const choice = exhibitChoice(p, null, { locked: true });
+      const unitIds = choice.wholeBuilding ? [] : [...new Set(choice.units.flatMap((n) => p.idsByLabel?.[n] ?? []))];
+      return { listingId: p.listingId, address: p.address, ...choice, ...(unitIds.length && { unitIds }) };
+    });
   const fields = {
     status: "signed",
     signed_at: when.toISOString(),
@@ -1056,6 +1069,7 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
         listing_id: e.listingId,
         address: e.address,
         units: e.wholeBuilding !== false ? [] : e.units,
+        unit_ids: e.wholeBuilding !== false || !e.unitIds?.length ? null : e.unitIds,
         whole_building: e.wholeBuilding !== false,
         agreement_id: record.id,
         status: "covered",

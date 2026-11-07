@@ -10,7 +10,13 @@
  *     2026-11-07). The whole building covers every unit there, new ones too; named
  *     units cover only those. A property counts as covered when the whole building
  *     is, or every unit holding the landlord's leases is named; a lease on another
- *     unit needs an amendment adding it. A renamed unit counts as a new one.
+ *     unit needs an amendment adding it.
+ *   - Named units are matched by unit id, not name (Wyatt, 2026-11-06): the
+ *     document lists names as signed, and agreement_coverage.unit_ids records
+ *     which units they meant. A renamed unit stays covered under its new name; a
+ *     new unit given an old name is not covered. The next document the landlord
+ *     signs restates Exhibit A with today's names, "(formerly ...)". Rows without
+ *     unit_ids (older ones) still match by name.
  *   - Exhibit A holds everything the landlord has live, whatever they are
  *     publishing now, and their drafts unless they take a draft off (then
  *     publishing it later needs an amendment).
@@ -24,7 +30,7 @@
  *
  * `db` is a service-role Supabase client.
  */
-const COVERAGE_COLUMNS = "id, user_id, listing_id, address, units, whole_building, agreement_id, amendment_id, status, covered_at, released_at, created_at";
+const COVERAGE_COLUMNS = "id, user_id, listing_id, address, units, unit_ids, whole_building, agreement_id, amendment_id, status, covered_at, released_at, created_at";
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200"].includes(error?.code);
 
 // "6105 Delmar Boulevard, St. Louis, Missouri 63112": the stored address without the country.
@@ -40,6 +46,7 @@ export function unitLabel(unit) {
 }
 
 const byAddress = (a, b) => a.address.localeCompare(b.address, "en", { numeric: true });
+const byName = (a, b) => a.localeCompare(b, "en", { numeric: true });
 
 // Supabase answers at most 1,000 rows a request; a large landlord has more leases than that.
 const PAGE = 1000;
@@ -112,7 +119,6 @@ export async function loadLandlordProperties(db, userId) {
       const mine = [...(myUnits.get(l.id)?.values() ?? [])];
       const propertyOwner = ownedIds.has(l.id);
       const unitRows = propertyOwner ? unitsByListing.get(l.id) ?? [] : mine.map((m) => m.unit);
-      const byName = (a, b) => a.localeCompare(b, "en", { numeric: true });
       // Every unit they can name on Exhibit A (the property's, or their own offerings').
       const unitList = [];
       for (const u of unitRows) {
@@ -121,6 +127,15 @@ export async function loadLandlordProperties(db, userId) {
       }
       unitList.sort((a, b) => byName(a.label, b.label));
       const units = unitList.map((u) => u.label);
+      // Every unit's id by its name and its name by id (two units can share a name).
+      const idsByLabel = {};
+      const labelById = {};
+      for (const u of unitRows) {
+        const label = unitLabel(u);
+        if (!label) continue;
+        (idsByLabel[label] ??= []).push(u.id);
+        labelById[u.id] = label;
+      }
       // The units holding this landlord's own leases: what coverage must include.
       const leaseUnits = [...new Set(mine.map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
       const published = !!l.published_at;
@@ -132,7 +147,7 @@ export async function loadLandlordProperties(db, userId) {
       // Not live for this landlord is a draft for Exhibit A, including a published
       // building where only their own offerings are unpublished (renters), which
       // otherwise fell off the document (Wyatt, 2026-11-07).
-      return { listingId: l.id, address: displayAddress(l), units, unitList, leaseUnits, owner: propertyOwner, live, draft: !live };
+      return { listingId: l.id, address: displayAddress(l), units, unitList, idsByLabel, labelById, leaseUnits, owner: propertyOwner, live, draft: !live };
     })
     .sort(byAddress);
 }
@@ -183,6 +198,25 @@ export async function loadCoverageRows(db, userId) {
 }
 
 /*
+ * Coverage rows with today's unit names: a row that recorded unit_ids names the
+ * units those ids are now (a renamed unit keeps its coverage, under its new
+ * name), drops ids no longer among the landlord's units (deleted), and keeps the
+ * names it was signed with that changed as `formerNames`. Rows without unit_ids
+ * are returned as they are.
+ */
+export function refreshCoverageNames(rows, properties) {
+  const byId = new Map(properties.map((p) => [p.listingId, p]));
+  return rows.map((r) => {
+    if (r.whole_building !== false || !Array.isArray(r.unit_ids) || !r.unit_ids.length) return r;
+    const labels = byId.get(r.listing_id)?.labelById ?? {};
+    const current = [...new Set(r.unit_ids.map((id) => labels[id]).filter(Boolean))].sort(byName);
+    const signed = Array.isArray(r.units) ? r.units : [];
+    const formerNames = signed.filter((n) => !current.includes(n));
+    return { ...r, units: current, ...(formerNames.length && { formerNames }) };
+  });
+}
+
+/*
  * The pure rule: what is covered now. `master` is the landlord's current signed
  * master agreement and `masterValid` whether it still counts. Returns a Map
  * listingId -> the covering row (the newest), with `units` and `whole_building`
@@ -197,7 +231,9 @@ export function coveredMap(rows, { master, masterValid }) {
     const prev = out.get(r.listing_id);
     const units = [...new Set([...(prev?.units ?? []), ...(Array.isArray(r.units) ? r.units : [])])];
     const whole = (prev?.whole_building ?? false) || r.whole_building !== false;
-    out.set(r.listing_id, { ...(prev ?? r), units, whole_building: whole });
+    const unitIds = [...new Set([...(prev?.unit_ids ?? []), ...(Array.isArray(r.unit_ids) ? r.unit_ids : [])])];
+    const formerNames = [...new Set([...(prev?.formerNames ?? []), ...(r.formerNames ?? [])])].filter((n) => !units.includes(n));
+    out.set(r.listing_id, { ...(prev ?? r), units, unit_ids: unitIds, whole_building: whole, ...(formerNames.length ? { formerNames } : { formerNames: undefined }) });
   }
   return out;
 }
@@ -234,12 +270,22 @@ export function exhibitChoice(p, s, { locked = false } = {}) {
   return { include: locked || !s || s.include !== false, wholeBuilding, units };
 }
 
-const entryOf = (p, choice) => ({ listingId: p.listingId, address: p.address, wholeBuilding: choice.wholeBuilding, units: choice.units });
+// The ids of the units these names are on this property now.
+const idsFor = (p, names) => [...new Set(names.flatMap((n) => p?.idsByLabel?.[n] ?? []))];
+const entryOf = (p, choice) => ({
+  listingId: p.listingId,
+  address: p.address,
+  wholeBuilding: choice.wholeBuilding,
+  units: choice.units,
+  ...(!choice.wholeBuilding && { unitIds: idsFor(p, choice.units) }),
+});
 const entryFromRow = (r) => ({
   listingId: r.listing_id,
   address: r.address,
   wholeBuilding: r.whole_building !== false,
   units: r.whole_building !== false ? [] : Array.isArray(r.units) ? r.units : [],
+  ...(r.whole_building === false && Array.isArray(r.unit_ids) && r.unit_ids.length && { unitIds: r.unit_ids }),
+  ...(r.formerNames?.length && { formerNames: r.formerNames }),
 });
 
 /*
@@ -315,7 +361,11 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
     const adds = !cov || (c.wholeBuilding && cov.whole_building === false) || (!c.wholeBuilding && cov.whole_building === false && c.units.some((u) => !cov.units.includes(u)));
     if (!adds) continue;
     // Merged with what is covered there already, so the "after" list is the whole picture.
-    added.push(cov && !c.wholeBuilding ? { ...entryOf(p, c), units: [...new Set([...cov.units, ...c.units])].sort((a, b) => a.localeCompare(b, "en", { numeric: true })) } : entryOf(p, c));
+    if (cov && !c.wholeBuilding) {
+      const units = [...new Set([...cov.units, ...c.units])].sort(byName);
+      const unitIds = [...new Set([...(cov.unit_ids ?? []), ...idsFor(p, units)])];
+      added.push({ ...entryOf(p, c), units, unitIds, ...(cov.formerNames?.length && { formerNames: cov.formerNames }) });
+    } else added.push(entryOf(p, c));
   }
   const previous = [...covered.values()].map(entryFromRow).sort(byAddress);
   const addedIds = new Set(added.map((e) => e.listingId));

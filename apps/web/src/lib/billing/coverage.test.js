@@ -10,8 +10,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
-import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
-import { coveredMap, displayAddress, exhibitChoice, planCoverage, uncoveredAmong } from "./coverage.js";
+import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, coverageLine, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
+import { coveredMap, coversProperty, displayAddress, exhibitChoice, missingUnits, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
@@ -399,10 +399,11 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
     const documenso = fakeDocumenso();
     await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: true }] });
     const entry = db.tables.landlord_agreements[0].exhibit.find((e) => e.listingId === "L5");
-    assert.deepEqual(entry, { listingId: "L5", address: "500 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["1A", "1B"] });
+    assert.deepEqual(entry, { listingId: "L5", address: "500 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["1A", "1B"], unitIds: ["U51", "U52"] });
     const row = db.tables.agreement_coverage.find((c) => c.listing_id === "L5");
     assert.equal(row.whole_building, false);
     assert.deepEqual(row.units, ["1A", "1B"]);
+    assert.deepEqual(row.unit_ids, ["U51", "U52"], "which units the names meant");
     assert.match(documenso.calls.lastCopy.prefill.find((p) => p.id === 2).value, /500 Shared Blvd, St\. Louis, Missouri 63130\nUnits: 1A, 1B/);
   });
 
@@ -417,8 +418,48 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
     const documenso = fakeDocumenso();
     await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L6", wholeBuilding: false, units: ["01", "02"] }] });
     const entry = db.tables.landlord_agreements[0].exhibit.find((e) => e.listingId === "L6");
-    assert.deepEqual(entry, { listingId: "L6", address: "600 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["01", "02"] });
+    assert.deepEqual(entry, { listingId: "L6", address: "600 Shared Blvd, St. Louis, Missouri 63130", wholeBuilding: false, units: ["01", "02"], unitIds: ["U61", "U62"] });
     assert.match(documenso.calls.lastCopy.prefill.find((p) => p.id === 2).value, /600 Shared Blvd, St\. Louis, Missouri 63130\nUnits: 01, 02/);
+  });
+
+  it("a covered unit renamed stays covered under its new name; a new unit given the old name is not", async () => {
+    const db = renter();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: false, units: ["1A", "1B"] }] });
+    documenso.complete("envelope_1");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    db.tables.unit_leases.find((l) => l.id === "Q1").listing_units.name = "1A Garden";
+    let { properties, covered } = await coverageFor(db, "u1");
+    let p = properties.find((x) => x.listingId === "L5");
+    assert.equal(coversProperty(p, covered.get("L5")), true, "renaming does not undo coverage");
+    assert.deepEqual(covered.get("L5").units, ["1A Garden", "1B"]);
+    assert.deepEqual(covered.get("L5").formerNames, ["1A"]);
+
+    // A new unit called "1A" (the old name) with Pat's lease on it is not covered.
+    db.tables.unit_leases.push(lease("Q3", u5("U53", "1A")));
+    ({ properties, covered } = await coverageFor(db, "u1"));
+    p = properties.find((x) => x.listingId === "L5");
+    assert.equal(coversProperty(p, covered.get("L5")), false);
+    assert.deepEqual(missingUnits(p, covered.get("L5")), ["1A"]);
+  });
+
+  it("the next addendum restates the renamed unit with its old name, in the before list", async () => {
+    const db = renter();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: false, units: ["1A"] }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    db.tables.unit_leases.find((l) => l.id === "Q1").listing_units.name = "1A Garden";
+    db.tables.unit_leases.push(lease("Q3", u5("U53", "2C")));
+    const r = await sign(db, documenso, { now: new Date("2027-02-01"), exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: false, units: ["2C"] }] });
+    assert.equal(r.kind, "amendment");
+    const amendment = db.tables.agreement_amendments[0];
+    const before = amendment.previous_exhibit.find((e) => e.listingId === "L5");
+    assert.deepEqual(before.units, ["1A Garden", "1B"]);
+    assert.match(coverageLine(before), /Units: 1A Garden, 1B \(formerly 1A\)/);
+    assert.match(exhibitText(amendment.previous_exhibit), /Units: 1A Garden, 1B \(formerly 1A\)/, "the addendum's before list says so");
+    const added = db.tables.agreement_coverage.find((c) => c.amendment_id === amendment.id);
+    assert.deepEqual([...added.unit_ids].sort(), ["U51", "U52", "U53"]);
   });
 
   it("a lease on another unit there needs an amendment adding that unit", async () => {
