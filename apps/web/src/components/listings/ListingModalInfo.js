@@ -1413,12 +1413,12 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
         <div className="animate-pulse">
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
-            className={`flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
+            className={`flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
             <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
-            <div className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]">
+            <div className="hidden md:flex flex-1 flex-col gap-0.5 min-w-[180px]">
               <div className="flex-1 bg-gray-200" />
               <div className="flex-1 bg-gray-200" />
             </div>
@@ -2094,7 +2094,7 @@ export default function ListingModalInfo({
               straight under it (Wyatt, 2026-10-31). The negative margins undo
               the page padding. */}
           <div
-            className={`relative flex flex-col md:flex-row gap-px bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
+            className={`relative flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
               compact ? "md:h-[300px]" : "md:h-[520px]"
             }`}
           >
@@ -2168,7 +2168,7 @@ export default function ListingModalInfo({
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
             {hasSideTiles && (
             <motion.div
-              className="hidden md:flex flex-1 flex-col gap-px min-w-[180px]"
+              className="hidden md:flex flex-1 flex-col gap-0.5 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
