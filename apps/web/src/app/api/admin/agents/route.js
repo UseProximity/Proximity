@@ -35,6 +35,7 @@ import supabase from "@/lib/supabase";
 import { seedListing, seedAll } from "@/lib/agents/seed";
 import { ensureAgent } from "@/lib/agents/store";
 import { overview } from "@/lib/agents/overview";
+import { foundSourcesEnabled } from "@/lib/agents/flags";
 import { runBackfill } from "@/lib/agents/backfill";
 import { runDigest } from "@/lib/agents/digest";
 import { transferReport, seedBatch } from "@/lib/agents/transfer";
@@ -84,6 +85,11 @@ export async function POST(req) {
     if (action === "seedBatch") {
       return NextResponse.json({ ok: true, result: await seedBatch({ since: body.since ?? null, limit: Math.min(Number(body.limit) || 15, 40) }) });
     }
+    // Source search and found-page reads are off for launch (Wyatt,
+    // 2026-11-07): only pages a landlord gave us are sources.
+    if (["discover", "readFound", "reviewSource"].includes(action) && !foundSourcesEnabled()) {
+      return NextResponse.json({ error: "Source search is switched off. Only pages a landlord gave us are used." }, { status: 409 });
+    }
     if (action === "discover") {
       const result = await discoverBatch({
         limit: Math.min(Number(body.limit) || 12, 30),
@@ -95,7 +101,7 @@ export async function POST(req) {
     }
     if (action === "foundSources") {
       const [overviewCounts, review, read] = await Promise.all([foundSourcesOverview(), foundSourcesToReview({ limit: 100 }), foundReadOverview()]);
-      return NextResponse.json({ ok: true, result: { ...overviewCounts, review, read } });
+      return NextResponse.json({ ok: true, result: { ...overviewCounts, review, read, enabled: foundSourcesEnabled() } });
     }
     if (action === "readFound") {
       if (body.force === true && !body.since && !body.listingId) {

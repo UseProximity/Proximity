@@ -1809,7 +1809,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
+        "description": "Launch review (2026-11-07, migration 202611070001_sync_launch_review.sql): subpages_checked_at records when the company-wide page was last searched for this listing's own page (lib/sourceSync/subpages.js), and listing_source_events.kind gained source_attached. Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1836,6 +1836,29 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "listing_unit_pages",
+        "status": "unreleased",
+        "description": "A page per unit (feat/unit-source-pages, Wyatt 2026-11-06). The listing's monitor keeps the building-level page, where new units appear; a unit with its own page is read from that page alone (readProperty onlyThisPage, no crawling) by lib/sourceSync/unitPages.js mergeUnitPages inside syncMonitor, and that read wins over the building page for the unit (pinned by unit id, so the unit is never renamed). A page that 404s/410s or no longer shows the unit marks it let: the unit goes into the snapshot as not offered and the usual sync rules withdraw its leases (unavailable, never deleted); unit-page changes skip the churn hold and still apply when the rest of the run is held. A priced offer with a future date keeps the unit offered. Set by the property's primary owner or the team from the Agent tab (POST/DELETE /api/landlord/listings/[listingId]/agent/unit-pages); replacing a page soft-deletes the old row. Migration 202611060001_listing_unit_pages.sql.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "unit_id:uuid",
+          "url:text",
+          "source_kind:text",
+          "added_by:uuid",
+          "enabled:bool",
+          "last_status:text",
+          "last_error:text",
+          "last_checked_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "consecutive_failures:int4",
+          "deleted_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unit_id->listing_units.id (cascade); added_by->users.id (set null); unique (unit_id) where deleted_at is null; check source_kind in (own_site,portal) | last_status in (ok,gone,failed); rls: service role only (no policies)"
       },
       {
         "table": "listing_source_snapshots",
@@ -3159,8 +3182,8 @@
           "resolved_by:uuid",
           "reopened_at:timestamptz"
         ]
-        },
-        {
+      },
+      {
         "table": "agreement_amendments",
         "status": "unreleased",
         "description": "Exhibit A amendments: a landlord adds properties to their signed master agreement later. Frozen previous and proposed address lists; Documenso envelope with the generated amendment pages; signed PDFs.",

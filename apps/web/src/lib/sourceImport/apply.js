@@ -31,11 +31,12 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
-import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
+import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
+const REJECTED_QUIET_DAYS = 30;
 const MAX_LEASES_PER_UNIT = 40;
 
 // ---------------------------------------------------------------- state
@@ -87,7 +88,18 @@ export function matchUnits(snapUnits, dbUnits) {
    * listing's existing "12" (786 sq ft) by size; the real 12 then looked new.
    */
   const byName = new Map();
+  // A unit read off its own page (listing_unit_pages) already knows which
+  // unit it is.
   for (const s of snapUnits) {
+    if (!s.pinnedUnitId) continue;
+    const hit = pool.find((p) => !p.used && p.u.id === s.pinnedUnitId);
+    if (hit) {
+      hit.used = true;
+      byName.set(s, hit.u);
+    }
+  }
+  for (const s of snapUnits) {
+    if (byName.has(s) || s.pinnedUnitId) continue;
     const sName = norm(s.name);
     const hit = sName ? pool.find((p) => !p.used && norm(p.u.name) === sName) : null;
     if (hit) {
@@ -101,6 +113,8 @@ export function matchUnits(snapUnits, dbUnits) {
       pairs.push({ snap: s, db: byName.get(s) });
       continue;
     }
+    // Pinned to a unit that is no longer on the listing: nothing to do.
+    if (s.pinnedUnitId) continue;
     const sName = norm(s.name);
     let hit = null;
     if (s.bedrooms != null && s.bathrooms != null) {
@@ -123,6 +137,33 @@ export function matchUnits(snapUnits, dbUnits) {
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
 const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y) => x - y)) === JSON.stringify([...(b ?? [])].map(Number).sort((x, y) => x - y));
+
+// ---------------------------------------------------------------- the listing gate
+
+/*
+ * A change that puts a lease in front of students: a new published lease, or
+ * a withdrawn one coming back. Those pass the same listing gate a landlord's
+ * publish does (payment method, commission agreement, coverage), Wyatt
+ * 2026-11-06; until then they wait for the landlord.
+ */
+export function putsLeaseLive(c) {
+  const d = c.detail ?? {};
+  if (c.kind === "lease_new") return !d.draft;
+  if (c.kind === "unit_relisted") return true;
+  return d.op === "lease_update" && d.patch?.unavailable === false;
+}
+
+/* The gate for one owner and listing. Fails closed: an error holds the change. */
+async function gateFor(userId, listingId) {
+  if (!userId) return { allowed: true };
+  try {
+    const g = await checkListingGate(supabase, userId, { listingIds: [listingId] });
+    return { allowed: !!g.allowed, message: g.allowed ? null : gateMessage(g.missing ?? [], g.uncovered ?? []) };
+  } catch (err) {
+    console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
+    return { allowed: false, message: "Could not check the listing gate; held for the landlord." };
+  }
+}
 
 // ---------------------------------------------------------------- planning
 
@@ -414,6 +455,17 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, detail: { op: "none", unitId: u.id, label: u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath` } });
     }
   }
+  // Which changes came from a unit's own page, and whether that page is gone
+  // (the unit is let: its leases are withdrawn, never deleted).
+  const pinned = new Map((snapshot.units ?? []).filter((u) => u.pinnedUnitId).map((u) => [u.pinnedUnitId, u]));
+  if (pinned.size) {
+    for (const c of changes) {
+      const u = pinned.get(c.unitId ?? c.detail?.unitId);
+      if (!u) continue;
+      c.detail = { ...c.detail, fromUnitPage: u.fromUnitPage, ...(u.unitPageGone ? { unitPageGone: true } : {}) };
+      if (u.unitPageGone && c.kind === "lease_withdrawn") c.note = "the unit's own page is gone, so it is treated as let";
+    }
+  }
   return changes;
 }
 
@@ -614,8 +666,16 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
   let fresh = changes;
   if (status === "open") {
     // The same held change, run after run, is one open event, not a pile.
-    const { data: open } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open");
-    const seen = new Set((open ?? []).map((e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`));
+    // A change a person rejected stays rejected while the website still says
+    // the same thing (a month, then it is asked again); a new value on the
+    // website is a new change. Rejections from a bulk clear-out do not count.
+    const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
+    const [{ data: open }, { data: rejected }] = await Promise.all([
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open"),
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "rejected").gte("verdict_at", since).limit(2000),
+    ]);
+    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
+    const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy)].map(keyOf));
     fresh = changes.filter((c) => {
       const key = `${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
       if (seen.has(key)) return false;
@@ -738,7 +798,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, teamReview = false, listingLabel = null, takeover = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -761,7 +821,11 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     // or lengths were reworded is the same lease; counting those once held
     // a building because every lease gained the words "Available now".
     const touched = changes.filter(
-      (c) => ["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? ""))
+      (c) =>
+        // A unit's own page speaks for that unit alone, so its changes are
+        // not the building-wide churn this hold exists for.
+        !c.detail?.fromUnitPage &&
+        (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
     ).length;
     if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
   }
@@ -786,6 +850,35 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
           c.note = "set by the landlord; held for their approval";
         }
       }
+    }
+  }
+
+  // A lease going live passes the listing gate, as the landlord's own publish
+  // would; the importer and sync used to skip it.
+  // Under launch review it still runs, so the team sees why one would wait.
+  if (mode === "sync" && changes.some((c) => (c.auto || teamReview) && putsLeaseLive(c))) {
+    const gate = await gateFor(primaryOwner(state), listingId);
+    if (!gate.allowed) {
+      for (const c of changes.filter(putsLeaseLive)) {
+        c.auto = false;
+        c.judge = false;
+        c.gated = true;
+        c.note = `waiting for the landlord to publish: ${gate.message}`;
+      }
+    }
+  }
+
+  /*
+   * Launch review (Wyatt, 2026-11-07, lib/agents/flags.js syncTeamReview):
+   * nothing a sync finds changes what students see on its own. Every change,
+   * a unit's own page included, waits for the Proximity team, and the
+   * landlord does not see it.
+   */
+  if (mode === "sync" && teamReview) {
+    for (const c of changes) {
+      c.auto = false;
+      c.judge = false;
+      c.detail = { ...(c.detail ?? {}), teamReview: true };
     }
   }
 
@@ -820,11 +913,13 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         held.push(c);
       }
     }
-  } else if (!autoApply || holdReason) {
+  } else if (!autoApply) {
     held.push(...changes);
   } else {
     for (const c of changes) {
-      if (!c.auto) {
+      // A held run still applies what a unit's own page said: the landlord
+      // pointed at that page for that unit (Wyatt, 2026-11-06).
+      if (!c.auto || (holdReason && !c.detail?.fromUnitPage)) {
         held.push(c);
         continue;
       }
@@ -842,7 +937,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
   if (holdReason && monitorId) {
-    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
+    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label, ...(teamReview ? { teamReview: true } : {}) } }], applied: false, status: "open" });
   }
   if (applied.length && mode === "sync") {
     await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
@@ -866,9 +961,17 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
+  // Accepting a change that puts a lease live is a publish: the same gate,
+  // checked for the listing's landlord even when the team accepts it.
+  const live = (events ?? []).filter((e) => !e.applied && putsLeaseLive(e));
+  const gate = live.length ? await gateFor(primaryOwner(state) ?? userId, listingId) : { allowed: true };
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
+    if (!gate.allowed && putsLeaseLive(e)) {
+      results.push({ id: e.id, ok: false, error: gate.message });
+      continue;
+    }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
       const note = await executeChange(change, { state, userId: userId ?? primaryOwner(state) });

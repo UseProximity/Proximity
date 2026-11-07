@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-06T21:03:57.958Z",
-  "count": 184,
+  "_generated": "2026-11-06T22:01:55.632Z",
+  "count": 185,
   "components": [
     {
       "name": "ErrorReporter",
@@ -366,6 +366,11 @@
     {
       "name": "LandlordProxyChat",
       "file": "src/components/landlord/LandlordProxyChat.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "UnitPages",
+      "file": "src/components/landlord/UnitPages.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

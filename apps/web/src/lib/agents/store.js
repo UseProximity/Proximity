@@ -173,7 +173,7 @@ export async function setFact(input) {
     listingId, section, fieldKey, value = {}, scopeLevel = "property", scopeId = null,
     sourceId = null, sourceRef = null, excerpt = null, confidence = "high",
     landlordSet = false, setBy = null, observedAt = null, validFrom = null, validUntil = null,
-    cause, actorId = null, detail = {},
+    cause, actorId = null, detail = {}, holdForTeam = false,
   } = input;
   const summary = cleanText(input.summary);
 
@@ -232,6 +232,23 @@ export async function setFact(input) {
       });
       return { held: true, fact: existing, event };
     }
+    if (holdForTeam) {
+      // Launch review (lib/agents/flags.js syncTeamReview): a sync that would
+      // change what the agent already says waits for the Proximity team.
+      const { data: open } = await scoped(
+        supabase.from("listing_fact_events").select("id, new_value").eq("listing_id", listingId).eq("section", section)
+          .eq("field_key", fieldKey).eq("scope_level", scopeLevel).eq("status", "proposed").contains("detail", { teamReview: true }),
+        effectiveScopeId
+      ).limit(20);
+      const dup = (open ?? []).find((r) => stable(r.new_value) === stable(value));
+      if (dup) return { held: true, fact: existing, event: dup, duplicate: true };
+      const event = await recordEvent({
+        listingId, factId: existing.id, section, fieldKey, scopeLevel, scopeId: effectiveScopeId,
+        cause, status: "proposed", oldValue: existing.value, newValue: value, actorId, sourceId,
+        detail: { ...detail, adminReview: true, teamReview: true, summary, excerpt, sourceRef, confidence, oldSummary: existing.summary, validFrom, validUntil },
+      });
+      return { held: true, fact: existing, event };
+    }
   }
 
   // Retire the old row first: the unique index allows one current row.
@@ -258,6 +275,23 @@ export async function setFact(input) {
     actorId, sourceId, detail: { ...detail, summary, oldSummary: existing?.summary ?? null },
   });
   return { fact, changed: true, event };
+}
+
+/*
+ * Launch review: a sync would take a fact out of the agent's knowledge. The
+ * Proximity team decides (decideChange applies it with retireFact).
+ */
+export async function proposeRetireForTeam({ fact, cause, actorId = null, excerpt = null, sourceRef = null }) {
+  const { data: open } = await supabase.from("listing_fact_events").select("id").eq("listing_id", fact.listing_id).eq("previous_fact_id", fact.id)
+    .eq("status", "proposed").contains("detail", { teamReview: true, retire: true }).limit(1);
+  if ((open ?? []).length) return { duplicate: true };
+  const event = await recordEvent({
+    listingId: fact.listing_id, previousFactId: fact.id, section: fact.section, fieldKey: fact.field_key,
+    scopeLevel: fact.scope_level, scopeId: fact.scope_id, cause, status: "proposed",
+    oldValue: fact.value, newValue: null, actorId,
+    detail: { adminReview: true, teamReview: true, retire: true, summary: `Remove: ${fact.summary}`, oldSummary: fact.summary, excerpt, sourceRef },
+  });
+  return { event };
 }
 
 /* Take a fact out of the current set (a special that ended, a policy removed). */

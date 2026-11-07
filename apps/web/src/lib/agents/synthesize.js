@@ -26,7 +26,8 @@
 import { z } from "zod";
 import { parseStructured, SONNET } from "./model";
 import supabase from "@/lib/supabase";
-import { currentFacts, setFact, retireFact } from "./store";
+import { currentFacts, setFact, retireFact, proposeRetireForTeam } from "./store";
+import { syncTeamReview } from "./flags";
 import { buildProxyContext } from "./context";
 import { SECTIONS, UNCLAIMED_OWNER_ID } from "./sections";
 import { postCorrections } from "./corrections";
@@ -127,6 +128,9 @@ export async function synthesizeKnowledge({
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty" };
+  // Launch review (Wyatt, 2026-11-07): a sync adds what the agent did not
+  // know, and anything it would change or remove waits for the team.
+  const teamReview = cause === "sync" && syncTeamReview();
 
   const ctx = await buildProxyContext(listingId);
   if (!ctx) throw new Error("listing not found");
@@ -177,6 +181,12 @@ export async function synthesizeKnowledge({
       const exact = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeId ?? null));
       const target = exact ?? (landlordCause ? null : facts.find((f) => f.field_key === key && f.section === op.section));
       if (target && !landlordCause && (target.landlord_set || protectedSources.has(target.source_id))) { result.held++; continue; }
+      if (target && teamReview) {
+        // Launch review: removing something the agent says waits for the team.
+        await proposeRetireForTeam({ fact: target, cause, actorId, excerpt: op.excerpt, sourceRef });
+        result.held++;
+        continue;
+      }
       if (target) { await retireFact({ factId: target.id, cause, actorId, detail: { excerpt: op.excerpt, sourceRef } }); result.retired++; }
       continue;
     }
@@ -193,7 +203,7 @@ export async function synthesizeKnowledge({
       listingId, section: op.section, fieldKey: key, value: parseValue(op.value_json), summary: op.summary,
       scopeLevel, scopeId, sourceId: page?.sourceId ?? sourceId, sourceRef: page?.url ?? sourceRef, excerpt: op.excerpt, confidence: op.confidence,
       landlordSet, setBy, observedAt, validFrom: op.valid_from || null, validUntil: op.valid_until || null,
-      cause, actorId, detail: { sourceKind },
+      cause, actorId, detail: { sourceKind }, holdForTeam: teamReview,
     });
     if (r.held) result.held++; else if (r.changed) result.written++; else result.unchanged++;
     // A fact that replaced an earlier one is a correction students may have
