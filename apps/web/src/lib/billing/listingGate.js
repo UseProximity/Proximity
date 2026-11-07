@@ -39,7 +39,7 @@
  */
 import { getBillingSetting } from "./settings.js";
 import { agreementState, coverageFor } from "./agreements.js";
-import { resolvePublishedIds, uncoveredAmong } from "./coverage.js";
+import { resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
@@ -135,10 +135,13 @@ export async function getGateSettings(db) {
  *   listingIds   the properties about to go live. With the agreement required,
  *                each must be covered; the ones that are not come back in
  *                `uncovered` ({ listingId, address }).
+ *   unitIds      units whose lease is going on the market now (a withdrawn one put
+ *                back, or a new one): each must be covered too, since a unit with
+ *                only withdrawn leases needs no coverage (Wyatt, 2026-11-07)
  *   newProperty  a property that does not exist yet (add listing): never covered
  *   neither      the dashboard's question: does the landlord's master count?
  */
-export async function checkListingGate(db, userId, { listingIds = null, newProperty = false, now = new Date() } = {}) {
+export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newProperty = false, now = new Date() } = {}) {
   const { role, sandbox } = await userOf(db, userId);
   if (role !== "landlord" || sandbox) {
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
@@ -161,7 +164,20 @@ export async function checkListingGate(db, userId, { listingIds = null, newPrope
     if (listingIds?.length || newProperty) {
       const ids = await resolvePublishedIds(db, listingIds ?? []);
       const { properties, covered } = await coverageFor(db, userId, now);
-      uncovered = uncoveredAmong(properties, covered, ids);
+      let extraUnits = null;
+      if (unitIds?.length) {
+        const { data: units, error: unitError } = await db
+          .from("listing_units")
+          .select("id, listing_id, name, unit_number, unit_designator, title")
+          .in("id", [...new Set(unitIds)].slice(0, 200));
+        if (unitError) throw unitError;
+        extraUnits = new Map();
+        for (const u of units ?? []) {
+          const label = unitLabel(u);
+          if (label) extraUnits.set(u.listing_id, [...(extraUnits.get(u.listing_id) ?? []), label]);
+        }
+      }
+      uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
       if (newProperty) uncovered.push({ listingId: null, address: "New property" });
       agreementSigned = uncovered.length === 0;
     } else {

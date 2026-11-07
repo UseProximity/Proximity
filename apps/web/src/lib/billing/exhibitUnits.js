@@ -16,7 +16,7 @@
  */
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
-import { coversProperty, exhibitChoice, planCoverage, resolvePublishedIds, unitLabel } from "./coverage.js";
+import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel } from "./coverage.js";
 
 const NAME_MAX = 60;
 
@@ -26,8 +26,9 @@ export async function exhibitPreview(db, userId, { listingIds = [], now = new Da
   const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested });
   if (plan.kind === "none") return { kind: "none", properties: [] };
   const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId)]);
-  // An agreement lists everything; an amendment, what is not fully covered yet.
-  const shown = plan.kind === "master" ? properties : properties.filter((p) => !coversProperty(p, covered.get(p.listingId)));
+  // Every property, on an amendment too, so nothing goes on (or changes) unseen:
+  // what is covered already shows as covered and stays as it is (Wyatt, 2026-11-07).
+  const shown = properties;
   // An addendum is signed with the agreement's saved details: who that is, for the popup.
   const saved = plan.kind === "amendment" && state.signed?.signer_details && state.signed?.signer_name ? state.signed : null;
   return {
@@ -44,12 +45,13 @@ export async function exhibitPreview(db, userId, { listingIds = [], now = new Da
         draft: p.draft,
         canWholeBuilding: !!p.owner,
         locked: locked.has(p.listingId),
-        // Anything but a property being published can be left off; a live one then comes off the site.
-        canExclude: !requested.includes(p.listingId),
+        // Anything but a property being published, or one on the agreement already,
+        // can be left off; one with the landlord's leases then comes off the site.
+        canExclude: !requested.includes(p.listingId) && !cov,
         units: p.unitList,
         leaseUnits: p.leaseUnits,
         covered: cov ? { wholeBuilding: cov.whole_building !== false, units: cov.units ?? [] } : null,
-        choice: exhibitChoice(p, null, { locked: locked.has(p.listingId) }),
+        choice: exhibitChoice(p, null, { locked: locked.has(p.listingId), covered: cov ?? null }),
       };
     }),
   };

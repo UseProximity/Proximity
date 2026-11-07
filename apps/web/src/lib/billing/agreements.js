@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings } from "./coverage.js";
+import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
 const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
@@ -500,8 +500,9 @@ export async function startSigning(
         selections: exhibitSelections(exhibit),
       });
       if (plan.kind === "none") {
-        // Nothing to sign: a live property the landlord confirmed leaving off comes off now.
+        // Nothing to sign: what the landlord confirmed leaving off comes off now.
         if (plan.withdraw?.length) await withdrawOfferings(db, user.id, plan.withdraw);
+        if (plan.withdrawUnits?.length) await withdrawUnitLeases(db, user.id, plan.withdrawUnits);
         if (inProgress) {
           await cancelInDocumenso(documenso, inProgress.row, "No longer needed");
           await endDocument(db, inProgress.kind, inProgress.row, "no longer needed", now);
@@ -545,7 +546,7 @@ export async function startSigning(
           const template = await documenso.getEnvelope(version.provider_template_id).catch(() => null);
           const sameCompany = !template || copyBoxesMatch(template, envelope, boxValues({ name, ...details }));
           if (sameName && sameCompany && envelope.status === "DRAFT") {
-            const { error } = await db.from(TABLE[inProgress.kind]).update({ withdraw_on_sign: plan.withdraw ?? [] }).eq("id", inProgress.row.id);
+            const { error } = await db.from(TABLE[inProgress.kind]).update({ withdraw_on_sign: plan.withdraw ?? [], withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [] }).eq("id", inProgress.row.id);
             if (error) throw error;
             const opened = await finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
             return prepare ? { prepared: true, kind: plan.kind } : opened;
@@ -555,7 +556,7 @@ export async function startSigning(
             // Opened before: carry on where they left off.
             const { error } = await db
               .from(TABLE[inProgress.kind])
-              .update({ signer_title: title, authorized_at: now.toISOString(), withdraw_on_sign: plan.withdraw ?? [] })
+              .update({ signer_title: title, authorized_at: now.toISOString(), withdraw_on_sign: plan.withdraw ?? [], withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [] })
               .eq("id", inProgress.row.id);
             if (error) throw error;
             return { token: signer.token, kind: plan.kind };
@@ -682,6 +683,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         previous_exhibit: plan.previous,
         proposed_exhibit: plan.entries,
         withdraw_on_sign: plan.withdraw ?? [],
+        withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [],
         signer_title: title,
         authorized_at: nowIso,
         signer_details: savedDetails,
@@ -699,6 +701,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
         signer_details: savedDetails,
         exhibit: plan.entries,
         withdraw_on_sign: plan.withdraw ?? [],
+        withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [],
         commission_rate_percent: version.commission_rate_percent ?? null,
       };
   const { data: row, error } = await db.from(TABLE[plan.kind]).insert(fields).select("id").single();
@@ -815,7 +818,7 @@ export async function findDocument(db, envelopeId) {
   for (const kind of ["master", "amendment"]) {
     const { data, error } = await db
       .from(TABLE[kind])
-      .select(kind === "amendment" ? "id, user_id, status, version_id, agreement_id, withdraw_on_sign" : "id, user_id, status, version_id, withdraw_on_sign")
+      .select(kind === "amendment" ? "id, user_id, status, version_id, agreement_id, withdraw_on_sign, withdraw_unit_ids_on_sign" : "id, user_id, status, version_id, withdraw_on_sign, withdraw_unit_ids_on_sign")
       .eq("provider_envelope_id", envelopeId)
       .maybeSingle();
     // Only a table that does not exist yet is skipped; any other error is real.
@@ -909,6 +912,14 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
         await withdrawOfferings(db, row.user_id, row.withdraw_on_sign);
       } catch (err) {
         console.error("billing: withdrawing properties left off Exhibit A failed", err?.message);
+      }
+    }
+    // And the leases on units the landlord deselected.
+    if (row.withdraw_unit_ids_on_sign?.length) {
+      try {
+        await withdrawUnitLeases(db, row.user_id, row.withdraw_unit_ids_on_sign);
+      } catch (err) {
+        console.error("billing: withdrawing deselected units failed", err?.message);
       }
     }
 

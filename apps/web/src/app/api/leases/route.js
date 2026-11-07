@@ -57,7 +57,7 @@ export async function POST(req) {
   // agreement (lib/billing/listingGate.js). A draft offering is never blocked.
   if (body.draft !== true) {
     const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
-    const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [] });
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [], unitIds: [unitId] });
     if (!gate.allowed) return Response.json(gateResponseBody(gate), { status: 403 });
   }
 

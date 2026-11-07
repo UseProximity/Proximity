@@ -446,7 +446,7 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
   it("the next addendum restates the renamed unit with its old name, in the before list", async () => {
     const db = renter();
     const documenso = fakeDocumenso();
-    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: false, units: ["1A"] }] });
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L5", wholeBuilding: false, units: ["1A", "1B"] }] });
     documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
     db.tables.unit_leases.find((l) => l.id === "Q1").listing_units.name = "1A Garden";
@@ -483,9 +483,14 @@ describe("Exhibit A by whole building or units (2026-11-07)", () => {
     assert.deepEqual(uncoveredAmong(after.properties, after.covered, ["L5"]), [], "now covered, by the agreement and the amendment together");
   });
 
-  it("units with the landlord's leases on a live or published property cannot be taken off", () => {
+  it("units with the landlord's leases can be deselected; they are reported as dropped (2026-11-07)", () => {
     const p = { listingId: "L", owner: true, units: ["Apt 1", "Apt 2", "Apt 3"], leaseUnits: ["Apt 2"] };
-    assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Apt 1"] }, { locked: true }), { include: true, wholeBuilding: false, units: ["Apt 1", "Apt 2"] });
+    assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Apt 1"] }, { locked: true }), { include: true, wholeBuilding: false, units: ["Apt 1"], dropped: ["Apt 2"] });
+    assert.deepEqual(exhibitChoice(p, { wholeBuilding: true }).dropped, [], "the whole building drops nothing");
+    // What is covered already stays covered and is the default.
+    const cov = { whole_building: false, units: ["Apt 3"] };
+    assert.deepEqual(exhibitChoice(p, null, { covered: cov }), { include: true, wholeBuilding: false, units: ["Apt 2", "Apt 3"], dropped: [] });
+    assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: [] }, { covered: cov }).units, ["Apt 3"], "covered units cannot be removed");
     assert.deepEqual(exhibitChoice(p, { include: false }, { locked: true }).include, true, "a locked property stays on");
     assert.deepEqual(exhibitChoice(p, { include: false }, { locked: false }).include, false, "a draft can come off");
     assert.deepEqual(exhibitChoice(p, { wholeBuilding: false, units: ["Nope"] }).units, [], "only units the property has");
@@ -845,5 +850,75 @@ describe("leaving a live property off Exhibit A (2026-11-07)", () => {
     await sign(db, documenso, { listingIds: ["L1"], exhibit: [...DRAFTS_OFF, { listingId: "L1", include: false, excluded: true }] });
     assert.ok(ids(db.tables.landlord_agreements[0].exhibit).includes("L1"));
     assert.deepEqual(db.tables.landlord_agreements[0].withdraw_on_sign, []);
+  });
+});
+
+describe("deselected units and addenda that only add (Wyatt, 2026-11-07)", () => {
+  // Pat owns L1 (live): Apt 1 and Apt 2 each hold one of Pat's offerings.
+  function twoUnits() {
+    const db = world();
+    const lease = (id, u) => ({ id, owner_id: "u1", unit_id: u.id, published_at: "2026-10-01T00:00:00Z", deleted_at: null, is_active: true, unavailable: false, listing_units: u });
+    db.tables.unit_leases.push(lease("Q1", unit("U1", "L1", "Apt 1")), lease("Q2", unit("U2", "L1", "Apt 2")));
+    return db;
+  }
+  const leaseOf = (db, id) => db.tables.unit_leases.find((l) => l.id === id);
+
+  it("a deselected unit's leases come off the site once the agreement is signed, not before", async () => {
+    const db = twoUnits();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1"] }] });
+    const master = db.tables.landlord_agreements[0];
+    assert.deepEqual(master.exhibit.find((e) => e.listingId === "L1").units, ["Apt 1"], "the document lists only what was picked");
+    assert.deepEqual(master.withdraw_unit_ids_on_sign, ["U2"]);
+    assert.equal(leaseOf(db, "Q2").is_active, true, "nothing changes before signing");
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    assert.equal(leaseOf(db, "Q2").is_active, false);
+    assert.equal(leaseOf(db, "Q1").is_active, true);
+    // With Apt 2 withdrawn, L1 is fully covered...
+    const { properties, covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
+    assert.deepEqual(uncoveredAmong(properties, covered, ["L1"]), []);
+    // ...but putting Apt 2's lease back on the market needs it covered first.
+    assert.deepEqual(uncoveredAmong(properties, covered, ["L1"], { extraUnits: new Map([["L1", ["Apt 2"]]]) })[0].missingUnits, ["Apt 2"]);
+  });
+
+  it("a rebuilt copy keeps the units picked (a carried property does not force its leased units back in)", async () => {
+    const db = twoUnits();
+    const documenso = fakeDocumenso();
+    const exhibit = [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1"] }];
+    await sign(db, documenso, { exhibit });
+    await sign(db, documenso, { exhibit, signerTitle: "Manager" });
+    const latest = db.tables.landlord_agreements.at(-1);
+    assert.deepEqual(latest.exhibit.find((e) => e.listingId === "L1").units, ["Apt 1"]);
+  });
+
+  it("an addendum never changes a property already on the agreement unless asked", async () => {
+    const db = twoUnits();
+    const documenso = fakeDocumenso();
+    // L2 (a draft Pat owns) goes on as units only; L1 as both units.
+    db.tables.listing_units.push({ id: "U3", listing_id: "L2", name: "Studio B", published_at: null, deleted_at: null });
+    await sign(db, documenso, { exhibit: [{ listingId: "L1", wholeBuilding: false, units: ["Apt 1", "Apt 2"] }, { listingId: "L2", wholeBuilding: false, units: ["Studio"] }, { listingId: "L3", include: false }, { listingId: "L4", include: false }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    // Publishing L3 later, with no word about L2: L2 stays units only.
+    const r = await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01"), exhibit: [{ listingId: "L4", include: false }] });
+    assert.equal(r.kind, "amendment");
+    const a = db.tables.agreement_amendments[0];
+    assert.deepEqual(ids(a.proposed_exhibit.filter((e) => a.previous_exhibit.every((p) => p.listingId !== e.listingId || JSON.stringify(p) !== JSON.stringify(e)))), ["L3"], "only L3 is added");
+    assert.equal(a.proposed_exhibit.find((e) => e.listingId === "L2").wholeBuilding, false);
+  });
+
+  it("deselecting the only missing units needs no addendum: their leases come off at once", async () => {
+    const db = twoUnits();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1", "Apt 2"] }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    db.tables.listing_units.push({ id: "U9", listing_id: "L1", name: "Apt 9", published_at: "2026-10-01T00:00:00Z", deleted_at: null });
+    db.tables.unit_leases.push({ id: "Q9", owner_id: "u1", unit_id: "U9", published_at: null, deleted_at: null, is_active: true, unavailable: false, listing_units: { id: "U9", listing_id: "L1", name: "Apt 9", published_at: "2026-10-01T00:00:00Z" } });
+    const r = await sign(db, documenso, { now: new Date("2027-02-01"), exhibit: [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1", "Apt 2"] }] });
+    assert.equal(r.alreadySigned, true);
+    assert.equal(db.tables.agreement_amendments.length, 0);
+    assert.equal(leaseOf(db, "Q9").is_active, false);
   });
 });

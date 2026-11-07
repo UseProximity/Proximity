@@ -151,19 +151,31 @@ function AddUnit({ listingId, onAdded }) {
   );
 }
 
+// Units holding the landlord's leases that this choice leaves uncovered: their
+// leases come off the site when the document is signed (Wyatt, 2026-11-07).
+function droppedUnits(p, c) {
+  if (!c?.include || c.wholeBuilding) return [];
+  const covered = new Set(p.covered && !p.covered.wholeBuilding ? p.covered.units : []);
+  return (p.leaseUnits ?? []).filter((u) => !c.units.includes(u) && !covered.has(u));
+}
+const hasListings = (p) => p.live || (p.leaseUnits ?? []).length > 0;
+const listWords = (xs) => (xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
 // One property on the Exhibit A step: on it or left off (anything not being
-// published; a live one then comes off the site), the whole building or its units.
+// published or already covered; its listings then come off the site), the whole
+// building or its units. What is covered already shows as covered and stays.
 function PropertyChoice({ p, choice, onChange }) {
   const covered = p.covered;
   const coveredUnits = new Set(covered?.wholeBuilding ? [] : covered?.units ?? []);
-  const leaseLocked = new Set(p.locked ? p.leaseUnits : []);
+  const leaseUnits = new Set(p.leaseUnits ?? []);
+  const dropped = droppedUnits(p, choice);
   const toggleUnit = (label, on) => {
     const set = new Set(choice.units);
     if (on) set.add(label);
     else set.delete(label);
     onChange({ ...choice, units: [...set] });
   };
-  const status = p.locked ? (p.live ? "Live" : "Being published") : "Draft";
+  const status = covered ? "On your agreement" : p.locked ? (p.live ? "Live" : "Being published") : "Draft";
   return (
     <li className="space-y-2 rounded-md border border-gray-200 p-3">
       <div className="flex flex-wrap items-start gap-2">
@@ -176,10 +188,12 @@ function PropertyChoice({ p, choice, onChange }) {
           Exclude this property
         </label>
       )}
-      {!choice.include ? (
-        p.live ? (
+      {covered?.wholeBuilding ? (
+        <p className="text-xs text-gray-500">Already covered: the whole building.</p>
+      ) : !choice.include ? (
+        hasListings(p) ? (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            This property is live. Leaving it uncovered takes your listings there off the site once you sign, so students will no longer see them. You
+            You have listings here. Excluding this property withdraws them from the site when you sign, so students will no longer see them. You
             can publish them again later by adding it to your agreement with a short addendum.
           </p>
         ) : (
@@ -212,9 +226,9 @@ function PropertyChoice({ p, choice, onChange }) {
                     <UnitRow
                       key={u.id}
                       unit={u}
-                      checked={coveredUnits.has(u.label) || leaseLocked.has(u.label) || choice.units.includes(u.label)}
-                      disabled={coveredUnits.has(u.label) || leaseLocked.has(u.label)}
-                      note={coveredUnits.has(u.label) ? "already covered" : leaseLocked.has(u.label) ? "has your leases" : null}
+                      checked={coveredUnits.has(u.label) || choice.units.includes(u.label)}
+                      disabled={coveredUnits.has(u.label)}
+                      note={coveredUnits.has(u.label) ? "already covered" : leaseUnits.has(u.label) ? "has your listings" : null}
                       onToggle={(on) => toggleUnit(u.label, on)}
                       onRenamed={(from, to) => onChange({ ...choice, units: choice.units.map((x) => (x === from ? to : x)), renamed: [from, to] })}
                     />
@@ -222,6 +236,12 @@ function PropertyChoice({ p, choice, onChange }) {
                 </ul>
               ) : (
                 <p className="text-xs text-gray-500">No units on this property yet. Add the ones this agreement covers.</p>
+              )}
+              {dropped.length > 0 && (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Your listings on {listWords(dropped)} will be withdrawn from the site when you sign, since {dropped.length === 1 ? "that unit is" : "those units are"} not
+                  covered. You can publish them again later by adding {dropped.length === 1 ? "it" : "them"} with a short addendum.
+                </p>
               )}
               <AddUnit listingId={p.listingId} onAdded={(unit) => onChange({ ...choice, units: [...choice.units, unit.label], added: unit })} />
             </div>
@@ -323,13 +343,18 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
 
   const exhibit = () =>
     Object.entries(choices).map(([listingId, c]) => ({ listingId, include: c.include, ...(c.include === false && { excluded: true }), wholeBuilding: c.wholeBuilding, units: c.units }));
-  // Live properties the landlord is leaving off, which come off the site once the document is signed.
-  const liveExcluded = (preview?.properties ?? []).filter((p) => p.live && p.canExclude && choices[p.listingId]?.include === false);
+  // Properties with the landlord's listings left off, and units with their listings
+  // left uncovered: those listings come off the site once the document is signed.
+  const liveExcluded = (preview?.properties ?? []).filter((p) => hasListings(p) && p.canExclude && choices[p.listingId]?.include === false);
+  const unitsOff = (preview?.properties ?? [])
+    .map((p) => ({ p, units: droppedUnits(p, choices[p.listingId] ?? p.choice) }))
+    .filter((x) => x.units.length);
+  const offCount = liveExcluded.length + unitsOff.length;
 
   // Continue from Exhibit A: a live property left off is confirmed first. It comes
   // off the site only when the document is signed, so closing the popup changes nothing.
   const continueExhibit = ({ confirmed = false } = {}) => {
-    if (liveExcluded.length && !confirmed) return setConfirmingOff(true);
+    if (offCount && !confirmed) return setConfirmingOff(true);
     setConfirmingOff(false);
     setError(null);
     return addendum ? openAddendum() : confirmExhibit();
@@ -359,7 +384,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
       const c = choices[p.listingId];
       if (!c?.include || c.wholeBuilding) continue;
       const covered = p.covered && !p.covered.wholeBuilding ? p.covered.units : [];
-      if (!c.units.length && !covered.length && !(p.locked && p.leaseUnits.length)) return `Pick at least one unit for ${p.address}, or the whole building.`;
+      if (!c.units.length && !covered.length) return `Pick at least one unit for ${p.address}, the whole building, or exclude it.`;
     }
     return null;
   })();
@@ -468,15 +493,18 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                 {exhibitProblem && <p className="text-xs text-red-700">{exhibitProblem}</p>}
                 {confirmingOff ? (
                   <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900">
-                    <p className="font-medium">
-                      Take {liveExcluded.length === 1 ? "this property" : `these ${liveExcluded.length} properties`} off the site?
-                    </p>
+                    <p className="font-medium">Withdraw these listings from the site?</p>
                     <ul className="list-disc pl-5 text-xs">
                       {liveExcluded.map((p) => (
-                        <li key={p.listingId}>{p.address}</li>
+                        <li key={p.listingId}>{p.address}: every listing of yours there</li>
+                      ))}
+                      {unitsOff.map(({ p, units }) => (
+                        <li key={`units-${p.listingId}`}>
+                          {p.address}: {listWords(units)}
+                        </li>
                       ))}
                     </ul>
-                    <p className="text-xs">Your listings there are withdrawn when you sign, so students will no longer see them. Until then nothing changes. You can publish them again later by adding them to your agreement with a short addendum.</p>
+                    <p className="text-xs">They are withdrawn when you sign, so students will no longer see them. Until then nothing changes. You can publish them again later by adding them to your agreement with a short addendum.</p>
                     <div className="flex justify-end gap-2">
                       <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
                         Go back
