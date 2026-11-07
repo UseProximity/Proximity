@@ -422,6 +422,14 @@ async function chargeClaimed(db, stripe, row, claimed, { notify, now }) {
       err.afterCharge = true;
       throw err;
     }
+    // Paid at once, so shown Paid at once with its receipt, not after the webhook.
+    // The charge went through: a problem here is the webhook's to finish, not a failure.
+    try {
+      const { settleInvoicePaid } = await import("./invoiceHandlers.js");
+      await settleInvoicePaid(db, stripe, claimed, after, { notify });
+    } catch (err) {
+      console.error("[billing] settling an autopaid invoice failed; the webhook will finish it:", err?.message);
+    }
   }
   return "charged";
 }

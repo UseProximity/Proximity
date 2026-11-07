@@ -63,6 +63,10 @@ export const sendContestOutcomeEmail = (landlord, input) =>
   toLandlord("billing_contest_outcome", landlord, t.contestOutcomeEmail({ name: landlord.name, ...input }));
 export const sendPaymentFailedEmail = (landlord, input) =>
   toLandlord("billing_payment_failed", landlord, t.paymentFailedEmail({ name: landlord.name, ...input }));
+export const sendInvoicePaidEmail = (landlord, input) =>
+  toLandlord("billing_invoice_paid", landlord, t.invoicePaidEmail({ name: landlord.name, ...input }));
+export const sendChargeAdjustedEmail = (landlord, input) =>
+  toLandlord("billing_charge_adjusted", landlord, t.chargeAdjustedEmail({ name: landlord.name, ...input }));
 export const sendPaymentMethodAttentionEmail = (landlord, input) =>
   toLandlord("billing_method_attention", landlord, t.paymentMethodAttentionEmail({ name: landlord.name, ...input }));
 export const sendOverdueEmail = (landlord, input) =>
