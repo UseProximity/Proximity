@@ -760,12 +760,11 @@ describe("leaving a live property off Exhibit A (2026-11-07)", () => {
   function liveWorld() {
     const db = world();
     db.tables.listings.push(listing("L5", "500 Shared Blvd"));
-    const lease = (id, owner, u) => ({ id, owner_id: owner, published_at: "2026-10-01T00:00:00Z", deleted_at: null, is_active: true, unavailable: false, listing_units: u });
-    db.tables.unit_leases.push(
-      lease("Q1", "u1", unit("U1", "L1", "Apt 1")),
-      lease("Q9", "u1", unit("U9", "L5", "Apt 9")),
-      lease("Q8", "u2", unit("U8", "L5", "Apt 8"))
-    );
+    const lease = (id, owner, u) => ({ id, owner_id: owner, unit_id: u.id, published_at: "2026-10-01T00:00:00Z", deleted_at: null, is_active: true, unavailable: false, listing_units: u });
+    const u9 = unit("U9", "L5", "Apt 9");
+    const u8 = unit("U8", "L5", "Apt 8");
+    db.tables.listing_units.push({ ...u9, deleted_at: null }, { ...u8, deleted_at: null });
+    db.tables.unit_leases.push(lease("Q1", "u1", unit("U1", "L1", "Apt 1")), lease("Q9", "u1", u9), lease("Q8", "u2", u8));
     return db;
   }
   const leaseOf = (db, id) => db.tables.unit_leases.find((l) => l.id === id);

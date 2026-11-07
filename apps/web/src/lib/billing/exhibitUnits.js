@@ -68,14 +68,29 @@ async function ownsListing(db, userId, listingId) {
   return (data ?? []).length > 0;
 }
 
+// The landlord's leases on these properties' units: [{ id, unit_id, is_active }].
+// Asked per property (a query returns at most 1,000 rows, and a big landlord has
+// more leases than that across all their properties; 2026-11-07).
+async function leasesOn(db, userId, listingIds) {
+  const out = [];
+  for (const listingId of listingIds) {
+    const units = await unitsOf(db, listingId);
+    for (let i = 0; i < units.length; i += 200) {
+      const { data, error } = await db
+        .from("unit_leases")
+        .select("id, unit_id, is_active")
+        .eq("owner_id", userId)
+        .is("deleted_at", null)
+        .in("unit_id", units.slice(i, i + 200).map((u) => u.id));
+      if (error) throw error;
+      out.push(...(data ?? []));
+    }
+  }
+  return out;
+}
+
 async function leaseUnitIds(db, userId, listingId) {
-  const { data, error } = await db
-    .from("unit_leases")
-    .select("unit_id, listing_units!unit_id(listing_id)")
-    .eq("owner_id", userId)
-    .is("deleted_at", null);
-  if (error) throw error;
-  return new Set((data ?? []).filter((l) => l.listing_units?.listing_id === listingId).map((l) => l.unit_id));
+  return new Set((await leasesOn(db, userId, [listingId])).map((l) => l.unit_id));
 }
 
 async function unitsOf(db, listingId) {
@@ -146,16 +161,17 @@ export async function withdrawExcluded(db, userId, { listingIds = [], requestedI
     properties.filter((p) => p.live && listingIds.includes(p.listingId) && !requested.has(p.listingId)).map((p) => p.listingId)
   );
   if (!targets.size) return { withdrawn: 0, listingIds: [] };
-  const { data, error } = await db
-    .from("unit_leases")
-    .select("id, is_active, listing_units!unit_id(listing_id)")
-    .eq("owner_id", userId)
-    .is("deleted_at", null);
-  if (error) throw error;
-  const ids = (data ?? []).filter((l) => l.is_active !== false && targets.has(l.listing_units?.listing_id)).map((l) => l.id);
-  if (ids.length) {
-    const { error: upError } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids).eq("owner_id", userId);
+  const ids = (await leasesOn(db, userId, [...targets])).filter((l) => l.is_active !== false).map((l) => l.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error: upError } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids.slice(i, i + 200)).eq("owner_id", userId);
     if (upError) throw upError;
+  }
+  // Never let a property the landlord excluded quietly stay live and go on the document.
+  const after = await coverageFor(db, userId);
+  const stillLive = after.properties.filter((p) => targets.has(p.listingId) && p.live);
+  if (stillLive.length) {
+    console.error(`billing: excluded properties still live for ${userId}: ${stillLive.map((p) => p.listingId).join(", ")}`);
+    throw new BillingError("withdraw_failed", `We could not take ${stillLive.map((p) => p.address).join("; ")} off the site. Try again, or contact us.`, 500);
   }
   return { withdrawn: ids.length, listingIds: [...targets] };
 }
