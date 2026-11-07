@@ -2582,6 +2582,11 @@ export default function ListingModalInfo({
                   )}
                 </Section>
               )}
+              {/* Our brokerage disclosure closes every listing, whichever
+                  sections this view shows. */}
+              <p className="mt-8 border-t border-gray-100 pt-3 pb-4 text-[11px] leading-4 text-gray-400">
+                Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
+              </p>
               {/* Proxy's input sits under the chat and pins to the bottom
                   while the reader is in Contact. It keeps its place in the
                   page either way, so the page never jumps when it pins. */}
