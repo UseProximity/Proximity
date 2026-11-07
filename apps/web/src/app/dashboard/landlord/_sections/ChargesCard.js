@@ -1,7 +1,7 @@
 "use client";
 
 import { formatCents } from "@/lib/billing/money";
-import { basisLabel, splitChargeHistory, statusMessage } from "@/lib/billing/chargeDisplay";
+import { basisLabel, refundedInFull, splitChargeHistory, statusMessage } from "@/lib/billing/chargeDisplay";
 
 const STATUS = {
   unconfirmed: { label: "Unconfirmed", className: "bg-gray-100 text-gray-700" },
@@ -37,8 +37,7 @@ function Detail({ label, value }) {
 
 // A Paid charge refunded in full reads Refunded; a partial refund or credit keeps Paid and says so below.
 function statusOf(charge) {
-  const refunded = (charge.adjustments ?? []).filter((a) => a.kind === "refund").reduce((s, a) => s + a.amountCents, 0);
-  if (charge.status === "paid" && refunded >= charge.amountCents) {
+  if (refundedInFull(charge)) {
     return { label: "Refunded", className: "bg-gray-100 text-gray-700" };
   }
   return STATUS[charge.status] ?? STATUS.unconfirmed;
@@ -121,12 +120,14 @@ const Chevron = ({ turn }) => (
   </svg>
 );
 
-// What a past month adds up to: "4 charges · $1,240.00 paid · 1 removed".
+// What a past month adds up to: "4 charges · $1,240.00 paid · $100.00 refunded · 1 removed".
 function monthSummary(group) {
   const n = group.charges.length;
   return [
     `${n} charge${n === 1 ? "" : "s"}`,
     group.paidCents > 0 ? `${formatCents(group.paidCents)} paid` : null,
+    group.refundedCents > 0 ? `${formatCents(group.refundedCents)} refunded` : null,
+    group.creditedCents > 0 ? `${formatCents(group.creditedCents)} credited` : null,
     group.removedCount > 0 ? `${group.removedCount} removed` : null,
   ]
     .filter(Boolean)

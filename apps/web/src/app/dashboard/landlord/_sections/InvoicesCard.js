@@ -30,6 +30,8 @@ const RESULT_TONE = {
 
 function InvoiceRow({ invoice, busy, paying, result, onPay }) {
   const status = STATUS[invoice.status] ?? STATUS.open;
+  // A Pay now that just failed says why in its own red box: the same reason is not repeated above it.
+  const failureInResult = invoice.status === "failed" && result?.tone === "red";
   return (
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -48,11 +50,13 @@ function InvoiceRow({ invoice, busy, paying, result, onPay }) {
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>
       </div>
 
-      <p className="mt-1 text-xs text-gray-500">
-        {invoice.status === "failed"
-          ? invoice.failureMessage || "The payment did not go through."
-          : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
-      </p>
+      {!failureInResult && (
+        <p className="mt-1 text-xs text-gray-500">
+          {invoice.status === "failed"
+            ? invoice.failureMessage || "The payment did not go through."
+            : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
+        </p>
+      )}
       {invoice.refundedCents > 0 && (
         <p className="mt-1 text-xs text-gray-700">
           {formatCents(invoice.refundedCents)} refunded to the card or bank account you paid with.

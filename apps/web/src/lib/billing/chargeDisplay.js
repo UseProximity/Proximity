@@ -46,7 +46,7 @@ export function statusMessage(charge) {
     case "invoiced":
       return "On a monthly invoice. Payment is not complete yet.";
     case "paid":
-      return "Paid.";
+      return refundedInFull(charge) ? "Refunded in full." : "Paid.";
     case "contested":
       return "Contested. We will email you the outcome.";
     case "voided":
@@ -111,6 +111,20 @@ function settledAt(row) {
   return null;
 }
 
+// How much of a charge an admin has refunded or credited (`kind` for one of them), in cents.
+export function adjustedCents(charge, kind = null) {
+  return (charge.adjustments ?? []).filter((a) => !kind || a.kind === kind).reduce((sum, a) => sum + a.amountCents, 0);
+}
+
+// A Paid charge whose money all went back to the landlord.
+export const refundedInFull = (charge) => charge.status === "paid" && adjustedCents(charge, "refund") >= charge.amountCents;
+
+// The latest thing that happened to a settled charge: when it settled, or a later refund or credit.
+function lastActivity(c) {
+  const times = [c.settledAt, ...(c.adjustments ?? []).map((a) => a.createdAt)].filter(Boolean);
+  return times.sort().at(-1) ?? null;
+}
+
 const MONTH_KEY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit" });
 const MONTH_LABEL = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "long" });
 const monthOf = (d) => MONTH_KEY.format(new Date(d)).slice(0, 7);
@@ -120,25 +134,40 @@ const monthOf = (d) => MONTH_KEY.format(new Date(d)).slice(0, 7);
  * 2026-11-07; Wyatt chose grouping by month). `current` is everything still in
  * progress plus what was paid or removed this month (Central time); `past` is
  * the rest, one group per month it was settled in, newest month first, each
- * with how many charges and how much was paid. Charges keep their order inside.
+ * with how many charges, how much was paid and how much of that was refunded or
+ * credited. Charges keep their order inside.
+ *
+ * A charge refunded or credited this month stays in the main list even when it
+ * was paid earlier: the email about it sends the landlord to Billing to see it.
  */
 export function splitChargeHistory(charges, now = new Date()) {
   const thisMonth = monthOf(now);
   const current = [];
   const months = new Map();
   for (const c of charges) {
-    if (!c.settledAt || monthOf(c.settledAt) >= thisMonth) {
+    if (!c.settledAt || monthOf(lastActivity(c)) >= thisMonth) {
       current.push(c);
       continue;
     }
     const key = monthOf(c.settledAt);
     if (!months.has(key)) {
-      months.set(key, { month: key, label: MONTH_LABEL.format(new Date(c.settledAt)), charges: [], paidCents: 0, removedCount: 0 });
+      months.set(key, {
+        month: key,
+        label: MONTH_LABEL.format(new Date(c.settledAt)),
+        charges: [],
+        paidCents: 0,
+        refundedCents: 0,
+        creditedCents: 0,
+        removedCount: 0,
+      });
     }
     const group = months.get(key);
     group.charges.push(c);
-    if (c.status === "paid") group.paidCents += c.amountCents;
-    else group.removedCount += 1;
+    if (c.status === "paid") {
+      group.paidCents += c.amountCents;
+      group.refundedCents += adjustedCents(c, "refund");
+      group.creditedCents += adjustedCents(c, "credit");
+    } else group.removedCount += 1;
   }
   const past = [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
   return { current, past };

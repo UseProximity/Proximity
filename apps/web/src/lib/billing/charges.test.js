@@ -183,6 +183,25 @@ describe("splitChargeHistory (Charges card past months, 2026-11-07)", () => {
     );
   });
 
+  it("keeps a charge refunded this month in the main list, and a past month's refunds in its totals", () => {
+    const refund = (amountCents, createdAt) => ({ kind: "refund", amountCents, createdAt });
+    const { current, past } = splitChargeHistory(
+      [
+        { ...c("r", "paid", "2026-10-20T15:00:00Z", 2500), adjustments: [refund(2500, "2026-11-06T15:00:00Z")] },
+        { ...c("o", "paid", "2026-10-10T15:00:00Z", 4000), adjustments: [refund(1000, "2026-10-12T15:00:00Z")] },
+      ],
+      now
+    );
+    assert.deepEqual(current.map((x) => x.id), ["r"]);
+    assert.deepEqual([past[0].paidCents, past[0].refundedCents], [4000, 1000]);
+  });
+
+  it("a charge refunded in full no longer says Paid", () => {
+    const charge = { status: "paid", amountCents: 2500, adjustments: [{ kind: "refund", amountCents: 2500 }] };
+    assert.equal(statusMessage(charge), "Refunded in full.");
+    assert.equal(statusMessage({ ...charge, adjustments: [] }), "Paid.");
+  });
+
   it("uses Central time: paid late on Oct 31 in St. Louis is October, not November", () => {
     const { past } = splitChargeHistory([c("x", "paid", "2026-11-01T03:00:00Z")], now);
     assert.equal(past[0].label, "October 2026");
