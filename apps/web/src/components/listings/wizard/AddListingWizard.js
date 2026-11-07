@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
+import { billingNeededToast } from "@/components/listings/publishErrorToast";
 import {
   emptyLease,
   emptyUnit,
@@ -1797,7 +1798,9 @@ export default function AddListingWizard({
         listingId: publishedId,
         unitPayload,
         diff: Object.keys(diff).length ? diff : null,
-        asDraft,
+        // Billing (a payment method, an overdue invoice) kept it a draft: say so, with the link.
+        asDraft: asDraft || data.code === "billing_needed",
+        billingNeeded: data.code === "billing_needed" ? data : null,
       };
     } catch {
       setError("Network error. Please try again.");
@@ -1816,12 +1819,13 @@ export default function AddListingWizard({
   const publish = async (asDraft = false) => {
     const result = await submitListing(asDraft);
     if (!result.ok) return;
+    if (result.billingNeeded) billingNeededToast(result.billingNeeded);
     // Multi-property import: load the next queued property instead of leaving.
     if (importQueue.length > 0) {
-      await advanceImportQueue(result.unitPayload, result.diff, asDraft);
+      await advanceImportQueue(result.unitPayload, result.diff, result.asDraft);
       return;
     }
-    await onSuccess(result.unitPayload, result.diff, { draft: asDraft });
+    await onSuccess(result.unitPayload, result.diff, { draft: result.asDraft });
   };
 
   /*

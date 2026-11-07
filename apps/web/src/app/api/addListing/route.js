@@ -124,6 +124,9 @@ export async function POST(req) {
     // Set when the property must be added to the landlord's marketing agreement
     // before it can go live: it is saved as a draft and the page asks them to sign.
     let needsCoverage = false;
+    // Set when something else on Billing (a payment method, an overdue invoice)
+    // must be fixed first: saved as a draft, and the page says what is missing.
+    let billingBlock = null;
 
     // The add forms hold their state in snake_case and spread it straight into
     // the body, so any field this route read only in camelCase never arrived:
@@ -252,15 +255,14 @@ export async function POST(req) {
           attachToListingId ? { listingIds: [attachToListingId] } : { newProperty: true }
         );
         if (!gate.allowed) {
-          // Only the agreement stands in the way: keep what they typed as a draft and
-          // let the page open signing for this property. Anything else (no payment
-          // method, an overdue invoice) is refused as before.
-          if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
-            draft = true;
-            needsCoverage = true;
-          } else {
-            return NextResponse.json(gateResponseBody(gate), { status: 403 });
-          }
+          // Whatever stands in the way, what they typed is kept as a draft (a
+          // landlord who left to add a payment method lost the whole form,
+          // 2026-11-07). Only the agreement: the page opens signing for this
+          // property. Anything else (no payment method, an overdue invoice): the
+          // page says what is missing and links to Billing.
+          draft = true;
+          if (gate.missing.length === 1 && gate.missing[0] === "agreement") needsCoverage = true;
+          else billingBlock = gateResponseBody(gate);
         }
       }
       /*
@@ -1023,6 +1025,18 @@ export async function POST(req) {
           publish: attachToListingId
             ? createdUnitIds.filter(Boolean).map((id) => ({ kind: "unit", id }))
             : [{ kind: "property", id: listingId }],
+        },
+        { status: 202 }
+      );
+    }
+
+    if (billingBlock) {
+      return NextResponse.json(
+        {
+          message: billingBlock.error,
+          code: "billing_needed",
+          missing: billingBlock.missing,
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
         },
         { status: 202 }
       );

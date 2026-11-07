@@ -4,8 +4,9 @@
  * billingEmails.js; keeping the copy here means it can be tested without a
  * mail transport.
  *
- * Landlord emails: contest outcome, failed payment, payment method needs
- * attention, overdue notice, launch enrollment, marketing agreement to sign.
+ * Landlord emails: contest outcome, failed payment, payment received, refund
+ * or credit, payment method needs attention, overdue notice, launch
+ * enrollment, marketing agreement to sign.
  * Team emails (to info@useproximity.org): contest submitted, failed payment,
  * chargeback, only payment method removed, overdue withdrawal, agreement declined.
  *
@@ -86,6 +87,51 @@ export function paymentFailedEmail({ name, totalCents, retryUrl, reason }) {
       }</p>
       <p>We will not retry it automatically. Please update your payment method and pay the invoice to keep your listings visible to students.</p>
       ${button(retryUrl, "Pay now")}
+    `),
+  };
+}
+
+// The receipt: an invoice was paid (Pay now, autopay, or Stripe's invoice page).
+export function invoicePaidEmail({ name, periodLabel, totalCents, methodDescription = null, paidAt, pdfUrl = null, paymentsUrl }) {
+  return {
+    subject: `Payment received: ${formatCents(totalCents)} for ${periodLabel}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>Thank you. We received your payment of <strong>${e(formatCents(totalCents))}</strong> for your Proximity invoice for ${e(periodLabel)}.</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Amount</td><td style="padding:2px 0">${e(formatCents(totalCents))}</td></tr>
+        ${methodDescription ? `<tr><td style="padding:2px 16px 2px 0;color:#6b7280">Paid with</td><td style="padding:2px 0">${e(methodDescription)}</td></tr>` : ""}
+        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Date</td><td style="padding:2px 0">${e(longDate(paidAt))}</td></tr>
+      </table>
+      ${pdfUrl ? `<p><a href="${e(pdfUrl)}">Download the invoice (PDF)</a></p>` : ""}
+      ${button(paymentsUrl, "View billing")}
+      <p>Questions about a charge? Just reply to this email.</p>
+    `),
+  };
+}
+
+/*
+ * A Paid charge was corrected: refunded to the landlord's payment method, or
+ * credited against their next invoice. `reason` is what the admin wrote, which
+ * the corrections screen says is sent to the landlord.
+ */
+export function chargeAdjustedEmail({ name, kind, amountCents, charge, reason = null, paymentsUrl }) {
+  const refund = kind === "refund";
+  return {
+    subject: refund
+      ? `Refund of ${formatCents(amountCents)} on your Proximity charge`
+      : `Credit of ${formatCents(amountCents)} on your next Proximity invoice`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${
+        refund
+          ? `We refunded <strong>${e(formatCents(amountCents))}</strong> of a charge you paid. It goes back to the card or bank account you paid with, usually within 5 to 10 business days.`
+          : `We added a credit of <strong>${e(formatCents(amountCents))}</strong> for a charge you paid. It comes off your next monthly invoice automatically.`
+      }</p>
+      ${chargeDetails(charge)}
+      ${reason ? `<p><strong>Why:</strong> ${e(reason)}</p>` : ""}
+      ${button(paymentsUrl, "View billing")}
+      <p>Questions? Just reply to this email.</p>
     `),
   };
 }

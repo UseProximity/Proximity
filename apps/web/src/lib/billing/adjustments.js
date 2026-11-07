@@ -144,7 +144,7 @@ async function adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, am
         .select("id, kind, amount_cents, stripe_refund_id, created_at")
         .eq("stripe_refund_id", stripeId)
         .single();
-      return existing;
+      return { ...existing, repeated: true };
     }
     throw insertError;
   }

@@ -35,7 +35,7 @@ function AdjustDialog({ charge, kind, busy, error, onCancel, onSubmit }) {
           <input className={`${FIELD} mt-1`} value={amount} onChange={(e) => setAmount(e.target.value)} />
         </label>
         <label className="block text-sm font-medium text-gray-700">
-          Reason (required)
+          Reason (required, included in the email to the landlord)
           <textarea className={`${FIELD} mt-1`} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -105,7 +105,7 @@ export default function CorrectionsPanel({ search }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: dialog.kind, amount, reason }),
       });
-      setNotice(dialog.kind === "refund" ? "Refund issued." : "Credit added to the landlord's next invoice.");
+      setNotice(dialog.kind === "refund" ? "Refund issued. The landlord has been emailed." : "Credit added to the landlord's next invoice. The landlord has been emailed.");
       setDialog(null);
       await load();
     } catch (e) {

@@ -4,8 +4,9 @@
  * paid, so charges move to Paid here and only here. Each handler is safe to run
  * twice for one event (see webhookEvents.js).
  *
- *   invoice.paid                     row Paid, its charges Paid, a Failed method usable again,
- *                                    and an autopay charge resets autopay's failure count
+ *   invoice.paid                     row Paid, its charges Paid, the method that paid usable again
+ *                                    (only that one), the landlord emailed a receipt, and an
+ *                                    autopay charge resets autopay's failure count
  *   invoice.payment_failed           row Failed, landlord and team told once, the method marked Failed;
  *                                    an autopay charge that failed (a bank payment can fail days
  *                                    later) counts toward switching autopay off
@@ -23,7 +24,8 @@
 import { getStripe } from "./stripe.js";
 import { transitionCharge } from "./charges.js";
 import { paymentFailureMessage, recordPaymentFailure } from "./invoicing.js";
-import { markPaymentMethodFailed } from "./paymentMethods.js";
+import { displayFields, markPaymentMethodFailed } from "./paymentMethods.js";
+import { describeMethod } from "./paymentMethodState.js";
 import { noteAutopayFailure, noteAutopaySuccess } from "./autopay.js";
 
 const idOf = (v) => (v && typeof v === "object" ? v.id : v) ?? null;
@@ -33,7 +35,7 @@ async function localInvoice(db, stripeInvoiceId) {
   if (!stripeInvoiceId) return null;
   const { data, error } = await db
     .from("billing_invoices")
-    .select("id, landlord_id, status, total_cents, hosted_invoice_url, autopay_payment_method_id, autopay_attempted_at, autopay_skipped_reason")
+    .select("id, landlord_id, billing_period, status, total_cents, hosted_invoice_url, autopay_payment_method_id, autopay_attempted_at, autopay_skipped_reason")
     .eq("stripe_invoice_id", stripeInvoiceId)
     .maybeSingle();
   if (error) throw error;
@@ -72,9 +74,41 @@ async function notifier() {
   return billingNotify();
 }
 
-// invoice.paid
-async function markPaid(db, row, stripeInvoice) {
-  const { error } = await db
+/*
+ * The method that paid a Stripe invoice: its Stripe id and how to describe it
+ * ("Visa ending 4242"), or null when it cannot be read. It may be one the
+ * landlord saved with us or one typed on Stripe's invoice page.
+ */
+export async function paidWith(stripe, stripeInvoiceId) {
+  try {
+    const invoice = await stripe.invoices.retrieve(stripeInvoiceId, { expand: ["payments"] });
+    const paid = invoice.payments?.data?.find((p) => p.status === "paid" && p.payment?.payment_intent);
+    if (!paid) return null;
+    const pi = await stripe.paymentIntents.retrieve(idOf(paid.payment.payment_intent), { expand: ["payment_method"] });
+    const pm = pi.payment_method;
+    if (!pm) return null;
+    const fields = typeof pm === "object" ? displayFields(pm) : null;
+    return { id: idOf(pm), description: fields ? describeMethod({ ...fields, exp_month: null, exp_year: null }) : null };
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * An invoice was paid: the row and its charges move to Paid. Called by the
+ * invoice.paid webhook, and straight after a Pay now that Stripe confirmed at
+ * once (a card), so the landlord sees Paid without waiting for the webhook.
+ * Whichever runs second finds it Paid already. Only the call that moved it to
+ * Paid emails the receipt, so the landlord gets exactly one.
+ *
+ * Only the method that paid is proven to work again. A bank that failed stays
+ * Failed when the landlord paid with another card (Simão's PY5/PY6, 2026-11-07):
+ * before, any payment brought the default back to Active, so the broken bank
+ * looked fine and the next invoice failed on it again.
+ * Returns true when this call moved the invoice to Paid.
+ */
+export async function settleInvoicePaid(db, stripe, row, stripeInvoice, { notify = null } = {}) {
+  const { data: moved, error } = await db
     .from("billing_invoices")
     .update({
       status: "paid",
@@ -83,7 +117,8 @@ async function markPaid(db, row, stripeInvoice) {
       invoice_pdf_url: stripeInvoice.invoice_pdf ?? null,
     })
     .eq("id", row.id)
-    .neq("status", "paid");
+    .neq("status", "paid")
+    .select("id");
   if (error) throw error;
 
   const { data: charges, error: chargesError } = await db
@@ -100,15 +135,30 @@ async function markPaid(db, row, stripeInvoice) {
     }
   }
 
-  // A payment that worked proves the method again.
-  const { error: methodError } = await db
-    .from("payment_methods")
-    .update({ status: "active" })
-    .eq("user_id", row.landlord_id)
-    .eq("is_default", true)
-    .eq("status", "failed")
-    .is("deleted_at", null);
-  if (methodError) throw methodError;
+  const method = await paidWith(stripe, stripeInvoice.id);
+  if (method?.id) {
+    const { error: methodError } = await db
+      .from("payment_methods")
+      .update({ status: "active" })
+      .eq("user_id", row.landlord_id)
+      .eq("stripe_payment_method_id", method.id)
+      .eq("status", "failed")
+      .is("deleted_at", null);
+    if (methodError) throw methodError;
+  }
+
+  const first = (moved?.length ?? 0) > 0;
+  if (first && notify?.invoicePaid) {
+    const { data: landlord } = await db.from("users").select("id, name, email").eq("id", row.landlord_id).maybeSingle();
+    if (landlord?.email) {
+      await notify.invoicePaid({
+        landlord,
+        invoice: { ...row, invoice_pdf_url: stripeInvoice.invoice_pdf ?? null },
+        methodDescription: method?.description ?? null,
+      });
+    }
+  }
+  return first;
 }
 
 // Autopay tried this invoice (not skipped it).
@@ -133,7 +183,7 @@ export const invoiceHandlers = {
   "invoice.paid": async (event, { db }) => {
     const row = await localInvoice(db, event.data.object.id);
     if (!row) return;
-    await markPaid(db, row, event.data.object);
+    await settleInvoicePaid(db, getStripe(), row, event.data.object, { notify: await notifier() });
     if (autopayCharged(row)) await noteAutopaySuccess(db, { landlordId: row.landlord_id });
   },
 

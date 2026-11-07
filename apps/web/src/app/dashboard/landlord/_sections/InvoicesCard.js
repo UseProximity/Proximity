@@ -23,7 +23,12 @@ const NOTE = {
 
 const dateOnly = (iso) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
-function InvoiceRow({ invoice, busy, onPay }) {
+const RESULT_TONE = {
+  green: "bg-green-50 text-green-800",
+  red: "bg-red-50 text-red-800",
+};
+
+function InvoiceRow({ invoice, busy, paying, result, onPay }) {
   const status = STATUS[invoice.status] ?? STATUS.open;
   return (
     <li className="px-4 py-3">
@@ -48,6 +53,21 @@ function InvoiceRow({ invoice, busy, onPay }) {
           ? invoice.failureMessage || "The payment did not go through."
           : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
       </p>
+      {invoice.refundedCents > 0 && (
+        <p className="mt-1 text-xs text-gray-700">
+          {formatCents(invoice.refundedCents)} refunded to the card or bank account you paid with.
+        </p>
+      )}
+      {invoice.creditedCents > 0 && (
+        <p className="mt-1 text-xs text-gray-700">
+          {formatCents(invoice.creditedCents)} credited, taken off your next invoice.
+        </p>
+      )}
+      {result && (
+        <p role="status" className={`mt-2 rounded-md px-3 py-2 text-sm ${RESULT_TONE[result.tone] ?? RESULT_TONE.green}`}>
+          {result.text}
+        </p>
+      )}
       {invoice.autopayDate && (
         <p className="mt-1 text-xs text-gray-700">Autopay will charge it on {dateOnly(invoice.autopayDate)}.</p>
       )}
@@ -64,9 +84,10 @@ function InvoiceRow({ invoice, busy, onPay }) {
             type="button"
             disabled={busy}
             onClick={() => onPay(invoice)}
-            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
           >
-            {invoice.status === "failed" ? "Retry payment" : "Pay now"}
+            {paying && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+            {paying ? "Paying..." : invoice.status === "failed" ? "Retry payment" : "Pay now"}
           </button>
         )}
         {invoice.canPay && invoice.hostedInvoiceUrl && (
@@ -94,7 +115,7 @@ function InvoiceRow({ invoice, busy, onPay }) {
   );
 }
 
-export default function InvoicesCard({ invoices, busy, onPay }) {
+export default function InvoicesCard({ invoices, busy, payingId = null, results = {}, onPay }) {
   return (
     <section id="invoices" className="bg-white rounded-lg border border-gray-100 shadow-sm">
       <div className="px-4 py-4 border-b border-gray-100">
@@ -109,7 +130,14 @@ export default function InvoicesCard({ invoices, busy, onPay }) {
       ) : (
         <ul className="divide-y divide-gray-100">
           {invoices.map((inv) => (
-            <InvoiceRow key={inv.id} invoice={inv} busy={busy} onPay={onPay} />
+            <InvoiceRow
+              key={inv.id}
+              invoice={inv}
+              busy={busy}
+              paying={payingId === inv.id}
+              result={results[inv.id] ?? null}
+              onPay={onPay}
+            />
           ))}
         </ul>
       )}

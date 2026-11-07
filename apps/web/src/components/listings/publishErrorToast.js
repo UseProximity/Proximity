@@ -33,3 +33,20 @@ export function publishErrorToast(data, fallback, { retry } = {}) {
   }
   return toast.error(data?.error || fallback);
 }
+
+/*
+ * The save went through as a draft because something on Billing (a payment
+ * method, an overdue invoice) has to be fixed before it can go live (code
+ * billing_needed from api/addListing and api/leases). Says so, with the link.
+ */
+export function billingNeededToast(data) {
+  return toast(
+    <span>
+      Saved as a draft. {data?.message}{" "}
+      <a href="/dashboard/landlord?tab=billing" className="font-semibold underline">
+        Go to Billing
+      </a>
+    </span>,
+    { duration: 12000 }
+  );
+}

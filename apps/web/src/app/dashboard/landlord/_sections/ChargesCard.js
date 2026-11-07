@@ -35,8 +35,17 @@ function Detail({ label, value }) {
   );
 }
 
+// A Paid charge refunded in full reads Refunded; a partial refund or credit keeps Paid and says so below.
+function statusOf(charge) {
+  const refunded = (charge.adjustments ?? []).filter((a) => a.kind === "refund").reduce((s, a) => s + a.amountCents, 0);
+  if (charge.status === "paid" && refunded >= charge.amountCents) {
+    return { label: "Refunded", className: "bg-gray-100 text-gray-700" };
+  }
+  return STATUS[charge.status] ?? STATUS.unconfirmed;
+}
+
 function ChargeRow({ charge, busy, onApprove, onContest }) {
-  const status = STATUS[charge.status] ?? STATUS.unconfirmed;
+  const status = statusOf(charge);
   return (
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-start gap-3">
@@ -61,6 +70,13 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
         {statusMessage(charge)}
         {charge.status === "pending" && charge.reviewEndsAt && ` Review ends ${dateOnly(charge.reviewEndsAt)}.`}
       </p>
+      {(charge.adjustments ?? []).map((a, i) => (
+        <p key={i} className="mt-1 text-xs text-gray-700">
+          {a.kind === "refund"
+            ? `${formatCents(a.amountCents)} refunded on ${dateOnly(a.createdAt)}, back to the card or bank account you paid with.`
+            : `${formatCents(a.amountCents)} credited on ${dateOnly(a.createdAt)}, taken off your next invoice.`}
+        </p>
+      ))}
       {charge.status === "contested" && charge.contestReason && (
         <p className="mt-1 text-xs text-gray-500">Your reason: {charge.contestReason}</p>
       )}

@@ -7,7 +7,9 @@ import { getBaseUrl } from "@/lib/email";
 import { periodLabel } from "./invoicing";
 import {
   sendAutopayOffEmail,
+  sendChargeAdjustedEmail,
   sendInvoiceIssuedEmail,
+  sendInvoicePaidEmail,
   sendPaymentMethodAttentionEmail,
   sendOverdueEmail,
   sendOverdueTeamEmail,
@@ -55,6 +57,29 @@ export function billingNotify() {
         totalCents: invoice.total_cents,
         reason: message,
       });
+    },
+
+    // The receipt, once per invoice, from whichever of Pay now and the webhook marked it Paid.
+    invoicePaid({ landlord, invoice, methodDescription }) {
+      return sendInvoicePaidEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        {
+          periodLabel: periodLabel(invoice.billing_period),
+          totalCents: invoice.total_cents,
+          methodDescription,
+          paidAt: new Date(),
+          pdfUrl: invoice.invoice_pdf_url ?? null,
+          paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing#invoices`,
+        }
+      );
+    },
+
+    // An admin refunded or credited a Paid charge. `charge` is in chargeDetails' shape.
+    chargeAdjusted({ landlord, kind, amountCents, charge, reason }) {
+      return sendChargeAdjustedEmail(
+        { id: landlord.id, email: landlord.email, name: landlord.name },
+        { kind, amountCents, charge, reason, paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` }
+      );
     },
 
     // Their default method will not pay the next invoice (expiring, expired or failed).

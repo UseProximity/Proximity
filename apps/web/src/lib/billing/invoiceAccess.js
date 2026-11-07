@@ -6,9 +6,10 @@
  * method, and only because the landlord pressed the button: that click is their
  * consent (decisions of 2026-11-04). Admins cannot charge a landlord; they can
  * resend the invoice email. Apart from this, only autopay the landlord switched
- * on charges anything (autopay.js). The outcome that matters (paid, failed,
- * processing) arrives by webhook, which is why starting a payment is all this
- * does on success.
+ * on charges anything (autopay.js). A card answers at once, so a card payment
+ * is settled here (Paid, receipt emailed) instead of waiting for the webhook,
+ * and a bank payment that started is shown as Processing straight away. The
+ * webhooks still arrive and find the work done.
  *
  * A landlord who wants a different method pays from Stripe's hosted invoice page
  * (the invoice's hosted_invoice_url), which collects a new one itself.
@@ -21,6 +22,7 @@ import { payInvoice, paymentFailureMessage, paymentUnderway, recordPaymentFailur
 import { lineDescription } from "./invoicePlan.js";
 import { leaseLabel } from "./chargeDisplay.js";
 import { describeMethod } from "./paymentMethodState.js";
+import { settleInvoicePaid } from "./invoiceHandlers.js";
 
 const COLUMNS =
   "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, due_date, sent_at, collection_method, hosted_invoice_url, invoice_pdf_url, last_failure_message, disputed, autopay_payment_method_id, autopay_scheduled_for, autopay_attempted_at, autopay_skipped_reason";
@@ -46,13 +48,19 @@ export function invoiceView(row) {
     // Pay now is offered on an issued invoice that is open or failed; not while a
     // payment is settling, and not on one a billing run has not finished issuing.
     canPay: !!row.invoice_date && (row.status === "failed" || row.status === "open"),
+    // What an admin has since refunded or credited on this invoice's charges.
+    refundedCents: adjustedOn(row, "refund"),
+    creditedCents: adjustedOn(row, "credit"),
   };
 }
+
+const adjustedOn = (row, kind) =>
+  (row.charges ?? []).flatMap((c) => c.adjustments ?? []).filter((a) => a.kind === kind).reduce((sum, a) => sum + a.amount_cents, 0);
 
 export async function listInvoicesForLandlord(db, landlordId) {
   const { data, error } = await db
     .from("billing_invoices")
-    .select(COLUMNS)
+    .select(`${COLUMNS}, charges:charges!invoice_id(adjustments:charge_adjustments(kind, amount_cents))`)
     .eq("landlord_id", landlordId)
     .order("billing_period", { ascending: false });
   if (error) throw error;
@@ -62,8 +70,15 @@ export async function listInvoicesForLandlord(db, landlordId) {
 /*
  * The landlord pays their own invoice (Pay now, or Retry payment). `landlordId`
  * is required: it is their click, on their invoice, that allows the charge.
+ * `notify` (billingNotify) sends the receipt, or the failed payment emails to
+ * the landlord and the team (Wyatt, 2026-11-07: a failed Pay now is emailed too,
+ * so the team hears about it and the landlord has a record).
+ *
+ * Returns { paid: true, method } for a card that went through, { processing:
+ * true, method } for a bank payment that started, { alreadyPaid: true }, or
+ * { started: true } when Stripe has not said yet. `method` is "card" or "bank".
  */
-export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, now = new Date() }) {
+export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, notify = null, now = new Date() }) {
   if (!landlordId) throw new BillingError("not_allowed", "Only the landlord can pay their invoice.", 403);
   const { data: row, error } = await db.from("billing_invoices").select(COLUMNS).eq("id", invoiceId).eq("landlord_id", landlordId).maybeSingle();
   if (error) throw error;
@@ -107,16 +122,34 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, n
     if (reopenError) throw reopenError;
   }
 
+  const kind = method.type === "card" ? "card" : "bank";
+  let result;
   try {
-    await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
+    result = await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
   } catch (err) {
     const raced = await paymentUnderway(stripe, invoice.id);
     if (raced === "paid") return { alreadyPaid: true };
     if (raced === "processing") return { started: true };
-    // Recorded quietly: the person who pressed the button sees the reason right away.
+    // Shown on the invoice at once, and emailed to the landlord and the team.
     const message = paymentFailureMessage(err);
-    await recordPaymentFailure(db, { invoiceId: row.id, message, notify: null, now });
+    await recordPaymentFailure(db, { invoiceId: row.id, message, notify, now });
     throw new BillingError("payment_failed", message, 402);
+  }
+
+  // A card is paid now: show it Paid and send the receipt without waiting for the webhook.
+  if (result?.status === "paid") {
+    await settleInvoicePaid(db, stripe, row, result, { notify });
+    return { paid: true, method: kind };
+  }
+  // A bank payment settles over a few business days: Processing until it does.
+  if ((await paymentUnderway(stripe, invoice.id)) === "processing") {
+    const { error: processingError } = await db
+      .from("billing_invoices")
+      .update({ status: "processing", processing_started_at: now.toISOString() })
+      .eq("id", row.id)
+      .in("status", ["open", "failed"]);
+    if (processingError) throw processingError;
+    return { processing: true, method: kind };
   }
   return { started: true };
 }

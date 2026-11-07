@@ -8,6 +8,41 @@ import { adjustPaidCharge } from "@/lib/billing/adjustments";
 import { dollarsToCents } from "@/lib/billing/money";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
+import { billingNotify } from "@/lib/billing/billingNotify";
+import { leaseLabel } from "@/lib/billing/chargeDisplay";
+
+// Tell the landlord about a refund or credit. Best effort: the correction is done either way.
+async function emailLandlord(db, chargeId, adjustment, reason) {
+  try {
+    const { data: charge } = await db
+      .from("charges")
+      .select(
+        `amount_cents, trigger_type,
+         landlord:users!landlord_id(id, name, email),
+         listing:listings!listing_id(title, address),
+         lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
+         student:users!student_id(name)`
+      )
+      .eq("id", chargeId)
+      .maybeSingle();
+    if (!charge?.landlord?.email) return;
+    await billingNotify().chargeAdjusted({
+      landlord: charge.landlord,
+      kind: adjustment.kind,
+      amountCents: adjustment.amount_cents,
+      reason,
+      charge: {
+        amountCents: charge.amount_cents,
+        triggerType: charge.trigger_type,
+        listingLabel: charge.listing?.address ?? charge.listing?.title ?? null,
+        leaseLabel: leaseLabel(charge.lease),
+        studentName: charge.student?.name ?? null,
+      },
+    });
+  } catch (err) {
+    console.error("[billing] adjustment email failed:", err?.message);
+  }
+}
 
 /*
  * Correct a Paid charge: a Stripe refund to the landlord's payment method (the
@@ -39,6 +74,8 @@ export async function POST(req, { params }) {
       amountCents,
       reason: body.reason,
     });
+    // Once per correction: a repeated request finds the one already made and says nothing new.
+    if (!adjustment.repeated) await emailLandlord(supabase, id, adjustment, String(body.reason ?? "").trim());
     return NextResponse.json({ ok: true, adjustment });
   } catch (err) {
     return billingErrorResponse(err, "adjust charge");

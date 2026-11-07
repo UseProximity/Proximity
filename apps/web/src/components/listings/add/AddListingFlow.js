@@ -30,7 +30,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
-import { publishErrorToast } from "@/components/listings/publishErrorToast";
+import { billingNeededToast, publishErrorToast } from "@/components/listings/publishErrorToast";
 import { openCoverageDialog } from "@/components/listings/CoverageSignDialog";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
@@ -426,6 +426,13 @@ export default function AddListingFlow({ user }) {
         });
         toast.success(live ? "Signed and published. Your listing is live." : "Saved as a draft. Sign the agreement to publish it.");
         setPublished({ listingId, unitId: unit?.id ?? null, draft: !live });
+        return;
+      }
+
+      // Saved, but as a draft: Billing (a payment method, an overdue invoice) needs fixing first.
+      if (data.code === "billing_needed") {
+        billingNeededToast(data);
+        setPublished({ listingId, unitId: unit?.id ?? null, draft: true });
         return;
       }
 
