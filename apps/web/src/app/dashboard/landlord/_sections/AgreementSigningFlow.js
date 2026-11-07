@@ -173,7 +173,7 @@ function PropertyChoice({ p, choice, onChange }) {
       {p.canExclude && (
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" checked={!choice.include} onChange={(e) => onChange({ ...choice, include: !e.target.checked })} />
-          Don&apos;t cover this property
+          Exclude this property
         </label>
       )}
       {!choice.include ? (
