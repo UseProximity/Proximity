@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import {
   DocumensoError,
   splitExhibit,
+  fitExhibit,
+  EXHIBIT_CONTINUED_NOTE,
   DOCUMENSO_EMAILS_OFF,
   createDocumensoClient,
   documensoSetting,
@@ -625,5 +627,39 @@ describe("Exhibit A across boxes, and the admin's test fill (2026-11-07)", () =>
     assert.equal(await testFillTemplate(refusing, env, summary), "Number must be greater than or equal to 8 (data.0.fieldMeta.fontSize)");
     const fine = { prepareSigningCopy: async () => ({ envelopeId: "e" }), discard: async () => {} };
     assert.equal(await testFillTemplate(fine, env, summary), null);
+  });
+});
+
+describe("Exhibit A continued on extra pages (2026-11-07)", () => {
+  const block = (n) => `${n} Long Street, St. Louis, MO 63130\nWhole building`;
+  const blocks = Array.from({ length: 40 }, (_, i) => block(100 + i));
+  const halfPage = { id: "x", height: 30, width: 75 }; // about 237pt: 23 lines at 8pt
+
+  it("fills what fits, ends with the note, and returns the rest in order", () => {
+    const { fill, rest } = fitExhibit(blocks, [halfPage]);
+    const shown = fill[0].value.split("\n\n");
+    assert.equal(shown.at(-1), EXHIBIT_CONTINUED_NOTE);
+    const placed = shown.slice(0, -1);
+    assert.ok(placed.length >= 5 && placed.length < 40);
+    assert.deepEqual([...placed, ...rest], blocks, "nothing dropped or reordered");
+    const lines = fill[0].value.split("\n").length;
+    assert.ok(lines <= 23, `fits the box (${lines} lines)`);
+  });
+
+  it("a list that fits has no note and nothing left over", () => {
+    const { fill, rest } = fitExhibit(blocks.slice(0, 3), [halfPage]);
+    assert.deepEqual(rest, []);
+    assert.equal(fill[0].value, blocks.slice(0, 3).join("\n\n"));
+  });
+
+  it("long addresses wrap, so fewer fit in a narrow box", () => {
+    const long = Array.from({ length: 10 }, (_, i) => `${i} ${"Very Long Avenue Name ".repeat(4)}, St. Louis, MO\nUnits: 1A, 1B`);
+    const wide = fitExhibit(long, [{ id: "w", height: 30, width: 80 }]).rest.length;
+    const narrow = fitExhibit(long, [{ id: "n", height: 30, width: 30 }]).rest.length;
+    assert.ok(narrow > wide);
+  });
+
+  it("an empty Exhibit A reads None.", () => {
+    assert.deepEqual(fitExhibit([], [halfPage]), { fill: [{ id: "x", value: "None." }], rest: [] });
   });
 });

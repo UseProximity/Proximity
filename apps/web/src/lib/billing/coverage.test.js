@@ -621,6 +621,22 @@ describe("boxes filled on the landlord's copy (Wyatt 2026-11-05)", () => {
     assert.equal(documenso.calls.copies, 2);
   });
 
+  it("a list too long for the Exhibit A box continues on generated pages attached to the copy (2026-11-07)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    // A box about two lines tall: one property fits, the rest go on extra pages.
+    documenso.envelopes.set("envelope_master", template([{ id: 93, type: "TEXT", recipientId: 11, page: 7, height: 4, width: 75, fieldMeta: { label: "Exhibit A" } }]));
+    await sign(db, documenso, { listingIds: ["L2"], exhibit: [{ listingId: "L3", include: true }] });
+    const box = documenso.calls.lastCopy.prefill.find((p) => p.id === 93).value;
+    assert.match(box, /Continued on the attached Exhibit A \(continued\) pages\.$/);
+    const extra = documenso.calls.lastCopy.exhibit;
+    assert.ok(extra && extra.pageCount >= 1, "continued pages attached");
+    assert.equal(extra.fileName, "exhibit-a-continued.pdf");
+    const pdf = await PDFDocument.load(extra.bytes);
+    assert.equal(pdf.getPageCount(), extra.pageCount);
+    assert.equal(pdf.getTitle(), "EXHIBIT A (CONTINUED)");
+  });
+
   it("one document per envelope: a template without an Exhibit A box is not offered for signing", async () => {
     const db = world();
     const documenso = fakeDocumenso();

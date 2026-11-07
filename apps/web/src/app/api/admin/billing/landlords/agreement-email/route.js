@@ -56,7 +56,7 @@ export async function POST(req) {
     const window = await getEnrollmentWindow(supabase);
     const input = {
       versionLabel: live.label,
-      signUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing#commission-agreement`,
+      signUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing#marketing-agreement`,
       deadline: window.deadline && !window.enforcedAt ? formatDeadline(window.deadline) : null,
     };
     const result = await sendAgreementRequests({

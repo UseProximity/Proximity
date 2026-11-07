@@ -31,7 +31,7 @@ async function call(url, { method = "GET", body, retries = 0 } = {}) {
   }
 }
 
-const STEPS = ["Your details", "Exhibit A", "Real estate license"];
+const STEPS = ["Your details", "Properties covered", "Real estate license"];
 
 // Three bars, no labels (Wyatt, 2026-11-07); the step names are for screen readers.
 function Progress({ step }) {
@@ -173,17 +173,17 @@ function PropertyChoice({ p, choice, onChange }) {
       {p.canExclude && (
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" checked={!choice.include} onChange={(e) => onChange({ ...choice, include: !e.target.checked })} />
-          Exclude this property from Exhibit A
+          Don&apos;t cover this property
         </label>
       )}
       {!choice.include ? (
         p.live ? (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            This property is live. Excluding it takes your listings there off the site, so students will no longer see them. You can publish them
-            again later with a short Exhibit A addendum.
+            This property is live. Leaving it uncovered takes your listings there off the site, so students will no longer see them. You can publish them
+            again later by adding it to your agreement with a short addendum.
           </p>
         ) : (
-          <p className="text-xs text-gray-500">Excluded. Publishing it later will need a short Exhibit A addendum.</p>
+          <p className="text-xs text-gray-500">Not covered. To publish it later, you will add it to your agreement with a short addendum.</p>
         )
       ) : (
         <>
@@ -463,8 +463,8 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                 )}
                 <p>
                   {isAmendment
-                    ? "These properties are not fully on your agreement yet. Choose the whole building or the units to add for each; the addendum lists only what you add."
-                    : "Exhibit A lists the properties this agreement covers. For each, choose the whole building or the units it covers."}
+                    ? "These properties are not fully covered by your marketing agreement yet. For each, choose whether it covers the whole building or only certain units. A short addendum adds them to your agreement."
+                    : "Choose the properties this marketing agreement covers. For each, choose whether it covers the whole building or only certain units. These are listed in the agreement (as Exhibit A)."}
                 </p>
                 <ul className="space-y-3">
                   {preview.properties.map((p) => (
@@ -482,7 +482,7 @@ export default function AgreementSigningFlow({ listingIds = [], intro = null, us
                         <li key={p.listingId}>{p.address}</li>
                       ))}
                     </ul>
-                    <p className="text-xs">Your listings there are withdrawn now, so students will no longer see them. You can publish them again later with a short Exhibit A addendum.</p>
+                    <p className="text-xs">Your listings there are withdrawn now, so students will no longer see them. You can publish them again later by adding them to your agreement with a short addendum.</p>
                     <div className="flex justify-end gap-2">
                       <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
                         Go back

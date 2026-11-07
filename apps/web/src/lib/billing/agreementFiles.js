@@ -36,7 +36,7 @@ export async function storeSignedAgreement({ userId, bytes }) {
 }
 
 // A short-lived download link for a stored agreement.
-export function signedAgreementUrl(key, filename = "commission-agreement.pdf") {
+export function signedAgreementUrl(key, filename = "marketing-agreement.pdf") {
   return getSignedUrl(
     r2,
     new GetObjectCommand({

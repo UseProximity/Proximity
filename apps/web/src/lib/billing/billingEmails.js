@@ -67,13 +67,13 @@ export const sendPaymentMethodAttentionEmail = (landlord, input) =>
   toLandlord("billing_method_attention", landlord, t.paymentMethodAttentionEmail({ name: landlord.name, ...input }));
 export const sendOverdueEmail = (landlord, input) =>
   toLandlord("billing_overdue", landlord, t.overdueEmail({ name: landlord.name, ...input }));
-// `pdf` is the agreement's bytes, attached as commission-agreement.pdf when given.
+// `pdf` is the agreement's bytes, attached as marketing-agreement.pdf when given.
 export const sendAgreementRequestEmail = (landlord, input, pdf = null) =>
   toLandlord(
     AGREEMENT_REQUEST_KIND,
     landlord,
     t.agreementRequestEmail({ name: landlord.name, ...input }),
-    pdf ? [{ filename: "proximity-commission-agreement.pdf", content: Buffer.from(pdf), contentType: "application/pdf" }] : null
+    pdf ? [{ filename: "proximity-marketing-agreement.pdf", content: Buffer.from(pdf), contentType: "application/pdf" }] : null
   );
 export const sendEnrollmentEmail = (landlord, input) =>
   toLandlord("billing_enrollment", landlord, t.enrollmentEmail({ name: landlord.name, ...input }));

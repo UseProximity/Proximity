@@ -3,7 +3,7 @@
 import toast from "react-hot-toast";
 import { needsCoverageOnly, openCoverageDialog } from "./CoverageSignDialog";
 
-const PAYMENTS_URL = "/dashboard/landlord?tab=billing#commission-agreement";
+const PAYMENTS_URL = "/dashboard/landlord?tab=billing#marketing-agreement";
 
 /*
  * Show why a save or publish was refused. When the listing gate refused it

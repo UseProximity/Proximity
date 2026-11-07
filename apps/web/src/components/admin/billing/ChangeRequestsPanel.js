@@ -2,7 +2,7 @@
 
 /*
  * Admin, Billing, Change requests: landlords asking for different wording in the
- * commission agreement or an Exhibit A amendment.
+ * marketing agreement or an Exhibit A amendment.
  *
  * A list filtered by status (waiting on us, replied, accepted, closed), then the
  * selected request's thread with:
@@ -37,7 +37,7 @@ const FILTERS = [
   { key: "closed", label: "Closed" },
 ];
 const CLOSED = ["resolved", "declined", "withdrawn"];
-const DOC = { master: "Commission agreement", amendment: "Exhibit A amendment" };
+const DOC = { master: "Marketing agreement", amendment: "Exhibit A amendment" };
 
 function Thread({ request }) {
   return (
@@ -112,7 +112,7 @@ function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
     >
       <p className="text-sm font-medium text-gray-900">Upload negotiated version</p>
       <p className="text-xs text-gray-500">
-        A {DOC[request.documentKind]?.toLowerCase() ?? "commission agreement"} for {request.landlord?.name || request.landlord?.email} only. Other
+        A {DOC[request.documentKind]?.toLowerCase() ?? "marketing agreement"} for {request.landlord?.name || request.landlord?.email} only. Other
         landlords keep the standard one.
       </p>
       <div className="flex flex-wrap gap-3">
@@ -307,7 +307,7 @@ export default function ChangeRequestsPanel({ search = "", onOpenAgreements, onC
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Landlords asking for different wording in the commission agreement. Reply, accept (then upload their version) or decline.
+        Landlords asking for different wording in the marketing agreement. Reply, accept (then upload their version) or decline.
         Every answer is emailed to them.
       </p>
       <div className="flex flex-wrap gap-2">

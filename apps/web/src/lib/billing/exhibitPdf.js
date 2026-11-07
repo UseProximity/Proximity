@@ -66,7 +66,8 @@ export const fmtDate = (d) =>
  *   previous      amendment: covered before it
  *   agreementSignedAt  amendment: when the agreement it changes was signed
  */
-export async function buildExhibitPdf({ kind = "master", landlordName, entries = [], previous = [], agreementSignedAt = null, preparedAt = new Date() }) {
+export async function buildExhibitPdf({ kind = "master", landlordName, entries = [], previous = [], agreementSignedAt = null, preparedAt = new Date(), blocks = [], heading = null }) {
+  if (kind === "continued") return buildContinuedPdf({ landlordName, blocks, heading, preparedAt });
   const amendment = kind === "amendment";
   const doc = await PDFDocument.create();
   doc.setTitle(amendment ? "Amendment to Exhibit A" : "Exhibit A: Covered Properties");
@@ -130,7 +131,12 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
     list(entries);
   }
 
-  // Footer on every page: page numbers and the initials box Documenso fills.
+  footer(pages, font);
+  return { bytes: await doc.save(), pageCount: pages.length };
+}
+
+// Footer on every page: page numbers and the initials box Documenso fills.
+function footer(pages, font) {
   const box = {
     x: (INITIALS_BOX.positionX / 100) * PAGE.width,
     width: (INITIALS_BOX.width / 100) * PAGE.width,
@@ -149,6 +155,52 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
       borderWidth: 0.75,
     });
   });
+}
 
+/*
+ * "Exhibit A (continued)": the properties that did not fit in the agreement's own
+ * Exhibit A box (fitExhibit in documenso.js), in the same format as the box, one
+ * block per property ("address", then "Whole building" or "Units: ..."), with
+ * the initials box on every page (Wyatt, 2026-11-07).
+ */
+async function buildContinuedPdf({ landlordName, blocks, heading, preparedAt }) {
+  const doc = await PDFDocument.create();
+  const title = heading || "EXHIBIT A (CONTINUED)";
+  doc.setTitle(title);
+  doc.setProducer("Proximity");
+  doc.setCreator("Proximity");
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const width = PAGE.width - MARGIN * 2;
+  const pages = [];
+  let page;
+  let y;
+  const newPage = () => {
+    page = doc.addPage([PAGE.width, PAGE.height]);
+    pages.push(page);
+    y = PAGE.height - MARGIN;
+  };
+  const text = (str, { size = 11, f = font, x = MARGIN, color = rgb(0, 0, 0), gap = 4 } = {}) => {
+    for (const line of wrap(str, f, size, width - (x - MARGIN))) {
+      if (y - size < CONTENT_BOTTOM) newPage();
+      page.drawText(line, { x, y: y - size, size, font: f, color });
+      y -= size + gap;
+    }
+  };
+  newPage();
+  text(title, { size: 16, f: bold, gap: 6 });
+  text("Covered Properties", { size: 12, f: bold });
+  y -= 6;
+  text(`Landlord: ${landlordName || "Landlord"}`);
+  text(`Prepared: ${fmtDate(preparedAt)}`);
+  y -= 14;
+  for (const block of blocks) {
+    const [address, ...more] = String(block).split("\n");
+    if (y - 30 < CONTENT_BOTTOM) newPage();
+    text(address);
+    for (const line of more) text(line, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
+    y -= 6;
+  }
+  footer(pages, font);
   return { bytes: await doc.save(), pageCount: pages.length };
 }

@@ -32,7 +32,7 @@ export async function GET(req, { params }) {
       data.signed_file_key && { key: data.signed_file_key, originalKey: data.agreement_version?.file_key ?? null },
       data.signed_exhibit_file_key && { key: data.signed_exhibit_file_key, originalKey: data.exhibit_file_key ?? null },
     ].filter(Boolean);
-    return pdfResponse(await combinedSignedPdf(keys), "commission-agreement.pdf");
+    return pdfResponse(await combinedSignedPdf(keys), "marketing-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open signed agreement");
   }

@@ -112,7 +112,7 @@ export default function EnrollmentPanel() {
             </div>
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={includeAgreement} onChange={(e) => setIncludeAgreement(e.target.checked)} />
-              Also ask them to sign the commission agreement (tick once the agreement is ready)
+              Also ask them to sign the marketing agreement (tick once the agreement is ready)
             </label>
             <p className="text-xs text-gray-500">
               The deadline is in the email and shown as a banner on each landlord&apos;s Billing tab until they have set up.

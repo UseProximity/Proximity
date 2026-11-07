@@ -71,7 +71,7 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
       .catch((e) => setError(e.message));
   }, [landlordId, tick]);
   const voidDoc = (d) => {
-    const what = d.kind === "amendment" ? "this Exhibit A amendment" : "this commission agreement";
+    const what = d.kind === "amendment" ? "this Exhibit A amendment" : "this marketing agreement";
     const effect =
       d.status === "signed"
         ? d.kind === "amendment"
@@ -215,7 +215,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
   const [payColor, payLabel] = PAYMENT[row.payment.state] ?? PAYMENT.none;
 
   const email = () => {
-    if (!window.confirm(`Email ${row.email} a link to sign the commission agreement, with the PDF attached?`)) return;
+    if (!window.confirm(`Email ${row.email} a link to sign the marketing agreement, with the PDF attached?`)) return;
     return run(() => postJson("/api/admin/billing/landlords/agreement-email", { landlordId: row.id }), `Emailed ${row.email}.`);
   };
 
@@ -311,7 +311,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
 }
 
 /*
- * Every landlord: their commission agreement, payment methods, unpaid invoices and
+ * Every landlord: their marketing agreement, payment methods, unpaid invoices and
  * whether they can publish, with the signing email to send or resend.
  */
 export default function LandlordAgreementList({ search, busy, run, reloadKey }) {

@@ -202,7 +202,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
   return (
     <CollapsibleSection
-      id="commission-agreement"
+      id="marketing-agreement"
       title="Marketing agreement"
       defaultOpen={needsAction}
       badge={<span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>}

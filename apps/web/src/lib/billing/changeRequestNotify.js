@@ -16,7 +16,7 @@ import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { sendChangeRequestReminderEmail, sendChangeRequestTeamEmail, sendChangeRequestUpdateEmail } from "./billingEmails";
 
 const adminUrl = () => `${getBaseUrl()}/dashboard/admin`;
-const paymentsUrl = () => `${getBaseUrl()}/dashboard/landlord?tab=billing#commission-agreement`;
+const paymentsUrl = () => `${getBaseUrl()}/dashboard/landlord?tab=billing#marketing-agreement`;
 const isSandbox = async (userId) => (await sandboxIdsAmong([userId])).has(userId);
 
 async function teamEmail({ landlord, request, message, isReply }) {

@@ -38,8 +38,8 @@
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
-import { copyBoxesByKind, signerOf, splitExhibit, templateFieldSummary } from "./documenso.js";
-import { fmtDate } from "./exhibitPdf.js";
+import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
+import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, resolvePublishedIds } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
@@ -736,11 +736,22 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     if (!was || e.wholeBuilding !== false) return e;
     return { ...e, units: (e.units ?? []).filter((u) => !(was.units ?? []).includes(u)) };
   });
-  // One block per property; spread over the Exhibit A boxes in order (splitExhibit).
+  // One block per property; spread over the Exhibit A boxes in order, and what does
+  // not fit goes on generated "Exhibit A (continued)" pages attached to the copy (fitExhibit).
   const exhibitEntries = isAmendment ? addedOnly : plan.entries;
   const exhibitBlocks = exhibitEntries.map((e) => `${e.address}\n${coverageLine(e)}`);
   const exhibitBoxList = boxes.exhibitBoxes?.length ? boxes.exhibitBoxes : idsOf(boxes, "exhibit").map((id) => ({ id, height: 100 }));
   const exhibitBeforeText = exhibitText(plan.previous ?? []);
+  const fitted = fitExhibit(exhibitBlocks, exhibitBoxList);
+  const continued = fitted.rest.length
+    ? await buildExhibitPdf({
+        kind: "continued",
+        heading: isAmendment ? "ADDENDUM TO EXHIBIT A (CONTINUED)" : "EXHIBIT A (CONTINUED)",
+        landlordName: details.company || name,
+        blocks: fitted.rest,
+        preparedAt: now,
+      })
+    : null;
   // The address as typed on the form; without one, the Stripe billing address.
   const { line1, line2 } = addressLines(details);
   const typedAddress = [line1, line2].filter(Boolean).join(", ");
@@ -758,7 +769,7 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
       ...idsOf(boxes, "address").map((id) => ({ id, value: address })),
       ...idsOf(boxes, "name").map((id) => ({ id, value: name })),
       ...["company", "owner", "email", "address1", "address2"].flatMap((k) => idsOf(boxes, k).map((id) => ({ id, value: values[k] }))),
-      ...splitExhibit(exhibitBlocks, exhibitBoxList),
+      ...fitted.fill,
       ...idsOf(boxes, "exhibitBefore").map((id) => ({ id, value: exhibitBeforeText })),
       // The agreement's own date ("Effective Date"): an addendum's agreement, or today on the agreement itself.
       ...idsOf(boxes, "agreementDate").map((id) => ({ id, value: fmtDate(isAmendment ? master?.signed_at ?? now : now) })),
@@ -767,7 +778,9 @@ async function createDocument(db, documenso, { user, title, name, details = {}, 
     autofill: { name, email: details.email || user.email, date: fmtDate(now) },
     // A commission rate box left on an older template is taken off the copy.
     dropRateBox: true,
-    exhibit: null,
+    exhibit: continued
+      ? { bytes: continued.bytes, pageCount: continued.pageCount, initialsBox: INITIALS_BOX, fileName: isAmendment ? "addendum-exhibit-a-continued.pdf" : "exhibit-a-continued.pdf" }
+      : null,
     email: user.email,
     name,
     title: isAmendment ? "Exhibit A amendment" : "Marketing agreement",

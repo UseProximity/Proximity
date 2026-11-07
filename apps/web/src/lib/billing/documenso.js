@@ -184,6 +184,52 @@ export function splitExhibit(blocks, boxes) {
   return out;
 }
 
+/*
+ * Exhibit A over the template's boxes, with any overflow moved to generated
+ * "Exhibit A (continued)" pages attached to the copy (Wyatt, 2026-11-07).
+ * Returns { fill: [{ id, value }], rest: [block] }. When anything is left over the
+ * last box ends with EXHIBIT_CONTINUED_NOTE. Lines are counted at the smallest
+ * type, with long addresses wrapped to the box's width.
+ */
+export const EXHIBIT_CONTINUED_NOTE = "Continued on the attached Exhibit A (continued) pages.";
+const PAGE_WIDTH_POINTS = 612;
+function blockLines(block, box) {
+  const perLine = box.width ? Math.max(20, Math.floor(((box.width / 100) * PAGE_WIDTH_POINTS) / (EXHIBIT_MIN_FONT * 0.5))) : Infinity;
+  return block.split("\n").reduce((n, line) => n + Math.max(1, Math.ceil(line.length / perLine)), 0);
+}
+export function fitExhibit(blocks, boxes) {
+  if (!boxes.length) return { fill: [], rest: [...blocks] };
+  const chunks = boxes.map(() => []);
+  let i = 0;
+  // A box of unknown size (no height) takes everything, as before.
+  const roomOf = (b) => (Number(b.height) > 0 ? exhibitBoxLines(b.height) : Infinity);
+  boxes.forEach((b, n) => {
+    const room = roomOf(b);
+    let used = 0;
+    while (i < blocks.length) {
+      const lines = blockLines(blocks[i], b) + (chunks[n].length ? 1 : 0);
+      if (used + lines > room) break;
+      chunks[n].push(blocks[i]);
+      used += lines;
+      i += 1;
+    }
+  });
+  let rest = blocks.slice(i);
+  if (rest.length) {
+    // Room for the note (and the blank line before it) in the last box.
+    const last = boxes.length - 1;
+    const room = roomOf(boxes[last]);
+    const used = () => chunks[last].reduce((n, blk, k) => n + blockLines(blk, boxes[last]) + (k ? 1 : 0), 0);
+    while (chunks[last].length && used() + 2 > room) rest = [chunks[last].pop(), ...rest];
+  }
+  const fill = boxes.map((b, n) => {
+    const parts = [...chunks[n]];
+    if (rest.length && n === boxes.length - 1) parts.push(EXHIBIT_CONTINUED_NOTE);
+    return { id: b.id, value: parts.join("\n\n") || (n === 0 && !blocks.length ? "None." : "") };
+  });
+  return { fill, rest };
+}
+
 export function templateFieldSummary(envelope) {
   const signer = signerOf(envelope);
   const mine = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
@@ -264,7 +310,7 @@ export const DATE_SETTINGS = { dateFormat: "MM/dd/yyyy", timezone: "America/Chic
 
 const exhibitBoxesOf = (fields) =>
   fields
-    .map((f) => ({ id: f.id, page: Number(f.page) || 1, positionY: Number(f.positionY) || 0, height: Number(f.height) || 0 }))
+    .map((f) => ({ id: f.id, page: Number(f.page) || 1, positionY: Number(f.positionY) || 0, height: Number(f.height) || 0, width: Number(f.width) || 0 }))
     .sort((a, b) => a.page - b.page || a.positionY - b.positionY);
 
 // Boxes set up so the filled text would be cut off or refused.
@@ -278,7 +324,7 @@ function templateWarnings(fields, labelOf) {
   const exhibit = fields.filter((f) => f.type === "TEXT" && BOX_RULES.exhibit[0].test(labelOf(f)) && !BOX_RULES.exhibit[1].test(labelOf(f)));
   const tall = exhibit.reduce((n, f) => n + ((Number(f.height) || 0) / 100) * PAGE_POINTS, 0);
   if (exhibit.length && tall < 150) {
-    out.push(`The Exhibit A box is only about ${Math.max(1, Math.round(tall / 15))} line(s) tall, so a longer list runs on below it. Make it most of the page, or type [EXHIBIT A] in the document and upload it again.`);
+    out.push(`The Exhibit A box is only about ${Math.max(1, Math.round(tall / 15))} line(s) tall, so most lists will continue on extra pages. Make it most of the page, or type [EXHIBIT A] in the document and upload it again.`);
   }
   return out;
 }
@@ -455,7 +501,7 @@ export function createDocumensoClient({
             recipients: [{ email: "", name: "", role: "SIGNER" }],
             meta: { distributionMethod: "NONE", language: "en", typedSignatureEnabled: true, drawSignatureEnabled: true },
           },
-          [{ bytes: pdfBytes, name: fileName || "commission-agreement.pdf" }]
+          [{ bytes: pdfBytes, name: fileName || "marketing-agreement.pdf" }]
         ),
       });
       return created.id;

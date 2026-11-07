@@ -1,5 +1,5 @@
 /*
- * Versions of the commission agreement document (agreement_versions). An admin
+ * Versions of the marketing agreement document (agreement_versions). An admin
  * takes a version from upload to live in four steps, all on the admin dashboard:
  *
  *   1. upload      the PDF is stored in R2 and pushed to Documenso as a template.
@@ -13,7 +13,7 @@
  *                  The previous live version is retired.
  *
  * Two kinds, each with its own live version (decisions of 2026-11-04):
- *   master     the commission agreement, signed once with Exhibit A attached
+ *   master     the marketing agreement, signed once with Exhibit A attached
  *   amendment  the short amendment signed when a landlord adds a property later
  * A version with landlord_id is negotiated with that one landlord (an accepted
  * change request): it is live for them only, and they sign it instead of the
@@ -168,11 +168,11 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
     const original = bytes ?? (await readPdf(version.file_key));
     // [Placeholders] in the PDF become labelled boxes in their place (placeholders.js).
     const { bytes: pdfBytes, boxes } = await preparePlaceholders(original);
-    const what = version.kind === "amendment" ? "Exhibit A amendment" : "commission agreement";
+    const what = version.kind === "amendment" ? "Exhibit A amendment" : "marketing agreement";
     const templateId = await documenso.createTemplate({
       title: `Proximity ${what} (${version.label})${version.landlord_id ? " [one landlord]" : ""}`,
       pdfBytes,
-      fileName: version.file_name || "commission-agreement.pdf",
+      fileName: version.file_name || "marketing-agreement.pdf",
       externalId: `agreement-version:${version.id}`,
     });
     if (boxes.length && documenso.addTemplateBoxes) await documenso.addTemplateBoxes(templateId, boxes);

@@ -17,7 +17,7 @@ import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSi
 export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
   const ids = uncovered.map((u) => u.listingId).filter(Boolean);
   const names = uncovered.map((u) => (u.missingUnits?.length ? `${u.address} (units ${u.missingUnits.join(", ")})` : u.address));
-  const intro = `To publish ${names.join("; ")}, ${names.length === 1 ? "it needs" : "they need"} to be on your marketing agreement's Exhibit A. Your drafts stay saved whatever you choose.`;
+  const intro = `To publish ${names.join("; ")}, ${names.length === 1 ? "it needs" : "they need"} to be covered by your marketing agreement. Your drafts stay saved whatever you choose.`;
   return (
     <AgreementSigningFlow
       listingIds={ids}

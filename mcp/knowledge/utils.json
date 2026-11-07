@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-07T00:08:15.640Z",
+  "_generated": "2026-11-07T00:19:40.255Z",
   "count": 309,
   "utils": [
     {
@@ -361,7 +361,7 @@
     },
     {
       "file": "src/lib/billing/agreementVersions.js",
-      "description": "Versions of the commission agreement document (agreement_versions). An admin"
+      "description": "Versions of the marketing agreement document (agreement_versions). An admin"
     },
     {
       "file": "src/lib/billing/autopay.js",

@@ -35,7 +35,7 @@ function TemplateHealth({ summary }) {
       {boxes > 0 && (
         <p className="text-gray-500">
           Exhibit A holds about {summary.exhibitCapacity} {summary.exhibitCapacity === 1 ? "property" : "properties"}
-          {boxes > 1 ? ` across ${boxes} boxes, filled in order` : ""}. For more, add another [EXHIBIT A] at the top of a following page.
+          {boxes > 1 ? ` across ${boxes} boxes, filled in order` : ""}. A longer list continues on &quot;Exhibit A (continued)&quot; pages added to that landlord&apos;s copy automatically.
         </p>
       )}
       {(summary.warnings ?? []).map((w) => (
@@ -331,7 +331,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
   return (
     <section className="rounded-lg border border-gray-100 bg-white p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">Commission agreement</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Marketing agreement</h3>
         {!documensoConnected && (
           <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">
             Documenso is not connected in this environment (DOCUMENSO_API_KEY is not set). You can upload a version
@@ -429,7 +429,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           <label className="block w-48 text-sm text-gray-700">
             Document
             <select className={`${FIELD} mt-1`} value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="master">Commission agreement</option>
+              <option value="master">Marketing agreement</option>
               <option value="amendment">Exhibit A amendment</option>
             </select>
           </label>

@@ -43,7 +43,7 @@ export async function GET(req, { params }) {
   const supabase = billingDb.db;
   try {
     const version = await getVersion(supabase, await versionId(params));
-    return NextResponse.json({ url: await signedAgreementUrl(version.file_key, version.file_name || "commission-agreement.pdf") });
+    return NextResponse.json({ url: await signedAgreementUrl(version.file_key, version.file_name || "marketing-agreement.pdf") });
   } catch (err) {
     return billingErrorResponse(err, "open agreement version");
   }

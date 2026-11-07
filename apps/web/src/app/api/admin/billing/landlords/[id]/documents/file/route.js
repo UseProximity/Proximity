@@ -31,7 +31,7 @@ export async function GET(req, { params }) {
     const kind = q.get("kind") === "amendment" ? "amendment" : "master";
     const keys = await documentParts(supabase, { userId: landlordId, kind, id: docId });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
-    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "commission-agreement.pdf");
+    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "marketing-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open a landlord's signed document");
   }

@@ -28,7 +28,7 @@ export async function GET(req) {
     if (id && !UUID.test(id)) throw new BillingError("not_found", "That document was not found.", 404);
     const keys = await documentParts(supabase, { userId: session.user.id, kind, id });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
-    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "commission-agreement.pdf");
+    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "marketing-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open signed agreement");
   }

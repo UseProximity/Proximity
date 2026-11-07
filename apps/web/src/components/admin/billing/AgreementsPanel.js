@@ -105,7 +105,7 @@ function ManualRecord({ busy, run }) {
 }
 
 /*
- * Landlords and agreements: the commission agreement document and its versions,
+ * Landlords and agreements: the marketing agreement document and its versions,
  * the two listing requirements, and every landlord's agreement and payment status,
  * with the signing email to send. A paper signature can still be recorded by hand.
  */
@@ -192,11 +192,11 @@ export default function AgreementsPanel({ search }) {
             onToggle={() => toggle("requirePaymentMethod", "require an active payment method")}
           />
           <GateSwitch
-            label="Require a signed commission agreement"
+            label="Require a signed marketing agreement"
             help="Make an agreement version live before turning this on."
             on={settings.requireAgreement}
             busy={busy}
-            onToggle={() => toggle("requireAgreement", "require a signed commission agreement")}
+            onToggle={() => toggle("requireAgreement", "require a signed marketing agreement")}
           />
         </div>
       )}

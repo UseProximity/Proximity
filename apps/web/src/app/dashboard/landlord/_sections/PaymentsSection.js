@@ -26,7 +26,7 @@ async function call(url, options) {
  * here, through Documenso) with the checklist of what is needed to publish, the
  * payment method (both fold away once done), balance and charges (with Approve
  * and Contest), monthly invoices (with Pay now) and autopay. Emails link to
- * #commission-agreement.
+ * #marketing-agreement.
  *
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
@@ -169,12 +169,13 @@ export default function PaymentsSection() {
       }
     });
 
-  // The signing email links to #commission-agreement; the card only exists once loaded.
+  // The signing email links to #marketing-agreement (#commission-agreement in emails
+  // sent before 2026-11-07); the card only exists once loaded.
   const scrolledToAgreement = useRef(false);
   useEffect(() => {
-    if (!gate || scrolledToAgreement.current || window.location.hash !== "#commission-agreement") return;
+    if (!gate || scrolledToAgreement.current || !["#marketing-agreement", "#commission-agreement"].includes(window.location.hash)) return;
     scrolledToAgreement.current = true;
-    document.getElementById("commission-agreement")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("marketing-agreement")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [gate]);
 
   // After the signing dialog: refresh, and say where things stand.
