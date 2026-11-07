@@ -32,6 +32,7 @@ import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
+import { sameSite } from "@/lib/listingDraft/fetchSite";
 
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
@@ -682,7 +683,11 @@ async function withdrawnBySyncFor(listingId) {
  * deleted, since it only compares the website with the units still there.
  *
  * So a new unit from the website is held for a person, never added, when
- *   - a unit with the same name is on another listing this landlord owns, or
+ *   - a unit with the same name is on another listing this landlord owns that
+ *     is read from the same website (Wyatt, 2026-11-06: Coronado Place and
+ *     Lindell Tower East are both on macapartments.com; buildings on their own
+ *     websites often share names like "Studio" or "Apt 201" for real, and were
+ *     held for nothing: 80 of 82 shared names in prod), or
  *   - a unit with the same name was removed from this listing.
  * Held, not dropped: it shows once in the review queue with the reason, and
  * applying it there still adds it on purpose.
@@ -698,13 +703,15 @@ export async function holdUnitsBelongingElsewhere({ state, changes, ownerIds }) 
     for (let i = 0; i < others.length; i += 100) {
       const { data: units } = await supabase
         .from("listing_units")
-        .select("name, listings!listing_id(title, address, deleted_at)")
+        .select("name, listings!listing_id(title, address, deleted_at, source_url)")
         .in("listing_id", others.slice(i, i + 100))
         .is("deleted_at", null)
         .not("name", "is", null)
         .limit(5000);
       for (const u of units ?? []) {
         if (u.listings?.deleted_at) continue;
+        // Another building on its own website: a shared name is just a shared name.
+        if (!state.source_url || !u.listings?.source_url || !sameSite(state.source_url, u.listings.source_url)) continue;
         const key = unitKeyOf(u.name);
         if (key && !elsewhere.has(key)) elsewhere.set(key, u.listings?.title || u.listings?.address || "another listing");
       }
