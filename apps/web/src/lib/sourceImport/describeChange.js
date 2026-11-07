@@ -91,24 +91,60 @@ function leaseRows(fields, live, from) {
   return out;
 }
 
+const CHUNK = 150;
+
+// Every row of `build(ids)` over `ids` in chunks of CHUNK; throws on a failed read.
+async function readIn(ids, build) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error } = await build(ids.slice(i, i + CHUNK));
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+  }
+  return out;
+}
+
+/*
+ * Each event's "Proximity now vs the website" view, by event id. If the current
+ * values cannot be read, no views at all (logged): the screens then show the
+ * change without a comparison, never one built on missing data.
+ */
 export async function describeChanges(events, db = supabase) {
+  try {
+    return await buildViews(events, db);
+  } catch (err) {
+    console.error("describeChanges: could not read current values", err?.message ?? err);
+    return new Map();
+  }
+}
+
+async function buildViews(events, db) {
   const list = (events ?? []).filter(Boolean);
   const unitIds = [...new Set(list.map((e) => e.detail?.unitId).filter(Boolean))];
   const leaseIds = [...new Set(list.map((e) => e.detail?.leaseId).filter(Boolean))];
   const listingIds = [...new Set(list.filter((e) => e.kind === "property_updated" || e.kind === "photos_added").map((e) => e.listing_id).filter(Boolean))];
 
+  // Ids go in chunks: hundreds of UUIDs in one .in() filter overflow the request
+  // URL. A failed read throws, so a view is never built from missing data.
   const [units, leases, listings, images, concessions] = await Promise.all([
-    unitIds.length ? db.from("listing_units").select("id, name, bedrooms, bathrooms, area, floor_plan_image_url").in("id", unitIds) : { data: [] },
-    leaseIds.length ? db.from("unit_leases").select("id, unit_id, rent, rent_is_per_person, lease_term_months, available_from, description, unavailable").in("id", leaseIds) : { data: [] },
-    listingIds.length ? db.from("listings").select("id, title, description, furnished, address, contact_name, contact_email, contact_phone").in("id", listingIds) : { data: [] },
-    listingIds.length ? db.from("listing_images").select("listing_id, unit_id, source").in("listing_id", listingIds).limit(5000) : { data: [] },
-    listingIds.length ? db.from("listing_concessions").select("listing_id, description, active").in("listing_id", listingIds).eq("active", true) : { data: [] },
+    readIn(unitIds, (ids) => db.from("listing_units").select("id, name, bedrooms, bathrooms, area, floor_plan_image_url").in("id", ids)),
+    readIn(leaseIds, (ids) => db.from("unit_leases").select("id, unit_id, rent, rent_is_per_person, lease_term_months, available_from, description, unavailable").in("id", ids)),
+    readIn(listingIds, (ids) => db.from("listings").select("id, title, description, furnished, address, contact_name, contact_email, contact_phone").in("id", ids)),
+    readIn(listingIds, (ids) => db.from("listing_images").select("listing_id, unit_id, source").in("listing_id", ids).limit(5000)),
+    readIn(listingIds, (ids) => db.from("listing_concessions").select("listing_id, description, active").in("listing_id", ids).eq("active", true)),
   ]);
-  const unitBy = new Map((units.data ?? []).map((u) => [u.id, u]));
-  const leaseBy = new Map((leases.data ?? []).map((l) => [l.id, l]));
-  const listingBy = new Map((listings.data ?? []).map((l) => [l.id, l]));
-  const photoCount = (listingId, unitId) => (images.data ?? []).filter((i) => i.listing_id === listingId && (unitId ? i.unit_id === unitId : !i.unit_id) && i.source !== "street_view").length;
-  const specialsOf = (listingId) => (concessions.data ?? []).filter((c) => c.listing_id === listingId).map((c) => c.description);
+  const unitBy = new Map(units.map((u) => [u.id, u]));
+  const leaseBy = new Map(leases.map((l) => [l.id, l]));
+  const listingBy = new Map(listings.map((l) => [l.id, l]));
+  // Photos counted once per listing and unit ("" for the property's own photos).
+  const photos = new Map();
+  for (const i of images) {
+    if (i.source === "street_view") continue;
+    const k = `${i.listing_id}|${i.unit_id ?? ""}`;
+    photos.set(k, (photos.get(k) ?? 0) + 1);
+  }
+  const photoCount = (listingId, unitId) => photos.get(`${listingId}|${unitId ?? ""}`) ?? 0;
+  const specialsOf = (listingId) => concessions.filter((c) => c.listing_id === listingId).map((c) => c.description);
 
   const out = new Map();
   for (const e of list) {
