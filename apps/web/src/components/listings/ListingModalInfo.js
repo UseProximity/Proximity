@@ -470,7 +470,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
  * scroll highlight reads where it sits. Every section after the first opens
  * with a hairline so the page still reads as distinct parts.
  */
-function Section({ id, label = null, sectionRefs, children }) {
+// `aside` sits at the far right of the heading row. It must not make the row
+// taller or wider than the heading itself.
+function Section({ id, label = null, aside = null, sectionRefs, children }) {
   return (
     <section
       id={`listing-${id}`}
@@ -479,7 +481,12 @@ function Section({ id, label = null, sectionRefs, children }) {
       }}
       className="py-8 first:pt-0 border-t border-gray-100 first:border-t-0"
     >
-      {label && <h2 className="text-xl font-bold text-gray-900 mb-4">{label}</h2>}
+      {label && (
+        <div className="mb-4 flex h-7 items-center justify-between gap-3">
+          <h2 className="min-w-0 text-xl font-bold text-gray-900">{label}</h2>
+          {aside}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -2438,7 +2445,20 @@ export default function ListingModalInfo({
                   are not shown here (Wyatt, 2026-10-27): Proxy quotes current
                   ones when asked, and expired ones never. */}
               {show("pricing") && (
-                <Section id="pricing" label="Pricing" sectionRefs={sectionRefs}>
+                <Section
+                  id="pricing"
+                  label="Pricing"
+                  sectionRefs={sectionRefs}
+                  aside={
+                    <Image
+                      src="/assets/equal-housing-opportunity.png"
+                      alt="Equal Housing Opportunity"
+                      width={149}
+                      height={160}
+                      className="h-7 w-auto shrink-0"
+                    />
+                  }
+                >
                   {!leasesLoading && hasLeases && (
                     <div className="pb-3">
                       <LeasePrefsControls
