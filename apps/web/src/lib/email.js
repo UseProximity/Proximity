@@ -9,10 +9,13 @@
  */
 import nodemailer from "nodemailer";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { sendMailSafe } from "./outreach";
+import { outreachEnabled, sendMailSafe } from "./outreach";
 import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
+import { emailFooter, OPT_OUT_INBOX, POSTAL_ADDRESS } from "./emailFooter";
+
+export { emailFooter };
 import { MREC_FORM_FILENAME, MREC_FORM_KIND, MREC_FORM_SUBJECT } from "./users/mrecForm";
 
 const transporter = nodemailer.createTransport({
@@ -51,50 +54,6 @@ const sesTransporter =
 const SES_SEND_OPTIONS = {
   ConfigurationSetName: process.env.AWS_SES_CONFIGURATION_SET || "proximity-chat-alerts",
 };
-
-/*
- * The footer every outbound email carries.
- *
- * CAN-SPAM requires commercial email to give a valid physical postal address and
- * a working way to stop receiving it. Transactional mail (a password reset, a
- * verification link, an inquiry we are delivering on someone's behalf) is exempt
- * from the opt-out requirement, but carries the address anyway so that every
- * message we send says plainly who sent it.
- *
- * The opt-out is a reply rather than a one-click link, which the statute allows
- * as an internet-based mechanism. That makes it a promise about a mailbox rather
- * than about code: the commercial senders set replyTo to OPT_OUT_INBOX, and
- * whoever works that inbox has to action an unsubscribe within 10 business days
- * for this to stay true. Swapping in a real link later means a stored opt-out
- * list and a suppression check in sendMailSafe, not a change here.
- *
- * POSTAL_ADDRESS intentionally repeats what the legal documents say in
- * src/content/legal/. If the company address ever changes, both move together.
- */
-const POSTAL_ADDRESS =
-  "Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701";
-const OPT_OUT_INBOX = "info@useproximity.org";
-
-/*
- * `reason` is the one line telling someone why this landed in their inbox. On a
- * commercial send it is what identifies the message, so it is required there and
- * the call sites all pass one.
- */
-export function emailFooter({ reason, commercial = false } = {}) {
-  const optOut = commercial
-    ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
-         Don&#39;t want these? Reply to this email with &quot;unsubscribe&quot; and we
-         will stop sending them.
-       </p>`
-    : "";
-
-  return `
-      <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">
-        ${reason ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">${reason}</p>` : ""}
-        ${optOut}
-        <p style="color:#999;font-size:12px;line-height:1.5;margin:0">${POSTAL_ADDRESS}</p>
-      </div>`;
-}
 
 export function getBaseUrl() {
   if (process.env.NEXTAUTH_URL) {
@@ -540,6 +499,52 @@ export async function sendTeamEmail({ to, subject, html }) {
     subject,
     html,
   });
+}
+
+/*
+ * One email of an admin mass send (lib/massEmail/send.js). From and Reply-To are
+ * both info@useproximity.org (Wyatt, 2026-11-07), so replies land in the team
+ * inbox. Amazon SES first, for its delivery reports; Gmail if SES is not set up or
+ * refuses it. Throws when both fail, so the caller can record the failure.
+ *
+ * Resolves to { provider, providerMessageId, suppressed, redirected } where
+ * redirected means the outreach gate sent it to the test inbox (off production).
+ */
+export const MASS_EMAIL_ADDRESS = "info@useproximity.org";
+
+export async function sendMassEmail({ to, subject, html, attachments = [], userId = null, req = null }) {
+  const message = {
+    logAs: { kind: "mass_email", userId },
+    to,
+    replyTo: MASS_EMAIL_ADDRESS,
+    subject,
+    html,
+    ...(attachments.length && { attachments }),
+  };
+  const outcome = (provider, info) => ({
+    provider,
+    providerMessageId: provider === "ses" ? info?.response ?? null : info?.messageId ?? null,
+    suppressed: !!info?.suppressed,
+    redirected: !info?.suppressed && !outreachEnabled(),
+  });
+  if (sesTransporter) {
+    try {
+      const info = await sendMailSafe(
+        sesTransporter,
+        { ...message, from: `"Proximity" <${MASS_EMAIL_ADDRESS}>`, ses: SES_SEND_OPTIONS },
+        req
+      );
+      return outcome("ses", info);
+    } catch (err) {
+      console.error("sendMassEmail: SES send failed, falling back to Gmail:", err?.message ?? err);
+    }
+  }
+  const info = await sendMailSafe(
+    transporter,
+    { ...message, from: `"Proximity" <${process.env.EMAIL_USER || MASS_EMAIL_ADDRESS}>` },
+    req
+  );
+  return outcome("gmail", info);
 }
 
 // Why an emailed reply did not reach the conversation, in words the sender can

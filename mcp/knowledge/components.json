@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-07T22:23:34.177Z",
-  "count": 185,
+  "_generated": "2026-11-07T22:47:57.757Z",
+  "count": 191,
   "components": [
     {
       "name": "ErrorReporter",
@@ -66,6 +66,11 @@
     {
       "name": "ListingsView",
       "file": "src/components/admin/ListingsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MassEmailView",
+      "file": "src/components/admin/MassEmailView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -181,6 +186,31 @@
     {
       "name": "billingFetch",
       "file": "src/components/admin/billing/billingFetch.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "EmailEditor",
+      "file": "src/components/admin/massEmail/EmailEditor.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HistoryPanel",
+      "file": "src/components/admin/massEmail/HistoryPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "SendPanel",
+      "file": "src/components/admin/massEmail/SendPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "UnownedPanel",
+      "file": "src/components/admin/massEmail/UnownedPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/massEmail/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

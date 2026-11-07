@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-07T22:23:34.237Z",
-  "count": 310,
+  "_generated": "2026-11-07T22:47:57.822Z",
+  "count": 318,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -728,6 +728,10 @@
       "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
     },
     {
+      "file": "src/lib/emailFooter.js",
+      "description": "Kept apart from lib/email.js (which needs the mail transports) so the admin"
+    },
+    {
       "file": "src/lib/emailKinds.js",
       "description": "The categories and labels for the admin \"Sent emails\" page (Wyatt,"
     },
@@ -894,6 +898,34 @@
     {
       "file": "src/lib/listings/unitNames.js",
       "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
+      "file": "src/lib/massEmail/audience.js",
+      "description": "Who a mass email can go to, with what the admin needs to pick them (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/history.js",
+      "description": "What a mass email template has sent so far (Wyatt, 2026-11-07): each batch,"
+    },
+    {
+      "file": "src/lib/massEmail/http.js",
+      "description": "Shared plumbing for the admin mass email routes (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/render.js",
+      "description": "Turning a mass email version into the HTML a person receives (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/send.js",
+      "description": "Sending one version of a mass email to the people an admin picked (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/templates.js",
+      "description": "Mass email templates and their versions (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/unowned.js",
+      "description": "Live listings with no landlord account, and getting them one before a mass"
     },
     {
       "file": "src/lib/matchmaking/anonymousSessions.js",

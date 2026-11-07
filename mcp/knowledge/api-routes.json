@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-07T22:23:34.171Z",
-  "count": 242,
+  "_generated": "2026-11-07T22:47:57.749Z",
+  "count": 249,
   "routes": [
     {
       "path": "/api/account",
@@ -640,6 +640,96 @@
         "listing_images"
       ],
       "file": "src/app/api/admin/listing-images/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/[templateId]",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "PATCH": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/[templateId]/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/[templateId]/versions",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/[templateId]/versions/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/attachments",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/attachments/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/recipients",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/recipients/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/send",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/send/route.js"
+    },
+    {
+      "path": "/api/admin/mass-email/unowned",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/mass-email/unowned/route.js"
     },
     {
       "path": "/api/admin/pending-reviews",

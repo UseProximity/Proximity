@@ -15,6 +15,7 @@ import ReferenceView from "@/components/admin/ReferenceView";
 import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 import ConversationsView from "@/components/admin/ConversationsView";
 import SentEmailsView from "@/components/admin/SentEmailsView";
+import MassEmailView from "@/components/admin/MassEmailView";
 import ErrorsView from "@/components/admin/ErrorsView";
 import BillingView from "@/components/admin/BillingView";
 import AgentsView from "@/components/admin/AgentsView";
@@ -29,13 +30,14 @@ const VIEWS = [
   { key: "invites", label: "Review invites" },
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
+  { key: "mass-email", label: "Mass email" },
   { key: "billing", label: "Billing" },
   { key: "agents", label: "Agents" },
   { key: "errors", label: "Errors" },
 ];
 
 // Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "billing", "agents", "errors"]);
+const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "mass-email", "billing", "agents", "errors"]);
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
 
@@ -483,6 +485,8 @@ export default function AdminDashboard() {
           <ConversationsView search={search} dbTarget={dbTarget} />
         ) : view === "emails" ? (
           <SentEmailsView search={search} dbTarget={dbTarget} />
+        ) : view === "mass-email" ? (
+          <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
         ) : view === "billing" ? (
           <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
         ) : view === "agents" ? (
