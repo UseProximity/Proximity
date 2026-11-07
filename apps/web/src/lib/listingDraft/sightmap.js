@@ -72,6 +72,18 @@ async function getText(url) {
 }
 
 /*
+ * A plan's name as people read it. Some properties' feeds store the name as a
+ * fragment of their provider's record, e.g. {"name":"Osage" "provider_id":"6297921"}
+ * (Terra at the Grove, 2026-11-07): the name is the part inside it.
+ */
+export function planName(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  const inner = s.match(/"name"\s*:\s*"([^"]+)"/);
+  return (inner ? inner[1] : s).trim() || null;
+}
+
+/*
  * Returns { units: [...] } or null. Every field is whatever the API said,
  * nothing is inferred, so a null here means the site genuinely did not publish
  * it rather than that we failed to read it.
@@ -94,7 +106,7 @@ export async function fetchSightmapInventory(embedToken) {
     (data.floor_plans ?? []).map((f) => [
       String(f.id),
       {
-        name: f.name ?? null,
+        name: planName(f.name),
         bedrooms: typeof f.bedroom_count === "number" ? f.bedroom_count : null,
         bathrooms: typeof f.bathroom_count === "number" ? f.bathroom_count : null,
         imageUrl: f.image_url ?? null,
