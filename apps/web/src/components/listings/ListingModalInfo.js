@@ -2221,12 +2221,8 @@ export default function ListingModalInfo({
             transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
           >
             {/* ── Header Info ── */}
-            {listing.unavailable && (
-              <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                This listing is currently unavailable
-              </div>
-            )}
+            {/* No "currently unavailable" banner: the leases section already says no
+                lease is being offered (Wyatt, 2026-11-07). */}
             {/* PMS-synced listings: availability comes straight from the landlord's
                 management system, refreshed daily — Proximity's freshness guarantee. */}
             {listing.verifiedLive && (
