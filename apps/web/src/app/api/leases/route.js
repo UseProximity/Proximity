@@ -57,7 +57,9 @@ export async function POST(req) {
   // agreement (lib/billing/listingGate.js). A draft offering is never blocked.
   let draft = body.draft === true;
   // Something else on Billing (a payment method, an overdue invoice) blocks it:
-  // the offering is saved as a draft rather than lost, and the page says why.
+  // the offering is saved as a draft rather than lost, for a page that asks for
+  // that (draftIfBillingBlocked) and says why. Any other caller is refused as
+  // before, since a 2xx would read to it as published.
   // Only the agreement: refused as before, and the page opens signing for this
   // property and submits again (saving a draft here would make that a second copy).
   let billingBlock = null;
@@ -65,7 +67,7 @@ export async function POST(req) {
     const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
     const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [], unitIds: [unitId] });
     if (!gate.allowed) {
-      if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
+      if ((gate.missing.length === 1 && gate.missing[0] === "agreement") || body.draftIfBillingBlocked !== true) {
         return Response.json(gateResponseBody(gate), { status: 403 });
       }
       draft = true;
@@ -208,7 +210,7 @@ export async function POST(req) {
   if (billingBlock) {
     return Response.json(
       {
-        message: billingBlock.error,
+        message: billingBlock.drafted,
         code: "billing_needed",
         missing: billingBlock.missing,
         draft: true,

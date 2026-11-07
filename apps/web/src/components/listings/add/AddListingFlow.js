@@ -320,6 +320,8 @@ export default function AddListingFlow({ user }) {
             contactEmail: lease.contactEmail,
             contactName: user?.name ?? null,
             draft: asDraft,
+            // Billing not set up: keep it as a draft and say so (billing_needed below).
+            draftIfBillingBlocked: true,
           }),
         });
       } else {
@@ -371,6 +373,8 @@ export default function AddListingFlow({ user }) {
             attachStreetView: true,
             // A new property is born a draft; on a live one the unit is.
             draft: asDraft,
+            // Billing not set up: keep it as a draft and say so (billing_needed below).
+            draftIfBillingBlocked: true,
             unitTypes: [{
               bedrooms: Number(newUnit.bedrooms),
               bathrooms: Number(newUnit.bathrooms),

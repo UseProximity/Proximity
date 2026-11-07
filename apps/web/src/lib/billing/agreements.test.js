@@ -86,6 +86,12 @@ describe("gate messages", () => {
     assert.deepEqual(body.missing, ["agreement"]);
     assert.ok(body.error.length > 0);
   });
+
+  it("say once that a kept draft is a draft, and what to fix", () => {
+    const body = gateResponseBody({ missing: ["payment_method"] });
+    assert.equal(body.drafted, "Saved as a draft. To publish it, add an active payment method under Billing.");
+    assert.doesNotMatch(body.drafted, /drafts are saved/i);
+  });
 });
 
 describe("agreementView", () => {

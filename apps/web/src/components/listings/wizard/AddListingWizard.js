@@ -1363,6 +1363,14 @@ export default function AddListingWizard({
        * Units that are new altogether are created below like any others.
        */
       let createUnits = units;
+      /*
+       * Set when a lease added to a unit that already exists went in as a draft
+       * because Billing is not set up (code billing_needed). Every way out of
+       * this publish carries it, so the landlord is told it is a draft and why,
+       * not that it is live.
+       */
+      let billingNeeded = null;
+      const draftedFor = (blocked) => ({ asDraft: asDraft || !!blocked, billingNeeded: blocked ?? null });
       if (ownExisting) {
         const lid = ownExisting.id;
         const send = async (url, method, body, fallback) => {
@@ -1438,6 +1446,7 @@ export default function AddListingWizard({
                   contactEmail: form.contact_email || null,
                   contactPhone: form.contact_phone || null,
                   contactName: form.contact_name || null,
+                  draftIfBillingBlocked: true,
               };
               const res = await fetch("/api/leases", {
                 method: "POST",
@@ -1450,6 +1459,8 @@ export default function AddListingWizard({
                 setError(problem);
                 return { ok: false, error: problem };
               }
+              // Billing is not set up: the lease went in as a hidden draft.
+              if (d.code === "billing_needed") billingNeeded = d;
               /*
                * Recorded as live straight away, so if something later in this
                * publish fails, pressing Publish again edits this lease rather
@@ -1519,7 +1530,7 @@ export default function AddListingWizard({
         createUnits = units.filter((x) => !x.live);
         if (!createUnits.length) {
           clearAutosave();
-          return { ok: true, listingId: lid, unitPayload: [], diff: null };
+          return { ok: true, listingId: lid, unitPayload: [], diff: null, ...draftedFor(billingNeeded) };
         }
       } else if (batchExisting && existingProperty) {
         const leaseBody = (l) => ({
@@ -1557,21 +1568,24 @@ export default function AddListingWizard({
                 contactEmail: form.contact_email || null,
                 contactPhone: form.contact_phone || null,
                 contactName: form.contact_name || null,
+                draftIfBillingBlocked: true,
               }),
             });
+            const d = await res.json().catch(() => ({}));
             if (!res.ok) {
-              const d = await res.json().catch(() => ({}));
               const message = d.error || "A lease could not be added to an existing unit.";
               setError(message);
               return { ok: false, error: message };
             }
+            // Billing is not set up: the lease went in as a hidden draft.
+            if (d.code === "billing_needed") billingNeeded = d;
           }
         }
         setExistingNewLeases({});
         // Nothing new to create: the edits were the whole job.
         if (units.length === 0) {
           clearAutosave();
-          return { ok: true, listingId: existingProperty.id, unitPayload: [], diff: null };
+          return { ok: true, listingId: existingProperty.id, unitPayload: [], diff: null, ...draftedFor(billingNeeded) };
         }
       }
       const termsOf = (l) =>
@@ -1633,6 +1647,7 @@ export default function AddListingWizard({
             contactPhone: form.contact_phone || null,
             contactName: form.contact_name || null,
             draft: asDraft,
+            draftIfBillingBlocked: true,
           }),
         });
       /*
@@ -1677,6 +1692,7 @@ export default function AddListingWizard({
           indexUrl: importPastedUrl.current || null,
           contactEmail: form.contact_email || null,
           contactName: form.contact_name || null,
+          draftIfBillingBlocked: true,
           ...(coords.lat != null && coords.lng != null
             ? { longitude: coords.lng, latitude: coords.lat }
             : {}),
@@ -1799,8 +1815,7 @@ export default function AddListingWizard({
         unitPayload,
         diff: Object.keys(diff).length ? diff : null,
         // Billing (a payment method, an overdue invoice) kept it a draft: say so, with the link.
-        asDraft: asDraft || data.code === "billing_needed",
-        billingNeeded: data.code === "billing_needed" ? data : null,
+        ...draftedFor(data.code === "billing_needed" ? data : billingNeeded),
       };
     } catch {
       setError("Network error. Please try again.");

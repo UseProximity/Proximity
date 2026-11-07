@@ -255,14 +255,22 @@ export async function POST(req) {
           attachToListingId ? { listingIds: [attachToListingId] } : { newProperty: true }
         );
         if (!gate.allowed) {
-          // Whatever stands in the way, what they typed is kept as a draft (a
-          // landlord who left to add a payment method lost the whole form,
-          // 2026-11-07). Only the agreement: the page opens signing for this
-          // property. Anything else (no payment method, an overdue invoice): the
-          // page says what is missing and links to Billing.
-          draft = true;
-          if (gate.missing.length === 1 && gate.missing[0] === "agreement") needsCoverage = true;
-          else billingBlock = gateResponseBody(gate);
+          // Only the agreement: kept as a draft and the page opens signing for
+          // this property. Anything else (no payment method, an overdue invoice):
+          // kept as a draft too (a landlord who left to add a payment method lost
+          // the whole form, 2026-11-07), but only for a page that says so and
+          // links to Billing. Every other caller (the mobile app, which has no
+          // billing, and the sublease form) is refused as before, since a 2xx
+          // would read to them as published.
+          if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
+            draft = true;
+            needsCoverage = true;
+          } else if (body.draftIfBillingBlocked === true) {
+            draft = true;
+            billingBlock = gateResponseBody(gate);
+          } else {
+            return NextResponse.json(gateResponseBody(gate), { status: 403 });
+          }
         }
       }
       /*
@@ -1033,7 +1041,7 @@ export async function POST(req) {
     if (billingBlock) {
       return NextResponse.json(
         {
-          message: billingBlock.error,
+          message: billingBlock.drafted,
           code: "billing_needed",
           missing: billingBlock.missing,
           listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
