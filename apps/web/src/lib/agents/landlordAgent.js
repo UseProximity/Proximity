@@ -27,9 +27,12 @@ import { describeChanges } from "@/lib/sourceImport/describeChange";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { applyEvents, rejectEvents } from "@/lib/sourceImport/apply";
+import { unitPagesView } from "@/lib/sourceSync/unitPages";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
-import { currentFacts, listSources, factHistory, setFact, recordEvent, findOrCreateSource } from "./store";
+import { currentFacts, listSources, factHistory, setFact, retireFact, recordEvent, findOrCreateSource } from "./store";
+import { syncTeamReview } from "./flags";
+import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
 import { synthesizeKnowledge } from "./synthesize";
 import { applyCoreChange, LEASE_FIELDS, UNIT_FIELDS, PROPERTY_FIELDS } from "./coreWrites";
 import { fairHousingFlags } from "./compliance";
@@ -57,8 +60,9 @@ function sourceLabel(s) {
 }
 
 export async function knowledgeView({ listingId, userId, isAdmin = false }) {
-  const [ctx, facts, sources, history, sync] = await Promise.all([
+  const [ctx, facts, sources, history, sync, unitPages] = await Promise.all([
     buildProxyContext(listingId), currentFacts(listingId), listSources(listingId), factHistory(listingId, { limit: 60 }), agentSyncStatus(listingId),
+    unitPagesView(listingId).catch(() => []),
   ]);
   const owner = isAdmin || (await isPropertyOwner(userId, listingId));
   const srcById = new Map(sources.map((s) => [s.id, s]));
@@ -74,8 +78,16 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
     if (f.scope_level === "owner") return owners.get(f.scope_id) ?? "another owner";
     return null;
   };
+  /*
+   * A landlord sees only pages from the sites they gave us (Wyatt,
+   * 2026-11-07): a page we found elsewhere, and what it said, is the team's.
+   */
+  const allowUrl = await givenSiteFilterFor(listingId).catch(() => () => false);
+  // A link the landlord sent in an answer or chat (ingest.js) has no check
+  // interval and is theirs wherever it points.
+  const landlordSource = (s) => isAdmin || !s || s.kind !== "page" || s.check_interval_days == null || (!!s.url && allowUrl(s.url));
   // Other owners' lease details are never shown (PRD: permissions).
-  const visible = (f) => owner || isAdmin || f.scope_level !== "lease" || myLeases.has(f.scope_id);
+  const visible = (f) => landlordSource(srcById.get(f.source_id)) && (owner || isAdmin || f.scope_level !== "lease" || myLeases.has(f.scope_id));
   const sections = { fees: [], policies: [], specials: [], misc: [], core: [] };
   for (const f of facts) {
     if (!visible(f)) continue;
@@ -99,7 +111,8 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
       kind: "fact", id: e.id, status: e.status, title: e.detail?.summary ?? e.field_key ?? "A fact", current: e.detail?.oldSummary ?? null, cause: e.cause, createdAt: e.created_at,
       section: e.section, key: e.field_key, forAdmin: !!e.detail?.adminReview,
     })),
-    ...(openEvents ?? []).filter((e) => e.detail?.op !== "none" && !["churn_hold", "low_confidence"].includes(e.kind)).map((e) => ({
+    // Launch review: what the sync found waits for the team, not the landlord.
+    ...(openEvents ?? []).filter((e) => e.detail?.op !== "none" && !["churn_hold", "low_confidence"].includes(e.kind) && (!e.detail?.teamReview || isAdmin)).map((e) => ({
       kind: "source", id: e.id, status: "proposed", title: describeSourceEvent(e), current: e.old_value != null && e.kind !== "unit_new" ? plain(e.old_value) : null, proposed: e.new_value != null ? plain(e.new_value) : null,
       cause: "sync", createdAt: e.created_at, unit: e.detail?.label ?? null, view: views.get(e.id) ?? null,
     })),
@@ -116,11 +129,11 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
   }
 
   return {
-    listingId, title: ctx?.title ?? null, owner, sections, sources: sources.map((s) => ({ id: s.id, kind: s.kind, label: sourceLabel(s), url: s.url, status: s.last_status, lastCheckedAt: s.last_checked_at })),
-    held, history: history.filter((e) => e.status === "applied" || e.status === "reverted").map((e) => ({
+    listingId, title: ctx?.title ?? null, owner, sections, teamReview: syncTeamReview(), sources: sources.filter(landlordSource).map((s) => ({ id: s.id, kind: s.kind, label: sourceLabel(s), url: s.url, status: s.last_status, lastCheckedAt: s.last_checked_at })),
+    held, history: history.filter((e) => (e.status === "applied" || e.status === "reverted") && landlordSource(srcById.get(e.source_id))).map((e) => ({
       id: e.id, cause: e.cause, status: e.status, section: e.section, key: e.field_key, summary: e.detail?.summary ?? null, oldSummary: e.detail?.oldSummary ?? null, core: !!e.detail?.core, createdAt: e.created_at, canRevert: e.status === "applied" && (!!e.previous_fact_id || (!!e.detail?.core && hasOld(e.detail))),
     })),
-    sync, openQuestions: openQuestions ?? 0, leases: (ctx?.leases ?? []).map((l) => ({ id: l.id, index: l.index, label: l.label, owner: l.ownerLabel, mine: l.ownerId === userId })),
+    sync, unitPages, openQuestions: openQuestions ?? 0, leases: (ctx?.leases ?? []).map((l) => ({ id: l.id, index: l.index, label: l.label, owner: l.ownerLabel, mine: l.ownerId === userId })),
   };
 }
 
@@ -366,6 +379,8 @@ export async function decideChange({ listingId, userId, isAdmin = false, kind, e
     const { data: e } = await supabase.from("listing_source_events").select("id, listing_id, detail, status").eq("id", eventId).maybeSingle();
     if (!e || e.listing_id !== listingId) return { error: "Change not found" };
     if (e.status !== "open") return { error: "Already decided" };
+    // Launch review: a sync's change waits for the Proximity team only.
+    if (e.detail?.teamReview && !isAdmin) return { error: "This one is for the Proximity team." };
     const leaseId = e.detail?.leaseId ?? null;
     if (!isAdmin) {
       const ok = leaseId ? (await canManageLease(userId, leaseId))?.ok : await isPropertyOwner(userId, listingId);
@@ -373,6 +388,8 @@ export async function decideChange({ listingId, userId, isAdmin = false, kind, e
     }
     if (approve) {
       const r = await applyEvents({ listingId, eventIds: [eventId], userId, verdictBy: userId });
+      // Not applied (the listing gate, or the change failed): say why.
+      if (r[0] && r[0].ok === false) return { error: r[0].error ?? "Could not apply that" };
       return { ok: true, result: r[0] ?? null };
     }
     await rejectEvents({ listingId, eventIds: [eventId], verdictBy: userId });
@@ -401,6 +418,23 @@ export async function decideChange({ listingId, userId, isAdmin = false, kind, e
     const r = await tellAgent({ listingId, userId: e.actor_id ?? userId, isAdmin: true, text: e.new_value.text });
     await supabase.from("listing_fact_events").update({ status: "approved", decided_by: userId, decided_at: now }).eq("id", eventId);
     return { ok: true, result: r };
+  }
+  if (e.detail?.teamReview && e.detail?.retire) {
+    // A sync wanted this fact gone (launch review).
+    const r = e.previous_fact_id ? await retireFact({ factId: e.previous_fact_id, cause: e.cause, actorId: userId, detail: { approvedEvent: e.id } }) : { changed: false };
+    await supabase.from("listing_fact_events").update({ status: "approved", decided_by: userId, decided_at: now }).eq("id", eventId);
+    return { ok: true, changed: r.changed };
+  }
+  if (e.detail?.teamReview && e.section && e.field_key) {
+    // A sync's change to a fact, approved by the team: written as the sync
+    // would have, not as something the landlord set.
+    const r = await setFact({
+      listingId, section: e.section, fieldKey: e.field_key, value: e.new_value ?? {}, summary: e.detail?.summary ?? e.field_key, scopeLevel: e.scope_level ?? "property", scopeId: e.scope_id,
+      sourceId: e.source_id, sourceRef: e.detail?.sourceRef ?? null, excerpt: e.detail?.excerpt ?? null, confidence: e.detail?.confidence ?? "high",
+      validFrom: e.detail?.validFrom ?? null, validUntil: e.detail?.validUntil ?? null, actorId: userId, cause: e.cause, detail: { approvedEvent: e.id },
+    });
+    await supabase.from("listing_fact_events").update({ status: "approved", decided_by: userId, decided_at: now }).eq("id", eventId);
+    return { ok: true, changed: r.changed };
   }
   if (e.section && e.field_key) {
     const r = await setFact({

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-07T22:47:57.749Z",
-  "count": 249,
+  "_generated": "2026-11-07T23:20:45.968Z",
+  "count": 250,
   "routes": [
     {
       "path": "/api/account",
@@ -264,7 +264,9 @@
       "methodAuth": {
         "POST": "admin"
       },
-      "tables": [],
+      "tables": [
+        "charges"
+      ],
       "file": "src/app/api/admin/billing/charges/[id]/adjust/route.js"
     },
     {
@@ -2420,6 +2422,20 @@
       },
       "tables": [],
       "file": "src/app/api/landlord/listings/[listingId]/agent/tell/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/agent/unit-pages",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public",
+        "DELETE": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/agent/unit-pages/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/agent/url",

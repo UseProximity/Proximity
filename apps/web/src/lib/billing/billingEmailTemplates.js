@@ -4,8 +4,9 @@
  * billingEmails.js; keeping the copy here means it can be tested without a
  * mail transport.
  *
- * Landlord emails: contest outcome, failed payment, payment method needs
- * attention, overdue notice, launch enrollment, marketing agreement to sign.
+ * Landlord emails: contest outcome, failed payment, payment received, refund
+ * or credit, payment method needs attention, overdue notice, launch
+ * enrollment, marketing agreement to sign.
  * Team emails (to info@useproximity.org): contest submitted, failed payment,
  * chargeback, only payment method removed, overdue withdrawal, agreement declined.
  *
@@ -86,6 +87,67 @@ export function paymentFailedEmail({ name, totalCents, retryUrl, reason }) {
       }</p>
       <p>We will not retry it automatically. Please update your payment method and pay the invoice to keep your listings visible to students.</p>
       ${button(retryUrl, "Pay now")}
+    `),
+  };
+}
+
+// The receipt: an invoice was paid (Pay now, autopay, or Stripe's invoice page).
+/*
+ * The receipt. `paidCents` is what was actually charged, and `creditCents` the
+ * part of the invoice an earlier credit covered, so a $412 invoice with a $100
+ * credit says $312 was charged, and one a credit covered in full says nothing was.
+ */
+export function invoicePaidEmail({ name, periodLabel, totalCents, paidCents = totalCents, creditCents = 0, methodDescription = null, paidAt, pdfUrl = null, paymentsUrl }) {
+  const row = (label, value) =>
+    `<tr><td style="padding:2px 16px 2px 0;color:#6b7280">${label}</td><td style="padding:2px 0">${e(value)}</td></tr>`;
+  const coveredByCredit = paidCents <= 0 && creditCents > 0;
+  const lead = coveredByCredit
+    ? `Your Proximity invoice for ${e(periodLabel)} of <strong>${e(formatCents(totalCents))}</strong> was covered by your credit. Nothing was charged.`
+    : creditCents > 0
+    ? `Thank you. We received your payment of <strong>${e(formatCents(paidCents))}</strong> for your Proximity invoice for ${e(periodLabel)}. Your credit of ${e(formatCents(creditCents))} covered the rest.`
+    : `Thank you. We received your payment of <strong>${e(formatCents(paidCents))}</strong> for your Proximity invoice for ${e(periodLabel)}.`;
+  return {
+    subject: coveredByCredit
+      ? `Invoice covered by credit: ${formatCents(totalCents)} for ${periodLabel}`
+      : `Payment received: ${formatCents(paidCents)} for ${periodLabel}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${lead}</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        ${creditCents > 0 ? row("Invoice total", formatCents(totalCents)) + row("Credit used", formatCents(creditCents)) : ""}
+        ${row(creditCents > 0 ? "Charged" : "Amount", formatCents(Math.max(paidCents, 0)))}
+        ${methodDescription && !coveredByCredit ? row("Paid with", methodDescription) : ""}
+        ${row("Date", longDate(paidAt))}
+      </table>
+      ${pdfUrl ? `<p><a href="${e(pdfUrl)}">Download the invoice (PDF)</a></p>` : ""}
+      ${button(paymentsUrl, "View billing")}
+      <p>Questions about a charge? Just reply to this email.</p>
+    `),
+  };
+}
+
+/*
+ * A Paid charge was corrected: refunded to the landlord's payment method, or
+ * credited against their next invoice. `reason` is what the admin wrote, which
+ * the corrections screen says is sent to the landlord.
+ */
+export function chargeAdjustedEmail({ name, kind, amountCents, charge, reason = null, paymentsUrl }) {
+  const refund = kind === "refund";
+  return {
+    subject: refund
+      ? `Refund of ${formatCents(amountCents)} on your Proximity charge`
+      : `Credit of ${formatCents(amountCents)} on your next Proximity invoice`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${
+        refund
+          ? `We refunded <strong>${e(formatCents(amountCents))}</strong> of a charge you paid. It goes back to the card or bank account you paid with, usually within 5 to 10 business days.`
+          : `We added a credit of <strong>${e(formatCents(amountCents))}</strong> for a charge you paid. It comes off your next monthly invoice automatically.`
+      }</p>
+      ${chargeDetails(charge)}
+      ${reason ? `<p><strong>Why:</strong> ${e(reason)}</p>` : ""}
+      ${button(paymentsUrl, "View billing")}
+      <p>Questions? Just reply to this email.</p>
     `),
   };
 }

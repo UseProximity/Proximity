@@ -20,10 +20,11 @@ const MAX_REASON_LENGTH = 2000;
 // is never sent to a landlord.
 const LANDLORD_COLUMNS = `
   id, landlord_id, amount_cents, description, trigger_type, status, created_at,
-  pending_at, contest_reason, signed_rent_cents, commission_rate_percent,
+  pending_at, paid_at, voided_at, contest_reason, signed_rent_cents, commission_rate_percent,
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
-  student:users!student_id(name)
+  student:users!student_id(name),
+  adjustments:charge_adjustments(kind, amount_cents, created_at)
 `;
 
 // What rpc_transition_charge raises, as an error the caller can show.

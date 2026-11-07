@@ -10,9 +10,9 @@ const SEVERITY_STYLES = {
 };
 
 const SEVERITY_LABELS = {
-  red: "Red flag",
+  red: "Read this closely",
   yellow: "Worth asking about",
-  green: "Good sign",
+  green: "Worth noting",
 };
 
 // Collapsed by default: severity + title only. Expanding reveals the explanation,

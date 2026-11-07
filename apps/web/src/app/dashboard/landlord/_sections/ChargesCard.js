@@ -1,7 +1,7 @@
 "use client";
 
 import { formatCents } from "@/lib/billing/money";
-import { basisLabel, statusMessage } from "@/lib/billing/chargeDisplay";
+import { basisLabel, refundedInFull, splitChargeHistory, statusMessage } from "@/lib/billing/chargeDisplay";
 
 const STATUS = {
   unconfirmed: { label: "Unconfirmed", className: "bg-gray-100 text-gray-700" },
@@ -35,8 +35,16 @@ function Detail({ label, value }) {
   );
 }
 
+// A Paid charge refunded in full reads Refunded; a partial refund or credit keeps Paid and says so below.
+function statusOf(charge) {
+  if (refundedInFull(charge)) {
+    return { label: "Refunded", className: "bg-gray-100 text-gray-700" };
+  }
+  return STATUS[charge.status] ?? STATUS.unconfirmed;
+}
+
 function ChargeRow({ charge, busy, onApprove, onContest }) {
-  const status = STATUS[charge.status] ?? STATUS.unconfirmed;
+  const status = statusOf(charge);
   return (
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-start gap-3">
@@ -61,6 +69,13 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
         {statusMessage(charge)}
         {charge.status === "pending" && charge.reviewEndsAt && ` Review ends ${dateOnly(charge.reviewEndsAt)}.`}
       </p>
+      {(charge.adjustments ?? []).map((a, i) => (
+        <p key={i} className="mt-1 text-xs text-gray-700">
+          {a.kind === "refund"
+            ? `${formatCents(a.amountCents)} refunded on ${dateOnly(a.createdAt)}, back to the card or bank account you paid with.`
+            : `${formatCents(a.amountCents)} credited on ${dateOnly(a.createdAt)}, taken off your next invoice.`}
+        </p>
+      ))}
       {charge.status === "contested" && charge.contestReason && (
         <p className="mt-1 text-xs text-gray-500">Your reason: {charge.contestReason}</p>
       )}
@@ -98,7 +113,62 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
   );
 }
 
+// Points right while folded, down when open. `turn` names which fold it follows.
+const Chevron = ({ turn }) => (
+  <svg className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${turn}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
+  </svg>
+);
+
+// What a past month adds up to: "4 charges · $1,240.00 paid · $100.00 refunded · 1 removed".
+function monthSummary(group) {
+  const n = group.charges.length;
+  return [
+    `${n} charge${n === 1 ? "" : "s"}`,
+    group.paidCents > 0 ? `${formatCents(group.paidCents)} paid` : null,
+    group.refundedCents > 0 ? `${formatCents(group.refundedCents)} refunded` : null,
+    group.creditedCents > 0 ? `${formatCents(group.creditedCents)} credited` : null,
+    group.removedCount > 0 ? `${group.removedCount} removed` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/*
+ * Paid and removed charges from before this month, folded away so the list
+ * above stays short: one section, then one fold per month (newest first).
+ * Nothing here has an action left, so it is read only.
+ */
+function PastCharges({ past }) {
+  const total = past.reduce((n, g) => n + g.charges.length, 0);
+  return (
+    <details className="group border-t border-gray-100">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+        <Chevron turn="group-open:rotate-90" />
+        Past charges ({total})
+      </summary>
+      <div className="border-t border-gray-100">
+        {past.map((g) => (
+          <details key={g.month} className="group/month border-b border-gray-100 last:border-b-0">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 bg-gray-50 px-4 py-2.5 text-sm hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
+              <Chevron turn="group-open/month:rotate-90" />
+              <span className="font-medium text-gray-900">{g.label}</span>
+              <span className="text-xs text-gray-500">{monthSummary(g)}</span>
+            </summary>
+            <ul className="divide-y divide-gray-100">
+              {g.charges.map((c) => (
+                <ChargeRow key={c.id} charge={c} busy onApprove={() => {}} onContest={() => {}} />
+              ))}
+            </ul>
+          </details>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export default function ChargesCard({ charges, summary, busy, onApprove, onContest }) {
+  const { current, past } = splitChargeHistory(charges);
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap gap-3">
@@ -124,13 +194,16 @@ export default function ChargesCard({ charges, summary, busy, onApprove, onConte
         </div>
         {charges.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-600">You have no charges.</p>
+        ) : current.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-600">Nothing in progress. Your earlier charges are under Past charges.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {charges.map((c) => (
+            {current.map((c) => (
               <ChargeRow key={c.id} charge={c} busy={busy} onApprove={onApprove} onContest={onContest} />
             ))}
           </ul>
         )}
+        {past.length > 0 && <PastCharges past={past} />}
       </div>
     </section>
   );

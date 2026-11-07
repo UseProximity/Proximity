@@ -57,7 +57,9 @@ function propertyPrefix(startUrl) {
   return null;
 }
 
-export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () => {} } = {}) {
+// allowUrl: when set, pages outside it are never opened (the sites a
+// landlord gave us, lib/sourceSync/givenSites.js).
+export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () => {}, allowUrl = null } = {}) {
   const start = normalize(startUrl, startUrl);
   if (!start) return [];
   const site = host(start);
@@ -65,6 +67,7 @@ export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () =
   const inScope = (u) => {
     try {
       if (host(u) !== site || SKIP.test(u)) return false;
+      if (allowUrl && !allowUrl(u)) return false;
       if (!prefix) return true;
       const path = new URL(u).pathname;
       return path.startsWith(prefix) || (SITE_WIDE.test(path) && !/^\/(properties|property|communities|community|apartments|buildings|locations)\//i.test(path));

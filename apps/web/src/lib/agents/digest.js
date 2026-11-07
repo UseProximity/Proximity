@@ -17,6 +17,7 @@
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendAgentDigestEmail, sendTourEmail } from "@/lib/email";
 import { ALERT_TO } from "@/lib/sourceImport/sync";
+import { syncTeamReview } from "./flags";
 
 const DAY = 24 * 3600 * 1000;
 const LANDLORD_GONE_NOTICES = false;
@@ -50,7 +51,7 @@ export async function buildDigest({ now = new Date() } = {}) {
   const label = (l) => l?.title || l?.address || "a listing";
 
   // Scraping
-  const { data: syncJobs } = await supabase.from("listing_import_jobs").select("status, target, result, listings!listing_id(title, address)").gte("finished_at", w.start).lt("finished_at", w.end).limit(2000);
+  const { data: syncJobs } = await supabase.from("listing_import_jobs").select("listing_id, status, error, target, result, listings!listing_id(title, address)").gte("finished_at", w.start).lt("finished_at", w.end).limit(2000);
   const syncs = (syncJobs ?? []).filter((j) => j.target?.sync);
   const imports = (syncJobs ?? []).filter((j) => !j.target?.sync && j.status === "done" && j.result?.mode === "import");
   const failed = syncs.filter((j) => j.status === "failed");
@@ -60,10 +61,57 @@ export async function buildDigest({ now = new Date() } = {}) {
   const siteApplied = await countOf("listing_source_events", (q) => since(q).eq("status", "applied"));
   const siteOpen = await countOf("listing_source_events", (q) => since(q).eq("status", "open"));
   const holds = await countOf("listing_source_events", (q) => since(q).in("kind", ["churn_hold", "low_confidence"]));
+  const teamReview = syncTeamReview();
+  const factsForTeam = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "proposed").contains("detail", { teamReview: true }));
   sections.push({
     title: "Scraping",
-    rows: [["Syncs run", syncs.length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ["Website changes auto-applied", siteApplied], ["Website changes held for landlords", siteOpen], ["Low-confidence and churn holds", holds], ["New listings created from URLs", imports.length]],
+    rows: [["Syncs run", syncs.length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes auto-applied", siteApplied], [teamReview ? "Website changes waiting for the team" : "Website changes held for landlords", siteOpen], ["Low-confidence and churn holds", holds], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
+    note: teamReview ? "Launch review is on: nothing from a sync reaches students until the team applies it in the admin Agents tab." : "",
+  });
+
+  /*
+   * Website sync, listing by listing (Wyatt, 2026-11-07): during launch the
+   * team sees every run, what it read, what waits for them and why, what
+   * failed, pages the sync was not allowed to open, and own pages attached.
+   */
+  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, detail").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
+  const siteByListing = new Map();
+  for (const e of siteEvents ?? []) {
+    const k = siteByListing.get(e.listing_id) ?? { open: 0, applied: 0, kinds: {} };
+    if (e.status === "open" && e.detail?.op !== "none") { k.open++; k.kinds[e.kind] = (k.kinds[e.kind] ?? 0) + 1; }
+    if (e.status === "applied" && e.kind !== "source_attached") k.applied++;
+    siteByListing.set(e.listing_id, k);
+  }
+  const HOLD = { low_confidence: "unsure read", churn_hold: "too much at once" };
+  const RUN_WORD = { suppressed: "held", ok: "read", changed: "changed", unchanged: "unchanged since last read" };
+  const runLines = syncs.filter((j) => !j.target?.knowledge).map((j) => {
+    const r = j.result ?? {};
+    const ev = siteByListing.get(j.listing_id) ?? { open: 0, applied: 0, kinds: {} };
+    if (j.status === "failed") return `${label(j.listings)}: FAILED, ${j.error ?? "unknown error"}`;
+    const kinds = Object.entries(ev.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`).join(", ");
+    const pagesRead = Array.isArray(r.pages) ? r.pages.filter((p) => !p.error && !p.skipped).length : 0;
+    const unitPages = (r.unitPages ?? []).filter((u) => u.status !== "ok").map((u) => `${u.unit} page ${u.status}`);
+    return [
+      `${label(j.listings)}: ${RUN_WORD[r.status] ?? r.status ?? j.status}${r.holdReason ? ` (${HOLD[r.holdReason] ?? r.holdReason})` : ""}`,
+      `${pagesRead} page${pagesRead === 1 ? "" : "s"} read`,
+      ev.open ? `${ev.open} waiting (${kinds})` : "nothing waiting",
+      ev.applied ? `${ev.applied} applied` : null,
+      (r.refused ?? []).length ? `${r.refused.length} off-site page${r.refused.length === 1 ? "" : "s"} not opened` : null,
+      ...unitPages,
+    ].filter(Boolean).join(" · ");
+  });
+  const { data: attachedRows } = await supabase.from("listing_source_events").select("old_value, new_value, listings!listing_id(title, address)").eq("kind", "source_attached").gte("created_at", w.start).lt("created_at", w.end).limit(200);
+  const refusedAll = [...new Set(syncs.flatMap((j) => j.result?.refused ?? []))];
+  sections.push({
+    title: "Website sync, by listing",
+    rows: [["Listings synced", runLines.length], ["Own pages attached on given sites", (attachedRows ?? []).length], ["Off-site pages the sync was not allowed to open", refusedAll.length]],
+    list: [
+      ...runLines,
+      ...(attachedRows ?? []).map((a) => `Attached: ${label(a.listings)} now reads ${a.new_value} (was ${a.old_value})`),
+      ...refusedAll.slice(0, 10).map((u) => `Not opened: ${u}`),
+    ],
+    note: "Only pages a landlord uploaded or gave us, and pages on those same sites, are read.",
   });
 
   // Extraction accuracy: a sample to check against the source.

@@ -24,6 +24,7 @@ import { synthesizeKnowledge } from "./synthesize";
 import { crawlSite, MAX_CRAWL_PAGES } from "./crawl";
 import { foundUrlSet } from "./foundRead";
 import { MAX_FOUND_PAGES } from "./foundUrls";
+import { givenUrlsFor, givenSiteFilter } from "@/lib/sourceSync/givenSites";
 
 const MAX_PAGES = 4;
 const MAX_CHARS = 24000;
@@ -94,7 +95,14 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   await ensureAgent(listingId);
   const started = Date.now();
   onStep("Finding every page on the site");
-  const pages = await crawlSite(startUrl, { max: MAX_CRAWL_PAGES, onPage: (n) => onStep(`Reading the site (${n} pages)`) });
+  // Only the sites the landlord gave us (Wyatt, 2026-11-07).
+  const given = await givenUrlsFor(listingId);
+  const allowUrl = givenSiteFilter(given);
+  if (!allowUrl(startUrl)) {
+    console.log(`[agents] whole-site read for ${listingId} skipped: ${startUrl} is not a site the landlord gave us`);
+    return { pages: 0, read: 0, written: 0, held: 0, unchanged: 0, seconds: 0, skipped: "not a given site" };
+  }
+  const pages = await crawlSite(startUrl, { max: MAX_CRAWL_PAGES, allowUrl, onPage: (n) => onStep(`Reading the site (${n} pages)`) });
   const changed = [];
   for (const p of pages) {
     const text = htmlToText(p.html).trim().slice(0, PAGE_CHARS);
@@ -144,13 +152,16 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
  * Pages the found reader made are left out: they are read once at launch
  * (lib/agents/foundRead.js), and re-reading them is a later decision. A
  * landlord page that source search also turned up stays in (foundUrls.js,
- * isFoundSource).
+ * isFoundSource), as long as it is on a site the landlord gave us.
  */
 export async function knownPageUrls(listingId) {
-  const [{ data }, found] = await Promise.all([
+  const [{ data }, found, given] = await Promise.all([
     supabase.from("listing_sources").select("url").eq("listing_id", listingId).eq("kind", "page").eq("enabled", true).not("url", "is", null)
       .order("created_at", { ascending: true }).limit(MAX_CRAWL_PAGES + MAX_FOUND_PAGES),
     foundUrlSet(listingId),
+    givenUrlsFor(listingId),
   ]);
-  return (data ?? []).map((r) => r.url).filter((u) => !found.has(u)).slice(0, MAX_CRAWL_PAGES);
+  // And only pages on the sites the landlord gave us (Wyatt, 2026-11-07).
+  const allowUrl = givenSiteFilter(given);
+  return (data ?? []).map((r) => r.url).filter((u) => !found.has(u) && allowUrl(u)).slice(0, MAX_CRAWL_PAGES);
 }

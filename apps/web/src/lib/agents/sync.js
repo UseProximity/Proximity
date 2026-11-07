@@ -62,6 +62,15 @@ export async function enqueueSync({ listingId, userId = null, batchId = null, pr
 export async function runDailyBatch({ limit = 500 } = {}) {
   if (!agentsEnabled()) return { skipped: "agents off" };
   await ensureMonitors();
+  // A listing given a company-wide page gets its own page on that site first
+  // (lib/sourceSync/subpages.js). Two sites a day keeps the cron in its time.
+  let subpages = null;
+  try {
+    const { attachSubpages } = await import("@/lib/sourceSync/subpages");
+    subpages = await attachSubpages({ limit: 2 });
+  } catch (err) {
+    console.error("[agent-sync] sub-pages:", err?.message ?? err);
+  }
   const monitors = await dueMonitors({ limit });
   const batchId = randomUUID();
   let queued = 0;
@@ -71,7 +80,7 @@ export async function runDailyBatch({ limit = 500 } = {}) {
     if (r.job && !r.already) queued++;
     else if (r.already) already++;
   }
-  return { due: monitors.length, queued, already, batchId };
+  return { due: monitors.length, queued, already, batchId, subpages: subpages ? { sites: subpages.sites, attached: subpages.attached.length } : null };
 }
 
 /* "Sync now" from a landlord's or admin's dashboard. */
