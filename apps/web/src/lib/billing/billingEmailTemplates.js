@@ -178,8 +178,8 @@ export function enrollmentEmail({ name, deadline, includeAgreement = true, payme
       <p>Proximity now collects fees in the app instead of by external invoice. Please ${ask}${
         deadline ? ` by ${e(deadline)}` : ""
       }. A bank account (ACH) is the recommended option.</p>
-      ${button(paymentsUrl, "Set up payments")}
-      <p>Charges are reviewed before they are collected, and you can approve or contest each one from your payments page.</p>
+      ${button(paymentsUrl, "Set up billing")}
+      <p>Charges are reviewed before they are collected, and you can approve or contest each one from the Billing tab of your dashboard.</p>
     `),
   };
 }
