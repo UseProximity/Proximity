@@ -132,7 +132,7 @@ export async function recordPaymentMethod(db, stripe, { customerId, paymentMetho
   return { recorded: pm.id, userId, status: finalStatus };
 }
 
-const METHOD_STATE_COLUMNS = "id, stripe_payment_method_id, type, status, is_default, exp_month, exp_year";
+const METHOD_STATE_COLUMNS = "id, stripe_payment_method_id, type, status, is_default, brand, last4, bank_name, exp_month, exp_year";
 
 /*
  * Keep the default usable: if there is no default, or the default has failed or
@@ -287,7 +287,7 @@ async function ownedMethod(db, userId, id) {
 export async function defaultActiveMethod(db, userId, now = new Date()) {
   const { data, error } = await db
     .from("payment_methods")
-    .select("id, type, status, exp_month, exp_year, stripe_payment_method_id")
+    .select("id, type, status, brand, last4, bank_name, exp_month, exp_year, stripe_payment_method_id")
     .eq("user_id", userId)
     .eq("is_default", true)
     .is("deleted_at", null)

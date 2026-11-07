@@ -582,7 +582,7 @@ describe("paying an invoice: receipts, failures and the method that paid", () =>
     assert.equal(notify.sent.paid.length, 0);
   });
 
-  it("a declined Pay now emails the landlord and the team (Wyatt, 2026-11-07)", async () => {
+  it("a declined Pay now tells the team once and never re-emails on Retry (Wyatt, 2026-11-07)", async () => {
     const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
     const notify = recorder();
     const stripe = stripeFor({ payError: Object.assign(new Error("Your card was declined."), { code: "card_declined" }) });
@@ -591,5 +591,56 @@ describe("paying an invoice: receipts, failures and the method that paid", () =>
     assert.equal(db.tables.billing_invoices[0].status, "failed");
     assert.equal(notify.sent.failed.length, 1);
     assert.equal(notify.sent.failed[0].message, "Your card was declined.");
+    // The landlord saw it on screen: only the team is emailed.
+    assert.equal(notify.sent.failed[0].emailLandlord, false);
+    for (let i = 0; i < 4; i++) {
+      await assert.rejects(() => retryInvoicePayment(db, stripe, { invoiceId: "i1", landlordId: "l1", notify }), (e) => e.code === "payment_failed");
+    }
+    assert.equal(notify.sent.failed.length, 1, "Retry declines send nothing more");
+    assert.equal(db.tables.billing_invoices[0].status, "failed");
+  });
+
+  it("paying with the same card on Stripe's page brings a Failed saved card back (new id, same fingerprint)", async () => {
+    const db = memoryDb({
+      billing_invoices: [{ ...invoiceRow }],
+      users: [landlord],
+      payment_methods: [method({ id: "card", status: "failed", stripe_payment_method_id: "pm_saved" })],
+    });
+    const stripe = stripeFor({ paidBy: "pm_typed", already: true });
+    stripe.paymentIntents.retrieve = async () => ({
+      id: "pi_1",
+      status: "succeeded",
+      payment_method: { id: "pm_typed", type: "card", card: { brand: "visa", last4: "4242", fingerprint: "fp_1" } },
+    });
+    stripe.paymentMethods = { retrieve: async (id) => ({ id, type: "card", card: { fingerprint: id === "pm_saved" ? "fp_1" : "fp_x" } }) };
+    await settleInvoicePaid(db, stripe, invoiceRow, { id: "in_1" });
+    assert.equal(db.tables.payment_methods[0].status, "active");
+  });
+
+  it("the receipt says what was charged after a credit, not the invoice total", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const notify = recorder();
+    const paid = { id: "in_1", amount_paid: 31200, starting_balance: -10000, ending_balance: 0, status_transitions: { paid_at: 1794067200 } };
+    await settleInvoicePaid(db, stripeFor({ already: true }), invoiceRow, paid, { notify });
+    assert.equal(notify.sent.paid[0].paidCents, 31200);
+    assert.equal(notify.sent.paid[0].creditCents, 10000);
+    assert.equal(notify.sent.paid[0].paidAt.getTime(), 1794067200 * 1000);
+  });
+
+  it("a Pay now the card paid stays a success even when settling it here fails", async () => {
+    const db = memoryDb({ billing_invoices: [{ ...invoiceRow }], users: [landlord], payment_methods: [method()] });
+    const failingDb = new Proxy(db, {
+      get(target, key) {
+        if (key !== "from") return target[key];
+        return (table) => {
+          if (table === "charges") throw new Error("database hiccup");
+          return target.from(table);
+        };
+      },
+    });
+    const notify = recorder();
+    const result = await retryInvoicePayment(failingDb, stripeFor(), { invoiceId: "i1", landlordId: "l1", notify });
+    assert.deepEqual(result, { paid: true, method: "card" });
+    assert.equal(notify.sent.paid.length, 1, "the receipt still goes out");
   });
 });

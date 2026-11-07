@@ -25,7 +25,7 @@ import { describeMethod } from "./paymentMethodState.js";
 import { settleInvoicePaid } from "./invoiceHandlers.js";
 
 const COLUMNS =
-  "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, due_date, sent_at, collection_method, hosted_invoice_url, invoice_pdf_url, last_failure_message, disputed, autopay_payment_method_id, autopay_scheduled_for, autopay_attempted_at, autopay_skipped_reason";
+  "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, due_date, sent_at, collection_method, hosted_invoice_url, invoice_pdf_url, last_failure_message, failed_at, disputed, autopay_payment_method_id, autopay_scheduled_for, autopay_attempted_at, autopay_skipped_reason";
 
 // When autopay will charge this invoice, or null: scheduled, not yet tried, still unpaid.
 export function pendingAutopayDate(row) {
@@ -92,8 +92,26 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, n
     throw new BillingError("not_payable", "This invoice cannot be paid right now.", 409);
   }
 
+  /*
+   * Stripe has it Paid and the row may not show it yet (the webhook is on its
+   * way): settle it here so the invoice reads Paid when the page reloads. The
+   * payment already happened, so nothing here may turn it into an error.
+   */
+  const settle = async (stripeInvoice, paidBy) => {
+    try {
+      const fresh = stripeInvoice ?? (await stripe.invoices.retrieve(row.stripe_invoice_id));
+      await settleInvoicePaid(db, stripe, row, fresh, { notify, paidBy });
+    } catch (err) {
+      console.error("[billing] settling a paid invoice failed; the webhook will finish it:", err?.message);
+    }
+  };
+  const alreadyPaid = async (stripeInvoice) => {
+    await settle(stripeInvoice);
+    return { alreadyPaid: true };
+  };
+
   const invoice = await stripe.invoices.retrieve(row.stripe_invoice_id);
-  if (invoice.status === "paid") return { alreadyPaid: true }; // the webhook is about to catch up
+  if (invoice.status === "paid") return alreadyPaid(invoice);
   if (invoice.status !== "open") {
     throw new BillingError("not_payable", "This invoice cannot be paid right now.", 409);
   }
@@ -102,7 +120,7 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, n
   // before its webhook has marked the row Processing. Paying again would be refused
   // and read as a failure.
   const underway = await paymentUnderway(stripe, invoice.id);
-  if (underway === "paid") return { alreadyPaid: true };
+  if (underway === "paid") return alreadyPaid();
   if (underway === "processing") {
     throw new BillingError("in_progress", "A payment for this invoice is already in progress.", 409);
   }
@@ -128,17 +146,28 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, n
     result = await payInvoice(stripe, invoice.id, method.stripe_payment_method_id);
   } catch (err) {
     const raced = await paymentUnderway(stripe, invoice.id);
-    if (raced === "paid") return { alreadyPaid: true };
+    if (raced === "paid") return alreadyPaid();
     if (raced === "processing") return { started: true };
-    // Shown on the invoice at once, and emailed to the landlord and the team.
+    /*
+     * Shown on the invoice at once. The landlord has just seen the decline on
+     * screen, so is not emailed about it; the team is, once per invoice (the
+     * first failure ever recorded on it). A landlord pressing Retry five times
+     * sent ten emails before (2026-11-07).
+     */
     const message = paymentFailureMessage(err);
-    await recordPaymentFailure(db, { invoiceId: row.id, message, notify, now });
+    await recordPaymentFailure(db, { invoiceId: row.id, message, notify, now, tell: row.failed_at ? "none" : "team" });
     throw new BillingError("payment_failed", message, 402);
   }
 
   // A card is paid now: show it Paid and send the receipt without waiting for the webhook.
   if (result?.status === "paid") {
-    await settleInvoicePaid(db, stripe, row, result, { notify });
+    // The method is known: no need to ask Stripe which one paid.
+    await settle(
+      result,
+      method.last4
+        ? { id: method.stripe_payment_method_id, description: describeMethod({ ...method, exp_month: null, exp_year: null }) }
+        : undefined
+    );
     return { paid: true, method: kind };
   }
   // A bank payment settles over a few business days: Processing until it does.
@@ -147,7 +176,8 @@ export async function retryInvoicePayment(db, stripe, { invoiceId, landlordId, n
       .from("billing_invoices")
       .update({ status: "processing", processing_started_at: now.toISOString() })
       .eq("id", row.id)
-      .in("status", ["open", "failed"]);
+      // Only from Open, which it was just set to: a failure recorded since then must stand.
+      .eq("status", "open");
     if (processingError) throw processingError;
     return { processing: true, method: kind };
   }

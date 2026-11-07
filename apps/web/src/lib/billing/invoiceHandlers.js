@@ -23,7 +23,7 @@
  */
 import { getStripe } from "./stripe.js";
 import { transitionCharge } from "./charges.js";
-import { paymentFailureMessage, recordPaymentFailure } from "./invoicing.js";
+import { paidAmounts, paidPaymentIntentId, paymentFailureMessage, recordPaymentFailure } from "./invoicing.js";
 import { displayFields, markPaymentMethodFailed } from "./paymentMethods.js";
 import { describeMethod } from "./paymentMethodState.js";
 import { noteAutopayFailure, noteAutopaySuccess } from "./autopay.js";
@@ -75,31 +75,84 @@ async function notifier() {
 }
 
 /*
- * The method that paid a Stripe invoice: its Stripe id and how to describe it
- * ("Visa ending 4242"), or null when it cannot be read. It may be one the
- * landlord saved with us or one typed on Stripe's invoice page.
+ * The method that paid a Stripe invoice: its Stripe id, how to describe it
+ * ("Visa ending 4242") and its fingerprint (the same physical card or account
+ * across ids), or null when it cannot be read. It may be one the landlord saved
+ * with us or one typed on Stripe's invoice page.
  */
 export async function paidWith(stripe, stripeInvoiceId) {
   try {
     const invoice = await stripe.invoices.retrieve(stripeInvoiceId, { expand: ["payments"] });
-    const paid = invoice.payments?.data?.find((p) => p.status === "paid" && p.payment?.payment_intent);
-    if (!paid) return null;
-    const pi = await stripe.paymentIntents.retrieve(idOf(paid.payment.payment_intent), { expand: ["payment_method"] });
+    const intentId = paidPaymentIntentId(invoice);
+    if (!intentId) return null;
+    const pi = await stripe.paymentIntents.retrieve(intentId, { expand: ["payment_method"] });
     const pm = pi.payment_method;
     if (!pm) return null;
     const fields = typeof pm === "object" ? displayFields(pm) : null;
-    return { id: idOf(pm), description: fields ? describeMethod({ ...fields, exp_month: null, exp_year: null }) : null };
+    return {
+      id: idOf(pm),
+      description: fields ? describeMethod({ ...fields, exp_month: null, exp_year: null }) : null,
+      fingerprint: typeof pm === "object" ? fingerprintOf(pm) : null,
+    };
   } catch {
     return null;
   }
 }
 
+const fingerprintOf = (pm) => pm?.card?.fingerprint ?? pm?.us_bank_account?.fingerprint ?? null;
+
+// The landlord's saved methods marked Failed, or [] (most landlords have none).
+async function failedMethods(db, landlordId) {
+  const { data, error } = await db
+    .from("payment_methods")
+    .select("id, stripe_payment_method_id")
+    .eq("user_id", landlordId)
+    .eq("status", "failed")
+    .is("deleted_at", null);
+  if (error) throw error;
+  return data ?? [];
+}
+
 /*
- * An invoice was paid: the row and its charges move to Paid. Called by the
- * invoice.paid webhook, and straight after a Pay now that Stripe confirmed at
- * once (a card), so the landlord sees Paid without waiting for the webhook.
+ * The method that paid is proven to work: a saved one marked Failed goes back to
+ * Active. Matched by id, or by fingerprint, since paying with the same card on
+ * Stripe's invoice page creates a new id for it: without that, a card declined
+ * once stayed Failed for good and every new listing was kept as a draft.
+ */
+async function reactivatePaidMethod(db, stripe, landlordId, method, failed) {
+  const ids = new Set();
+  for (const saved of failed) {
+    if (saved.stripe_payment_method_id === method.id) {
+      ids.add(saved.id);
+      continue;
+    }
+    if (!method.fingerprint) continue;
+    const pm = await stripe.paymentMethods.retrieve(saved.stripe_payment_method_id).catch(() => null);
+    if (pm && fingerprintOf(pm) === method.fingerprint) ids.add(saved.id);
+  }
+  if (!ids.size) return;
+  const { error } = await db
+    .from("payment_methods")
+    .update({ status: "active" })
+    .eq("user_id", landlordId)
+    .in("id", [...ids])
+    .eq("status", "failed");
+  if (error) throw error;
+}
+
+/*
+ * An invoice was paid: the row and its charges move to Paid, the method that
+ * paid is usable again, and the landlord gets a receipt. Called by the
+ * invoice.paid webhook, and wherever this app learns first that Stripe has it
+ * Paid (Pay now, autopay on a card), so the landlord sees Paid at once.
  * Whichever runs second finds it Paid already. Only the call that moved it to
  * Paid emails the receipt, so the landlord gets exactly one.
+ *
+ * Once the row is Paid the receipt is always sent: a later step that fails
+ * (a charge, the method) is thrown only after it, so a webhook redelivery, which
+ * finds the row Paid and sends nothing, finishes those steps without losing the
+ * receipt. `paidBy` ({ id, description, fingerprint }) skips the Stripe lookup
+ * when the caller already knows which method paid.
  *
  * Only the method that paid is proven to work again. A bank that failed stays
  * Failed when the landlord paid with another card (Simão's PY5/PY6, 2026-11-07):
@@ -107,57 +160,73 @@ export async function paidWith(stripe, stripeInvoiceId) {
  * looked fine and the next invoice failed on it again.
  * Returns true when this call moved the invoice to Paid.
  */
-export async function settleInvoicePaid(db, stripe, row, stripeInvoice, { notify = null } = {}) {
+export async function settleInvoicePaid(db, stripe, row, stripeInvoice, { notify = null, paidBy } = {}) {
+  const { paidCents, creditCents, paidAt } = paidAmounts(stripeInvoice, row.total_cents);
   const { data: moved, error } = await db
     .from("billing_invoices")
     .update({
       status: "paid",
-      paid_at: new Date().toISOString(),
+      paid_at: paidAt.toISOString(),
       hosted_invoice_url: stripeInvoice.hosted_invoice_url ?? row.hosted_invoice_url ?? null,
       invoice_pdf_url: stripeInvoice.invoice_pdf ?? null,
     })
     .eq("id", row.id)
     .neq("status", "paid")
-    .select("id");
+    .select("id, landlord_id, billing_period, total_cents");
   if (error) throw error;
-
-  const { data: charges, error: chargesError } = await db
-    .from("charges")
-    .select("id")
-    .eq("invoice_id", row.id)
-    .eq("status", "invoiced");
-  if (chargesError) throw chargesError;
-  for (const { id } of charges) {
-    try {
-      await transitionCharge(db, { chargeId: id, expectedFrom: "invoiced", to: "paid", actorType: "system" });
-    } catch (err) {
-      if (err?.code !== "status_changed" && err?.code !== "not_allowed") throw err;
-    }
-  }
-
-  const method = await paidWith(stripe, stripeInvoice.id);
-  if (method?.id) {
-    const { error: methodError } = await db
-      .from("payment_methods")
-      .update({ status: "active" })
-      .eq("user_id", row.landlord_id)
-      .eq("stripe_payment_method_id", method.id)
-      .eq("status", "failed")
-      .is("deleted_at", null);
-    if (methodError) throw methodError;
-  }
-
   const first = (moved?.length ?? 0) > 0;
+
+  let problem = null;
+  const attempt = async (step) => {
+    try {
+      await step();
+    } catch (err) {
+      problem ??= err;
+    }
+  };
+
+  await attempt(async () => {
+    const { data: charges, error: chargesError } = await db
+      .from("charges")
+      .select("id")
+      .eq("invoice_id", row.id)
+      .eq("status", "invoiced");
+    if (chargesError) throw chargesError;
+    for (const { id } of charges) {
+      try {
+        await transitionCharge(db, { chargeId: id, expectedFrom: "invoiced", to: "paid", actorType: "system" });
+      } catch (err) {
+        if (err?.code !== "status_changed" && err?.code !== "not_allowed") throw err;
+      }
+    }
+  });
+
+  // Asked of Stripe only when it is needed: for the receipt, or when a saved method is Failed.
+  let method = paidBy ?? null;
+  await attempt(async () => {
+    const failed = await failedMethods(db, row.landlord_id);
+    if (paidBy === undefined && (first || failed.length)) method = await paidWith(stripe, stripeInvoice.id);
+    if (method?.id && failed.length) await reactivatePaidMethod(db, stripe, row.landlord_id, method, failed);
+  });
+
   if (first && notify?.invoicePaid) {
-    const { data: landlord } = await db.from("users").select("id, name, email").eq("id", row.landlord_id).maybeSingle();
-    if (landlord?.email) {
-      await notify.invoicePaid({
-        landlord,
-        invoice: { ...row, invoice_pdf_url: stripeInvoice.invoice_pdf ?? null },
-        methodDescription: method?.description ?? null,
-      });
+    try {
+      const { data: landlord } = await db.from("users").select("id, name, email").eq("id", row.landlord_id).maybeSingle();
+      if (landlord?.email) {
+        await notify.invoicePaid({
+          landlord,
+          invoice: { ...moved[0], invoice_pdf_url: stripeInvoice.invoice_pdf ?? null },
+          paidCents,
+          creditCents,
+          paidAt,
+          methodDescription: paidCents > 0 ? method?.description ?? null : null,
+        });
+      }
+    } catch (err) {
+      console.error("[billing] receipt email failed:", err?.message);
     }
   }
+  if (problem) throw problem;
   return first;
 }
 

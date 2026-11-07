@@ -22,6 +22,7 @@
  */
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
+import { paidPaymentIntentId } from "./invoicing.js";
 
 const MAX_REASON_LENGTH = 1000;
 
@@ -34,10 +35,9 @@ async function adjustedSoFar(db, chargeId) {
 // The PaymentIntent that paid the invoice, which is what a refund is made against.
 async function paymentIntentForInvoice(stripe, stripeInvoiceId) {
   const invoice = await stripe.invoices.retrieve(stripeInvoiceId, { expand: ["payments"] });
-  const paid = invoice.payments?.data?.find((p) => p.status === "paid" && p.payment?.payment_intent);
-  const id = paid?.payment?.payment_intent;
+  const id = paidPaymentIntentId(invoice);
   if (!id) throw new BillingError("no_payment", "No payment was found on this invoice to refund.", 409);
-  return typeof id === "string" ? id : id.id;
+  return id;
 }
 
 export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, amountCents, reason }) {

@@ -92,16 +92,32 @@ export function paymentFailedEmail({ name, totalCents, retryUrl, reason }) {
 }
 
 // The receipt: an invoice was paid (Pay now, autopay, or Stripe's invoice page).
-export function invoicePaidEmail({ name, periodLabel, totalCents, methodDescription = null, paidAt, pdfUrl = null, paymentsUrl }) {
+/*
+ * The receipt. `paidCents` is what was actually charged, and `creditCents` the
+ * part of the invoice an earlier credit covered, so a $412 invoice with a $100
+ * credit says $312 was charged, and one a credit covered in full says nothing was.
+ */
+export function invoicePaidEmail({ name, periodLabel, totalCents, paidCents = totalCents, creditCents = 0, methodDescription = null, paidAt, pdfUrl = null, paymentsUrl }) {
+  const row = (label, value) =>
+    `<tr><td style="padding:2px 16px 2px 0;color:#6b7280">${label}</td><td style="padding:2px 0">${e(value)}</td></tr>`;
+  const coveredByCredit = paidCents <= 0 && creditCents > 0;
+  const lead = coveredByCredit
+    ? `Your Proximity invoice for ${e(periodLabel)} of <strong>${e(formatCents(totalCents))}</strong> was covered by your credit. Nothing was charged.`
+    : creditCents > 0
+    ? `Thank you. We received your payment of <strong>${e(formatCents(paidCents))}</strong> for your Proximity invoice for ${e(periodLabel)}. Your credit of ${e(formatCents(creditCents))} covered the rest.`
+    : `Thank you. We received your payment of <strong>${e(formatCents(paidCents))}</strong> for your Proximity invoice for ${e(periodLabel)}.`;
   return {
-    subject: `Payment received: ${formatCents(totalCents)} for ${periodLabel}`,
+    subject: coveredByCredit
+      ? `Invoice covered by credit: ${formatCents(totalCents)} for ${periodLabel}`
+      : `Payment received: ${formatCents(paidCents)} for ${periodLabel}`,
     html: wrap(`
       ${hello(name)}
-      <p>Thank you. We received your payment of <strong>${e(formatCents(totalCents))}</strong> for your Proximity invoice for ${e(periodLabel)}.</p>
+      <p>${lead}</p>
       <table style="border-collapse:collapse;margin:12px 0">
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Amount</td><td style="padding:2px 0">${e(formatCents(totalCents))}</td></tr>
-        ${methodDescription ? `<tr><td style="padding:2px 16px 2px 0;color:#6b7280">Paid with</td><td style="padding:2px 0">${e(methodDescription)}</td></tr>` : ""}
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Date</td><td style="padding:2px 0">${e(longDate(paidAt))}</td></tr>
+        ${creditCents > 0 ? row("Invoice total", formatCents(totalCents)) + row("Credit used", formatCents(creditCents)) : ""}
+        ${row(creditCents > 0 ? "Charged" : "Amount", formatCents(Math.max(paidCents, 0)))}
+        ${methodDescription && !coveredByCredit ? row("Paid with", methodDescription) : ""}
+        ${row("Date", longDate(paidAt))}
       </table>
       ${pdfUrl ? `<p><a href="${e(pdfUrl)}">Download the invoice (PDF)</a></p>` : ""}
       ${button(paymentsUrl, "View billing")}
