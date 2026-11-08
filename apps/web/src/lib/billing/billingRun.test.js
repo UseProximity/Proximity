@@ -16,7 +16,7 @@ import { BILLING_RUN_ENABLED, getBillingSetting, withSettingsLock } from "./sett
 import { chargeableMethod } from "./paymentMethods.js";
 import { attentionState, runMethodAttentionJob } from "./methodAttentionJob.js";
 import { sendEnrollmentEmails } from "./enrollment.js";
-import { runBillingRun } from "./billingRun.js";
+import { followUpBillingRun, runBillingRun, RUN_UNFINISHED_KEY } from "./billingRun.js";
 
 describe("nextBillingDay", () => {
   it("is today on the billing day itself", () => {
@@ -359,6 +359,12 @@ function memoryDb(tables) {
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },
+      upsert(row, { onConflict = "id" } = {}) {
+        const hit = rows(table).find((r) => r[onConflict] === row[onConflict]);
+        if (hit) Object.assign(hit, row);
+        else rows(table).push({ ...row });
+        return Promise.resolve({ error: null });
+      },
       async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       async single() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       then(res, rej) { return api.run().then(res, rej); },
@@ -700,5 +706,58 @@ describe("paying an invoice: receipts, failures and the method that paid", () =>
     const result = await retryInvoicePayment(failingDb, stripeFor(), { invoiceId: "i1", landlordId: "l1", notify });
     assert.deepEqual(result, { paid: true, method: "card" });
     assert.equal(notify.sent.paid.length, 1, "the receipt still goes out");
+  });
+});
+
+// Review of 2026-11-07: a run stopped between finalizing an invoice and emailing it.
+describe("a billing run cut short (review of 2026-11-07)", () => {
+  const now = new Date("2026-11-02T18:00:00Z"); // November's billing day
+  const later = new Date("2026-11-03T15:00:00Z");
+  const key = "invoice:l1:2026-11-01";
+  function stripeWith(invoice) {
+    const list = (items) => ({ async *[Symbol.asyncIterator]() { yield* items; } });
+    return {
+      invoices: { list: () => list([invoice]), retrieve: async () => invoice },
+      invoiceItems: { list: () => list([{ id: "ii_1", metadata: { charge_id: "c1" } }]) },
+    };
+  }
+  function world(row) {
+    return memoryDb({
+      billing_accounts: [{ id: "a1", user_id: "l1", stripe_customer_id: "cus_1" }],
+      charges: [{ id: "c1", landlord_id: "l1", amount_cents: 5000, status: "invoiced", invoice_id: "i1", trigger_type: "lease_signed", created_at: "2026-10-20" }],
+      billing_invoices: [{ id: "i1", landlord_id: "l1", billing_period: "2026-11-01", status: "open", stripe_invoice_id: "in_1", total_cents: 5000, invoice_date: "2026-11-02", hosted_invoice_url: "https://pay", announced_at: null, ...row }],
+      users: [{ id: "l1", name: "Lee", email: "lee@example.com" }],
+      autopay_authorizations: [],
+    });
+  }
+  const invoice = { id: "in_1", status: "open", total: 5000, metadata: { billing_key: key }, hosted_invoice_url: "https://pay", status_transitions: { finalized_at: 1793642400 } };
+
+  it("an invoice finalized but never emailed is emailed by the next run, once", async () => {
+    const db = world();
+    const sent = [];
+    const notify = { invoiceIssued: async (x) => sent.push(x.invoice.id) };
+    const first = await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify });
+    assert.deepEqual(sent, ["i1"], JSON.stringify(first.results));
+    assert.ok(db.tables.billing_invoices[0].announced_at, "recorded as announced");
+    await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify });
+    assert.deepEqual(sent, ["i1"], "not emailed twice");
+  });
+
+  it("the daily follow-up finishes it without waiting for next month's run", async () => {
+    const db = world();
+    const sent = [];
+    const r = await followUpBillingRun({ db, stripe: stripeWith(invoice), now: later, notify: { invoiceIssued: async (x) => sent.push(x.invoice.id) } });
+    assert.ok(r);
+    assert.deepEqual(sent, ["i1"]);
+    assert.equal(await followUpBillingRun({ db, stripe: stripeWith(invoice), now: later, notify: {} }), null, "then nothing to do");
+  });
+
+  it("a run out of time is marked unfinished, and the follow-up continues it", async () => {
+    const db = world({ announced_at: "2026-11-02T18:00:00Z" });
+    db.tables.charges.push({ id: "c2", landlord_id: "l2", amount_cents: 5000, status: "approved", invoice_id: null, trigger_type: "lease_signed", created_at: "2026-10-21" });
+    const r = await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify: {}, timeBudgetMs: -1 });
+    assert.equal(r.unfinished, true);
+    assert.equal(r.summary.notReached > 0, true);
+    assert.equal((await getBillingSetting(db, RUN_UNFINISHED_KEY, false)).billingPeriod, "2026-11-01");
   });
 });

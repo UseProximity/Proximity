@@ -47,7 +47,7 @@
     },
     {
       "path": "/api/cron/billing-run",
-      "schedule": "0 15 * * 1"
+      "schedule": "0 15 * * *"
     },
     {
       "path": "/api/cron/billing-overdue",
