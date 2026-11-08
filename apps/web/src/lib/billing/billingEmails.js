@@ -61,6 +61,8 @@ const toTeam = (kind, message) =>
 // Landlord-facing. `landlord` is { id, email, name }.
 export const sendContestOutcomeEmail = (landlord, input) =>
   toLandlord("billing_contest_outcome", landlord, t.contestOutcomeEmail({ name: landlord.name, ...input }));
+export const sendChargeCreatedEmail = (landlord, input) =>
+  toLandlord("billing_charge_created", landlord, t.chargeCreatedEmail({ name: landlord.name, ...input }));
 export const sendPaymentFailedEmail = (landlord, input) =>
   toLandlord("billing_payment_failed", landlord, t.paymentFailedEmail({ name: landlord.name, ...input }));
 export const sendInvoicePaidEmail = (landlord, input) =>

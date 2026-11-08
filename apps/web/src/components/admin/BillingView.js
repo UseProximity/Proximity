@@ -20,7 +20,9 @@
  *                notice email (test to yourself first, then send to those who need it).
  *   Billing run  dry run and live run of the monthly billing, and the switch that
  *                lets the first-Monday cron create real invoices.
- *   Test charge  makes a charge on a landlord account (never on production).
+ *   Create charge  puts a real charge on one landlord's account (production too):
+ *                its 7 day review starts and the landlord is emailed.
+ *   Test charge  makes a flagged test charge (never on production).
  *
  * Every action is recorded in the charge's history with the admin who took it.
  * Follows the dashboard's dev/prod switch (Wyatt, 2026-11-06): agreement versions,
@@ -34,6 +36,7 @@ import { useUrlTab } from "@/components/admin/adminShared";
 import ChargeQueue from "@/components/admin/billing/ChargeQueue";
 import NoteDialog from "@/components/admin/billing/NoteDialog";
 import TestChargeForm from "@/components/admin/billing/TestChargeForm";
+import CreateChargeForm from "@/components/admin/billing/CreateChargeForm";
 import BillingRunPanel from "@/components/admin/billing/BillingRunPanel";
 import CorrectionsPanel from "@/components/admin/billing/CorrectionsPanel";
 import AgreementsPanel from "@/components/admin/billing/AgreementsPanel";
@@ -42,7 +45,7 @@ import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 import { billingFetch, setBillingTarget } from "@/components/admin/billing/billingFetch";
 
-const TAB_KEYS = ["confirm", "contest", "chargebacks", "invoices", "corrections", "agreements", "changes", "enrollment", "run", "test"];
+const TAB_KEYS = ["confirm", "create", "contest", "chargebacks", "invoices", "corrections", "agreements", "changes", "enrollment", "run", "test"];
 
 async function call(url, options) {
   const res = await billingFetch(url, options);
@@ -172,6 +175,7 @@ export default function BillingView({ search, dbTarget = null }) {
 
   const tabs = [
     { key: "confirm", label: "To confirm", count: data.unconfirmed.length },
+    ...(data.env?.writable === false ? [] : [{ key: "create", label: "Create charge" }]),
     { key: "contest", label: "Contested", count: data.contested.length },
     { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
     { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
@@ -251,6 +255,7 @@ export default function BillingView({ search, dbTarget = null }) {
       )}
       {tab === "enrollment" && <EnrollmentPanel />}
       {tab === "run" && <BillingRunPanel />}
+      {tab === "create" && <CreateChargeForm onCreated={load} />}
       {tab === "test" && <TestChargeForm onCreated={load} />}
 
       {dialog && (

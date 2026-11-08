@@ -27,7 +27,23 @@ const ALL = [
   t.chargebackTeamEmail({ landlordName: "Pat", landlordEmail: "pat@x.com", amountCents: 5000, reason: "fraudulent", invoiceId: "in_1" }),
   t.methodRemovedTeamEmail({ landlordName: "Pat", landlordEmail: "pat@x.com", outstandingCents: 7500 }),
   t.enrollmentEmail({ name: "Pat", deadline: "December 15", paymentsUrl: URL }),
+  t.chargeCreatedEmail({ name: "Pat", charge, reviewEndsAt: "2026-11-15T12:00:00Z", paymentsUrl: URL }),
 ];
+
+describe("new charge email (2026-11-08)", () => {
+  it("gives the amount, the basis when known, and the review deadline", () => {
+    const m = t.chargeCreatedEmail({
+      name: "Pat",
+      charge: { ...charge, amountCents: 75000, signedRentCents: 150000, commissionRatePercent: 50, description: "Tenant <b>Sam</b>" },
+      reviewEndsAt: "2026-11-15T12:00:00Z",
+      paymentsUrl: URL,
+    });
+    assert.match(m.subject, /\$750\.00/);
+    assert.match(m.html, /50% of \$1,500\.00 signed rent/);
+    assert.match(m.html, /2026-11-15/);
+    assert.match(m.html, /Tenant &lt;b&gt;Sam&lt;\/b&gt;/, "the admin's note is escaped");
+  });
+});
 
 describe("billing email templates", () => {
   it("every email has a subject and a body", () => {

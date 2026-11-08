@@ -41,6 +41,7 @@ export const KINDS = {
   auto_unavailable_review: ["team", "Auto-unavailable review"],
   pms_sync_digest: ["landlords", "PMS sync digest"],
   billing_contest_outcome: ["billing", "Contested charge outcome"],
+  billing_charge_created: ["billing", "New charge to review"],
   billing_payment_failed: ["billing", "Payment failed"],
   billing_method_attention: ["billing", "Payment method needs updating"],
   billing_overdue: ["billing", "Overdue invoice, listings hidden"],

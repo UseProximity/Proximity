@@ -19,6 +19,15 @@ export const OVERDUE_DAYS = 30;
 // The monthly run happens on the first Monday of the month in this zone.
 export const BILLING_TIME_ZONE = "America/Chicago";
 
+// What an admin can say a charge they create is for: its trigger_type, which the
+// landlord sees as "Lease signed" etc. on the charge, invoice and email. "other"
+// needs a description.
+export const CHARGE_REASONS = {
+  lease_signed: "Lease signed",
+  lease_renewal: "Lease renewal",
+  other: "Other",
+};
+
 // Where contests, failures, chargebacks and overdue notices go.
 export const BILLING_TEAM_EMAIL = "info@useproximity.org";
 

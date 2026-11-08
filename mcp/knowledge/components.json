@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-07T23:20:45.973Z",
-  "count": 192,
+  "_generated": "2026-11-08T23:01:45.959Z",
+  "count": 194,
   "components": [
     {
       "name": "ErrorReporter",
@@ -144,8 +144,18 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "CreateChargeForm",
+      "file": "src/components/admin/billing/CreateChargeForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "EnrollmentPanel",
       "file": "src/components/admin/billing/EnrollmentPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LandlordPicker",
+      "file": "src/components/admin/billing/LandlordPicker.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

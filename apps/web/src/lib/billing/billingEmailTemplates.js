@@ -4,7 +4,7 @@
  * billingEmails.js; keeping the copy here means it can be tested without a
  * mail transport.
  *
- * Landlord emails: contest outcome, failed payment, payment received, refund
+ * Landlord emails: new charge to review, contest outcome, failed payment, payment received, refund
  * or credit, payment method needs attention, overdue notice, launch
  * enrollment, marketing agreement to sign.
  * Team emails (to info@useproximity.org): contest submitted, failed payment,
@@ -73,6 +73,27 @@ export function contestOutcomeEmail({ name, outcome, charge, paymentsUrl }) {
       ${chargeDetails(charge)}
       <p>If you have questions, reply to this email.</p>
       ${button(paymentsUrl, "View payments")}
+    `),
+  };
+}
+
+/*
+ * A charge an admin put on the landlord's account. Its review has started: the
+ * landlord can approve or contest it until `reviewEndsAt`, after which it is
+ * approved and goes on the next monthly invoice.
+ */
+export function chargeCreatedEmail({ name, charge, reviewEndsAt, paymentsUrl }) {
+  const basis = basisLabel(charge);
+  return {
+    subject: `New Proximity charge to review: ${formatCents(charge.amountCents)}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>We added a charge to your Proximity account.</p>
+      ${chargeDetails(charge)}
+      ${basis ? `<p style="color:#6b7280">${e(basis)}</p>` : ""}
+      ${charge.description ? `<p>${e(charge.description)}</p>` : ""}
+      <p>Please review it by <strong>${e(dateOnly(reviewEndsAt))}</strong>. If something is wrong, contest it before then and tell us why. If we hear nothing, it is approved on that date and included in your next monthly invoice.</p>
+      ${button(paymentsUrl, "Review the charge")}
     `),
   };
 }
