@@ -39,7 +39,7 @@
  */
 import { getBillingSetting } from "./settings.js";
 import { agreementState, coverageFor } from "./agreements.js";
-import { resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
+import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
@@ -188,6 +188,14 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
         }
       }
       uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
+      // A building they have no stake in yet (an offering in someone else's): its address.
+      const unnamed = uncovered.filter((u) => u.listingId && u.address === "New property").map((u) => u.listingId);
+      if (unnamed.length) {
+        const { data: listings, error: listingError } = await db.from("listings").select("id, address, city, state, zipcode").in("id", unnamed);
+        if (listingError) throw listingError;
+        const byId = new Map((listings ?? []).map((l) => [l.id, displayAddress(l)]));
+        uncovered = uncovered.map((u) => (byId.has(u.listingId) ? { ...u, address: byId.get(u.listingId) } : u));
+      }
       if (newProperty) uncovered.push({ listingId: null, address: "New property" });
       agreementSigned = uncovered.length === 0;
     } else {

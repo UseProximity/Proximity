@@ -16,7 +16,7 @@
  */
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
-import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequiredUnits } from "./coverage.js";
+import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
 
@@ -24,7 +24,7 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
   const requested = await resolvePublishedIds(db, listingIds);
   const loaded = await coverageFor(db, userId, now);
   const { state, rows, covered } = loaded;
-  const properties = withRequiredUnits(loaded.properties, requiredUnits);
+  const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
   // A document already in progress (an addendum started from a publish, then closed)
   // is planned with, as startSigning does, so "Continue signing" picks it up again.
   // A negotiated version waiting to be signed is planned as a new agreement (startSigning).

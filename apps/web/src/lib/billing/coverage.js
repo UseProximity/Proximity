@@ -218,7 +218,9 @@ export function refreshCoverageNames(rows, properties) {
   const byId = new Map(properties.map((p) => [p.listingId, p]));
   return rows.map((r) => {
     if (r.whole_building !== false || !Array.isArray(r.unit_ids) || !r.unit_ids.length) return r;
-    const labels = byId.get(r.listing_id)?.labelById ?? {};
+    // A building they have no offering in yet (covered ahead of a publish): nothing to rename by.
+    if (!byId.has(r.listing_id)) return r;
+    const labels = byId.get(r.listing_id).labelById ?? {};
     const current = [...new Set(r.unit_ids.map((id) => labels[id]).filter(Boolean))].sort(byName);
     const signed = Array.isArray(r.units) ? r.units : [];
     const formerNames = signed.filter((n) => !current.includes(n));
@@ -319,6 +321,56 @@ export function withRequiredUnits(properties, required) {
     if (!names.length) return p;
     return { ...p, leaseUnits: [...new Set([...(p.leaseUnits ?? []), ...names])].sort(byName), requiredUnits: names };
   });
+}
+
+/*
+ * A property being published that the landlord has no stake in yet (a leasing
+ * agent or renter adding an offering on a unit in someone else's building): it
+ * joins the plan as a draft named by the units being published, so the document
+ * covers exactly those (review of 2026-11-07). Without required units it is left
+ * out, as before. `required` is the Map listingId -> unit names.
+ */
+export async function withRequestedProperties(db, properties, requestedIds = [], required = null) {
+  const have = new Set(properties.map((p) => p.listingId));
+  const missing = [...new Set(requestedIds)].filter((id) => !have.has(id) && required?.get(id)?.length);
+  if (!missing.length) return properties;
+  const { data: listings, error } = await db.from("listings").select("id, address, city, state, zipcode, deleted_at, review_sandbox").in("id", missing);
+  if (error) throw error;
+  const added = [];
+  for (const l of listings ?? []) {
+    if (l.deleted_at || l.review_sandbox === true) continue;
+    const { data: units, error: unitError } = await db
+      .from("listing_units")
+      .select("id, listing_id, name, unit_number, unit_designator, title, deleted_at")
+      .eq("listing_id", l.id);
+    if (unitError) throw unitError;
+    const names = [...new Set(required.get(l.id))].sort(byName);
+    const idsByLabel = {};
+    const labelById = {};
+    for (const u of units ?? []) {
+      const label = unitLabel(u);
+      if (u.deleted_at || !label || !names.includes(label)) continue;
+      (idsByLabel[label] ??= []).push(u.id);
+      labelById[u.id] = label;
+    }
+    const named = names.filter((n) => idsByLabel[n]);
+    if (!named.length) continue;
+    added.push({
+      listingId: l.id,
+      address: displayAddress(l),
+      units: named,
+      unitList: named.map((label) => ({ id: idsByLabel[label][0], label })),
+      idsByLabel,
+      labelById,
+      leaseUnits: named,
+      liveLeaseUnits: [],
+      requiredUnits: named,
+      owner: false,
+      live: false,
+      draft: true,
+    });
+  }
+  return added.length ? [...properties, ...added].sort(byAddress) : properties;
 }
 
 // The ids of the units these names are on this property now.
@@ -515,6 +567,7 @@ export function uncoveredAmong(properties, coverage, listingIds, { extraUnits = 
     .map((id) => ({
       listingId: id,
       address: byId.get(id)?.address ?? "New property",
-      ...(coverage.has(id) && { missingUnits: missingUnits(byId.get(id), coverage.get(id), extra(id)) }),
+      // (Units going on the market on a property they have no stake in yet are named too.)
+      ...((coverage.has(id) || extra(id).length > 0) && { missingUnits: missingUnits(byId.get(id), coverage.get(id), extra(id)) }),
     }));
 }

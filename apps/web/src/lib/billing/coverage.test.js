@@ -954,6 +954,31 @@ describe("deselected units and addenda that only add (Wyatt, 2026-11-07)", () =>
     assert.deepEqual(db.tables.agreement_amendments[0].proposed_exhibit.find((e) => e.listingId === "L1").units, ["Apt 1", "Apt 2"]);
   });
 
+  it("publishing on a unit in someone else's building adds that building, with just that unit, instead of looping (review of 2026-11-07)", async () => {
+    const db = twoUnits();
+    db.tables.listings.push(listing("L5", "500 Shared Blvd"));
+    db.tables.listing_units.push({ id: "U8", listing_id: "L5", name: "Apt 8", published_at: "2026-10-01T00:00:00Z", deleted_at: null });
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, {});
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    // The publish check: L5 is not Pat's at all yet, and Apt 8 is going on the market.
+    const { properties, covered } = await coverageFor(db, "u1", new Date("2027-02-01"));
+    const [u] = uncoveredAmong(properties, covered, ["L5"], { extraUnits: new Map([["L5", ["Apt 8"]]]) });
+    assert.deepEqual(u.missingUnits, ["Apt 8"]);
+    const preview = await exhibitPreview(db, "u1", { listingIds: ["L5"], requiredUnits: new Map([["L5", ["Apt 8"]]]), now: new Date("2027-02-01") });
+    assert.equal(preview.kind, "amendment", "something to sign, not 'none'");
+    const r = await sign(db, documenso, { listingIds: ["L5"], requiredUnits: new Map([["L5", ["Apt 8"]]]), now: new Date("2027-02-01") });
+    assert.equal(r.kind, "amendment");
+    const added = db.tables.agreement_amendments[0].proposed_exhibit.find((e) => e.listingId === "L5");
+    assert.equal(added.wholeBuilding, false);
+    assert.deepEqual(added.units, ["Apt 8"]);
+    documenso.complete("envelope_2", "2027-02-02T00:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
+    const after = await coverageFor(db, "u1", new Date("2027-02-03"));
+    assert.deepEqual(uncoveredAmong(after.properties, after.covered, ["L5"], { extraUnits: new Map([["L5", ["Apt 8"]]]) }), [], "the retry goes through");
+  });
+
   it("a rebuilt copy keeps the units picked (a carried property does not force its leased units back in)", async () => {
     const db = twoUnits();
     const documenso = fakeDocumenso();
