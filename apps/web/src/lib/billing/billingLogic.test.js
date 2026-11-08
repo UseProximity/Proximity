@@ -52,7 +52,7 @@ describe("billing day (first Monday, America/Chicago)", () => {
 describe("charge lifecycle", () => {
   it("matches the database transition table", () => {
     const sql = readFileSync(
-      fileURLToPath(new URL("../../../../../supabase/migrations/202610310001_billing_core.sql", import.meta.url)),
+      fileURLToPath(new URL("../../../../../supabase/migrations/202610310003_billing_core.sql", import.meta.url)),
       "utf8"
     );
     const fn = sql.slice(sql.indexOf("fn_charge_transition_allowed(p_from"));

@@ -658,7 +658,7 @@ export async function executeChange(change, { state, userId }) {
     case "lease_update": {
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
       // The database keeps a lease withdrawn for an overdue invoice off the market
-      // until an admin restores it (202611010002_billing_holds.sql).
+      // until an admin restores it (202611010003_billing_holds.sql).
       if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       return Object.keys(d.patch).join(", ");

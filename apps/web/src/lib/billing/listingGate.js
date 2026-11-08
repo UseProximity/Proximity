@@ -32,7 +32,7 @@
  * straight back on the market. That clears as soon as the invoice is paid.
  *
  * Separately, a lease the overdue job withdrew cannot be put back by anyone but an
- * admin: the database refuses it (202611010002_billing_holds.sql), and
+ * admin: the database refuses it (202611010003_billing_holds.sql), and
  * isLeaseHeldForBilling lets a route say so in plain words first.
  *
  * `db` is a service-role Supabase client, passed in so this stays testable.

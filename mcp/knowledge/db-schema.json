@@ -347,7 +347,7 @@
           "updated_at:timestamptz",
           "updated_by:uuid"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk key; fk updated_by->users.id (set null); rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk key; fk updated_by->users.id (set null); rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "billing_accounts",
@@ -360,7 +360,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (user_id); unique (stripe_customer_id); fk user_id->users.id (restrict). The snapshot script nulls stripe_customer_id on dev. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (user_id); unique (stripe_customer_id); fk user_id->users.id (restrict). The snapshot script nulls stripe_customer_id on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "payment_methods",
@@ -384,7 +384,7 @@
           "attention_emailed_key:text",
           "attention_emailed_at:timestamptz"
         ],
-        "notes": "attention_emailed_key/at (202611020001_payment_method_attention) record which expiring/expired/failed email the daily billing-overdue cron sent for the method, as state:month/year, so it is sent once per problem. Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "attention_emailed_key/at (202611020002_payment_method_attention) record which expiring/expired/failed email the daily billing-overdue cron sent for the method, as state:month/year, so it is sent once per problem. Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "charges",
@@ -423,7 +423,7 @@
           "covered_by_agreement_id:uuid",
           "covered_by_amendment_id:uuid"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk landlord_id->users.id (restrict); listing_id->listings.id, lease_id->unit_leases.id, student_id->users.id, created_by_id->users.id, resolved_by_id->users.id (all set null); invoice_id->billing_invoices.id (set null); unique (stripe_invoice_item_id); check amount_cents > 0; check invoiced/paid rows carry an invoice reference; indexes for the review clock (pending_at where pending), billing run (landlord where approved and not invoiced) and admin queue. Audited by fn_action_log; updated_at by fn_set_updated_at. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk landlord_id->users.id (restrict); listing_id->listings.id, lease_id->unit_leases.id, student_id->users.id, created_by_id->users.id, resolved_by_id->users.id (all set null); invoice_id->billing_invoices.id (set null); unique (stripe_invoice_item_id); check amount_cents > 0; check invoiced/paid rows carry an invoice reference; indexes for the review clock (pending_at where pending), billing run (landlord where approved and not invoiced) and admin queue. Audited by fn_action_log; updated_at by fn_set_updated_at. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "charge_status_history",
@@ -439,12 +439,12 @@
           "note:text",
           "created_at:timestamptz"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); actor_user_id->users.id (set null); check actor_user_id present unless actor_type is system; index (charge_id, created_at). rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); actor_user_id->users.id (set null); check actor_user_id present unless actor_type is system; index (charge_id, created_at). rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "billing_invoices",
         "status": "unreleased",
-        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) is when Stripe finalized the invoice and starts the 30 day overdue clock; it is NULL while a run has not finished issuing it, and such a row is never overdue (202611010002_billing_holds); processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
+        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) is when Stripe finalized the invoice and starts the 30 day overdue clock; it is NULL while a run has not finished issuing it, and such a row is never overdue (202611010003_billing_holds); processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
@@ -471,7 +471,7 @@
           "autopay_attempted_at:timestamptz",
           "autopay_skipped_reason:text"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (landlord_id, billing_period); unique (stripe_invoice_id); fk landlord_id->users.id (restrict); partial index on invoice_date where status in (open, processing, failed). The snapshot script nulls the Stripe id and URLs on dev. Audited by fn_action_log. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (landlord_id, billing_period); unique (stripe_invoice_id); fk landlord_id->users.id (restrict); partial index on invoice_date where status in (open, processing, failed). The snapshot script nulls the Stripe id and URLs on dev. Audited by fn_action_log. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "charge_adjustments",
@@ -487,7 +487,7 @@
           "created_by_id:uuid",
           "created_at:timestamptz"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); created_by_id->users.id (set null); unique (stripe_refund_id). rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); created_by_id->users.id (set null); unique (stripe_refund_id). rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "billing_disputes",
@@ -503,7 +503,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk id; unique (stripe_dispute_id); fk invoice_id->billing_invoices.id (set null). The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (stripe_dispute_id); fk invoice_id->billing_invoices.id (set null). The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "agreement_versions",
@@ -539,7 +539,7 @@
           "provider_brokerage_field_id:text",
           "provider_license_field_id:text"
         ],
-        "notes": "Migration 202611030001_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team)."
+        "notes": "Migration 202611030002_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team)."
       },
       {
         "table": "landlord_agreements",
@@ -571,7 +571,7 @@
           "commission_rate_percent:numeric",
           "license_prefill:jsonb"
         ],
-        "notes": "Migrations 202610310001_billing_core and 202611030001_agreement_versions (both applied to dev only; prod with billing). pk id; fk user_id->users.id (restrict), version_id->agreement_versions.id (restrict); partial unique (user_id) where status in (not_sent, sent); partial unique (user_id) where status = signed; partial unique (provider_envelope_id) where not null (the Documenso webhook finds the record by it); check signed rows have signed_at. Audited by fn_action_log. rls: service role only. The prod->dev snapshot voids copies in progress and nulls provider_envelope_id (dev uses its own Documenso team)."
+        "notes": "Migrations 202610310003_billing_core and 202611030002_agreement_versions (both applied to dev only; prod with billing). pk id; fk user_id->users.id (restrict), version_id->agreement_versions.id (restrict); partial unique (user_id) where status in (not_sent, sent); partial unique (user_id) where status = signed; partial unique (provider_envelope_id) where not null (the Documenso webhook finds the record by it); check signed rows have signed_at. Audited by fn_action_log. rls: service role only. The prod->dev snapshot voids copies in progress and nulls provider_envelope_id (dev uses its own Documenso team)."
       },
       {
         "table": "stripe_webhook_events",
@@ -585,7 +585,7 @@
           "processed_at:timestamptz",
           "error:text"
         ],
-        "notes": "Migration 202610310001_billing_core (not yet applied to dev or prod). pk stripe_event_id; partial index on received_at where processed_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk stripe_event_id; partial index on received_at where processed_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
       },
       {
         "table": "billing_lease_withdrawals",
@@ -599,7 +599,7 @@
           "restored_at:timestamptz",
           "restored_by_id:uuid"
         ],
-        "notes": "Migration 202611010001_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies). Trigger trg_block_relisting_billing_hold on unit_leases (fn_block_relisting_billing_hold, 202611010002_billing_holds) refuses any update that puts a lease with an unrestored row back on the market, so restoring marks restored_at first."
+        "notes": "Migration 202611010002_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies). Trigger trg_block_relisting_billing_hold on unit_leases (fn_block_relisting_billing_hold, 202611010003_billing_holds) refuses any update that puts a lease with an unrestored row back on the market, so restoring marks restored_at first."
       },
       {
         "table": "landlord_reply_senders",
@@ -1809,7 +1809,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Launch review (2026-11-07, migration 202611070001_sync_launch_review.sql): subpages_checked_at records when the company-wide page was last searched for this listing's own page (lib/sourceSync/subpages.js), and listing_source_events.kind gained source_attached. Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
+        "description": "Launch review (2026-11-07, migration 202611070006_sync_launch_review.sql): subpages_checked_at records when the company-wide page was last searched for this listing's own page (lib/sourceSync/subpages.js), and listing_source_events.kind gained source_attached. Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -3407,7 +3407,7 @@
         "args": "p_charge_id uuid, p_expected_from text, p_to text, p_actor_type text, p_actor_user_id uuid, p_note text, p_invoice_id uuid, p_stripe_invoice_item_id text",
         "touches": "charges, charge_status_history",
         "called_from": "not yet called (billing library lands in a later phase of feat/in-app-payments)",
-        "defined_in": "supabase/migrations/202610310001_billing_core.sql",
+        "defined_in": "supabase/migrations/202610310003_billing_core.sql",
         "description": "Moves a charge to a new status and records the actor in charge_status_history in one transaction. Locks the row and compares p_expected_from, so a landlord approving while the review cron runs cannot both win. Raises charge_not_found, charge_status_changed, charge_note_required or charge_actor_required; illegal transitions raise a check_violation from trg_charges_enforce_transition. SECURITY INVOKER; execute is service_role only.",
         "dev_note": "Not yet applied to dev or prod."
       },
@@ -3843,7 +3843,7 @@
         "args": "p_fingerprint, p_source, p_where, p_message, p_stack, p_sample, p_env",
         "touches": "app_errors",
         "called_from": "lib/errors/record.js",
-        "defined_in": "supabase/migrations/202611030001_app_errors.sql",
+        "defined_in": "supabase/migrations/202611030003_app_errors.sql",
         "description": "Insert or count one occurrence of a site error; reopens a resolved one. SECURITY INVOKER, service_role only."
       }
     ],

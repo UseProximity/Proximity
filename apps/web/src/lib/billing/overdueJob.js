@@ -117,7 +117,7 @@ export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new
   let restored = 0;
   for (const row of rows) {
     // Marked restored first: the database refuses to put a lease back on the market
-    // while an unrestored withdrawal points at it (202611010002_billing_holds.sql).
+    // while an unrestored withdrawal points at it (202611010003_billing_holds.sql).
     const { error: markError } = await db
       .from("billing_lease_withdrawals")
       .update({ restored_at: now.toISOString(), restored_by_id: adminId })
