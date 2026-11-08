@@ -168,7 +168,8 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Could not open that document.");
       }
-      const link = URL.createObjectURL(await res.blob());
+      // A large PDF comes back as a short-lived link instead of the file.
+      const link = (res.headers.get("content-type") ?? "").includes("application/json") ? (await res.json()).url : URL.createObjectURL(await res.blob());
       if (tab) tab.location.href = link;
       else window.open(link, "_blank");
     } catch (e) {

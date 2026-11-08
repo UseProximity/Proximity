@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
-import { combinedSignedPdf, pdfResponse } from "@/lib/billing/agreementFiles";
+import { combinedSignedPdf, pdfOrLink } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -32,7 +32,7 @@ export async function GET(req, { params }) {
       data.signed_file_key && { key: data.signed_file_key, originalKey: data.agreement_version?.file_key ?? null },
       data.signed_exhibit_file_key && { key: data.signed_exhibit_file_key, originalKey: data.exhibit_file_key ?? null },
     ].filter(Boolean);
-    return pdfResponse(await combinedSignedPdf(keys), "marketing-agreement.pdf");
+    return pdfOrLink(await combinedSignedPdf(keys), "marketing-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open signed agreement");
   }

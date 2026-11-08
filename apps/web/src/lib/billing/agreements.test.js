@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { agreementView, cleanSignerTitle, markAgreementSigned, summarizeAgreementRows } from "./agreements.js";
 import { signatureStillValid } from "./agreementVersions.js";
 import { gateDecision, gateMessage, gateResponseBody } from "./listingGate.js";
-import { MAX_SIGNED_PDF_BYTES, signedAgreementKey, validateSignedPdf } from "./agreementPdf.js";
+import { MAX_DOCUMENSO_PDF_BYTES, MAX_SIGNED_PDF_BYTES, signedAgreementKey, validateSignedPdf } from "./agreementPdf.js";
 
 const ON = { requirePaymentMethod: true, requireAgreement: true };
 
@@ -195,6 +195,11 @@ describe("signed agreement files", () => {
   it("accepts a PDF within the limit", () => {
     assert.doesNotThrow(() => validateSignedPdf(pdf()));
     assert.doesNotThrow(() => validateSignedPdf(pdf(MAX_SIGNED_PDF_BYTES)));
+  });
+
+  it("a signed copy from Documenso may be larger than an upload (review of 2026-11-07)", () => {
+    assert.doesNotThrow(() => validateSignedPdf(pdf(MAX_SIGNED_PDF_BYTES + 1), "signed agreement", MAX_DOCUMENSO_PDF_BYTES));
+    assert.throws(() => validateSignedPdf(pdf(MAX_DOCUMENSO_PDF_BYTES + 1), "signed agreement", MAX_DOCUMENSO_PDF_BYTES), /50 MB/);
   });
 
   it("refuses an empty file, an oversized one, and anything that is not a PDF", () => {

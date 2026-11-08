@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { documentParts } from "@/lib/billing/agreements";
-import { combinedSignedPdf, pdfResponse } from "@/lib/billing/agreementFiles";
+import { combinedSignedPdf, pdfOrLink } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -30,7 +30,7 @@ export async function GET(req, { params }) {
     const kind = q.get("kind") === "amendment" ? "amendment" : "master";
     const keys = await documentParts(supabase, { userId: landlordId, kind, id: docId });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
-    return pdfResponse(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "marketing-agreement.pdf");
+    return pdfOrLink(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "marketing-agreement.pdf");
   } catch (err) {
     return billingErrorResponse(err, "open a landlord's signed document");
   }
