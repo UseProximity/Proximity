@@ -148,10 +148,13 @@ export async function getGateSettings(db) {
  *   unitIds      units whose lease is going on the market now (a withdrawn one put
  *                back, or a new one): each must be covered too, since a unit with
  *                only withdrawn leases needs no coverage (Wyatt, 2026-11-07)
+ *   newUnits     [{ listingId, name }] units about to be added to a property (add
+ *                listing onto an existing one): on a property covered by named
+ *                units, each needs an addendum (review of 2026-11-07)
  *   newProperty  a property that does not exist yet (add listing): never covered
  *   neither      the dashboard's question: does the landlord's master count?
  */
-export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newProperty = false, now = new Date() } = {}) {
+export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newUnits = [], newProperty = false, now = new Date() } = {}) {
   const { role, sandbox } = await userOf(db, userId);
   if (role !== "landlord" || sandbox) {
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
@@ -186,6 +189,12 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
           const label = unitLabel(u);
           if (label) extraUnits.set(u.listing_id, [...(extraUnits.get(u.listing_id) ?? []), label]);
         }
+      }
+      for (const u of newUnits ?? []) {
+        const label = String(u?.name ?? "").trim();
+        if (!u?.listingId || !label) continue;
+        extraUnits ??= new Map();
+        extraUnits.set(u.listingId, [...new Set([...(extraUnits.get(u.listingId) ?? []), label])]);
       }
       uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
       // A building they have no stake in yet (an offering in someone else's): its address.

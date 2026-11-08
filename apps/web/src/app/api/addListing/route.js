@@ -252,7 +252,13 @@ export async function POST(req) {
         const gate = await checkListingGate(
           supabase,
           ownerId,
-          attachToListingId ? { listingIds: [attachToListingId] } : { newProperty: true }
+          attachToListingId
+            ? {
+                listingIds: [attachToListingId],
+                // The units being added must be on the agreement too, not just the building.
+                newUnits: (Array.isArray(unitTypes) ? unitTypes : []).map((u) => ({ listingId: attachToListingId, name: u?.name })),
+              }
+            : { newProperty: true }
         );
         if (!gate.allowed) {
           // Only the agreement: kept as a draft and the page opens signing for
@@ -1029,7 +1035,14 @@ export async function POST(req) {
           message: "Draft saved. Sign your marketing agreement for this property to publish it.",
           code: "agreement_needed",
           listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
-          uncovered: [{ listingId, address: displayAddress({ address }) }],
+          // Units added to an existing property are named, so the addendum lists them.
+          uncovered: [
+            {
+              listingId,
+              address: displayAddress({ address }),
+              ...(attachToListingId && { missingUnits: [...new Set(unitData.map((u) => String(u.name ?? "").trim()).filter(Boolean))] }),
+            },
+          ],
           // What to publish once signed: the new property, or the new units added to a live one.
           publish: attachToListingId
             ? createdUnitIds.filter(Boolean).map((id) => ({ kind: "unit", id }))

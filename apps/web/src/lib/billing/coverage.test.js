@@ -16,7 +16,7 @@ import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
-import { gateDecision, gateMessage } from "./listingGate.js";
+import { checkListingGate, gateDecision, gateMessage } from "./listingGate.js";
 
 const MASTER = {
   id: "vm",
@@ -977,6 +977,24 @@ describe("deselected units and addenda that only add (Wyatt, 2026-11-07)", () =>
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
     const after = await coverageFor(db, "u1", new Date("2027-02-03"));
     assert.deepEqual(uncoveredAmong(after.properties, after.covered, ["L5"], { extraUnits: new Map([["L5", ["Apt 8"]]]) }), [], "the retry goes through");
+  });
+
+  it("adding a new unit to a building covered by named units needs an addendum; on a whole building it does not (review of 2026-11-07)", async () => {
+    const db = twoUnits();
+    db.tables.users[0].roles = { name: "landlord" };
+    db.tables.billing_settings = [{ key: "agreement_required", value: true }];
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [...DRAFTS_OFF, { listingId: "L1", wholeBuilding: false, units: ["Apt 1", "Apt 2"] }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    const now = new Date("2027-02-01");
+    assert.equal((await checkListingGate(db, "u1", { listingIds: ["L1"], now })).allowed, true, "the units on it are covered");
+    const gate = await checkListingGate(db, "u1", { listingIds: ["L1"], newUnits: [{ listingId: "L1", name: "3C" }], now });
+    assert.equal(gate.allowed, false);
+    assert.deepEqual(gate.uncovered[0].missingUnits, ["3C"]);
+    // A whole-building agreement covers units added later.
+    db.tables.agreement_coverage.forEach((r) => { r.whole_building = true; });
+    assert.equal((await checkListingGate(db, "u1", { listingIds: ["L1"], newUnits: [{ listingId: "L1", name: "3C" }], now })).allowed, true);
   });
 
   it("a rebuilt copy keeps the units picked (a carried property does not force its leased units back in)", async () => {

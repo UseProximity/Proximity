@@ -153,16 +153,30 @@ export function putsLeaseLive(c) {
   return d.op === "lease_update" && d.patch?.unavailable === false;
 }
 
-/* The gate for one owner and listing. Fails closed: an error holds the change. */
-async function gateFor(userId, listingId) {
+/*
+ * The gate for one owner and listing, and the units going live (each must be on
+ * the agreement, not just the building; review of 2026-11-07). Fails closed: an
+ * error holds the change.
+ */
+async function gateFor(userId, listingId, unitIds = []) {
   if (!userId) return { allowed: true };
   try {
-    const g = await checkListingGate(supabase, userId, { listingIds: [listingId] });
+    const g = await checkListingGate(supabase, userId, { listingIds: [listingId], unitIds: unitIds.filter(Boolean) });
     return { allowed: !!g.allowed, message: g.allowed ? null : gateMessage(g.missing ?? [], g.uncovered ?? []) };
   } catch (err) {
     console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
     return { allowed: false, message: "Could not check the listing gate; held for the landlord." };
   }
+}
+
+// One gate answer per unit for a run (a sync can put several leases on one unit live).
+function cachedGate(userId, listingId) {
+  const seen = new Map();
+  return (unitId) => {
+    const key = unitId ?? "";
+    if (!seen.has(key)) seen.set(key, gateFor(userId, listingId, unitId ? [unitId] : []));
+    return seen.get(key);
+  };
 }
 
 // ---------------------------------------------------------------- planning
@@ -856,15 +870,17 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   // A lease going live passes the listing gate, as the landlord's own publish
   // would; the importer and sync used to skip it.
   // Under launch review it still runs, so the team sees why one would wait.
-  if (mode === "sync" && changes.some((c) => (c.auto || teamReview) && putsLeaseLive(c))) {
-    const gate = await gateFor(primaryOwner(state), listingId);
-    if (!gate.allowed) {
-      for (const c of changes.filter(putsLeaseLive)) {
-        c.auto = false;
-        c.judge = false;
-        c.gated = true;
-        c.note = `waiting for the landlord to publish: ${gate.message}`;
-      }
+  // Every such change is checked, for its own unit, before the model's second
+  // opinion can promote it (a relist it promoted used to skip the gate).
+  if (mode === "sync" && changes.some(putsLeaseLive)) {
+    const gateOf = cachedGate(primaryOwner(state), listingId);
+    for (const c of changes.filter(putsLeaseLive)) {
+      const gate = await gateOf(c.unitId ?? c.detail?.unitId ?? null);
+      if (gate.allowed) continue;
+      c.auto = false;
+      c.judge = false;
+      c.gated = true;
+      c.note = `waiting for the landlord to publish: ${gate.message}`;
     }
   }
 
@@ -963,14 +979,16 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const results = [];
   // Accepting a change that puts a lease live is a publish: the same gate,
   // checked for the listing's landlord even when the team accepts it.
-  const live = (events ?? []).filter((e) => !e.applied && putsLeaseLive(e));
-  const gate = live.length ? await gateFor(primaryOwner(state) ?? userId, listingId) : { allowed: true };
+  const gateOf = cachedGate(primaryOwner(state) ?? userId, listingId);
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
-    if (!gate.allowed && putsLeaseLive(e)) {
-      results.push({ id: e.id, ok: false, error: gate.message });
-      continue;
+    if (putsLeaseLive(e)) {
+      const gate = await gateOf(e.detail?.unitId ?? null);
+      if (!gate.allowed) {
+        results.push({ id: e.id, ok: false, error: gate.message });
+        continue;
+      }
     }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
