@@ -74,6 +74,34 @@ export function openCoverageDialog({ uncovered, onSigned }) {
   });
 }
 
+/*
+ * A save that came back `agreement_needed` (saved as a draft, api/addListing):
+ * open signing for it, and once signed publish what the response lists. Resolves
+ * true when it went live, false when it stays a draft.
+ */
+export async function signThenPublish(data) {
+  let live = false;
+  await openCoverageDialog({
+    uncovered: data.uncovered ?? [],
+    onSigned: async () => {
+      for (const target of data.publish ?? []) {
+        const r = await fetch("/api/landlord/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(target),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          toast.error(err.error || "Signed, but we couldn't publish it. Publish it from your drafts.");
+          return;
+        }
+      }
+      live = true;
+    },
+  });
+  return live;
+}
+
 // True when the only thing stopping a publish is that the properties are not covered yet.
 export function needsCoverageOnly(data) {
   return (

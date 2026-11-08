@@ -262,14 +262,15 @@ export async function POST(req) {
           // links to Billing. Every other caller (the mobile app, which has no
           // billing, and the sublease form) is refused as before, since a 2xx
           // would read to them as published.
-          if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
+          // The agreement-only draft is for those pages too (review of 2026-11-07).
+          if (body.draftIfBillingBlocked !== true) {
+            return NextResponse.json(gateResponseBody(gate), { status: 403 });
+          } else if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
             draft = true;
             needsCoverage = true;
-          } else if (body.draftIfBillingBlocked === true) {
+          } else {
             draft = true;
             billingBlock = gateResponseBody(gate);
-          } else {
-            return NextResponse.json(gateResponseBody(gate), { status: 403 });
           }
         }
       }
