@@ -486,6 +486,42 @@ describe("applyEnvelope", () => {
     assert.equal(told[0].reason, "The fee is too high");
   });
 
+  it("turns the decline into a change request once, even when the webhook and the window both report it", async () => {
+    const { db, documenso } = await started();
+    documenso.reject("envelope_1", "The fee is too high");
+    db.tables.users = [{ id: "u1", name: "Pat", email: "pat@example.com" }];
+    const recorded = [];
+    const told = [];
+    const options = {
+      onDeclined: async (x) => (recorded.push(x), { opened: true }),
+      notify: { declined: async (x) => told.push(x) },
+    };
+    const envelope = await documenso.getEnvelope("envelope_1");
+    assert.equal(await applyEnvelope(db, documenso, envelope, options), "declined");
+    assert.equal(await applyEnvelope(db, documenso, envelope, options), "unchanged");
+    assert.equal(recorded.length, 1);
+    assert.equal(recorded[0].reason, "The fee is too high");
+    assert.equal(recorded[0].doc.kind, "master");
+    assert.equal(recorded[0].doc.agreementId, db.tables.landlord_agreements[0].id);
+    assert.equal(told.length, 1);
+    assert.deepEqual(told[0].changeRequest, { opened: true });
+  });
+
+  it("still emails the team when recording the change request fails", async () => {
+    const { db, documenso } = await started();
+    documenso.reject("envelope_1", "No");
+    db.tables.users = [{ id: "u1", name: "Pat", email: "pat@example.com" }];
+    const told = [];
+    const r = await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), {
+      onDeclined: async () => {
+        throw new Error("db down");
+      },
+      notify: { declined: async (x) => told.push(x) },
+    });
+    assert.equal(r, "declined");
+    assert.equal(told[0].changeRequest, null);
+  });
+
   it("ignores an envelope that is not one of ours", async () => {
     const { db, documenso } = await started();
     assert.equal(await applyEnvelope(db, documenso, { id: "envelope_other", status: "COMPLETED" }), "unknown");

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { replyAsLandlord, withdrawRequest } from "@/lib/billing/changeRequests";
+import { completeDecline, replyAsLandlord, withdrawRequest } from "@/lib/billing/changeRequests";
 import { storeChangeFile } from "@/lib/billing/changeRequestFiles";
 import { changeRequestNotify } from "@/lib/billing/changeRequestNotify";
 import { readChangeRequestBody } from "@/lib/billing/changeRequestHttp";
@@ -14,7 +14,9 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  * A landlord acting on their own change request.
  *
  * POST { action: "reply", body, proposedText? } (multipart/form-data with an
- *      optional "file" too), or { action: "withdraw" }.
+ *      optional "file" too), or { action: "withdraw" }, or { action: "complete",
+ *      body, section?, proposedText?, file? }: the details asked for right after
+ *      rejecting in the signing window, filled into the decline message.
  *
  * @auth landlord (own requests only)
  */
@@ -39,10 +41,21 @@ export async function POST(req, { params }) {
         storeFile: storeChangeFile,
         notify: changeRequestNotify(),
       });
+    } else if (input.action === "complete") {
+      request = await completeDecline(supabase, {
+        user,
+        requestId: id,
+        section: input.section,
+        body: input.body,
+        proposedText: input.proposedText,
+        file: input.file,
+        storeFile: storeChangeFile,
+        notify: changeRequestNotify(),
+      });
     } else if (input.action === "withdraw") {
       request = await withdrawRequest(supabase, { user, requestId: id });
     } else {
-      throw new BillingError("bad_action", "Choose reply or withdraw.");
+      throw new BillingError("bad_action", "Choose reply, complete or withdraw.");
     }
     return NextResponse.json({ request: { id: request.id, status: request.status } });
   } catch (err) {

@@ -33,6 +33,8 @@ const WHAT = {
 export function PublishButton({
   kind,
   id,
+  // kind "properties": the property ids to publish together.
+  ids,
   scope,
   label = "Publish",
   disabledReason = null,
@@ -65,7 +67,7 @@ export function PublishButton({
       const res = await fetch("/api/landlord/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, id, scope }),
+        body: JSON.stringify({ kind, id, ids, scope }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return publishErrorToast(data, "Couldn't publish that.", { retry: send });

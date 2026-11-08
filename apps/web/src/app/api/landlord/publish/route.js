@@ -24,6 +24,10 @@ import { unitNameKey } from "@/utils/unitName";
  *             so nobody's price goes public before they finished it.
  *   unit      Publishes the unit and the caller's draft offerings on it.
  *   lease     Publishes the offering, and its unit if that is still a draft.
+ *   properties  Several draft properties at once (ids), from the import
+ *             workspace's Publish all: one request, so the agreement check
+ *             asks for one signature covering all of them. Properties with
+ *             no priced offering yet are skipped and stay drafts.
  *   all       Bulk, from the Drafts page. scope "new" publishes the caller's
  *             draft properties that are complete (a unit with a priced
  *             offering). scope "live" publishes everything the caller has
@@ -288,8 +292,9 @@ async function publishLease(userId, isSuper, id) {
  * draft that merges into a live twin to that twin). Best effort: anything it
  * cannot read is left for the publish itself to refuse.
  */
-async function publishTargets(userId, kind, id, scope) {
+async function publishTargets(userId, kind, id, scope, propertyIds) {
   if (kind === "property") return [id];
+  if (kind === "properties") return (await readyDrafts(userId, propertyIds)).map((l) => l.id);
   if (kind === "unit") {
     const { data } = await supabase.from("listing_units").select("listing_id").eq("id", id).maybeSingle();
     return data?.listing_id ? [data.listing_id] : [];
@@ -319,6 +324,28 @@ async function publishTargets(userId, kind, id, scope) {
     if (u && !u.deleted_at && u.listings && !u.listings.deleted_at && u.listings.published_at !== null) ids.add(u.listing_id);
   }
   return [...ids];
+}
+
+/*
+ * The caller's draft properties among `ids` that are complete enough to go
+ * live (a unit with a priced offering), and the ones that are not. Only
+ * properties the caller owns: anything else in the list is ignored.
+ */
+async function draftsAmong(userId, ids) {
+  const { data: owned } = await supabase
+    .from("listing_landlords")
+    .select("listings!listing_id(id, published_at, deleted_at, listing_units(id, deleted_at, unit_leases(rent, deleted_at)))")
+    .eq("user_id", userId)
+    .in("listing_id", ids);
+  const drafts = (owned ?? []).map((r) => r.listings).filter((l) => l && !l.deleted_at && l.published_at === null);
+  return { ready: drafts.filter((l) => hasPricedLease(l.listing_units)), drafts };
+}
+const readyDrafts = async (userId, ids) => (await draftsAmong(userId, ids)).ready;
+
+async function publishProperties(userId, isSuper, ids) {
+  const { ready, drafts } = await draftsAmong(userId, ids);
+  for (const l of ready) await publishProperty(userId, isSuper, l.id);
+  return { published: ready.length, skipped: drafts.length - ready.length };
 }
 
 /*
@@ -370,23 +397,37 @@ export async function POST(req) {
 
   const body = (await req.json().catch(() => null)) ?? {};
   const { kind, id, scope } = body;
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((x) => typeof x === "string" && UUID.test(x)))].slice(0, 100) : [];
   const valid =
     kind === "all"
       ? ["new", "live"].includes(scope)
+      : kind === "properties"
+      ? ids.length > 0
       : ["property", "unit", "lease"].includes(kind) && typeof id === "string";
   if (!valid) {
     return NextResponse.json({ error: "Say what to publish." }, { status: 400 });
   }
 
+  // Nothing in the list is ready: say so rather than asking for a signature.
+  if (kind === "properties") {
+    const { ready, drafts } = await draftsAmong(userId, ids);
+    if (!ready.length) return NextResponse.json({ published: { kind, published: 0, skipped: drafts.length } });
+  }
+
   // Publishing needs a payment method and, when required, a signed agreement
   // (lib/billing/listingGate.js). Drafts stay saved; only going live is refused.
-  const gate = await checkListingGate(supabase, userId, { listingIds: await publishTargets(userId, kind, id, scope) });
+  const gate = await checkListingGate(supabase, userId, { listingIds: await publishTargets(userId, kind, id, scope, ids) });
   if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
 
   try {
     if (kind === "all") {
       const result = await publishAll(userId, isSuper, scope);
       return NextResponse.json({ published: { kind, scope, ...result } });
+    }
+    if (kind === "properties") {
+      const result = await publishProperties(userId, isSuper, ids);
+      return NextResponse.json({ published: { kind, ...result } });
     }
     let extra = {};
     if (kind === "property") extra = await publishProperty(userId, isSuper, id);

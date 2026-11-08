@@ -267,14 +267,18 @@ export function agreementRequestEmail({ name, versionLabel, signUrl, resign = fa
   };
 }
 
-export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason, kind = "master" }) {
+export function agreementDeclinedTeamEmail({ landlordName, landlordEmail, reason, kind = "master", changeRequest = null, adminUrl = null }) {
   const what = kind === "amendment" ? "Exhibit A amendment" : "marketing agreement";
+  const request = changeRequest
+    ? `<p>${changeRequest.opened ? "We opened a change request for them with this reason." : "We added this reason to the change request they already had open."} They were asked to add the section, their proposed wording and any files straight away. You will get another email if they do.</p>${adminUrl ? button(adminUrl, "Open Change requests") : ""}`
+    : "<p>Reach out to them; they can sign again from their Billing tab, or ask for changes there.</p>";
   return {
     subject: `${kind === "amendment" ? "Exhibit A amendment" : "Marketing agreement"} declined: ${landlordName || landlordEmail || "a landlord"}`,
     html: wrap(`
       <p>${e(landlordName || "A landlord")}${landlordEmail ? ` (${e(landlordEmail)})` : ""} declined to sign the ${what} in Documenso.</p>
       <p>Reason given: ${reason ? e(reason) : "none"}</p>
-      <p>The properties it would have covered stay as drafts while the agreement is required. Reach out to them; they can sign again from their Billing tab, or ask for changes there.</p>
+      ${request}
+      <p>The properties it would have covered stay as drafts while the agreement is required.</p>
     `),
   };
 }
