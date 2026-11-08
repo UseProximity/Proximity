@@ -269,7 +269,8 @@ function PropertyChoice({ p, choice, onChange }) {
  *
  * Then Documenso's signing page opens with everything filled but the signature
  * and initials. `listingIds` are the properties being published (publish dialog).
- * onFinished(result): "signed" | "pending" (signed, still saving) | "closed".
+ * onFinished(result): "signed" | "pending" (signed, still saving) | "closed" |
+ * "nothing" (nothing needs signing: never reported as signed).
  */
 export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, onFinished }) {
   const signer = useSignerDetails();
@@ -299,7 +300,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}`)
       .then((r) => {
         if (!live) return;
-        if (r.kind === "none") return onFinished("signed");
+        if (r.kind === "none") return onFinished("nothing");
         setPreview(r);
         setChoices(Object.fromEntries(r.properties.map((p) => [p.listingId, p.choice])));
         if (r.kind === "amendment" && r.signingAs) {

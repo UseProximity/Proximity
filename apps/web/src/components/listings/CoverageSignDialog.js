@@ -29,6 +29,12 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
       onFinished={(result) => {
         if (result === "signed") return onSigned();
         if (result === "closed") return onClose();
+        // The agreement already covers this, yet the publish was refused: never
+        // publish again on our own (that loops). Say so and leave it a draft.
+        if (result === "nothing") {
+          toast.error("Your agreement already covers this, but we could not publish it. Try Publish again, or contact us if it keeps happening.", { duration: 10000 });
+          return onClose();
+        }
         // Signed, but Documenso has not finished sealing it yet: the webhook will
         // record it shortly, and publishing again then goes straight through.
         toast("Signed. We are still saving your copy. Publish again in a minute.", { duration: 10000 });

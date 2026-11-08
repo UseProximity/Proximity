@@ -13,6 +13,7 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, coverageLine, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, coversProperty, displayAddress, exhibitChoice, missingUnits, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
+import { exhibitPreview } from "./exhibitUnits.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
 import { formatRate, getLiveVersion, publishVersion } from "./agreementVersions.js";
 import { gateDecision, gateMessage } from "./listingGate.js";
@@ -188,6 +189,14 @@ describe("Exhibit A amendments", () => {
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
     return { db, documenso };
   }
+
+  it("Continue signing from Billing (no ids) picks up an addendum in progress instead of saying it is signed", async () => {
+    const { db, documenso } = await signedMaster();
+    await sign(db, documenso, { listingIds: ["L3"], now: new Date("2027-02-01") });
+    const preview = await exhibitPreview(db, "u1", { listingIds: [], now: new Date("2027-02-01") });
+    assert.equal(preview.kind, "amendment");
+    assert.equal(preview.properties.find((p) => p.listingId === "L3").locked, true, "the property being added stays on");
+  });
 
   it("publishing a new property later: a separate Exhibit A amendment showing the list before and after", async () => {
     const { db, documenso } = await signedMaster();

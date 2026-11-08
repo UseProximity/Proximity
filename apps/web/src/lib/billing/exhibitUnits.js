@@ -25,9 +25,14 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
   const loaded = await coverageFor(db, userId, now);
   const { state, rows, covered } = loaded;
   const properties = withRequiredUnits(loaded.properties, requiredUnits);
-  const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested });
+  // A document already in progress (an addendum started from a publish, then closed)
+  // is planned with, as startSigning does, so "Continue signing" picks it up again.
+  const inProgress = state.valid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : state.pending?.exhibit ?? [];
+  const carryFromAmendment = !state.valid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : [];
+  const carry = [...inProgress, ...carryFromAmendment];
+  const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested, carry });
   if (plan.kind === "none") return { kind: "none", properties: [] };
-  const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId)]);
+  const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId), ...carry.map((e) => e.listingId)]);
   // Every property, on an amendment too, so nothing goes on (or changes) unseen:
   // what is covered already shows as covered and stays as it is (Wyatt, 2026-11-07).
   const shown = properties;

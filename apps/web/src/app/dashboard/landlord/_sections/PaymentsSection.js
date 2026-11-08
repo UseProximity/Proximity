@@ -201,6 +201,7 @@ export default function PaymentsSection() {
   const agreementChanged = (result) => {
     if (result === "signed") toast.success("Thank you. It is signed, and the properties on it are covered.");
     else if (result === "pending") toast.success("Signed. Your copy is being saved and will appear here in a minute.");
+    else if (result === "nothing") toast("Nothing needs signing right now. Your properties are covered.");
     load().catch((e) => toast.error(e.message));
   };
 
