@@ -44,7 +44,7 @@ async function readRequest(req) {
 }
 
 export async function POST(req) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   if (!billingDb.writable) return readOnlyResponse(billingDb);

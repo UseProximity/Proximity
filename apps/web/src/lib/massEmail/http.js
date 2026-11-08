@@ -17,7 +17,7 @@ import { TemplateError } from "./templates";
 import { UnownedError } from "./unowned";
 
 export async function massEmailContext(req, { write = false } = {}) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   const ctx = adminBillingDb(req);
   if (write && !ctx.writable) {

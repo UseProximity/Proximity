@@ -26,7 +26,7 @@ async function status(supabase) {
  * @auth admin
  */
 export async function GET(req) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   const supabase = billingDb.db;
@@ -38,7 +38,7 @@ export async function GET(req) {
 }
 
 export async function PUT(req) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   if (!billingDb.writable) return readOnlyResponse(billingDb);

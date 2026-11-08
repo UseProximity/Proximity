@@ -30,8 +30,9 @@ const VIEWS = [
   { key: "invites", label: "Review invites" },
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
-  { key: "mass-email", label: "Mass email" },
-  { key: "billing", label: "Billing" },
+  // Super only: the read-only admin role never sees billing or mass email (Wyatt, 2026-11-07).
+  { key: "mass-email", label: "Mass email", superOnly: true },
+  { key: "billing", label: "Billing", superOnly: true },
   { key: "agents", label: "Agents" },
   { key: "errors", label: "Errors" },
 ];
@@ -197,6 +198,8 @@ function ToolsMenu({ dbTarget, isProd }) {
 export default function AdminDashboard() {
   const { data: session } = useSession();
   const isReadOnly = session?.user?.role === "admin";
+  const isSuper = session?.user?.role === "super";
+  const visibleViews = VIEWS.filter((v) => !v.superOnly || isSuper);
 
   // null until the URL has been read, so a reload never flashes (or fetches) Listings first.
   const [view, setView] = useState(null);
@@ -448,7 +451,7 @@ export default function AdminDashboard() {
             }}
             className="px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
           >
-            {VIEWS.map((v) => (
+            {visibleViews.map((v) => (
               <option key={v.key} value={v.key}>{v.label}</option>
             ))}
           </select>
@@ -485,6 +488,8 @@ export default function AdminDashboard() {
           <ConversationsView search={search} dbTarget={dbTarget} />
         ) : view === "emails" ? (
           <SentEmailsView search={search} dbTarget={dbTarget} />
+        ) : VIEWS.find((v) => v.key === view)?.superOnly && !isSuper ? (
+          <p className="p-6 text-sm text-gray-500">This view is for super admins only.</p>
         ) : view === "mass-email" ? (
           <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
         ) : view === "billing" ? (
