@@ -6,6 +6,7 @@
 import { getBaseUrl } from "@/lib/email";
 import { periodLabel } from "./invoicing";
 import {
+  sendAutopayMovedEmail,
   sendAutopayOffEmail,
   sendChargeAdjustedEmail,
   sendInvoiceIssuedEmail,
@@ -40,6 +41,12 @@ export function billingNotify() {
     autopayOff({ landlord, reason, methodDescription }) {
       const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=billing#autopay`;
       return sendAutopayOffEmail({ id: landlord.id, email: landlord.email, name: landlord.name }, { reason, methodDescription, paymentsUrl });
+    },
+
+    // Autopay moved to another method: the invoices waiting on it and their new dates.
+    autopayMoved({ landlord, methodDescription, invoices }) {
+      const paymentsUrl = `${getBaseUrl()}/dashboard/landlord?tab=billing#invoices`;
+      return sendAutopayMovedEmail({ id: landlord.id, email: landlord.email, name: landlord.name }, { methodDescription, invoices, paymentsUrl });
     },
 
     /*

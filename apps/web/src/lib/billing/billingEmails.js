@@ -115,5 +115,7 @@ export const sendChangeRequestUpdateEmail = (landlord, input, { sandbox = false 
 // Invoices and autopay. Each resolves true when handed to the mailer.
 export const sendInvoiceIssuedEmail = (landlord, input) =>
   toLandlord(INVOICE_ISSUED_KIND, landlord, t.invoiceIssuedEmail({ name: landlord.name, ...input }));
+export const sendAutopayMovedEmail = (landlord, input) =>
+  toLandlord("billing_autopay_moved", landlord, t.autopayMovedEmail({ name: landlord.name, ...input }));
 export const sendAutopayOffEmail = (landlord, input) =>
   toLandlord(AUTOPAY_OFF_KIND, landlord, t.autopayOffEmail({ name: landlord.name, ...input }));
