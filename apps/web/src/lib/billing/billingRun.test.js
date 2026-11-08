@@ -17,6 +17,7 @@ import { chargeableMethod } from "./paymentMethods.js";
 import { attentionState, runMethodAttentionJob } from "./methodAttentionJob.js";
 import { sendEnrollmentEmails } from "./enrollment.js";
 import { followUpBillingRun, runBillingRun, RUN_UNFINISHED_KEY } from "./billingRun.js";
+import { restoreWithdrawnLeases, runOverdueJob } from "./overdueJob.js";
 
 describe("nextBillingDay", () => {
   it("is today on the billing day itself", () => {
@@ -380,10 +381,13 @@ function memoryDb(tables) {
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },
-      upsert(row, { onConflict = "id" } = {}) {
-        const hit = rows(table).find((r) => r[onConflict] === row[onConflict]);
-        if (hit) Object.assign(hit, row);
-        else rows(table).push({ ...row });
+      upsert(input, { onConflict = "id", ignoreDuplicates = false } = {}) {
+        const cols = onConflict.split(",");
+        for (const row of Array.isArray(input) ? input : [input]) {
+          const hit = rows(table).find((r) => cols.every((c) => r[c] === row[c]));
+          if (hit) { if (!ignoreDuplicates) Object.assign(hit, row); }
+          else rows(table).push({ id: `${table}_${rows(table).length + 1}`, restored_at: null, ...row });
+        }
         return Promise.resolve({ error: null });
       },
       async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
@@ -780,5 +784,29 @@ describe("a billing run cut short (review of 2026-11-07)", () => {
     assert.equal(r.unfinished, true);
     assert.equal(r.summary.notReached > 0, true);
     assert.equal((await getBillingSetting(db, RUN_UNFINISHED_KEY, false)).billingPeriod, "2026-11-01");
+  });
+});
+
+describe("two overdue invoices (review of 2026-11-07)", () => {
+  const lease = (id) => ({ id, owner_id: "l1", is_active: true, unavailable: false, deleted_at: null, published_at: "2026-09-01" });
+  const invoice = (id, due) => ({ id, landlord_id: "l1", status: "open", stripe_invoice_id: `in_${id}`, total_cents: 5000, invoice_date: due, due_date: due, overdue_actioned_at: null });
+
+  it("restoring the first paid invoice keeps the leases down while the second is unpaid", async () => {
+    const db = memoryDb({ unit_leases: [lease("q1"), lease("q2")], billing_invoices: [invoice("i1", "2026-08-01")], billing_lease_withdrawals: [], users: [] });
+    await runOverdueJob(db, { now: new Date("2026-09-15T00:00:00Z") });
+    assert.equal(db.tables.unit_leases.every((l) => l.unavailable), true);
+    // A second invoice goes overdue while the leases are already down.
+    db.tables.billing_invoices.push(invoice("i2", "2026-09-01"));
+    await runOverdueJob(db, { now: new Date("2026-10-15T00:00:00Z") });
+    assert.equal(db.tables.billing_lease_withdrawals.filter((w) => w.invoice_id === "i2").length, 2, "the second invoice holds them too");
+    // The first is paid and restored: nothing goes back up yet.
+    db.tables.billing_invoices[0].status = "paid";
+    const first = await restoreWithdrawnLeases(db, { invoiceId: "i1", adminId: "a" });
+    assert.deepEqual([first.restored, first.stillHeld], [0, 2]);
+    assert.equal(db.tables.unit_leases.every((l) => l.unavailable), true);
+    // The second is paid and restored: now they go back.
+    const second = await restoreWithdrawnLeases(db, { invoiceId: "i2", adminId: "a" });
+    assert.equal(second.restored, 2);
+    assert.equal(db.tables.unit_leases.every((l) => !l.unavailable && l.is_active), true);
   });
 });
