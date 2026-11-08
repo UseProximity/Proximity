@@ -48,7 +48,7 @@ function AgreementDetail({ a }) {
         {a.signerName ? ` by ${a.signerName}` : ""}
         {a.signerTitle ? `, ${a.signerTitle}` : ""}
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
-        {a.negotiated ? " (negotiated)" : ""}
+        {a.negotiated ? " (their own version)" : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
       </span>
     );
@@ -101,7 +101,7 @@ function DocumentHistory({ landlordId, landlordName, busy, run }) {
               <span className="flex-1 font-medium text-gray-900">
                 {d.kind === "amendment" ? "Exhibit A amendment" : "Master agreement"}
                 {d.versionLabel ? ` · ${d.versionLabel}` : ""}
-                {d.negotiated ? " (negotiated)" : ""} · {d.status}
+                {d.negotiated ? " (their own version)" : ""} · {d.status}
                 {d.signedAt ? ` ${fmtDate(d.signedAt)}` : ` (made ${fmtDate(d.createdAt)})`}
                 {d.endedReason ? ` · ${d.endedReason}` : ""}
               </span>
@@ -202,7 +202,7 @@ function CoverageDetail({ c, a }) {
       )}
       {a.flaggedForReview && (
         <p className="rounded-md bg-blue-50 px-2 py-1 text-blue-900">
-          On a negotiated version. A newer standard version asked everyone to sign again: review whether theirs needs updating.
+          On their own version. A newer standard version asked everyone to sign again: review whether theirs needs updating.
         </p>
       )}
     </div>
@@ -234,6 +234,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
         {row.coverage?.uncovered?.length > 0 && <Badge color="amber">{row.coverage.uncoveredOfferings} uncovered</Badge>}
         {row.hasLiveListing ? <Badge color="purple">Live listing</Badge> : <Badge>Nothing live</Badge>}
         <Badge color={agColor}>{agLabel}</Badge>
+        {row.agreement.newVersionReady && <Badge color="amber">Their new version to sign</Badge>}
         <Badge color={payColor}>{payLabel}</Badge>
         {row.publishing.allowed ? (
           <Badge color="green">Can publish</Badge>
@@ -294,7 +295,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
             View signed agreement
           </button>
         )}
-        {row.agreement.status !== "signed" && row.email && (
+        {(row.agreement.status !== "signed" || row.agreement.newVersionReady) && row.email && (
           <button type="button" disabled={busy || !canEmail} className={BUTTON} onClick={email} title={canEmail ? "" : "Make a version live first"}>
             {row.lastAgreementEmailAt ? "Resend signing email" : "Email signing link"}
           </button>

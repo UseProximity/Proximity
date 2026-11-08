@@ -153,9 +153,9 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
     ? new Date(`${enrollmentWindow.deadline}T12:00:00Z`).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "UTC" })
     : null;
   // Open when there is something to sign; folded once it is all done.
-  // Their negotiated agreement (an accepted change request) is ready to sign.
-  const negotiated = signedOk && agreement.canSign ? agreement.negotiatedReady : null;
-  const needsAction = !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || !!negotiated;
+  // A new version of their agreement is ready to sign, while the one they signed still counts.
+  const updated = signedOk && agreement.canSign && !!agreement.newVersionReady;
+  const needsAction = !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || updated;
 
   // Opens one signed document as a single PDF in a new tab (opened first, so it is not blocked as a popup).
   const openFile = useCallback(async ({ kind, id }) => {
@@ -243,11 +243,12 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {negotiated && (
+        {updated && (
           <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
             <p>
-              Your negotiated agreement{negotiated.label ? ` (${negotiated.label})` : ""} is ready to sign. It replaces your current agreement,
-              and every property it covers stays covered. Until you sign, your current agreement still applies.
+              We have updated the agreement{agreement.liveVersionLabel ? ` (${agreement.liveVersionLabel})` : ""}. Please review and sign the
+              new version. It replaces your current agreement, and every property it covers stays covered. Until you sign, your current
+              agreement still applies.
             </p>
             <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
               Review and sign
@@ -255,7 +256,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {agreement.amendment && !negotiated && (
+        {agreement.amendment && !updated && (
           <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
             <p>
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
@@ -267,7 +268,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {signedOk && !agreement.amendment && !negotiated && uncoveredLive.length > 0 && (
+        {signedOk && !agreement.amendment && !updated && uncoveredLive.length > 0 && (
           <div className="space-y-2 rounded-md border border-amber-200 px-3 py-3">
             <p className="text-sm text-gray-800">
               {uncoveredLive.length === 1 ? "This live property is" : "These live properties are"} not fully on your agreement yet. Add{" "}

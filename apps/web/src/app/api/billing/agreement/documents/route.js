@@ -17,7 +17,10 @@ export async function GET() {
   const session = await requireDbRole(["landlord"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
-    return NextResponse.json({ documents: await listAgreementDocuments(supabase, session.user.id) });
+    // Whether a document was made for them alone is the team's to know, not shown to
+    // the landlord (Wyatt, 2026-11-08).
+    const documents = (await listAgreementDocuments(supabase, session.user.id)).map(({ negotiated, ...doc }) => doc);
+    return NextResponse.json({ documents });
   } catch (err) {
     return billingErrorResponse(err, "list agreement documents");
   }

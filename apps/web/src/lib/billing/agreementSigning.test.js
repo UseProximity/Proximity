@@ -643,6 +643,12 @@ describe("landlord overview", () => {
     assert.throws(() => singleTarget([row({ lastAgreementEmailAt: now.toISOString() })], "u1", now), (e) => e.code === "just_sent");
     assert.equal(singleTarget([row()], "u1", now).id, "u1");
   });
+
+  it("emails a signed landlord whose own new version is waiting (2026-11-08)", () => {
+    const waiting = row({ agreement: { status: "signed", newVersionReady: true } });
+    assert.equal(singleTarget([waiting], "u1", now).id, "u1");
+    assert.deepEqual(bulkAudience([waiting], now).map((r) => r.id), ["u1"]);
+  });
 });
 
 describe("Exhibit A across boxes, and the admin's test fill (2026-11-07)", () => {

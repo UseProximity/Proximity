@@ -81,6 +81,23 @@ export async function getLiveVersion(db, { kind = "master", landlordId = null } 
 }
 
 /*
+ * Every landlord's own live version of this kind, by landlord id: the ones made
+ * for a single landlord. Lets a list of landlords pick each one's version in one
+ * query instead of one getLiveVersion each.
+ */
+export async function liveLandlordVersions(db, { kind = "master" } = {}) {
+  const { data, error } = await db
+    .from("agreement_versions")
+    .select(VERSION_COLUMNS)
+    .eq("status", "live")
+    .eq("kind", kind)
+    .not("landlord_id", "is", null);
+  if (missingTable(error)) return new Map();
+  if (error) throw error;
+  return new Map(data.map((v) => [v.landlord_id, v]));
+}
+
+/*
  * When signatures stopped counting: the publish time of the newest version that
  * was made live with "existing signers must re-sign". A signature on a version
  * published before it no longer satisfies the listing gate. Null when no version

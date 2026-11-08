@@ -264,8 +264,10 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
     canSign: (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
-    // Their negotiated agreement is ready: signing it replaces the one they have.
-    negotiatedReady: state.negotiatedOffer ? { label: state.negotiatedOffer.label ?? null } : null,
+    // A version made for them alone went live after they signed: signing it
+    // replaces the one they have. Worded like any updated agreement, so nothing
+    // tells the landlord theirs differs from the standard one (Wyatt, 2026-11-08).
+    newVersionReady: !!state.negotiatedOffer,
     declinedAt: declined,
     covered: coveredList,
     // Live properties not fully covered: not on Exhibit A, or with units on it missing.
