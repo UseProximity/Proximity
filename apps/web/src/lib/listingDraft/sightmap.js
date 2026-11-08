@@ -36,8 +36,15 @@ const MAX_TERM_LOOKUPS = 60;
 // directly.
 export const SIGHTMAP_HINT_RE = /sightmap|realpage|onlineleasing|knockrentals/i;
 
+/*
+ * The availability widget's embed id. Not the first sightmap.com/embed/ on the
+ * page: a site can load SightMap's analytics script (sightmap.com/embed/api.js)
+ * before the widget, and "api" sent every read of The Victor to the generic
+ * reader (2026-11-08). Embed ids are 6 to 32 letters and digits; the escaped
+ * form (sightmap.com\/embed\/...) inside a page's settings counts too.
+ */
 export const findSightmapEmbed = (html) =>
-  html?.match(/sightmap\.com\/embed\/([A-Za-z0-9]+)/i)?.[1] ?? null;
+  String(html ?? "").match(/sightmap\.com\\?\/embed\\?\/([A-Za-z0-9]{6,32})(?![A-Za-z0-9.])/i)?.[1] ?? null;
 
 async function getJson(url) {
   try {
