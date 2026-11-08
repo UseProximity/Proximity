@@ -845,6 +845,18 @@ describe("leaving a live property off Exhibit A (2026-11-07)", () => {
     assert.equal(leaseOf(db, "Q8").is_active, true, "another landlord's offering in the same building stays live");
   });
 
+  it("excluding a draft property keeps its draft offerings as drafts, and only live ones come off", async () => {
+    const db = liveWorld();
+    // L2 is Pat's draft property: a draft offering on its Studio.
+    db.tables.unit_leases.push({ id: "QD", owner_id: "u1", unit_id: "U3", published_at: null, deleted_at: null, is_active: true, unavailable: false, listing_units: unit("U3", "L2", "Studio", false) });
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { exhibit: [{ listingId: "L2", include: false, excluded: true }, { listingId: "L3", include: false }, { listingId: "L4", include: false }] });
+    documenso.complete("envelope_1");
+    assert.equal(await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned }), "signed");
+    assert.equal(leaseOf(db, "QD").is_active, true, "still a draft: publishing L2 later puts it live");
+    assert.equal(leaseOf(db, "QD").unavailable, false);
+  });
+
   it("a live property the popup does not exclude stays on the document", async () => {
     const db = liveWorld();
     const documenso = fakeDocumenso();

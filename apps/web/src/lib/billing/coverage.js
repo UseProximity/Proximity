@@ -146,6 +146,8 @@ export async function loadLandlordProperties(db, userId) {
       // leaving it off Exhibit A) needs no coverage until one goes back on the
       // market, which the publish check covers (Wyatt, 2026-11-07).
       const leaseUnits = [...new Set(mine.filter((m) => m.active).map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
+      // Of those, the units with an offering on the site now.
+      const liveLeaseUnits = [...new Set(mine.filter((m) => m.published).map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
       const published = !!l.published_at;
       // Live for this landlord: the property is published and one of their own
       // offerings on it is on the market, or it is theirs with no offerings of
@@ -155,7 +157,7 @@ export async function loadLandlordProperties(db, userId) {
       // Not live for this landlord is a draft for Exhibit A, including a published
       // building where only their own offerings are unpublished (renters), which
       // otherwise fell off the document (Wyatt, 2026-11-07).
-      return { listingId: l.id, address: displayAddress(l), units, unitList, idsByLabel, labelById, leaseUnits, owner: propertyOwner, live, draft: !live };
+      return { listingId: l.id, address: displayAddress(l), units, unitList, idsByLabel, labelById, leaseUnits, liveLeaseUnits, owner: propertyOwner, live, draft: !live };
     })
     .sort(byAddress);
 }
@@ -395,7 +397,11 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
     [...new Set(ids)].flatMap((id) => {
       const p = byId.get(id);
       const c = choiceFor(p);
-      return c.include && c.dropped.length ? idsFor(p, c.dropped) : [];
+      if (!c.include || !c.dropped.length) return [];
+      // On a draft property only offerings on the site come off: a draft offering
+      // stays a draft, and the publish check asks for its unit when it is published.
+      const names = p.live ? c.dropped : c.dropped.filter((n) => (p.liveLeaseUnits ?? []).includes(n));
+      return names.length ? idsFor(p, names) : [];
     });
 
   if (!master || !masterValid) {
@@ -442,6 +448,10 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
  * false, unavailable true, the same edit as the dashboard's Withdraw). Other
  * landlords' offerings on a shared building stay. Returns how many were withdrawn.
  */
+// Only offerings that were published and not withdrawn come off: a draft offering
+// stays a draft, so publishing its property later puts it live (review of 2026-11-07).
+const onTheSite = (l) => l.is_active !== false && !!l.published_at;
+
 export async function withdrawOfferings(db, userId, listingIds = []) {
   // Looked up per property, by its units: one query over all of a landlord's
   // leases stops at 1,000 rows, and a big landlord has more (2026-11-07).
@@ -453,12 +463,12 @@ export async function withdrawOfferings(db, userId, listingIds = []) {
     for (let i = 0; i < unitIds.length; i += 200) {
       const { data, error } = await db
         .from("unit_leases")
-        .select("id, is_active")
+        .select("id, is_active, published_at")
         .eq("owner_id", userId)
         .is("deleted_at", null)
         .in("unit_id", unitIds.slice(i, i + 200));
       if (error) throw error;
-      ids.push(...(data ?? []).filter((l) => l.is_active !== false).map((l) => l.id));
+      ids.push(...(data ?? []).filter(onTheSite).map((l) => l.id));
     }
   }
   for (let i = 0; i < ids.length; i += 200) {
