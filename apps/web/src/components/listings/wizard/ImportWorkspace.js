@@ -471,12 +471,29 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
   const reading = jobs.filter((j) => ACTIVE.has(j.status)).length;
   const done = jobs.filter((j) => j.status === "done").length;
   const published = jobs.filter((j) => j.status === "done" && j.listing && !j.listing.isDraft && j.result?.mode === "import").length;
-  let host = "your website";
-  try {
-    host = new URL(batch.pastedUrl).hostname.replace(/^www\./, "");
-  } catch {
-    /* keep fallback */
-  }
+  // Where they came from: one site by name, or "your links" when the landlord
+  // pasted several (one Zillow page per apartment, say).
+  const hosts = new Set(
+    jobs
+      .map((j) => {
+        try {
+          return new URL(j.target?.pastedUrl || batch.pastedUrl).hostname.replace(/^www\./, "");
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+  );
+  const host = hosts.size === 1 ? [...hosts][0] : hosts.size > 1 ? "your links" : "your website";
+  /*
+   * Publish all: every finished draft in this import in one request, so a
+   * landlord whose agreement does not cover them yet signs once for all of
+   * them instead of once per property. Ones still being read stay drafts.
+   */
+  const readyDrafts = jobs.filter((j) => j.status === "done" && j.listing?.isDraft && !j.listing.deleted && !j.target?.alreadyListed);
+  const publishAllConfirm = `Publish ${readyDrafts.length} properties? Students will see them right away. Any without a price yet stay drafts.${
+    reading > 0 ? ` ${reading} still being read will stay drafts too, so you can publish them when they finish.` : ""
+  } This can't be undone, but you can still edit or withdraw them.`;
   const nameOf = (j) => j.listing?.title || j.target?.name || j.target?.address || "Property";
 
   return (
@@ -487,7 +504,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Review your listings</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {fresh.length > 0 && `${fresh.length} new ${fresh.length === 1 ? "property" : "properties"} from ${host}, saved as drafts. Check each one, then publish it or keep it as a draft.`}
+              {fresh.length > 0 && `${fresh.length} new ${fresh.length === 1 ? "property" : "properties"} from ${host}, saved as drafts. Check each one, then ${fresh.length > 1 ? "publish them all at once or one at a time" : "publish it or keep it as a draft"}.`}
               {fresh.length > 0 && existing.length > 0 && " "}
               {existing.length > 0 && `${existing.length} ${existing.length === 1 ? "is" : "are"} already on Proximity: ${existing.length === 1 ? "its tab shows" : "their tabs show"} what the website says differently.`}
             </p>
@@ -499,6 +516,22 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
             )}
           </div>
           <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+            {readyDrafts.length > 1 && (
+              <PublishButton
+                kind="properties"
+                ids={readyDrafts.map((j) => j.listing.id)}
+                size="md"
+                label={`Publish all ${readyDrafts.length}`}
+                confirmText={publishAllConfirm}
+                successText={(r) =>
+                  `Published ${r?.published ?? 0} ${r?.published === 1 ? "property" : "properties"}.${
+                    r?.skipped ? ` ${r.skipped} still need a price and stayed drafts.` : ""
+                  }`
+                }
+                onPublished={load}
+              />
+            )}
             <button
               type="button"
               onClick={leave}
@@ -506,6 +539,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
             >
               Done for now
             </button>
+            </div>
             <p className="text-[11px] text-gray-500">
               {published ? `${published} published, ` : ""}{done - published} draft{done - published === 1 ? "" : "s"} on your Drafts page
             </p>
@@ -609,7 +643,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
                 </div>
               )}
               {j.status === "done" && j.listing && (
-                <ListingTab job={j} user={user} onPublished={load} />
+                <ListingTab key={`${j.id}-${j.listing.isDraft}`} job={j} user={user} onPublished={load} />
               )}
             </div>
           ))}

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useLeaveGuard from "@/lib/useLeaveGuard";
-import Link from "next/link";
 import {
   ChevronDown,
   ChevronRight,
@@ -11,13 +10,15 @@ import {
   Globe,
   Loader2,
   MapPin,
+  Plus,
   Search,
   Sparkles,
+  X,
 } from "lucide-react";
 
 // Cycled while the server fetches + extracts so the wait feels alive.
 const LOADING_STEPS = [
-  "Reading your website…",
+  "Reading the page…",
   "Finding the property details…",
   "Picking out your photos…",
   "Filling in the form…",
@@ -187,7 +188,7 @@ const hostOf = (p) => {
  * against what is already on screen. Returns the rows worth keeping: a repeat
  * of something already listed is dropped rather than shown twice.
  */
-function adopt(rows, registry) {
+function adopt(rows, registry, linkKey = null) {
   const kept = [];
   for (const n of rows) {
     if (n.kind !== "property") {
@@ -198,7 +199,7 @@ function adopt(rows, registry) {
        */
       const fkey = `folder:${urlKeyOf(n) ?? nameKeyOf(n)}`;
       if (registry.some((e) => e.id === fkey)) continue;
-      registry.push({ nameKey: null, urlKey: null, host: null, id: fkey });
+      registry.push({ nameKey: null, urlKey: null, host: null, id: fkey, linkKey });
       kept.push(n);
       continue;
     }
@@ -213,15 +214,17 @@ function adopt(rows, registry) {
     if (match) continue; // already on screen; keep the copy we have
     let id = urlKey || nameKey || `row-${registry.length}`;
     while (registry.some((e) => e.id === id)) id = `${id}~${registry.length}`;
-    registry.push({ nameKey, urlKey, host, id });
+    registry.push({ nameKey, urlKey, host, id, linkKey });
     kept.push({ ...n, id });
   }
   return kept;
 }
 
 let _uid = 0;
-const makeNode = (p, parentUrl) => ({
+const makeNode = (p, parentUrl, linkKey) => ({
   uid: `n${++_uid}`,
+  // Which of the landlord's pasted links this came from (see the link list).
+  linkKey,
   id: nameKeyOf(p), // replaced by adopt() once the level is merged in
   name: p.name,
   address: p.address ?? "",
@@ -258,7 +261,7 @@ const makeNode = (p, parentUrl) => ({
  * now a plain "show more" line per level, which cannot nest and does not
  * pretend to be a folder.
  */
-function buildLevel(items, levelUrl) {
+function buildLevel(items, levelUrl, linkKey = null) {
   const capped = (items ?? []).slice(0, MAX_PER_LEVEL);
   const stampNear = levelIsNearCampus(levelUrl);
   const props = capped
@@ -267,9 +270,9 @@ function buildLevel(items, levelUrl) {
   const folders = capped.filter((p) => p.kind === "group");
 
   return [
-    ...props.filter((p) => !farAway(p)).map((p) => makeNode(p, levelUrl)),
-    ...folders.map((f) => makeNode(f, levelUrl)),
-    ...props.filter(farAway).map((p) => ({ ...makeNode(p, levelUrl), far: true })),
+    ...props.filter((p) => !farAway(p)).map((p) => makeNode(p, levelUrl, linkKey)),
+    ...folders.map((f) => makeNode(f, levelUrl, linkKey)),
+    ...props.filter(farAway).map((p) => ({ ...makeNode(p, levelUrl, linkKey), far: true })),
   ];
 }
 
@@ -307,16 +310,69 @@ function patchNode(nodes, uid, patch) {
 }
 
 /*
- * "Paste your website" box for the add-listing flow. Calls
- * POST /api/landlord/listing-draft.
+ * "Paste your links" box for the add-listing flow. Calls
+ * POST /api/landlord/listing-draft once per link.
+ *
+ * A landlord can paste several links, one per box: their own website, or one
+ * Zillow page per apartment (Wyatt, 2026-11-08). Each box is read as soon as a
+ * link lands in it, on its own, so a bad link says so under its own box right
+ * away and never holds up the others. What every link finds goes into one list,
+ * grouped under the link it came from, and imports as one batch: one review
+ * screen, one Publish all, one agreement signature.
  *
  * A multi-property site becomes a browsable tree: near-campus buildings ticked
  * at the top, the site's own areas as folders that open in place underneath
  * themselves. Opening a folder never hides its siblings, because a landlord
  * whose building we filed under the wrong area still has to be able to find it.
- * Ticked buildings import in one run: the first prefills the form now, the rest
- * queue up via onApply(listing, { sourceUrl, pastedUrl, queue }).
+ *
+ * A building found at two links (their site and Zillow) is listed once, under
+ * the link that found it first (see adopt()).
+ *
+ * Property-management portals are read like any other site here: the picker no
+ * longer stops to suggest the PMS integration (Wyatt, 2026-11-08).
  */
+const MAX_LINKS = 10;
+// The import's own cap (MAX_TARGETS in lib/sourceImport/jobs.js).
+const MAX_IMPORT = 40;
+
+const withScheme = (raw) => (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+
+// Two boxes holding the same page, however it was typed.
+const linkIdentity = (raw) => {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  try {
+    const u = new URL(withScheme(v));
+    return `${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "")}${u.search}`.toLowerCase();
+  } catch {
+    return v.toLowerCase();
+  }
+};
+
+// "zillow.com/homedetails/6105-Delmar..." for the heading over a link's rows.
+const shortLink = (raw) => {
+  let s = String(raw ?? "");
+  try {
+    const u = new URL(withScheme(s));
+    s = `${u.hostname.replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    /* show it as typed */
+  }
+  return s.length > 52 ? `${s.slice(0, 50)}…` : s;
+};
+
+let _linkSeq = 0;
+const newLink = (url = "") => ({
+  key: `l${++_linkSeq}`,
+  url,
+  status: "idle", // idle | reading | done | error
+  error: null,
+  note: null,
+  startedAt: null,
+  // The second pass, reading a big site's inventory, is still going.
+  searching: false,
+});
+
 export default function ListingDraftImport({
   onApply,
   // Several properties at once: hands every ticked one to the tabbed import
@@ -326,180 +382,135 @@ export default function ListingDraftImport({
   embedded = false,
   initialUrl = "",
 }) {
-  const [url, setUrl] = useState(initialUrl);
-  const [phase, setPhase] = useState("idle"); // idle | loading | picker | pms | done
-  const [pmsName, setPmsName] = useState("");
+  const [links, setLinks] = useState(() => [newLink(initialUrl)]);
+  const linksRef = useRef(links);
+  const [finished, setFinished] = useState(false);
   const [error, setError] = useState(null);
   const [tree, setTree] = useState([]);
   const [selected, setSelected] = useState(() => new Set()); // identity strings
   const [filter, setFilter] = useState("");
   // Level keys whose further-from-campus rows are expanded.
   const [showFar, setShowFar] = useState(() => new Set());
-  /*
-   * True while the second pass is still reading the site's inventory page.
-   *
-   * That read takes around two minutes on a company the size of Mac, and the
-   * picker is already on screen showing whatever the front page gave us. With
-   * no signal, a landlord sees two buildings and a working Import button and
-   * reasonably concludes that is the answer. It is not: thirteen arrive a
-   * minute later.
-   */
-  const [stillSearching, setStillSearching] = useState(false);
-  const [stepIdx, setStepIdx] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const pastedRef = useRef("");
-  const skipPmsRef = useRef(false); // landlord chose "read my website instead"
+  const [now, setNow] = useState(() => Date.now());
   const autoRan = useRef(false);
-  // Mirrors `tree` so folder loads can dedupe against what is already on screen
-  // without closing over a stale copy of it.
+  // Mirrors `tree` so reads finishing at different times merge against what is
+  // already on screen without closing over a stale copy of it.
   const treeRef = useRef([]);
-  // Every building seen so far, so a level opened later resolves against what
-  // is already on screen rather than repeating it. See adopt().
+  // Every building seen so far, across every link, so a repeat is dropped
+  // rather than shown twice. See adopt().
   const registryRef = useRef([]);
+  // The box "Add another link" just made, to put the cursor in it.
+  const focusKey = useRef(null);
 
-  /*
-   * The clock runs off `phase`, not off a timer started inside startLoading().
-   *
-   * It used to be imperative, and in development React's double-invoked effects
-   * tore it down a beat after it was created: the mount effect's cleanup ran
-   * after the auto-start had already set its intervals, cleared them, and the
-   * guard meant nothing restarted them. The counter sat on "0s" for the whole
-   * two-minute read, which reads as frozen. Tied to phase it cannot desync.
-   */
   useEffect(() => {
-    if (phase !== "loading" && phase !== "picker") return undefined;
-    const step = setInterval(
-      () => setStepIdx((i) => Math.min(i + 1, LOADING_STEPS.length - 1)),
-      7000
-    );
-    const clock = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => {
-      clearInterval(step);
-      clearInterval(clock);
-    };
-  }, [phase]);
-
+    linksRef.current = links;
+  }, [links]);
   useEffect(() => {
     treeRef.current = tree;
   }, [tree]);
 
-  const startLoading = () => {
-    setError(null);
-    setPhase("loading");
-    setStepIdx(0);
-    setElapsed(0);
+  const anyReading = links.some((l) => l.status === "reading" || l.searching);
+
+  /*
+   * One clock for every box that is reading, tied to state rather than started
+   * inside a read: React's double-invoked effects in development used to tear
+   * an imperative timer down and leave the counter frozen on "0s".
+   */
+  useEffect(() => {
+    if (!anyReading) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [anyReading]);
+
+  const patchLink = (key, patch) => {
+    linksRef.current = linksRef.current.map((l) => (l.key === key ? { ...l, ...patch } : l));
+    setLinks(linksRef.current);
   };
-  const stopLoading = () => {};
+  // A box removed while its read was out: whatever comes back is dropped.
+  const linkAlive = (key) => linksRef.current.some((l) => l.key === key);
 
   // Every read in flight shares this, so leaving the page can stop them all.
   const aborter = useRef(null);
   useLeaveGuard({
-    active: phase === "loading" || phase === "groups",
-    message: "Your website is still being read. Leaving now will throw away everything found so far. Leave anyway?",
+    active: anyReading,
+    message: "Your links are still being read. Leaving now will throw away everything found so far. Leave anyway?",
     onLeave: () => {
       aborter.current?.abort();
       return Promise.resolve();
     },
   });
 
-  const apiCall = async (fetchUrl, targetProperty) => {
+  const apiCall = async (fetchUrl) => {
     if (!aborter.current || aborter.current.signal.aborted) aborter.current = new AbortController();
     const res = await fetch("/api/landlord/listing-draft", {
       method: "POST",
       signal: aborter.current.signal,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: fetchUrl,
-        ...(targetProperty ? { targetProperty } : {}),
-        ...(skipPmsRef.current ? { skipPmsSteer: true } : {}),
-      }),
+      body: JSON.stringify({ url: fetchUrl, skipPmsSteer: true }),
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, data };
   };
 
-  // ---------------------------------------------------------------- first read
-  const readSite = async (override) => {
-    const pasted = (typeof override === "string" ? override : url).trim();
+  // A page that turned out to be one property, as a row for the list.
+  const singleRow = (data, fallbackName, url) => ({
+    name: data.listing.title || data.listing.address || fallbackName,
+    address: data.listing.address ?? "",
+    url,
+    kind: "property",
+    alreadyListed: data.properties?.[0]?.alreadyListed ?? null,
+  });
+
+  // ------------------------------------------------------------- reading a link
+  const readLink = async (key, override) => {
+    const link = linksRef.current.find((l) => l.key === key);
+    if (!link) return;
+    const pasted = String(override ?? link.url).trim();
     if (!pasted) {
-      setError("Paste your website address first.");
+      patchLink(key, { status: "error", error: "Paste a link first." });
       return;
     }
-    pastedRef.current = pasted;
-    startLoading();
-    try {
-      const { ok, data } = await apiCall(pasted, null);
-      stopLoading();
+    // The same page twice would be read (and counted against the limit) twice.
+    const id = linkIdentity(pasted);
+    const twin = linksRef.current.find(
+      (l) => l.key !== key && ["reading", "done"].includes(l.status) && linkIdentity(l.url) === id
+    );
+    if (twin) {
+      patchLink(key, { url: pasted, status: "error", error: "You already added this link." });
+      return;
+    }
 
-      if (data.pms) {
-        setPmsName(
-          {
-            appfolio: "AppFolio",
-            buildium: "Buildium",
-            rentecdirect: "Rentec Direct",
-            doorloop: "DoorLoop",
-          }[data.pms] ?? "your property manager"
-        );
-        setPhase("pms");
+    patchLink(key, { url: pasted, status: "reading", error: null, note: null, startedAt: Date.now() });
+    setError(null);
+    try {
+      const { ok, data } = await apiCall(pasted);
+      if (!linkAlive(key)) return;
+      if (!ok || data.pms) {
+        patchLink(key, { status: "error", error: data.error || "We couldn't read that link. Check it and try again." });
         return;
       }
-      if (!ok) {
-        setPhase("idle");
-        setError(data.error || "Something went wrong. Please try again.");
-        return;
-      }
-      // A one-property site skips the picker entirely. With the import
-      // workspace available it still opens there, as a single tab, so it gets
-      // the same "already on Proximity" check as a batch; the read already
-      // done travels with it rather than being paid for twice.
-      if (data.listing && onImportMany) {
-        setPhase("done");
-        onImportMany(
-          [
-            {
-              name: data.listing.title || data.listing.address || pasted,
-              address: data.listing.address || "",
-              url: data.sourceUrl || pasted,
-              levelUrl: null,
-              alreadyListed: null,
-              preread: { listing: data.listing, sourceUrl: data.sourceUrl ?? null },
-            },
-          ],
-          pasted
-        );
-        return;
-      }
-      if (data.listing) {
-        setPhase("done");
-        onApply(data.listing, {
-          sourceUrl: data.sourceUrl,
-          pastedUrl: pasted,
-          queue: [],
-        });
-        return;
-      }
-      registryRef.current = [];
-      const rows = adopt(buildLevel(data.properties, pasted), registryRef.current);
+      const items = data.listing ? [singleRow(data, pasted, data.sourceUrl || pasted)] : data.properties;
+      const rows = adopt(buildLevel(items, data.listing ? null : pasted, key), registryRef.current, key);
       if (!rows.length) {
-        setPhase("idle");
-        setError(
-          "We couldn't pick out a property from that page. Try pasting the page for one specific property."
+        patchLink(
+          key,
+          (items ?? []).length
+            ? { status: "done", note: "Everything at this link is already in the list above." }
+            : { status: "error", error: "We couldn't pick out a property from that link. Try the page for one specific property." }
         );
         return;
       }
-      setTree(rows);
-      treeRef.current = rows;
-      setSelected(new Set(defaultChecked(rows)));
-      setFilter("");
-      setShowFar(new Set());
-      setPhase("picker");
+      const merged = [...treeRef.current, ...rows];
+      treeRef.current = merged;
+      setTree(merged);
+      setSelected((sel) => new Set([...sel, ...defaultChecked(rows)]));
+      patchLink(key, { status: "done" });
       // Everything around WashU comes out of its area folder and onto the
       // first screen, ticked (see absorbNearAreas).
-      absorbNearAreas(rows);
+      absorbNearAreas(rows, key);
     } catch {
-      stopLoading();
-      setPhase("idle");
-      setError("Network error. Please try again.");
+      if (!linkAlive(key)) return;
+      patchLink(key, { status: "error", error: "Network error. Please try again." });
     }
   };
 
@@ -507,9 +518,36 @@ export default function ListingDraftImport({
   useEffect(() => {
     if (autoRan.current || !initialUrl) return;
     autoRan.current = true;
-    readSite(initialUrl);
+    readLink(linksRef.current[0].key, initialUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUrl]);
+
+  const addLink = () => {
+    if (linksRef.current.length >= MAX_LINKS) return;
+    const l = newLink();
+    focusKey.current = l.key;
+    linksRef.current = [...linksRef.current, l];
+    setLinks(linksRef.current);
+  };
+
+  // Take a link out, with everything it found.
+  const removeLink = (key) => {
+    const gone = new Set();
+    walkTree(
+      treeRef.current.filter((n) => n.linkKey === key),
+      (n) => {
+        if (n.kind === "property") gone.add(n.id);
+      }
+    );
+    const next = treeRef.current.filter((n) => n.linkKey !== key);
+    treeRef.current = next;
+    setTree(next);
+    registryRef.current = registryRef.current.filter((e) => e.linkKey !== key);
+    setSelected((sel) => new Set([...sel].filter((id) => !gone.has(id))));
+    const rest = linksRef.current.filter((l) => l.key !== key);
+    linksRef.current = rest.length ? rest : [newLink()];
+    setLinks(linksRef.current);
+  };
 
   /*
    * Pull the areas around WashU up onto the first screen.
@@ -530,13 +568,13 @@ export default function ListingDraftImport({
    * terrace rather than a building. So the authoritative list decides what
    * gets ticked, and the area folders stay open to browse.
    */
-  const absorbNearAreas = async (rows) => {
+  const absorbNearAreas = async (rows, linkKey) => {
     const inventory = rows.filter((n) => n.kind === "folder" && n.url && n.source === "inventory");
     const areas = inventory.length
       ? inventory
       : rows.filter((n) => n.kind === "folder" && n.url && nearCampus(n));
     if (!areas.length) return;
-    setStillSearching(true);
+    patchLink(linkKey, { searching: true, startedAt: Date.now() });
 
     /*
      * Hidden, not spinning. These folders are about to be read and folded into
@@ -552,24 +590,17 @@ export default function ListingDraftImport({
     const loaded = await Promise.all(
       areas.map(async (area) => {
         try {
-          const { ok, data } = await apiCall(area.url, null);
+          const { ok, data } = await apiCall(area.url);
           if (!ok || data.pms) return { area, rows: null };
-          const items = data.listing
-            ? [
-                {
-                  name: data.listing.title || data.listing.address || area.name,
-                  address: data.listing.address ?? "",
-                  url: area.url,
-                  kind: "property",
-                },
-              ]
-            : data.properties;
-          return { area, rows: buildLevel(items, area.url) };
+          const items = data.listing ? [singleRow(data, area.name, area.url)] : data.properties;
+          return { area, rows: buildLevel(items, area.url, linkKey) };
         } catch {
           return { area, rows: null };
         }
       })
     );
+    // Removed while its site was being read: nothing to merge into.
+    if (!linkAlive(linkKey)) return;
 
     /*
      * Merged outside setTree on purpose. This used to build its result by
@@ -597,7 +628,7 @@ export default function ListingDraftImport({
       const dissolve = area.source === "inventory";
       const keep = [];
       // adopt() drops anything already listed and hands back stable ids.
-      for (const c of adopt(children, registryRef.current)) {
+      for (const c of adopt(children, registryRef.current, linkKey)) {
         // The server offers its "all properties" folder on every level; it is
         // only shown at the top, so it must not be the one thing keeping an
         // emptied area folder alive.
@@ -636,7 +667,7 @@ export default function ListingDraftImport({
     if (toTick.length) {
       setSelected((sel) => new Set([...sel, ...toTick.map((h) => h.id)]));
     }
-    setStillSearching(false);
+    patchLink(linkKey, { searching: false });
   };
 
   // ------------------------------------------------------------ folder opening
@@ -648,7 +679,7 @@ export default function ListingDraftImport({
     if (!node.url) return;
     setTree((t) => patchNode(t, node.uid, { open: true, loading: true, error: null }));
     try {
-      const { ok, data } = await apiCall(node.url, null);
+      const { ok, data } = await apiCall(node.url);
       if (!ok || data.pms) {
         setTree((t) =>
           patchNode(t, node.uid, {
@@ -660,16 +691,7 @@ export default function ListingDraftImport({
         return;
       }
       // The folder turned out to be one property's own page.
-      const items = data.listing
-        ? [
-            {
-              name: data.listing.title || data.listing.address || node.name,
-              address: data.listing.address ?? "",
-              url: node.url,
-              kind: "property",
-            },
-          ]
-        : data.properties;
+      const items = data.listing ? [singleRow(data, node.name, node.url)] : data.properties;
       /*
        * A building can be listed on more than one page of the same site, so
        * opening Mac's St. Louis folder showed One Hundred Above the Park and
@@ -677,7 +699,7 @@ export default function ListingDraftImport({
        * the copy we already have (it is the one with a link and an address)
        * and drop the repeat.
        */
-      const children = adopt(buildLevel(items, node.url), registryRef.current);
+      const children = adopt(buildLevel(items, node.url, node.linkKey), registryRef.current, node.linkKey);
       setTree((t) => patchNode(t, node.uid, { loading: false, children, error: null }));
       // Anything near campus inside a folder starts ticked, same rule as the
       // top level, so opening "St. Louis" does the obvious thing.
@@ -756,66 +778,66 @@ export default function ListingDraftImport({
   };
 
   // ------------------------------------------------------------------- import
+  const linkUrlOf = (key) => linksRef.current.find((l) => l.key === key)?.url ?? "";
+  const tooMany = selectedProps.length > MAX_IMPORT;
+
   const importSelected = async () => {
     if (!selectedProps.length) {
       setError("Tick at least one property first.");
       return;
     }
+    if (tooMany) {
+      setError(`Import up to ${MAX_IMPORT} properties at a time. Untick some and import the rest after.`);
+      return;
+    }
     const [first, ...rest] = selectedProps;
+    // Each property is read against the link it was found at.
     const payload = (p) => ({
       name: p.name,
       address: p.address || "",
       url: p.url,
       levelUrl: p.levelUrl,
+      pastedUrl: linkUrlOf(p.linkKey),
       alreadyListed: p.alreadyListed || null,
     });
     // Every pick opens in the import workspace, one tab each, read in the
     // background and published together; a single pick still gets the same
     // "already on Proximity" check there.
     if (onImportMany) {
-      setPhase("done");
-      onImportMany(selectedProps.map(payload), pastedRef.current);
+      setFinished(true);
+      onImportMany(selectedProps.map(payload), payload(first).pastedUrl);
       return;
     }
-    startLoading();
+    const pastedUrl = payload(first).pastedUrl;
+    patchLink(first.linkKey, { status: "reading", startedAt: Date.now() });
     try {
-      const { ok, data } = await apiCall(first.levelUrl || pastedRef.current, {
-        name: first.name,
-        address: first.address || "",
-        url: first.url,
+      const res = await fetch("/api/landlord/listing-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: first.levelUrl || pastedUrl,
+          targetProperty: { name: first.name, address: first.address || "", url: first.url },
+          skipPmsSteer: true,
+        }),
       });
-      stopLoading();
-      if (!ok || !data.listing) {
-        setPhase("picker");
+      const data = await res.json().catch(() => ({}));
+      patchLink(first.linkKey, { status: "done" });
+      if (!res.ok || !data.listing) {
         setError(
           data.error ||
             `We couldn't read ${first.name}. Untick it and import the rest, or fill that one in by hand.`
         );
         return;
       }
-      setPhase("done");
-      onApply(data.listing, {
-        sourceUrl: data.sourceUrl,
-        pastedUrl: pastedRef.current,
-        queue: rest.map(payload),
-      });
+      setFinished(true);
+      onApply(data.listing, { sourceUrl: data.sourceUrl, pastedUrl, queue: rest.map(payload) });
     } catch {
-      stopLoading();
-      setPhase("picker");
+      patchLink(first.linkKey, { status: "done" });
       setError("Network error. Please try again.");
     }
   };
 
-  const reset = () => {
-    setStillSearching(false);
-    setPhase("idle");
-    setTree([]);
-    setSelected(new Set());
-    setFilter("");
-    setError(null);
-  };
-
-  if (phase === "done") return null; // parent shows the import summary banner
+  if (finished) return null; // parent shows the import summary banner
 
   // --------------------------------------------------------------- rendering
   const totalRows = allProperties.length;
@@ -1020,6 +1042,118 @@ export default function ListingDraftImport({
     );
   };
 
+  const rowsFor = (key) => tree.filter((n) => n.linkKey === key);
+  const foundAt = (key) => {
+    let count = 0;
+    walkTree(rowsFor(key), (n) => {
+      if (n.kind === "property") count += 1;
+    });
+    return count;
+  };
+  const elapsedOf = (l) => (l.startedAt ? Math.max(0, Math.floor((now - l.startedAt) / 1000)) : 0);
+  const last = links[links.length - 1];
+  // A fresh box is waiting already: another one would just be clutter.
+  const canAdd = links.length < MAX_LINKS && !(last.status === "idle" && !last.url.trim());
+
+  const linkField = (l, i) => {
+    const editable = l.status === "idle" || l.status === "error";
+    const count = foundAt(l.key);
+    const removeBtn = (links.length > 1 || l.status !== "idle") && (
+      <button
+        type="button"
+        onClick={() => removeLink(l.key)}
+        aria-label="Remove this link"
+        title="Remove this link and what it found"
+        className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    );
+    return (
+      <div key={l.key} className="mt-3 first:mt-0">
+        {editable ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              inputMode="url"
+              aria-label={`Link ${i + 1}`}
+              autoFocus={focusKey.current === l.key}
+              value={l.url}
+              onChange={(e) => patchLink(l.key, { url: e.target.value, error: null, status: "idle" })}
+              onPaste={(e) => {
+                // Pasting into an empty box reads it straight away.
+                const text = e.clipboardData.getData("text").trim();
+                if (!text || l.url.trim()) return;
+                e.preventDefault();
+                readLink(l.key, text);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  readLink(l.key);
+                }
+              }}
+              placeholder={i === 0 ? "yourproperty.com or a Zillow listing link" : "Another link"}
+              disabled={disabled}
+              className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 ${
+                l.error ? "border-red-300" : "border-gray-300"
+              }`}
+            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => readLink(l.key)}
+                disabled={disabled}
+                className="inline-flex h-10 flex-1 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60 sm:flex-none"
+              >
+                <Sparkles className="h-4 w-4" /> {i === 0 && links.length === 1 ? "Find my properties" : "Find"}
+              </button>
+              {removeBtn}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+            {l.status === "reading" ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-red-600" />
+            ) : (
+              <Globe className="h-4 w-4 shrink-0 text-gray-400" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-gray-800" title={l.url}>
+              {shortLink(l.url)}
+            </span>
+            <span className="shrink-0 text-xs text-gray-500">
+              {l.status === "reading"
+                ? `${LOADING_STEPS[Math.min(Math.floor(elapsedOf(l) / 7), LOADING_STEPS.length - 1)]} ${elapsedOf(l)}s`
+                : `${count} found`}
+            </span>
+            {removeBtn}
+          </div>
+        )}
+
+        {l.error && <p className="mt-1.5 text-xs text-red-600">{l.error}</p>}
+        {l.note && <p className="mt-1.5 text-xs text-gray-500">{l.note}</p>}
+
+        {l.searching && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+            <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-amber-600" />
+            <span>
+              <span className="font-semibold">Still reading the rest of this website.</span>{" "}
+              Large websites take a minute or two. More properties will appear here
+              as we find them, so give it a moment before you import.
+              <span className="ml-1 text-amber-700">{elapsedOf(l)}s</span>
+            </span>
+          </div>
+        )}
+
+        {count > 0 && (
+          <div className="mt-1.5 max-h-[45vh] space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+            {renderLevel(rowsFor(l.key), 0, `root-${l.key}`)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       className={
@@ -1034,55 +1168,14 @@ export default function ListingDraftImport({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900">
-            Auto-fill from your own website.
+            Auto-fill from your links.
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
-            Nothing goes live until you hit publish.
+            Paste your website, or a listing page like Zillow. Got more than one? Add each link
+            in its own box. Nothing goes live until you hit publish.
           </p>
 
-          {phase === "loading" ? (
-            <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-              <Loader2 className="h-4 w-4 animate-spin text-red-600" />
-              {LOADING_STEPS[stepIdx]}
-              <span className="text-xs text-gray-400">{elapsed}s</span>
-            </div>
-          ) : phase === "pms" ? (
-            <div className="mt-3 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700">
-              Looks like your listings run on{" "}
-              <span className="font-semibold">{pmsName}</span>. Instead of a one-time
-              import, you can connect it once and your listings will create and update
-              themselves.
-              <p className="mt-1.5 text-xs text-gray-500">
-                Heads up: syncing needs a {pmsName} plan that includes API access. Not
-                sure yours does? Import from your website instead.
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <Link
-                  href="/dashboard/landlord?tab=integrations"
-                  className="font-medium text-red-600 hover:underline"
-                >
-                  Set up {pmsName} auto-sync →
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    skipPmsRef.current = true;
-                    readSite();
-                  }}
-                  className="font-medium text-gray-700 hover:text-red-600 hover:underline"
-                >
-                  Read my website instead
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={reset}
-                className="mt-1.5 text-xs text-gray-500 hover:text-gray-700"
-              >
-                Try a different address instead
-              </button>
-            </div>
-          ) : phase === "picker" ? (
+          {totalRows > 0 && (
             <div className="mt-3">
               {/* Lead with the number that matters. "We found 124 properties"
                   is true and alarming when twelve of them are the point. */}
@@ -1091,15 +1184,13 @@ export default function ListingDraftImport({
                   ? `${nearCount} propert${
                       nearCount === 1 ? "y" : "ies"
                     } near WashU ${nearCount === 1 ? "is" : "are"} ticked and ready.`
-                  : `We found ${totalRows} propert${
-                      totalRows === 1 ? "y" : "ies"
-                    } on your website.`}
+                  : `We found ${totalRows} propert${totalRows === 1 ? "y" : "ies"}.`}
               </p>
               <p className="mt-0.5 text-xs text-gray-500">
                 {nearCount > 0 && nearCount < totalRows
-                  ? `Untick anything you don't want. Your website has ${
-                      totalRows - nearCount
-                    } more further from campus, and any folders below are yours to open.`
+                  ? `Untick anything you don't want. ${totalRows - nearCount} more ${
+                      totalRows - nearCount === 1 ? "is" : "are"
+                    } further from campus, and any folders below are yours to open.`
                   : "Tick the ones you want on Proximity. Nothing goes live until you publish it."}
               </p>
 
@@ -1132,80 +1223,54 @@ export default function ListingDraftImport({
                   Untick everything
                 </button>
               </div>
-
-              {stillSearching && (
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
-                  <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-amber-600" />
-                  <span>
-                    <span className="font-semibold">Still reading the rest of your website.</span>{" "}
-                    Large websites take a minute or two. More properties will appear here
-                    as we find them, so give it a moment before you import.
-                    <span className="ml-1 text-amber-700">{elapsed}s</span>
-                  </span>
-                </div>
-              )}
-
-              <div className="mt-2 max-h-[55vh] space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                {renderLevel(tree, 0, "root")}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={importSelected}
-                  disabled={!selectedProps.length || stillSearching}
-                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {stillSearching
-                    ? "Still searching…"
-                    : selectedProps.length === 1
-                    ? "Import 1 property"
-                    : `Import ${selectedProps.length} properties`}
-                </button>
-                <button
-                  type="button"
-                  onClick={reset}
-                  className="text-xs text-gray-500 hover:text-gray-700"
-                >
-                  ← Different website
-                </button>
-              </div>
-              <p className="mt-1.5 text-xs text-gray-500">
-                Each property opens in its own tab to check. Nothing goes live until you publish.
-              </p>
             </div>
-          ) : (
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input
-                type="text"
-                inputMode="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    readSite();
-                  }
-                }}
-                placeholder="yourproperty.com"
-                disabled={disabled}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
+          )}
+
+          <div className="mt-3">{links.map(linkField)}</div>
+
+          {canAdd ? (
+            <button
+              type="button"
+              onClick={addLink}
+              disabled={disabled}
+              className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-60"
+            >
+              <Plus className="h-4 w-4" /> Add another link
+            </button>
+          ) : links.length >= MAX_LINKS ? (
+            <p className="mt-2.5 text-xs text-gray-500">
+              You can add up to {MAX_LINKS} links at a time. Import these, then add more.
+            </p>
+          ) : null}
+
+          {totalRows > 0 && (
+            <div className="mt-4 border-t border-gray-200 pt-3">
               <button
                 type="button"
-                onClick={() => readSite()}
-                disabled={disabled}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                onClick={importSelected}
+                disabled={!selectedProps.length || anyReading || tooMany}
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Sparkles className="h-4 w-4" /> Find my properties
+                <Sparkles className="h-4 w-4" />
+                {anyReading
+                  ? "Still reading…"
+                  : selectedProps.length === 1
+                  ? "Import 1 property"
+                  : `Import ${selectedProps.length} properties`}
               </button>
+              {tooMany ? (
+                <p className="mt-1.5 text-xs text-red-600">
+                  {selectedProps.length} are ticked. Import up to {MAX_IMPORT} at a time: untick some and import them after.
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Each property opens in its own tab to check. Nothing goes live until you publish.
+                </p>
+              )}
             </div>
           )}
 
-          {error && phase !== "loading" && (
-            <p className="mt-2 text-xs text-red-600">{error}</p>
-          )}
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         </div>
       </div>
     </div>

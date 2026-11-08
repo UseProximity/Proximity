@@ -174,7 +174,10 @@ export async function createImportBatch({ userId, user, pastedUrl, targets, batc
       address: String(raw.address ?? "").slice(0, 200),
       url: typeof raw.url === "string" ? raw.url.slice(0, 500) : null,
       levelUrl: typeof raw.levelUrl === "string" ? raw.levelUrl.slice(0, 500) : null,
-      pastedUrl,
+      // The link this property was found at. A landlord can paste several
+      // (one Zillow page per apartment), so each property carries its own;
+      // the batch's pastedUrl is only the fallback for older callers.
+      pastedUrl: typeof raw.pastedUrl === "string" && raw.pastedUrl.trim() ? raw.pastedUrl.trim().slice(0, 500) : pastedUrl,
       alreadyListed: raw.alreadyListed?.id
         ? { id: raw.alreadyListed.id, title: raw.alreadyListed.title ?? null, mine: raw.alreadyListed.mine ?? null, owner: raw.alreadyListed.owner ?? (raw.alreadyListed.mine ? "you" : "other") }
         : null,
