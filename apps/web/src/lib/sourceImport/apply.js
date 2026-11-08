@@ -524,6 +524,7 @@ async function insertImages({ state, userId, unitId, urls, slug }) {
  * Two wordings of one special: the same opening, or the same numbers (months
  * free, dollar amounts) with most of the same words.
  */
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 const SPECIAL_STOP = new Set(["when", "with", "your", "this", "that", "from", "receive", "apply", "some", "please", "more", "information", "contact", "office", "leasing", "lease", "free", "month", "months"]);
 export function sameSpecial(a, b) {
   const na = norm(a), nb = norm(b);
@@ -532,7 +533,8 @@ export function sameSpecial(a, b) {
   const nums = (t) => new Set((t.match(/\d[\d,]*/g) ?? []).map((x) => x.replace(/,/g, "")));
   const words = (t) => new Set(t.split(/[^a-z]+/).filter((w) => w.length >= 4 && !SPECIAL_STOP.has(w)));
   const jac = (x, y) => { const u = new Set([...x, ...y]); if (!u.size) return 0; let i = 0; for (const v of x) if (y.has(v)) i++; return i / u.size; };
-  const la = String(a).toLowerCase(), lb = String(b).toLowerCase();
+  const words2nums = (t) => t.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (w) => String(NUMBER_WORDS[w]));
+  const la = words2nums(String(a).toLowerCase()), lb = words2nums(String(b).toLowerCase());
   const xa = nums(la), xb = nums(lb);
   const sameNums = xa.size > 0 && xa.size === xb.size && [...xa].every((v) => xb.has(v));
   const overlap = jac(words(la), words(lb));
@@ -1009,6 +1011,14 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
+  /*
+   * What a change creates (a lease, photos) belongs to the listing's landlord,
+   * not to whoever approved it: the team approving a sync change during launch
+   * review was becoming the lease's owner, shown to students as the landlord
+   * and missed by the next sync (The Victor, 2026-11-08). A co-owner accepting
+   * their own change still owns it.
+   */
+  const owner = userId && ownerIdsOf(state).includes(userId) ? userId : primaryOwner(state) ?? userId;
   // Accepting a change that puts a lease live is a publish: the same gate,
   // checked for the listing's landlord even when the team accepts it.
   const gateOf = cachedGate(primaryOwner(state) ?? userId, listingId);
@@ -1024,7 +1034,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
     }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
-      const note = await executeChange(change, { state, userId: userId ?? primaryOwner(state) });
+      const note = await executeChange(change, { state, userId: owner });
       await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note } }).eq("id", e.id);
       results.push({ id: e.id, ok: true, note });
     } catch (err) {
