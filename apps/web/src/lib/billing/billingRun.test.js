@@ -157,9 +157,10 @@ describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
       invoices: { retrieve: async () => ({ payments: { data: [{ status: "paid", payment: { payment_intent: "pi_1" } }] } }) },
       refunds: {
         create: async (params, { idempotencyKey }) => {
-          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount });
+          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount, status: "succeeded", metadata: params.metadata });
           return made.get(idempotencyKey);
         },
+        list: () => ({ async *[Symbol.asyncIterator]() { yield* made.values(); } }),
       },
     };
   }
@@ -188,6 +189,26 @@ describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
     await adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 });
     await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }), /already fully refunded/);
     assert.equal(stripe.made.size, 1);
+  });
+
+  it("a refund Stripe made but we failed to save is found first, so a fresh attempt cannot refund twice (review of 2026-11-07)", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    // The refund goes through in Stripe, then saving it fails.
+    const realFrom = db.from;
+    db.from = (t) => {
+      const q = realFrom(t);
+      if (t !== "charge_adjustments") return q;
+      const insert = q.insert;
+      q.insert = (row) => (row.stripe_refund_id === "re_1" && !db.failedOnce ? ((db.failedOnce = true), { then: (res) => res({ error: { code: "XX000", message: "connection lost" } }), select: () => ({ single: async () => ({ data: null, error: { code: "XX000", message: "connection lost" } }) }) }) : insert(row));
+      return q;
+    };
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }));
+    assert.equal(db.tables.charge_adjustments.length, 0, "not saved");
+    // The admin reopens the dialog: a new request id for the full amount.
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, requestId: "req-00000009", amountCents: 10000 }), /already fully refunded/);
+    assert.equal(stripe.made.size, 1, "no second refund");
+    assert.equal(db.tables.charge_adjustments.length, 1, "the first one is now on record");
   });
 
   it("a new request for the rest is its own refund", async () => {
