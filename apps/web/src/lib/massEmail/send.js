@@ -14,7 +14,15 @@
  *   - Someone this template already reached is skipped unless the admin asks to
  *     send again (allowRepeat), so pressing Send twice never doubles up.
  *   - No way to sign in (no password, Google or Apple) means the button becomes a
- *     14 day set-password link (lib/auth/passwordReset.js).
+ *     14 day set-password link (lib/auth/passwordReset.js). An email with no
+ *     button mints none: a new link cancels the earlier one, so a later email
+ *     without a button used to break the link an earlier email sent.
+ *   - An address that bounced or marked us as spam (email_suppressions) is
+ *     skipped, never sent to again.
+ *   - Someone this batch already reached is always skipped, even with
+ *     allowRepeat: pressing Send again after a failure picks up where it stopped.
+ *     With allowRepeat, someone this same version reached in the last
+ *     REPEAT_GUARD_HOURS is skipped too (a retry whose batch the page lost).
  *   - turnProxyOn switches Proxy on for each recipient's live listings, after
  *     their email went out. Only landlords' listings, never a sandbox one.
  *   - At most MAX_PER_CALL people per call, so one request fits the function's
@@ -34,10 +42,11 @@ import { mintPasswordSetupUrl } from "@/lib/auth/passwordReset";
 import { readAgreementFile } from "@/lib/billing/agreementFiles";
 import { getMrecForm, MREC_FORM_FILENAME } from "@/lib/users/mrecForm";
 import { ensureAgent } from "@/lib/agents/store";
-import { renderMassEmail } from "./render";
-import { DELIVERED } from "./audience";
+import { renderMassEmail, wantsSetupLink } from "./render";
+import { DELIVERED, skipReason } from "./audience";
 
 export const MAX_PER_CALL = 60;
+export const REPEAT_GUARD_HOURS = 6;
 
 export class MassEmailError extends Error {
   constructor(code, message, status = 400) {
@@ -83,7 +92,6 @@ function usable(u) {
   return !!u && !u.deleted_at && !u.review_sandbox && !u.is_system && typeof u.email === "string" && u.email.includes("@");
 }
 
-const canLogin = (u) => !!(u.password_hash || u.google_account || u.apple_account);
 // The footer line is admin-typed text, and emailFooter inserts it as HTML.
 export const footerFor = (version) => emailFooter({ reason: escapeHtml(version.footer_reason), commercial: version.commercial === true });
 
@@ -96,7 +104,7 @@ export async function sendTest(db, { version, to, previewUserId = null, req = nu
   const attachments = await loadAttachments(db, version);
   const baseUrl = getBaseUrl();
   // A test never mints a real set-password link: it shows where one would go.
-  const setupUrl = previewUserId && person.id && !canLogin(person) ? `${baseUrl}/reset-password?token=TEST-LINK-NOT-REAL` : null;
+  const setupUrl = previewUserId && person.id && wantsSetupLink(person, version, { baseUrl }) ? `${baseUrl}/reset-password?token=TEST-LINK-NOT-REAL` : null;
   const { subject, html } = renderMassEmail(
     version,
     { name: person.name, email: person.email, company: person.company_name },
@@ -141,6 +149,37 @@ async function alreadyReached(db, templateId, userIds) {
   return new Set((data ?? []).map((r) => r.user_id));
 }
 
+// Addresses that bounced or marked us as spam, of these emails (lower-cased).
+export async function suppressedAmong(db, emails) {
+  const list = [...new Set(emails.filter(Boolean).map((e) => e.trim().toLowerCase()))];
+  if (!list.length) return new Set();
+  const { data, error } = await db.from("email_suppressions").select("email").in("email", list);
+  if (error) throw error;
+  return new Set((data ?? []).map((r) => r.email));
+}
+
+// People this batch already reached, or (with allowRepeat) this version reached lately.
+async function reachedBy(db, { batchId, versionId, userIds, since }) {
+  const out = new Set();
+  if (batchId) {
+    const { data, error } = await db.from("mass_email_recipients").select("user_id").eq("batch_id", batchId).in("user_id", userIds).in("status", DELIVERED);
+    if (error) throw error;
+    for (const r of data ?? []) out.add(r.user_id);
+  }
+  if (since) {
+    const { data, error } = await db
+      .from("mass_email_recipients")
+      .select("user_id")
+      .eq("version_id", versionId)
+      .in("user_id", userIds)
+      .in("status", DELIVERED)
+      .gte("created_at", since);
+    if (error) throw error;
+    for (const r of data ?? []) out.add(r.user_id);
+  }
+  return out;
+}
+
 /*
  * Resolves to { batchId, sent, failed, skipped: [{ id, reason }], remaining }.
  * `remaining` are ids not attempted because of MAX_PER_CALL.
@@ -158,6 +197,13 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
   if (error) throw error;
   const byId = new Map((people ?? []).map((u) => [u.id, u]));
   const reached = allowRepeat ? new Set() : await alreadyReached(db, version.template_id, now);
+  const sentInBatch = await reachedBy(db, {
+    batchId,
+    versionId: version.id,
+    userIds: now,
+    since: allowRepeat ? new Date(Date.now() - REPEAT_GUARD_HOURS * 3600 * 1000).toISOString() : null,
+  });
+  const suppressed = await suppressedAmong(db, (people ?? []).map((u) => u.email));
 
   // One batch row across the calls of one press of Send (the page passes it back),
   // created only once someone is actually emailed, so a press that skips everyone
@@ -185,13 +231,14 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
       result.skipped.push({ id, reason: "deleted, sandbox or no email address" });
       continue;
     }
-    if (reached.has(id)) {
-      result.skipped.push({ id, reason: "already sent this email" });
+    const skip = skipReason(u, { reached, sentInBatch, suppressed, batchId, repeatGuardHours: REPEAT_GUARD_HOURS });
+    if (skip) {
+      result.skipped.push({ id, reason: skip });
       continue;
     }
 
     await ensureBatch();
-    const setupUrl = canLogin(u) ? null : await mintPasswordSetupUrl(u.id, { db, baseUrl });
+    const setupUrl = wantsSetupLink(u, version, { baseUrl }) ? await mintPasswordSetupUrl(u.id, { db, baseUrl }) : null;
     const { subject, html } = renderMassEmail(
       version,
       { name: u.name, email: u.email, company: u.company_name },

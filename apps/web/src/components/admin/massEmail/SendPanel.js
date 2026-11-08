@@ -39,6 +39,9 @@ export default function SendPanel({ template, dbTarget, writable, onSent }) {
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The batch a failed send was working on: pressing Send again continues it, and
+  // the server skips everyone it already reached (review of 2026-11-07).
+  const [resume, setResume] = useState(null);
 
   const load = useCallback(async () => {
     setPeople(null);
@@ -115,7 +118,7 @@ export default function SendPanel({ template, dbTarget, writable, onSent }) {
     setError(null);
     setNotice(null);
     let remaining = pickedPeople.map((p) => p.id);
-    let batchId = null;
+    let batchId = resume?.versionId === versionId ? resume.batchId : null;
     const total = { sent: 0, failed: 0, skipped: [] };
     setProgress({ done: 0, of: remaining.length });
     try {
@@ -130,15 +133,17 @@ export default function SendPanel({ template, dbTarget, writable, onSent }) {
         remaining = r.remaining;
         setProgress({ done: pickedPeople.length - remaining.length, of: pickedPeople.length });
       }
+      setResume(null);
       const parts = [`Sent ${total.sent}.`];
       if (total.failed) parts.push(`${total.failed} failed (see History).`);
-      if (total.skipped.length) parts.push(`${total.skipped.length} skipped (already sent, or no longer emailable).`);
+      if (total.skipped.length) parts.push(`${total.skipped.length} skipped (already sent, bounced, or no longer emailable).`);
       setNotice(parts.join(" "));
       setPicked(new Set());
       await load();
       await onSent?.();
     } catch (e) {
-      setError(`${e.message} Nobody was emailed twice: send again to continue.`);
+      if (batchId) setResume({ batchId, versionId });
+      setError(`${e.message} Press Send again to continue: everyone this send already reached is skipped.`);
       await load();
     } finally {
       setBusy(false);
@@ -239,6 +244,7 @@ export default function SendPanel({ template, dbTarget, writable, onSent }) {
                     {!p.canLogin && <Badge color="amber" title="No password, Google or Apple sign-in. Their button becomes a set-password link.">No password yet</Badge>}
                     {p.subleaseOnly && <Badge color="purple" title="Every live lease they own is a sublease, and they have no live listing.">Sublease only</Badge>}
                     {p.lastSent && <Badge color="green">Got v{p.lastSent.version} {fmtWhen(p.lastSent.at)}</Badge>}
+                    {p.suppressed && <Badge color="red" title="Their address bounced or marked our email as spam. They are skipped when you send.">Bounced or spam</Badge>}
                   </td>
                 </tr>
               ))}

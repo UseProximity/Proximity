@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bodyToHtml, buttonFor, mergeValues, renderMassEmail, safeHref, unknownMergeFields } from "./render.js";
+import { bodyToHtml, buttonFor, mergeValues, renderMassEmail, safeHref, unknownMergeFields, wantsSetupLink } from "./render.js";
+import { skipReason } from "./audience.js";
 import { cleanVersion, DEFAULT_FOOTER_REASON } from "./templates.js";
 import { suggestFor } from "./unowned.js";
 import { deliveryStatus } from "./history.js";
@@ -104,5 +105,30 @@ describe("deliveryStatus", () => {
     assert.equal(deliveryStatus({ status: "sent" }, { status: "sent" }), "sent");
     assert.equal(deliveryStatus({ status: "failed" }, { status: "delivered" }), "failed");
     assert.equal(deliveryStatus({ status: "redirected" }, null), "redirected");
+  });
+});
+
+describe("who a send skips (review of 2026-11-07)", () => {
+  const none = new Set();
+  const base = { reached: none, sentInBatch: none, suppressed: none, batchId: null, repeatGuardHours: 6 };
+  const u = { id: "u1", email: "Lee@Example.com " };
+
+  it("skips an address that bounced or marked us as spam, whatever its case", () => {
+    assert.match(skipReason(u, { ...base, suppressed: new Set(["lee@example.com"]) }), /bounced or marked/);
+    assert.equal(skipReason(u, base), null);
+  });
+
+  it("skips someone this batch already reached, even when sending again", () => {
+    assert.equal(skipReason(u, { ...base, sentInBatch: new Set(["u1"]), batchId: "b1" }), "already sent in this batch");
+    assert.match(skipReason(u, { ...base, sentInBatch: new Set(["u1"]) }), /last 6 hours/);
+  });
+
+  it("only an email with a button mints a set-password link", () => {
+    const noLogin = { password_hash: null, google_account: null, apple_account: null };
+    const withButton = { button_target: "billing", button_label: "Open Billing" };
+    const noButton = { button_target: "none", button_label: "" };
+    assert.equal(wantsSetupLink(noLogin, withButton, { baseUrl: "https://x" }), true);
+    assert.equal(wantsSetupLink(noLogin, noButton, { baseUrl: "https://x" }), false, "would cancel an earlier email's link");
+    assert.equal(wantsSetupLink({ ...noLogin, password_hash: "h" }, withButton, { baseUrl: "https://x" }), false);
   });
 });

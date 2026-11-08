@@ -137,6 +137,16 @@ export function bodyToHtml(body, values, baseUrl) {
 }
 
 /*
+ * Whether this person gets a set-password link: only when they cannot sign in AND
+ * the email has a button to carry it. A new link cancels the earlier one, so an
+ * email without a button must not mint one (review of 2026-11-07).
+ */
+export function wantsSetupLink(person, version, { baseUrl }) {
+  const canLogin = !!(person?.password_hash || person?.google_account || person?.apple_account);
+  return !canLogin && !!buttonFor(version, { baseUrl });
+}
+
+/*
  * Where the main button goes, or null for no button. `setupUrl`, when given,
  * replaces it: the person has no way to sign in yet, so the button sets a
  * password first.

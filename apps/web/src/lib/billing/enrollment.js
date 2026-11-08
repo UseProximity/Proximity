@@ -114,29 +114,34 @@ export async function enforceEnrollmentDeadline(db, { now = new Date(), adminId 
  */
 export async function liveListingOwners(db, ids) {
   const liveOwners = new Set();
-  for (const row of await inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("unit_leases")
-      .select("owner_id")
-      .in("owner_id", chunk)
-      .eq("is_active", true)
-      .eq("unavailable", false)
-      .is("deleted_at", null)
-      .not("published_at", "is", null);
-    if (error) throw error;
-    return data;
-  })) liveOwners.add(row.owner_id);
-  for (const row of await inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("listing_landlords")
-      .select("user_id, listings!inner(published_at, deleted_at, unavailable)")
-      .in("user_id", chunk)
-      .not("listings.published_at", "is", null)
-      .is("listings.deleted_at", null)
-      .eq("listings.unavailable", false);
-    if (error) throw error;
-    return data;
-  })) liveOwners.add(row.user_id);
+  // Paged within each chunk: a chunk of landlords can own more than the 1,000 rows
+  // a query returns, and the ones past it were left out (review of 2026-11-07).
+  for (const row of await inChunks(ids, (chunk) =>
+    pageAll(() =>
+      db
+        .from("unit_leases")
+        .select("id, owner_id")
+        .in("owner_id", chunk)
+        .eq("is_active", true)
+        .eq("unavailable", false)
+        .is("deleted_at", null)
+        .not("published_at", "is", null)
+        .order("id")
+    )
+  )) liveOwners.add(row.owner_id);
+  for (const row of await inChunks(ids, (chunk) =>
+    pageAll(() =>
+      db
+        .from("listing_landlords")
+        .select("user_id, listing_id, listings!inner(published_at, deleted_at, unavailable)")
+        .in("user_id", chunk)
+        .not("listings.published_at", "is", null)
+        .is("listings.deleted_at", null)
+        .eq("listings.unavailable", false)
+        .order("user_id")
+        .order("listing_id")
+    )
+  )) liveOwners.add(row.user_id);
 
   return liveOwners;
 }
