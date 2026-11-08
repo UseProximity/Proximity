@@ -387,7 +387,9 @@ export async function decideChange({ listingId, userId, isAdmin = false, kind, e
       if (!ok) return { error: "You cannot decide this change." };
     }
     if (approve) {
-      const r = await applyEvents({ listingId, eventIds: [eventId], userId, verdictBy: userId });
+      // The team approves on the landlord's behalf: the change runs as the building's
+      // landlord (owner of any new lease or unit), the admin is only the verdict.
+      const r = await applyEvents({ listingId, eventIds: [eventId], userId: isAdmin ? null : userId, verdictBy: userId });
       // Not applied (the listing gate, or the change failed): say why.
       if (r[0] && r[0].ok === false) return { error: r[0].error ?? "Could not apply that" };
       return { ok: true, result: r[0] ?? null };
