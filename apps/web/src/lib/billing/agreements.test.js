@@ -34,6 +34,16 @@ describe("gate: overdue invoice (PR #370 review)", () => {
   });
 });
 
+describe("hasOverdueInvoice (review of 2026-11-07)", () => {
+  it("a bank payment still settling keeps publishing blocked until it clears", async () => {
+    const { hasOverdueInvoice } = await import("./listingGate.js");
+    let statuses = null;
+    const db = { from: () => { const q = { select: () => q, eq: () => q, not: () => q, in: (_c, v) => ((statuses = v), q), limit: async () => ({ data: [{ id: "i1" }], error: null }) }; return q; } };
+    assert.equal(await hasOverdueInvoice(db, "l1"), true);
+    assert.ok(statuses.includes("processing"));
+  });
+});
+
 describe("gateDecision", () => {
   it("lets everyone through while both requirements are off", () => {
     const d = gateDecision({ role: "landlord", requirePaymentMethod: false, requireAgreement: false, hasPaymentMethod: false, agreementSigned: false });

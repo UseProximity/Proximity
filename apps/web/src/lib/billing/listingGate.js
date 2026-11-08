@@ -111,8 +111,10 @@ async function userOf(db, userId) {
 
 /*
  * Whether the landlord has an invoice the overdue job actioned that is still
- * unpaid. Reads as no until the billing tables exist, so listing keeps working in
- * an environment that does not have them yet.
+ * unpaid. A bank payment still settling (processing) counts as unpaid until it
+ * clears: it can still fail, and publishing reopened in the meantime stayed open
+ * when it did (review of 2026-11-07). Reads as no until the billing tables exist,
+ * so listing keeps working in an environment that does not have them yet.
  */
 export async function hasOverdueInvoice(db, userId) {
   const { data, error } = await db
@@ -120,7 +122,7 @@ export async function hasOverdueInvoice(db, userId) {
     .select("id")
     .eq("landlord_id", userId)
     .not("overdue_actioned_at", "is", null)
-    .in("status", ["open", "failed"])
+    .in("status", ["open", "failed", "processing"])
     .limit(1);
   if (error) {
     if (error.code === "PGRST205" || error.code === "42P01") return false;
