@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, coverageLine, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
-import { coveredMap, coversProperty, displayAddress, exhibitChoice, missingUnits, planCoverage, uncoveredAmong } from "./coverage.js";
+import { coveredMap, coversProperty, refreshCoverageNames, displayAddress, exhibitChoice, missingUnits, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { mergePdfs, mergeSignedParts } from "./agreementPdf.js";
@@ -62,6 +62,15 @@ const sign = (db, documenso, over = {}) => startSigning(db, documenso, { user, s
 const storeSigned = async ({ userId }) => `billing/agreements/${userId}/signed.pdf`;
 const ids = (entries) => entries.map((e) => e.listingId);
 const coverage = (db, status) => db.tables.agreement_coverage.filter((r) => !status || r.status === status);
+
+describe("coverage lines when named units are gone (review of 2026-11-07)", () => {
+  it("never restates coverage of deleted units as the whole building", () => {
+    const [row] = refreshCoverageNames([{ listing_id: "L1", whole_building: false, units: ["1A"], unit_ids: ["gone"] }], [{ listingId: "L1", labelById: {} }]);
+    assert.deepEqual(row.units, []);
+    assert.equal(coverageLine({ wholeBuilding: row.whole_building, units: row.units, formerNames: row.formerNames }), "Units: none remaining (formerly 1A)");
+    assert.equal(coverageLine({ wholeBuilding: true, units: [] }), "Whole building");
+  });
+});
 
 describe("planCoverage (the pure rule)", () => {
   const properties = [

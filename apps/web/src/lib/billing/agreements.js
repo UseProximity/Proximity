@@ -369,10 +369,14 @@ function exhibitSelections(list) {
 
 // What one Exhibit A entry covers, as the document says it: "Whole building" or "Units: 1A, 1B".
 // A unit renamed since it was signed for shows its old name too (Wyatt, 2026-11-06).
+// Named units that no longer exist say so: never "Whole building" (review of 2026-11-07).
+const formerly = (e) => (e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : "");
 export const coverageLine = (e) =>
-  e.wholeBuilding !== false || !e.units?.length
+  e.wholeBuilding !== false
     ? "Whole building"
-    : `Units: ${e.units.join(", ")}${e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : ""}`;
+    : e.units?.length
+      ? `Units: ${e.units.join(", ")}${formerly(e)}`
+      : `Units: none remaining${formerly(e)}`;
 
 /*
  * The covered properties as the "Exhibit A" box shows them (Wyatt, 2026-11-07):
