@@ -245,6 +245,9 @@ const makeNode = (p, parentUrl, linkKey) => ({
   // coordinates. Beats every pattern below: River Terrace Gardens in River
   // Edge, New Jersey was "near" because nothing in its text said otherwise.
   distanceKm: typeof p.distanceKm === "number" ? p.distanceKm : null,
+  // The whole link was this one page (one apartment on Zillow, say). Only
+  // these group with other links into one building (see buildingKeyOf).
+  single: p.single === true,
   children: null, // null = not opened yet
   open: false,
   loading: false,
@@ -361,6 +364,29 @@ const shortLink = (raw) => {
   return s.length > 52 ? `${s.slice(0, 50)}…` : s;
 };
 
+/*
+ * Two links to apartments in one building (6829 Kingsbury Blvd APT 1W and
+ * APT 2E on Zillow) import as one property with a unit for each (Wyatt,
+ * 2026-11-08). The building is the address with the apartment taken out:
+ * street line plus zip.
+ */
+const UNIT_RE = /(?:,\s*|\s+)(?:apt\.?|apartment|unit|ste\.?|suite|#)\s*#?\s*([a-z0-9-]+)\b/i;
+const streetOf = (address) => String(address ?? "").replace(UNIT_RE, "").split(",")[0].trim();
+const buildingKeyOf = (address) => {
+  const a = String(address ?? "");
+  const street = streetOf(a).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (!/^\d+\s+\S/.test(street)) return null; // no street number: cannot tell
+  const zip = a.match(/\b(\d{5})(?:-\d{4})?\b(?![\s\S]*\b\d{5}\b)/)?.[1] ?? "";
+  return `${street}|${zip}`;
+};
+// "Apt 1W", from the address, or null when it names no apartment.
+const unitLabelOf = (address) => {
+  const m = String(address ?? "").match(UNIT_RE);
+  return m ? `Apt ${m[1].toUpperCase()}` : null;
+};
+// The address without the apartment: "6829 Kingsbury Blvd, Saint Louis, MO 63130".
+const buildingAddressOf = (address) => String(address ?? "").replace(UNIT_RE, "").replace(/\s+,/g, ",").trim();
+
 let _linkSeq = 0;
 const newLink = (url = "") => ({
   key: `l${++_linkSeq}`,
@@ -382,7 +408,11 @@ export default function ListingDraftImport({
   embedded = false,
   initialUrl = "",
 }) {
-  const [links, setLinks] = useState(() => [newLink(initialUrl)]);
+  // The start screen can hand over several links, one per line.
+  const [links, setLinks] = useState(() => {
+    const given = String(initialUrl ?? "").split("\n").map((u) => u.trim()).filter(Boolean).slice(0, MAX_LINKS);
+    return given.length ? given.map((u) => newLink(u)) : [newLink()];
+  });
   const linksRef = useRef(links);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState(null);
@@ -459,6 +489,7 @@ export default function ListingDraftImport({
     url,
     kind: "property",
     alreadyListed: data.properties?.[0]?.alreadyListed ?? null,
+    single: true,
   });
 
   // ------------------------------------------------------------- reading a link
@@ -514,11 +545,11 @@ export default function ListingDraftImport({
     }
   };
 
-  // Auto-run when the address came in from the start screen.
+  // Auto-run when the links came in from the start screen: each is read at once.
   useEffect(() => {
     if (autoRan.current || !initialUrl) return;
     autoRan.current = true;
-    readLink(linksRef.current[0].key, initialUrl);
+    for (const l of linksRef.current) if (l.url.trim()) readLink(l.key, l.url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUrl]);
 
@@ -779,10 +810,65 @@ export default function ListingDraftImport({
 
   // ------------------------------------------------------------------- import
   const linkUrlOf = (key) => linksRef.current.find((l) => l.key === key)?.url ?? "";
-  const tooMany = selectedProps.length > MAX_IMPORT;
+
+  // Single-page links that land in the same building: building key -> rows.
+  const buildingGroups = useMemo(() => {
+    const byKey = new Map();
+    for (const p of allProperties) {
+      if (!p.single) continue;
+      const key = buildingKeyOf(p.address);
+      if (!key) continue;
+      byKey.set(key, [...(byKey.get(key) ?? []), p]);
+    }
+    return new Map([...byKey].filter(([, rows]) => new Set(rows.map((r) => r.linkKey)).size > 1));
+  }, [allProperties]);
+  const groupOf = (p) => (p.single ? buildingGroups.get(buildingKeyOf(p.address)) ?? null : null);
+
+  /*
+   * What Import sends: one target per property, except that ticked rows in one
+   * building become one target carrying each row's link as a unit.
+   */
+  const targets = useMemo(() => {
+    const out = [];
+    const done = new Set();
+    for (const p of selectedProps) {
+      if (done.has(p.id)) continue;
+      const group = groupOf(p)?.filter((m) => selected.has(m.id)) ?? [];
+      const base = {
+        name: p.name,
+        address: p.address || "",
+        url: p.url,
+        levelUrl: p.levelUrl,
+        pastedUrl: linkUrlOf(p.linkKey),
+        alreadyListed: p.alreadyListed || null,
+      };
+      if (group.length < 2) {
+        out.push(base);
+        continue;
+      }
+      group.forEach((m) => done.add(m.id));
+      const street = streetOf(p.address) || p.name;
+      out.push({
+        ...base,
+        name: street,
+        address: buildingAddressOf(p.address),
+        alreadyListed: group.find((m) => m.alreadyListed)?.alreadyListed ?? null,
+        units: group.map((m, i) => ({
+          url: m.url,
+          pastedUrl: linkUrlOf(m.linkKey),
+          label: unitLabelOf(m.address) || `Unit ${i + 1}`,
+          address: m.address || "",
+        })),
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProps, buildingGroups, selected, links]);
+  const groupedTargets = targets.filter((t) => t.units);
+  const tooMany = targets.length > MAX_IMPORT;
 
   const importSelected = async () => {
-    if (!selectedProps.length) {
+    if (!targets.length) {
       setError("Tick at least one property first.");
       return;
     }
@@ -791,7 +877,16 @@ export default function ListingDraftImport({
       return;
     }
     const [first, ...rest] = selectedProps;
-    // Each property is read against the link it was found at.
+    // Every pick opens in the import workspace, one tab each, read in the
+    // background and published together; a single pick still gets the same
+    // "already on Proximity" check there. Each property is read against the
+    // link it was found at.
+    if (onImportMany) {
+      setFinished(true);
+      onImportMany(targets, targets[0].pastedUrl);
+      return;
+    }
+    // The older one-at-a-time path (no workspace) has no grouping.
     const payload = (p) => ({
       name: p.name,
       address: p.address || "",
@@ -800,14 +895,6 @@ export default function ListingDraftImport({
       pastedUrl: linkUrlOf(p.linkKey),
       alreadyListed: p.alreadyListed || null,
     });
-    // Every pick opens in the import workspace, one tab each, read in the
-    // background and published together; a single pick still gets the same
-    // "already on Proximity" check there.
-    if (onImportMany) {
-      setFinished(true);
-      onImportMany(selectedProps.map(payload), payload(first).pastedUrl);
-      return;
-    }
     const pastedUrl = payload(first).pastedUrl;
     patchLink(first.linkKey, { status: "reading", startedAt: Date.now() });
     try {
@@ -899,6 +986,11 @@ export default function ListingDraftImport({
       {n.alreadyListed && (
         <span className="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
           {n.alreadyListed.mine ? "On Proximity · yours" : "On Proximity"}
+        </span>
+      )}
+      {groupOf(n) && (
+        <span className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+          {unitLabelOf(n.address) ? `${unitLabelOf(n.address)} · same building` : "Same building"}
         </span>
       )}
       {!n.alreadyListed && showBadge && nearCampus(n) && (
@@ -1248,19 +1340,25 @@ export default function ListingDraftImport({
               <button
                 type="button"
                 onClick={importSelected}
-                disabled={!selectedProps.length || anyReading || tooMany}
+                disabled={!targets.length || anyReading || tooMany}
                 className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Sparkles className="h-4 w-4" />
                 {anyReading
                   ? "Still reading…"
-                  : selectedProps.length === 1
+                  : targets.length === 1
                   ? "Import 1 property"
-                  : `Import ${selectedProps.length} properties`}
+                  : `Import ${targets.length} properties`}
               </button>
+              {groupedTargets.map((t) => (
+                <p key={t.address} className="mt-1.5 text-xs text-gray-600">
+                  <span className="font-medium text-gray-800">{t.name}</span>: {t.units.length} links in one building
+                  import as one property, with a unit for each ({t.units.map((u) => u.label).join(", ")}).
+                </p>
+              ))}
               {tooMany ? (
                 <p className="mt-1.5 text-xs text-red-600">
-                  {selectedProps.length} are ticked. Import up to {MAX_IMPORT} at a time: untick some and import them after.
+                  {targets.length} are ticked. Import up to {MAX_IMPORT} at a time: untick some and import them after.
                 </p>
               ) : (
                 <p className="mt-1.5 text-xs text-gray-500">
