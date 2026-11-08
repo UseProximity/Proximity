@@ -407,7 +407,8 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
   if (!master || !masterValid) {
     // A lapsed or re-sign-required master: what it covered carries into the new one.
     for (const r of rows) if (r.status === "covered" && master && r.agreement_id === master.id && byId.has(r.listing_id) && !released.has(r.listing_id)) needed.add(r.listing_id);
-    const entries = [...needed, ...drafts]
+    // (A carried property can be a draft too: listed once.)
+    const entries = [...new Set([...needed, ...drafts])]
       .map((id) => [byId.get(id), choiceFor(byId.get(id))])
       .filter(([, c]) => c.include)
       .map(([p, c]) => entryOf(p, c))

@@ -99,11 +99,17 @@ export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null
   const versionOk = !!signed && (negotiated || signatureStillValid(signed.agreement_version?.published_at ?? null, cutoff));
   const expired = false;
   const valid = !!signed && versionOk;
+  // A negotiated version made live for this landlord after they signed (their
+  // accepted change request): offered to sign, replacing the agreement they have,
+  // which keeps counting until then (review of 2026-11-07).
+  const negotiatedOffer =
+    valid && liveVersion?.landlord_id && signed.version_id !== liveVersion.id ? liveVersion : null;
   return {
     signed,
     pending,
     lastEnded,
     liveVersion,
+    negotiatedOffer,
     cutoff,
     valid,
     expired: !!signed && expired,
@@ -257,7 +263,9 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedFile: !!signed?.signed_file_key,
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
-    canSign: !valid && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
+    canSign: (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
+    // Their negotiated agreement is ready: signing it replaces the one they have.
+    negotiatedReady: state.negotiatedOffer ? { label: state.negotiatedOffer.label ?? null } : null,
     declinedAt: declined,
     covered: coveredList,
     // Live properties not fully covered: not on Exhibit A, or with units on it missing.
@@ -489,9 +497,12 @@ export async function startSigning(
       // Properties an amendment to a master that no longer counts was adding: they
       // go on the new master instead of being dropped.
       let carryFromAmendment = [];
-      if (state.valid && state.pendingAmendment) inProgress = { kind: "amendment", row: state.pendingAmendment, entries: state.pendingAmendment.proposed_exhibit ?? [] };
+      // A negotiated version waiting to be signed: the next document is that new
+      // agreement, carrying everything covered now (as a re-sign does).
+      const masterValid = state.valid && !state.negotiatedOffer;
+      if (masterValid && state.pendingAmendment) inProgress = { kind: "amendment", row: state.pendingAmendment, entries: state.pendingAmendment.proposed_exhibit ?? [] };
       else if (state.pending) inProgress = { kind: "master", row: state.pending, entries: state.pending.exhibit ?? [] };
-      if (!state.valid && state.pendingAmendment) {
+      if (!masterValid && state.pendingAmendment) {
         carryFromAmendment = state.pendingAmendment.proposed_exhibit ?? [];
         await cancelInDocumenso(documenso, state.pendingAmendment, "Replaced by a new agreement");
         await endDocument(db, "amendment", state.pendingAmendment, "replaced by a new agreement", now);
@@ -501,7 +512,7 @@ export async function startSigning(
         properties,
         rows,
         master: state.signed,
-        masterValid: state.valid,
+        masterValid,
         requestedIds: requested,
         carry: [...(inProgress?.entries ?? []), ...carryFromAmendment],
         // The landlord's Exhibit A choices from the signing popup, per property.

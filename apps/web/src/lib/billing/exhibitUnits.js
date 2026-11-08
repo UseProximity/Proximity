@@ -27,10 +27,12 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
   const properties = withRequiredUnits(loaded.properties, requiredUnits);
   // A document already in progress (an addendum started from a publish, then closed)
   // is planned with, as startSigning does, so "Continue signing" picks it up again.
-  const inProgress = state.valid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : state.pending?.exhibit ?? [];
-  const carryFromAmendment = !state.valid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : [];
+  // A negotiated version waiting to be signed is planned as a new agreement (startSigning).
+  const masterValid = state.valid && !state.negotiatedOffer;
+  const inProgress = masterValid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : state.pending?.exhibit ?? [];
+  const carryFromAmendment = !masterValid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : [];
   const carry = [...inProgress, ...carryFromAmendment];
-  const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested, carry });
+  const plan = planCoverage({ properties, rows, master: state.signed, masterValid, requestedIds: requested, carry });
   if (plan.kind === "none") return { kind: "none", properties: [] };
   const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId), ...carry.map((e) => e.listingId)]);
   // Every property, on an amendment too, so nothing goes on (or changes) unseen:

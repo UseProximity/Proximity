@@ -335,6 +335,32 @@ describe("negotiated versions", () => {
     assert.equal(db.tables.landlord_agreements[0].commission_rate_percent, 6, "its rate is kept for invoices");
   });
 
+  it("a negotiated version made live after signing is offered, replaces the agreement and keeps its coverage (review of 2026-11-07)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await sign(db, documenso, { listingIds: ["L2"] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    // The team accepts a change request and makes Pat's own version live.
+    db.tables.agreement_versions.push({ ...MASTER, id: "vneg", landlord_id: "u1", provider_template_id: "envelope_neg", commission_rate_percent: 6 });
+    const before = await coverageFor(db, "u1", new Date("2027-02-01"));
+    assert.equal(before.state.valid, true, "the signed agreement keeps counting meanwhile");
+    assert.equal(before.state.negotiatedOffer.id, "vneg");
+    const r = await sign(db, documenso, { now: new Date("2027-02-01") });
+    assert.equal(r.kind, "master");
+    assert.equal(documenso.calls.lastCopy.templateId, "envelope_neg");
+    const fresh = db.tables.landlord_agreements.find((m) => m.version_id === "vneg");
+    assert.deepEqual(ids(fresh.exhibit), ["L1", "L2"], "everything covered carries over");
+    const signedFor = [];
+    documenso.complete(fresh.provider_envelope_id, "2027-02-02T00:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope(fresh.provider_envelope_id), { storeSigned, onSigned: (x) => signedFor.push(x.versionId) });
+    assert.deepEqual(signedFor, ["vneg"], "resolves the change request");
+    const after = await coverageFor(db, "u1", new Date("2027-02-03"));
+    assert.equal(after.state.negotiatedOffer, null, "not offered again");
+    assert.deepEqual([...after.covered.keys()].sort(), ["L1", "L2"]);
+    assert.equal(db.tables.landlord_agreements.find((m) => m.version_id === "vm").status, "superseded");
+  });
+
   it("a negotiated signature is flagged, not invalidated, when the standard version asks everyone to re-sign", () => {
     const rows = [{ status: "signed", agreement_version: { landlord_id: "u1", published_at: "2026-12-01" } }];
     const state = summarizeAgreementRows(rows, { cutoff: "2027-01-01" });
