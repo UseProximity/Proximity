@@ -264,7 +264,9 @@
       "methodAuth": {
         "POST": "admin"
       },
-      "tables": [],
+      "tables": [
+        "charges"
+      ],
       "file": "src/app/api/admin/billing/charges/[id]/adjust/route.js"
     },
     {

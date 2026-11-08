@@ -86,3 +86,49 @@ describe("billing email templates", () => {
     assert.ok(team.html.includes("3"));
   });
 });
+
+describe("receipt and correction emails (Simão's notes, 2026-11-07)", () => {
+  it("the receipt says what was paid, with what, and links the PDF", () => {
+    const m = t.invoicePaidEmail({
+      name: "Lee",
+      periodLabel: "November 2026",
+      totalCents: 41200,
+      methodDescription: "Visa ending 4242",
+      paidAt: "2026-11-07T18:00:00Z",
+      pdfUrl: "https://pdf.example/x",
+      paymentsUrl: "https://app/billing",
+    });
+    assert.match(m.subject, /Payment received: \$412\.00 for November 2026/);
+    assert.match(m.html, /Visa ending 4242/);
+    assert.match(m.html, /https:\/\/pdf\.example\/x/);
+  });
+
+  it("the receipt says what was charged when a credit covered part of the invoice", () => {
+    const m = t.invoicePaidEmail({
+      name: "Lee", periodLabel: "November 2026", totalCents: 41200, paidCents: 31200, creditCents: 10000,
+      methodDescription: "Visa ending 4242", paidAt: "2026-11-07T18:00:00Z", paymentsUrl: "u",
+    });
+    assert.match(m.subject, /Payment received: \$312\.00/);
+    assert.match(m.html, /credit of \$100\.00 covered the rest/);
+  });
+
+  it("an invoice a credit covered in full says nothing was charged, and names no card", () => {
+    const m = t.invoicePaidEmail({
+      name: "Lee", periodLabel: "November 2026", totalCents: 41200, paidCents: 0, creditCents: 41200,
+      methodDescription: "Visa ending 4242", paidAt: "2026-11-07T18:00:00Z", paymentsUrl: "u",
+    });
+    assert.match(m.subject, /covered by credit/);
+    assert.match(m.html, /Nothing was charged/);
+    assert.doesNotMatch(m.html, /Visa/);
+  });
+
+  it("a refund and a credit say where the money goes, and escape the reason", () => {
+    const refund = t.chargeAdjustedEmail({ name: "Lee", kind: "refund", amountCents: 2500, charge, reason: "<b>dup</b>", paymentsUrl: "u" });
+    assert.match(refund.subject, /Refund of \$25\.00/);
+    assert.match(refund.html, /goes back to the card or bank account/);
+    assert.match(refund.html, /&lt;b&gt;dup&lt;\/b&gt;/);
+    const credit = t.chargeAdjustedEmail({ name: "Lee", kind: "credit", amountCents: 2500, charge, paymentsUrl: "u" });
+    assert.match(credit.subject, /Credit of \$25\.00/);
+    assert.match(credit.html, /next monthly invoice/);
+  });
+});

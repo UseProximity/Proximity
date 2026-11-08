@@ -165,6 +165,27 @@ export function finalizedFields(invoice, now = new Date()) {
 
 const idOf = (v) => (v && typeof v === "object" ? v.id : v) ?? null;
 
+// The PaymentIntent that paid an invoice retrieved with `expand: ["payments"]`, or null.
+export function paidPaymentIntentId(invoice) {
+  const paid = invoice?.payments?.data?.find((p) => p.status === "paid" && p.payment?.payment_intent);
+  return idOf(paid?.payment?.payment_intent);
+}
+
+/*
+ * What a paid Stripe invoice actually took, for the receipt: the amount charged
+ * (an earlier credit on the customer's balance comes off first), the credit
+ * used, and when. A credit can cover an invoice in full, so `paidCents` may be 0.
+ */
+export function paidAmounts(invoice, fallbackTotalCents) {
+  const credit = Math.max(0, (invoice?.ending_balance ?? 0) - (invoice?.starting_balance ?? 0));
+  const paidAtSeconds = invoice?.status_transitions?.paid_at;
+  return {
+    paidCents: Number.isInteger(invoice?.amount_paid) ? invoice.amount_paid : fallbackTotalCents,
+    creditCents: credit,
+    paidAt: paidAtSeconds ? new Date(paidAtSeconds * 1000) : new Date(),
+  };
+}
+
 /*
  * Whether a payment on this invoice is already done or under way, checked after
  * Stripe refused a pay call. Stripe refuses to pay an invoice that is already
@@ -236,9 +257,10 @@ export function paymentFailureMessage(err) {
  * Idempotent: an invoice already Failed is left alone and nobody is emailed
  * again, so the synchronous failure in the billing run and the later
  * invoice.payment_failed webhook can both call this for the same failure.
+ * `tell` is who hears about it: "both" (default), "team" or "none".
  * Returns true when this call is the one that recorded it.
  */
-export async function recordPaymentFailure(db, { invoiceId, message, notify, now = new Date() }) {
+export async function recordPaymentFailure(db, { invoiceId, message, notify, now = new Date(), tell = "both" }) {
   const { data, error } = await db
     .from("billing_invoices")
     .update({ status: "failed", failed_at: now.toISOString(), last_failure_message: String(message ?? "").slice(0, 500) })
@@ -250,9 +272,9 @@ export async function recordPaymentFailure(db, { invoiceId, message, notify, now
   if (error) throw error;
   if (!data) return false;
 
-  if (notify?.paymentFailed) {
+  if (notify?.paymentFailed && tell !== "none") {
     const { data: landlord } = await db.from("users").select("id, name, email").eq("id", data.landlord_id).maybeSingle();
-    await notify.paymentFailed({ invoice: data, landlord, message });
+    await notify.paymentFailed({ invoice: data, landlord, message, emailLandlord: tell === "both" });
   }
   return true;
 }

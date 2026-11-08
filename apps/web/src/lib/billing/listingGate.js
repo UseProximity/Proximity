@@ -61,8 +61,8 @@ const PARTS = {
   agreement: "sign the marketing agreement",
 };
 
-// What to tell a landlord who is blocked. Plain words, and where to fix it.
-export function gateMessage(missing, uncovered = []) {
+// What has to be done, as one phrase: "pay your overdue invoice and add an active payment method".
+function todoList(missing, uncovered) {
   const named = uncovered.filter((u) => u.listingId).map((u) => u.address);
   const parts = missing
     .map((m) =>
@@ -73,8 +73,17 @@ export function gateMessage(missing, uncovered = []) {
         : PARTS[m]
     )
     .filter(Boolean);
-  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
-  return `Before you can publish a listing you need to ${list}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+}
+
+// What to tell a landlord who is blocked. Plain words, and where to fix it.
+export function gateMessage(missing, uncovered = []) {
+  return `Before you can publish a listing you need to ${todoList(missing, uncovered)}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
+}
+
+// What to tell a landlord whose publish was kept as a draft instead (code billing_needed).
+export function draftedMessage(missing, uncovered = []) {
+  return `Saved as a draft. To publish it, ${todoList(missing, uncovered)} under Billing.`;
 }
 
 // The body a route returns when the gate says no. `uncovered` lets the page open
@@ -85,6 +94,7 @@ export function gateResponseBody(gate) {
     code: "billing_setup_required",
     missing: gate.missing,
     uncovered: gate.uncovered ?? [],
+    drafted: draftedMessage(gate.missing, gate.uncovered ?? []),
   };
 }
 
