@@ -8,7 +8,7 @@ import { handlers } from "./webhookHandlers.js";
 import { paymentMethodHandlers } from "./paymentMethodHandlers.js";
 import { invoiceHandlers } from "./invoiceHandlers.js";
 import { getStripe } from "./stripe.js";
-import { STRIPE_WEBHOOK_EVENTS } from "./stripeEvents.mjs";
+import { STRIPE_EVENT_ALIASES, STRIPE_WEBHOOK_EVENTS } from "./stripeEvents.mjs";
 
 // The few supabase-js calls webhookEvents makes, over an in-memory table.
 function fakeDb() {
@@ -142,7 +142,7 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
 
   it("covers every event a handler is written for, so none is silently never delivered", () => {
     for (const type of [...Object.keys(paymentMethodHandlers), ...Object.keys(invoiceHandlers)]) {
-      assert.ok(STRIPE_WEBHOOK_EVENTS.includes(type), `${type} has a handler but is not subscribed`);
+      assert.ok(STRIPE_WEBHOOK_EVENTS.includes(STRIPE_EVENT_ALIASES[type] ?? type), `${type} has a handler but is not subscribed`);
     }
   });
 });

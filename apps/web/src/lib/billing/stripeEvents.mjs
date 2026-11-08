@@ -6,6 +6,17 @@
  *
  * A plain .mjs so the setup script can import it without the Next.js `@/` alias.
  */
+/*
+ * Event types Stripe delivers under a different name from the one the endpoint
+ * is subscribed with: delivered type -> subscribed name. The card updater is
+ * subscribed as payment_method.card_automatically_updated (what the endpoint
+ * stores), but Stripe's event reference documents the delivered type as
+ * payment_method.automatically_updated, so both are handled.
+ */
+export const STRIPE_EVENT_ALIASES = {
+  "payment_method.automatically_updated": "payment_method.card_automatically_updated",
+};
+
 export const STRIPE_WEBHOOK_EVENTS = [
   // Payment method setup (Checkout in setup mode, bank verification)
   "checkout.session.completed",
