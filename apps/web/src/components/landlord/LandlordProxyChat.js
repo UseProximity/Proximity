@@ -31,6 +31,7 @@ import { Send, Sparkles, CalendarDays, X, MessageCircleQuestion, ChevronDown, Ch
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import { announceLandlordChange, onLandlordChange } from "@/components/landlord/landlordSync";
 import { chicagoToUtc } from "@/lib/agents/tourTime";
+import { openCoverageDialog } from "@/components/listings/CoverageSignDialog";
 
 function ProxyAvatar({ show = true }) {
   return (
@@ -304,6 +305,38 @@ function Proposal({ item, busy, onDecide }) {
   );
 }
 
+/*
+ * A change the listing gate blocked (putting a withdrawn unit back): the fix in
+ * one click. A unit missing from the agreement opens the addendum right here, and
+ * once signed the change is made; anything else (payment method, overdue
+ * invoice) is fixed on Billing (review of 2026-11-07).
+ */
+function BlockedActions({ item, busy, onRetry }) {
+  const agreement = item.blocked.filter((b) => b.kind === "agreement" && b.uncovered?.length);
+  const billing = item.blocked.some((b) => b.kind !== "agreement");
+  const units = [...new Set(agreement.map((b) => b.unitName))];
+  const uncovered = agreement.flatMap((b) => b.uncovered);
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {agreement.length > 0 && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => openCoverageDialog({ uncovered, onSigned: () => onRetry(item.id) })}
+          className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          Add {units.length === 1 ? units[0] : "these units"} to my agreement
+        </button>
+      )}
+      {billing && (
+        <Link href="/dashboard/landlord?tab=billing" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">
+          Go to Billing
+        </Link>
+      )}
+    </div>
+  );
+}
+
 /* ---- the chat ----------------------------------------------------------- */
 
 const HOLD_MS = 5000;
@@ -491,6 +524,16 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  // After the fix (an addendum signed): the agent makes the blocked change.
+  const retryBlocked = async (messageId) => {
+    setWorking(true);
+    try {
+      await post({ action: "retryBlocked", messageId });
+      await load();
+      onChanged?.();
+    } catch (err) { toast.error(err.message); } finally { setWorking(false); }
+  };
+
   const decide = async (messageId, confirm) => {
     setWorking(true);
     try {
@@ -574,7 +617,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
             <div key={`a${i.id}`} className={gap}>
               {i.sender === "landlord"
                 ? <MyBubble>{i.body}</MyBubble>
-                : <ProxyBubble first={first} footer={i.proposal ? <Proposal item={i} busy={working || readOnly} onDecide={decide} /> : null}>{i.body}</ProxyBubble>}
+                : <ProxyBubble first={first} footer={i.proposal ? <Proposal item={i} busy={working || readOnly} onDecide={decide} /> : i.blocked && !readOnly ? <BlockedActions item={i} busy={working} onRetry={retryBlocked} /> : null}>{i.body}</ProxyBubble>}
             </div>
           );
         })}

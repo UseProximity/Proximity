@@ -20,6 +20,7 @@ import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed } from "@/lib/listings/unitNames";
 import { setFact } from "./store";
+import { checkListingGate, gateResponseBody, isLeaseHeldForBilling, HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 import { money, shortDate } from "./sections";
 
 export const LEASE_FIELDS = {
@@ -93,6 +94,30 @@ export async function recentlyClaimed(userId, listingId) {
 }
 
 /*
+ * Why this withdrawn lease cannot go back on the market, in words the agent can
+ * say, with what fixes it: { error, blocked: { kind, uncovered, unitName, gate } }.
+ * kind "agreement": the unit is not on the signed agreement (an addendum fixes it,
+ * signed in place); "billing": a payment method or an overdue invoice (Billing).
+ * Null when it may go live.
+ */
+async function relistBlocked({ lease, listingId }) {
+  const unitName = lease.listing_units?.name || "this unit";
+  if (await isLeaseHeldForBilling(supabase, lease.id)) {
+    return { error: `I can't put ${unitName} back on the market yet. ${HELD_FOR_BILLING_MESSAGE}`, blocked: { kind: "billing", unitName } };
+  }
+  const gate = await checkListingGate(supabase, lease.owner_id, { listingIds: [listingId], unitIds: lease.unit_id ? [lease.unit_id] : [] });
+  if (gate.allowed) return null;
+  const body = gateResponseBody(gate);
+  const agreementOnly = gate.missing.length === 1 && gate.missing[0] === "agreement" && (gate.uncovered ?? []).length > 0;
+  return {
+    error: agreementOnly
+      ? `I can't put ${unitName} back on the market yet: it isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
+      : `I can't put ${unitName} back on the market yet. ${body.error}`,
+    blocked: { kind: agreementOnly ? "agreement" : "billing", unitName, gate: body },
+  };
+}
+
+/*
  * Apply one change to a displayed field. change = { target: "lease" |
  * "unit" | "property", id, field, value }. Returns { ok, old, new, label }
  * or { error }.
@@ -110,8 +135,15 @@ export async function applyCoreChange({ listingId, userId, isAdmin = false, chan
       const check = await canManageLease(userId, id);
       if (!check?.ok) return { error: "You can only change your own leases." };
     }
-    const { data: lease } = await supabase.from("unit_leases").select(`id, ${spec.col}, listing_units!unit_id(listing_id, name)`).eq("id", id).is("deleted_at", null).maybeSingle();
+    const { data: lease } = await supabase.from("unit_leases").select(`id, ${spec.col === "unavailable" ? "" : "unavailable, "}${spec.col}, is_active, owner_id, unit_id, listing_units!unit_id(listing_id, name)`).eq("id", id).is("deleted_at", null).maybeSingle();
     if (!lease || lease.listing_units?.listing_id !== listingId) return { error: "That lease is not on this listing." };
+    // Putting a withdrawn offering back on the market is publishing: the same gate
+    // as the dashboard (payment method, agreement, overdue invoice), checked for the
+    // lease's landlord, even when the team does it (review of 2026-11-07).
+    if (field === "unavailable" && value === false && !(lease.is_active !== false && !lease.unavailable)) {
+      const blocked = await relistBlocked({ lease, listingId });
+      if (blocked) return blocked;
+    }
     const old = lease[spec.col];
     const patch = { [spec.col]: value };
     if (field === "unavailable") patch.is_active = !value;
