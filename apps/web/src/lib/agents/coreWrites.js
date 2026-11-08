@@ -111,7 +111,7 @@ async function relistBlocked({ lease, listingId }) {
   const agreementOnly = gate.missing.length === 1 && gate.missing[0] === "agreement" && (gate.uncovered ?? []).length > 0;
   return {
     error: agreementOnly
-      ? `I can't put ${unitName} back on the market yet: it isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
+      ? `I can't put ${unitName} back on the market yet: ${gate.uncovered[0].address} isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
       : `I can't put ${unitName} back on the market yet. ${body.error}`,
     blocked: { kind: agreementOnly ? "agreement" : "billing", unitName, gate: body },
   };

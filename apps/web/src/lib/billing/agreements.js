@@ -378,13 +378,13 @@ function exhibitSelections(list) {
 // What one Exhibit A entry covers, as the document says it: "Whole building" or "Units: 1A, 1B".
 // A unit renamed since it was signed for shows its old name too (Wyatt, 2026-11-06).
 // Named units that no longer exist say so: never "Whole building" (review of 2026-11-07).
+// Named units also cover any unit the landlord lists there later (Wyatt, 2026-11-07).
 const formerly = (e) => (e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : "");
+export const LATER_UNITS = "and any unit at this address the landlord later lists through Proximity.";
 export const coverageLine = (e) =>
   e.wholeBuilding !== false
     ? "Whole building"
-    : e.units?.length
-      ? `Units: ${e.units.join(", ")}${formerly(e)}`
-      : `Units: none remaining${formerly(e)}`;
+    : `Units: ${e.units?.length ? e.units.join(", ") : "none remaining"}${formerly(e)}, ${LATER_UNITS}`;
 
 /*
  * The covered properties as the "Exhibit A" box shows them (Wyatt, 2026-11-07):

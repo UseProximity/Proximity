@@ -250,20 +250,23 @@ export function coveredMap(rows, { master, masterValid }) {
   return out;
 }
 
-// Whether a property is covered: the whole building, or every unit with the landlord's leases.
-// `extra` are more unit names that must be covered (a lease going back on the market).
-export function coversProperty(p, row, extra = []) {
-  if (!row) return false;
-  if (row.whole_building !== false) return true;
-  return [...(p?.leaseUnits ?? []), ...extra].every((u) => (row.units ?? []).includes(u));
+/*
+ * Whether a property is covered. An address on Exhibit A covers the whole
+ * building, or its named units "and any unit at this address the landlord later
+ * lists through Proximity" (Wyatt, 2026-11-07, option A): so once an address is
+ * on the agreement, every unit the landlord lists there is covered, and only a
+ * new address needs an addendum. `p` and `extra` (units going on the market) are
+ * kept for the callers; they no longer change the answer.
+ */
+export function coversProperty(p, row, extra = []) { // eslint-disable-line no-unused-vars
+  return !!row;
 }
 
-// The units with the landlord's leases a covering row does not name.
+// The units with the landlord's leases a covering row does not cover: none once
+// the address is covered (see coversProperty), else all of them.
 export function missingUnits(p, row, extra = []) {
-  const need = [...new Set([...(p?.leaseUnits ?? []), ...extra])];
-  if (!row) return need;
-  if (row.whole_building !== false) return [];
-  return need.filter((u) => !(row.units ?? []).includes(u));
+  if (row) return [];
+  return [...new Set([...(p?.leaseUnits ?? []), ...extra])];
 }
 
 /*

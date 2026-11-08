@@ -114,9 +114,12 @@ export async function buildExhibitPdf({ kind = "master", landlordName, entries =
       if (y - 30 < CONTENT_BOTTOM) newPage();
       const isNew = added.has(e.listingId);
       text(`${i + 1}. ${e.address}${isNew ? "  (added by this amendment)" : ""}`, { f: isNew ? bold : font });
+      // Same words as coverageLine (agreements.js), which imports this file.
       const former = e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : "";
-      if (e.units?.length) text(`Units: ${e.units.join(", ")}${former}`, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
-      else if (e.wholeBuilding === false) text(`Units: none remaining${former}`, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
+      const later = "and any unit at this address the landlord later lists through Proximity.";
+      if (e.units?.length || e.wholeBuilding === false) {
+        text(`Units: ${e.units?.length ? e.units.join(", ") : "none remaining"}${former}, ${later}`, { size: 9.5, x: MARGIN + 16, color: rgb(0.3, 0.3, 0.3) });
+      }
       space(4);
     });
   };

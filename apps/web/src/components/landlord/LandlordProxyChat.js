@@ -314,8 +314,9 @@ function Proposal({ item, busy, onDecide }) {
 function BlockedActions({ item, busy, onRetry }) {
   const agreement = item.blocked.filter((b) => b.kind === "agreement" && b.uncovered?.length);
   const billing = item.blocked.some((b) => b.kind !== "agreement");
-  const units = [...new Set(agreement.map((b) => b.unitName))];
   const uncovered = agreement.flatMap((b) => b.uncovered);
+  // An address on the agreement covers every unit listed there (option A), so the fix names the address.
+  const places = [...new Set(uncovered.map((u) => u.address).filter(Boolean))];
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {agreement.length > 0 && (
@@ -325,7 +326,7 @@ function BlockedActions({ item, busy, onRetry }) {
           onClick={() => openCoverageDialog({ uncovered, onSigned: () => onRetry(item.id) })}
           className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
-          Add {units.length === 1 ? units[0] : "these units"} to my agreement
+          Add {places.length === 1 ? places[0] : "these addresses"} to my agreement
         </button>
       )}
       {billing && (

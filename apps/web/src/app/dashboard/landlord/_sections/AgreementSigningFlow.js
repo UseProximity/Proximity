@@ -222,6 +222,8 @@ function PropertyChoice({ p, choice, onChange }) {
             <p className="text-xs text-gray-500">Covers every unit in the building, including ones you add later.</p>
           ) : (
             <div className="space-y-2">
+              {/* Exhibit A: "Units: ..., and any unit at this address the landlord later lists through Proximity." (Wyatt, 2026-11-07) */}
+              <p className="text-xs text-gray-500">Also covers any unit you list at this address later, so adding one never needs another addendum.</p>
               {p.units.length ? (
                 // Side by side, wrapping, so a property with many units stays short.
                 <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
