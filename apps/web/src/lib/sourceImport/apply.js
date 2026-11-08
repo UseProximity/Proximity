@@ -261,12 +261,14 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   const utilities = mode === "import" ? p.utilities : [];
   const have = new Set((state.listing_custom_amenities ?? []).map((a) => a.label.toLowerCase()));
   const customAmenities = mode === "import" ? p.customAmenities.filter((a) => !have.has(a.toLowerCase())) : [];
-  const haveConcessions = new Set((state.listing_concessions ?? []).filter((c) => c.active).map((c) => norm(c.description).slice(0, 40)));
-  const concessions = p.concessions.filter((c) => !haveConcessions.has(norm(c).slice(0, 40)));
+  // A special reworded between reads ("Two Months FREE!" one day, "Receive
+  // 2 months free" the next) is the same special, not a new one and a gone one.
+  const activeConcessions = (state.listing_concessions ?? []).filter((c) => c.active);
+  const concessions = p.concessions.filter((c) => !activeConcessions.some((h) => sameSpecial(h.description, c)));
   const staleConcessions =
     mode === "sync"
-      ? (state.listing_concessions ?? [])
-          .filter((c) => c.active && c.last_verified_source === "source-sync" && !p.concessions.some((n) => norm(n).slice(0, 40) === norm(c.description).slice(0, 40)))
+      ? activeConcessions
+          .filter((c) => c.last_verified_source === "source-sync" && !p.concessions.some((n) => sameSpecial(n, c.description)))
           .map((c) => c.id)
       : [];
   if (Object.keys(patch).length || amenities.length || utilities.length || customAmenities.length || concessions.length || staleConcessions.length) {
@@ -417,7 +419,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         lp.lease_term_months = o.leaseTermMonths;
         diff.leaseTermMonths = { old: l.lease_term_months ?? [], new: o.leaseTermMonths };
       }
-      if ((o.availableFrom ?? null) !== (l.available_from ?? null)) {
+      // A date that has arrived means available now: a site that says
+      // "today" one day and "now" the next has not changed anything.
+      if (moveInKey(o.availableFrom) !== moveInKey(l.available_from)) {
         lp.available_from = o.availableFrom;
         diff.availableFrom = { old: l.available_from ?? null, new: o.availableFrom };
       }
@@ -502,6 +506,32 @@ async function insertImages({ state, userId, unitId, urls, slug }) {
  * Available now. 6 Weeks Free! Sign by 10/31...". The editor caps this at
  * 300 characters.
  */
+/*
+ * Two wordings of one special: the same opening, or the same numbers (months
+ * free, dollar amounts) with most of the same words.
+ */
+const SPECIAL_STOP = new Set(["when", "with", "your", "this", "that", "from", "receive", "apply", "some", "please", "more", "information", "contact", "office", "leasing", "lease", "free", "month", "months"]);
+export function sameSpecial(a, b) {
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return false;
+  if (na.slice(0, 40) === nb.slice(0, 40)) return true;
+  const nums = (t) => new Set((t.match(/\d[\d,]*/g) ?? []).map((x) => x.replace(/,/g, "")));
+  const words = (t) => new Set(t.split(/[^a-z]+/).filter((w) => w.length >= 4 && !SPECIAL_STOP.has(w)));
+  const jac = (x, y) => { const u = new Set([...x, ...y]); if (!u.size) return 0; let i = 0; for (const v of x) if (y.has(v)) i++; return i / u.size; };
+  const la = String(a).toLowerCase(), lb = String(b).toLowerCase();
+  const xa = nums(la), xb = nums(lb);
+  const sameNums = xa.size > 0 && xa.size === xb.size && [...xa].every((v) => xb.has(v));
+  const overlap = jac(words(la), words(lb));
+  if (xa.size || xb.size) return sameNums && (overlap >= 0.3 || (/free/.test(la) && /free/.test(lb)));
+  return overlap >= 0.7;
+}
+
+/* A move-in date for comparing: null when it is today, past or unknown. */
+export function moveInKey(date, today = new Date().toISOString().slice(0, 10)) {
+  const d = date ? String(date).slice(0, 10) : null;
+  return d && d > today ? d : null;
+}
+
 export function leaseBlurb(offer) {
   const parts = [apartmentsLabel(offer.apartments), offer.availableNow && !offer.availableFrom ? "Available now" : null, offer.special].filter(Boolean);
   if (!parts.length) return null;
@@ -671,13 +701,15 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     // website is a new change. Rejections from a bulk clear-out do not count.
     const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
     const [{ data: open }, { data: rejected }] = await Promise.all([
-      supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open"),
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "open"),
       supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "rejected").gte("verdict_at", since).limit(2000),
     ]);
-    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
+    // The lease is part of the key: two leases of one floor plan given the
+    // same update are two changes, not one (the second used to be dropped).
+    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.detail?.leaseId ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
     const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy)].map(keyOf));
     fresh = changes.filter((c) => {
-      const key = `${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
+      const key = `${c.kind}|${c.unitKey ?? ""}|${c.leaseId ?? c.detail?.leaseId ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
       if (seen.has(key)) return false;
       // ...and the same change twice in one read is one event too.
       seen.add(key);
