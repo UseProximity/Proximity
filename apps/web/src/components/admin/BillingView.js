@@ -138,7 +138,9 @@ export default function BillingView({ search, dbTarget = null }) {
     if (!window.confirm("Put this landlord's withdrawn leases back on the market? Only do this once the invoice is settled.")) return;
     return act(async () => {
       const r = await post(`/api/admin/billing/invoices/${invoice.id}/restore-leases`);
-      setNotice(`Restored ${r.restored} of ${r.total} lease(s).`);
+      setNotice(
+        `Restored ${r.restored} of ${r.total} lease(s).${r.stillHeld ? ` ${r.stillHeld} stay withdrawn: another overdue invoice of this landlord is still unpaid.` : ""}`
+      );
     }, null);
   };
 

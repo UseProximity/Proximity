@@ -222,6 +222,8 @@ function PropertyChoice({ p, choice, onChange }) {
             <p className="text-xs text-gray-500">Covers every unit in the building, including ones you add later.</p>
           ) : (
             <div className="space-y-2">
+              {/* Exhibit A: "Units: ..., and any unit at this address the landlord later lists through Proximity." (Wyatt, 2026-11-07) */}
+              <p className="text-xs text-gray-500">Also covers any unit you list at this address later, so adding one never needs another addendum.</p>
               {p.units.length ? (
                 // Side by side, wrapping, so a property with many units stays short.
                 <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -269,7 +271,8 @@ function PropertyChoice({ p, choice, onChange }) {
  *
  * Then Documenso's signing page opens with everything filled but the signature
  * and initials. `listingIds` are the properties being published (publish dialog).
- * onFinished(result): "signed" | "pending" (signed, still saving) | "closed".
+ * onFinished(result): "signed" | "pending" (signed, still saving) | "closed" |
+ * "nothing" (nothing needs signing: never reported as signed).
  */
 export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, onFinished }) {
   const signer = useSignerDetails();
@@ -299,7 +302,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}`)
       .then((r) => {
         if (!live) return;
-        if (r.kind === "none") return onFinished("signed");
+        if (r.kind === "none") return onFinished("nothing");
         setPreview(r);
         setChoices(Object.fromEntries(r.properties.map((p) => [p.listingId, p.choice])));
         if (r.kind === "amendment" && r.signingAs) {

@@ -240,8 +240,8 @@ export function enrollmentEmail({ name, deadline, includeAgreement = true, payme
       <p>Proximity now collects fees in the app instead of by external invoice. Please ${ask}${
         deadline ? ` by ${e(deadline)}` : ""
       }. A bank account (ACH) is the recommended option.</p>
-      ${button(paymentsUrl, "Set up payments")}
-      <p>Charges are reviewed before they are collected, and you can approve or contest each one from your payments page.</p>
+      ${button(paymentsUrl, "Set up billing")}
+      <p>Charges are reviewed before they are collected, and you can approve or contest each one from the Billing tab of your dashboard.</p>
     `),
   };
 }
@@ -394,6 +394,25 @@ export function invoiceIssuedEmail({ name, periodLabel, lines = [], totalCents, 
 }
 
 // Autopay was switched off for a reason the landlord did not choose themselves.
+// Autopay switched to another method: open invoices will be charged on it, on these dates.
+export function autopayMovedEmail({ name, methodDescription, invoices = [], paymentsUrl }) {
+  const items = invoices
+    .map((i) => `<li>${e(formatCents(i.totalCents))} on ${e(longDate(i.scheduledFor))}</li>`)
+    .join("");
+  return {
+    subject: "Autopay will charge your new payment method",
+    html: wrap(`
+      ${hello(name)}
+      <p>You switched autopay to ${e(methodDescription)}. ${
+        invoices.length === 1 ? "Your open invoice" : "Your open invoices"
+      } will now be charged to it:</p>
+      <ul>${items}</ul>
+      <p>To pay another way first, or to turn autopay off, open your Billing page before then.</p>
+      ${button(paymentsUrl, "View invoices")}
+    `),
+  };
+}
+
 export function autopayOffEmail({ name, reason, methodDescription = null, paymentsUrl }) {
   return {
     subject: "Autopay is off for your Proximity invoices",

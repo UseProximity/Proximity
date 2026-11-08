@@ -146,7 +146,7 @@ export async function autopayState(db, userId, now = new Date()) {
  * true from their ticked box, and the words stored are built here, never taken
  * from the browser.
  */
-export async function enableAutopay(db, { userId, paymentMethodId, authorized, userAgent = null, now = new Date() }) {
+export async function enableAutopay(db, { userId, paymentMethodId, authorized, userAgent = null, notify = null, now = new Date() }) {
   if (authorized !== true) {
     throw new BillingError("authorization_required", "Tick the box to authorise autopay.");
   }
@@ -178,7 +178,50 @@ export async function enableAutopay(db, { userId, paymentMethodId, authorized, u
     if (error.code === UNIQUE_VIOLATION) throw new BillingError("status_changed", "Autopay was just changed. Refresh and try again.", 409);
     throw error;
   }
-  return { enabled: true };
+  const moved = current ? await moveScheduledInvoices(db, { userId, method, notify, now }) : 0;
+  return { enabled: true, moved };
+}
+
+/*
+ * The landlord switched autopay to another method: invoices still waiting on
+ * autopay move to it. The invoice email named the old method, so each gets a
+ * fresh notice: charged on the new method no sooner than AUTOPAY_BUSINESS_DAYS
+ * after the switch (or on its old date, if that is later), and the landlord is
+ * emailed the new date. Returns how many moved.
+ */
+async function moveScheduledInvoices(db, { userId, method, notify, now }) {
+  const { data, error } = await db
+    .from("billing_invoices")
+    .select("id, total_cents, autopay_scheduled_for, autopay_payment_method_id, status")
+    .eq("landlord_id", userId)
+    .in("status", ["open", "failed"])
+    .is("autopay_attempted_at", null)
+    .not("autopay_scheduled_for", "is", null);
+  if (error) throw error;
+  const fresh = autopayDateFor(now).toISOString();
+  const moved = [];
+  for (const inv of data ?? []) {
+    if (inv.autopay_payment_method_id === method.id) continue;
+    const scheduledFor = inv.autopay_scheduled_for > fresh ? inv.autopay_scheduled_for : fresh;
+    const { data: row, error: upError } = await db
+      .from("billing_invoices")
+      .update({ autopay_payment_method_id: method.id, autopay_scheduled_for: scheduledFor })
+      .eq("id", inv.id)
+      .is("autopay_attempted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (upError) throw upError;
+    if (row) moved.push({ totalCents: inv.total_cents, scheduledFor });
+  }
+  if (moved.length && notify?.autopayMoved) {
+    try {
+      const landlord = await landlordOf(db, userId);
+      if (landlord?.email && !landlord.deleted_at) await notify.autopayMoved({ landlord, methodDescription: describeMethod(method), invoices: moved });
+    } catch (err) {
+      console.error("billing: autopay moved email failed", err?.message);
+    }
+  }
+  return moved.length;
 }
 
 async function revoke(db, auth, { reason, byId = null, now = new Date() }) {
@@ -458,17 +501,18 @@ export async function runAutopayJob(db, stripe, { now = new Date(), notify = nul
   const staleAfter = new Date(now.getTime() - STALE_CLAIM_MAX_DAYS * 86400 * 1000).toISOString();
   const { data: stale, error: staleError } = await db
     .from("billing_invoices")
-    .select("id, autopay_attempted_at")
+    .select("id, autopay_attempted_at, failed_at")
     .eq("status", "open")
     .is("autopay_skipped_reason", null)
-    .is("failed_at", null)
     .not("autopay_scheduled_for", "is", null)
     .lt("autopay_attempted_at", staleBefore)
     .gt("autopay_attempted_at", staleAfter)
     .limit(BATCH);
   if (staleError) throw staleError;
+  // A failure recorded by this claim settles it; one from before (a declined Pay now) does not.
+  const cutShort = (stale ?? []).filter((r) => !r.failed_at || r.failed_at < r.autopay_attempted_at).map(({ id, autopay_attempted_at }) => ({ id, autopay_attempted_at }));
 
-  for (const row of [...(due ?? []), ...(stale ?? [])]) {
+  for (const row of [...(due ?? []), ...cutShort]) {
     result.due += 1;
     try {
       const outcome = await chargeOne(db, stripe, row, { notify, now });
@@ -488,6 +532,10 @@ export const lazyAutopayNotify = {
   async autopayOff(input) {
     const { billingNotify } = await import("./billingNotify.js");
     return billingNotify().autopayOff(input);
+  },
+  async autopayMoved(input) {
+    const { billingNotify } = await import("./billingNotify.js");
+    return billingNotify().autopayMoved(input);
   },
 };
 

@@ -153,6 +153,30 @@ describe("enableAutopay", () => {
     assert.equal(state.choices.length, 2);
   });
 
+  it("switching method moves invoices waiting on autopay to it, with a fresh notice, and emails the new date", async () => {
+    const sent = [];
+    const db = memoryDb({
+      payment_methods: [card(), card({ id: "m2", last4: "1111", stripe_payment_method_id: "pm_2" })],
+      users: [landlord],
+      billing_invoices: [
+        { id: "soon", landlord_id: "l1", status: "open", total_cents: 5000, autopay_payment_method_id: "m1", autopay_scheduled_for: "2026-11-11T06:00:00.000Z", autopay_attempted_at: null },
+        { id: "late", landlord_id: "l1", status: "open", total_cents: 7000, autopay_payment_method_id: "m1", autopay_scheduled_for: "2026-12-30T06:00:00.000Z", autopay_attempted_at: null },
+        { id: "tried", landlord_id: "l1", status: "open", total_cents: 9000, autopay_payment_method_id: "m1", autopay_scheduled_for: "2026-11-09T06:00:00.000Z", autopay_attempted_at: "2026-11-09T14:00:00.000Z" },
+      ],
+    });
+    await enableAutopay(db, { userId: "l1", paymentMethodId: "m1", authorized: true, now });
+    const r = await enableAutopay(db, { userId: "l1", paymentMethodId: "m2", authorized: true, notify: { autopayMoved: async (x) => sent.push(x) }, now });
+    assert.equal(r.moved, 2);
+    const [soon, late, tried] = db.tables.billing_invoices;
+    assert.equal(soon.autopay_payment_method_id, "m2");
+    assert.equal(soon.autopay_scheduled_for, "2026-11-18T06:00:00.000Z", "5 business days after the switch (Nov 11 is a Fed holiday)");
+    assert.equal(late.autopay_scheduled_for, "2026-12-30T06:00:00.000Z", "a later date is kept");
+    assert.equal(tried.autopay_payment_method_id, "m1", "an attempted invoice is not moved");
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].methodDescription, /1111/);
+    assert.equal(sent[0].invoices.length, 2);
+  });
+
   it("an admin turning it off emails the landlord; the landlord turning it off does not", async () => {
     const sent = [];
     const notify = { autopayOff: async (x) => sent.push(x) };
@@ -302,6 +326,14 @@ describe("runAutopayJob", () => {
     assert.equal(r.charged, 1);
     await runAutopayJob(db, stripe, { now: new Date("2026-11-10T21:00:00Z") });
     assert.equal(stripe.calls.pay.length, 1, "paid: never retried again");
+  });
+
+  it("a failure from before the claim (a declined Pay now) does not stop a cut-short claim being retried", async () => {
+    const db = await setup({ failed_at: "2026-11-05T10:00:00.000Z" });
+    db.tables.billing_invoices[0].autopay_attempted_at = "2026-11-09T14:00:00.000Z";
+    const stripe = fakeStripe();
+    const r = await runAutopayJob(db, stripe, { now: new Date("2026-11-09T21:00:00Z") });
+    assert.equal(r.charged, 1);
   });
 
   it("an abandoned claim with a recorded failure, or one older than five days, is left alone", async () => {

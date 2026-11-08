@@ -29,6 +29,12 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
       onFinished={(result) => {
         if (result === "signed") return onSigned();
         if (result === "closed") return onClose();
+        // The agreement already covers this, yet the publish was refused: never
+        // publish again on our own (that loops). Say so and leave it a draft.
+        if (result === "nothing") {
+          toast.error("Your agreement already covers this, but we could not publish it. Try Publish again, or contact us if it keeps happening.", { duration: 10000 });
+          return onClose();
+        }
         // Signed, but Documenso has not finished sealing it yet: the webhook will
         // record it shortly, and publishing again then goes straight through.
         toast("Signed. We are still saving your copy. Publish again in a minute.", { duration: 10000 });
@@ -66,6 +72,34 @@ export function openCoverageDialog({ uncovered, onSigned }) {
       />
     );
   });
+}
+
+/*
+ * A save that came back `agreement_needed` (saved as a draft, api/addListing):
+ * open signing for it, and once signed publish what the response lists. Resolves
+ * true when it went live, false when it stays a draft.
+ */
+export async function signThenPublish(data) {
+  let live = false;
+  await openCoverageDialog({
+    uncovered: data.uncovered ?? [],
+    onSigned: async () => {
+      for (const target of data.publish ?? []) {
+        const r = await fetch("/api/landlord/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(target),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          toast.error(err.error || "Signed, but we couldn't publish it. Publish it from your drafts.");
+          return;
+        }
+      }
+      live = true;
+    },
+  });
+  return live;
 }
 
 // True when the only thing stopping a publish is that the properties are not covered yet.

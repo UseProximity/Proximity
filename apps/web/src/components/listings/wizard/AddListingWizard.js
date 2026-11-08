@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { billingNeededToast } from "@/components/listings/publishErrorToast";
+import { signThenPublish } from "@/components/listings/CoverageSignDialog";
 import {
   emptyLease,
   emptyUnit,
@@ -1816,6 +1817,8 @@ export default function AddListingWizard({
         diff: Object.keys(diff).length ? diff : null,
         // Billing (a payment method, an overdue invoice) kept it a draft: say so, with the link.
         ...draftedFor(data.code === "billing_needed" ? data : billingNeeded),
+        // Only the agreement: saved as a draft; publish() opens signing for it.
+        ...(data.code === "agreement_needed" && { asDraft: true, agreementNeeded: data }),
       };
     } catch {
       setError("Network error. Please try again.");
@@ -1832,9 +1835,16 @@ export default function AddListingWizard({
    * click event is not mistaken for one.
    */
   const publish = async (asDraft = false) => {
-    const result = await submitListing(asDraft);
+    let result = await submitListing(asDraft);
     if (!result.ok) return;
     if (result.billingNeeded) billingNeededToast(result.billingNeeded);
+    // A new property the agreement does not cover yet: sign for it now and it is
+    // published; close the popup and it stays a draft (review of 2026-11-07).
+    if (result.agreementNeeded) {
+      const live = await signThenPublish(result.agreementNeeded);
+      if (!live) toast("Saved as a draft. Sign your agreement on the Billing page to publish it.", { duration: 8000 });
+      result = { ...result, asDraft: !live };
+    }
     // Multi-property import: load the next queued property instead of leaving.
     if (importQueue.length > 0) {
       await advanceImportQueue(result.unitPayload, result.diff, result.asDraft);

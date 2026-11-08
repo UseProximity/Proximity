@@ -13,6 +13,10 @@
 import { appEnv, isProdData, outreachEnabled } from "@/lib/appEnv";
 import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured, documensoSetting } from "./documenso.js";
 import { storeSignedAgreement } from "./agreementFiles.js";
+import { MAX_DOCUMENSO_PDF_BYTES } from "./agreementPdf.js";
+
+// A signed copy from Documenso may be larger than an upload (agreementPdf.js).
+const storeFromDocumenso = (file) => storeSignedAgreement({ ...file, maxBytes: MAX_DOCUMENSO_PDF_BYTES });
 import { stripeBillingAddress } from "./billingAddress.js";
 import { resolveChangeRequestOnSigned } from "./changeRequests.js";
 import supabase from "@/lib/supabase";
@@ -32,8 +36,8 @@ export function agreementServices() {
     documenso: documensoClient(),
     signingAvailable: documensoConfigured(),
     options: {
-      storeSigned: storeSignedAgreement,
-      storeExhibit: storeSignedAgreement,
+      storeSigned: storeFromDocumenso,
+      storeExhibit: storeFromDocumenso,
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       // A negotiated version signed: the change request it answered is resolved.
       onSigned: ({ userId, versionId }) => resolveChangeRequestOnSigned(supabase, { userId, versionId }),

@@ -306,7 +306,7 @@ export async function confirmProposal({ listingId, userId, isAdmin = false, prop
   const recent = false;
   const text = [...(proposal?.facts ?? []).map((f) => f.summary), ...(proposal?.coreChanges ?? []).map((c) => String(c.value))].join("\n");
   const flags = fairHousingFlags(text);
-  const results = { applied: [], held: [], errors: [] };
+  const results = { applied: [], held: [], errors: [], blocked: [] };
   if (flags.length || recent) {
     await recordEvent({ listingId, cause: "landlord_chat", status: "proposed", newValue: proposal, actorId: userId, detail: { adminReview: true, summary: `${(proposal?.coreChanges ?? []).length + (proposal?.facts ?? []).length} proposed change(s)`, flags, recentClaim: recent } });
     results.held.push(flags.length ? `Mentions ${flags.join(", ")}: sent to the Proximity team to review.` : "Your account is new, so this goes to the Proximity team for the first two weeks.");
@@ -314,8 +314,13 @@ export async function confirmProposal({ listingId, userId, isAdmin = false, prop
   }
   for (const c of proposal?.coreChanges ?? []) {
     if (c.error) { results.errors.push(String(c.error)); continue; }
-    const r = await applyCoreChange({ listingId, userId, isAdmin, change: { target: c.target, id: c.id, field: c.field, value: c.value } });
-    if (r.error) results.errors.push(r.error); else results.applied.push(r.label);
+    const change = { target: c.target, id: c.id, field: c.field, value: c.value };
+    const r = await applyCoreChange({ listingId, userId, isAdmin, change });
+    if (r.error) {
+      results.errors.push(r.error);
+      // Blocked by the listing gate: the chat offers the fix, then tries again.
+      if (r.blocked) results.blocked.push({ ...r.blocked, change });
+    } else results.applied.push(r.label);
   }
   const owner = isAdmin || (await isPropertyOwner(userId, listingId));
   const source = (proposal?.facts ?? []).length || (proposal?.retireKeys ?? []).length
@@ -387,7 +392,9 @@ export async function decideChange({ listingId, userId, isAdmin = false, kind, e
       if (!ok) return { error: "You cannot decide this change." };
     }
     if (approve) {
-      const r = await applyEvents({ listingId, eventIds: [eventId], userId, verdictBy: userId });
+      // The team approves on the landlord's behalf: the change runs as the building's
+      // landlord (owner of any new lease or unit), the admin is only the verdict.
+      const r = await applyEvents({ listingId, eventIds: [eventId], userId: isAdmin ? null : userId, verdictBy: userId });
       // Not applied (the listing gate, or the change failed): say why.
       if (r[0] && r[0].ok === false) return { error: r[0].error ?? "Could not apply that" };
       return { ok: true, result: r[0] ?? null };

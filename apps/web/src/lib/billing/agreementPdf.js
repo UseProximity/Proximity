@@ -7,14 +7,17 @@
 import { BillingError } from "./errors.js";
 
 export const MAX_SIGNED_PDF_BYTES = 4 * 1024 * 1024;
+// A signed copy Documenso returns comes straight from Documenso to the server, not
+// through a request body, so the 4.5 MB limit does not apply (review of 2026-11-07).
+export const MAX_DOCUMENSO_PDF_BYTES = 50 * 1024 * 1024;
 
 // Every PDF starts with "%PDF-". The file's own name and declared type are not trusted.
 // `what` names the file in the messages ("signed agreement", "agreement").
-export function validateSignedPdf(bytes, what = "signed agreement") {
+export function validateSignedPdf(bytes, what = "signed agreement", maxBytes = MAX_SIGNED_PDF_BYTES) {
   const size = bytes?.length ?? 0;
   if (size === 0) throw new BillingError("empty_file", "That file is empty.");
-  if (size > MAX_SIGNED_PDF_BYTES) {
-    throw new BillingError("file_too_large", `The ${what} PDF must be 4 MB or smaller.`, 413);
+  if (size > maxBytes) {
+    throw new BillingError("file_too_large", `The ${what} PDF must be ${Math.round(maxBytes / (1024 * 1024))} MB or smaller.`, 413);
   }
   const magic = String.fromCharCode(...Array.from(bytes.subarray(0, 5)));
   if (magic !== "%PDF-") throw new BillingError("not_a_pdf", `The ${what} must be a PDF file.`, 415);
@@ -81,4 +84,16 @@ export async function pageCount(bytes) {
   } catch {
     return null;
   }
+}
+
+// Where a PDF attached to an admin mass email is kept (lib/massEmail/templates.js).
+export function massEmailFileKey(randomId) {
+  if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
+  return `mass-email/${randomId}.pdf`;
+}
+
+// Where the uploaded MREC Broker Disclosure Form is kept.
+export function mrecFormKey(randomId) {
+  if (!UUID.test(randomId)) throw new BillingError("bad_key", "Could not store that file.", 500);
+  return `billing/mrec-form/${randomId}.pdf`;
 }

@@ -22,7 +22,7 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  */
 
 export async function GET(req, { params }) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   const supabase = billingDb.db;
@@ -36,7 +36,7 @@ export async function GET(req, { params }) {
 }
 
 export async function POST(req, { params }) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   if (!billingDb.writable) return readOnlyResponse(billingDb);

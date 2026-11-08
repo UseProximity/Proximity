@@ -44,7 +44,9 @@ export const paymentMethodHandlers = {
   },
 
   "payment_method.updated": refresh,
+  // The card updater: handled under both names (see STRIPE_EVENT_ALIASES).
   "payment_method.card_automatically_updated": refresh,
+  "payment_method.automatically_updated": refresh,
 
   "payment_method.detached": async (event, { db }) => {
     const result = await removeByStripeId(db, getStripe(), event.data.object.id);

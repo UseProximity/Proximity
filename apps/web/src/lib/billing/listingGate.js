@@ -32,14 +32,14 @@
  * straight back on the market. That clears as soon as the invoice is paid.
  *
  * Separately, a lease the overdue job withdrew cannot be put back by anyone but an
- * admin: the database refuses it (202611010002_billing_holds.sql), and
+ * admin: the database refuses it (202611010003_billing_holds.sql), and
  * isLeaseHeldForBilling lets a route say so in plain words first.
  *
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { getBillingSetting } from "./settings.js";
 import { agreementState, coverageFor } from "./agreements.js";
-import { resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
+import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
@@ -111,8 +111,10 @@ async function userOf(db, userId) {
 
 /*
  * Whether the landlord has an invoice the overdue job actioned that is still
- * unpaid. Reads as no until the billing tables exist, so listing keeps working in
- * an environment that does not have them yet.
+ * unpaid. A bank payment still settling (processing) counts as unpaid until it
+ * clears: it can still fail, and publishing reopened in the meantime stayed open
+ * when it did (review of 2026-11-07). Reads as no until the billing tables exist,
+ * so listing keeps working in an environment that does not have them yet.
  */
 export async function hasOverdueInvoice(db, userId) {
   const { data, error } = await db
@@ -120,7 +122,7 @@ export async function hasOverdueInvoice(db, userId) {
     .select("id")
     .eq("landlord_id", userId)
     .not("overdue_actioned_at", "is", null)
-    .in("status", ["open", "failed"])
+    .in("status", ["open", "failed", "processing"])
     .limit(1);
   if (error) {
     if (error.code === "PGRST205" || error.code === "42P01") return false;
@@ -148,10 +150,13 @@ export async function getGateSettings(db) {
  *   unitIds      units whose lease is going on the market now (a withdrawn one put
  *                back, or a new one): each must be covered too, since a unit with
  *                only withdrawn leases needs no coverage (Wyatt, 2026-11-07)
+ *   newUnits     [{ listingId, name }] units about to be added to a property (add
+ *                listing onto an existing one): on a property covered by named
+ *                units, each needs an addendum (review of 2026-11-07)
  *   newProperty  a property that does not exist yet (add listing): never covered
  *   neither      the dashboard's question: does the landlord's master count?
  */
-export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newProperty = false, now = new Date() } = {}) {
+export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newUnits = [], newProperty = false, now = new Date() } = {}) {
   const { role, sandbox } = await userOf(db, userId);
   if (role !== "landlord" || sandbox) {
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
@@ -187,7 +192,21 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
           if (label) extraUnits.set(u.listing_id, [...(extraUnits.get(u.listing_id) ?? []), label]);
         }
       }
+      for (const u of newUnits ?? []) {
+        const label = String(u?.name ?? "").trim();
+        if (!u?.listingId || !label) continue;
+        extraUnits ??= new Map();
+        extraUnits.set(u.listingId, [...new Set([...(extraUnits.get(u.listingId) ?? []), label])]);
+      }
       uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
+      // A building they have no stake in yet (an offering in someone else's): its address.
+      const unnamed = uncovered.filter((u) => u.listingId && u.address === "New property").map((u) => u.listingId);
+      if (unnamed.length) {
+        const { data: listings, error: listingError } = await db.from("listings").select("id, address, city, state, zipcode").in("id", unnamed);
+        if (listingError) throw listingError;
+        const byId = new Map((listings ?? []).map((l) => [l.id, displayAddress(l)]));
+        uncovered = uncovered.map((u) => (byId.has(u.listingId) ? { ...u, address: byId.get(u.listingId) } : u));
+      }
       if (newProperty) uncovered.push({ listingId: null, address: "New property" });
       agreementSigned = uncovered.length === 0;
     } else {

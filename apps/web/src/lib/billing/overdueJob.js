@@ -23,32 +23,74 @@ import { isInvoiceOverdue, overdueCutoff } from "./overdue.js";
 
 const BATCH = 200;
 
+const CHUNK = 200; // ids per request: a long .in() list overflows the URL
+const PAGE = 1000; // a query returns at most 1,000 rows
+
 // Leases that are on the market right now: published, active, available and not deleted.
 async function liveLeaseIds(db, landlordId) {
-  const { data, error } = await db
-    .from("unit_leases")
-    .select("id")
-    .eq("owner_id", landlordId)
-    .eq("is_active", true)
-    .eq("unavailable", false)
-    .is("deleted_at", null)
-    .not("published_at", "is", null);
-  if (error) throw error;
-  return data.map((l) => l.id);
+  const ids = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db
+      .from("unit_leases")
+      .select("id")
+      .eq("owner_id", landlordId)
+      .eq("is_active", true)
+      .eq("unavailable", false)
+      .is("deleted_at", null)
+      .not("published_at", "is", null)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    ids.push(...data.map((l) => l.id));
+    if (data.length < PAGE) return ids;
+  }
 }
 
+// Leases another overdue invoice of this landlord still holds (withdrawn, not restored).
+async function leasesHeldByOtherInvoices(db, invoiceId, landlordId) {
+  const { data: others, error } = await db
+    .from("billing_invoices")
+    .select("id")
+    .eq("landlord_id", landlordId)
+    .neq("id", invoiceId)
+    .not("overdue_actioned_at", "is", null);
+  if (error) throw error;
+  const held = new Set();
+  const ids = (others ?? []).map((o) => o.id);
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error: heldError } = await db
+      .from("billing_lease_withdrawals")
+      .select("lease_id")
+      .in("invoice_id", ids.slice(i, i + CHUNK))
+      .is("restored_at", null);
+    if (heldError) throw heldError;
+    for (const w of data ?? []) held.add(w.lease_id);
+  }
+  return held;
+}
+
+/*
+ * Withdraw the landlord's live leases for this invoice. Leases an earlier overdue
+ * invoice already took down are recorded against this one too (review of
+ * 2026-11-07): otherwise restoring the earlier invoice once paid put them back
+ * while this one was still unpaid. Returns how many were withdrawn now.
+ */
 async function withdrawLeases(db, invoiceId, landlordId) {
-  const ids = await liveLeaseIds(db, landlordId);
-  if (ids.length) {
-    // Record first: if the update then fails, the lease is merely listed as ours, never lost.
+  const live = await liveLeaseIds(db, landlordId);
+  const held = await leasesHeldByOtherInvoices(db, invoiceId, landlordId);
+  const all = [...new Set([...live, ...held])];
+  // Record first: if the update then fails, the lease is merely listed as ours, never lost.
+  for (let i = 0; i < all.length; i += CHUNK) {
     const { error: recordError } = await db
       .from("billing_lease_withdrawals")
-      .upsert(ids.map((lease_id) => ({ invoice_id: invoiceId, lease_id })), { onConflict: "invoice_id,lease_id", ignoreDuplicates: true });
+      .upsert(all.slice(i, i + CHUNK).map((lease_id) => ({ invoice_id: invoiceId, lease_id })), { onConflict: "invoice_id,lease_id", ignoreDuplicates: true });
     if (recordError) throw recordError;
-    const { error } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", ids);
+  }
+  for (let i = 0; i < live.length; i += CHUNK) {
+    const { error } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", live.slice(i, i + CHUNK));
     if (error) throw error;
   }
-  return ids.length;
+  return live.length;
 }
 
 export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) {
@@ -105,6 +147,8 @@ export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) 
  * Put back the leases the overdue job withdrew for an invoice. Only a lease still
  * in the withdrawn state is touched: one the landlord has since republished,
  * changed or deleted is left exactly as it is. Each is marked restored either way.
+ * A lease another unpaid overdue invoice also holds stays withdrawn until that
+ * one is restored too (`stillHeld`; review of 2026-11-07).
  */
 export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new Date() }) {
   const { data: rows, error } = await db
@@ -115,14 +159,27 @@ export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new
   if (error) throw error;
 
   let restored = 0;
+  let stillHeld = 0;
   for (const row of rows) {
     // Marked restored first: the database refuses to put a lease back on the market
-    // while an unrestored withdrawal points at it (202611010002_billing_holds.sql).
+    // while an unrestored withdrawal points at it (202611010003_billing_holds.sql).
     const { error: markError } = await db
       .from("billing_lease_withdrawals")
       .update({ restored_at: now.toISOString(), restored_by_id: adminId })
       .eq("id", row.id);
     if (markError) throw markError;
+    const { data: others, error: othersError } = await db
+      .from("billing_lease_withdrawals")
+      .select("id")
+      .eq("lease_id", row.lease_id)
+      .neq("invoice_id", invoiceId)
+      .is("restored_at", null)
+      .limit(1);
+    if (othersError) throw othersError;
+    if (others?.length) {
+      stillHeld += 1;
+      continue;
+    }
     const { data: lease, error: updateError } = await db
       .from("unit_leases")
       .update({ is_active: true, unavailable: false })
@@ -139,5 +196,5 @@ export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new
     }
     if (lease) restored += 1;
   }
-  return { restored, total: rows.length };
+  return { restored, total: rows.length, stillHeld };
 }

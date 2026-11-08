@@ -146,6 +146,8 @@ export async function loadLandlordProperties(db, userId) {
       // leaving it off Exhibit A) needs no coverage until one goes back on the
       // market, which the publish check covers (Wyatt, 2026-11-07).
       const leaseUnits = [...new Set(mine.filter((m) => m.active).map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
+      // Of those, the units with an offering on the site now.
+      const liveLeaseUnits = [...new Set(mine.filter((m) => m.published).map((m) => unitLabel(m.unit)).filter(Boolean))].sort(byName);
       const published = !!l.published_at;
       // Live for this landlord: the property is published and one of their own
       // offerings on it is on the market, or it is theirs with no offerings of
@@ -155,7 +157,7 @@ export async function loadLandlordProperties(db, userId) {
       // Not live for this landlord is a draft for Exhibit A, including a published
       // building where only their own offerings are unpublished (renters), which
       // otherwise fell off the document (Wyatt, 2026-11-07).
-      return { listingId: l.id, address: displayAddress(l), units, unitList, idsByLabel, labelById, leaseUnits, owner: propertyOwner, live, draft: !live };
+      return { listingId: l.id, address: displayAddress(l), units, unitList, idsByLabel, labelById, leaseUnits, liveLeaseUnits, owner: propertyOwner, live, draft: !live };
     })
     .sort(byAddress);
 }
@@ -216,7 +218,9 @@ export function refreshCoverageNames(rows, properties) {
   const byId = new Map(properties.map((p) => [p.listingId, p]));
   return rows.map((r) => {
     if (r.whole_building !== false || !Array.isArray(r.unit_ids) || !r.unit_ids.length) return r;
-    const labels = byId.get(r.listing_id)?.labelById ?? {};
+    // A building they have no offering in yet (covered ahead of a publish): nothing to rename by.
+    if (!byId.has(r.listing_id)) return r;
+    const labels = byId.get(r.listing_id).labelById ?? {};
     const current = [...new Set(r.unit_ids.map((id) => labels[id]).filter(Boolean))].sort(byName);
     const signed = Array.isArray(r.units) ? r.units : [];
     const formerNames = signed.filter((n) => !current.includes(n));
@@ -246,20 +250,23 @@ export function coveredMap(rows, { master, masterValid }) {
   return out;
 }
 
-// Whether a property is covered: the whole building, or every unit with the landlord's leases.
-// `extra` are more unit names that must be covered (a lease going back on the market).
-export function coversProperty(p, row, extra = []) {
-  if (!row) return false;
-  if (row.whole_building !== false) return true;
-  return [...(p?.leaseUnits ?? []), ...extra].every((u) => (row.units ?? []).includes(u));
+/*
+ * Whether a property is covered. An address on Exhibit A covers the whole
+ * building, or its named units "and any unit at this address the landlord later
+ * lists through Proximity" (Wyatt, 2026-11-07, option A): so once an address is
+ * on the agreement, every unit the landlord lists there is covered, and only a
+ * new address needs an addendum. `p` and `extra` (units going on the market) are
+ * kept for the callers; they no longer change the answer.
+ */
+export function coversProperty(p, row, extra = []) { // eslint-disable-line no-unused-vars
+  return !!row;
 }
 
-// The units with the landlord's leases a covering row does not name.
+// The units with the landlord's leases a covering row does not cover: none once
+// the address is covered (see coversProperty), else all of them.
 export function missingUnits(p, row, extra = []) {
-  const need = [...new Set([...(p?.leaseUnits ?? []), ...extra])];
-  if (!row) return need;
-  if (row.whole_building !== false) return [];
-  return need.filter((u) => !(row.units ?? []).includes(u));
+  if (row) return [];
+  return [...new Set([...(p?.leaseUnits ?? []), ...extra])];
 }
 
 /*
@@ -317,6 +324,56 @@ export function withRequiredUnits(properties, required) {
     if (!names.length) return p;
     return { ...p, leaseUnits: [...new Set([...(p.leaseUnits ?? []), ...names])].sort(byName), requiredUnits: names };
   });
+}
+
+/*
+ * A property being published that the landlord has no stake in yet (a leasing
+ * agent or renter adding an offering on a unit in someone else's building): it
+ * joins the plan as a draft named by the units being published, so the document
+ * covers exactly those (review of 2026-11-07). Without required units it is left
+ * out, as before. `required` is the Map listingId -> unit names.
+ */
+export async function withRequestedProperties(db, properties, requestedIds = [], required = null) {
+  const have = new Set(properties.map((p) => p.listingId));
+  const missing = [...new Set(requestedIds)].filter((id) => !have.has(id) && required?.get(id)?.length);
+  if (!missing.length) return properties;
+  const { data: listings, error } = await db.from("listings").select("id, address, city, state, zipcode, deleted_at, review_sandbox").in("id", missing);
+  if (error) throw error;
+  const added = [];
+  for (const l of listings ?? []) {
+    if (l.deleted_at || l.review_sandbox === true) continue;
+    const { data: units, error: unitError } = await db
+      .from("listing_units")
+      .select("id, listing_id, name, unit_number, unit_designator, title, deleted_at")
+      .eq("listing_id", l.id);
+    if (unitError) throw unitError;
+    const names = [...new Set(required.get(l.id))].sort(byName);
+    const idsByLabel = {};
+    const labelById = {};
+    for (const u of units ?? []) {
+      const label = unitLabel(u);
+      if (u.deleted_at || !label || !names.includes(label)) continue;
+      (idsByLabel[label] ??= []).push(u.id);
+      labelById[u.id] = label;
+    }
+    const named = names.filter((n) => idsByLabel[n]);
+    if (!named.length) continue;
+    added.push({
+      listingId: l.id,
+      address: displayAddress(l),
+      units: named,
+      unitList: named.map((label) => ({ id: idsByLabel[label][0], label })),
+      idsByLabel,
+      labelById,
+      leaseUnits: named,
+      liveLeaseUnits: [],
+      requiredUnits: named,
+      owner: false,
+      live: false,
+      draft: true,
+    });
+  }
+  return added.length ? [...properties, ...added].sort(byAddress) : properties;
 }
 
 // The ids of the units these names are on this property now.
@@ -395,13 +452,18 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
     [...new Set(ids)].flatMap((id) => {
       const p = byId.get(id);
       const c = choiceFor(p);
-      return c.include && c.dropped.length ? idsFor(p, c.dropped) : [];
+      if (!c.include || !c.dropped.length) return [];
+      // On a draft property only offerings on the site come off: a draft offering
+      // stays a draft, and the publish check asks for its unit when it is published.
+      const names = p.live ? c.dropped : c.dropped.filter((n) => (p.liveLeaseUnits ?? []).includes(n));
+      return names.length ? idsFor(p, names) : [];
     });
 
   if (!master || !masterValid) {
     // A lapsed or re-sign-required master: what it covered carries into the new one.
     for (const r of rows) if (r.status === "covered" && master && r.agreement_id === master.id && byId.has(r.listing_id) && !released.has(r.listing_id)) needed.add(r.listing_id);
-    const entries = [...needed, ...drafts]
+    // (A carried property can be a draft too: listed once.)
+    const entries = [...new Set([...needed, ...drafts])]
       .map((id) => [byId.get(id), choiceFor(byId.get(id))])
       .filter(([, c]) => c.include)
       .map(([p, c]) => entryOf(p, c))
@@ -442,6 +504,10 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
  * false, unavailable true, the same edit as the dashboard's Withdraw). Other
  * landlords' offerings on a shared building stay. Returns how many were withdrawn.
  */
+// Only offerings that were published and not withdrawn come off: a draft offering
+// stays a draft, so publishing its property later puts it live (review of 2026-11-07).
+const onTheSite = (l) => l.is_active !== false && !!l.published_at;
+
 export async function withdrawOfferings(db, userId, listingIds = []) {
   // Looked up per property, by its units: one query over all of a landlord's
   // leases stops at 1,000 rows, and a big landlord has more (2026-11-07).
@@ -453,12 +519,12 @@ export async function withdrawOfferings(db, userId, listingIds = []) {
     for (let i = 0; i < unitIds.length; i += 200) {
       const { data, error } = await db
         .from("unit_leases")
-        .select("id, is_active")
+        .select("id, is_active, published_at")
         .eq("owner_id", userId)
         .is("deleted_at", null)
         .in("unit_id", unitIds.slice(i, i + 200));
       if (error) throw error;
-      ids.push(...(data ?? []).filter((l) => l.is_active !== false).map((l) => l.id));
+      ids.push(...(data ?? []).filter(onTheSite).map((l) => l.id));
     }
   }
   for (let i = 0; i < ids.length; i += 200) {
@@ -504,6 +570,7 @@ export function uncoveredAmong(properties, coverage, listingIds, { extraUnits = 
     .map((id) => ({
       listingId: id,
       address: byId.get(id)?.address ?? "New property",
-      ...(coverage.has(id) && { missingUnits: missingUnits(byId.get(id), coverage.get(id), extra(id)) }),
+      // (Units going on the market on a property they have no stake in yet are named too.)
+      ...((coverage.has(id) || extra(id).length > 0) && { missingUnits: missingUnits(byId.get(id), coverage.get(id), extra(id)) }),
     }));
 }

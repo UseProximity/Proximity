@@ -36,7 +36,16 @@ export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximi
 export const DEFAULT_INTERVAL_DAYS = 1;
 const MAX_BACKOFF_DAYS = 14;
 
-const plusDays = (days) => new Date(Date.now() + days * 86400000).toISOString();
+/*
+ * When a monitor is next due. The daily cron runs at 09:00 UTC and each check
+ * finishes a few minutes after it, so "exactly one day later" was a few minutes
+ * past the next run: the source was skipped and only read every other day. The
+ * next check is therefore set SCHEDULE_SLACK_MS early, so a daily source is due
+ * at every daily run (Wyatt, 2026-11-07).
+ */
+export const SCHEDULE_SLACK_MS = 6 * 60 * 60 * 1000;
+export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
+const plusDays = (days) => nextCheckAt(days);
 
 /*
  * A published listing with a source URL and no monitor row gets one. The 36

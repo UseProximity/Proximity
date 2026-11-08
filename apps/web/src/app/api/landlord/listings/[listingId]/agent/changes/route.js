@@ -23,6 +23,8 @@ export async function POST(req, { params }) {
     const r = body?.revert
       ? await revertEvent({ listingId, userId: g.userId, isAdmin: g.isAdmin, eventId: body.revert })
       : await decideChange({ listingId, userId: g.userId, isAdmin: g.isAdmin, kind: body?.kind, eventId: body?.eventId, decision: body?.decision });
+    // Blocked by the listing gate: the page offers the fix (sign an addendum, or Billing).
+    if (r.error && r.blocked) return NextResponse.json({ ...(r.blocked.gate ?? {}), error: r.error, blocked: { kind: r.blocked.kind, unitName: r.blocked.unitName } }, { status: 403 });
     if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
     return NextResponse.json(r);
   } catch (err) {

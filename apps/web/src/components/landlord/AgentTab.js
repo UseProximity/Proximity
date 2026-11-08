@@ -22,6 +22,7 @@
 import ChangeCompare from "@/components/listings/ChangeCompare";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, FileText, Globe } from "lucide-react";
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
 import UnitPages from "@/components/landlord/UnitPages";
@@ -271,7 +272,14 @@ function ChangeHistory({ listingId, history, onDone }) {
   const revert = async (e) => {
     setBusy(e.id);
     try {
-      await post(`/api/landlord/listings/${listingId}/agent/changes`, { revert: e.id });
+      const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revert: e.id }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // Putting a unit back that the agreement does not cover: sign the addendum
+        // here, then it is put back; anything else links to Billing.
+        if (data.blocked) return publishErrorToast(data, data.error, { retry: () => revert(e) });
+        throw new Error(data?.error || "Something went wrong");
+      }
       toast.success("Reverted");
       onDone();
     } catch (err) { toast.error(err.message); } finally { setBusy(null); }

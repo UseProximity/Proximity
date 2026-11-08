@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequiredUnits } from "./coverage.js";
+import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
 const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
@@ -99,11 +99,17 @@ export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null
   const versionOk = !!signed && (negotiated || signatureStillValid(signed.agreement_version?.published_at ?? null, cutoff));
   const expired = false;
   const valid = !!signed && versionOk;
+  // A negotiated version made live for this landlord after they signed (their
+  // accepted change request): offered to sign, replacing the agreement they have,
+  // which keeps counting until then (review of 2026-11-07).
+  const negotiatedOffer =
+    valid && liveVersion?.landlord_id && signed.version_id !== liveVersion.id ? liveVersion : null;
   return {
     signed,
     pending,
     lastEnded,
     liveVersion,
+    negotiatedOffer,
     cutoff,
     valid,
     expired: !!signed && expired,
@@ -257,7 +263,9 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedFile: !!signed?.signed_file_key,
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
-    canSign: !valid && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
+    canSign: (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
+    // Their negotiated agreement is ready: signing it replaces the one they have.
+    negotiatedReady: state.negotiatedOffer ? { label: state.negotiatedOffer.label ?? null } : null,
     declinedAt: declined,
     covered: coveredList,
     // Live properties not fully covered: not on Exhibit A, or with units on it missing.
@@ -369,10 +377,14 @@ function exhibitSelections(list) {
 
 // What one Exhibit A entry covers, as the document says it: "Whole building" or "Units: 1A, 1B".
 // A unit renamed since it was signed for shows its old name too (Wyatt, 2026-11-06).
+// Named units that no longer exist say so: never "Whole building" (review of 2026-11-07).
+// Named units also cover any unit the landlord lists there later (Wyatt, 2026-11-07).
+const formerly = (e) => (e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : "");
+export const LATER_UNITS = "and any unit at this address the landlord later lists through Proximity.";
 export const coverageLine = (e) =>
-  e.wholeBuilding !== false || !e.units?.length
+  e.wholeBuilding !== false
     ? "Whole building"
-    : `Units: ${e.units.join(", ")}${e.formerNames?.length ? ` (formerly ${e.formerNames.join(", ")})` : ""}`;
+    : `Units: ${e.units?.length ? e.units.join(", ") : "none remaining"}${formerly(e)}, ${LATER_UNITS}`;
 
 /*
  * The covered properties as the "Exhibit A" box shows them (Wyatt, 2026-11-07):
@@ -478,16 +490,20 @@ export async function startSigning(
       const loaded = await coverageFor(db, user.id, now);
       const { state, rows } = loaded;
       // Units being published right now (a withdrawn lease put back) must be covered.
-      const properties = withRequiredUnits(loaded.properties, requiredUnits);
+      // A building they have no stake in yet, named by the units being published.
+      const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
 
       // The document in progress, if any. An amendment only stands while its master counts.
       let inProgress = null;
       // Properties an amendment to a master that no longer counts was adding: they
       // go on the new master instead of being dropped.
       let carryFromAmendment = [];
-      if (state.valid && state.pendingAmendment) inProgress = { kind: "amendment", row: state.pendingAmendment, entries: state.pendingAmendment.proposed_exhibit ?? [] };
+      // A negotiated version waiting to be signed: the next document is that new
+      // agreement, carrying everything covered now (as a re-sign does).
+      const masterValid = state.valid && !state.negotiatedOffer;
+      if (masterValid && state.pendingAmendment) inProgress = { kind: "amendment", row: state.pendingAmendment, entries: state.pendingAmendment.proposed_exhibit ?? [] };
       else if (state.pending) inProgress = { kind: "master", row: state.pending, entries: state.pending.exhibit ?? [] };
-      if (!state.valid && state.pendingAmendment) {
+      if (!masterValid && state.pendingAmendment) {
         carryFromAmendment = state.pendingAmendment.proposed_exhibit ?? [];
         await cancelInDocumenso(documenso, state.pendingAmendment, "Replaced by a new agreement");
         await endDocument(db, "amendment", state.pendingAmendment, "replaced by a new agreement", now);
@@ -497,7 +513,7 @@ export async function startSigning(
         properties,
         rows,
         master: state.signed,
-        masterValid: state.valid,
+        masterValid,
         requestedIds: requested,
         carry: [...(inProgress?.entries ?? []), ...carryFromAmendment],
         // The landlord's Exhibit A choices from the signing popup, per property.

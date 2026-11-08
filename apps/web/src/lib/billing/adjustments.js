@@ -83,7 +83,55 @@ export async function adjustPaidCharge(db, stripe, { chargeId, adminId, kind, am
   );
 }
 
+/*
+ * Corrections Stripe made that we have no record of: a refund or credit went
+ * through, then saving it failed or the request died (review of 2026-11-07).
+ * Without this the charge still showed its full amount as refundable, and a new
+ * attempt (a new request id, or after Stripe's 24-hour idempotency window) made a
+ * second refund. Each one found is recorded now, before anything is worked out.
+ */
+async function recordMissedCorrections(db, stripe, charge) {
+  const { data: known, error } = await db.from("charge_adjustments").select("stripe_refund_id").eq("charge_id", charge.id);
+  if (error) throw error;
+  const seen = new Set((known ?? []).map((a) => a.stripe_refund_id).filter(Boolean));
+  const missed = [];
+
+  const { data: invoice } = charge.invoice_id
+    ? await db.from("billing_invoices").select("stripe_invoice_id").eq("id", charge.invoice_id).maybeSingle()
+    : { data: null };
+  if (invoice?.stripe_invoice_id) {
+    const paid = await stripe.invoices.retrieve(invoice.stripe_invoice_id, { expand: ["payments"] });
+    const paymentIntent = paidPaymentIntentId(paid);
+    if (paymentIntent) {
+      for await (const r of stripe.refunds.list({ payment_intent: paymentIntent, limit: 100 })) {
+        if (r.metadata?.charge_id !== charge.id || seen.has(r.id) || ["failed", "canceled"].includes(r.status)) continue;
+        missed.push({ kind: "refund", amount_cents: r.amount, stripe_refund_id: r.id, reason: r.metadata?.reason });
+      }
+    }
+  }
+  const { data: account } = await db.from("billing_accounts").select("stripe_customer_id").eq("user_id", charge.landlord_id).maybeSingle();
+  if (account?.stripe_customer_id && stripe.customers.listBalanceTransactions) {
+    for await (const t of stripe.customers.listBalanceTransactions(account.stripe_customer_id, { limit: 100 })) {
+      if (t.metadata?.charge_id !== charge.id || seen.has(t.id) || t.amount >= 0) continue;
+      missed.push({ kind: "credit", amount_cents: -t.amount, stripe_refund_id: t.id, reason: t.description?.replace(/^Credit: /, "") });
+    }
+  }
+  for (const m of missed) {
+    const { error: insertError } = await db.from("charge_adjustments").insert({
+      charge_id: charge.id,
+      kind: m.kind,
+      amount_cents: m.amount_cents,
+      reason: (m.reason || "Recorded from Stripe: made earlier, but not saved at the time").slice(0, MAX_REASON_LENGTH),
+      stripe_refund_id: m.stripe_refund_id,
+      created_by_id: null,
+    });
+    if (insertError && insertError.code !== "23505") throw insertError;
+  }
+  return missed.length;
+}
+
 async function adjustUnderLock(db, stripe, { charge, chargeId, adminId, kind, amountCents, why, requestId }) {
+  await recordMissedCorrections(db, stripe, charge);
   // Read inside the lock, so it includes any correction that just finished.
   const already = await adjustedSoFar(db, chargeId);
   const remaining = charge.amount_cents - already;

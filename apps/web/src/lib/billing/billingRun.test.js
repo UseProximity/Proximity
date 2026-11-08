@@ -16,7 +16,8 @@ import { BILLING_RUN_ENABLED, getBillingSetting, withSettingsLock } from "./sett
 import { chargeableMethod } from "./paymentMethods.js";
 import { attentionState, runMethodAttentionJob } from "./methodAttentionJob.js";
 import { sendEnrollmentEmails } from "./enrollment.js";
-import { runBillingRun } from "./billingRun.js";
+import { followUpBillingRun, runBillingRun, RUN_UNFINISHED_KEY } from "./billingRun.js";
+import { restoreWithdrawnLeases, runOverdueJob } from "./overdueJob.js";
 
 describe("nextBillingDay", () => {
   it("is today on the billing day itself", () => {
@@ -157,9 +158,10 @@ describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
       invoices: { retrieve: async () => ({ payments: { data: [{ status: "paid", payment: { payment_intent: "pi_1" } }] } }) },
       refunds: {
         create: async (params, { idempotencyKey }) => {
-          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount });
+          if (!made.has(idempotencyKey)) made.set(idempotencyKey, { id: `re_${made.size + 1}`, amount: params.amount, status: "succeeded", metadata: params.metadata });
           return made.get(idempotencyKey);
         },
+        list: () => ({ async *[Symbol.asyncIterator]() { yield* made.values(); } }),
       },
     };
   }
@@ -188,6 +190,26 @@ describe("adjustPaidCharge repeats (code review, 2026-11-07)", () => {
     await adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 });
     await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }), /already fully refunded/);
     assert.equal(stripe.made.size, 1);
+  });
+
+  it("a refund Stripe made but we failed to save is found first, so a fresh attempt cannot refund twice (review of 2026-11-07)", async () => {
+    const db = setup();
+    const stripe = stripeWithRefunds();
+    // The refund goes through in Stripe, then saving it fails.
+    const realFrom = db.from;
+    db.from = (t) => {
+      const q = realFrom(t);
+      if (t !== "charge_adjustments") return q;
+      const insert = q.insert;
+      q.insert = (row) => (row.stripe_refund_id === "re_1" && !db.failedOnce ? ((db.failedOnce = true), { then: (res) => res({ error: { code: "XX000", message: "connection lost" } }), select: () => ({ single: async () => ({ data: null, error: { code: "XX000", message: "connection lost" } }) }) }) : insert(row));
+      return q;
+    };
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, amountCents: 10000 }));
+    assert.equal(db.tables.charge_adjustments.length, 0, "not saved");
+    // The admin reopens the dialog: a new request id for the full amount.
+    await assert.rejects(() => adjustPaidCharge(db, stripe, { ...req, requestId: "req-00000009", amountCents: 10000 }), /already fully refunded/);
+    assert.equal(stripe.made.size, 1, "no second refund");
+    assert.equal(db.tables.charge_adjustments.length, 1, "the first one is now on record");
   });
 
   it("a new request for the rest is its own refund", async () => {
@@ -359,6 +381,15 @@ function memoryDb(tables) {
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },
+      upsert(input, { onConflict = "id", ignoreDuplicates = false } = {}) {
+        const cols = onConflict.split(",");
+        for (const row of Array.isArray(input) ? input : [input]) {
+          const hit = rows(table).find((r) => cols.every((c) => r[c] === row[c]));
+          if (hit) { if (!ignoreDuplicates) Object.assign(hit, row); }
+          else rows(table).push({ id: `${table}_${rows(table).length + 1}`, restored_at: null, ...row });
+        }
+        return Promise.resolve({ error: null });
+      },
       async maybeSingle() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       async single() { const r = await api.run(); return { data: r.data?.[0] ?? null, error: null }; },
       then(res, rej) { return api.run().then(res, rej); },
@@ -700,5 +731,82 @@ describe("paying an invoice: receipts, failures and the method that paid", () =>
     const result = await retryInvoicePayment(failingDb, stripeFor(), { invoiceId: "i1", landlordId: "l1", notify });
     assert.deepEqual(result, { paid: true, method: "card" });
     assert.equal(notify.sent.paid.length, 1, "the receipt still goes out");
+  });
+});
+
+// Review of 2026-11-07: a run stopped between finalizing an invoice and emailing it.
+describe("a billing run cut short (review of 2026-11-07)", () => {
+  const now = new Date("2026-11-02T18:00:00Z"); // November's billing day
+  const later = new Date("2026-11-03T15:00:00Z");
+  const key = "invoice:l1:2026-11-01";
+  function stripeWith(invoice) {
+    const list = (items) => ({ async *[Symbol.asyncIterator]() { yield* items; } });
+    return {
+      invoices: { list: () => list([invoice]), retrieve: async () => invoice },
+      invoiceItems: { list: () => list([{ id: "ii_1", metadata: { charge_id: "c1" } }]) },
+    };
+  }
+  function world(row) {
+    return memoryDb({
+      billing_accounts: [{ id: "a1", user_id: "l1", stripe_customer_id: "cus_1" }],
+      charges: [{ id: "c1", landlord_id: "l1", amount_cents: 5000, status: "invoiced", invoice_id: "i1", trigger_type: "lease_signed", created_at: "2026-10-20" }],
+      billing_invoices: [{ id: "i1", landlord_id: "l1", billing_period: "2026-11-01", status: "open", stripe_invoice_id: "in_1", total_cents: 5000, invoice_date: "2026-11-02", hosted_invoice_url: "https://pay", announced_at: null, ...row }],
+      users: [{ id: "l1", name: "Lee", email: "lee@example.com" }],
+      autopay_authorizations: [],
+    });
+  }
+  const invoice = { id: "in_1", status: "open", total: 5000, metadata: { billing_key: key }, hosted_invoice_url: "https://pay", status_transitions: { finalized_at: 1793642400 } };
+
+  it("an invoice finalized but never emailed is emailed by the next run, once", async () => {
+    const db = world();
+    const sent = [];
+    const notify = { invoiceIssued: async (x) => sent.push(x.invoice.id) };
+    const first = await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify });
+    assert.deepEqual(sent, ["i1"], JSON.stringify(first.results));
+    assert.ok(db.tables.billing_invoices[0].announced_at, "recorded as announced");
+    await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify });
+    assert.deepEqual(sent, ["i1"], "not emailed twice");
+  });
+
+  it("the daily follow-up finishes it without waiting for next month's run", async () => {
+    const db = world();
+    const sent = [];
+    const r = await followUpBillingRun({ db, stripe: stripeWith(invoice), now: later, notify: { invoiceIssued: async (x) => sent.push(x.invoice.id) } });
+    assert.ok(r);
+    assert.deepEqual(sent, ["i1"]);
+    assert.equal(await followUpBillingRun({ db, stripe: stripeWith(invoice), now: later, notify: {} }), null, "then nothing to do");
+  });
+
+  it("a run out of time is marked unfinished, and the follow-up continues it", async () => {
+    const db = world({ announced_at: "2026-11-02T18:00:00Z" });
+    db.tables.charges.push({ id: "c2", landlord_id: "l2", amount_cents: 5000, status: "approved", invoice_id: null, trigger_type: "lease_signed", created_at: "2026-10-21" });
+    const r = await runBillingRun({ db, stripe: stripeWith(invoice), now, dryRun: false, notify: {}, timeBudgetMs: -1 });
+    assert.equal(r.unfinished, true);
+    assert.equal(r.summary.notReached > 0, true);
+    assert.equal((await getBillingSetting(db, RUN_UNFINISHED_KEY, false)).billingPeriod, "2026-11-01");
+  });
+});
+
+describe("two overdue invoices (review of 2026-11-07)", () => {
+  const lease = (id) => ({ id, owner_id: "l1", is_active: true, unavailable: false, deleted_at: null, published_at: "2026-09-01" });
+  const invoice = (id, due) => ({ id, landlord_id: "l1", status: "open", stripe_invoice_id: `in_${id}`, total_cents: 5000, invoice_date: due, due_date: due, overdue_actioned_at: null });
+
+  it("restoring the first paid invoice keeps the leases down while the second is unpaid", async () => {
+    const db = memoryDb({ unit_leases: [lease("q1"), lease("q2")], billing_invoices: [invoice("i1", "2026-08-01")], billing_lease_withdrawals: [], users: [] });
+    await runOverdueJob(db, { now: new Date("2026-09-15T00:00:00Z") });
+    assert.equal(db.tables.unit_leases.every((l) => l.unavailable), true);
+    // A second invoice goes overdue while the leases are already down.
+    db.tables.billing_invoices.push(invoice("i2", "2026-09-01"));
+    await runOverdueJob(db, { now: new Date("2026-10-15T00:00:00Z") });
+    assert.equal(db.tables.billing_lease_withdrawals.filter((w) => w.invoice_id === "i2").length, 2, "the second invoice holds them too");
+    // The first is paid and restored: nothing goes back up yet.
+    db.tables.billing_invoices[0].status = "paid";
+    const first = await restoreWithdrawnLeases(db, { invoiceId: "i1", adminId: "a" });
+    assert.deepEqual([first.restored, first.stillHeld], [0, 2]);
+    assert.equal(db.tables.unit_leases.every((l) => l.unavailable), true);
+    // The second is paid and restored: now they go back.
+    const second = await restoreWithdrawnLeases(db, { invoiceId: "i2", adminId: "a" });
+    assert.equal(second.restored, 2);
+    assert.equal(db.tables.unit_leases.every((l) => !l.unavailable && l.is_active), true);
   });
 });
