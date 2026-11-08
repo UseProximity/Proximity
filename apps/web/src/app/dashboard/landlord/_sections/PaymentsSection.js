@@ -36,6 +36,7 @@ async function call(url, options) {
 export default function PaymentsSection() {
   const [methods, setMethods] = useState([]);
   const [charges, setCharges] = useState([]);
+  const [requestsKey, setRequestsKey] = useState(0);
   const [invoices, setInvoices] = useState([]);
   const [gate, setGate] = useState(null);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
@@ -199,6 +200,8 @@ export default function PaymentsSection() {
 
   // After the signing dialog: refresh, and say where things stand.
   const agreementChanged = (result) => {
+    // A rejection may have opened a change request: show it.
+    setRequestsKey((k) => k + 1);
     if (result === "signed") toast.success("Thank you. It is signed, and the properties on it are covered.");
     else if (result === "pending") toast.success("Signed. Your copy is being saved and will appear here in a minute.");
     else if (result === "nothing") toast("Nothing needs signing right now. Your properties are covered.");
@@ -228,6 +231,7 @@ export default function PaymentsSection() {
           busy={busy}
           changeRequests={
             <ChangeRequestPanel
+              key={requestsKey}
               documentKind={gate.agreement?.amendment ? "amendment" : "master"}
               amendmentId={gate.agreement?.amendment?.id ?? undefined}
             />

@@ -11,11 +11,13 @@ import assert from "node:assert/strict";
 import {
   acceptRequest,
   attachmentFor,
+  completeDecline,
   createChangeRequest,
   declineRequest,
   listForAdmin,
   listMyRequests,
   nextStatus,
+  recordDecline,
   remindersDue,
   replyAsAdmin,
   replyAsLandlord,
@@ -24,7 +26,8 @@ import {
   withdrawRequest,
 } from "./changeRequests.js";
 import { changeFileKey, cleanChangeFileName, detectChangeFileType, validateChangeFile } from "./changeRequestFileRules.js";
-import { changeRequestTeamEmail, changeRequestUpdateEmail } from "./billingEmailTemplates.js";
+import { agreementDeclinedTeamEmail, changeRequestTeamEmail, changeRequestUpdateEmail } from "./billingEmailTemplates.js";
+import { DECLINE_NOTE, declineText, isDeclineMessage } from "./declineNote.js";
 
 // ── An in-memory stand-in for the Supabase calls these paths make ──────────
 
@@ -403,5 +406,102 @@ describe("change request emails", () => {
     assert.ok(team.html.includes("attached a file"));
     const update = changeRequestUpdateEmail({ name: "Lana", outcome: "declined", message: "No.", paymentsUrl: "https://example.com/p" });
     assert.match(update.html, /standard agreement/);
+  });
+});
+
+// ── A rejection in Documenso becomes a change request ───────────────────────
+
+describe("a rejection in the signing window", () => {
+  const DOC = { kind: "master", agreementId: "agreement-lana", amendmentId: null, versionId: "v-standard" };
+  const storeFile = async ({ name }) => ({ key: `k/${name}`, fileName: name, fileType: "application/pdf", fileBytes: 10 });
+
+  it("opens a change request holding the reason, and emails nothing itself", async () => {
+    const db = seed();
+    const r = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "The fee is too high" });
+    assert.equal(r.opened, true);
+    assert.equal(r.request.status, "open");
+    assert.equal(r.request.agreement_id, "agreement-lana");
+    assert.equal(db.tables.agreement_change_messages.length, 1);
+    const m = db.tables.agreement_change_messages[0];
+    assert.ok(isDeclineMessage(m));
+    assert.ok(m.body.startsWith(DECLINE_NOTE));
+    assert.equal(declineText(m.body), "The fee is too high");
+  });
+
+  it("still opens one with no reason given", async () => {
+    const db = seed();
+    const r = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: null });
+    assert.equal(declineText(r.message.body), "");
+    assert.match(r.message.body, /No reason given/);
+  });
+
+  it("adds to the request already open instead of a second one, and an answered one goes back to the team", async () => {
+    const db = seed();
+    const first = await open(db);
+    await replyAsAdmin(db, { adminId: ADMIN, requestId: first.id, body: "Which renewals?" });
+    const r = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "Still too high" });
+    assert.equal(r.opened, false);
+    assert.equal(r.request.id, first.id);
+    assert.equal(r.request.status, "open");
+    assert.equal(db.tables.agreement_change_requests.length, 1);
+    assert.equal(db.tables.agreement_change_messages.length, 3);
+  });
+
+  it("the details fill in the decline message itself: no repeat in the thread, section set, file kept", async () => {
+    const db = seed();
+    const { request } = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "Fee" });
+    const { sent, notify } = recorder();
+    const updated = await completeDecline(db, {
+      user: LANDLORD,
+      requestId: request.id,
+      section: "Section 4",
+      body: "The fee should be 5%",
+      proposedText: "4.1 The fee is 5%.",
+      file: { bytes: new Uint8Array([1]), name: "markup.pdf" },
+      storeFile,
+      notify,
+    });
+    assert.equal(updated.section, "Section 4");
+    const msgs = db.tables.agreement_change_messages;
+    assert.equal(msgs.length, 1);
+    assert.equal(declineText(msgs[0].body), "The fee should be 5%");
+    assert.equal(msgs[0].proposed_text, "4.1 The fee is 5%.");
+    assert.equal(msgs[0].file_name, "markup.pdf");
+    assert.deepEqual(sent.map(([k]) => k), ["landlordReplied"]);
+  });
+
+  it("never rewrites the section of a request that already had one", async () => {
+    const db = seed();
+    const first = await open(db);
+    await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "Fee" });
+    const updated = await completeDecline(db, { user: LANDLORD, requestId: first.id, section: "Section 9", body: "More detail" });
+    assert.equal(updated.section, "Section 4, fees");
+  });
+
+  it("goes in as a normal reply once the team has written after the decline", async () => {
+    const db = seed();
+    const { request } = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "Fee" });
+    await replyAsAdmin(db, { adminId: ADMIN, requestId: request.id, body: "Can you say more?" });
+    await completeDecline(db, { user: LANDLORD, requestId: request.id, body: "Here is more" });
+    const msgs = db.tables.agreement_change_messages;
+    assert.equal(msgs.length, 3);
+    assert.equal(declineText(msgs[0].body), "Fee");
+    assert.equal(msgs[2].body, "Here is more");
+  });
+
+  it("only the landlord who owns the request can fill it in", async () => {
+    const db = seed();
+    const { request } = await recordDecline(db, { userId: LANDLORD.id, doc: DOC, reason: "Fee" });
+    await assert.rejects(completeDecline(db, { user: OTHER, requestId: request.id, body: "x" }), (e) => e.status === 404);
+  });
+
+  it("the one team email says a change request was opened, or added to", () => {
+    const opened = agreementDeclinedTeamEmail({ landlordName: "Lana", reason: "Fee", changeRequest: { opened: true }, adminUrl: "https://x/dashboard/admin" });
+    assert.match(opened.html, /opened a change request/);
+    assert.match(opened.html, /Open Change requests/);
+    const added = agreementDeclinedTeamEmail({ landlordName: "Lana", reason: "Fee", changeRequest: { opened: false } });
+    assert.match(added.html, /already had open/);
+    const none = agreementDeclinedTeamEmail({ landlordName: "Lana", reason: null });
+    assert.match(none.html, /Reason given: none/);
   });
 });

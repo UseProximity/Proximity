@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-07T23:20:46.027Z",
-  "count": 321,
+  "_generated": "2026-11-08T22:02:28.404Z",
+  "count": 322,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -474,6 +474,10 @@
     {
       "file": "src/lib/billing/customers.js",
       "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
+    },
+    {
+      "file": "src/lib/billing/declineNote.js",
+      "description": "A landlord who rejects the agreement in Documenso's signing window gets a change"
     },
     {
       "file": "src/lib/billing/documenso.js",

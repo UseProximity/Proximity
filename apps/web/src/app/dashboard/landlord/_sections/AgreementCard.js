@@ -282,7 +282,8 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
         {agreement.declinedAt && (
           <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
-            You declined the agreement on {dateOnly(agreement.declinedAt)}. You can review and sign it whenever you are ready, or ask for changes below.
+            You declined the agreement on {dateOnly(agreement.declinedAt)}. Your reason went to the team under Request changes below, where you
+            can add details or files. You can review and sign it whenever you are ready.
           </p>
         )}
 

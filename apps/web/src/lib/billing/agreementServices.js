@@ -18,8 +18,10 @@ import { MAX_DOCUMENSO_PDF_BYTES } from "./agreementPdf.js";
 // A signed copy from Documenso may be larger than an upload (agreementPdf.js).
 const storeFromDocumenso = (file) => storeSignedAgreement({ ...file, maxBytes: MAX_DOCUMENSO_PDF_BYTES });
 import { stripeBillingAddress } from "./billingAddress.js";
-import { resolveChangeRequestOnSigned } from "./changeRequests.js";
+import { recordDecline, resolveChangeRequestOnSigned } from "./changeRequests.js";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
 
 export function documensoClient() {
@@ -41,9 +43,25 @@ export function agreementServices() {
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       // A negotiated version signed: the change request it answered is resolved.
       onSigned: ({ userId, versionId }) => resolveChangeRequestOnSigned(supabase, { userId, versionId }),
+      // A rejection: the reason opens a change request (or joins the open one).
+      onDeclined: async ({ userId, reason, doc }) => {
+        const { opened } = await recordDecline(supabase, { userId, reason, doc });
+        return { opened };
+      },
+      // One team email for the decline and the change request it opened, never two.
+      // A review sandbox account never reaches the team inbox (lib/reviewSandbox.js).
       notify: {
-        declined: ({ landlord, reason, kind }) =>
-          sendAgreementDeclinedTeamEmail({ landlordName: landlord?.name, landlordEmail: landlord?.email, reason, kind }),
+        declined: async ({ landlord, reason, kind, changeRequest }) => {
+          if (landlord?.id && (await sandboxIdsAmong([landlord.id])).has(landlord.id)) return;
+          await sendAgreementDeclinedTeamEmail({
+            landlordName: landlord?.name,
+            landlordEmail: landlord?.email,
+            reason,
+            kind,
+            changeRequest,
+            adminUrl: `${getBaseUrl()}/dashboard/admin`,
+          });
+        },
       },
     },
   };

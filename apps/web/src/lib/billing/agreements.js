@@ -32,8 +32,8 @@
  *
  * `db` is a service-role Supabase client and `documenso` a client from documenso.js.
  * Options: storeSigned({ userId, bytes }) -> key, storeExhibit({ userId, bytes }) -> key,
- * landlordAddress(userId) -> string | null, notify.declined({ landlord, reason, kind }),
- * onSigned({ userId, versionId, kind }).
+ * landlordAddress(userId) -> string | null, notify.declined({ landlord, reason, kind, changeRequest }),
+ * onSigned({ userId, versionId, kind }), onDeclined({ userId, reason, doc }) -> { opened } | null.
  */
 import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
@@ -400,15 +400,18 @@ export function exhibitText(entries, { added = null } = {}) {
 
 const TABLE = { master: "landlord_agreements", amendment: "agreement_amendments" };
 
-// End a document in progress and release the properties it proposed.
+// End a document in progress and release the properties it proposed. Returns
+// true when this call ended it (false when another call got there first).
 async function endDocument(db, kind, row, reason, now = new Date()) {
-  const { error } = await db
+  const { data, error } = await db
     .from(TABLE[kind])
     .update({ status: "voided", ended_reason: reason.slice(0, 300), ended_at: now.toISOString() })
     .eq("id", row.id)
-    .in("status", PENDING);
+    .in("status", PENDING)
+    .select("id");
   if (error) throw error;
   await releaseProposed(db, kind, row.id, now);
+  return (data ?? []).length > 0;
 }
 
 async function releaseProposed(db, kind, docId, now = new Date()) {
@@ -867,7 +870,7 @@ async function storeSignedFiles(documenso, envelope, userId, storeSigned) {
  * GET /envelope/{id}, never a webhook body taken on trust. Returns what happened:
  * "signed", "declined", "cancelled", "unchanged" or "unknown" (not one of ours).
  */
-export async function applyEnvelope(db, documenso, envelope, { storeSigned, notify = {}, onSigned, now = new Date() } = {}) {
+export async function applyEnvelope(db, documenso, envelope, { storeSigned, notify = {}, onSigned, onDeclined, now = new Date() } = {}) {
   const doc = await findDocument(db, envelope.id);
   if (!doc) return "unknown";
   const { kind, row } = doc;
@@ -955,11 +958,33 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
 
   if (envelope.status === "REJECTED") {
     const reason = signerOf(envelope)?.rejectionReason;
-    await endDocument(db, kind, row, `declined${reason ? `: ${reason}` : ""}`, now);
+    // The webhook and the signing window's check can both land here: only the one
+    // that actually ended the copy records the change request and emails the team.
+    const ended = await endDocument(db, kind, row, `declined${reason ? `: ${reason}` : ""}`, now);
+    if (!ended) return "unchanged";
+    // The reason becomes a change request (or joins the open one), so the team sees
+    // it in Change requests and the landlord can add details and files to it.
+    let changeRequest = null;
+    if (onDeclined) {
+      try {
+        changeRequest = await onDeclined({
+          userId: row.user_id,
+          reason: reason ?? null,
+          doc: {
+            kind,
+            agreementId: kind === "master" ? row.id : row.agreement_id ?? null,
+            amendmentId: kind === "amendment" ? row.id : null,
+            versionId: row.version_id ?? null,
+          },
+        });
+      } catch (err) {
+        console.error("billing: recording the decline as a change request failed", err?.message);
+      }
+    }
     if (notify.declined) {
       const { data: landlord } = await db.from("users").select("id, name, email").eq("id", row.user_id).maybeSingle();
       try {
-        await notify.declined({ landlord, reason: reason ?? null, kind });
+        await notify.declined({ landlord, reason: reason ?? null, kind, changeRequest });
       } catch (err) {
         console.error("billing: decline email failed", err?.message);
       }

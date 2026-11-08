@@ -25,6 +25,7 @@
  */
 import { BillingError } from "./errors.js";
 import { DAY_MS } from "./constants.js";
+import { declineBody, isDeclineMessage } from "./declineNote.js";
 
 export const ACTIVE_STATUSES = ["open", "answered", "accepted"];
 export const CLOSED_STATUSES = ["resolved", "declined", "withdrawn"];
@@ -354,6 +355,119 @@ export async function withdrawRequest(db, { user, requestId, now = new Date() })
   const request = await ownRequest(db, user.id, requestId);
   const status = nextStatus(request.status, "withdraw");
   return moveTo(db, request, status, { closed_at: now.toISOString(), closed_by_id: user.id });
+}
+
+// ── A rejection in Documenso becomes a change request ───────────────────────
+
+async function activeRequestOf(db, userId) {
+  const { data, error } = await db
+    .from("agreement_change_requests")
+    .select(REQUEST_COLUMNS)
+    .eq("user_id", userId)
+    .in("status", ACTIVE_STATUSES)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/*
+ * Called once when a landlord rejects a signing copy in Documenso. The reason they
+ * typed there opens a change request for them, or, when they already have one in
+ * progress, is added to it (one active request per landlord). Emails nothing: the
+ * caller sends the one team email about the decline. Returns { request, message,
+ * opened } (opened false when it was added to an existing request).
+ *
+ * `doc` names what was rejected: { kind, agreementId, amendmentId, versionId }.
+ */
+export async function recordDecline(db, { userId, doc, reason }) {
+  const body = declineBody(reason);
+  const append = async (request) => {
+    const updated = request.status === "answered" ? await moveTo(db, request, nextStatus(request.status, "landlord_reply")) : request;
+    const message = await addMessage(db, updated, { authorId: userId, role: "landlord", body });
+    return { request: updated, message, opened: false };
+  };
+
+  const existing = await activeRequestOf(db, userId);
+  if (existing) return append(existing);
+
+  const { data: request, error } = await db
+    .from("agreement_change_requests")
+    .insert({
+      user_id: userId,
+      document_kind: DOCUMENT_KINDS.includes(doc.kind) ? doc.kind : "master",
+      agreement_id: doc.agreementId ?? null,
+      amendment_id: doc.amendmentId ?? null,
+      version_id: doc.versionId ?? null,
+      section: null,
+      status: "open",
+    })
+    .select(REQUEST_COLUMNS)
+    .single();
+  if (error) {
+    // One appeared in between (the landlord opened one at the same moment).
+    if (error.code === UNIQUE_VIOLATION) {
+      const raced = await activeRequestOf(db, userId);
+      if (raced) return append(raced);
+    }
+    throw error;
+  }
+  const { data: message, error: mErr } = await db
+    .from("agreement_change_messages")
+    .insert({ request_id: request.id, author_id: userId, author_role: "landlord", body, proposed_text: null })
+    .select(MESSAGE_COLUMNS)
+    .single();
+  if (mErr) {
+    await db.from("agreement_change_requests").delete().eq("id", request.id);
+    throw mErr;
+  }
+  return { request, message, opened: true };
+}
+
+/*
+ * Right after rejecting, the signing window asks the landlord for the details: the
+ * reason (prefilled, editable), section, proposed wording and a file. These fill in
+ * the decline message itself rather than repeating it, while it is still the newest
+ * message on the request. If someone has written since, they go in as a normal reply.
+ */
+export async function completeDecline(db, { user, requestId, section, body, proposedText, file = null, storeFile, notify = {} }) {
+  const request = await ownRequest(db, user.id, requestId);
+  if (!ACTIVE_STATUSES.includes(request.status)) nextStatus(request.status, "landlord_reply"); // throws "closed"
+  const clean = cleanRequest({ documentKind: request.document_kind, section, body, proposedText });
+
+  const { data: msgs, error } = await db
+    .from("agreement_change_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("request_id", request.id)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const latest = (msgs ?? []).reduce((a, m) => (!a || m.created_at > a.created_at ? m : a), null);
+  if (!latest || !isDeclineMessage(latest) || latest.author_id !== user.id) {
+    return replyAsLandlord(db, { user, requestId, body, proposedText, file, storeFile, notify });
+  }
+
+  const attachment = await storeAttachment(file, user.id, storeFile);
+  const { data: message, error: mErr } = await db
+    .from("agreement_change_messages")
+    .update({ body: declineBody(clean.body), proposed_text: clean.proposed_text, ...attachment })
+    .eq("id", latest.id)
+    .select(MESSAGE_COLUMNS)
+    .maybeSingle();
+  if (mErr) throw mErr;
+
+  // A section only for a request that has none, so it never rewrites an earlier one.
+  let updated = request;
+  if (clean.section && !request.section) {
+    const { data, error: sErr } = await db
+      .from("agreement_change_requests")
+      .update({ section: clean.section })
+      .eq("id", request.id)
+      .select(REQUEST_COLUMNS)
+      .maybeSingle();
+    if (sErr) throw sErr;
+    if (data) updated = data;
+  }
+  await safely(notify.landlordReplied && (() => notify.landlordReplied({ landlord: user, request: updated, message: message ?? latest })));
+  return updated;
 }
 
 // ── Admin actions ───────────────────────────────────────────────────────────
