@@ -63,8 +63,36 @@ TMPFILES=("$DUMP" "$DUMP.err" "$DUMP.counts" "$FKS" "$FKSQL" "$FNACL")
 # features keep their PostgREST embeds until the next run. Best effort: whatever cannot go back
 # stays in snapshot_preserve.detached_fks and the next run retries it.
 FKS_DETACHED=0
+# Step 4 opens every function to anon/authenticated and only locks them back down after the
+# Stripe/Documenso scrub. If anything in between fails, the lockdown must still run, or dev
+# (which staging, previews and the partner sandbox use, with the public staging anon key) is
+# left with SECURITY DEFINER functions anyone can call (review of 2026-11-07).
+GRANTS_OPENED=0
+lock_down_functions() {
+  [[ -s "$FNACL" ]] && psql "$DEV_DB_URL" -q --no-psqlrc -f "$FNACL" >/dev/null 2>&1
+  psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
+    -f "$REPO_ROOT/supabase/migrations/202610220004_lock_down_definer_functions.sql" >/dev/null
+}
+open_definer_functions() {
+  psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
+    select string_agg(p.oid::regprocedure::text, ', ')
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype
+      and p.proname not in ('fn_current_user_role', 'fn_is_chat_participant')
+      and (has_function_privilege('anon', p.oid, 'execute')
+           or has_function_privilege('authenticated', p.oid, 'execute'));"
+}
 cleanup() {
   local code=$?
+  if [[ $code -ne 0 && $GRANTS_OPENED -eq 1 ]]; then
+    echo "    run failed after function grants were opened; locking definer functions back down…"
+    if lock_down_functions && [[ -z "$(open_definer_functions)" ]]; then
+      echo "    definer functions locked down"
+    else
+      # A failed workflow run emails the team; this line makes the reason plain in the log.
+      echo "::error::SNAPSHOT LEFT DEV EXPOSED: SECURITY DEFINER functions may be callable with the anon key. Run supabase/migrations/202610220004_lock_down_definer_functions.sql on dev now."
+    fi
+  fi
   if [[ $code -ne 0 && $FKS_DETACHED -eq 1 ]]; then
     echo "    run failed; putting the detached dev-only foreign keys back…"
     psql "$DEV_DB_URL" -t -A --no-psqlrc -c "select * from snapshot_preserve.reattach_dev_only_fks();" \
@@ -241,6 +269,7 @@ echo "[4/6] Re-granting Supabase role privileges + stamping snapshot date…"
 # (anon/authenticated/service_role) lose table access after a restore — which makes the app's
 # API return permission errors (500s). Re-grant Supabase's standard privileges, set default
 # privileges for future objects, then reload the API schema cache.
+GRANTS_OPENED=1
 psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
 grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables    in schema public to anon, authenticated, service_role;
@@ -278,6 +307,14 @@ begin
     update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
   end if;
   if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
+  -- Autopay points at payment methods with ON DELETE RESTRICT (202611050002), so its records go
+  -- first, or deleting the methods fails and rolls back this whole scrub (review of 2026-11-07).
+  if to_regclass('public.autopay_authorizations') is not null then delete from public.autopay_authorizations; end if;
+  if to_regclass('public.billing_invoices') is not null
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'billing_invoices' and column_name = 'autopay_payment_method_id') then
+    update public.billing_invoices set autopay_payment_method_id = null where autopay_payment_method_id is not null;
+  end if;
   if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
   if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
   -- Documenso: every environment shares ONE Documenso team (Teams plan), only kept
@@ -324,17 +361,12 @@ psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
 
 # Verify: the only definer functions the public may call are the two RLS policies depend on
 # (see that migration). Anything else means dev is exposed, so stop here, loudly.
-OPEN_FNS=$(psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
-  select string_agg(p.oid::regprocedure::text, ', ')
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype
-    and p.proname not in ('fn_current_user_role', 'fn_is_chat_participant')
-    and (has_function_privilege('anon', p.oid, 'execute')
-         or has_function_privilege('authenticated', p.oid, 'execute'));")
+OPEN_FNS=$(open_definer_functions)
 if [[ -n "$OPEN_FNS" ]]; then
   echo "ABORT: these SECURITY DEFINER functions are still callable with the anon key on DEV: $OPEN_FNS"
   exit 1
 fi
+GRANTS_OPENED=0
 echo "    function grants copied from prod; no definer function left public"
 
 echo "[5/6] Reconciling foreign keys against PROD…"
