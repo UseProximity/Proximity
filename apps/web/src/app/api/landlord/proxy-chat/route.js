@@ -20,6 +20,9 @@
  *   { listingId, action: "decide", messageId, confirm }
  *                                               confirm or cancel the changes
  *                                               the agent proposed
+ *   { listingId, action: "retryBlocked", messageId }
+ *                                               try changes the listing gate
+ *                                               blocked again, once fixed
  *
  * A super "viewing as" a landlord sees that landlord's (?viewAs=).
  *
@@ -34,7 +37,7 @@ import { resolveDashboardUserId } from "@/lib/users/viewAs";
 import { hasStakeInListing } from "@/lib/listings/ownership";
 import {
   landlordProxyOverview, landlordProxyTimeline, landlordWaitingCount,
-  routeLandlordMessage, sendLandlordMessage, decideAgentProposal,
+  routeLandlordMessage, sendLandlordMessage, decideAgentProposal, retryBlockedChanges,
 } from "@/lib/agents/landlordChat";
 
 export const maxDuration = 60;
@@ -87,6 +90,12 @@ export async function POST(req) {
     if (body.action === "decide") {
       if (!UUID.test(String(body.messageId ?? ""))) return NextResponse.json({ error: "Bad message" }, { status: 400 });
       const r = await decideAgentProposal({ userId, isAdmin, listingId, messageId: String(body.messageId), confirm: body.confirm === true });
+      if (r.error) return NextResponse.json({ error: r.error }, { status: 409 });
+      return NextResponse.json(r);
+    }
+    if (body.action === "retryBlocked") {
+      if (!UUID.test(String(body.messageId ?? ""))) return NextResponse.json({ error: "Bad message" }, { status: 400 });
+      const r = await retryBlockedChanges({ userId, isAdmin, listingId, messageId: String(body.messageId) });
       if (r.error) return NextResponse.json({ error: r.error }, { status: 409 });
       return NextResponse.json(r);
     }

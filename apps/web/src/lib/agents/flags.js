@@ -33,3 +33,26 @@ export const LIVE_STATUSES = new Set(["pilot", "on"]);
 export function agentIsLive(agentRow) {
   return agentsEnabled() && !!agentRow && LIVE_STATUSES.has(agentRow.status);
 }
+
+/*
+ * Launch review for the website sync (Wyatt, 2026-11-07). While on, nothing a
+ * student sees changes on its own from a sync: every change is recorded for
+ * the Proximity team, who apply or reject it from the admin queue, and the
+ * landlord sees none of it. On unless WEBSITE_SYNC_TEAM_REVIEW is set to off,
+ * so a missing variable fails safe.
+ */
+export function syncTeamReview() {
+  const v = String(process.env.WEBSITE_SYNC_TEAM_REVIEW ?? "").trim().toLowerCase();
+  return !OFF.has(v);
+}
+
+/*
+ * Source search (pages about a listing found on Zillow, Apartments.com and the
+ * web) and reading those pages into knowledge. Off for launch (Wyatt,
+ * 2026-11-07): only pages a landlord uploaded or gave us are sources. On only
+ * when FOUND_SOURCES_ENABLED is set to on.
+ */
+export function foundSourcesEnabled() {
+  const v = String(process.env.FOUND_SOURCES_ENABLED ?? "").trim().toLowerCase();
+  return ON.has(v);
+}

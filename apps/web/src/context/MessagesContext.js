@@ -10,6 +10,13 @@
  * thread histories so opening a conversation feels instant. No UI chrome
  * (composer text lives in ChatTranscript). Consumed by /messages, header
  * unread badge, and the listing modal's Message CTA via startListingChat.
+ *
+ * View as (Wyatt, 2026-11-03): an admin can open someone else's inbox,
+ * exactly as they see it, with ?messages=1&viewAs=<user id>. The overlay
+ * calls setViewAs; every read then asks the server for that person's inbox,
+ * and every write is refused here (send, start a chat, mark read), so a look
+ * never reads as "seen" to anyone or says anything on their behalf. The
+ * server only honours viewAs for admins and only on reads.
  */
 "use client";
 
@@ -40,6 +47,12 @@ import {
 } from "@/lib/chat/attachments";
 
 const MessagesContext = createContext(null);
+
+// A read URL that asks for the viewed person's copy while an admin views as them.
+function withViewAs(url, viewAsId) {
+  if (!viewAsId) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}viewAs=${encodeURIComponent(viewAsId)}`;
+}
 
 // How often an open conversation and the inbox look for news when the live
 // channel stays quiet (Wyatt, 2026-11-02).
@@ -104,9 +117,14 @@ function sendRejectionKind(status) {
   return "error";
 }
 
+export const VIEW_AS_READ_ONLY_MESSAGE = "You are viewing someone else's inbox. It is read only.";
+
 export function MessagesProvider({ children }) {
   const { data: session, status: sessionStatus } = useSession();
   const userId = session?.user?.id ?? null;
+  const canViewAs = ["super", "admin"].includes(session?.user?.role);
+  const [viewAsState, setViewAsState] = useState(null);
+  const viewAs = canViewAs ? viewAsState : null;
 
   const [threads, setThreads] = useState([]);
   const [threadsStatus, setThreadsStatus] = useState("idle"); // idle | loading | ready | error
@@ -127,6 +145,13 @@ export function MessagesProvider({ children }) {
   const refreshSeqRef = useRef(0);
   const messagesStatusRef = useRef({});
   const loadInFlightRef = useRef(new Map());
+
+  const viewAsRef = useRef(null);
+  viewAsRef.current = viewAs;
+  const lastViewAsRef = useRef(undefined);
+  // Whose inbox the state now holds (null: the user's own), set once a switch
+  // has cleared the old one, so a thread opened by URL is not wiped by it.
+  const [inboxFor, setInboxFor] = useState(undefined);
 
   activeThreadIdRef.current = activeThreadId;
   userIdRef.current = userId;
@@ -161,7 +186,7 @@ export function MessagesProvider({ children }) {
     setThreadsStatus((prev) => (prev === "ready" ? "ready" : "loading"));
     try {
       // Proxy conversations are opt-in on this endpoint (the mobile app does not show them yet).
-      const res = await fetch("/api/chat/threads?include=proxy");
+      const res = await fetch(withViewAs("/api/chat/threads?include=proxy", viewAsRef.current));
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error || `Failed to load threads (${res.status})`);
@@ -195,7 +220,7 @@ export function MessagesProvider({ children }) {
 
     const request = (async () => {
       try {
-        const res = await fetch(`/api/chat/threads/${threadId}/messages`);
+        const res = await fetch(withViewAs(`/api/chat/threads/${threadId}/messages`, viewAsRef.current));
         if (!res.ok) {
           const body = await res.json().catch(() => null);
           throw new Error(body?.error || `Failed to load messages (${res.status})`);
@@ -246,6 +271,8 @@ export function MessagesProvider({ children }) {
 
   const markThreadRead = useCallback(async (threadId) => {
     if (!userIdRef.current || !threadId) return null;
+    // Viewing someone else's inbox never marks anything read for them.
+    if (viewAsRef.current) return null;
     if (String(threadKindRef.current.get(threadId) ?? "").startsWith("proxy")) {
       // ProxyThread's own fetch marks it read on the server; clear the badge here.
       setThreads((prev) => prev.map((t) => (t.threadId === threadId ? { ...t, hasUnread: false, unreadCount: 0 } : t)));
@@ -287,6 +314,7 @@ export function MessagesProvider({ children }) {
     if (!userIdRef.current || !threadId) {
       throw new Error("Not signed in");
     }
+    if (viewAsRef.current) throw new Error(VIEW_AS_READ_ONLY_MESSAGE);
     const trimmed = typeof body === "string" ? body.trim() : "";
     const rawFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     const confirmedSend = options?.confirmed === true;
@@ -496,6 +524,7 @@ export function MessagesProvider({ children }) {
   const startListingChat = useCallback(
     async (listingId, body, leaseId = null, options = {}) => {
       if (!userIdRef.current) throw new Error("Not signed in");
+      if (viewAsRef.current) throw new Error(VIEW_AS_READ_ONLY_MESSAGE);
       const trimmed = typeof body === "string" ? body.trim() : "";
       if (!trimmed) throw new Error("Message body required");
 
@@ -542,6 +571,13 @@ export function MessagesProvider({ children }) {
       clearChatState();
       return;
     }
+    // Switching between your own inbox and someone else's starts clean, so
+    // nothing of one shows in the other.
+    if (lastViewAsRef.current !== viewAs) {
+      if (lastViewAsRef.current !== undefined) clearChatState();
+      lastViewAsRef.current = viewAs;
+    }
+    setInboxFor(viewAs ?? null);
 
     let cancelled = false;
     let retryTimer = null;
@@ -560,7 +596,7 @@ export function MessagesProvider({ children }) {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [userId, sessionStatus, clearChatState, refreshThreads]);
+  }, [userId, viewAs, sessionStatus, clearChatState, refreshThreads]);
 
   // Warm the most recent threads so opening them feels instant.
   useEffect(() => {
@@ -786,6 +822,10 @@ export function MessagesProvider({ children }) {
       setActiveThreadId,
       needsPassword,
       clearNeedsPassword: () => setNeedsPassword(false),
+      viewAs,
+      readOnly: !!viewAs,
+      setViewAs: setViewAsState,
+      inboxFor,
     }),
     [
       threads,
@@ -801,6 +841,8 @@ export function MessagesProvider({ children }) {
       startListingChat,
       markThreadRead,
       needsPassword,
+      viewAs,
+      inboxFor,
     ]
   );
 

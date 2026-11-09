@@ -148,7 +148,7 @@ export default function ChatTranscript({
   onBack,
   headerActions = null,
 }) {
-  const { needsPassword, clearNeedsPassword } = useMessages();
+  const { needsPassword, clearNeedsPassword, readOnly } = useMessages();
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
@@ -503,6 +503,7 @@ export default function ChatTranscript({
                         proposal={msg.metadata.tourProposal}
                         mine={msg.isMine}
                         otherName={thread?.otherUserName?.split(" ")[0] || "them"}
+                        readOnly={readOnly}
                       />
                     </div>
                   )}
@@ -529,7 +530,14 @@ export default function ChatTranscript({
         <div ref={bottomRef} />
       </div>
 
-      {needsPassword ? (
+      {readOnly ? (
+        // An admin viewing someone's inbox: the box they would type in, shut.
+        <div className="px-3 pb-3 pt-2 border-t border-gray-100 flex-shrink-0">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-400">
+            Their message box. Read only while you view their inbox.
+          </div>
+        </div>
+      ) : needsPassword ? (
         <div className="flex-shrink-0">
           <SetPasswordPrompt onDone={clearNeedsPassword} />
         </div>

@@ -59,7 +59,13 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (!user || initializedFromUrl.current) return;
     initializedFromUrl.current = true;
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab");
+    // "payments" is the Billing tab's old name, still in emails already sent (2026-11-07).
+    const raw = params.get("tab");
+    const tab = raw === "payments" ? "billing" : raw;
+    if (raw === "payments") {
+      params.set("tab", "billing");
+      window.history.replaceState(null, "", `?${params.toString()}${window.location.hash}`);
+    }
     const propertyId = params.get("property");
     if (tab) setActiveView(tab);
     if (tab === "drafts") setReturnView("drafts");
@@ -397,6 +403,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         return "My Profile";
       case "analytics":
         return "Analytics";
+      case "billing":
+        return "Billing";
       default:
         return "Landlord Dashboard";
     }

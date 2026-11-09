@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** November 2, 2026
+**Last updated:** November 8, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -29,14 +29,11 @@ screening service. We do not own, manage, inspect, or control any property liste
 Services. Any lease, sublease, application, deposit, or payment is strictly between you and
 the other person. Proximity is not involved and has no obligations under it.
 
-**How Proximity will be paid (effective date: TBD).** Students never pay Proximity
-anything. Proximity does not charge landlords a commission today. From a date we have not
-yet set, Proximity may be paid a commission by a landlord when a student who found their
-property through Proximity signs a lease there. We will update these Terms with that date,
-and notify registered users, before any commission takes effect. That arrangement will be
-between Proximity and the landlord, under a separate agreement with them. It will not make
-Proximity a party to your lease, and it will not change anything a landlord owes you or you
-owe a landlord.
+**How Proximity is paid.** Students never pay Proximity anything. Landlords who sign
+Proximity's marketing agreement pay Proximity a commission when a student who found their
+property through Proximity signs a lease there. That arrangement is between Proximity and the
+landlord, under that agreement (Section 6A). It does not make Proximity a party to your
+lease, and it does not change anything a landlord owes you or you owe a landlord.
 
 ## 2. Acceptance and eligibility
 
@@ -89,8 +86,8 @@ This matters more here than on most platforms, so we want to be direct about it.
   landlord. Only your lease and what the landlord agrees with you are.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
-  one through us. Any commission a landlord pays us once commissions take effect
-  (Section 1) is between us and the landlord, and is never collected from you.
+  one through us. Any commission a landlord pays us (Sections 1 and 6A) is between us and
+  the landlord, and is never collected from you.
 
 **Use your own judgment.** Visit the property, meet the person, read the lease, and be
 cautious with anyone who pressures you to pay or sign quickly, refuses to meet, or asks for
@@ -135,7 +132,10 @@ If you post a listing, you represent and agree that:
 
 **Your listing is public.** The contact name you put on a listing is displayed publicly so
 students can see who they are dealing with. The contact email address and phone number you
-give are not shown on the listing: we use them to route inquiries to you.
+give are not shown on the listing: we use them to route inquiries to you. If you tell us you
+are a licensed real estate agent or broker, your name, your brokerage and its phone number are
+shown on your listings as "Listed by", as Missouri law requires. Your license number is never
+shown publicly.
 
 Everything else you write is published exactly as you type it: we never rewrite your words.
 We do refuse to save a description containing an email address, a phone number, a link, a
@@ -150,9 +150,11 @@ us the address of your own property website or an existing listing of yours. We 
 public content of that page and use AI to pre-fill a draft, using only images that appeared
 on the page. Nothing is saved until you review the draft field by field and submit it, so the
 listing is still yours and you are still the one representing it. We do this only for a page
-you give us, for your own property. We may
-check that page again from time to time and suggest updates to your listing; nothing on the
-listing changes until you accept them.
+you give us, for your own property, and for other pages on that same website about the same
+property. We may check those pages again from time to time and update your listing to match
+them, for example a new price or a unit that has been let. While we are launching this, the
+Proximity team reviews every update before it appears. You can see and correct anything on
+your listing in your dashboard at any time.
 
 **Your listing's assistant.** Where we have turned it on for your listing, Proxy (Section 9B)
 answers students' questions about it. Proxy answers from your listing, from what you have told
@@ -190,6 +192,39 @@ up after you do.
 **Co-owned listings.** More than one landlord account can be attached to the same property.
 If you delete your account, a listing you share with another owner stays live under them,
 and your published contact details on it are replaced with theirs. See Section 17.
+
+## 6A. Fees, billing, and the marketing agreement (landlords)
+
+**The marketing agreement.** To publish listings, a landlord must have a payment method on
+file and, once we require it, sign Proximity's marketing agreement in their dashboard. The
+agreement sets the commission and its terms; if it conflicts with these Terms on fees, the
+agreement controls. Exhibit A to the agreement lists the addresses it covers. An address
+covers the whole building, or the units named "and any unit at this address the landlord
+later lists through Proximity". Adding a new address takes a short addendum, signed the same
+way.
+
+**Charges.** When a student who found a property through Proximity signs a lease there, a
+charge is recorded on the landlord's account. You have 7 days to review it in your dashboard
+and approve or contest it; after that it is approved. Approved charges are billed on the
+first Monday of each month, on one invoice, due 30 days after it is sent. Charges under $5
+roll over to the next month.
+
+**Paying.** You pay each invoice from your dashboard or the link in the invoice email, by
+bank account (ACH) or card. If you turn on autopay, we charge the payment method you choose 5
+business days after the invoice is emailed, until you turn it off. Autopay turns off by
+itself if that method is removed, expires, or fails twice in a row, and we email you when it
+does.
+
+**Late payment.** If an invoice is still unpaid 30 days after its due date, your listings are
+withdrawn from the marketplace and you cannot publish until it is paid. Once it is paid, we
+put them back. A bank payment that has not yet cleared does not count as paid.
+
+**Corrections.** If a charge turns out to be wrong, we refund it to the method that paid it
+or credit it against your next invoice.
+
+**Payment processing.** Payments are processed by Stripe and agreements are signed through
+Documenso. Your card and bank details are entered on Stripe's own page and never reach
+Proximity.
 
 ## 7. Listings we set up for a landlord
 
@@ -480,8 +515,9 @@ use our name or logo without our written permission.
 
 The Services rely on third parties, including Google for sign-in and maps imagery, Mapbox
 for maps and travel times, our AI provider for the features in Sections 6, 9, 9B, 9C, 10 and
-11, and
-property-management providers for the sync in Section 6. Listings may also link to
+11,
+property-management providers for the sync in Section 6, Stripe for payments and Documenso
+for signing agreements (Section 6A). Listings may also link to
 third-party websites. We do not control any of them, we are not responsible for them, and
 your use of them may be governed by their own terms. Privacy Policy §6.3 lists the providers
 who handle personal information.
@@ -494,7 +530,9 @@ account stops working immediately, listings you owned alone are withdrawn from t
 marketplace, listings you co-owned stay live under the co-owner, and after 30 days your
 personal data is erased, except the records Section 17A and Privacy Policy §8 allow us to
 keep for three years. There is no undo. Privacy Policy §8 sets out exactly what is erased,
-what is anonymized, and what is kept.
+what is anonymized, and what is kept. Deleting your account does not cancel an amount you
+already owe Proximity under Section 6A: an unpaid invoice stays due, and billing records and
+signed agreements are kept as Section 17A and Privacy Policy §9 describe.
 
 **We can suspend or terminate.** We may suspend or terminate your account, remove your
 content, or withdraw a listing if we believe you have breached these Terms, if it is
@@ -509,7 +547,8 @@ you notice by email before it takes effect and a chance to keep the account open
 
 **What survives.** Sections 8 (reviews staying published in anonymized form), 11 (messages
 and inquiry records kept for three years, with the sender named), 9 (matchmaking conversations and preferences kept for three years), 9B and 9C (Proxy conversations, questions, and tours kept for three years), 13 (the licence, to the extent content
-remains published), 15, 17A, 18, 19, 20, and 22 survive the end of your account.
+remains published), 6A (amounts owed, billing records, and signed agreements), 15, 17A, 18,
+19, 20, and 22 survive the end of your account.
 
 ## 17A. Data, retention, and deletion
 
@@ -550,6 +589,12 @@ marketplace history. This includes a listing you delete yourself: deleting it re
 the marketplace, and we keep it, with its reviews and inquiry records, in hidden form. When a listing is withdrawn because its only owner deleted their
 account, that owner's name and email address are kept with it for three years after the
 account is deleted, and then erased. Their phone number is removed from it.
+
+**Billing records and signed agreements.** A landlord's billing records (charges, invoices,
+payments, refunds, and credits) are kept for 5 years after their account is deleted, for tax
+and accounting. Signed marketing agreements, their addenda, and requests to change them are
+kept for 10 years after the account is deleted, as a record of what was agreed. Each is kept
+with the landlord's name and erased at the end of its period.
 
 **People without an account.** We hold limited information about some people who never
 signed up, described in Privacy Policy §1.8, and they can have it deleted on request even

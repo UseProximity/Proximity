@@ -30,6 +30,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Check, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { billingNeededToast, publishErrorToast } from "@/components/listings/publishErrorToast";
+import { signThenPublish } from "@/components/listings/CoverageSignDialog";
 import AddressStep from "./AddressStep";
 import UnitStep from "./UnitStep";
 import LeaseStep from "./LeaseStep";
@@ -318,6 +320,8 @@ export default function AddListingFlow({ user }) {
             contactEmail: lease.contactEmail,
             contactName: user?.name ?? null,
             draft: asDraft,
+            // Billing not set up: keep it as a draft and say so (billing_needed below).
+            draftIfBillingBlocked: true,
           }),
         });
       } else {
@@ -369,6 +373,8 @@ export default function AddListingFlow({ user }) {
             attachStreetView: true,
             // A new property is born a draft; on a live one the unit is.
             draft: asDraft,
+            // Billing not set up: keep it as a draft and say so (billing_needed below).
+            draftIfBillingBlocked: true,
             unitTypes: [{
               bedrooms: Number(newUnit.bedrooms),
               bathrooms: Number(newUnit.bathrooms),
@@ -389,11 +395,34 @@ export default function AddListingFlow({ user }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return toast.error(data.error || (asDraft ? "Couldn't save that draft." : "Couldn't publish that listing."));
+        return publishErrorToast(data, asDraft ? "Couldn't save that draft." : "Couldn't publish that listing.", {
+          // Adding a lease to a known property: sign for it, then submit again.
+          retry: () => submit(asDraft),
+        });
       }
-      toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       clearPendingDraft();
       const listingId = data.listing?.id ?? data.lease?.listingId ?? place.property?.id;
+
+      /*
+       * A new property the landlord's agreement does not cover yet: it was saved as
+       * a draft. Sign for it now and it is published; close the dialog and it stays
+       * a draft they can publish later.
+       */
+      if (data.code === "agreement_needed") {
+        const live = await signThenPublish(data);
+        toast.success(live ? "Signed and published. Your listing is live." : "Saved as a draft. Sign the agreement to publish it.");
+        setPublished({ listingId, unitId: unit?.id ?? null, draft: !live });
+        return;
+      }
+
+      // Saved, but as a draft: Billing (a payment method, an overdue invoice) needs fixing first.
+      if (data.code === "billing_needed") {
+        billingNeededToast(data);
+        setPublished({ listingId, unitId: unit?.id ?? null, draft: true });
+        return;
+      }
+
+      toast.success(asDraft ? "Saved as a draft. Students can't see it yet." : "Your listing is live.");
       /*
        * A landlord often has more than one offering on the same apartment —
        * a 10-month and a 12-month, or a sublease beside their own lease. Ending

@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
+import { sendMrecFormOnce } from "@/lib/users/mrecForm";
 import { normalizeMoveIn, normalizeMonths, normalizeBeds } from "@/lib/listings/leaseFit";
 import { prefColumns, savedList, touchesListColumns, withoutListColumns } from "@/lib/listings/leasePrefsColumns";
 
@@ -151,6 +152,9 @@ export async function PATCH(req) {
       console.error("PATCH /api/editProfile: fetch after update failed", { supabaseId });
       return NextResponse.json({ error: "Update returned no row" }, { status: 404 });
     }
+
+    // Just became a landlord: send the MREC form, once, after the response.
+    if (body.role === "landlord" && currentRole !== "landlord") after(() => sendMrecFormOnce(supabase, supabaseId, { req }));
 
     // Expose role name at the top level so clients can read `updated.role`
     // and feed it to NextAuth session.update({ role }). Prefer camelCase for

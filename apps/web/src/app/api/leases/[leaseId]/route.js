@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateResponseBody, isLeaseHeldForBilling } from "@/lib/billing/listingGate";
 import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
 
 /*
@@ -111,6 +112,20 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
+  // A lease the overdue-invoice job withdrew stays withdrawn until an admin
+  // restores it, or putting it back by hand would undo the withdrawal.
+  // The database refuses this as well (202611010003_billing_holds.sql); checking
+  // here first gives the landlord the reason in plain words.
+  const goingLive = patch.is_active === true || patch.unavailable === false;
+  if (goingLive && (await isLeaseHeldForBilling(supabase, leaseId))) {
+    return NextResponse.json({ error: HELD_FOR_BILLING_MESSAGE, code: "lease_held_for_billing" }, { status: 403 });
+  }
+  // Putting a withdrawn offering back on the market is publishing, so it passes the
+  // same gate as a new one (payment method, agreement, no overdue invoice).
+  if (goingLive && !(check.lease.is_active && !check.lease.unavailable)) {
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: check.listingId ? [check.listingId] : [], unitIds: check.lease.unit_id ? [check.lease.unit_id] : [] });
+    if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
+  }
   const leaseProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));
   const old = await coreValuesBefore({ target: "lease", id: leaseId, fields: leaseProtected });
 
@@ -123,6 +138,10 @@ export async function PATCH(req, { params }) {
     .eq("owner_id", session.user.id);
 
   if (error) {
+    // Withdrawn for an overdue invoice between the check above and this write.
+    if (/lease_held_for_billing/.test(error.message ?? "")) {
+      return NextResponse.json({ error: HELD_FOR_BILLING_MESSAGE, code: "lease_held_for_billing" }, { status: 403 });
+    }
     console.error("[leases/:id] Update failed:", error.message);
     return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
   }

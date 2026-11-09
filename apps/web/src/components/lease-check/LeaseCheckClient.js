@@ -324,10 +324,10 @@ export default function LeaseCheckClient() {
           Lease Check
         </p>
         <h1 className="mt-5 text-4xl font-black tracking-tight text-gray-950 sm:text-5xl lg:text-6xl">
-          We flag the stuff that&apos;s easy to miss and expensive to ignore.
+          AI flags the stuff that&apos;s easy to miss and expensive to ignore.
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-gray-600 sm:text-xl">
-          Upload your lease. We do the reading.
+          Upload your lease. AI pulls out what to read closely.
         </p>
 
         {/* Upload */}
@@ -468,7 +468,7 @@ export default function LeaseCheckClient() {
               {active.flags.length === 0 ? (
                 <div className="rounded-[1.75rem] border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
                   <p className="text-sm font-semibold text-gray-700">
-                    Nothing jumped out. That&apos;s a good sign. But read it anyway.
+                    Nothing jumped out. Read it anyway.
                   </p>
                 </div>
               ) : (

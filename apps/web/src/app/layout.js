@@ -21,6 +21,7 @@ import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import GlobalMessagesPanel from "@/components/chat/GlobalMessagesPanel";
+import ErrorReporter from "@/components/ErrorReporter";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import Providers from "@/components/layout/Providers";
 import { serializeJsonLd } from "@/lib/jsonLd";
@@ -105,6 +106,7 @@ export default async function RootLayout({ children }) {
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
           <GlobalMessagesPanel />
+          <ErrorReporter />
           <FeedbackWidget />
           {children}
           <Analytics />

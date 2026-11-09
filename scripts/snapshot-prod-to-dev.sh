@@ -63,8 +63,36 @@ TMPFILES=("$DUMP" "$DUMP.err" "$DUMP.counts" "$FKS" "$FKSQL" "$FNACL")
 # features keep their PostgREST embeds until the next run. Best effort: whatever cannot go back
 # stays in snapshot_preserve.detached_fks and the next run retries it.
 FKS_DETACHED=0
+# Step 4 opens every function to anon/authenticated and only locks them back down after the
+# Stripe/Documenso scrub. If anything in between fails, the lockdown must still run, or dev
+# (which staging, previews and the partner sandbox use, with the public staging anon key) is
+# left with SECURITY DEFINER functions anyone can call (review of 2026-11-07).
+GRANTS_OPENED=0
+lock_down_functions() {
+  [[ -s "$FNACL" ]] && psql "$DEV_DB_URL" -q --no-psqlrc -f "$FNACL" >/dev/null 2>&1
+  psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
+    -f "$REPO_ROOT/supabase/migrations/202610220004_lock_down_definer_functions.sql" >/dev/null
+}
+open_definer_functions() {
+  psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
+    select string_agg(p.oid::regprocedure::text, ', ')
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype
+      and p.proname not in ('fn_current_user_role', 'fn_is_chat_participant')
+      and (has_function_privilege('anon', p.oid, 'execute')
+           or has_function_privilege('authenticated', p.oid, 'execute'));"
+}
 cleanup() {
   local code=$?
+  if [[ $code -ne 0 && $GRANTS_OPENED -eq 1 ]]; then
+    echo "    run failed after function grants were opened; locking definer functions back down…"
+    if lock_down_functions && [[ -z "$(open_definer_functions)" ]]; then
+      echo "    definer functions locked down"
+    else
+      # A failed workflow run emails the team; this line makes the reason plain in the log.
+      echo "::error::SNAPSHOT LEFT DEV EXPOSED: SECURITY DEFINER functions may be callable with the anon key. Run supabase/migrations/202610220004_lock_down_definer_functions.sql on dev now."
+    fi
+  fi
   if [[ $code -ne 0 && $FKS_DETACHED -eq 1 ]]; then
     echo "    run failed; putting the detached dev-only foreign keys back…"
     psql "$DEV_DB_URL" -t -A --no-psqlrc -c "select * from snapshot_preserve.reattach_dev_only_fks();" \
@@ -241,6 +269,7 @@ echo "[4/6] Re-granting Supabase role privileges + stamping snapshot date…"
 # (anon/authenticated/service_role) lose table access after a restore — which makes the app's
 # API return permission errors (500s). Re-grant Supabase's standard privileges, set default
 # privileges for future objects, then reload the API schema cache.
+GRANTS_OPENED=1
 psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
 grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables    in schema public to anon, authenticated, service_role;
@@ -259,6 +288,67 @@ insert into app_metadata (key, value, updated_at)
 values ('snapshot_taken_at', now()::text, now())
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
+-- Prod holds live-mode Stripe ids. Dev and staging use sandbox keys, which reject them, so strip
+-- every one (customer, payment method, invoice, invoice item, dispute, webhook event). Rows whose
+-- Stripe id is the whole point (payment methods, disputes, events) are deleted rather than nulled.
+-- This runs before step 6, so partner sandbox rows put back there keep their own sandbox ids.
+-- Guarded per table so a snapshot still works before the billing migration reaches prod.
+do $$
+begin
+  if to_regclass('public.charges') is not null then
+    update public.charges set stripe_invoice_item_id = null where stripe_invoice_item_id is not null;
+  end if;
+  if to_regclass('public.billing_invoices') is not null then
+    update public.billing_invoices
+       set stripe_invoice_id = null, hosted_invoice_url = null, invoice_pdf_url = null
+     where stripe_invoice_id is not null or hosted_invoice_url is not null or invoice_pdf_url is not null;
+  end if;
+  if to_regclass('public.billing_accounts') is not null then
+    update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
+  end if;
+  if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
+  -- Autopay points at payment methods with ON DELETE RESTRICT (202611050002), so its records go
+  -- first, or deleting the methods fails and rolls back this whole scrub (review of 2026-11-07).
+  if to_regclass('public.autopay_authorizations') is not null then delete from public.autopay_authorizations; end if;
+  if to_regclass('public.billing_invoices') is not null
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'billing_invoices' and column_name = 'autopay_payment_method_id') then
+    update public.billing_invoices set autopay_payment_method_id = null where autopay_payment_method_id is not null;
+  end if;
+  if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
+  if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
+  -- Documenso: every environment shares ONE Documenso team (Teams plan), only kept
+  -- apart by folder and a [TEST] title prefix, and a team API key can act on any
+  -- document in it. So no prod envelope id may survive here: dev code holding one
+  -- could cancel a real landlord's copy. Agreement versions go back to drafts
+  -- without a template (an admin reconnects one in dev to test signing), and a copy
+  -- in progress, master or Exhibit A amendment, is voided. Signed documents keep
+  -- their record; their PDFs live in prod's bucket.
+  if to_regclass('public.agreement_versions') is not null then
+    update public.landlord_agreements
+       set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+     where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+    update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
+    if to_regclass('public.agreement_amendments') is not null then
+      update public.agreement_amendments
+         set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+       where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+      update public.agreement_amendments set provider_envelope_id = null where provider_envelope_id is not null;
+      if to_regclass('public.agreement_coverage') is not null then
+        update public.agreement_coverage set status = 'released'
+         where status = 'proposed'
+           and amendment_id in (select id from public.agreement_amendments where ended_reason = 'snapshot: prod Documenso copy');
+      end if;
+    end if;
+    update public.agreement_versions
+       set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
+           provider_editor_url = null, fields_checked_at = null,
+           status = case when status = 'live' then 'retired' else status end
+     where provider_template_id is not null or status = 'live';
+    update public.agreement_versions set status = 'draft' where status = 'ready';
+  end if;
+end $$;
+
 notify pgrst, 'reload schema';
 SQL
 
@@ -271,17 +361,12 @@ psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
 
 # Verify: the only definer functions the public may call are the two RLS policies depend on
 # (see that migration). Anything else means dev is exposed, so stop here, loudly.
-OPEN_FNS=$(psql "$DEV_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -c "
-  select string_agg(p.oid::regprocedure::text, ', ')
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype
-    and p.proname not in ('fn_current_user_role', 'fn_is_chat_participant')
-    and (has_function_privilege('anon', p.oid, 'execute')
-         or has_function_privilege('authenticated', p.oid, 'execute'));")
+OPEN_FNS=$(open_definer_functions)
 if [[ -n "$OPEN_FNS" ]]; then
   echo "ABORT: these SECURITY DEFINER functions are still callable with the anon key on DEV: $OPEN_FNS"
   exit 1
 fi
+GRANTS_OPENED=0
 echo "    function grants copied from prod; no definer function left public"
 
 echo "[5/6] Reconciling foreign keys against PROD…"

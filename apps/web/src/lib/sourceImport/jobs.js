@@ -30,6 +30,9 @@ import { readProperty, DraftFetchError } from "./read.js";
 import { applySnapshot } from "./apply.js";
 import { summarize } from "./snapshot.js";
 import { runSyncJob } from "@/lib/agents/sync";
+import { setUnitPage } from "@/lib/sourceSync/unitPages";
+import { givenSiteFilter } from "@/lib/sourceSync/givenSites";
+import { unitNameKey } from "@/utils/unitName";
 
 // WashU's Danforth campus, the pin a draft gets when its address will not
 // geocode. The listing is a draft, the editor shows the address, and the
@@ -151,6 +154,96 @@ async function batchCancelled(batchId, userId) {
   return !!data?.length;
 }
 
+// The unit links of a grouped target, as stored on the job: at most 20.
+function cleanUnitLinks(units, fallbackPasted) {
+  if (!Array.isArray(units)) return [];
+  return units
+    .filter((u) => u && typeof u.url === "string" && u.url.trim())
+    .slice(0, 20)
+    .map((u) => ({
+      url: u.url.trim().slice(0, 500),
+      pastedUrl: typeof u.pastedUrl === "string" && u.pastedUrl.trim() ? u.pastedUrl.trim().slice(0, 500) : fallbackPasted,
+      label: String(u.label ?? "").trim().slice(0, 80),
+      address: String(u.address ?? "").slice(0, 200),
+    }));
+}
+
+/*
+ * Read a grouped target: each apartment's own page, one at a time, folded into
+ * one snapshot for the building. A page holding one unit names that unit after
+ * its apartment ("Apt 1W"), so two pages describing the same floor plan stay
+ * two units. A page that cannot be read is noted and skipped; if none can be
+ * read, the first failure is the job's.
+ *
+ * Returns { snapshot, unitLinks: [{ name, url }] } so each unit can be given
+ * its page once the units exist.
+ */
+async function readUnitLinks(target, { onStep, knownPortal }) {
+  const reads = [];
+  let firstError = null;
+  for (const [i, link] of target.units.entries()) {
+    onStep(`Reading unit pages (${i + 1} of ${target.units.length})`);
+    try {
+      const snap = await readProperty({
+        pastedUrl: link.pastedUrl || link.url,
+        target: { name: target.name, address: link.address || target.address, url: link.url, levelUrl: null },
+        onlyThisPage: true,
+        allowUrl: givenSiteFilter([link.url]),
+        onStep: () => {},
+        knownPortal,
+      });
+      reads.push({ link, snap });
+    } catch (err) {
+      firstError ??= err;
+      reads.push({ link, error: true });
+    }
+  }
+  const ok = reads.filter((r) => r.snap);
+  if (!ok.length) throw firstError ?? new Error("We couldn't read any of these pages.");
+
+  const base = ok[0].snap;
+  const units = [];
+  const unitLinks = [];
+  const photos = new Map();
+  for (const [i, { link, snap }] of ok.entries()) {
+    const found = snap.units ?? [];
+    for (const u of found) {
+      const name = found.length === 1 && link.label ? link.label : u.name;
+      units.push({ ...u, key: `link-${i}:${u.key ?? name ?? units.length}`, name });
+      if (found.length === 1) unitLinks.push({ name, url: link.url });
+    }
+    for (const ph of snap.property?.photos ?? []) if (ph?.url && !photos.has(ph.url)) photos.set(ph.url, ph);
+  }
+  const skipped = reads.filter((r) => r.error).map((r) => r.link.label || r.link.url);
+  return {
+    snapshot: {
+      ...base,
+      property: { ...base.property, name: target.name || base.property?.name, address: target.address || base.property?.address, photos: [...photos.values()] },
+      units,
+      notes: [
+        ...new Set([
+          ...ok.flatMap((r) => r.snap.notes ?? []),
+          ...(skipped.length ? [`We couldn't read the link for ${skipped.join(", ")}. Add that unit by hand, or remove it and try the link again.`] : []),
+        ]),
+      ],
+    },
+    unitLinks,
+  };
+}
+
+// Give each grouped unit its own page, matched by the name it was saved under.
+async function attachUnitLinks(listingId, unitLinks, userId) {
+  if (!unitLinks.length) return;
+  const { data: units } = await supabase.from("listing_units").select("id, name").eq("listing_id", listingId).is("deleted_at", null);
+  const byName = new Map((units ?? []).map((u) => [unitNameKey(u.name), u.id]));
+  for (const { name, url } of unitLinks) {
+    const unitId = byName.get(unitNameKey(name));
+    if (!unitId) continue;
+    const res = await setUnitPage({ listingId, unitId, rawUrl: url, userId });
+    if (!res.ok) console.error(`[source-import] unit page for ${name} on ${listingId}: ${res.reason}`);
+  }
+}
+
 /*
  * One job per ticked property. Returns { batchId, jobs }.
  * `user` is { name, email, phone } for the draft's contact details.
@@ -174,7 +267,13 @@ export async function createImportBatch({ userId, user, pastedUrl, targets, batc
       address: String(raw.address ?? "").slice(0, 200),
       url: typeof raw.url === "string" ? raw.url.slice(0, 500) : null,
       levelUrl: typeof raw.levelUrl === "string" ? raw.levelUrl.slice(0, 500) : null,
-      pastedUrl,
+      // The link this property was found at. A landlord can paste several
+      // (one Zillow page per apartment), so each property carries its own;
+      // the batch's pastedUrl is only the fallback for older callers.
+      pastedUrl: typeof raw.pastedUrl === "string" && raw.pastedUrl.trim() ? raw.pastedUrl.trim().slice(0, 500) : pastedUrl,
+      // Several links to apartments in one building (two Zillow pages, say):
+      // one property, one unit per link, each link that unit's own page.
+      ...(cleanUnitLinks(raw.units, pastedUrl).length > 1 ? { units: cleanUnitLinks(raw.units, pastedUrl) } : {}),
       alreadyListed: raw.alreadyListed?.id
         ? { id: raw.alreadyListed.id, title: raw.alreadyListed.title ?? null, mine: raw.alreadyListed.mine ?? null, owner: raw.alreadyListed.owner ?? (raw.alreadyListed.mine ? "you" : "other") }
         : null,
@@ -332,7 +431,12 @@ export async function runJob(jobId) {
         status: "done",
         step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : `${item.applied.length} applied, ${item.held.length} held`,
         progress: 100, finished_at: new Date().toISOString(),
-        result: { mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds },
+        result: {
+          mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds,
+          // For the team's daily digest (lib/agents/digest.js).
+          teamReview: !!item.teamReview, refused: (item.refused ?? []).slice(0, 20),
+          unitPages: (item.unitPages ?? []).map((u) => ({ unit: u.unit, status: u.status })),
+        },
       }).eq("id", jobId);
       // A landlord's sync goes on to read the whole site.
       if (target.force && !target.knowledge) {
@@ -346,13 +450,17 @@ export async function runJob(jobId) {
     const { data: listing } = await supabase.from("listings").select("id, title, address, published_at").eq("id", job.listing_id).maybeSingle();
     if (!listing) throw new Error("The draft for this property no longer exists.");
 
-    const snapshot = await readProperty({
-      pastedUrl: target.pastedUrl,
-      target: { name: target.name, address: target.address, url: target.url, levelUrl: target.levelUrl },
-      onStep,
-      // A listing that was read before: price only the apartments that moved.
-      knownPortal: await knownPortalFor(listing.id),
-    });
+    // A listing that was read before: price only the apartments that moved.
+    const knownPortal = await knownPortalFor(listing.id);
+    const grouped = target.units?.length > 1 ? await readUnitLinks(target, { onStep, knownPortal }) : null;
+    const snapshot = grouped
+      ? grouped.snapshot
+      : await readProperty({
+          pastedUrl: target.pastedUrl,
+          target: { name: target.name, address: target.address, url: target.url, levelUrl: target.levelUrl },
+          onStep,
+          knownPortal,
+        });
 
     // Cancelled while the site was being read: write nothing.
     const { data: still } = await supabase.from("listing_import_jobs").select("status").eq("id", jobId).maybeSingle();
@@ -375,6 +483,11 @@ export async function runJob(jobId) {
       listingLabel: listing.title ?? listing.address,
       takeover: (target.alreadyListed?.claimed || (await claimNotFinished(listing.id, job.user_id, job.id))) ? { contact: await contactFor(job.user_id) } : null,
     });
+
+    // Each grouped unit's own link becomes its page, so the sync reads it there.
+    if (grouped && attached.ok) {
+      await attachUnitLinks(listing.id, grouped.unitLinks, job.user_id).catch((e) => console.error("[source-import] unit pages:", e?.message));
+    }
 
     if (mode === "import") {
       await setStep(jobId, "Measuring walk times", 92);

@@ -11,18 +11,22 @@
  *
  * Suspense because useSearchParams suspends during prerender, same as the
  * listing modal.
+ *
+ * ?messagesAs=<user id> (admins only, Wyatt, 2026-11-03) opens that person's
+ * inbox exactly as they see it, read only, under a banner naming them.
  */
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { X } from "lucide-react";
+import { X, Eye } from "lucide-react";
 import MessagesPanel from "@/components/chat/MessagesPanel";
 import { useMessages } from "@/context/MessagesContext";
 import {
   messagesOpen,
   openThreadId,
+  messagesAsId,
   withoutMessages,
 } from "@/lib/chat/messagesUrl";
 
@@ -33,12 +37,32 @@ function GlobalMessagesPanelInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { status } = useSession();
-  const { setActiveThreadId } = useMessages();
+  const { data: session, status } = useSession();
+  const { setActiveThreadId, setViewAs, inboxFor } = useMessages();
 
   const open = messagesOpen(searchParams);
   const threadParam = openThreadId(searchParams);
+  const asParam = messagesAsId(searchParams);
+  const isAdmin = ["super", "admin"].includes(session?.user?.role);
+  const wantAs = open && isAdmin && asParam && UUID_RE.test(asParam) ? asParam : null;
   const appliedThreadRef = useRef(null);
+  const [viewed, setViewed] = useState(null);
+
+  // Whose inbox this is: the admin's own, or the person they are viewing as.
+  useEffect(() => {
+    setViewAs(wantAs);
+  }, [wantAs, setViewAs]);
+  useEffect(() => {
+    if (!wantAs) { setViewed(null); return; }
+    let cancelled = false;
+    fetch(`/api/admin/viewUser?id=${encodeURIComponent(wantAs)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => { if (!cancelled) setViewed(u ? { name: u.name || u.email || "this user", role: u.role } : { name: "this user" }); })
+      .catch(() => { if (!cancelled) setViewed({ name: "this user" }); });
+    return () => { cancelled = true; };
+  }, [wantAs]);
+  // The inbox resets when it switches person, so open the thread only after.
+  const inboxReady = inboxFor === (wantAs ?? null);
 
   const close = useCallback(() => {
     router.replace(pathname + withoutMessages(searchParams), { scroll: false });
@@ -47,12 +71,13 @@ function GlobalMessagesPanelInner() {
   // Apply ?thread= once per value, so re-renders do not fight the user clicking
   // a different conversation inside the panel.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !inboxReady) return;
     if (!threadParam || !UUID_RE.test(threadParam)) return;
-    if (appliedThreadRef.current === threadParam) return;
-    appliedThreadRef.current = threadParam;
+    const key = `${wantAs ?? ""}:${threadParam}`;
+    if (appliedThreadRef.current === key) return;
+    appliedThreadRef.current = key;
     setActiveThreadId(threadParam);
-  }, [open, threadParam, setActiveThreadId]);
+  }, [open, inboxReady, wantAs, threadParam, setActiveThreadId]);
 
   /*
    * The provider outlives this overlay, so closing has to clear the active
@@ -110,6 +135,14 @@ function GlobalMessagesPanelInner() {
       />
       {/* Full screen on a phone, a panel on larger screens. */}
       <div className="relative z-10 flex w-full flex-col bg-white shadow-2xl sm:max-w-5xl sm:rounded-2xl sm:h-[min(80vh,720px)] h-full overflow-hidden">
+        {wantAs && (
+          <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 flex-1">
+              Viewing <span className="font-semibold">{viewed?.name ?? "…"}</span>&apos;s inbox exactly as they see it. Read only: nothing is sent or marked as read.
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <h2 className="text-sm font-semibold text-gray-900">Messages</h2>
           <button
