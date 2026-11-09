@@ -9,7 +9,7 @@ import AutopayCard from "./AutopayCard";
 import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
-import { PaidForAccounts, PayerCard } from "./PayerCards";
+import { PaidForAccounts, PayerCard, SignerChecklist } from "./PayerCards";
 
 const NOTICES = {
   success: { tone: "green", text: "Payment method saved." },
@@ -254,6 +254,7 @@ export default function PaymentsSection() {
         </div>
       )}
       {gate && !gate.billingOnly && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
+      {payees.length > 0 && <SignerChecklist accounts={payees} hasPaymentMethod={!gate?.requirePaymentMethod || methods.some((m) => m.status === "active")} />}
       {gate?.agreement && (
         <AgreementCard
           gate={gate}

@@ -241,6 +241,35 @@ export function PayerCard({ view, onChanged }) {
  * In the payer's agreement section (Wyatt, 2026-11-09: listed under the
  * agreement, not among their own listings): every account they pay for.
  */
+/*
+ * At the top of an authorized signer's Billing page, like a landlord's "Before
+ * you can publish a listing": what the accounts they sign for need from them
+ * before anything new goes live (Wyatt, 2026-11-09).
+ */
+export function SignerChecklist({ accounts, hasPaymentMethod }) {
+  const signed = !accounts.some((a) => a.needs === "agreement");
+  const addendaDue = accounts.filter((a) => a.needs === "addendum").length;
+  const held = accounts.reduce((n, a) => n + (a.waitingOnPaymentMethod?.length ?? 0), 0);
+  return (
+    <section className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
+      <p className="text-sm font-semibold text-gray-900">Before listings can go live for the accounts you sign for</p>
+      <ul className="mt-2 space-y-1.5">
+        <Requirement done={signed}>Sign the marketing agreement</Requirement>
+        <Requirement done={addendaDue === 0}>
+          {addendaDue ? `Sign the addendum ${addendaDue === 1 ? "one account is" : `${addendaDue} accounts are`} waiting on` : "Sign any addenda the landlords send you"}
+        </Requirement>
+        <Requirement done={hasPaymentMethod}>Add a payment method</Requirement>
+      </ul>
+      <p className="mt-2 text-xs text-gray-500">
+        {held
+          ? `${held} ${held === 1 ? "listing is" : "listings are"} verified but held until you add a payment method. `
+          : ""}
+        These are yours as the authorized signer: the landlord&apos;s own payment method doesn&apos;t count.
+      </p>
+    </section>
+  );
+}
+
 export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }) {
   const [signing, setSigning] = useState(null);
   const [voiding, setVoiding] = useState(null);
@@ -267,14 +296,7 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
       <p className="text-sm font-medium text-gray-900">Accounts you are the authorized signer for</p>
-      <div className="rounded-md border border-gray-100 px-3 py-2">
-        <p className="text-sm text-gray-900">For these accounts&apos; listings to go live, you need to:</p>
-        <ul className="mt-1 space-y-1.5">
-          <Requirement done={needingAgreement.length === 0}>Sign the marketing agreement</Requirement>
-          <Requirement done={hasPaymentMethod}>Add a payment method (below on this page)</Requirement>
-        </ul>
-        <p className="mt-1 text-xs text-gray-500">These are yours as the authorized signer: the landlord&apos;s own payment method doesn&apos;t count.</p>
-      </div>
+
       {needingAgreement.length > 0 && (
         <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
           <p>
