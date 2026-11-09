@@ -111,6 +111,7 @@ function MapViewInner({
   const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
+  const [hideUnavailable, setHideUnavailable] = useState(false);
   /*
    * Bumped every time the marker set is rebuilt, so the effect that paints the
    * selected pin knows to run again. Without it a rebuild leaves the map with
@@ -457,9 +458,9 @@ function MapViewInner({
     map.markers = [];
 
     // Sort north-first so southern pins are added last and render on top
-    const sortedListings = [...listings].sort(
-      (a, b) => b.latitude - a.latitude
-    );
+    const sortedListings = listings
+      .filter((l) => !(hideUnavailable && l.unavailable))
+      .sort((a, b) => b.latitude - a.latitude);
 
     sortedListings.forEach((listing) => {
       if (!listing.longitude || !listing.latitude) return;
@@ -622,7 +623,7 @@ function MapViewInner({
       }
       // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [isActive, listings, showShuttleStops, suggestedIds]);
+  }, [isActive, listings, showShuttleStops, suggestedIds, hideUnavailable]);
 
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => {
@@ -847,6 +848,16 @@ function MapViewInner({
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
       {!heroMode && (
+        <button
+          onClick={() => setHideUnavailable((hidden) => !hidden)}
+          className="absolute top-5 left-[72px] md:top-3 md:left-3 z-10 px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-colors"
+        >
+          {hideUnavailable
+            ? "Show Unavailable Housing"
+            : "Hide Unavailable Housing"}
+        </button>
+      )}
+      {!heroMode && (
         <div className="absolute bottom-8 right-3 z-10 flex flex-col gap-1.5">
           <button
             onClick={handleToggleShuttleStops}
@@ -862,7 +873,7 @@ function MapViewInner({
       )}
       {!heroMode && onBrowseArea && (
         <div
-          className="absolute top-3 left-1/2 z-10 transition-all duration-300"
+          className="absolute top-16 md:top-3 left-1/2 z-10 transition-all duration-300"
           style={{
             opacity: showBrowseButton ? 1 : 0,
             transform: `translateX(-50%) translateY(${
