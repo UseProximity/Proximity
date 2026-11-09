@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** November 9, 2026
+**Last updated:** November 8, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of

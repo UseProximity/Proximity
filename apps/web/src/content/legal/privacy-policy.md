@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** November 9, 2026
+**Last updated:** November 8, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
