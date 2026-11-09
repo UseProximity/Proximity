@@ -84,7 +84,7 @@ export async function lookupPayer(db, email) {
     return { status: "refused", reason: "That email belongs to an account that can't pay for listings (a student or admin). Use another email." };
   }
   if (await activePayerLink(db, u.id)) {
-    return { status: "refused", reason: "That landlord has someone else paying for their own account, so they can't pay for others." };
+    return { status: "refused", reason: "That landlord has their own authorized signer, so they can't sign for others." };
   }
   const paysFor = (await payeeLinks(db, u.id)).length;
   return { status: "existing", user: { id: u.id, name: u.name ?? null, email: u.email, billingOnly: u.billing_only === true, paysFor } };
@@ -105,7 +105,7 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
     throw new BillingError("payer_is_you", "That is your own email. To sign yourself, use Review and sign.");
   }
   if (await activePayerLink(db, landlord.id)) {
-    throw new BillingError("payer_exists", "You already have a payer. Use Change signer instead.", 409);
+    throw new BillingError("payer_exists", "You already have an authorized signer. Use Change signer instead.", 409);
   }
   const state = await agreementState(db, landlord.id, now);
   if (state.signed && state.valid) {
@@ -116,7 +116,7 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
     throw new BillingError("negotiated_terms", "Your agreement has terms made for your account, so it can't be handed to someone else. Contact us and we'll sort it out.", 409);
   }
   if ((await payeeLinks(db, landlord.id)).length) {
-    throw new BillingError("you_pay_for_others", "You pay for other accounts, so you sign for yourself.", 409);
+    throw new BillingError("you_pay_for_others", "You are the authorized signer for other accounts, so you sign for yourself.", 409);
   }
 
   let payer = await userByEmail(db, input.email);
@@ -127,7 +127,7 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
       throw new BillingError("payer_not_landlord", "That email belongs to an account that can't pay for listings. Use another email or contact us.", 409);
     }
     if (await activePayerLink(db, payer.id)) {
-      throw new BillingError("payer_has_payer", "That person has someone else paying for their account, so they can't pay for yours.", 409);
+      throw new BillingError("payer_has_payer", "That person has their own authorized signer, so they can't sign for your account.", 409);
     }
   } else {
     const { data, error } = await db
@@ -170,7 +170,7 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
     .select("id, landlord_id, payer_id, signer_name, signer_email, status, invited_at, declined_at, created_at")
     .single();
   if (linkError) {
-    if (linkError.code === "23505") throw new BillingError("payer_exists", "You already have a payer. Reload the page.", 409);
+    if (linkError.code === "23505") throw new BillingError("payer_exists", "You already have an authorized signer. Reload the page.", 409);
     throw linkError;
   }
   return { link, payer, created };
@@ -207,12 +207,12 @@ async function signedForAccount(db, landlordId) {
  */
 export async function changePayer(db, documenso, { landlord, name, email, now = new Date() }) {
   const link = await activePayerLink(db, landlord.id);
-  if (!link) throw new BillingError("no_payer", "You don't have a payer to change.", 404);
+  if (!link) throw new BillingError("no_payer", "You don't have an authorized signer to change.", 404);
   if (await signedForAccount(db, landlord.id)) {
     throw new BillingError("payer_signed", `${link.signer_name} already signed for your account. Only they can void it.`, 409);
   }
   const input = cleanPayerInput({ name, email });
-  if (input.email === link.signer_email) throw new BillingError("same_payer", "That is already your payer. Use Resend instead.");
+  if (input.email === link.signer_email) throw new BillingError("same_payer", "That is already your authorized signer. Use Resend instead.");
   await cancelPayerDocuments(db, documenso, landlord.id);
   const { error } = await db
     .from("billing_payers")
@@ -254,7 +254,7 @@ async function cancelPayerDocuments(db, documenso, landlordId) {
  */
 export async function requestPayerCoverage(db, documenso, { landlordId, listingIds = [], now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
-  if (!link) throw new BillingError("no_payer", "Your account has no payer.", 409);
+  if (!link) throw new BillingError("no_payer", "Your account has no authorized signer.", 409);
   const ids = [...new Set(listingIds.filter((id) => typeof id === "string"))].slice(0, 100);
   if (!ids.length) throw new BillingError("nothing_to_add", "Choose what to add.");
 
@@ -341,7 +341,7 @@ export async function releaseWaiting(db, { landlordId, deps, now = new Date() })
   if (published.length && deps.notifyLive) {
     const link = await activePayerLink(db, landlordId);
     try {
-      await deps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your payer", addresses: published });
+      await deps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: published });
     } catch (err) {
       console.error("billing: listing-live email failed", err?.message);
     }

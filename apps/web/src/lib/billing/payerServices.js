@@ -128,7 +128,7 @@ export async function afterPayerSigned({ signerId, accounts = {} }) {
     const { published } = await releaseWaitingFor(landlordId);
     if (!published.length) {
       const link = await activePayerLink(supabase, landlordId);
-      await releaseDeps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your payer", addresses: [] }).catch(() => {});
+      await releaseDeps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: [] }).catch(() => {});
     }
   }
 }

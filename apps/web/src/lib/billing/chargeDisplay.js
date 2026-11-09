@@ -48,7 +48,7 @@ export function statusMessage(charge) {
     case "paid":
       return refundedInFull(charge) ? "Refunded in full." : "Paid.";
     case "billed":
-      return `Billed to ${charge.billedTo || "your payer"}. To dispute it, contact us.`;
+      return `Billed to ${charge.billedTo || "your authorized signer"}. To dispute it, contact us.`;
     case "contested":
       return "Contested. We will email you the outcome.";
     case "voided":

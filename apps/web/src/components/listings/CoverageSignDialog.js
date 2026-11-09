@@ -47,7 +47,7 @@ function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
           Send to {payer.name} to sign
         </h2>
         <p className="mt-2 text-sm text-gray-700">
-          {payer.name} signs and pays for your account, so {what} will be added to an addendum for them to sign. It stays a draft until they
+          {payer.name} is your authorized signer, so {what} will be added to an addendum for them to sign. It stays a draft until they
           sign, then it goes live and we email you.
         </p>
         {ids.length === 0 && <p className="mt-2 text-sm text-red-700">Save it first, then publish again.</p>}

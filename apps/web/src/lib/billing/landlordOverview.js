@@ -125,7 +125,7 @@ async function coverageRowsFor(db, ids) {
       return await pageAll(() =>
         db
           .from("agreement_coverage")
-          .select("user_id, listing_id, address, agreement_id, amendment_id, status")
+          .select("user_id, listing_id, address, agreement_id, amendment_id, status, covered_at")
           .in("user_id", chunk)
           .eq("status", "covered")
           .order("id")
@@ -152,7 +152,8 @@ async function pendingAmendmentUsers(db, ids) {
  * live offerings their agreement does not cover (and how many offerings), and
  * covered addresses that have changed since they were signed for.
  */
-export function coverageSummary({ offerings = [], coverageRows = [], state }) {
+// `signer`: the account's authorized signer ({ name }) when someone else holds its agreement (Project B).
+export function coverageSummary({ offerings = [], coverageRows = [], state, signer = null }) {
   const covered = coveredMap(coverageRows, { master: state.signed, masterValid: state.valid });
   const byListing = new Map();
   for (const o of offerings) {
@@ -167,9 +168,22 @@ export function coverageSummary({ offerings = [], coverageRows = [], state }) {
   const addressChanged = [...byListing.values()]
     .filter((p) => covered.has(p.listingId) && covered.get(p.listingId).address !== p.address)
     .map((p) => ({ listingId: p.listingId, signedAddress: covered.get(p.listingId).address, currentAddress: p.address }));
+  // Every covered listing with how it is covered (Wyatt, 2026-11-09): whose
+  // agreement, the agreement itself or an addendum to it, and since when.
+  const coveredList = [...covered.entries()]
+    .map(([listingId, row]) => ({
+      listingId,
+      address: byListing.get(listingId)?.address ?? row.address,
+      via: signer ? "authorized_signer" : "own",
+      signerName: signer?.name ?? state.signed?.signer_name ?? null,
+      document: row.amendment_id ? "addendum" : "agreement",
+      coveredAt: row.covered_at ?? null,
+    }))
+    .sort((a, b) => String(a.address).localeCompare(String(b.address), "en", { numeric: true }));
   return {
     liveProperties: byListing.size,
     coveredCount: covered.size,
+    coveredList,
     uncovered,
     uncoveredOfferings: uncovered.reduce((n, p) => n + p.offerings, 0),
     addressChanged,
@@ -334,7 +348,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
     const holder = payer?.payer_id ?? l.id;
     // The version this landlord signs: their own when one is live, else the standard one.
     const state = summarizeAgreementRows(agreements.get(holder) ?? [], { liveVersion: ownVersions.get(holder) ?? liveVersion, cutoff, now });
-    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
+    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state, signer: payer ? { name: payer.signer_name } : null });
     const payment = paymentSummary(methods.get(holder), now);
     const invoice = invoiceSummary(invoices.get(l.id));
     const publishing = gateDecision({

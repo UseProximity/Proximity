@@ -73,7 +73,7 @@ export function NamePayerForm({ onDone, onCancel }) {
   return (
     <form onSubmit={submit} className="space-y-3 rounded-md border border-gray-200 px-3 py-3">
       <p className="text-sm text-gray-800">
-        If the owner (or someone else) signs and pays instead of you, enter their details. We email them the agreement and the Missouri
+        If the owner (or someone else) is the authorized signer for your account, signing the agreement and paying the invoices instead of you, enter their details. We email them the agreement and the Missouri
         Broker Disclosure Form with a link to sign. Invoices go to them, and you see your charges here. Your listings wait as drafts until
         they sign.
       </p>
@@ -134,7 +134,7 @@ export function PayerCard({ view, onChanged }) {
       title="Marketing agreement"
       defaultOpen
       badge={<span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>}
-      summary={`Signed and paid by ${view.payer.name}.`}
+      summary={`Authorized signer: ${view.payer.name}.`}
     >
       <div className="space-y-4 px-4 py-4">
         <p className="text-sm text-gray-700">
@@ -241,7 +241,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
   if (!accounts.length) return null;
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
-      <p className="text-sm font-medium text-gray-900">Properties you pay for</p>
+      <p className="text-sm font-medium text-gray-900">Accounts you are the authorized signer for</p>
       {needingAgreement.length > 0 && (
         <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
           <p>
@@ -313,7 +313,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
                 </div>
               ) : (
                 <button type="button" className="text-xs text-gray-500 underline hover:text-gray-700" onClick={() => setVoiding(a.landlordId)}>
-                  Stop paying for this account
+                  Stop being the authorized signer for this account
                 </button>
               )}
             </div>

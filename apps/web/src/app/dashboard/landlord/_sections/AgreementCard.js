@@ -301,7 +301,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               </SignButton>
               {!namingPayer && (
                 <button type="button" className="text-sm text-gray-600 underline hover:text-gray-800" onClick={() => setNamingPayer(true)}>
-                  Someone else signs and pays?
+                  Someone else is the authorized signer?
                 </button>
               )}
             </div>
@@ -310,7 +310,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         )}
 
         {billingOnly && !signedOk && !paidFor && (
-          <p className="text-sm text-gray-600">Nothing to sign yet. When a landlord names you as their payer, their properties show here.</p>
+          <p className="text-sm text-gray-600">Nothing to sign yet. When a landlord names you as their authorized signer, their properties show here.</p>
         )}
 
         {paidFor}

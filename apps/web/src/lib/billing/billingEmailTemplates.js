@@ -470,7 +470,7 @@ export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl 
     subject: `${landlordName} asked you to sign for their Proximity listings`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the owner who signs and pays. They asked you to ${ask}.</p>
+      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the authorized signer for their account: the person who signs the marketing agreement and pays the invoices. They asked you to ${ask}.</p>
       ${list}
       <p>Two documents are attached: the marketing agreement, and the Missouri Broker Disclosure Form. Please read the disclosure form before you sign.</p>
       ${setupUrl ? button(setupUrl, "Set a password and review") : button(signUrl, "Review and sign")}
@@ -510,7 +510,7 @@ export function payeeSignedEmail({ name, payerName, addresses = [], billingUrl }
 // To the landlord: their payer voided the agreement for their account.
 export function payeeVoidedEmail({ name, payerName, billingUrl }) {
   return {
-    subject: `${payerName} stopped signing for your Proximity listings`,
+    subject: `${payerName} is no longer the authorized signer for your Proximity listings`,
     html: wrap(`
       ${hello(name)}
       <p>${e(payerName)} voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
@@ -524,10 +524,10 @@ export function payeeVoidedEmail({ name, payerName, billingUrl }) {
 // To a landlord whose payer Proximity set up for them (an admin assigned it).
 export function payeeAssignedEmail({ name, payerName, billingUrl }) {
   return {
-    subject: `${payerName} will sign and pay for your Proximity listings`,
+    subject: `${payerName} is now the authorized signer for your Proximity listings`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(payerName)} now signs Proximity's marketing agreement for your listings and receives the invoices. We have emailed them the agreement to sign.</p>
+      <p>${e(payerName)} is now the authorized signer for your account: they sign Proximity's marketing agreement for your listings and receive the invoices. We have emailed them the agreement to sign.</p>
       <p>You don't need to sign anything. On your Billing page you can see when they have signed, which listings are covered, and each charge.</p>
       ${button(billingUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>

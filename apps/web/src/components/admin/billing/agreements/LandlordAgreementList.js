@@ -175,6 +175,20 @@ function CoverageDetail({ c, a }) {
         {c.liveProperties} live {c.liveProperties === 1 ? "property" : "properties"}, {c.coveredCount} covered
         {a.amendmentPendingSince ? ` · amendment started ${fmtDate(a.amendmentPendingSince)}` : ""}
       </p>
+      {c.coveredList?.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-gray-700">Covered ({c.coveredList.length}): how each listing is covered</summary>
+          <ul className="ml-4 mt-1 list-disc space-y-0.5">
+            {c.coveredList.map((p) => (
+              <li key={p.listingId}>
+                {p.address}: {p.via === "authorized_signer" ? `${p.signerName}'s agreement (authorized signer)` : `their own agreement${p.signerName ? `, signed by ${p.signerName}` : ""}`}
+                {p.document === "addendum" ? ", added by addendum" : ""}
+                {p.coveredAt ? `, since ${fmtDate(p.coveredAt)}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {c.uncovered.length > 0 && (
         <div className="rounded-md bg-amber-50 px-2 py-1 text-amber-900">
           Not under agreement:
@@ -241,7 +255,7 @@ function PayerLookup({ name, setName, email, setEmail, onStatus }) {
   }, [email]);
   return (
     <div className="space-y-2">
-      <input className={FIELD} type="email" placeholder="Payer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
+      <input className={FIELD} type="email" placeholder="Authorized signer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
       {found?.status === "existing" && (
         <p className="rounded-md bg-green-50 px-3 py-2 text-xs text-green-900">
           Existing {found.user.billingOnly ? "billing account" : "landlord account"}: {found.user.name || found.user.email}
@@ -257,14 +271,14 @@ function PayerLookup({ name, setName, email, setEmail, onStatus }) {
       )}
       {found?.status === "refused" && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{found.reason}</p>}
       {(found?.status === "new" || found?.status === "existing") && (
-        <input className={FIELD} placeholder="Payer's full name (as it goes on the agreement)" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+        <input className={FIELD} placeholder="Authorized signer's full name (as it goes on the agreement)" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
       )}
     </div>
   );
 }
 
 const assignedMessage = (r, name) =>
-  `${name.trim()} now signs and pays for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them.${
+  `${name.trim()} is now the authorized signer for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them.${
     r.failed?.length ? ` Not assigned: ${r.failed.map((f) => f.error).join(" ")}` : ""
   }`;
 
@@ -286,17 +300,17 @@ function PayerForm({ row, busy, run, onDone }) {
   return (
     <form onSubmit={submit} className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm">
       <p className="text-gray-700">
-        The payer signs the marketing agreement and receives the invoices for {row.name || row.email}, who will not sign. We email the payer
+        The authorized signer signs the marketing agreement and receives the invoices for {row.name || row.email}, who will not sign. We email them
         the agreement and the MREC form.
       </p>
       <PayerLookup name={name} setName={setName} email={email} setEmail={setEmail} onStatus={setStatus} />
       <label className="flex items-center gap-2 text-gray-700">
         <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-        Email {row.name || "the landlord"} that the payer signs and pays now
+        Email {row.name || "the landlord"} that the authorized signer signs and pays now
       </label>
       <div className="flex gap-2">
         <button type="submit" className={PRIMARY} disabled={busy || !ok}>
-          Set payer
+          Set authorized signer
         </button>
         <button type="button" className={BUTTON} onClick={onDone} disabled={busy}>
           Cancel
@@ -350,7 +364,7 @@ function BulkPayerPanel({ busy, run, onDone }) {
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-lg border border-gray-200 bg-white px-4 py-4 text-sm">
-      <p className="font-semibold text-gray-900">Assign one payer to several landlords</p>
+      <p className="font-semibold text-gray-900">Assign one authorized signer to several landlords</p>
       <div>
         <p className="text-xs font-medium text-gray-600">1. Landlords</p>
         <input className={FIELD} placeholder="Search landlords by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -374,14 +388,14 @@ function BulkPayerPanel({ busy, run, onDone }) {
         )}
       </div>
       <div>
-        <p className="text-xs font-medium text-gray-600">2. Payer</p>
+        <p className="text-xs font-medium text-gray-600">2. Authorized signer</p>
         <PayerLookup name={name} setName={setName} email={email} setEmail={setEmail} onStatus={setStatus} />
       </div>
       <label className="flex items-center gap-2 text-gray-700">
         <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-        Email each landlord that the payer signs and pays now
+        Email each landlord that the authorized signer signs and pays now
       </label>
-      <p className="text-xs text-gray-500">The payer gets one email listing every account, and signs one agreement covering all of them.</p>
+      <p className="text-xs text-gray-500">The authorized signer gets one email listing every account, and signs one agreement covering all of them.</p>
       <div className="flex gap-2">
         <button type="submit" className={PRIMARY} disabled={busy || !ok}>
           Assign to {list.length || ""} {list.length === 1 ? "landlord" : "landlords"}
@@ -397,8 +411,8 @@ function BulkPayerPanel({ busy, run, onDone }) {
 function LandlordRow({ row, busy, run, canEmail }) {
   const [settingPayer, setSettingPayer] = useState(false);
   const endPayer = () => {
-    if (!window.confirm(`End ${row.payer.name}'s payment for ${row.name || row.email}? Anything they signed for this account comes off their agreement.`)) return;
-    return run(() => call("/api/admin/billing/payers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ landlordId: row.id }) }), "Payer ended.");
+    if (!window.confirm(`End ${row.payer.name} as the authorized signer for ${row.name || row.email}? Anything they signed for this account comes off their agreement.`)) return;
+    return run(() => call("/api/admin/billing/payers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ landlordId: row.id }) }), "Authorized signer ended.");
   };
   const [showDocs, setShowDocs] = useState(false);
   const [agColor, agLabel] = AGREEMENT[row.agreement.status] ?? AGREEMENT.not_signed;
@@ -423,12 +437,12 @@ function LandlordRow({ row, busy, run, canEmail }) {
           {/* Project B: someone else signs and pays for this account, or this account pays for others. */}
           {row.payer && (
             <p className="text-xs text-gray-600">
-              Signed and paid by {row.payer.name} ({row.payer.email}){row.payer.declined ? ", who declined the last copy" : ""}. The agreement shown is theirs.
+              Authorized signer: {row.payer.name} ({row.payer.email}){row.payer.declined ? ", who declined the last copy" : ""}. The agreement shown is theirs.
             </p>
           )}
           {row.paysForCount > 0 && (
             <p className="text-xs text-gray-600">
-              Pays for {row.paysForCount} other {row.paysForCount === 1 ? "account" : "accounts"}.
+              Authorized signer for {row.paysForCount} other {row.paysForCount === 1 ? "account" : "accounts"}.
             </p>
           )}
         </div>
@@ -504,12 +518,12 @@ function LandlordRow({ row, busy, run, canEmail }) {
         )}
         {!row.payer && !row.billingOnly && row.agreement.status !== "signed" && !settingPayer && (
           <button type="button" disabled={busy} className={BUTTON} onClick={() => setSettingPayer(true)}>
-            Set payer
+            Set authorized signer
           </button>
         )}
         {row.payer && (
           <button type="button" disabled={busy} className={BUTTON} onClick={endPayer}>
-            End payer
+            End authorized signer
           </button>
         )}
       </div>
@@ -564,7 +578,7 @@ export default function LandlordAgreementList({ search, busy, run, reloadKey }) 
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="flex-1 text-sm font-semibold text-gray-900">Landlords</h3>
         <button type="button" disabled={busy} className={BUTTON} onClick={() => setBulkPayer((b) => !b)}>
-          Assign a payer to several landlords
+          Assign an authorized signer to several landlords
         </button>
         <button
           type="button"
