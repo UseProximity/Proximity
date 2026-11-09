@@ -75,10 +75,16 @@ export default function TopFilterBar({
    * results follow without blocking them.
    */
   const [filters, setLiveFilters] = useOptimistic(committedFilters);
+  // The side panel edits its own copy of the filters. With the map hidden the
+  // bar stays usable while the panel is open, so a change or a reset made in the
+  // bar bumps this and the panel starts over from the new filters (its unapplied
+  // edits are dropped), instead of later applying its old copy over them.
+  const [panelEpoch, setPanelEpoch] = useState(0);
   const setFilters = (next) =>
     startTransition(() => {
       setLiveFilters(next);
       commitFilters(next);
+      setPanelEpoch((epoch) => epoch + 1);
     });
   const [showFilters, setShowFilters] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
@@ -331,7 +337,10 @@ export default function TopFilterBar({
 
         {/* Clear All */}
         <button
-          onClick={onReset}
+          onClick={() => {
+            onReset();
+            setPanelEpoch((epoch) => epoch + 1);
+          }}
           className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
@@ -397,6 +406,7 @@ export default function TopFilterBar({
         modal={!mapHidden}
       >
         <FiltersPanel
+          key={panelEpoch}
           listings={listings}
           filters={filters}
           onApply={applyCard}
