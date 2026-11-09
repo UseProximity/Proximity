@@ -120,6 +120,27 @@ export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
   );
 }
 
+// Shell of the pink-header filter cards (Price, Beds & Baths): title band,
+// body and the red Apply pill. onApply is called when Apply is pressed.
+export function FilterCard({ title, onApply, children }) {
+  return (
+    <div className="w-80 overflow-hidden rounded-[28px] border border-gray-300 bg-white shadow-xl">
+      <h3 className="bg-[#ffefef] px-6 py-3.5 text-[17px] font-semibold leading-[21px] text-black">
+        {title}
+      </h3>
+      <div className="pb-4">
+        {children}
+        <button
+          onClick={onApply}
+          className="mx-auto mt-4 block h-7 w-[84px] rounded-full bg-[#F00013] text-[17px] text-white transition-opacity hover:opacity-90"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Handle size in px. A handle's centre sits at handleX(pct), which keeps the
 // first and last handle inside the track (half a handle in from each end).
 const HANDLE_PX = 17;
@@ -130,7 +151,9 @@ const LABEL_MERGE_PCT = 16;
 // Two-handle range slider in the Browse Listings design: a red track between
 // round red handles, with a red label under each. low and high are numbers
 // between min and max, at least one step apart; formatLabel(value) gives the
-// label text.
+// label text. With ticks (one label per step, from min), every step is labelled
+// instead, the selected ones in red, and formatLabel is not needed. minGap is how
+// close the handles may get (default one step; 0 lets them meet).
 //
 // Dragging is handled here with pointer events rather than two overlaid
 // <input type="range">. With those, the browser's hit-testing and z-order
@@ -138,7 +161,17 @@ const LABEL_MERGE_PCT = 16;
 // apart (the wrong one moved, or one stuck behind the other), and the clamping
 // fought the native drag value. Here the handle is chosen once, on press, and
 // then follows the pointer, clamped a step clear of the other handle.
-export function RangeSlider({ min, max, step = 1, low, high, onChange, formatLabel }) {
+export function RangeSlider({
+  min,
+  max,
+  step = 1,
+  minGap = step,
+  low,
+  high,
+  onChange,
+  formatLabel,
+  ticks,
+}) {
   const rowRef = useRef(null);
   // Drag in progress: { handle, offset, startX }. handle is null until known.
   const drag = useRef(null);
@@ -157,11 +190,11 @@ export function RangeSlider({ min, max, step = 1, low, high, onChange, formatLab
       min + ((x - r.left - HANDLE_PX / 2) / (r.width - HANDLE_PX)) * (max - min);
     return min + Math.round((raw - min) / step) * step;
   };
-  // Moves a handle, keeping it on the track and a step clear of the other one.
+  // Moves a handle, keeping it on the track and minGap clear of the other one.
   const move = (handle, value) => {
     const v = Math.min(max, Math.max(min, value));
-    if (handle === "low") onChange(Math.min(v, high - step), high);
-    else onChange(low, Math.max(v, low + step));
+    if (handle === "low") onChange(Math.min(v, high - minGap), high);
+    else onChange(low, Math.max(v, low + minGap));
   };
   // Starts dragging a handle pressed at client x. Pressing on the handle keeps
   // the pointer's offset from its centre; pressing on the track jumps it there.
@@ -219,9 +252,10 @@ export function RangeSlider({ min, max, step = 1, low, high, onChange, formatLab
       style={{ left: handleX(pct) }}
     />
   );
-  const label = (pct, text) => (
+  const label = (pct, text, color = "") => (
     <span
-      className="absolute -translate-x-1/2 whitespace-nowrap"
+      key={text}
+      className={`absolute -translate-x-1/2 whitespace-nowrap ${color}`}
       style={{ left: handleX(pct) }}
     >
       {text}
@@ -250,7 +284,16 @@ export function RangeSlider({ min, max, step = 1, low, high, onChange, formatLab
         {renderHandle("high", high, highPct)}
       </div>
       <div className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px] text-[#F71C1E]">
-        {highPct - lowPct < LABEL_MERGE_PCT ? (
+        {ticks ? (
+          ticks.map((text, i) => {
+            const v = min + i * step;
+            return label(
+              pctOf(v),
+              text,
+              v === low || v === high ? "" : "text-gray-400"
+            );
+          })
+        ) : highPct - lowPct < LABEL_MERGE_PCT ? (
           label(
             (lowPct + highPct) / 2,
             `${formatLabel(low)} – ${formatLabel(high)}`

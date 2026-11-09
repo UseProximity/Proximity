@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  FilterCard,
   RangeSlider,
   PRICE_MIN,
   PRICE_MAX,
@@ -75,74 +76,66 @@ export default function PriceFilterCard({ listings, minRent, maxRent, onApply })
   };
 
   return (
-    <div className="w-80 overflow-hidden rounded-[28px] border border-gray-300 bg-white shadow-xl">
-      <h3 className="bg-[#ffefef] px-6 py-3.5 text-[17px] font-semibold leading-[21px] text-black">
-        Price Range
-      </h3>
-      <div className="pb-4 pt-3">
-        <div className="ml-[47px] mr-[38px] flex h-[125px] items-end gap-[3.34px]">
-          {counts.map((count, i) => {
-            const start = PRICE_MIN + i * BUCKET;
-            const inRange = start < range.high && start + BUCKET > range.low;
-            return (
-              <div
-                key={i}
-                className={`flex-1 ${inRange ? "bg-[#F71C1E]" : "bg-gray-200"}`}
-                style={{ height: `${(count / tallest) * 90}%` }}
-              />
-            );
-          })}
-        </div>
-        <div className="-mt-2 pl-[29px] pr-[18px]">
-          <RangeSlider
-            min={PRICE_MIN}
-            max={PRICE_MAX}
-            step={PRICE_STEP}
-            low={range.low}
-            high={range.high}
-            onChange={(low, high) => setRange({ low, high })}
-            formatLabel={formatPrice}
-          />
-        </div>
-        <div className="mt-3 flex gap-3 px-6">
-          {[
-            ["low", "Min price"],
-            ["high", "Max price"],
-          ].map(([field, label]) => (
-            <label
-              key={field}
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 focus-within:border-[#F71C1E]"
-            >
-              <span className="block text-[11px] leading-none text-gray-500">
-                {label}
-              </span>
-              <span className="mt-1 flex items-center gap-0.5 text-sm text-gray-900">
-                $
-                <input
-                  inputMode="numeric"
-                  value={typing?.field === field ? typing.text : shown[field]}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => onType(field, e.target.value)}
-                  onBlur={() => onCommit(field)}
-                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                  className="w-full bg-transparent outline-none"
-                />
-              </span>
-            </label>
-          ))}
-        </div>
-        <button
-          onClick={() =>
-            onApply({
-              minRent: range.low <= PRICE_MIN ? "" : String(range.low),
-              maxRent: range.high >= PRICE_MAX ? "" : String(range.high),
-            })
-          }
-          className="mx-auto mt-4 block h-7 w-[84px] rounded-full bg-[#F00013] text-[17px] text-white transition-opacity hover:opacity-90"
-        >
-          Apply
-        </button>
+    <FilterCard
+      title="Price Range"
+      onApply={() =>
+        onApply({
+          minRent: range.low <= PRICE_MIN ? "" : String(range.low),
+          maxRent: range.high >= PRICE_MAX ? "" : String(range.high),
+        })
+      }
+    >
+      <div className="mt-3 ml-[47px] mr-[38px] flex h-[125px] items-end gap-[3.34px]">
+        {counts.map((count, i) => {
+          const start = PRICE_MIN + i * BUCKET;
+          const inRange = start < range.high && start + BUCKET > range.low;
+          return (
+            <div
+              key={i}
+              className={`flex-1 ${inRange ? "bg-[#F71C1E]" : "bg-gray-200"}`}
+              style={{ height: `${(count / tallest) * 90}%` }}
+            />
+          );
+        })}
       </div>
-    </div>
+      <div className="-mt-2 pl-[29px] pr-[18px]">
+        <RangeSlider
+          min={PRICE_MIN}
+          max={PRICE_MAX}
+          step={PRICE_STEP}
+          low={range.low}
+          high={range.high}
+          onChange={(low, high) => setRange({ low, high })}
+          formatLabel={formatPrice}
+        />
+      </div>
+      <div className="mt-3 flex gap-3 px-6">
+        {[
+          ["low", "Min price"],
+          ["high", "Max price"],
+        ].map(([field, label]) => (
+          <label
+            key={field}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 focus-within:border-[#F71C1E]"
+          >
+            <span className="block text-[11px] leading-none text-gray-500">
+              {label}
+            </span>
+            <span className="mt-1 flex items-center gap-0.5 text-sm text-gray-900">
+              $
+              <input
+                inputMode="numeric"
+                value={typing?.field === field ? typing.text : shown[field]}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => onType(field, e.target.value)}
+                onBlur={() => onCommit(field)}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                className="w-full bg-transparent outline-none"
+              />
+            </span>
+          </label>
+        ))}
+      </div>
+    </FilterCard>
   );
 }

@@ -14,6 +14,7 @@ import {
   SHTT_STEPS,
 } from "@/components/listings/FilterComponents";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
+import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
 
 // FilterSection, DualRangeSlider, StepSlider, DualStepSlider, and step constants
 // are imported from FilterComponents.js above.
@@ -33,6 +34,24 @@ function FilterDropdownPortal({ children, isOpen }) {
       <div style={{ pointerEvents: "auto" }}>{children}</div>
     </div>,
     document.body
+  );
+}
+
+// Dropdown holding one of the pink-header filter cards, anchored at pos.
+function CardDropdown({ isOpen, pos, onClose, children }) {
+  return (
+    <FilterDropdownPortal isOpen={isOpen}>
+      <div className="fixed inset-0 z-[100]" onClick={onClose} />
+      <div className="fixed z-[101]" style={{ top: pos.top, left: pos.left }}>
+        <div
+          className="filter-dropdown"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
+      </div>
+    </FilterDropdownPortal>
   );
 }
 
@@ -131,26 +150,39 @@ export default function TopFilterBar({
 
   // Pill display labels for beds/baths
   const bedLabel =
-    filters.bedrooms && filters.maxBedrooms
+    filters.bedrooms && filters.bedrooms === filters.maxBedrooms
+      ? `${filters.bedrooms} Beds`
+      : filters.bedrooms && filters.maxBedrooms
       ? `${filters.bedrooms}–${filters.maxBedrooms} Beds`
       : filters.bedrooms
       ? `${filters.bedrooms}+ Beds`
       : filters.maxBedrooms
       ? `≤${filters.maxBedrooms} Beds`
-      : "Bedroom";
+      : "";
 
   const bathLabel =
-    filters.bathrooms && filters.maxBathrooms
+    filters.bathrooms && filters.bathrooms === filters.maxBathrooms
+      ? `${filters.bathrooms} Baths`
+      : filters.bathrooms && filters.maxBathrooms
       ? `${filters.bathrooms}–${filters.maxBathrooms} Baths`
       : filters.bathrooms
       ? `${filters.bathrooms}+ Baths`
       : filters.maxBathrooms
       ? `≤${filters.maxBathrooms} Baths`
-      : "Bath";
+      : "";
 
   const priceActive = !!(filters.minRent || filters.maxRent);
   const bedsActive = !!(filters.bedrooms || filters.maxBedrooms);
   const bathsActive = !!(filters.bathrooms || filters.maxBathrooms);
+  const bedBathLabel = [bedLabel, bathLabel].filter(Boolean).join(" · ") || "Beds & Baths";
+
+  // Apply button of the card dropdowns: filters take effect, then it closes.
+  const applyCard = (values) => {
+    const next = { ...filters, ...values };
+    setFilters(next);
+    onFiltersSaved(next);
+    setShowFilters(false);
+  };
 
   const toggleArray = (field, value) => {
     const arr = draft[field] || [];
@@ -240,29 +272,16 @@ export default function TopFilterBar({
           {CHEVRON}
         </button>
 
-        {/* Bedroom pill */}
+        {/* Beds & Baths pill */}
         <button
-          onClick={(e) => openPill(e, "bedroom")}
+          onClick={(e) => openPill(e, "bedbath")}
           className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
-            bedsActive
+            bedsActive || bathsActive
               ? "bg-red-600 text-white border-red-600"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           }`}
         >
-          <span>{bedLabel}</span>
-          {CHEVRON}
-        </button>
-
-        {/* Bath pill */}
-        <button
-          onClick={(e) => openPill(e, "bath")}
-          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
-            bathsActive
-              ? "bg-red-600 text-white border-red-600"
-              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-          }`}
-        >
-          <span>{bathLabel}</span>
+          <span>{bedBathLabel}</span>
           {CHEVRON}
         </button>
 
@@ -339,158 +358,27 @@ export default function TopFilterBar({
       </div>
 
       {/* ── Price dropdown ── */}
-      <FilterDropdownPortal isOpen={showFilters === "price"}>
-        <div
-          className="fixed inset-0 z-[100]"
-          onClick={() => setShowFilters(false)}
+      <CardDropdown
+        isOpen={showFilters === "price"}
+        pos={dropdownPos}
+        onClose={() => setShowFilters(false)}
+      >
+        <PriceFilterCard
+          listings={listings}
+          minRent={filters.minRent}
+          maxRent={filters.maxRent}
+          onApply={applyCard}
         />
-        <div
-          className="fixed z-[101]"
-          style={{ top: dropdownPos.top, left: dropdownPos.left }}
-        >
-          <div
-            className="filter-dropdown"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <PriceFilterCard
-              listings={listings}
-              minRent={filters.minRent}
-              maxRent={filters.maxRent}
-              onApply={(price) => {
-                const next = { ...filters, ...price };
-                setFilters(next);
-                onFiltersSaved(next);
-                setShowFilters(false);
-              }}
-            />
-          </div>
-        </div>
-      </FilterDropdownPortal>
+      </CardDropdown>
 
-      {/* ── Bedroom dropdown ── */}
-      <FilterDropdownPortal isOpen={showFilters === "bedroom"}>
-        <style>{SLIDER_CSS}</style>
-        <div
-          className="fixed inset-0 z-[100]"
-          onClick={() => setShowFilters(false)}
-        />
-        <div
-          className="fixed z-[101]"
-          style={{ top: dropdownPos.top, left: dropdownPos.left }}
-        >
-          <div
-            className="filter-dropdown bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-80"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              Bedrooms
-            </h3>
-            <div className="mb-6">
-              <DualStepSlider
-                steps={BED_STEPS}
-                minValue={filters.bedrooms || "0"}
-                maxValue={filters.maxBedrooms || "5"}
-                onMinChange={(v) =>
-                  setFilters({ ...filters, bedrooms: v === "0" ? "" : v })
-                }
-                onMaxChange={(v) =>
-                  setFilters({ ...filters, maxBedrooms: v === "5" ? "" : v })
-                }
-                onSnapTo={(v) =>
-                  setFilters({
-                    ...filters,
-                    bedrooms: v === "0" ? "" : v,
-                    maxBedrooms: v === "5" ? "" : v,
-                  })
-                }
-              />
-            </div>
-            <div className="flex justify-between">
-              <button
-                onClick={() =>
-                  setFilters({ ...filters, bedrooms: "", maxBedrooms: "" })
-                }
-                className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm"
-              >
-                Reset
-              </button>
-              <button
-                onClick={() => {
-                  onFiltersSaved(filters);
-                  setShowFilters(false);
-                }}
-                className="bg-red-500 text-white px-6 py-2 rounded-lg text-sm hover:bg-red-600"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      </FilterDropdownPortal>
-
-      {/* ── Bath dropdown ── */}
-      <FilterDropdownPortal isOpen={showFilters === "bath"}>
-        <style>{SLIDER_CSS}</style>
-        <div
-          className="fixed inset-0 z-[100]"
-          onClick={() => setShowFilters(false)}
-        />
-        <div
-          className="fixed z-[101]"
-          style={{ top: dropdownPos.top, left: dropdownPos.left }}
-        >
-          <div
-            className="filter-dropdown bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-80"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              Bathrooms
-            </h3>
-            <div className="mb-6">
-              <DualStepSlider
-                steps={BATH_STEPS}
-                minValue={filters.bathrooms || "1"}
-                maxValue={filters.maxBathrooms || "4"}
-                onMinChange={(v) =>
-                  setFilters({ ...filters, bathrooms: v === "1" ? "" : v })
-                }
-                onMaxChange={(v) =>
-                  setFilters({ ...filters, maxBathrooms: v === "4" ? "" : v })
-                }
-                onSnapTo={(v) =>
-                  setFilters({
-                    ...filters,
-                    bathrooms: v === "1" ? "" : v,
-                    maxBathrooms: v === "4" ? "" : v,
-                  })
-                }
-              />
-            </div>
-            <div className="flex justify-between">
-              <button
-                onClick={() =>
-                  setFilters({ ...filters, bathrooms: "", maxBathrooms: "" })
-                }
-                className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm"
-              >
-                Reset
-              </button>
-              <button
-                onClick={() => {
-                  onFiltersSaved(filters);
-                  setShowFilters(false);
-                }}
-                className="bg-red-500 text-white px-6 py-2 rounded-lg text-sm hover:bg-red-600"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      </FilterDropdownPortal>
+      {/* ── Beds & Baths dropdown ── */}
+      <CardDropdown
+        isOpen={showFilters === "bedbath"}
+        pos={dropdownPos}
+        onClose={() => setShowFilters(false)}
+      >
+        <BedBathFilterCard filters={filters} onApply={applyCard} />
+      </CardDropdown>
 
       {/* ── More Filters modal ── */}
       <FilterDropdownPortal isOpen={showFilters === "more-filters"}>
