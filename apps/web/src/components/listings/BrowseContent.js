@@ -175,6 +175,7 @@ export default function BrowseContent({ session, initialListings = null }) {
         <TopFilterBar
           search={search}
           setSearch={setSearch}
+          listings={listings}
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}

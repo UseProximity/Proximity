@@ -2,7 +2,7 @@
 
 // Shared filter sub-components used by TopFilterBar (desktop) and mobile filter panel
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
 export const SLIDER_CSS = `
   .px-range {
@@ -37,6 +37,12 @@ export const SLIDER_CSS = `
   .px-range-single { pointer-events: auto; }
 `;
 
+// Price range shared by every price slider. The right end ($4000+) means no
+// upper limit, so a max of PRICE_MAX or more is stored as "".
+export const PRICE_MIN = 400;
+export const PRICE_MAX = 4000;
+export const PRICE_STEP = 50;
+
 export function FilterSection({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -63,7 +69,7 @@ export function FilterSection({ title, children, defaultOpen = true }) {
 }
 
 export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
-  const MIN = 400, MAX = 5000, STEP = 50;
+  const MIN = PRICE_MIN, MAX = PRICE_MAX, STEP = PRICE_STEP;
   const minVal = minRent ? Math.max(MIN, Number(minRent)) : MIN;
   const maxVal = maxRent ? Math.min(MAX, Number(maxRent)) : MAX;
   const minPct = ((minVal - MIN) / (MAX - MIN)) * 100;
@@ -109,6 +115,152 @@ export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
           {maxVal < MAX ? `$${maxVal.toLocaleString()}` : "$4,000+"}
         </span>
         <span className="text-gray-400">$4,000+</span>
+      </div>
+    </div>
+  );
+}
+
+// Handle size in px. A handle's centre sits at handleX(pct), which keeps the
+// first and last handle inside the track (half a handle in from each end).
+const HANDLE_PX = 17;
+const handleX = (pct) => `calc(${pct}% + ${(0.5 - pct / 100) * HANDLE_PX}px)`;
+// Labels whose handles are closer than this (% of the track) merge into one.
+const LABEL_MERGE_PCT = 16;
+
+// Two-handle range slider in the Browse Listings design: a red track between
+// round red handles, with a red label under each. low and high are numbers
+// between min and max, at least one step apart; formatLabel(value) gives the
+// label text.
+//
+// Dragging is handled here with pointer events rather than two overlaid
+// <input type="range">. With those, the browser's hit-testing and z-order
+// decided which handle moved, so handles close together could not be told
+// apart (the wrong one moved, or one stuck behind the other), and the clamping
+// fought the native drag value. Here the handle is chosen once, on press, and
+// then follows the pointer, clamped a step clear of the other handle.
+export function RangeSlider({ min, max, step = 1, low, high, onChange, formatLabel }) {
+  const rowRef = useRef(null);
+  // Drag in progress: { handle, offset, startX }. handle is null until known.
+  const drag = useRef(null);
+  const pctOf = (v) => ((v - min) / (max - min)) * 100;
+  const lowPct = pctOf(low);
+  const highPct = pctOf(high);
+
+  // Client x of a handle's centre, and the step-snapped value under a client x.
+  const centreX = (v) => {
+    const r = rowRef.current.getBoundingClientRect();
+    return r.left + HANDLE_PX / 2 + (pctOf(v) / 100) * (r.width - HANDLE_PX);
+  };
+  const valueAt = (x) => {
+    const r = rowRef.current.getBoundingClientRect();
+    const raw =
+      min + ((x - r.left - HANDLE_PX / 2) / (r.width - HANDLE_PX)) * (max - min);
+    return min + Math.round((raw - min) / step) * step;
+  };
+  // Moves a handle, keeping it on the track and a step clear of the other one.
+  const move = (handle, value) => {
+    const v = Math.min(max, Math.max(min, value));
+    if (handle === "low") onChange(Math.min(v, high - step), high);
+    else onChange(low, Math.max(v, low + step));
+  };
+  // Starts dragging a handle pressed at client x. Pressing on the handle keeps
+  // the pointer's offset from its centre; pressing on the track jumps it there.
+  const grab = (handle, x) => {
+    const d = x - centreX(handle === "low" ? low : high);
+    const onHandle = Math.abs(d) <= HANDLE_PX / 2;
+    drag.current = { handle, offset: onHandle ? d : 0 };
+    if (!onHandle) move(handle, valueAt(x));
+  };
+
+  const onPointerDown = (e) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const x = e.clientX;
+    const lowX = centreX(low);
+    const highX = centreX(high);
+    if (
+      Math.abs(x - lowX) <= HANDLE_PX / 2 &&
+      Math.abs(x - highX) <= HANDLE_PX / 2
+    ) {
+      // Both handles are under the pointer: the first move decides which one.
+      drag.current = { handle: null, startX: x };
+    } else {
+      grab(Math.abs(x - lowX) <= Math.abs(x - highX) ? "low" : "high", x);
+    }
+  };
+  const onPointerMove = (e) => {
+    if (!drag.current) return;
+    if (!drag.current.handle) {
+      const { startX } = drag.current;
+      if (Math.abs(e.clientX - startX) < 2) return;
+      grab(e.clientX < startX ? "low" : "high", startX);
+    }
+    move(drag.current.handle, valueAt(e.clientX - drag.current.offset));
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+  const onKeyDown = (handle, value) => (e) => {
+    const dir = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    move(handle, value + dir * step);
+  };
+
+  const renderHandle = (handle, value, pct) => (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={handle === "low" ? "Minimum" : "Maximum"}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      onKeyDown={onKeyDown(handle, value)}
+      className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] bg-[#F71C1E] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-[#F71C1E]/40"
+      style={{ left: handleX(pct) }}
+    />
+  );
+  const label = (pct, text) => (
+    <span
+      className="absolute -translate-x-1/2 whitespace-nowrap"
+      style={{ left: handleX(pct) }}
+    >
+      {text}
+    </span>
+  );
+
+  return (
+    <div>
+      <div
+        ref={rowRef}
+        className="relative h-[17px] cursor-pointer touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <div className="absolute inset-x-[8.5px] top-1/2 h-0.5 -translate-y-1/2 bg-gray-200" />
+        <div
+          className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-[#F71C1E]"
+          style={{
+            left: handleX(lowPct),
+            width: `calc(${handleX(highPct)} - ${handleX(lowPct)})`,
+          }}
+        />
+        {renderHandle("low", low, lowPct)}
+        {renderHandle("high", high, highPct)}
+      </div>
+      <div className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px] text-[#F71C1E]">
+        {highPct - lowPct < LABEL_MERGE_PCT ? (
+          label(
+            (lowPct + highPct) / 2,
+            `${formatLabel(low)} – ${formatLabel(high)}`
+          )
+        ) : (
+          <>
+            {label(lowPct, formatLabel(low))}
+            {label(highPct, formatLabel(high))}
+          </>
+        )}
       </div>
     </div>
   );

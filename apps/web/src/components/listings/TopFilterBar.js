@@ -13,6 +13,7 @@ import {
   DIST_STEPS,
   SHTT_STEPS,
 } from "@/components/listings/FilterComponents";
+import PriceFilterCard from "@/components/listings/PriceFilterCard";
 
 // FilterSection, DualRangeSlider, StepSlider, DualStepSlider, and step constants
 // are imported from FilterComponents.js above.
@@ -50,6 +51,7 @@ const CHEVRON = (
 export default function TopFilterBar({
   search,
   setSearch,
+  listings,
   filters,
   setFilters,
   onReset,
@@ -146,6 +148,7 @@ export default function TopFilterBar({
       ? `≤${filters.maxBathrooms} Baths`
       : "Bath";
 
+  const priceActive = !!(filters.minRent || filters.maxRent);
   const bedsActive = !!(filters.bedrooms || filters.maxBedrooms);
   const bathsActive = !!(filters.bathrooms || filters.maxBathrooms);
 
@@ -223,6 +226,19 @@ export default function TopFilterBar({
             </button>
           )}
         </div>
+
+        {/* Price pill */}
+        <button
+          onClick={(e) => openPill(e, "price")}
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+            priceActive
+              ? "bg-red-600 text-white border-red-600"
+              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <span>Price</span>
+          {CHEVRON}
+        </button>
 
         {/* Bedroom pill */}
         <button
@@ -321,6 +337,36 @@ export default function TopFilterBar({
           <span>Clear All</span>
         </button>
       </div>
+
+      {/* ── Price dropdown ── */}
+      <FilterDropdownPortal isOpen={showFilters === "price"}>
+        <div
+          className="fixed inset-0 z-[100]"
+          onClick={() => setShowFilters(false)}
+        />
+        <div
+          className="fixed z-[101]"
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
+        >
+          <div
+            className="filter-dropdown"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PriceFilterCard
+              listings={listings}
+              minRent={filters.minRent}
+              maxRent={filters.maxRent}
+              onApply={(price) => {
+                const next = { ...filters, ...price };
+                setFilters(next);
+                onFiltersSaved(next);
+                setShowFilters(false);
+              }}
+            />
+          </div>
+        </div>
+      </FilterDropdownPortal>
 
       {/* ── Bedroom dropdown ── */}
       <FilterDropdownPortal isOpen={showFilters === "bedroom"}>
