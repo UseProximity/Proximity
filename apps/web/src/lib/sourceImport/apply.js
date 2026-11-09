@@ -308,6 +308,15 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     (a, b) => (a.bedrooms ?? 99) - (b.bedrooms ?? 99) || (a.bathrooms ?? 99) - (b.bathrooms ?? 99) || (a.area ?? 0) - (b.area ?? 0) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
   );
   const { pairs, unmatched } = matchUnits(ordered, state.listing_units);
+  /*
+   * A site that prices nothing ("Call For Price" on every plan, LOCAL on
+   * Delmar, Wyatt 2026-11-09) says nothing about which plans are let, even
+   * the ones on a waitlist: every plan is offered at a price to ask for. The
+   * sync keeps the leases a plan has, and a new plan gets one live lease with
+   * no price.
+   */
+  const pricesUnknown = mode === "sync" && ordered.length > 0 && !ordered.some((u) => (u.offers ?? []).some((o) => o.rent != null));
+  const askForPrice = { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] };
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
@@ -316,13 +325,13 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         unitKey: snap.key,
         field: "unit",
         old: null,
-        new: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, offers: snap.offers.length },
+        new: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, offers: pricesUnknown ? 1 : snap.offers.length },
         detail: {
           op: "unit_insert",
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: snap.floorPlanImageUrl },
-          offers: snap.offers,
-          available: snap.available,
+          offers: pricesUnknown ? [askForPrice] : snap.offers,
+          available: pricesUnknown ? true : snap.available,
           photos: snap.photos,
           draft: mode === "sync",
         },
@@ -366,6 +375,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     if (snap.photos.length && unitPhotoCount === 0) {
       push({ kind: "photos_added", unitKey: snap.key, unitId: db.id, field: "unit", old: 0, new: snap.photos.length, detail: { op: "photos_add", unitId: db.id, label, urls: snap.photos } });
     }
+    if (pricesUnknown) continue;
 
     // Leases: one per price. The site's offers against the owner's leases.
     const mine = db.unit_leases.filter((l) => isMine(l, ownerIds));
