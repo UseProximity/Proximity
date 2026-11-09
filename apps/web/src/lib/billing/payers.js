@@ -29,6 +29,21 @@ import { activePayerLink, payeeLinks } from "./payerLinks.js";
 import { agreementState, coverageFor, voidDocument } from "./agreements.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { displayAddress } from "./coverage.js";
+import { getGateSettings } from "./listingGate.js";
+import { hasActivePaymentMethod } from "./paymentMethodState.js";
+
+/*
+ * Whether publishing for the accounts this signer covers waits on the signer's
+ * payment method: required, and they have no active one. A listing already
+ * covered then waits for that, not for another signature.
+ */
+export async function signerNeedsPaymentMethod(db, payerId, now = new Date()) {
+  const { requirePaymentMethod } = await getGateSettings(db);
+  if (!requirePaymentMethod) return false;
+  const { data, error } = await db.from("payment_methods").select("status, type, exp_month, exp_year, deleted_at").eq("user_id", payerId).is("deleted_at", null);
+  if (error) throw error;
+  return !hasActivePaymentMethod(data ?? [], now);
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
@@ -370,7 +385,8 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
   const coveredList = [...covered.entries()].map(([listingId, row]) => ({ listingId, address: nameOf.get(listingId) ?? row.address }));
   const live = properties.filter((p) => p.live);
   const liveUncovered = live.filter((p) => !covered.has(p.listingId));
-  const status = link.declined_at ? "declined" : waiting.length || liveUncovered.length || !state.valid ? "pending" : "signed";
+  const needsMethod = await signerNeedsPaymentMethod(db, link.payer_id, now);
+  const status = link.declined_at ? "declined" : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length || !state.valid ? "pending" : "signed";
   return {
     payer: { name: link.signer_name, email: link.signer_email, invitedAt: link.invited_at },
     status,
@@ -378,7 +394,13 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
     // Nothing has been signed for this account yet: the landlord may still change who signs.
     canChange: !coveredList.length,
     covered: coveredList.sort((a, b) => a.address.localeCompare(b.address, "en", { numeric: true })),
-    waiting: waiting.map((w) => ({ listingId: w.listing_id, address: nameOf.get(w.listing_id) ?? "Listing", since: w.created_at })),
+    // Each waits for a signature, or (covered already) for the signer's payment method.
+    waiting: waiting.map((w) => ({
+      listingId: w.listing_id,
+      address: nameOf.get(w.listing_id) ?? "Listing",
+      since: w.created_at,
+      waitingFor: covered.has(w.listing_id) ? (needsMethod ? "payment_method" : "publishing") : "signature",
+    })),
   };
 }
 
@@ -393,6 +415,7 @@ export async function payerAccounts(db, payerId, now = new Date()) {
   const { data: users, error } = await db.from("users").select("id, name, email, company_name").in("id", links.map((l) => l.landlord_id));
   if (error) throw error;
   const userById = new Map((users ?? []).map((u) => [u.id, u]));
+  const needsMethod = await signerNeedsPaymentMethod(db, payerId, now);
   const out = [];
   for (const link of links) {
     const [{ state, properties, covered }, waiting] = await Promise.all([coverageFor(db, link.landlord_id, now), waitingRequests(db, link.landlord_id)]);
@@ -408,12 +431,17 @@ export async function payerAccounts(db, payerId, now = new Date()) {
       covered: [...covered.entries()]
         .map(([listingId, row]) => ({ listingId, address: nameOf.get(listingId) ?? row.address }))
         .sort((a, b) => a.address.localeCompare(b.address, "en", { numeric: true })),
+      // What needs their signature: listings the landlord sent that aren't covered, and live ones not covered.
       waiting: [
-        ...waiting.map((w) => ({ listingId: w.listing_id, address: nameOf.get(w.listing_id) ?? "Listing" })),
+        ...waiting.filter((w) => !covered.has(w.listing_id)).map((w) => ({ listingId: w.listing_id, address: nameOf.get(w.listing_id) ?? "Listing" })),
         ...liveUncovered.filter((p) => !waiting.some((w) => w.listing_id === p.listingId)).map((p) => ({ listingId: p.listingId, address: p.address })),
       ],
+      // Covered already, but waiting to go live on the signer's payment method.
+      waitingOnPaymentMethod: needsMethod
+        ? waiting.filter((w) => covered.has(w.listing_id)).map((w) => ({ listingId: w.listing_id, address: nameOf.get(w.listing_id) ?? "Listing" }))
+        : [],
       // What signing for it now makes: the agreement itself, or an addendum to it.
-      needs: !state.valid ? "agreement" : waiting.length || liveUncovered.length ? "addendum" : null,
+      needs: !state.valid ? "agreement" : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length ? "addendum" : null,
       // The landlord's drafts not covered yet: the signer sees them and may add
       // them to the agreement (Wyatt, 2026-11-09). Covering a draft does not publish it.
       drafts: properties

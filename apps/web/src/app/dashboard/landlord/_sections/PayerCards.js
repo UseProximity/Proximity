@@ -147,11 +147,18 @@ export function PayerCard({ view, onChanged }) {
 
         {view.waiting.length > 0 && (
           <div>
-            <p className="text-sm font-medium text-gray-900">Waiting for {view.payer.name} to sign ({view.waiting.length}):</p>
+            <p className="text-sm font-medium text-gray-900">Waiting for {view.payer.name} ({view.waiting.length}):</p>
             <ul className="mt-1 space-y-1 text-sm text-gray-800">
               {view.waiting.map((w) => (
                 <li key={w.listingId}>
-                  {w.address} <span className="text-xs text-gray-500">(draft, sent {dateOnly(w.since)})</span>
+                  {w.address}{" "}
+                  <span className="text-xs text-gray-500">
+                    {w.waitingFor === "payment_method"
+                      ? `(covered, waiting for ${view.payer.name} to add a payment method)`
+                      : w.waitingFor === "publishing"
+                        ? "(covered, going live)"
+                        : `(draft, sent ${dateOnly(w.since)})`}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -293,6 +300,18 @@ export function PaidForAccounts({ accounts, onChanged }) {
                     Review and sign
                   </button>
                 )}
+              </div>
+            )}
+            {a.waitingOnPaymentMethod?.length > 0 && (
+              <div className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900 space-y-1">
+                <p>
+                  Covered by your agreement, but waiting to go live until you add a payment method (under Payment method on this page):
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {a.waitingOnPaymentMethod.map((w) => (
+                    <li key={w.listingId}>{w.address}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {a.drafts?.length > 0 && (

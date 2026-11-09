@@ -230,6 +230,20 @@ describe("payer: drafts (Wyatt, 2026-11-09)", () => {
   });
 });
 
+describe("payer: covered but waiting on the signer's payment method", () => {
+  it("is not shown as needing a signature", async () => {
+    const { db } = await ownerSignedFor("pm1");
+    db.tables.billing_settings = [{ key: "payment_method_required", value: true }];
+    db.tables.payment_methods = [];
+    await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L1"] });
+    const [a] = await payerAccounts(db, "own", new Date("2027-02-01"));
+    assert.equal(a.needs, null, "nothing to sign: L1 is covered");
+    assert.deepEqual(a.waitingOnPaymentMethod.map((w) => w.listingId), ["L1"]);
+    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
+    assert.equal(view.waiting[0].waitingFor, "payment_method");
+  });
+});
+
 describe("payer: what each side sees", () => {
   it("the landlord sees status only: Pending until signed, then Signed", async () => {
     const db = world();

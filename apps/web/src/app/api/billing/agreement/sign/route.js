@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { startSigning } from "@/lib/billing/agreements";
@@ -11,6 +11,7 @@ import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
+import { releaseWaitingFor } from "@/lib/billing/payerServices";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
@@ -97,6 +98,12 @@ export async function POST(req) {
       prepare,
       ...options,
     });
+    // Nothing to sign for accounts they sign for: anything already covered that the gate now allows goes live.
+    if (result.alreadySigned && accountId) {
+      after(async () => {
+        for (const id of new Set([accountId, ...many])) await releaseWaitingFor(id).catch((err) => console.error("billing: release after nothing to sign failed", err?.message));
+      });
+    }
     return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);
   } catch (err) {
     if (err?.name === "DocumensoError") {
