@@ -347,8 +347,9 @@ export const addressLines = ({ street = "", suite = "", city = "" } = {}) => ({
   line2: city,
 });
 
+// Company is optional on the form: a blank one prints "N/A" so the box never shows its "COMPANY" label (Wyatt, 2026-11-08).
 const boxValues = ({ name, company, email, street, suite, city }) => ({
-  company,
+  company: company || "N/A",
   owner: company || name,
   email,
   address1: addressLines({ street, suite, city }).line1,
