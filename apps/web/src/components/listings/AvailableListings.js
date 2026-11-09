@@ -144,6 +144,27 @@ export default function AvailableListings({
   // Ticks when the column's width transition ends, so MapView can carry out a
   // pending pin-click centring.
   const [slideEnd, setSlideEnd] = useState(0);
+  /*
+   * Hiding or showing the map re-lays the column out (three centred cards <->
+   * two, the wide suggestions box <-> the strip) and resizes it, which would
+   * snap in view. So it is a fade-through for the cards and a glide for the map:
+   * BrowseContent marks <body> with data-map-switching, which fades the column
+   * out, sends the map off to the right and lets the column take its new width
+   * at once, then flips mapHidden; here, once the new layout is in place (still
+   * invisible), the mark is removed: the cards fade back in and the map glides
+   * back in from the right. Only opacity and transform animate, so they keep
+   * running while the page is busy with the heavy re-render. The map is resumed
+   * at its final size at that point.
+   */
+  useEffect(() => {
+    // After a frame has been drawn with the new layout, so the fade starts from it.
+    const frame = requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        document.body.removeAttribute("data-map-switching")
+      )
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [mapHidden]);
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -525,7 +546,7 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
+        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:transition-none ${
           mapHidden ? "w-full" : expandedListing ? "w-[58vw]" : "w-[40vw]"
         } ${expandedListing ? "" : "px-3 pt-3 pb-4"}`}
         style={{ height: "100%", minHeight: 0 }}
@@ -557,6 +578,7 @@ export default function AvailableListings({
          * Only the ENTERING side is animated now, keyed so each listing fades
          * in on open, and there is no exit handshake left to hang on.
          */}
+        <div className="will-change-[opacity] transition-opacity duration-[200ms] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[120ms]">
         {expandedListing ? (
           <motion.div
             key={`detail-${expandedListing._id}`}
@@ -674,11 +696,12 @@ export default function AvailableListings({
             )}
           </motion.div>
         )}
+        </div>
       </div>
 
-      {/* ── Desktop map (kept mounted while hidden, so it comes back where it was) ── */}
+      {/* ── Desktop map (kept mounted while hidden, so it comes back where it was; paused, it does no pin or camera work meanwhile) ── */}
       <div
-        className={`${mapHidden ? "hidden" : "hidden md:flex"} flex-1 w-full relative`}
+        className={`${mapHidden ? "hidden" : "hidden md:flex"} flex-1 w-full relative will-change-[transform,opacity] transition-[transform,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:translate-x-full [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[160ms]`}
         style={{ position: "sticky", top: 0, height: "100%", minHeight: 0 }}
       >
         <MapView
@@ -696,6 +719,7 @@ export default function AvailableListings({
           searchLocation={searchLocation}
           onSearchLocationConsumed={handleSearchLocationConsumed}
           isActive={isDesktop}
+          paused={mapHidden}
           onBrowseArea={handleBrowseArea}
           panelExpanded={!!expandedListing}
           panelSlideEnd={slideEnd}

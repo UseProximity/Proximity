@@ -183,7 +183,12 @@ export default function BrowseContent({ session, initialListings = null }) {
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
-          onToggleMap={() => setMapHidden((hidden) => !hidden)}
+          onToggleMap={() => {
+            // A fade-through (see AvailableListings): fade out now, and switch
+            // the layout once that has finished, while it is invisible.
+            document.body.setAttribute("data-map-switching", "");
+            setTimeout(() => setMapHidden((hidden) => !hidden), 120);
+          }}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">

@@ -155,6 +155,10 @@ function MapViewInner({
   searchLocation = null,
   onSearchLocationConsumed = null,
   isActive = true,
+  // The map is kept alive but is not on screen (browse page with the map
+  // hidden). It has no size then, so it does no pin or camera work, and picks up
+  // where it left off, with the current listings and selection, when shown.
+  paused = false,
   heroMode = false,
   onBrowseArea = null,
   panelExpanded = false,
@@ -508,9 +512,15 @@ function MapViewInner({
     return el;
   }
 
+  // Coming back on screen: take the container's size before anything below
+  // (pins, fit) uses it. Defined first so it runs first.
+  useEffect(() => {
+    if (isActive && !paused) mapRef.current?.resize();
+  }, [isActive, paused]);
+
   // Separate effect: update markers and layers without recreating/removing the map itself.
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || paused) return;
     const map = mapRef.current;
     if (!map) return;
 
@@ -718,6 +728,7 @@ function MapViewInner({
     suggestedIds,
     hideUnavailable,
     selectedListingId,
+    paused,
   ]);
 
   // Keep listingsRef current so the selectedListingId effect can find coordinates
@@ -733,7 +744,7 @@ function MapViewInner({
   // final size.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || paused) return;
 
     panelIsTransitioningRef.current = true;
 
@@ -753,7 +764,7 @@ function MapViewInner({
           }
         : null;
 
-    const TRANSITION_MS = 300;
+    const TRANSITION_MS = 450; // the listings column's width slide (AvailableListings)
     const timer = setTimeout(() => {
       panelIsTransitioningRef.current = false;
       // If the panel just expanded with a listing active, fly to it now.
@@ -809,7 +820,7 @@ function MapViewInner({
    * browse: the pin you picked is the one lit up.
    */
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || paused) return;
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
@@ -849,7 +860,7 @@ function MapViewInner({
   // homepage zooms to it the way it does on browse. Deselecting leaves the
   // camera where the reader put it.
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || paused) return;
     const map = mapRef.current;
     if (!map?.markers) return;
 
@@ -871,7 +882,7 @@ function MapViewInner({
         });
       }
     }
-  }, [isActive, selectedListingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, paused, selectedListingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleShuttleStops = useCallback(() => {
     setShowShuttleStops((v) => !v);
@@ -882,7 +893,7 @@ function MapViewInner({
   // parent so it can strip the params; otherwise any later re-render would
   // re-fire this zoom and hijack the user's browsing.
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || paused) return;
     const map = mapRef.current;
     if (!map || !searchLocation) return;
 
@@ -932,7 +943,7 @@ function MapViewInner({
     return () => {
       if (settledHandler) map.off("moveend", settledHandler);
     };
-  }, [isActive, searchLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, paused, searchLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full">
