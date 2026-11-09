@@ -245,6 +245,7 @@ export default function SendPanel({ template, dbTarget, writable, onSent }) {
                     {p.subleaseOnly && <Badge color="purple" title="Every live lease they own is a sublease, and they have no live listing.">Sublease only</Badge>}
                     {p.lastSent && <Badge color="green">Got v{p.lastSent.version} {fmtWhen(p.lastSent.at)}</Badge>}
                     {p.suppressed && <Badge color="red" title="Their address bounced or marked our email as spam. They are skipped when you send.">Bounced or spam</Badge>}
+                    {p.unsubscribed && !p.suppressed && <Badge color="gray" title="They used the unsubscribe link or their mail app's Unsubscribe button. They are skipped when you send.">Unsubscribed</Badge>}
                   </td>
                 </tr>
               ))}

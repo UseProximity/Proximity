@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-08T23:01:45.951Z",
-  "count": 252,
+  "_generated": "2026-11-09T03:32:08.967Z",
+  "count": 253,
   "routes": [
     {
       "path": "/api/account",
@@ -3471,6 +3471,18 @@
         "chat_messages"
       ],
       "file": "src/app/api/tours/proposals/[messageId]/email/route.js"
+    },
+    {
+      "path": "/api/unsubscribe",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/unsubscribe/route.js"
     },
     {
       "path": "/api/upload",

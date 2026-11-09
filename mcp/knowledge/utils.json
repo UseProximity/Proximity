@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-08T23:01:45.988Z",
-  "count": 323,
+  "_generated": "2026-11-09T03:32:09.055Z",
+  "count": 324,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -934,6 +934,10 @@
     {
       "file": "src/lib/massEmail/unowned.js",
       "description": "Live listings with no landlord account, and getting them one before a mass"
+    },
+    {
+      "file": "src/lib/massEmail/unsubscribe.js",
+      "description": "Unsubscribing from mass email (Wyatt, 2026-11-08)."
     },
     {
       "file": "src/lib/matchmaking/anonymousSessions.js",

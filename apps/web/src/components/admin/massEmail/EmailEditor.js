@@ -109,7 +109,12 @@ export default function EmailEditor({ template, dbTarget, writable, mrecUploaded
       button_label: form.buttonLabel,
       button_url: form.buttonUrl,
     };
-    const footerHtml = emailFooter({ reason: escapeHtml(form.footerReason || DEFAULT_FOOTER_REASON), commercial: form.commercial });
+    // Each recipient gets their own unsubscribe link; the preview shows where it sits.
+    const footerHtml = emailFooter({
+      reason: escapeHtml(form.footerReason || DEFAULT_FOOTER_REASON),
+      commercial: form.commercial,
+      unsubscribeUrl: `${BASE_URL}/unsubscribe`,
+    });
     return renderMassEmail(version, SAMPLE, { baseUrl: BASE_URL, setupUrl: sampleSetup ? `${BASE_URL}/reset-password` : null, footerHtml });
   }, [form, sampleSetup]);
 
@@ -221,7 +226,7 @@ export default function EmailEditor({ template, dbTarget, writable, mrecUploaded
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" className="mt-1" checked={form.commercial} onChange={(e) => set({ commercial: e.target.checked })} disabled={!writable} />
             <span>
-              Marketing email: adds &quot;reply unsubscribe&quot; to the footer. Tick it for promotions; leave it off for account and billing notices.
+              Marketing email: tick it for promotions; leave it off for account and billing notices. Every mass email has an Unsubscribe link in its footer either way.
             </span>
           </label>
         </div>

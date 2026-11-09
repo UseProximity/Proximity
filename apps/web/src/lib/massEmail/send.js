@@ -18,7 +18,10 @@
  *     button mints none: a new link cancels the earlier one, so a later email
  *     without a button used to break the link an earlier email sent.
  *   - An address that bounced or marked us as spam (email_suppressions) is
- *     skipped, never sent to again.
+ *     skipped, never sent to again. So is one that unsubscribed
+ *     (mass_email_unsubscribes, lib/massEmail/unsubscribe.js).
+ *   - Every email carries that person's own unsubscribe link in the footer, the
+ *     List-Unsubscribe headers for Gmail and Yahoo's button, and a plain-text part.
  *   - Someone this batch already reached is always skipped, even with
  *     allowRepeat: pressing Send again after a failure picks up where it stopped.
  *     With allowRepeat, someone this same version reached in the last
@@ -35,8 +38,8 @@
  * on the other environment by the route (lib/billing/adminDb.js).
  */
 
-import { getBaseUrl, sendMassEmail } from "@/lib/email";
-import { emailFooter } from "@/lib/emailFooter";
+import { getBaseUrl, MASS_EMAIL_ADDRESS, sendMassEmail } from "@/lib/email";
+import { emailFooter, emailFooterText } from "@/lib/emailFooter";
 import { escapeHtml } from "@/lib/escapeHtml";
 import { mintPasswordSetupUrl } from "@/lib/auth/passwordReset";
 import { readAgreementFile } from "@/lib/billing/agreementFiles";
@@ -44,6 +47,7 @@ import { getMrecForm, MREC_FORM_FILENAME } from "@/lib/users/mrecForm";
 import { ensureAgent } from "@/lib/agents/store";
 import { renderMassEmail, wantsSetupLink } from "./render";
 import { DELIVERED, skipReason } from "./audience";
+import { unsubscribedAmong, unsubscribeHeaders, unsubscribePageUrl } from "./unsubscribe";
 
 export const MAX_PER_CALL = 60;
 export const REPEAT_GUARD_HOURS = 6;
@@ -93,7 +97,21 @@ function usable(u) {
 }
 
 // The footer line is admin-typed text, and emailFooter inserts it as HTML.
-export const footerFor = (version) => emailFooter({ reason: escapeHtml(version.footer_reason), commercial: version.commercial === true });
+export const footerFor = (version, unsubscribeUrl = null) =>
+  emailFooter({ reason: escapeHtml(version.footer_reason), commercial: version.commercial === true, unsubscribeUrl });
+
+/*
+ * What one person's email carries for unsubscribing: the footer (HTML and text)
+ * with their own link, and the List-Unsubscribe headers.
+ */
+function personalFooter(version, email, baseUrl) {
+  const unsubscribeUrl = unsubscribePageUrl(email, baseUrl);
+  return {
+    footerHtml: footerFor(version, unsubscribeUrl),
+    footerText: emailFooterText({ reason: version.footer_reason, commercial: version.commercial === true, unsubscribeUrl }),
+    headers: unsubscribeHeaders(email, baseUrl, MASS_EMAIL_ADDRESS),
+  };
+}
 
 export async function sendTest(db, { version, to, previewUserId = null, req = null }) {
   let person = { name: null, email: to, company_name: null };
@@ -105,12 +123,15 @@ export async function sendTest(db, { version, to, previewUserId = null, req = nu
   const baseUrl = getBaseUrl();
   // A test never mints a real set-password link: it shows where one would go.
   const setupUrl = previewUserId && person.id && wantsSetupLink(person, version, { baseUrl }) ? `${baseUrl}/reset-password?token=TEST-LINK-NOT-REAL` : null;
-  const { subject, html } = renderMassEmail(
+  // The unsubscribe link is for the test inbox, not the person it is filled in
+  // as, so trying it never takes a real person off the list.
+  const { footerHtml, footerText, headers } = personalFooter(version, to, baseUrl);
+  const { subject, html, text } = renderMassEmail(
     version,
     { name: person.name, email: person.email, company: person.company_name },
-    { baseUrl, setupUrl, footerHtml: footerFor(version) }
+    { baseUrl, setupUrl, footerHtml, footerText }
   );
-  return sendMassEmail({ to, subject: `[Test] ${subject}`, html, attachments, req });
+  return sendMassEmail({ to, subject: `[Test] ${subject}`, html, text, headers, attachments, req });
 }
 
 // Live listings a landlord is linked to (published, not deleted, available, not sandbox).
@@ -204,6 +225,7 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
     since: allowRepeat ? new Date(Date.now() - REPEAT_GUARD_HOURS * 3600 * 1000).toISOString() : null,
   });
   const suppressed = await suppressedAmong(db, (people ?? []).map((u) => u.email));
+  const unsubscribed = await unsubscribedAmong(db, (people ?? []).map((u) => u.email));
 
   // One batch row across the calls of one press of Send (the page passes it back),
   // created only once someone is actually emailed, so a press that skips everyone
@@ -222,7 +244,6 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
   };
 
   const baseUrl = getBaseUrl();
-  const footerHtml = footerFor(version);
   const result = { batchId: batch, sent: 0, failed: 0, skipped: [], remaining };
 
   for (const id of now) {
@@ -231,7 +252,7 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
       result.skipped.push({ id, reason: "deleted, sandbox or no email address" });
       continue;
     }
-    const skip = skipReason(u, { reached, sentInBatch, suppressed, batchId, repeatGuardHours: REPEAT_GUARD_HOURS });
+    const skip = skipReason(u, { reached, sentInBatch, suppressed, unsubscribed, batchId, repeatGuardHours: REPEAT_GUARD_HOURS });
     if (skip) {
       result.skipped.push({ id, reason: skip });
       continue;
@@ -239,10 +260,11 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
 
     await ensureBatch();
     const setupUrl = wantsSetupLink(u, version, { baseUrl }) ? await mintPasswordSetupUrl(u.id, { db, baseUrl }) : null;
-    const { subject, html } = renderMassEmail(
+    const { footerHtml, footerText, headers } = personalFooter(version, u.email, baseUrl);
+    const { subject, html, text } = renderMassEmail(
       version,
       { name: u.name, email: u.email, company: u.company_name },
-      { baseUrl, setupUrl, footerHtml }
+      { baseUrl, setupUrl, footerHtml, footerText }
     );
 
     const row = {
@@ -254,7 +276,7 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
       setup_link: !!setupUrl,
     };
     try {
-      const out = await sendMassEmail({ to: u.email, subject, html, attachments, userId: u.id, req });
+      const out = await sendMassEmail({ to: u.email, subject, html, text, headers, attachments, userId: u.id, req });
       row.status = out.suppressed ? "suppressed" : out.redirected ? "redirected" : "sent";
       row.provider_message_id = out.providerMessageId;
       row.status_detail = out.provider === "gmail" ? "sent via Gmail" : null;

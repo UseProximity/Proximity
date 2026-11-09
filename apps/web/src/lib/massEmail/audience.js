@@ -13,6 +13,7 @@
  *                 email's button becomes a set-password link.
  *   lastSent      when this template last went to them, and which version
  *   suppressed    their address bounced or marked us as spam: never emailed
+ *   unsubscribed  they used the unsubscribe link or button: never emailed
  *
  * `db` is a service-role Supabase client. Nothing here returns a password hash.
  */
@@ -27,10 +28,12 @@ export const DELIVERED = ["sent", "redirected"];
  * reached by this batch or lately by this version, or their address bounced or
  * marked us as spam.
  */
-export function skipReason(u, { reached, sentInBatch, suppressed, batchId, repeatGuardHours }) {
+export function skipReason(u, { reached, sentInBatch, suppressed, unsubscribed = new Set(), batchId, repeatGuardHours }) {
   if (reached.has(u.id)) return "already sent this email";
   if (sentInBatch.has(u.id)) return batchId ? "already sent in this batch" : `sent this version in the last ${repeatGuardHours} hours`;
-  if (suppressed.has(String(u.email ?? "").trim().toLowerCase())) return "their address bounced or marked our email as spam";
+  const email = String(u.email ?? "").trim().toLowerCase();
+  if (suppressed.has(email)) return "their address bounced or marked our email as spam";
+  if (unsubscribed.has(email)) return "they unsubscribed from these emails";
   return null;
 }
 
@@ -114,6 +117,8 @@ export async function findAudience(db, { role = "landlord", templateId = null } 
   );
   const suppressedRows = await pageAll(() => db.from("email_suppressions").select("email").order("email"));
   const suppressed = new Set(suppressedRows.map((r) => r.email));
+  const unsubscribedRows = await pageAll(() => db.from("mass_email_unsubscribes").select("email").order("email"));
+  const unsubscribed = new Set(unsubscribedRows.map((r) => r.email));
   const sentRows = templateId
     ? await pageAll(() =>
         db
@@ -159,6 +164,7 @@ export async function findAudience(db, { role = "landlord", templateId = null } 
       live: listings.length > 0 || leases.count > 0,
       lastSent: lastSentBy.get(u.id) ?? null,
       suppressed: suppressed.has(String(u.email).trim().toLowerCase()),
+      unsubscribed: unsubscribed.has(String(u.email).trim().toLowerCase()),
       createdAt: u.created_at,
     };
   });

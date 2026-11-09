@@ -137,6 +137,24 @@ export function bodyToHtml(body, values, baseUrl) {
 }
 
 /*
+ * The body as plain text, for the text/plain part every email carries next to the
+ * HTML (spam filters count an HTML-only email against the sender). Links become
+ * "words (https://...)", and the bold and heading markers are dropped.
+ */
+export function bodyToText(body, values, baseUrl) {
+  return fillPlain(body, values)
+    .replace(/\r\n/g, "\n")
+    .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (whole, label, href) => {
+      const target = safeHref(href, baseUrl);
+      return target && target !== label ? `${label} (${target.replace(/^mailto:/i, "")})` : label;
+    })
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/^\s*##\s+/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/*
  * Whether this person gets a set-password link: only when they cannot sign in AND
  * the email has a button to carry it. A new link cancels the earlier one, so an
  * email without a button must not mint one (review of 2026-11-07).
@@ -161,11 +179,11 @@ export function buttonFor(version, { baseUrl, setupUrl = null } = {}) {
 }
 
 /*
- * The finished email for one person: { subject, html }. `footerHtml` is the
- * shared footer (lib/email.js emailFooter), passed in so this file stays free of
- * server imports.
+ * The finished email for one person: { subject, html, text }. `footerHtml` and
+ * `footerText` are the shared footer (lib/emailFooter.js), passed in so this file
+ * stays free of server imports.
  */
-export function renderMassEmail(version, person, { baseUrl, setupUrl = null, footerHtml = "" } = {}) {
+export function renderMassEmail(version, person, { baseUrl, setupUrl = null, footerHtml = "", footerText = "" } = {}) {
   const values = mergeValues(person);
   const button = buttonFor(version, { baseUrl, setupUrl });
   const setupNote = button?.setup
@@ -177,5 +195,13 @@ ${button ? `<a href="${escapeHtml(button.href)}" style="${BUTTON}">${escapeHtml(
 ${setupNote}
 ${footerHtml}
 </div>`;
-  return { subject: fillPlain(version.subject, values).replace(/[\r\n]+/g, " ").trim(), html };
+  const text = [
+    bodyToText(version.body, values, baseUrl),
+    button ? `${button.label}: ${button.href}` : "",
+    button?.setup ? "Your Proximity account does not have a password yet. This link sets one, then sign in with this email address." : "",
+    footerText,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { subject: fillPlain(version.subject, values).replace(/[\r\n]+/g, " ").trim(), html, text };
 }

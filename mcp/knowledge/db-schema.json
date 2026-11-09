@@ -3398,6 +3398,17 @@
           "created_at:timestamptz"
         ],
         "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk batch_id->mass_email_batches (cascade), user_id->users (set null); index (template_id,user_id)"
+      },
+      {
+        "table": "mass_email_unsubscribes",
+        "status": "unreleased",
+        "description": "Addresses that unsubscribed from mass email via the footer link (/unsubscribe page) or the Gmail/Yahoo List-Unsubscribe one-click button (POST /api/unsubscribe). sendBatch skips them. Resubscribe deletes the row. Separate from email_suppressions on purpose: that one also stops chat alerts.",
+        "columns": [
+          "email:text (pk, lower-cased)",
+          "source:text (link|one_click)",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080003, dev applied 2026-11-08, prod pending); rls on, service role only"
       }
     ],
     "functions": [

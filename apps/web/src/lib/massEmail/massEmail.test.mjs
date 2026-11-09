@@ -1,10 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bodyToHtml, buttonFor, mergeValues, renderMassEmail, safeHref, unknownMergeFields, wantsSetupLink } from "./render.js";
+import { bodyToHtml, bodyToText, buttonFor, mergeValues, renderMassEmail, safeHref, unknownMergeFields, wantsSetupLink } from "./render.js";
 import { skipReason } from "./audience.js";
 import { cleanVersion, DEFAULT_FOOTER_REASON } from "./templates.js";
 import { suggestFor } from "./unowned.js";
 import { deliveryStatus } from "./history.js";
+import { signUnsubscribeToken, unsubscribeHeaders, unsubscribePageUrl, verifyUnsubscribeToken } from "./unsubscribe.js";
+import { emailFooter, emailFooterText } from "../emailFooter.js";
+
+process.env.AUTH_SECRET ||= "test-secret";
 
 const BASE = "https://useproximity.org";
 
@@ -118,6 +122,10 @@ describe("who a send skips (review of 2026-11-07)", () => {
     assert.equal(skipReason(u, base), null);
   });
 
+  it("skips someone who unsubscribed, whatever its case", () => {
+    assert.match(skipReason(u, { ...base, unsubscribed: new Set(["lee@example.com"]) }), /unsubscribed/);
+  });
+
   it("skips someone this batch already reached, even when sending again", () => {
     assert.equal(skipReason(u, { ...base, sentInBatch: new Set(["u1"]), batchId: "b1" }), "already sent in this batch");
     assert.match(skipReason(u, { ...base, sentInBatch: new Set(["u1"]) }), /last 6 hours/);
@@ -130,5 +138,45 @@ describe("who a send skips (review of 2026-11-07)", () => {
     assert.equal(wantsSetupLink(noLogin, withButton, { baseUrl: "https://x" }), true);
     assert.equal(wantsSetupLink(noLogin, noButton, { baseUrl: "https://x" }), false, "would cancel an earlier email's link");
     assert.equal(wantsSetupLink({ ...noLogin, password_hash: "h" }, withButton, { baseUrl: "https://x" }), false);
+  });
+});
+
+describe("unsubscribe (2026-11-08)", () => {
+  it("a token names its address and survives a round trip", () => {
+    assert.equal(verifyUnsubscribeToken(signUnsubscribeToken(" Lee@Example.com")), "lee@example.com");
+  });
+
+  it("refuses a tampered, forged or empty token", () => {
+    const [payload, sig] = signUnsubscribeToken("lee@example.com").split(".");
+    const other = Buffer.from(JSON.stringify({ p: "mass-unsub", e: "someone@else.com" })).toString("base64url");
+    assert.equal(verifyUnsubscribeToken(`${other}.${sig}`), null);
+    assert.equal(verifyUnsubscribeToken(`${payload}.x${sig.slice(1)}`), null);
+    assert.equal(verifyUnsubscribeToken(""), null);
+    assert.equal(verifyUnsubscribeToken(null), null);
+  });
+
+  it("builds the page link and the one-click headers", () => {
+    assert.match(unsubscribePageUrl("lee@example.com", "https://useproximity.org/"), /^https:\/\/useproximity\.org\/unsubscribe\?t=[\w-]+\.[\w-]+$/);
+    const h = unsubscribeHeaders("lee@example.com", "https://useproximity.org", "info@useproximity.org");
+    assert.match(h["List-Unsubscribe"], /^<https:\/\/useproximity\.org\/api\/unsubscribe\?t=[^>]+>, <mailto:info@useproximity\.org\?subject=unsubscribe>$/);
+    assert.equal(h["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  });
+
+  it("the footer carries the link in both parts", () => {
+    const url = "https://useproximity.org/unsubscribe?t=a.b";
+    assert.match(emailFooter({ reason: "Why", unsubscribeUrl: url }), /href="https:\/\/useproximity\.org\/unsubscribe\?t=a\.b"[^>]*>Unsubscribe<\/a>/);
+    assert.ok(!emailFooter({ reason: "Why", unsubscribeUrl: url, commercial: true }).includes("Reply to this email"));
+    assert.match(emailFooterText({ reason: "Why", unsubscribeUrl: url }), /Unsubscribe: https:\/\/useproximity\.org\/unsubscribe\?t=a\.b/);
+  });
+
+  it("the email has a plain-text part with links spelled out", () => {
+    const text = bodyToText("## Hi {{first_name}}\n**Bold** and [Billing](/dashboard/landlord?tab=billing)", { first_name: "Lee" }, BASE);
+    assert.equal(text, "Hi Lee\nBold and Billing (https://useproximity.org/dashboard/landlord?tab=billing)");
+    const out = renderMassEmail(
+      { subject: "S", body: "Hello", button_target: "billing", button_label: "Open Billing" },
+      { name: "Lee" },
+      { baseUrl: BASE, footerText: "--\nfooter" }
+    );
+    assert.equal(out.text, "Hello\n\nOpen Billing: https://useproximity.org/dashboard/landlord?tab=billing\n\n--\nfooter");
   });
 });
