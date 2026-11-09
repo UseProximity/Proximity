@@ -26,6 +26,66 @@ function priceBuckets(listings) {
 
 const formatPrice = (v) => (v >= PRICE_MAX ? "$4000+" : `$${v.toLocaleString()}`);
 
+// Slider range for the minRent / maxRent filter strings, and back: "" at either
+// end means no limit.
+export const rentRange = (minRent, maxRent) => ({
+  low: minRent ? Math.max(PRICE_MIN, Number(minRent)) : PRICE_MIN,
+  high: maxRent ? Math.min(PRICE_MAX, Number(maxRent)) : PRICE_MAX,
+});
+export const rentFilters = ({ low, high }) => ({
+  minRent: low <= PRICE_MIN ? "" : String(low),
+  maxRent: high >= PRICE_MAX ? "" : String(high),
+});
+
+// Histogram of every listing's price with the range slider under it. The bars
+// inside the selected range are drawn in the accent colour (unless highlight is
+// false). barsClass and sliderClass place the two (the bars' height included).
+export function PriceRangeSlider({
+  listings,
+  low,
+  high,
+  onChange,
+  barsClass,
+  sliderClass,
+  accent,
+  highlight = true,
+}) {
+  const counts = useMemo(() => priceBuckets(listings), [listings]);
+  const tallest = Math.max(...counts, 1);
+  return (
+    <>
+      <div className={`flex items-end gap-[3.34px] ${barsClass}`}>
+        {counts.map((count, i) => {
+          const start = PRICE_MIN + i * BUCKET;
+          const inRange = start < high && start + BUCKET > low;
+          return (
+            <div
+              key={i}
+              className="flex-1 bg-gray-200"
+              style={{
+                height: `${(count / tallest) * 90}%`,
+                ...(inRange && highlight && { backgroundColor: accent }),
+              }}
+            />
+          );
+        })}
+      </div>
+      <div className={sliderClass}>
+        <RangeSlider
+          min={PRICE_MIN}
+          max={PRICE_MAX}
+          step={PRICE_STEP}
+          accent={accent}
+          low={low}
+          high={high}
+          onChange={onChange}
+          formatLabel={formatPrice}
+        />
+      </div>
+    </>
+  );
+}
+
 // Allowed values of each box: the min stays a step below the max, the max a
 // step above the min.
 const bounds = (field, { low, high }) =>
@@ -35,14 +95,9 @@ const bounds = (field, { low, high }) =>
 // the range slider, Min and Max boxes and Apply. onApply gets
 // { minRent, maxRent } as filter strings, "" meaning no limit.
 export default function PriceFilterCard({ listings, minRent, maxRent, onApply }) {
-  const [range, setRange] = useState({
-    low: minRent ? Math.max(PRICE_MIN, Number(minRent)) : PRICE_MIN,
-    high: maxRent ? Math.min(PRICE_MAX, Number(maxRent)) : PRICE_MAX,
-  });
+  const [range, setRange] = useState(rentRange(minRent, maxRent));
   // What is being typed in a box ({ field, text }), until the box loses focus.
   const [typing, setTyping] = useState(null);
-  const counts = useMemo(() => priceBuckets(listings), [listings]);
-  const tallest = Math.max(...counts, 1);
 
   const shown = {
     low: String(range.low),
@@ -78,37 +133,17 @@ export default function PriceFilterCard({ listings, minRent, maxRent, onApply })
   return (
     <FilterCard
       title="Price Range"
-      onApply={() =>
-        onApply({
-          minRent: range.low <= PRICE_MIN ? "" : String(range.low),
-          maxRent: range.high >= PRICE_MAX ? "" : String(range.high),
-        })
-      }
+      onApply={() => onApply(rentFilters(range))}
     >
-      <div className="mt-3 ml-[47px] mr-[38px] flex h-[125px] items-end gap-[3.34px]">
-        {counts.map((count, i) => {
-          const start = PRICE_MIN + i * BUCKET;
-          const inRange = start < range.high && start + BUCKET > range.low;
-          return (
-            <div
-              key={i}
-              className={`flex-1 ${inRange ? "bg-[#F71C1E]" : "bg-gray-200"}`}
-              style={{ height: `${(count / tallest) * 90}%` }}
-            />
-          );
-        })}
-      </div>
-      <div className="-mt-2 pl-[29px] pr-[18px]">
-        <RangeSlider
-          min={PRICE_MIN}
-          max={PRICE_MAX}
-          step={PRICE_STEP}
-          low={range.low}
-          high={range.high}
-          onChange={(low, high) => setRange({ low, high })}
-          formatLabel={formatPrice}
-        />
-      </div>
+      <PriceRangeSlider
+        listings={listings}
+        low={range.low}
+        high={range.high}
+        onChange={(low, high) => setRange({ low, high })}
+        barsClass="mt-3 ml-[47px] mr-[38px] h-[125px]"
+        sliderClass="-mt-2 pl-[29px] pr-[18px]"
+        accent="#F71C1E"
+      />
       <div className="mt-3 flex gap-3 px-6">
         {[
           ["low", "Min price"],

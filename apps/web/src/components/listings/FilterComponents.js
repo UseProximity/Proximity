@@ -151,7 +151,9 @@ const LABEL_MERGE_PCT = 16;
 // Two-handle range slider in the Browse Listings design: a red track between
 // round red handles, with a red label under each. low and high are numbers
 // between min and max, at least one step apart; formatLabel(value) gives the
-// label text. With ticks (one label per step, from min), every step is labelled
+// label text. accent is the red of handles, track and labels. With single, only
+// the high handle shows and the track runs from the left end to it (pass low as
+// min). With ticks (one label per step, from min), every step is labelled
 // instead, the selected ones in red, and formatLabel is not needed. minGap is how
 // close the handles may get (default one step; 0 lets them meet).
 //
@@ -166,6 +168,8 @@ export function RangeSlider({
   max,
   step = 1,
   minGap = step,
+  accent = "#F71C1E",
+  single = false,
   low,
   high,
   onChange,
@@ -210,7 +214,9 @@ export function RangeSlider({
     const x = e.clientX;
     const lowX = centreX(low);
     const highX = centreX(high);
-    if (
+    if (single) {
+      grab("high", x);
+    } else if (
       Math.abs(x - lowX) <= HANDLE_PX / 2 &&
       Math.abs(x - highX) <= HANDLE_PX / 2
     ) {
@@ -248,8 +254,8 @@ export function RangeSlider({
       aria-valuemax={max}
       aria-valuenow={value}
       onKeyDown={onKeyDown(handle, value)}
-      className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] bg-[#F71C1E] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-[#F71C1E]/40"
-      style={{ left: handleX(pct) }}
+      className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+      style={{ left: handleX(pct), backgroundColor: accent }}
     />
   );
   const label = (pct, text, color = "") => (
@@ -274,23 +280,27 @@ export function RangeSlider({
       >
         <div className="absolute inset-x-[8.5px] top-1/2 h-0.5 -translate-y-1/2 bg-gray-200" />
         <div
-          className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-[#F71C1E]"
+          className="absolute top-1/2 h-0.5 -translate-y-1/2"
           style={{
+            backgroundColor: accent,
             left: handleX(lowPct),
             width: `calc(${handleX(highPct)} - ${handleX(lowPct)})`,
           }}
         />
-        {renderHandle("low", low, lowPct)}
+        {!single && renderHandle("low", low, lowPct)}
         {renderHandle("high", high, highPct)}
       </div>
-      <div className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px] text-[#F71C1E]">
+      <div
+        className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px]"
+        style={{ color: accent }}
+      >
         {ticks ? (
           ticks.map((text, i) => {
             const v = min + i * step;
             return label(
               pctOf(v),
               text,
-              v === low || v === high ? "" : "text-gray-400"
+              v === high || (!single && v === low) ? "" : "text-gray-400"
             );
           })
         ) : highPct - lowPct < LABEL_MERGE_PCT ? (
@@ -306,6 +316,37 @@ export function RangeSlider({
         )}
       </div>
     </div>
+  );
+}
+
+// Index of a filter value in steps ({ label, value }). "" (the open end), or a
+// value the steps do not offer, gives fallback.
+export const stepIndex = (steps, value, fallback) => {
+  const i = value ? steps.findIndex((s) => s.value === value) : -1;
+  return i < 0 ? fallback : i;
+};
+
+// Filter strings for a range of step indexes: "" at either end means no limit.
+export const stepLimits = (steps, { low, high }) => [
+  low === 0 ? "" : steps[low].value,
+  high === steps.length - 1 ? "" : steps[high].value,
+];
+
+// RangeSlider over named steps, labelling every step. low and high are step
+// indexes and may be equal; with single only high is used.
+export function StepRange({ steps, low = 0, high, single, accent, onChange }) {
+  return (
+    <RangeSlider
+      min={0}
+      max={steps.length - 1}
+      minGap={0}
+      accent={accent}
+      single={single}
+      low={low}
+      high={high}
+      onChange={onChange}
+      ticks={steps.map((s) => s.label)}
+    />
   );
 }
 
