@@ -262,9 +262,16 @@ export function PaidForAccounts({ accounts, onChanged }) {
               <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-2">
                 <p>
                   {a.needs === "agreement" ? "Sign the marketing agreement" : "Sign an addendum"} to cover
-                  {a.waiting.length ? `: ${a.waiting.map((w) => w.address).join("; ")}` : " their listings"}.
+                  {a.waiting.length ? ` ${a.waiting.length === 1 ? "this property" : `these ${a.waiting.length} properties`}:` : " their listings."}
                   {a.declined ? " You declined the last copy; you can sign whenever you are ready." : ""}
                 </p>
+                {a.waiting.length > 0 && (
+                  <ul className="list-disc space-y-0.5 pl-5">
+                    {a.waiting.map((w) => (
+                      <li key={w.listingId}>{w.address}</li>
+                    ))}
+                  </ul>
+                )}
                 {blocked ? (
                   <p className="text-xs">Sign the agreement for your other account first. This one opens right after.</p>
                 ) : (
