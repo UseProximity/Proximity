@@ -3408,7 +3408,7 @@
           "source:text (link|one_click)",
           "created_at:timestamptz"
         ],
-        "notes": "status=unreleased (202611080003, dev applied 2026-11-08, prod pending); rls on, service role only"
+        "notes": "status=unreleased (202611080003, dev + prod applied 2026-11-08); rls on, service role only"
       }
     ],
     "functions": [
