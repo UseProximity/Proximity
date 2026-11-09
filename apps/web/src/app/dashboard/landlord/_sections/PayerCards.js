@@ -272,8 +272,13 @@ export function PaidForAccounts({ accounts, onChanged }) {
             {a.needs && (
               <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-2">
                 <p>
-                  {a.needs === "agreement" ? "On the agreement above, once you sign" : "Sign an addendum"} to cover
-                  {a.waiting.length ? ` ${a.waiting.length === 1 ? "this property" : `these ${a.waiting.length} properties`}:` : " their listings."}
+                  {a.needs === "agreement"
+                    ? a.waiting.length
+                      ? `Covered once you sign the agreement above (${a.waiting.length} ${a.waiting.length === 1 ? "property" : "properties"}):`
+                      : "Covered once you sign the agreement above."
+                    : a.waiting.length
+                      ? `Sign an addendum to cover ${a.waiting.length === 1 ? "this property" : `these ${a.waiting.length} properties`}:`
+                      : "Sign an addendum to cover their listings."}
                   {a.declined ? " You declined the last copy; you can sign whenever you are ready." : ""}
                 </p>
                 {a.waiting.length > 0 && (
