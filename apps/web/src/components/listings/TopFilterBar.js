@@ -26,10 +26,10 @@ function FilterDropdownPortal({ children, isOpen }) {
 
 // Dropdown holding one of the filter cards or the side panel; pos holds the
 // fixed offsets (top / left / right / bottom) it is anchored at.
-function CardDropdown({ isOpen, pos, onClose, children }) {
+function CardDropdown({ isOpen, pos, onClose, modal = true, children }) {
   return (
     <FilterDropdownPortal isOpen={isOpen}>
-      <div className="fixed inset-0 z-[100]" onClick={onClose} />
+      {modal && <div className="fixed inset-0 z-[100]" onClick={onClose} />}
       <div className="fixed z-[101]" style={pos}>
         <div
           className="filter-dropdown flex max-h-full flex-col"
@@ -63,6 +63,8 @@ export default function TopFilterBar({
   setFilters: commitFilters,
   onReset,
   onFiltersSaved = () => {},
+  mapHidden,
+  onToggleMap,
 }) {
   /*
    * Rebuilding the results (a couple of hundred cards and the map pins) is the
@@ -113,6 +115,16 @@ export default function TopFilterBar({
         document.body.style.overflow = orig;
       };
     }
+  }, [showFilters]);
+
+  // Marks the page while the side panel is open, so the map-hidden card grid can
+  // make room for it (styled in AvailableListings, with no re-render).
+  useEffect(() => {
+    document.body.toggleAttribute(
+      "data-filters-panel",
+      showFilters === "more-filters"
+    );
+    return () => document.body.removeAttribute("data-filters-panel");
   }, [showFilters]);
 
   const hasActiveFilters =
@@ -341,6 +353,14 @@ export default function TopFilterBar({
           </svg>
           <span>Clear All</span>
         </button>
+
+        {/* Hide / Show Map */}
+        <button
+          onClick={onToggleMap}
+          className="ml-auto flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+        >
+          {mapHidden ? "Show Map" : "Hide Map"}
+        </button>
       </div>
 
       {/* ── Price dropdown ── */}
@@ -371,6 +391,9 @@ export default function TopFilterBar({
         isOpen={showFilters === "more-filters"}
         pos={dropdownPos}
         onClose={() => setShowFilters(false)}
+        // With the map hidden the cards sit beside the panel and stay usable:
+        // no click-catching layer (a click outside still closes it, see above).
+        modal={!mapHidden}
       >
         <FiltersPanel
           listings={listings}

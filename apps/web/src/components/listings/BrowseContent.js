@@ -45,6 +45,8 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Desktop only: hide the map and show the listings as a wider grid.
+  const [mapHidden, setMapHidden] = useState(false);
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
@@ -180,6 +182,8 @@ export default function BrowseContent({ session, initialListings = null }) {
           setFilters={setFilters}
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
+          mapHidden={mapHidden}
+          onToggleMap={() => setMapHidden((hidden) => !hidden)}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
@@ -192,6 +196,7 @@ export default function BrowseContent({ session, initialListings = null }) {
             suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
           }
           onFiltersSaved={handleFiltersSaved}
+          mapHidden={mapHidden}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}

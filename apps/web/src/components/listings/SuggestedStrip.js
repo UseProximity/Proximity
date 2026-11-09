@@ -41,6 +41,8 @@ export default function SuggestedStrip({
   label = "Suggested for you",
   selectedId = null,
   onCardClick,
+  // Three columns, for the grid shown while the map is hidden.
+  wide = false,
 }) {
   // One impression per distinct set shown, not per re-render.
   const lastImpression = useRef("");
@@ -62,7 +64,11 @@ export default function SuggestedStrip({
     <section aria-label={label} className="mb-6">
       <div
         className={
-          layout === "grid" ? "grid grid-cols-2 gap-3" : "space-y-4"
+          layout === "grid"
+            ? wide
+              ? "grid grid-cols-3 gap-x-[30px] gap-y-4"
+              : "grid grid-cols-2 gap-3"
+            : "space-y-4"
         }
       >
         {listings.map((listing, i) => (

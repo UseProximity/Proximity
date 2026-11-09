@@ -39,6 +39,8 @@ export default function AvailableListings({
   suggestedMode = "suggested",
   suggestedLabel = "Suggested for you",
   onFiltersSaved = () => {},
+  // Desktop: the map is hidden and the listings fill the page as a wider grid.
+  mapHidden = false,
   filters,
   setFilters,
   handleReset,
@@ -273,8 +275,10 @@ export default function AvailableListings({
     const col = panelRef.current;
     if (!col) return;
     col.scrollTop = 0;
-    anchoring.current = !expandedListing && !pinClose.current;
-    scrollAtSlideEnd.current = !expandedListing && pinClose.current;
+    // With the map hidden the column does not change width, so there is no
+    // slide to wait for.
+    anchoring.current = !mapHidden && !expandedListing && !pinClose.current;
+    scrollAtSlideEnd.current = !mapHidden && !expandedListing && pinClose.current;
     pinClose.current = false;
     if (!expandedListing) anchorGrid();
   }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -522,8 +526,8 @@ export default function AvailableListings({
       <div
         ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
-        }`}
+          mapHidden ? "w-full" : expandedListing ? "w-[58vw]" : "w-[40vw]"
+        } ${expandedListing ? "" : "px-3 pt-3 pb-4"}`}
         style={{ height: "100%", minHeight: 0 }}
         onTransitionEnd={(e) => {
           // transitionend fires before the final frame's resize callback, so
@@ -556,6 +560,7 @@ export default function AvailableListings({
         {expandedListing ? (
           <motion.div
             key={`detail-${expandedListing._id}`}
+            className={mapHidden ? "mx-auto w-[58vw]" : undefined}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
@@ -573,6 +578,17 @@ export default function AvailableListings({
         ) : (
           <motion.div
             key="grid"
+            // Three columns of the same card width as the two-column grid
+            // ((40vw - 36px) / 2 each, 30px apart), centred.
+            // While the side filters panel is open (it sets data-filters-panel
+            // on <body>) the grid slides left into the space beside it, and
+            // narrows only if the window is too small for three full columns.
+            // Done in CSS, so opening the panel does not re-render the cards.
+            className={
+              mapHidden
+                ? "mx-auto w-[calc(60vw+6px)] transition-transform duration-300 [body[data-filters-panel]_&]:w-[min(calc(60vw+6px),calc(100vw-412px))] [body[data-filters-panel]_&]:-translate-x-[194px]"
+                : undefined
+            }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
@@ -580,7 +596,11 @@ export default function AvailableListings({
             <BackToTop
               scrollRef={panelRef}
               after={600}
-              position="bottom-6 left-[calc(40vw-3.75rem)]"
+              position={
+                mapHidden
+                  ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[412px]"
+                  : "bottom-6 left-[calc(40vw-3.75rem)]"
+              }
               tone="light"
             />
             <div
@@ -608,6 +628,7 @@ export default function AvailableListings({
                 listings={suggestedListings}
                 session={session}
                 layout="grid"
+                wide={mapHidden}
                 mode={suggestedMode}
                 label={suggestedLabel}
                 selectedId={selectedListing?._id}
@@ -621,7 +642,13 @@ export default function AvailableListings({
             {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div
+                className={
+                  mapHidden
+                    ? "grid grid-cols-3 gap-x-[30px] gap-y-4"
+                    : "grid grid-cols-2 gap-3"
+                }
+              >
                 {visibleListings.map((listing) => (
                   <div key={listing._id} data-listing-id={listing._id}>
                     <ListingCard
@@ -641,9 +668,9 @@ export default function AvailableListings({
         )}
       </div>
 
-      {/* ── Desktop map ── */}
+      {/* ── Desktop map (kept mounted while hidden, so it comes back where it was) ── */}
       <div
-        className="hidden md:flex flex-1 w-full relative"
+        className={`${mapHidden ? "hidden" : "hidden md:flex"} flex-1 w-full relative`}
         style={{ position: "sticky", top: 0, height: "100%", minHeight: 0 }}
       >
         <MapView
