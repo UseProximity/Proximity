@@ -322,7 +322,8 @@ export async function cancelWaiting(db, landlordId, listingIds, now = new Date()
  * publish(landlordId, listingId), notifyLive({ landlordId, payerName, addresses }) }.
  */
 // `afterSign`: right after the signer signed. Anything still not covered then was
-// left off by them: it stays a draft, marked left_off, and the landlord is told.
+// left off by them: it simply stays waiting (a draft, never published) and the
+// landlord's email lists it as not verified yet (Wyatt, 2026-11-09).
 export async function releaseWaiting(db, { landlordId, deps, afterSign = false, now = new Date() }) {
   let waiting = await waitingRequests(db, landlordId);
   const leftOff = [];
@@ -330,17 +331,8 @@ export async function releaseWaiting(db, { landlordId, deps, afterSign = false, 
     const { covered, properties } = await coverageFor(db, landlordId, now);
     const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
     const off = waiting.filter((w) => !covered.has(w.listing_id));
-    if (off.length) {
-      const { error } = await db
-        .from("payer_publish_requests")
-        .update({ status: "left_off", resolved_at: now.toISOString() })
-        .eq("landlord_id", landlordId)
-        .eq("status", "waiting")
-        .in("listing_id", off.map((w) => w.listing_id));
-      if (error) throw error;
-      leftOff.push(...off.map((w) => nameOf.get(w.listing_id) ?? "A listing"));
-      waiting = waiting.filter((w) => covered.has(w.listing_id));
-    }
+    leftOff.push(...off.map((w) => nameOf.get(w.listing_id) ?? "A listing"));
+    waiting = waiting.filter((w) => covered.has(w.listing_id));
   }
   if (!waiting.length) return { published: [], leftOff };
   const ids = waiting.map((w) => w.listing_id);
@@ -396,26 +388,15 @@ export async function releaseWaiting(db, { landlordId, deps, afterSign = false, 
 export async function landlordPayerView(db, landlordId, now = new Date()) {
   const link = await activePayerLink(db, landlordId);
   if (!link) return null;
-  const [{ state, properties, covered }, waiting, leftOffRows] = await Promise.all([
-    coverageFor(db, landlordId, now),
-    waitingRequests(db, landlordId),
-    // What the signer left off in the last 30 days (still drafts; the landlord can send them again).
-    db
-      .from("payer_publish_requests")
-      .select("listing_id, resolved_at")
-      .eq("landlord_id", landlordId)
-      .eq("status", "left_off")
-      .gte("resolved_at", new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString())
-      .order("resolved_at", { ascending: false })
-      .then((r) => (r.error ? [] : r.data ?? [])),
-  ]);
+  const [{ state, properties, covered }, waiting] = await Promise.all([coverageFor(db, landlordId, now), waitingRequests(db, landlordId)]);
   const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
-  const missingNames = [...waiting.map((w) => w.listing_id), ...leftOffRows.map((r) => r.listing_id)].filter((id) => !nameOf.has(id));
+  const missingNames = waiting.map((w) => w.listing_id).filter((id) => !nameOf.has(id));
   if (missingNames.length) {
     const { data } = await db.from("listings").select("id, address, city, state, zipcode").in("id", missingNames);
     for (const l of data ?? []) nameOf.set(l.id, displayAddress(l));
   }
-  const coveredList = [...covered.entries()].map(([listingId, row]) => ({ listingId, address: nameOf.get(listingId) ?? row.address }));
+  // What the signer verified (covered by their agreement), with when (Wyatt, 2026-11-09).
+  const coveredList = [...covered.entries()].map(([listingId, row]) => ({ listingId, address: nameOf.get(listingId) ?? row.address, verifiedAt: row.covered_at ?? null }));
   const live = properties.filter((p) => p.live);
   const liveUncovered = live.filter((p) => !covered.has(p.listingId));
   const needsMethod = await signerNeedsPaymentMethod(db, link.payer_id, now);
@@ -434,11 +415,7 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
       since: w.created_at,
       waitingFor: covered.has(w.listing_id) ? (needsMethod ? "payment_method" : "publishing") : "signature",
     })),
-    // Left off by the signer and not sent again since.
-    leftOff: leftOffRows
-      .filter((r) => !waiting.some((w) => w.listing_id === r.listing_id) && !covered.has(r.listing_id))
-      .filter((r, i, all) => all.findIndex((x) => x.listing_id === r.listing_id) === i)
-      .map((r) => ({ listingId: r.listing_id, address: nameOf.get(r.listing_id) ?? "Listing", at: r.resolved_at })),
+
   };
 }
 

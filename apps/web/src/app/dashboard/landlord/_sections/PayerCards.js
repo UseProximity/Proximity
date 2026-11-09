@@ -147,17 +147,17 @@ export function PayerCard({ view, onChanged }) {
 
         {view.waiting.length > 0 && (
           <div>
-            <p className="text-sm font-medium text-gray-900">Waiting for {view.payer.name} ({view.waiting.length}):</p>
+            <p className="text-sm font-medium text-gray-900">Sent to {view.payer.name}, not live yet ({view.waiting.length}):</p>
             <ul className="mt-1 space-y-1 text-sm text-gray-800">
               {view.waiting.map((w) => (
                 <li key={w.listingId}>
                   {w.address}{" "}
                   <span className="text-xs text-gray-500">
                     {w.waitingFor === "payment_method"
-                      ? `(covered, waiting for ${view.payer.name} to add a payment method)`
+                      ? `(verified, waiting for ${view.payer.name} to add a payment method)`
                       : w.waitingFor === "publishing"
-                        ? "(covered, going live)"
-                        : `(draft, sent ${dateOnly(w.since)})`}
+                        ? "(verified, going live)"
+                        : `(not verified yet, sent ${dateOnly(w.since)})`}
                   </span>
                 </li>
               ))}
@@ -165,30 +165,22 @@ export function PayerCard({ view, onChanged }) {
           </div>
         )}
 
-        {view.leftOff?.length > 0 && (
-          <div className="rounded-md bg-gray-50 px-3 py-2">
-            <p className="text-sm font-medium text-gray-900">Left off by {view.payer.name} (still drafts):</p>
-            <ul className="mt-1 space-y-1 text-sm text-gray-800">
-              {view.leftOff.map((l) => (
-                <li key={l.listingId}>
-                  {l.address} <span className="text-xs text-gray-500">({dateOnly(l.at)})</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1 text-xs text-gray-500">To publish one, talk to {view.payer.name}, then publish it again from Drafts to send it back.</p>
-          </div>
-        )}
-
         <div>
-          <p className="text-sm font-medium text-gray-900">Covered ({view.covered.length}):</p>
+          <p className="text-sm font-medium text-gray-900">
+            Verified by {view.payer.name} ({view.covered.length}):
+          </p>
           {view.covered.length ? (
             <ul className="mt-1 space-y-1 text-sm text-gray-800">
               {view.covered.map((c) => (
-                <li key={c.listingId}>{c.address}</li>
+                <li key={c.listingId}>
+                  <span className="text-green-700" aria-hidden="true">✓ </span>
+                  {c.address}
+                  {c.verifiedAt && <span className="text-xs text-gray-500"> (verified {dateOnly(c.verifiedAt)})</span>}
+                </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-gray-500">Nothing yet. Your listings are covered once {view.payer.name} signs.</p>
+            <p className="text-sm text-gray-500">Nothing yet. Your listings are verified once {view.payer.name} signs.</p>
           )}
         </div>
 

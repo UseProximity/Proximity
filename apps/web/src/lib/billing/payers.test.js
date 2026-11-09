@@ -232,7 +232,7 @@ describe("payer: drafts (Wyatt, 2026-11-09)", () => {
     assert.deepEqual(signed[0].withdrawn, ["L1"], "the live listing left off is withdrawn");
   });
 
-  it("what the landlord sent but the signer left off is marked left off, stays a draft, and is never published", async () => {
+  it("what the landlord sent but the signer left off stays waiting, is never published, and the landlord sees it as not verified", async () => {
     const { db, documenso } = await ownerSignedFor("pm1");
     db.tables.listings.push(listing("L9", "900 Later Ln", false));
     db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" });
@@ -242,10 +242,11 @@ describe("payer: drafts (Wyatt, 2026-11-09)", () => {
       afterSign: true,
       deps: { checkGate: async () => ({ allowed: true, missing: [], uncovered: [] }), publish: async () => assert.fail("never published") },
     });
-    assert.deepEqual(r.leftOff, ["900 Later Ln"]);
-    assert.equal(db.tables.payer_publish_requests[0].status, "left_off");
-    const view = await landlordPayerView(db, "pm1", new Date());
-    assert.deepEqual(view.leftOff.map((l) => l.listingId), ["L9"]);
+    assert.deepEqual(r.leftOff, ["900 Later Ln"], "listed in the landlord's email as not verified yet");
+    assert.equal(db.tables.payer_publish_requests[0].status, "waiting", "still to be signed");
+    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
+    assert.equal(view.waiting[0].waitingFor, "signature");
+    assert.ok(view.covered.every((c) => c.verifiedAt), "each verified listing says when");
   });
 });
 

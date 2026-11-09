@@ -21,7 +21,7 @@
 -- ── payer_publish_requests ──────────────────────────────────────────────────
 -- Properties a landlord with a payer asked to publish: drafts until the payer
 -- signs the document covering them, then published and the landlord emailed.
---   status  waiting | published | cancelled | left_off (the signer signed without it)
+--   status  waiting | published | cancelled (a listing the signer leaves off just stays waiting)
 --
 -- ── users.billing_only ──────────────────────────────────────────────────────
 -- A landlord account made for a payer: no listings, analytics or listing tools.
@@ -65,15 +65,10 @@ CREATE TABLE IF NOT EXISTS public.payer_publish_requests (
   landlord_id   uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   listing_id    uuid NOT NULL REFERENCES public.listings(id) ON DELETE CASCADE,
   payer_link_id uuid NOT NULL REFERENCES public.billing_payers(id) ON DELETE CASCADE,
-  status        text NOT NULL DEFAULT 'waiting',
+  status        text NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'published', 'cancelled')),
   created_at    timestamptz NOT NULL DEFAULT now(),
   resolved_at   timestamptz
 );
-
--- left_off: the authorized signer signed without it (left it off Exhibit A).
-ALTER TABLE public.payer_publish_requests DROP CONSTRAINT IF EXISTS payer_publish_requests_status_check;
-ALTER TABLE public.payer_publish_requests ADD CONSTRAINT payer_publish_requests_status_check
-  CHECK (status IN ('waiting', 'published', 'cancelled', 'left_off'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payer_publish_requests_waiting
   ON public.payer_publish_requests (landlord_id, listing_id) WHERE status = 'waiting';
