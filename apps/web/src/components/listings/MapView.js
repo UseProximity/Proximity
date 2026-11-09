@@ -24,6 +24,25 @@ const SUGGESTED_PIN_COLOR = "#A1000A";
 // Pin body and star fill for unavailable listings (Browse Listings design).
 const UNAVAILABLE_PIN_COLOR = "#A3A3A3";
 const UNAVAILABLE_STAR_COLOR = "#E6E7EB";
+const AVAILABLE_PIN_COLOR = "#E8000B";
+
+// Pin shape shared by single and cluster pins.
+const PIN_PATH =
+  "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
+// The scale lives on an inner wrapper because Mapbox owns the marker
+// element's own transform (it writes the lng/lat translate there each frame).
+// Scaling from the bottom center keeps the pin's tip on its coordinate.
+const WRAP_OPEN =
+  '<div style="width:35px;height:49px;transform-origin:bottom center;transform:scale(var(--pin-scale,1));will-change:transform">';
+const WRAP_CLOSE = "</div>";
+
+// Listings whose pins would sit closer than this on screen merge into one
+// numbered pin. Roughly one pin width. Clustering stops at CLUSTER_MAX_ZOOM so
+// listings at the same spot can always be told apart by zooming in; a cluster
+// click zooms in by CLUSTER_ZOOM_STEP levels.
+const CLUSTER_RADIUS_PX = 35;
+const CLUSTER_MAX_ZOOM = 17;
+const CLUSTER_ZOOM_STEP = 2;
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -63,6 +82,59 @@ function percentile(values, p) {
     Math.max(0, Math.ceil(p * sorted.length) - 1)
   );
   return sorted[idx];
+}
+
+// Groups listings whose pins overlap at the map's current zoom. Returns
+// { members, lng, lat } per pin (lng/lat is the members' average), north first
+// so southern pins are added last and render on top. The pinned listing (the
+// selected one) is never merged, so its highlighted pin stays visible.
+function clusterListings(map, listings, pinnedId) {
+  const toGroup = (members) => ({
+    members,
+    lng: members.reduce((sum, l) => sum + l.longitude, 0) / members.length,
+    lat: members.reduce((sum, l) => sum + l.latitude, 0) / members.length,
+  });
+  const pinned = listings.filter((l) => String(l._id) === String(pinnedId));
+  const pool = listings.filter((l) => !pinned.includes(l));
+  const radius = map.getZoom() < CLUSTER_MAX_ZOOM ? CLUSTER_RADIUS_PX : 0;
+  const points = pool.map((l) => map.project([l.longitude, l.latitude]));
+  const taken = new Set();
+  const groups = pinned.map((l) => toGroup([l]));
+  pool.forEach((listing, i) => {
+    if (taken.has(i)) return;
+    taken.add(i);
+    const members = [listing];
+    for (let j = i + 1; j < pool.length; j++) {
+      if (
+        !taken.has(j) &&
+        Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y) <
+          radius
+      ) {
+        taken.add(j);
+        members.push(pool[j]);
+      }
+    }
+    groups.push(toGroup(members));
+  });
+  return groups.sort((a, b) => b.lat - a.lat);
+}
+
+// Pin for two or more merged listings: the pin shape with the count where the
+// star would be. Grey only when every listing is unavailable, else the
+// suggested color if any listing is suggested, else the normal red.
+function buildClusterPinElement(count, isUnavailable, hasSuggested) {
+  const color = isUnavailable
+    ? UNAVAILABLE_PIN_COLOR
+    : hasSuggested
+      ? SUGGESTED_PIN_COLOR
+      : AVAILABLE_PIN_COLOR;
+  const el = document.createElement("div");
+  el.style.cssText = "width:35px;height:49px;user-select:none;";
+  el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="${PIN_PATH}" fill="${color}" stroke="${color}" stroke-width="2"/>
+    <text x="17.5" y="19.5" text-anchor="middle" dominant-baseline="central" fill="white" font-size="${count > 99 ? 12 : 18}" font-weight="700">${count}</text>
+  </svg>${WRAP_CLOSE}`;
+  return el;
 }
 
 export default function MapView(props) {
@@ -361,12 +433,6 @@ function MapViewInner({
   ) {
     const el = document.createElement("div");
     el.style.cssText = "width:35px;height:49px;";
-    // The scale lives on an inner wrapper because Mapbox owns the marker
-    // element's own transform (it writes the lng/lat translate there each frame).
-    // Scaling from the bottom center keeps the pin's tip on its coordinate.
-    const WRAP_OPEN =
-      '<div style="width:35px;height:49px;transform-origin:bottom center;transform:scale(var(--pin-scale,1));will-change:transform">';
-    const WRAP_CLOSE = "</div>";
 
     const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
     const hasRating = rating != null && rating > 0;
@@ -375,10 +441,8 @@ function MapViewInner({
       ? UNAVAILABLE_PIN_COLOR
       : isSuggested
         ? SUGGESTED_PIN_COLOR
-        : "#E8000B";
+        : AVAILABLE_PIN_COLOR;
 
-    const PIN_PATH =
-      "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
     const STAR_PATH =
       "M17.0293 8.79004C17.1878 8.34883 17.8122 8.34883 17.9707 8.79004L20.4404 15.668C20.6507 16.2534 21.2013 16.6479 21.8232 16.6602L29.2773 16.8076C29.7553 16.817 29.9486 17.427 29.5635 17.71L23.6768 22.0293C23.1599 22.4086 22.9415 23.0747 23.1328 23.6865L25.2832 30.5664C25.4241 31.0173 24.9192 31.3935 24.5273 31.1299L18.3379 26.9619C17.8315 26.621 17.1685 26.621 16.6621 26.9619L10.4727 31.1299C10.0808 31.3935 9.57593 31.0173 9.7168 30.5664L11.8672 23.6865C12.0585 23.0747 11.8401 22.4086 11.3232 22.0293L5.43652 17.71C5.05135 17.427 5.24468 16.817 5.72266 16.8076L13.1768 16.6602C13.7987 16.6479 14.3493 16.2534 14.5596 15.668L17.0293 8.79004Z";
 
@@ -451,53 +515,80 @@ function MapViewInner({
     const map = mapRef.current;
     if (!map) return;
 
-    // Update markers: remove previous markers and add new ones
-    if (map.markers) {
-      map.markers.forEach((marker) => marker.remove());
-    }
-    map.markers = [];
-
-    // Sort north-first so southern pins are added last and render on top
-    const sortedListings = listings
-      .filter((l) => !(hideUnavailable && l.unavailable))
-      .sort((a, b) => b.latitude - a.latitude);
-
-    sortedListings.forEach((listing) => {
-      if (!listing.longitude || !listing.latitude) return;
-
-      const exactRating =
-        (listing.rating || 0) > 0 ? listing.rating || 0 : null;
-      const isSuggested = !!suggestedIds?.has(String(listing._id));
-      const isUnavailable = !!listing.unavailable;
-      const markerEl = buildPinSVGElement(
-        exactRating,
-        listing._id,
-        false,
-        isSuggested,
-        isUnavailable
-      );
-      markerEl.style.cursor = onListingSelect ? "pointer" : "default";
-      const marker = new mapboxgl.Marker({
-        element: markerEl,
-        anchor: "bottom",
-      })
-        .setLngLat([listing.longitude, listing.latitude])
-        .addTo(map);
-      marker._listingId = listing._id;
-      marker._rating = exactRating;
-      marker._suggested = isSuggested;
-      marker._unavailable = isUnavailable;
-      if (onListingSelect) {
-        markerEl.addEventListener("click", () => {
-          pinClickedRef.current = true;
-          onListingSelect(listing);
-        });
+    // Update markers: remove previous markers and add new ones. Rebuilt after
+    // every zoom too, because which listings merge into a cluster depends on it.
+    const renderPins = () => {
+      if (map.markers) {
+        map.markers.forEach((marker) => marker.remove());
       }
-      map.markers.push(marker);
-    });
+      map.markers = [];
 
-    // Tell the selection effect to repaint: these pins were all built unselected.
-    setMarkersVersion((v) => v + 1);
+      // Hidden unavailable listings take no part in clusters (count or color).
+      const shown = listings.filter(
+        (l) => l.longitude && l.latitude && !(hideUnavailable && l.unavailable)
+      );
+      clusterListings(map, shown, selectedListingId).forEach(
+        ({ members, lng, lat }) => {
+          const isCluster = members.length > 1;
+          const listing = members[0];
+          const exactRating =
+            (listing.rating || 0) > 0 ? listing.rating || 0 : null;
+          const isSuggested = !!suggestedIds?.has(String(listing._id));
+          const isUnavailable = !!listing.unavailable;
+          const markerEl = isCluster
+            ? buildClusterPinElement(
+                members.length,
+                members.every((l) => l.unavailable),
+                members.some((l) => suggestedIds?.has(String(l._id)))
+              )
+            : buildPinSVGElement(
+                exactRating,
+                listing._id,
+                listing._id === selectedListingId,
+                isSuggested,
+                isUnavailable
+              );
+          markerEl.style.cursor =
+            isCluster || onListingSelect ? "pointer" : "default";
+          const marker = new mapboxgl.Marker({
+            element: markerEl,
+            anchor: "bottom",
+          })
+            .setLngLat([lng, lat])
+            .addTo(map);
+          if (isCluster) {
+            marker._cluster = true;
+            markerEl.addEventListener("click", () => {
+              map.easeTo({
+                center: [lng, lat],
+                zoom: Math.min(
+                  CLUSTER_MAX_ZOOM,
+                  map.getZoom() + CLUSTER_ZOOM_STEP
+                ),
+                duration: 600,
+              });
+            });
+          } else {
+            marker._listingId = listing._id;
+            marker._rating = exactRating;
+            marker._suggested = isSuggested;
+            marker._unavailable = isUnavailable;
+            if (onListingSelect) {
+              markerEl.addEventListener("click", () => {
+                pinClickedRef.current = true;
+                onListingSelect(listing);
+              });
+            }
+          }
+          map.markers.push(marker);
+        }
+      );
+
+      // Tell the selection effect to repaint (it also restacks the pins).
+      setMarkersVersion((v) => v + 1);
+    };
+    renderPins();
+    map.on("zoomend", renderPins);
 
     // Zoom to fit all visible listings whenever the SET of listings changes.
     // Keyed on the ids, not the array: the feed refetch after first paint hands
@@ -616,6 +707,7 @@ function MapViewInner({
     }
 
     return () => {
+      map.off("zoomend", renderPins);
       // Cleanup only markers added by this effect. Do NOT remove the map instance here
       if (map.markers) {
         map.markers.forEach((marker) => marker.remove());
@@ -623,7 +715,14 @@ function MapViewInner({
       }
       // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
     };
-  }, [isActive, listings, showShuttleStops, suggestedIds, hideUnavailable]);
+  }, [
+    isActive,
+    listings,
+    showShuttleStops,
+    suggestedIds,
+    hideUnavailable,
+    selectedListingId,
+  ]);
 
   // Keep listingsRef current so the selectedListingId effect can find coordinates
   useEffect(() => {
@@ -718,6 +817,7 @@ function MapViewInner({
     const map = mapRef.current;
     if (!map?.markers) return;
     map.markers.forEach((marker) => {
+      if (marker._cluster) return;
       const isActive = marker._listingId === selectedListingId;
       const el = marker.getElement();
       const newPin = buildPinSVGElement(
