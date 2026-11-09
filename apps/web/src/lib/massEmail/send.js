@@ -98,7 +98,7 @@ function usable(u) {
 
 // The footer line is admin-typed text, and emailFooter inserts it as HTML.
 export const footerFor = (version, unsubscribeUrl = null) =>
-  emailFooter({ reason: escapeHtml(version.footer_reason), commercial: version.commercial === true, unsubscribeUrl });
+  emailFooter({ reason: escapeHtml(version.footer_reason), unsubscribeUrl });
 
 /*
  * What one person's email carries for unsubscribing: the footer (HTML and text)
@@ -108,7 +108,7 @@ function personalFooter(version, email, baseUrl) {
   const unsubscribeUrl = unsubscribePageUrl(email, baseUrl);
   return {
     footerHtml: footerFor(version, unsubscribeUrl),
-    footerText: emailFooterText({ reason: version.footer_reason, commercial: version.commercial === true, unsubscribeUrl }),
+    footerText: emailFooterText({ reason: version.footer_reason, unsubscribeUrl }),
     headers: unsubscribeHeaders(email, baseUrl, MASS_EMAIL_ADDRESS),
   };
 }

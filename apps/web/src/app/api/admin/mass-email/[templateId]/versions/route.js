@@ -9,7 +9,7 @@ import { errorResponse, massEmailContext } from "@/lib/massEmail/http";
  * edited, so what each person received stays on record.
  *
  * POST  { subject, body, buttonTarget, buttonLabel, buttonUrl, attachments,
- *         footerReason, commercial } -> { version }
+ *         footerReason } -> { version }
  *
  * @auth admin
  */
