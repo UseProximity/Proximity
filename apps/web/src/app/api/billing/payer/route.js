@@ -22,12 +22,14 @@ import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/lice
  *          the agreement, the MREC form and a link. The landlord's own license
  *          answer is asked here when they have none (it still shows on their
  *          listings: "Listed by").
- *   PATCH  { action: "resend" } emails the payer again;
+ *   PATCH  { action: "resend" } emails the payer again (at most every 30 minutes);
  *          { action: "change", name, email } names someone else (only before
  *          anything was signed for this account).
  *
  * @auth landlord (own account only)
  */
+const RESEND_GAP_MS = 30 * 60 * 1000;
+
 async function landlordOf(userId) {
   const { data, error } = await supabase.from("users").select("id, name, email, billing_only").eq("id", userId).single();
   if (error) throw error;
@@ -75,9 +77,11 @@ export async function PATCH(req) {
     if (body.action === "resend") {
       const link = await activePayerLink(supabase, landlord.id);
       if (!link) throw new BillingError("no_payer", "You don't have a payer.", 404);
-      // At most one resend a minute, so a double click sends one email.
-      if (Date.now() - new Date(link.invited_at).getTime() < 60 * 1000) {
-        throw new BillingError("too_soon", "We just emailed them. Try again in a minute.", 429);
+      // At most one resend every 30 minutes (Wyatt, 2026-11-09).
+      const wait = RESEND_GAP_MS - (Date.now() - new Date(link.invited_at).getTime());
+      if (wait > 0) {
+        const mins = Math.ceil(wait / 60000);
+        throw new BillingError("too_soon", `We emailed them recently. You can resend in ${mins} minute${mins === 1 ? "" : "s"}.`, 429);
       }
       const sent = await sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id });
       if (!sent) throw new BillingError("send_failed", "We couldn't send the email. Try again in a few minutes.", 502);

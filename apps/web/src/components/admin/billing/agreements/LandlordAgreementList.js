@@ -210,82 +210,181 @@ function CoverageDetail({ c, a }) {
 }
 
 /*
- * Set who signs and pays for this landlord (Project B, Wyatt 2026-11-09), and
- * optionally for other landlords too: they all get the same payer, who is emailed
- * once and signs ONE agreement covering all of them.
+ * The payer's email, looked up as it is typed (Wyatt, 2026-11-09): an existing
+ * landlord or billing account is named; a new email says an account will be
+ * made and they set a password from the email; an account that can't pay says
+ * why. The name is filled from an existing account and asked for a new one.
  */
+function PayerLookup({ name, setName, email, setEmail, onStatus }) {
+  const [found, setFound] = useState(null);
+  useEffect(() => {
+    const e = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      setFound(null);
+      onStatus(null);
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      call(`/api/admin/billing/payers/lookup?${new URLSearchParams({ email: e })}`)
+        .then((r) => {
+          setFound(r);
+          onStatus(r.status);
+          if (r.status === "existing" && r.user?.name) setName((n) => n || r.user.name);
+        })
+        .catch(() => {
+          setFound(null);
+          onStatus(null);
+        });
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+  return (
+    <div className="space-y-2">
+      <input className={FIELD} type="email" placeholder="Payer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
+      {found?.status === "existing" && (
+        <p className="rounded-md bg-green-50 px-3 py-2 text-xs text-green-900">
+          Existing {found.user.billingOnly ? "billing account" : "landlord account"}: {found.user.name || found.user.email}
+          {found.user.paysFor ? `, already pays for ${found.user.paysFor} ${found.user.paysFor === 1 ? "account" : "accounts"}` : ""}. They sign in with their
+          own login.
+        </p>
+      )}
+      {found?.status === "new" && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          No account has this email. Assigning creates a billing account for them, and the email we send asks them to set a password before
+          they review and sign.
+        </p>
+      )}
+      {found?.status === "refused" && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{found.reason}</p>}
+      {(found?.status === "new" || found?.status === "existing") && (
+        <input className={FIELD} placeholder="Payer's full name (as it goes on the agreement)" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+      )}
+    </div>
+  );
+}
+
+const assignedMessage = (r, name) =>
+  `${name.trim()} now signs and pays for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them.${
+    r.failed?.length ? ` Not assigned: ${r.failed.map((f) => f.error).join(" ")}` : ""
+  }`;
+
+// Set who signs and pays for one landlord. The payer gets an email for this account.
 function PayerForm({ row, busy, run, onDone }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [status, setStatus] = useState(null);
+  const [notify, setNotify] = useState(true);
+  const ok = (status === "existing" || status === "new") && name.trim();
+  const submit = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const r = await postJson("/api/admin/billing/payers", { landlordIds: [row.id], name, email, notifyLandlords: notify });
+      onDone();
+      return assignedMessage(r, name);
+    });
+  };
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm">
+      <p className="text-gray-700">
+        The payer signs the marketing agreement and receives the invoices for {row.name || row.email}, who will not sign. We email the payer
+        the agreement and the MREC form.
+      </p>
+      <PayerLookup name={name} setName={setName} email={email} setEmail={setEmail} onStatus={setStatus} />
+      <label className="flex items-center gap-2 text-gray-700">
+        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+        Email {row.name || "the landlord"} that the payer signs and pays now
+      </label>
+      <div className="flex gap-2">
+        <button type="submit" className={PRIMARY} disabled={busy || !ok}>
+          Set payer
+        </button>
+        <button type="button" className={BUTTON} onClick={onDone} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/*
+ * At the top of the list: give several landlords the same payer in one go. The
+ * payer gets ONE email listing every account, and signs one agreement covering
+ * all of them (Wyatt, 2026-11-09).
+ */
+function BulkPayerPanel({ busy, run, onDone }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState([]);
-  const [also, setAlso] = useState({});
+  const [chosen, setChosen] = useState({});
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState(null);
   const [notify, setNotify] = useState(true);
 
   useEffect(() => {
     if (q.trim().length < 2) return setFound([]);
     const t = setTimeout(() => {
       call(`/api/admin/billing/landlords?${new URLSearchParams({ filter: "all", search: q.trim() })}`)
-        .then((d) => setFound((d.rows ?? []).filter((r) => r.id !== row.id && !r.payer && !r.billingOnly).slice(0, 8)))
+        .then((d) => setFound((d.rows ?? []).filter((r) => !r.payer && !r.billingOnly).slice(0, 15)))
         .catch(() => setFound([]));
     }, 300);
     return () => clearTimeout(t);
-  }, [q, row.id]);
+  }, [q]);
 
-  const chosen = Object.values(also);
+  const list = Object.values(chosen);
+  const toggle = (r) =>
+    setChosen((c) => {
+      const next = { ...c };
+      if (next[r.id]) delete next[r.id];
+      else next[r.id] = r;
+      return next;
+    });
+  const ok = list.length > 0 && (status === "existing" || status === "new") && name.trim();
   const submit = (e) => {
     e.preventDefault();
-    const ids = [row.id, ...chosen.map((r) => r.id)];
     run(async () => {
-      const r = await postJson("/api/admin/billing/payers", { landlordIds: ids, name, email, notifyLandlords: notify });
+      const r = await postJson("/api/admin/billing/payers", { landlordIds: list.map((x) => x.id), name, email, notifyLandlords: notify });
       onDone();
-      const bad = r.failed?.length ? ` Not assigned: ${r.failed.map((f) => f.error).join(" ")}` : "";
-      return `${name.trim()} now signs and pays for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them the agreement.${bad}`;
+      return assignedMessage(r, name);
     });
   };
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm">
-      <p className="text-gray-700">
-        The payer signs the marketing agreement and receives the invoices. {row.name || row.email} will not sign. The payer gets one email,
-        with the agreement and the MREC form, and signs one agreement covering every landlord chosen here.
-      </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <input className={FIELD} placeholder="Payer's full name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
-        <input className={FIELD} type="email" placeholder="Payer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
-      </div>
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-gray-200 bg-white px-4 py-4 text-sm">
+      <p className="font-semibold text-gray-900">Assign one payer to several landlords</p>
       <div>
-        <input className={FIELD} placeholder="Also for other landlords: search by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
+        <p className="text-xs font-medium text-gray-600">1. Landlords</p>
+        <input className={FIELD} placeholder="Search landlords by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
         {found.length > 0 && (
-          <ul className="mt-1 space-y-0.5">
+          <ul className="mt-1 max-h-48 space-y-0.5 overflow-y-auto">
             {found.map((r) => (
               <li key={r.id}>
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!also[r.id]}
-                    onChange={(e) => setAlso((a) => {
-                      const next = { ...a };
-                      if (e.target.checked) next[r.id] = r;
-                      else delete next[r.id];
-                      return next;
-                    })}
-                  />
+                  <input type="checkbox" checked={!!chosen[r.id]} onChange={() => toggle(r)} disabled={r.agreement?.status === "signed"} />
                   {r.name || "Unnamed landlord"} <span className="text-xs text-gray-400">({r.email})</span>
+                  {r.agreement?.status === "signed" && <span className="text-xs text-gray-500">signed their own: void it first</span>}
                 </label>
               </li>
             ))}
           </ul>
         )}
-        {chosen.length > 0 && <p className="mt-1 text-xs text-gray-600">Also: {chosen.map((r) => r.name || r.email).join(", ")}</p>}
+        {list.length > 0 && (
+          <p className="mt-1 text-xs text-gray-700">
+            Chosen ({list.length}): {list.map((r) => r.name || r.email).join(", ")}
+          </p>
+        )}
+      </div>
+      <div>
+        <p className="text-xs font-medium text-gray-600">2. Payer</p>
+        <PayerLookup name={name} setName={setName} email={email} setEmail={setEmail} onStatus={setStatus} />
       </div>
       <label className="flex items-center gap-2 text-gray-700">
         <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
         Email each landlord that the payer signs and pays now
       </label>
+      <p className="text-xs text-gray-500">The payer gets one email listing every account, and signs one agreement covering all of them.</p>
       <div className="flex gap-2">
-        <button type="submit" className={PRIMARY} disabled={busy || !name.trim() || !email.trim()}>
-          Set payer{chosen.length ? ` for ${chosen.length + 1} landlords` : ""}
+        <button type="submit" className={PRIMARY} disabled={busy || !ok}>
+          Assign to {list.length || ""} {list.length === 1 ? "landlord" : "landlords"}
         </button>
         <button type="button" className={BUTTON} onClick={onDone} disabled={busy}>
           Cancel
@@ -449,6 +548,7 @@ export default function LandlordAgreementList({ search, busy, run, reloadKey }) 
   }, [load, reloadKey]);
 
   const canEmail = !!data?.liveVersion;
+  const [bulkPayer, setBulkPayer] = useState(false);
 
   const emailAll = () => {
     const n = data.bulkAudienceCount;
@@ -463,6 +563,9 @@ export default function LandlordAgreementList({ search, busy, run, reloadKey }) 
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="flex-1 text-sm font-semibold text-gray-900">Landlords</h3>
+        <button type="button" disabled={busy} className={BUTTON} onClick={() => setBulkPayer((b) => !b)}>
+          Assign a payer to several landlords
+        </button>
         <button
           type="button"
           disabled={busy || !canEmail || !data?.bulkAudienceCount}
@@ -473,6 +576,8 @@ export default function LandlordAgreementList({ search, busy, run, reloadKey }) 
           Email everyone who has not signed ({data?.bulkAudienceCount ?? 0})
         </button>
       </div>
+
+      {bulkPayer && <BulkPayerPanel busy={busy} run={run} onDone={() => setBulkPayer(false)} />}
 
       {data?.uncoveredOfferingsTotal > 0 && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">

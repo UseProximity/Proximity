@@ -67,6 +67,30 @@ async function landlordRoleId(db) {
 export const canSignIn = (u) => !!(u?.password_hash || u?.google_account || u?.apple_account);
 
 /*
+ * What an admin sees when they type a payer's email (Wyatt, 2026-11-09):
+ *   { status: "existing", user }   a landlord or billing account already has it
+ *   { status: "new" }              nobody: a billing account will be made, and
+ *                                  they set a password from the email
+ *   { status: "refused", reason }  a student, admin or sandbox account, or
+ *                                  someone who has a payer themselves
+ * `user` is { id, name, email, billingOnly, paysFor }.
+ */
+export async function lookupPayer(db, email) {
+  const clean = String(email ?? "").trim().toLowerCase();
+  if (!EMAIL_RE.test(clean)) return { status: "invalid" };
+  const u = await userByEmail(db, clean);
+  if (!u) return { status: "new", email: clean };
+  if ((u.roles?.name ?? null) !== "landlord" || u.review_sandbox) {
+    return { status: "refused", reason: "That email belongs to an account that can't pay for listings (a student or admin). Use another email." };
+  }
+  if (await activePayerLink(db, u.id)) {
+    return { status: "refused", reason: "That landlord has someone else paying for their own account, so they can't pay for others." };
+  }
+  const paysFor = (await payeeLinks(db, u.id)).length;
+  return { status: "existing", user: { id: u.id, name: u.name ?? null, email: u.email, billingOnly: u.billing_only === true, paysFor } };
+}
+
+/*
  * The landlord names their payer. Refused when:
  *   - the landlord signed their own agreement (they void it first: contact us)
  *   - the landlord has terms negotiated for them alone (their terms are theirs)

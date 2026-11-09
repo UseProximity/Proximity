@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, applyEnvelope, coverageFor, coveringAgreement, documentParts, listAgreementDocuments, startSigning } from "./agreements.js";
-import { cleanPayerInput, endPayerFor, landlordPayerView, namePayer, payerAccounts, releaseWaiting, requestPayerCoverage } from "./payers.js";
+import { cleanPayerInput, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, releaseWaiting, requestPayerCoverage } from "./payers.js";
 import { coverageOnly, gateResponseBody, payerCanFix } from "./listingGate.js";
 import { payeeChargeView, statusMessage } from "./chargeDisplay.js";
 import { lineDescription, planInvoices } from "./invoicePlan.js";
@@ -306,5 +306,19 @@ describe("payer: the publish check and invoices", () => {
     assert.equal(plan.invoices.length, 1);
     assert.equal(plan.invoices[0].totalCents, 1800);
     assert.match(lineDescription({ trigger_type: "lease_signed", account_label: "West LLC" }), /^Account: West LLC/);
+  });
+});
+
+describe("payer: the admin's email lookup", () => {
+  it("names an existing account, says a new one will be made, and refuses a student", async () => {
+    const db = world();
+    const existing = await lookupPayer(db, " Jane@Owner.example.com ");
+    assert.equal(existing.status, "existing");
+    assert.equal(existing.user.id, "own");
+    assert.equal(existing.user.paysFor, 1);
+    assert.equal((await lookupPayer(db, "nobody@new.example.com")).status, "new");
+    assert.equal((await lookupPayer(db, "sam@wustl.edu")).status, "refused");
+    assert.equal((await lookupPayer(db, "pat@pm.example.com")).status, "refused", "a landlord who has a payer can't pay for others");
+    assert.equal((await lookupPayer(db, "not an email")).status, "invalid");
   });
 });
