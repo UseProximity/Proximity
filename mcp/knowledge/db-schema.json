@@ -3437,7 +3437,7 @@
       {
         "table": "payer_publish_requests",
         "status": "unreleased",
-        "description": "Project B (202611090001): listings a landlord with a payer asked to publish; drafts (status waiting) until the payer signs the covering document, then published (lib/billing/payers.js releaseWaiting). One waiting row per listing. RLS on, service role only.",
+        "description": "Project B (202611090001): listings a landlord with a payer asked to publish; drafts (status waiting) until the payer signs the covering document, then published; left_off when the signer signed without it (lib/billing/payers.js releaseWaiting). One waiting row per listing. RLS on, service role only.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",

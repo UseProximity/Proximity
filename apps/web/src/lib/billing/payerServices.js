@@ -105,10 +105,10 @@ export async function sendPayerRequest({ landlordId, addresses }) {
 const releaseDeps = {
   checkGate: (landlordId, listingIds) => checkListingGate(supabase, landlordId, { listingIds }),
   publish: (landlordId, listingId) => publishProperty(landlordId, false, listingId),
-  notifyLive: async ({ landlordId, payerName, addresses }) => {
+  notifyLive: async ({ landlordId, payerName, addresses, leftOff = [], withdrawn = [], waitingOnPayment = false }) => {
     const landlord = await userRow(landlordId);
     if (!landlord?.email) return;
-    await sendPayeeSignedEmail(landlord, { payerName, addresses, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
+    await sendPayeeSignedEmail(landlord, { payerName, addresses, leftOff, withdrawn, waitingOnPayment, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
   },
 };
 
@@ -122,14 +122,24 @@ export async function releaseWaitingFor(landlordId) {
  * than the signer's own gets its waiting listings published and an email saying
  * the payer signed (with what went live).
  */
-export async function afterPayerSigned({ signerId, accounts = {} }) {
-  for (const landlordId of Object.keys(accounts)) {
-    if (landlordId === signerId) continue;
-    const { published } = await releaseWaitingFor(landlordId);
-    if (!published.length) {
-      const link = await activePayerLink(supabase, landlordId);
-      await releaseDeps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: [] }).catch(() => {});
+export async function afterPayerSigned({ signerId, accounts = {}, withdrawn = [] }) {
+  // Every account the signer signs for, not only those the document covered: one
+  // it covered nothing for may have had everything left off.
+  const { data: links } = await supabase.from("billing_payers").select("landlord_id").eq("payer_id", signerId).eq("status", "active");
+  const ids = [...new Set([...Object.keys(accounts), ...(links ?? []).map((l) => l.landlord_id)])].filter((id) => id !== signerId);
+  for (const landlordId of ids) {
+    const { published, leftOff = [], blocked } = await releaseWaiting(supabase, { landlordId, deps: releaseDeps, afterSign: true });
+    // Live listings of this account taken off the site because the signer left them off.
+    let gone = [];
+    if (withdrawn.length) {
+      const { data } = await supabase.from("listing_landlords").select("listing_id, listings!inner(address)").eq("user_id", landlordId).in("listing_id", withdrawn);
+      gone = (data ?? []).map((r) => r.listings?.address).filter(Boolean);
     }
+    if (!accounts[landlordId] && !leftOff.length && !gone.length) continue;
+    const link = await activePayerLink(supabase, landlordId);
+    await releaseDeps
+      .notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: published, leftOff, withdrawn: gone, waitingOnPayment: !!blocked })
+      .catch(() => {});
   }
 }
 

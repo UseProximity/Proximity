@@ -51,6 +51,7 @@ export function fakeDb(tables = {}) {
       // Case-insensitive equality: enough for the exact (escaped) email matches the code makes.
       ilike(c, v) { filters.push((r) => String(r[c] ?? "").toLowerCase() === String(v).replace(/\\(.)/g, "$1").toLowerCase()); return api; },
       not(c, _o, v) { filters.push((r) => (r[c] ?? null) !== v); return api; },
+      gte(c, v) { filters.push((r) => r[c] != null && String(r[c]) >= String(v)); return api; },
       or() { return api; },
       order() { return api; },
       limit() { return api; },

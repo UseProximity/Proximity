@@ -44,9 +44,9 @@ export function agreementServices() {
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       // A negotiated version signed: the change request it answered is resolved.
       // A payer's signature also publishes what the accounts they pay for were waiting on.
-      onSigned: async ({ userId, versionId, signerId, accounts }) => {
+      onSigned: async ({ userId, versionId, signerId, accounts, withdrawn }) => {
         await resolveChangeRequestOnSigned(supabase, { userId: signerId ?? userId, versionId });
-        await afterPayerSigned({ signerId: signerId ?? userId, accounts });
+        await afterPayerSigned({ signerId: signerId ?? userId, accounts, withdrawn });
       },
       // A rejection: the reason opens a change request (or joins the open one).
       onDeclined: async ({ userId, reason, doc }) => {

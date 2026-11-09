@@ -21,7 +21,7 @@ import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withReques
 const NAME_MAX = 60;
 
 // `forPayee`: an authorized signer previewing a document for an account they sign for (Project B):
-// every property, drafts included; only drafts can be left off (never a live listing).
+// every property, drafts included, and any not covered yet can be left off.
 export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false } = {}) {
   const requested = await resolvePublishedIds(db, listingIds);
   const loaded = await coverageFor(db, userId, now);
@@ -59,7 +59,8 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
         // Anything but a property being published, or one on the agreement already,
         // can be left off; one with the landlord's leases then comes off the site.
         // A payer never takes a landlord's property off their site (Project B).
-        canExclude: (forPayee ? !p.live : true) && !requested.includes(p.listingId) && !cov,
+        // An authorized signer may leave off anything not covered yet, even what the landlord sent (Project B).
+        canExclude: (forPayee || !requested.includes(p.listingId)) && !cov,
         units: p.unitList,
         leaseUnits: p.leaseUnits,
         requiredUnits: p.requiredUnits ?? [],

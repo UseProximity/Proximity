@@ -165,6 +165,20 @@ export function PayerCard({ view, onChanged }) {
           </div>
         )}
 
+        {view.leftOff?.length > 0 && (
+          <div className="rounded-md bg-gray-50 px-3 py-2">
+            <p className="text-sm font-medium text-gray-900">Left off by {view.payer.name} (still drafts):</p>
+            <ul className="mt-1 space-y-1 text-sm text-gray-800">
+              {view.leftOff.map((l) => (
+                <li key={l.listingId}>
+                  {l.address} <span className="text-xs text-gray-500">({dateOnly(l.at)})</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-gray-500">To publish one, talk to {view.payer.name}, then publish it again from Drafts to send it back.</p>
+          </div>
+        )}
+
         <div>
           <p className="text-sm font-medium text-gray-900">Covered ({view.covered.length}):</p>
           {view.covered.length ? (
@@ -223,7 +237,7 @@ export function PayerCard({ view, onChanged }) {
  * In the payer's agreement section (Wyatt, 2026-11-09: listed under the
  * agreement, not among their own listings): every account they pay for.
  */
-export function PaidForAccounts({ accounts, onChanged }) {
+export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }) {
   const [signing, setSigning] = useState(null);
   const [voiding, setVoiding] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -249,6 +263,11 @@ export function PaidForAccounts({ accounts, onChanged }) {
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
       <p className="text-sm font-medium text-gray-900">Accounts you are the authorized signer for</p>
+      {!hasPaymentMethod && (
+        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          Add a payment method below. Until you do, nothing new goes live for these accounts, even once it is on your agreement.
+        </p>
+      )}
       {needingAgreement.length > 0 && (
         <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
           <p>

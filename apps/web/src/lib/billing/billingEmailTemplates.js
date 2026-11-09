@@ -494,14 +494,19 @@ export function payerRequestEmail({ name, landlordName, addresses = [], signUrl 
   };
 }
 
-// To the landlord: their payer signed, and what went live because of it.
-export function payeeSignedEmail({ name, payerName, addresses = [], billingUrl }) {
+// To the landlord: their authorized signer signed, what went live, and what they left off.
+export function payeeSignedEmail({ name, payerName, addresses = [], leftOff = [], withdrawn = [], waitingOnPayment = false, billingUrl }) {
+  const list = (items) => `<ul>${items.slice(0, 30).map((a) => `<li>${e(a)}</li>`).join("")}</ul>`;
   return {
     subject: addresses.length ? `${payerName} signed. Your listings are live` : `${payerName} signed your Proximity agreement`,
     html: wrap(`
       ${hello(name)}
       <p>${e(payerName)} signed${addresses.length ? `, so ${addresses.length === 1 ? "this listing is" : "these listings are"} now live on Proximity:` : " the Proximity marketing agreement for your account."}</p>
-      ${addresses.length ? `<ul>${addresses.slice(0, 30).map((a) => `<li>${e(a)}</li>`).join("")}</ul>` : ""}
+      ${addresses.length ? list(addresses) : ""}
+      ${leftOff.length ? `<p>${e(payerName)} left ${leftOff.length === 1 ? "this one" : "these"} off the agreement, so ${leftOff.length === 1 ? "it stays a draft" : "they stay drafts"}:</p>${list(leftOff)}` : ""}
+      ${withdrawn.length ? `<p>${e(payerName)} also left ${withdrawn.length === 1 ? "this listing" : "these listings"} off, so ${withdrawn.length === 1 ? "it was" : "they were"} taken off the site:</p>${list(withdrawn)}` : ""}
+      ${waitingOnPayment ? `<p>Anything else you sent ${e(payerName)} is covered and goes live once they add a payment method.</p>` : ""}
+      ${leftOff.length || withdrawn.length ? `<p>To publish ${leftOff.length + withdrawn.length === 1 ? "it" : "them"}, talk to ${e(payerName)} and send ${leftOff.length + withdrawn.length === 1 ? "it" : "them"} again from your drafts.</p>` : ""}
       ${button(billingUrl, "View on Billing")}
     `),
   };

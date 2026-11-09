@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { activePayerLink, clearPayerDeclined, markPayerDeclined } from "./payerLinks.js";
+import { activePayerLink, clearPayerDeclined, markPayerDeclined, payeeLinks } from "./payerLinks.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
@@ -375,16 +375,13 @@ function copyBoxesMatch(templateEnvelope, copyEnvelope, values) {
 }
 
 /*
- * An authorized signer sees the landlord's drafts too and decides on the popup
- * which go on the document (Wyatt, 2026-11-09): drafts ride along as they do for
- * a landlord signing for themselves, and can be left off. A live listing is never
- * taken off the landlord's site by the signer (exhibitPreview refuses it).
+ * An authorized signer sees every property of the accounts they sign for, drafts
+ * included, and may leave any off that isn't covered yet, as a landlord signing
+ * for themselves can (Wyatt, 2026-11-09). A live one left off comes off the site
+ * once signed; one the landlord sent stays a draft and they see it was left off.
  */
-function payerSelections(selections, properties, requested, forPayee) {
-  if (!forPayee || !selections) return selections;
-  const live = new Set(properties.filter((p) => p.live).map((p) => p.listingId));
-  // Whatever the popup says, a live listing stays on (never withdrawn by the signer).
-  return new Map([...selections].map(([id, s]) => [id, live.has(id) ? { ...s, include: true, excluded: false } : s]));
+function payerSelections(selections) {
+  return selections;
 }
 
 // Which landlord account a master still being signed is for: the account on its
@@ -611,12 +608,16 @@ export async function startSigning(
         requestedIds: requested,
         carry: [...(inProgress?.entries ?? []), ...carryFromAmendment],
         // The landlord's Exhibit A choices from the signing popup, per property.
-        selections: payerSelections(exhibitSelections(exhibit), properties, requested, account !== user.id),
+        selections: payerSelections(exhibitSelections(exhibit)),
+        // The signer may leave off what the landlord sent them, too.
+        requestedExcludable: account !== user.id,
       });
       if (plan.kind === "none") {
         // Nothing to sign: what the landlord confirmed leaving off comes off now.
-        if (plan.withdraw?.length) await withdrawOfferings(db, account, plan.withdraw);
-        if (plan.withdrawUnits?.length) await withdrawUnitLeases(db, account, plan.withdrawUnits);
+        for (const a of [account, ...extraAccounts]) {
+          if (plan.withdraw?.length) await withdrawOfferings(db, a, plan.withdraw);
+          if (plan.withdrawUnits?.length) await withdrawUnitLeases(db, a, plan.withdrawUnits);
+        }
         if (inProgress) {
           await cancelInDocumenso(documenso, inProgress.row, "No longer needed");
           await endDocument(db, inProgress.kind, inProgress.row, "no longer needed", now);
@@ -1031,26 +1032,34 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
     // Signing again after a decline: the landlords no longer see "Declined".
     await clearPayerDeclined(db, [...Object.keys(accounts), row.user_id]).catch((err) => console.error("billing: clearing a decline failed", err?.message));
 
-    // Live properties the landlord left off this document come off the site now that it is signed.
+    // Live properties left off this document come off the site now that it is
+    // signed: the landlord's, or, on an authorized signer's master, the offerings
+    // of every account they sign for (Wyatt, 2026-11-09: the signer can leave
+    // properties off too).
+    const withdrawFor = kind === "master" ? [row.user_id, ...(await payeeLinks(db, row.user_id)).map((l) => l.landlord_id)] : [row.user_id];
     if (row.withdraw_on_sign?.length) {
-      try {
-        await withdrawOfferings(db, row.user_id, row.withdraw_on_sign);
-      } catch (err) {
-        console.error("billing: withdrawing properties left off Exhibit A failed", err?.message);
+      for (const accountId of withdrawFor) {
+        try {
+          await withdrawOfferings(db, accountId, row.withdraw_on_sign);
+        } catch (err) {
+          console.error("billing: withdrawing properties left off Exhibit A failed", err?.message);
+        }
       }
     }
-    // And the leases on units the landlord deselected.
+    // And the leases on units deselected.
     if (row.withdraw_unit_ids_on_sign?.length) {
-      try {
-        await withdrawUnitLeases(db, row.user_id, row.withdraw_unit_ids_on_sign);
-      } catch (err) {
-        console.error("billing: withdrawing deselected units failed", err?.message);
+      for (const accountId of withdrawFor) {
+        try {
+          await withdrawUnitLeases(db, accountId, row.withdraw_unit_ids_on_sign);
+        } catch (err) {
+          console.error("billing: withdrawing deselected units failed", err?.message);
+        }
       }
     }
 
     if (onSigned) {
       try {
-        await onSigned({ userId: row.user_id, versionId: row.version_id, kind, signerId: row.signer_id ?? row.user_id, accounts });
+        await onSigned({ userId: row.user_id, versionId: row.version_id, kind, signerId: row.signer_id ?? row.user_id, accounts, withdrawn: row.withdraw_on_sign ?? [] });
       } catch (err) {
         console.error("billing: after-signing step failed", err?.message);
       }

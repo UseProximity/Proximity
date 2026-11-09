@@ -291,6 +291,8 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
   const [addendum, setAddendum] = useState(false);
   // Live properties left off: confirmed before they come off the site.
   const [confirmingOff, setConfirmingOff] = useState(false);
+  // Signing for another landlord's account (an authorized signer): the wording says "the landlord's".
+  const forAccount = !!(accountId || accountIds?.length);
   const prepared = useRef(null);
   const closeRef = useRef(null);
   const ids = listingIds.join(",");
@@ -504,7 +506,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
                     <p className="font-medium">Withdraw these listings from the site?</p>
                     <ul className="list-disc pl-5 text-xs">
                       {liveExcluded.map((p) => (
-                        <li key={p.listingId}>{p.address}: every listing of yours there</li>
+                        <li key={p.listingId}>{p.address}: {forAccount ? "every listing the landlord has there" : "every listing of yours there"}</li>
                       ))}
                       {unitsOff.map(({ p, units }) => (
                         <li key={`units-${p.listingId}`}>
@@ -512,7 +514,12 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
                         </li>
                       ))}
                     </ul>
-                    <p className="text-xs">They are withdrawn when you sign, so students will no longer see them. Until then nothing changes. You can publish them again later by adding them to your agreement with a short addendum.</p>
+                    <p className="text-xs">
+                      They are withdrawn when you sign, so students will no longer see them. Until then nothing changes.{" "}
+                      {forAccount
+                        ? "We email the landlord which ones you left off. They can be added later with a short addendum."
+                        : "You can publish them again later by adding them to your agreement with a short addendum."}
+                    </p>
                     <div className="flex justify-end gap-2">
                       <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
                         Go back

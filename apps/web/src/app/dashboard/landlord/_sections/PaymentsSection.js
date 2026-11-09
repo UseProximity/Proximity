@@ -233,7 +233,13 @@ export default function PaymentsSection() {
     );
   }
 
-  const paidFor = payees.length ? <PaidForAccounts accounts={payees} onChanged={(result) => agreementChanged(result ?? "refresh")} /> : null;
+  const paidFor = payees.length ? (
+    <PaidForAccounts
+      accounts={payees}
+      hasPaymentMethod={!gate?.requirePaymentMethod || methods.some((m) => m.status === "active")}
+      onChanged={(result) => agreementChanged(result ?? "refresh")}
+    />
+  ) : null;
 
   return (
     <div className="space-y-4 max-w-3xl">
