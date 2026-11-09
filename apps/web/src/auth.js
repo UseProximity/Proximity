@@ -363,9 +363,14 @@ const config = {
       // edit it server-side) without the JWT knowing. Without this refresh a
       // landlord whose role was flipped in the DB would keep seeing the student
       // UI until they sign out and back in.
+      // An incomplete profile is always re-checked rather than trusted for the
+      // window: the popup that completes it saves, and if the session refresh
+      // after that save fails, a cached "false" would reopen the popup on a
+      // reload for a profile that is already complete.
       if (
         token.userId &&
         (!token.roleCheckedAt ||
+          token.profileComplete === false ||
           Date.now() - token.roleCheckedAt > ROLE_REFRESH_MS)
       ) {
         const { data: fresh, error: refreshErr } = await safeQuery(() =>

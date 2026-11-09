@@ -1,7 +1,9 @@
 "use client";
 import React, { useEffect } from "react";
 
-export default function Modal({ isOpen, onClose, children }) {
+// `dismissible={false}` removes both ways of closing it (the backdrop and the
+// close button), for a dialog the user has to answer.
+export default function Modal({ isOpen, onClose, dismissible = true, children }) {
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -23,12 +25,12 @@ export default function Modal({ isOpen, onClose, children }) {
       {/* Overlay */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={dismissible ? onClose : undefined}
       />
 
-      {/* Modal */}
+      {/* Modal. Scrolls inside the screen, so tall content stays reachable. */}
       <div
-        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto overflow-hidden"
+        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto max-h-full overflow-y-auto"
         onWheel={(e) => {
           // Prevent wheel events from bubbling up to parent elements (like the map)
           e.stopPropagation();
@@ -42,12 +44,14 @@ export default function Modal({ isOpen, onClose, children }) {
           e.stopPropagation();
         }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
-        >
-          ×
-        </button>
+        {dismissible && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          >
+            ×
+          </button>
+        )}
         <div className="w-full">{children}</div>
       </div>
     </div>
