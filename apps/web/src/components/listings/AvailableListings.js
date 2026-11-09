@@ -604,11 +604,19 @@ export default function AvailableListings({
               tone="light"
             />
             <div
-              className={`flex items-center gap-2 px-1 mb-3 ${
-                showSuggested ? "justify-between" : ""
+              className={`flex items-center gap-2 mb-3 ${
+                !showSuggested
+                  ? "px-1"
+                  : mapHidden
+                    ? // Flush with the suggestions box, which is wider than the grid.
+                      "-ml-3"
+                    : "px-1 justify-between"
               }`}
             >
-              {showSuggested && <SuggestedHeading label={suggestedLabel} />}
+              {/* With the map hidden the heading sits inside the suggestions' box. */}
+              {showSuggested && !mapHidden && (
+                <SuggestedHeading label={suggestedLabel} />
+              )}
               <p className="text-xs font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}

@@ -357,7 +357,8 @@ export default function TopFilterBar({
         {/* Hide / Show Map */}
         <button
           onClick={onToggleMap}
-          className="ml-auto flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+          // 22px on top of the bar's 12px padding: 34px from the page edge, as in the design.
+          className="ml-auto mr-[22px] flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
         >
           {mapHidden ? "Show Map" : "Hide Map"}
         </button>
