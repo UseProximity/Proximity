@@ -451,3 +451,72 @@ export function autopayOffEmail({ name, reason, methodDescription = null, paymen
     `),
   };
 }
+
+/*
+ * A landlord named this person to sign the marketing agreement and pay for their
+ * account (Project B, Wyatt 2026-11-09). The agreement and the Missouri Broker
+ * Disclosure Form are attached: the form is received BEFORE signing (§11(a)).
+ * `setupUrl` when the account has no way to sign in yet (a set-password link),
+ * else `signUrl` (their Billing page).
+ */
+export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl = null, signUrl, existingAgreement = false }) {
+  const list = addresses.length
+    ? `<ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}${addresses.length > 20 ? `<li>and ${addresses.length - 20} more</li>` : ""}</ul>`
+    : "";
+  const ask = existingAgreement
+    ? "add their properties to your Proximity marketing agreement with a short addendum, and to pay Proximity's fees for them"
+    : "sign Proximity's marketing agreement for their properties and to pay Proximity's fees for them";
+  return {
+    subject: `${landlordName} asked you to sign for their Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the owner who signs and pays. They asked you to ${ask}.</p>
+      ${list}
+      <p>Two documents are attached: the marketing agreement, and the Missouri Broker Disclosure Form. Please read the disclosure form before you sign.</p>
+      ${setupUrl ? button(setupUrl, "Set a password and review") : button(signUrl, "Review and sign")}
+      <p>${setupUrl ? "You'll set a password for your Proximity billing account, then review and sign on your Billing page. The link works for 14 days." : "Log in to Proximity, then review and sign on your Billing page."} Nothing is charged until a student who found the property on Proximity signs a lease.</p>
+      <p>Not the right person, or have questions about the terms? Just reply to this email.</p>
+    `),
+  };
+}
+
+// More of a landlord's listings are waiting for the payer's signature (a new addendum).
+export function payerRequestEmail({ name, landlordName, addresses = [], signUrl }) {
+  return {
+    subject: `${landlordName} added listings for you to sign`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} wants to publish ${addresses.length === 1 ? "a listing" : "listings"} on Proximity under your marketing agreement:</p>
+      <ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}</ul>
+      <p>${addresses.length === 1 ? "It stays" : "They stay"} a draft until you sign a short addendum adding ${addresses.length === 1 ? "it" : "them"} to your agreement.</p>
+      ${button(signUrl, "Review and sign")}
+    `),
+  };
+}
+
+// To the landlord: their payer signed, and what went live because of it.
+export function payeeSignedEmail({ name, payerName, addresses = [], billingUrl }) {
+  return {
+    subject: addresses.length ? `${payerName} signed. Your listings are live` : `${payerName} signed your Proximity agreement`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} signed${addresses.length ? `, so ${addresses.length === 1 ? "this listing is" : "these listings are"} now live on Proximity:` : " the Proximity marketing agreement for your account."}</p>
+      ${addresses.length ? `<ul>${addresses.slice(0, 30).map((a) => `<li>${e(a)}</li>`).join("")}</ul>` : ""}
+      ${button(billingUrl, "View on Billing")}
+    `),
+  };
+}
+
+// To the landlord: their payer voided the agreement for their account.
+export function payeeVoidedEmail({ name, payerName, billingUrl }) {
+  return {
+    subject: `${payerName} stopped signing for your Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
+      <p>To keep publishing, sign the agreement yourself or name someone else to sign and pay, on your Billing page.</p>
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}

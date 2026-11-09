@@ -121,3 +121,13 @@ export const sendAutopayMovedEmail = (landlord, input) =>
   toLandlord("billing_autopay_moved", landlord, t.autopayMovedEmail({ name: landlord.name, ...input }));
 export const sendAutopayOffEmail = (landlord, input) =>
   toLandlord(AUTOPAY_OFF_KIND, landlord, t.autopayOffEmail({ name: landlord.name, ...input }));
+
+// A payer for another landlord account (Project B). `attachments` are the agreement and the MREC form.
+export const sendPayerInviteEmail = (payer, input, attachments = null) =>
+  toLandlord("billing_payer_invite", payer, t.payerInviteEmail({ name: payer.name, ...input }), attachments);
+export const sendPayerRequestEmail = (payer, input) =>
+  toLandlord("billing_payer_request", payer, t.payerRequestEmail({ name: payer.name, ...input }));
+export const sendPayeeSignedEmail = (landlord, input) =>
+  toLandlord("billing_payee_signed", landlord, t.payeeSignedEmail({ name: landlord.name, ...input }));
+export const sendPayeeVoidedEmail = (landlord, input) =>
+  toLandlord("billing_payee_voided", landlord, t.payeeVoidedEmail({ name: landlord.name, ...input }));

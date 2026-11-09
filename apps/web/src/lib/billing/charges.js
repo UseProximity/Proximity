@@ -117,6 +117,8 @@ export async function createCharge(db, input) {
       commission_rate_percent: validRate(input.commissionRatePercent) ?? validRate(covering?.commissionRatePercent),
       covered_by_agreement_id: covering?.agreementId ?? null,
       covered_by_amendment_id: covering?.amendmentId ?? null,
+      // Invoiced to the payer who holds the covering agreement, when that is not the landlord.
+      ...(covering?.holderId && covering.holderId !== input.landlordId && { payer_id: covering.holderId }),
     })
     .select("*")
     .single();
@@ -142,6 +144,29 @@ export async function listChargesForLandlord(db, landlordId, now = new Date()) {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data.map((row) => chargeView(row, now));
+}
+
+/*
+ * Charges on the landlord accounts this payer pays for (charges.payer_id,
+ * Project B), newest first, each with the account it came from. Read only: the
+ * landlord approves or contests them.
+ */
+export async function listChargesPaidBy(db, payerId, now = new Date()) {
+  const { data, error } = await db
+    .from("charges")
+    .select(`${LANDLORD_COLUMNS}, account:users!landlord_id(name, company_name, email)`)
+    .eq("payer_id", payerId)
+    .neq("landlord_id", payerId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (["42703", "PGRST200"].includes(error.code)) return [];
+    throw error;
+  }
+  return data.map((row) => ({
+    ...chargeView(row, now),
+    actions: { approve: false, contest: false, contactForDispute: false },
+    accountName: row.account?.company_name?.trim() || row.account?.name || row.account?.email || "Landlord account",
+  }));
 }
 
 async function ownedCharge(db, userId, chargeId) {

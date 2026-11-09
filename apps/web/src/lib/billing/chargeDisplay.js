@@ -47,6 +47,8 @@ export function statusMessage(charge) {
       return "On a monthly invoice. Payment is not complete yet.";
     case "paid":
       return refundedInFull(charge) ? "Refunded in full." : "Paid.";
+    case "billed":
+      return `Billed to ${charge.billedTo || "your payer"}. To dispute it, contact us.`;
     case "contested":
       return "Contested. We will email you the outcome.";
     case "voided":
@@ -171,4 +173,23 @@ export function splitChargeHistory(charges, now = new Date()) {
   }
   const past = [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
   return { current, past };
+}
+
+/*
+ * A charge as a landlord with a payer sees it (Project B, Wyatt 2026-11-09): the
+ * charge itself, and Approve or Contest while it is in review. Once approved it
+ * reads "Billed to <payer>": never invoiced, paid, refunded or credited, which
+ * are the payer's business.
+ */
+export function payeeChargeView(view, payerName) {
+  const billed = ["approved", "invoiced", "paid"].includes(view.status);
+  if (!billed) return { ...view, adjustments: [], billedTo: payerName };
+  return {
+    ...view,
+    status: "billed",
+    billedTo: payerName,
+    adjustments: [],
+    // Kept in this month's list while approved; listed by month once on an invoice.
+    settledAt: view.status === "approved" ? null : view.createdAt,
+  };
 }

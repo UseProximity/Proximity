@@ -10,6 +10,7 @@ import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
+import { waitingRequests } from "@/lib/billing/payers";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
@@ -32,11 +33,14 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
  *               the document opens. Without a complete answer nothing opens.
  *   listingIds  the properties being published (from the publish dialog); left
  *               out when the landlord signs from the Payments tab
+ *   accountId   a landlord account the signer pays for (billing_payers): the
+ *               document covers that account's properties, what it asked to
+ *               publish and anything it has live (Project B). Left out: their own.
  * Answers { token, host, kind } for Documenso's embedded signing page, or
  * { alreadySigned: true } when everything asked for is covered. A copy already
  * in progress for the same document is reused.
  *
- * @auth landlord (own agreement only)
+ * @auth landlord (own agreement, or one for an account they pay for)
  */
 // Only well-formed ids, at most 200. Which of them are really the landlord's is
 // decided by the coverage plan, which ignores anything they have no stake in.
@@ -60,6 +64,9 @@ export async function POST(req) {
     }
     const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
     if (error) throw error;
+    // Signing for an account they pay for: startSigning checks they are its payer.
+    const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : null;
+    const listingIds = accountId ? (await waitingRequests(supabase, accountId)).map((w) => w.listing_id) : ownListingIds(body.listingIds);
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,
@@ -71,7 +78,8 @@ export async function POST(req) {
       signerAddress2: typeof body.signerAddress2 === "string" ? body.signerAddress2 : "",
       signerCity: typeof body.signerCity === "string" ? body.signerCity : "",
       authorized: body.authorized === true,
-      listingIds: ownListingIds(body.listingIds),
+      listingIds,
+      accountId,
       // Units being published right now: { listingId: [unit name] }.
       requiredUnits: cleanRequiredUnits(body.requiredUnits),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].

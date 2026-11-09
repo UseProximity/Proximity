@@ -20,7 +20,9 @@ import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withReques
 
 const NAME_MAX = 60;
 
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date() } = {}) {
+// `forPayee`: a payer previewing an addendum for an account they pay for (Project B): only what that
+// account asked to publish and what it has live, never its other drafts.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false } = {}) {
   const requested = await resolvePublishedIds(db, listingIds);
   const loaded = await coverageFor(db, userId, now);
   const { state, rows, covered } = loaded;
@@ -37,7 +39,7 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
   const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId), ...carry.map((e) => e.listingId)]);
   // Every property, on an amendment too, so nothing goes on (or changes) unseen:
   // what is covered already shows as covered and stays as it is (Wyatt, 2026-11-07).
-  const shown = properties;
+  const shown = forPayee ? properties.filter((p) => !(p.draft && !p.live && !requested.includes(p.listingId))) : properties;
   // An addendum is signed with the agreement's saved details: who that is, for the popup.
   const saved = plan.kind === "amendment" && state.signed?.signer_details && state.signed?.signer_name ? state.signed : null;
   return {

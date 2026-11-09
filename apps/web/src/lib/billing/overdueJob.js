@@ -93,6 +93,13 @@ async function withdrawLeases(db, invoiceId, landlordId) {
   return live.length;
 }
 
+// The landlord accounts an invoice bills for: its own, and any whose charges a payer pays.
+async function accountsOnInvoice(db, invoice) {
+  const { data, error } = await db.from("charges").select("landlord_id").eq("invoice_id", invoice.id).limit(5000);
+  if (error) throw error;
+  return [...new Set([invoice.landlord_id, ...(data ?? []).map((c) => c.landlord_id)])];
+}
+
 export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) {
   const cutoff = overdueCutoff(now).toISOString();
   const result = { checked: 0, actioned: 0, leasesWithdrawn: 0, failed: [] };
@@ -113,7 +120,9 @@ export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) 
     if (!isInvoiceOverdue(invoice, now)) continue;
     result.checked += 1;
     try {
-      const withdrawn = await withdrawLeases(db, invoice.id, invoice.landlord_id);
+      // A payer's invoice takes down the leases of every account whose charges are on it (Project B).
+      let withdrawn = 0;
+      for (const accountId of await accountsOnInvoice(db, invoice)) withdrawn += await withdrawLeases(db, invoice.id, accountId);
 
       // Only the run that stamps the invoice announces it.
       const { data: stamped, error: stampError } = await db

@@ -31,6 +31,8 @@ export function triggerLabel(triggerType) {
 // One invoice line: the trigger, then the listing, lease and student it came from.
 export function lineDescription(charge) {
   const parts = [triggerLabel(charge.trigger_type)];
+  // A charge from an account the payer pays for says which (Project B).
+  if (charge.account_label) parts.unshift(`Account: ${charge.account_label}`);
   if (charge.listing_label) parts.push(`Listing: ${charge.listing_label}`);
   if (charge.lease_label) parts.push(`Lease: ${charge.lease_label}`);
   if (charge.student_name) parts.push(`Student: ${charge.student_name}`);
@@ -42,7 +44,13 @@ export function planInvoices(charges, { billingPeriod, minCents = MIN_INVOICE_CE
   const billable = (charges ?? [])
     .filter((c) => c.status === "approved" && !c.invoice_id)
     // A stable order, so a re-run builds the same lines in the same sequence.
-    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+    // A payer's invoice groups its lines by the account they came from (no label: their own, first).
+    .sort(
+      (a, b) =>
+        String(a.account_label ?? "").localeCompare(String(b.account_label ?? "")) ||
+        String(a.created_at).localeCompare(String(b.created_at)) ||
+        String(a.id).localeCompare(String(b.id))
+    );
 
   const byLandlord = new Map();
   for (const c of billable) {

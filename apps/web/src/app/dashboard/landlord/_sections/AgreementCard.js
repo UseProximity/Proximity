@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import CollapsibleSection from "./CollapsibleSection";
+import { NamePayerForm } from "./PayerCards";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -136,13 +137,16 @@ function Documents({ open, busy }) {
  * when there is nothing to do. The checklist only lists a requirement that is
  * switched on. `changeRequests` is the "Request changes" panel, at the bottom.
  */
-export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged, busy, user, changeRequests = null }) {
+// `paidFor`: the accounts this user pays for (PaidForAccounts). `billingOnly`: a billing
+// account made for a payer, with no listings of its own (Project B).
+export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged, busy, user, changeRequests = null, paidFor = null, billingOnly = false }) {
   const agreement = gate.agreement;
   const status = STATUS[agreement.status] ?? STATUS.not_signed;
   const signedOk = agreement.status === "signed";
   const [signing, setSigning] = useState(null);
   const [error, setError] = useState(null);
   const [docsKey, setDocsKey] = useState(0);
+  const [namingPayer, setNamingPayer] = useState(false);
   const uncoveredLive = agreement.uncoveredLive ?? [];
   const covered = agreement.covered ?? [];
 
@@ -155,7 +159,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   // Open when there is something to sign; folded once it is all done.
   // A new version of their agreement is ready to sign, while the one they signed still counts.
   const updated = signedOk && agreement.canSign && !!agreement.newVersionReady;
-  const needsAction = !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || updated;
+  const needsAction = billingOnly ? !!paidFor : !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || updated;
 
   // Opens one signed document as a single PDF in a new tab (opened first, so it is not blocked as a popup).
   const openFile = useCallback(async ({ kind, id }) => {
@@ -236,7 +240,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {signedOk && (
+        {signedOk && !billingOnly && (
           <div>
             <p className="text-sm font-medium text-gray-900">This agreement covers these properties ({covered.length}):</p>
             {covered.length ? <PropertyList items={covered} /> : <p className="text-sm text-gray-500">None yet. Properties are added when you publish them.</p>}
@@ -288,16 +292,30 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </p>
         )}
 
-        {!signedOk && agreement.canSign && (
+        {!signedOk && agreement.canSign && !billingOnly && (
           <>
             <p className="text-sm text-gray-700">{masterIntro}</p>
-            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
-              {agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
-            </SignButton>
+            <div className="flex flex-wrap items-center gap-3">
+              <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
+                {agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
+              </SignButton>
+              {!namingPayer && (
+                <button type="button" className="text-sm text-gray-600 underline hover:text-gray-800" onClick={() => setNamingPayer(true)}>
+                  Someone else signs and pays?
+                </button>
+              )}
+            </div>
+            {namingPayer && <NamePayerForm onCancel={() => setNamingPayer(false)} onDone={() => { setNamingPayer(false); onChanged("payer"); }} />}
           </>
         )}
 
-        {!signedOk && !agreement.canSign && (
+        {billingOnly && !signedOk && !paidFor && (
+          <p className="text-sm text-gray-600">Nothing to sign yet. When a landlord names you as their payer, their properties show here.</p>
+        )}
+
+        {paidFor}
+
+        {!signedOk && !agreement.canSign && !billingOnly && (
           <p className="text-sm text-gray-600">
             The agreement is not ready to sign here yet. We will email you when it is. Questions? Email info@useproximity.org.
           </p>

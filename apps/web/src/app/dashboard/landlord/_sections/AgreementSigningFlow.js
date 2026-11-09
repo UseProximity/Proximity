@@ -274,7 +274,8 @@ function PropertyChoice({ p, choice, onChange }) {
  * onFinished(result): "signed" | "pending" (signed, still saving) | "closed" |
  * "nothing" (nothing needs signing: never reported as signed).
  */
-export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, onFinished }) {
+// `accountId`: a payer signing for a landlord account they pay for (Project B); left out, their own.
+export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, accountId = null, onFinished }) {
   const signer = useSignerDetails();
   const license = useLicenseDisclosure();
   const [step, setStep] = useState(0);
@@ -299,7 +300,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     closeRef.current?.focus();
     let live = true;
     const units = requiredUnits && Object.keys(requiredUnits).length ? `&units=${encodeURIComponent(JSON.stringify(requiredUnits))}` : "";
-    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}`)
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}${accountId ? `&accountId=${accountId}` : ""}`)
       .then((r) => {
         if (!live) return;
         if (r.kind === "none") return onFinished("nothing");
@@ -334,7 +335,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setPhase("opening");
     setError(null);
     try {
-      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit() }, retries: 20 });
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }) }, retries: 20 });
       if (r.alreadySigned) return onFinished("signed");
       setSession(r);
       setPhase("signing");
@@ -366,7 +367,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setError(null);
     return addendum ? openAddendum() : confirmExhibit();
   };
-  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit() });
+  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }) });
 
   // Units the landlord added or renamed show in the next preview; keep the list in step.
   const updateChoice = (p, next) => {

@@ -9,6 +9,7 @@ import AutopayCard from "./AutopayCard";
 import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
+import { PaidForAccounts, PayerCard } from "./PayerCards";
 
 const NOTICES = {
   success: { tone: "green", text: "Payment method saved." },
@@ -39,6 +40,10 @@ export default function PaymentsSection() {
   const [requestsKey, setRequestsKey] = useState(0);
   const [invoices, setInvoices] = useState([]);
   const [gate, setGate] = useState(null);
+  // Project B: this account's payer (status only), and the accounts this user pays for.
+  const [payer, setPayer] = useState(null);
+  const [payees, setPayees] = useState([]);
+  const [billedTo, setBilledTo] = useState(null);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
   const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,17 +58,22 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
-    const [m, c, i, g] = await Promise.all([
+    const [m, c, i, g, p, a] = await Promise.all([
       call("/api/billing/payment-methods"),
       call("/api/billing/charges"),
       call("/api/billing/invoices"),
       call("/api/billing/gate"),
+      call("/api/billing/payer"),
+      call("/api/billing/payees"),
     ]);
     setMethods(m.methods);
     setCharges(c.charges);
     setSummary(c.summary);
+    setBilledTo(c.billedTo ?? null);
     setInvoices(i.invoices);
     setGate(g);
+    setPayer(p.payer ?? null);
+    setPayees(a.accounts ?? []);
   }, []);
 
   useEffect(() => {
@@ -210,6 +220,21 @@ export default function PaymentsSection() {
 
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
+  // Someone else signs and pays for this account (Project B, Wyatt 2026-11-09):
+  // the agreement's status and the charges, nothing else.
+  if (payer) {
+    return (
+      <div className="space-y-4 max-w-3xl">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <PayerCard view={payer} onChanged={(next) => (next ? setPayer(next) : load().catch(() => {}))} />
+        <ChargesCard charges={charges} summary={summary} busy={busy} onApprove={approve} onContest={setContesting} billedTo={billedTo ?? payer.payer.name} />
+        {contesting && <ContestChargeModal charge={contesting} busy={busy} onCancel={() => setContesting(null)} onSubmit={contest} />}
+      </div>
+    );
+  }
+
+  const paidFor = payees.length ? <PaidForAccounts accounts={payees} onChanged={(result) => agreementChanged(result ?? "refresh")} /> : null;
+
   return (
     <div className="space-y-4 max-w-3xl">
       {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
@@ -222,13 +247,15 @@ export default function PaymentsSection() {
           {notice.text}
         </div>
       )}
-      {gate && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
-      {gate && (
+      {gate && !gate.billingOnly && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
+      {gate?.agreement && (
         <AgreementCard
           gate={gate}
           hasActivePaymentMethod={methods.some((m) => m.status === "active")}
           onChanged={agreementChanged}
           busy={busy}
+          billingOnly={!!gate.billingOnly}
+          paidFor={paidFor}
           changeRequests={
             <ChangeRequestPanel
               key={requestsKey}

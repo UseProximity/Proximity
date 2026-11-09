@@ -58,17 +58,23 @@ import {
 const PAGE = 1000;
 
 const CHARGE_COLUMNS = `
-  id, landlord_id, amount_cents, trigger_type, status, invoice_id, created_at,
+  id, landlord_id, payer_id, amount_cents, trigger_type, status, invoice_id, created_at,
   signed_rent_cents, commission_rate_percent,
+  account:users!landlord_id(name, company_name, email),
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
   student:users!student_id(name)
 `;
 
 // The invoice-line fields planInvoices and lineDescription read.
+// A charge on a landlord account someone else pays for is invoiced to that payer
+// (charges.payer_id, Project B): one invoice per payer, its lines marked with the
+// account they came from.
+const accountLabel = (a) => a?.company_name?.trim() || a?.name || a?.email || "Landlord account";
 const toPlanningRow = (c) => ({
   id: c.id,
-  landlord_id: c.landlord_id,
+  landlord_id: c.payer_id ?? c.landlord_id,
+  account_label: c.payer_id ? accountLabel(c.account) : null,
   amount_cents: c.amount_cents,
   trigger_type: c.trigger_type,
   status: c.status,
@@ -100,7 +106,8 @@ function approvedUninvoiced(db, landlordId) {
       .is("invoice_id", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
-    if (landlordId) q = q.eq("landlord_id", landlordId);
+    // Charges this account is invoiced for: its own without a payer, and those it pays for.
+    if (landlordId) q = q.or(`payer_id.eq.${landlordId},and(payer_id.is.null,landlord_id.eq.${landlordId})`);
     return q;
   });
 }

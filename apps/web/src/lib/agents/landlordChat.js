@@ -293,7 +293,7 @@ export async function decideAgentProposal({ userId, isAdmin = false, listingId, 
   const r = await confirmProposal({ listingId, userId, isAdmin, proposal: m.proposal });
   const lines = [...(r.applied ?? []).map((a) => (/^(Saved|Already known|Removed):/.test(a) ? a : `Done: ${a}`)), ...(r.held ?? []), ...(r.errors ?? []).map((e) => `Not done: ${e}`)];
   // A change the listing gate blocked rides on the note, so the chat can offer the fix.
-  const blocked = (r.blocked ?? []).map(({ kind, unitName, gate, change }) => ({ kind, unitName, uncovered: gate?.uncovered ?? [], change }));
+  const blocked = (r.blocked ?? []).map(({ kind, unitName, gate, change }) => ({ kind, unitName, uncovered: gate?.uncovered ?? [], ...(gate?.payer && { payer: gate.payer }), change }));
   await note(userId, listingId, { sender: "agent", body: lines.join("\n") || "Nothing to do.", proposal: blocked.length ? { blocked } : null });
   return { ok: true, ...r };
 }

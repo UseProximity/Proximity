@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-09T03:32:08.967Z",
-  "count": 253,
+  "_generated": "2026-11-09T20:44:14.437Z",
+  "count": 256,
   "routes": [
     {
       "path": "/api/account",
@@ -1389,6 +1389,56 @@
       "file": "src/app/api/billing/invoices/[id]/pay/route.js"
     },
     {
+      "path": "/api/billing/payees",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super",
+        "POST": "super"
+      },
+      "tables": [
+        "billing_payers",
+        "users"
+      ],
+      "file": "src/app/api/billing/payees/route.js"
+    },
+    {
+      "path": "/api/billing/payer",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super",
+        "POST": "super",
+        "PATCH": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/payer/route.js"
+    },
+    {
+      "path": "/api/billing/payer/requests",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "unit_leases",
+        "listings"
+      ],
+      "file": "src/app/api/billing/payer/requests/route.js"
+    },
+    {
       "path": "/api/billing/payment-methods",
       "methods": [
         "GET"
@@ -2767,14 +2817,7 @@
       "methodAuth": {
         "POST": "any"
       },
-      "tables": [
-        "listing_landlords",
-        "listing_units",
-        "listing_image_units",
-        "listing_images",
-        "unit_leases",
-        "listings"
-      ],
+      "tables": [],
       "file": "src/app/api/landlord/publish/route.js"
     },
     {

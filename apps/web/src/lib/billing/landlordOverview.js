@@ -278,7 +278,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   const landlords = await pageAll(() =>
     db
       .from("users")
-      .select("id, name, email, created_at, roles!role_id!inner(name)")
+      .select("id, name, email, created_at, billing_only, roles!role_id!inner(name)")
       .eq("roles.name", "landlord")
       .is("deleted_at", null)
       .order("id")
@@ -317,12 +317,25 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   ]);
 
   const autopays = await autopayByLandlord(db, ids);
+  // Who pays for whom (Project B): an account with a payer is judged on the payer's
+  // agreement and payment method, and is never asked to sign itself.
+  const payerLinks = await inChunks(ids, async (chunk) => {
+    const { data, error } = await db.from("billing_payers").select("landlord_id, payer_id, signer_name, signer_email, declined_at").in("landlord_id", chunk).eq("status", "active").is("listing_id", null);
+    if (missingSchema(error)) return [];
+    if (error) throw error;
+    return data;
+  });
+  const payerOf = new Map(payerLinks.map((p) => [p.landlord_id, p]));
+  const paysFor = new Map();
+  for (const p of payerLinks) paysFor.set(p.payer_id, (paysFor.get(p.payer_id) ?? 0) + 1);
   const licenses = await disclosuresFor(db, ids);
   const rows = landlords.map((l) => {
+    const payer = payerOf.get(l.id) ?? null;
+    const holder = payer?.payer_id ?? l.id;
     // The version this landlord signs: their own when one is live, else the standard one.
-    const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion: ownVersions.get(l.id) ?? liveVersion, cutoff, now });
+    const state = summarizeAgreementRows(agreements.get(holder) ?? [], { liveVersion: ownVersions.get(holder) ?? liveVersion, cutoff, now });
     const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
-    const payment = paymentSummary(methods.get(l.id), now);
+    const payment = paymentSummary(methods.get(holder), now);
     const invoice = invoiceSummary(invoices.get(l.id));
     const publishing = gateDecision({
       role: "landlord",
@@ -347,6 +360,10 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       publishing: { allowed: publishing.allowed, missing: publishing.missing },
       lastAgreementEmailAt: email?.created_at ?? null,
       lastAgreementEmailStatus: email?.status ?? null,
+      // Project B: who signs and pays for this account, how many accounts it pays for, and whether it is a billing account.
+      payer: payer ? { id: payer.payer_id, name: payer.signer_name, email: payer.signer_email, declined: !!payer.declined_at } : null,
+      paysForCount: paysFor.get(l.id) ?? 0,
+      billingOnly: l.billing_only === true,
     };
   });
 
@@ -382,6 +399,8 @@ export function bulkAudience(rows, now = new Date()) {
     (r) =>
       r.hasLiveListing &&
       r.email &&
+      // Their payer signs, not them (Project B).
+      !r.payer &&
       needsSigningEmail(r) &&
       (!r.lastAgreementEmailAt || now.getTime() - new Date(r.lastAgreementEmailAt).getTime() > BULK_RESEND_GAP_MS)
   );

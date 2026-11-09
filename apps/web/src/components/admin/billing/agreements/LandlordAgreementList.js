@@ -230,8 +230,20 @@ function LandlordRow({ row, busy, run, canEmail }) {
           <p className="text-xs text-gray-500">
             <AgreementDetail a={row.agreement} />
           </p>
+          {/* Project B: someone else signs and pays for this account, or this account pays for others. */}
+          {row.payer && (
+            <p className="text-xs text-gray-600">
+              Signed and paid by {row.payer.name} ({row.payer.email}){row.payer.declined ? ", who declined the last copy" : ""}. The agreement shown is theirs.
+            </p>
+          )}
+          {row.paysForCount > 0 && (
+            <p className="text-xs text-gray-600">
+              Pays for {row.paysForCount} other {row.paysForCount === 1 ? "account" : "accounts"}.
+            </p>
+          )}
         </div>
         {row.coverage?.uncovered?.length > 0 && <Badge color="amber">{row.coverage.uncoveredOfferings} uncovered</Badge>}
+        {row.billingOnly && <Badge>Billing account</Badge>}
         {row.hasLiveListing ? <Badge color="purple">Live listing</Badge> : <Badge>Nothing live</Badge>}
         <Badge color={agColor}>{agLabel}</Badge>
         {row.agreement.newVersionReady && <Badge color="amber">Their new version to sign</Badge>}
@@ -295,7 +307,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
             View signed agreement
           </button>
         )}
-        {(row.agreement.status !== "signed" || row.agreement.newVersionReady) && row.email && (
+        {(row.agreement.status !== "signed" || row.agreement.newVersionReady) && row.email && !row.payer && (
           <button type="button" disabled={busy || !canEmail} className={BUTTON} onClick={email} title={canEmail ? "" : "Make a version live first"}>
             {row.lastAgreementEmailAt ? "Resend signing email" : "Email signing link"}
           </button>
