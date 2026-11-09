@@ -58,7 +58,8 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
         locked: locked.has(p.listingId),
         // Anything but a property being published, or one on the agreement already,
         // can be left off; one with the landlord's leases then comes off the site.
-        canExclude: !requested.includes(p.listingId) && !cov,
+        // A payer never takes a landlord's property off their site (Project B).
+        canExclude: !forPayee && !requested.includes(p.listingId) && !cov,
         units: p.unitList,
         leaseUnits: p.leaseUnits,
         requiredUnits: p.requiredUnits ?? [],

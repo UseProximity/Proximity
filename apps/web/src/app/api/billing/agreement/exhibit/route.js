@@ -35,11 +35,24 @@ export async function GET(req) {
       units = null;
     }
     // A payer previewing the addendum for an account they pay for (accountId): what it asked to publish.
-    const accountId = params.get("accountId");
-    if (isUuid(accountId) && accountId !== session.user.id) {
-      if (!(await isPayerFor(supabase, session.user.id, accountId))) throw new BillingError("not_payer", "You don't pay for that account.", 403);
-      const waiting = (await waitingRequests(supabase, accountId)).map((w) => w.listing_id);
-      return NextResponse.json(await exhibitPreview(supabase, accountId, { listingIds: waiting, forPayee: true }));
+    // Several accounts on one new agreement: accountIds=a,b,c (the first is accountId).
+    const accounts = [...new Set([params.get("accountId"), ...(params.get("accountIds") ?? "").split(",")].filter((id) => isUuid(id) && id !== session.user.id))].slice(0, 50);
+    if (accounts.length) {
+      const previews = [];
+      for (const accountId of accounts) {
+        if (!(await isPayerFor(supabase, session.user.id, accountId))) throw new BillingError("not_payer", "You don't pay for that account.", 403);
+        const waiting = (await waitingRequests(supabase, accountId)).map((w) => w.listing_id);
+        previews.push(await exhibitPreview(supabase, accountId, { listingIds: waiting, forPayee: true }));
+      }
+      if (previews.length === 1) return NextResponse.json(previews[0]);
+      const any = previews.filter((p) => p.kind !== "none");
+      if (!any.length) return NextResponse.json({ kind: "none", properties: [] });
+      const seen = new Set();
+      return NextResponse.json({
+        kind: any.some((p) => p.kind === "master") ? "master" : "amendment",
+        signingAs: null,
+        properties: any.flatMap((p) => p.properties).filter((p) => !seen.has(p.listingId) && seen.add(p.listingId)),
+      });
     }
     return NextResponse.json(await exhibitPreview(supabase, session.user.id, { listingIds, requiredUnits: cleanRequiredUnits(units) }));
   } catch (err) {

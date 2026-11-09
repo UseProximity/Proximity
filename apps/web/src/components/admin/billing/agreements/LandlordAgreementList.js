@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { formatCents } from "@/lib/billing/money";
-import { BUTTON, call, openFile, postJson } from "./shared";
+import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
 import AdminAutopayLine from "../AdminAutopayLine";
 
 const FILTERS = [
@@ -209,7 +209,98 @@ function CoverageDetail({ c, a }) {
   );
 }
 
+/*
+ * Set who signs and pays for this landlord (Project B, Wyatt 2026-11-09), and
+ * optionally for other landlords too: they all get the same payer, who is emailed
+ * once and signs ONE agreement covering all of them.
+ */
+function PayerForm({ row, busy, run, onDone }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState([]);
+  const [also, setAlso] = useState({});
+  const [notify, setNotify] = useState(true);
+
+  useEffect(() => {
+    if (q.trim().length < 2) return setFound([]);
+    const t = setTimeout(() => {
+      call(`/api/admin/billing/landlords?${new URLSearchParams({ filter: "all", search: q.trim() })}`)
+        .then((d) => setFound((d.rows ?? []).filter((r) => r.id !== row.id && !r.payer && !r.billingOnly).slice(0, 8)))
+        .catch(() => setFound([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, row.id]);
+
+  const chosen = Object.values(also);
+  const submit = (e) => {
+    e.preventDefault();
+    const ids = [row.id, ...chosen.map((r) => r.id)];
+    run(async () => {
+      const r = await postJson("/api/admin/billing/payers", { landlordIds: ids, name, email, notifyLandlords: notify });
+      onDone();
+      const bad = r.failed?.length ? ` Not assigned: ${r.failed.map((f) => f.error).join(" ")}` : "";
+      return `${name.trim()} now signs and pays for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them the agreement.${bad}`;
+    });
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm">
+      <p className="text-gray-700">
+        The payer signs the marketing agreement and receives the invoices. {row.name || row.email} will not sign. The payer gets one email,
+        with the agreement and the MREC form, and signs one agreement covering every landlord chosen here.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input className={FIELD} placeholder="Payer's full name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
+        <input className={FIELD} type="email" placeholder="Payer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
+      </div>
+      <div>
+        <input className={FIELD} placeholder="Also for other landlords: search by name or email" value={q} onChange={(e) => setQ(e.target.value)} />
+        {found.length > 0 && (
+          <ul className="mt-1 space-y-0.5">
+            {found.map((r) => (
+              <li key={r.id}>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!also[r.id]}
+                    onChange={(e) => setAlso((a) => {
+                      const next = { ...a };
+                      if (e.target.checked) next[r.id] = r;
+                      else delete next[r.id];
+                      return next;
+                    })}
+                  />
+                  {r.name || "Unnamed landlord"} <span className="text-xs text-gray-400">({r.email})</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+        {chosen.length > 0 && <p className="mt-1 text-xs text-gray-600">Also: {chosen.map((r) => r.name || r.email).join(", ")}</p>}
+      </div>
+      <label className="flex items-center gap-2 text-gray-700">
+        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+        Email each landlord that the payer signs and pays now
+      </label>
+      <div className="flex gap-2">
+        <button type="submit" className={PRIMARY} disabled={busy || !name.trim() || !email.trim()}>
+          Set payer{chosen.length ? ` for ${chosen.length + 1} landlords` : ""}
+        </button>
+        <button type="button" className={BUTTON} onClick={onDone} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function LandlordRow({ row, busy, run, canEmail }) {
+  const [settingPayer, setSettingPayer] = useState(false);
+  const endPayer = () => {
+    if (!window.confirm(`End ${row.payer.name}'s payment for ${row.name || row.email}? Anything they signed for this account comes off their agreement.`)) return;
+    return run(() => call("/api/admin/billing/payers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ landlordId: row.id }) }), "Payer ended.");
+  };
   const [showDocs, setShowDocs] = useState(false);
   const [agColor, agLabel] = AGREEMENT[row.agreement.status] ?? AGREEMENT.not_signed;
   const [payColor, payLabel] = PAYMENT[row.payment.state] ?? PAYMENT.none;
@@ -312,7 +403,18 @@ function LandlordRow({ row, busy, run, canEmail }) {
             {row.lastAgreementEmailAt ? "Resend signing email" : "Email signing link"}
           </button>
         )}
+        {!row.payer && !row.billingOnly && row.agreement.status !== "signed" && !settingPayer && (
+          <button type="button" disabled={busy} className={BUTTON} onClick={() => setSettingPayer(true)}>
+            Set payer
+          </button>
+        )}
+        {row.payer && (
+          <button type="button" disabled={busy} className={BUTTON} onClick={endPayer}>
+            End payer
+          </button>
+        )}
       </div>
+      {settingPayer && <PayerForm row={row} busy={busy} run={run} onDone={() => setSettingPayer(false)} />}
       {showDocs && (
         <>
           <DocumentHistory landlordId={row.id} landlordName={row.name || row.email || "this landlord"} busy={busy} run={run} />

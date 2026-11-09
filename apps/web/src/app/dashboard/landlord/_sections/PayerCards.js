@@ -220,8 +220,9 @@ export function PaidForAccounts({ accounts, onChanged }) {
   const [signing, setSigning] = useState(null);
   const [voiding, setVoiding] = useState(null);
   const [busy, setBusy] = useState(false);
-  // Only one master per payer at a time: an addendum for another account waits for it.
-  const firstNeedingAgreement = accounts.find((a) => a.needs === "agreement")?.landlordId ?? null;
+  // No agreement yet: ONE agreement covers every account they pay for, signed once
+  // (Wyatt, 2026-11-09). After that, each account's new properties are an addendum.
+  const needingAgreement = accounts.filter((a) => a.needs === "agreement").map((a) => a.landlordId);
 
   const voidFor = async (account) => {
     setBusy(true);
@@ -241,8 +242,18 @@ export function PaidForAccounts({ accounts, onChanged }) {
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
       <p className="text-sm font-medium text-gray-900">Properties you pay for</p>
+      {needingAgreement.length > 0 && (
+        <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
+          <p>
+            Sign the marketing agreement once to cover {needingAgreement.length === 1 ? "this account's" : `all ${needingAgreement.length} accounts'`} properties
+            listed below. It takes about two minutes.
+          </p>
+          <button type="button" className={PRIMARY} disabled={busy || !!signing} onClick={() => setSigning({ accountIds: needingAgreement })}>
+            Review and sign
+          </button>
+        </div>
+      )}
       {accounts.map((a) => {
-        const blocked = a.needs === "agreement" && firstNeedingAgreement !== a.landlordId;
         return (
           <div key={a.landlordId} className="rounded-md border border-gray-100 px-3 py-3">
             <p className="text-sm font-semibold text-gray-900">
@@ -261,7 +272,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
             {a.needs && (
               <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-2">
                 <p>
-                  {a.needs === "agreement" ? "Sign the marketing agreement" : "Sign an addendum"} to cover
+                  {a.needs === "agreement" ? "On the agreement above, once you sign" : "Sign an addendum"} to cover
                   {a.waiting.length ? ` ${a.waiting.length === 1 ? "this property" : `these ${a.waiting.length} properties`}:` : " their listings."}
                   {a.declined ? " You declined the last copy; you can sign whenever you are ready." : ""}
                 </p>
@@ -272,10 +283,8 @@ export function PaidForAccounts({ accounts, onChanged }) {
                     ))}
                   </ul>
                 )}
-                {blocked ? (
-                  <p className="text-xs">Sign the agreement for your other account first. This one opens right after.</p>
-                ) : (
-                  <button type="button" className={PRIMARY} disabled={busy || !!signing} onClick={() => setSigning(a.landlordId)}>
+                {a.needs === "addendum" && (
+                  <button type="button" className={PRIMARY} disabled={busy || !!signing} onClick={() => setSigning({ accountId: a.landlordId })}>
                     Review and sign
                   </button>
                 )}
@@ -308,7 +317,8 @@ export function PaidForAccounts({ accounts, onChanged }) {
       })}
       {signing && (
         <AgreementSigningFlow
-          accountId={signing}
+          accountId={signing.accountId ?? signing.accountIds?.[0] ?? null}
+          accountIds={signing.accountIds ?? null}
           onFinished={(result) => {
             setSigning(null);
             onChanged(result);

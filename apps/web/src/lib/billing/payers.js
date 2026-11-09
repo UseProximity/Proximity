@@ -74,7 +74,8 @@ export const canSignIn = (u) => !!(u?.password_hash || u?.google_account || u?.a
  *   - the email is the landlord's own, a student's or admin's account, or someone with a payer
  * Returns { link, payer, created } (created: a new billing-only account was made).
  */
-export async function namePayer(db, { landlord, name, email, now = new Date() }) {
+// `createdBy`: an admin assigning the payer (default: the landlord themselves).
+export async function namePayer(db, { landlord, name, email, createdBy = null, now = new Date() }) {
   const input = cleanPayerInput({ name, email });
   if (String(landlord?.email ?? "").toLowerCase() === input.email) {
     throw new BillingError("payer_is_you", "That is your own email. To sign yourself, use Review and sign.");
@@ -139,7 +140,7 @@ export async function namePayer(db, { landlord, name, email, now = new Date() })
       payer_id: payer.id,
       signer_name: input.name,
       signer_email: input.email,
-      created_by: landlord.id,
+      created_by: createdBy ?? landlord.id,
       invited_at: now.toISOString(),
     })
     .select("id, landlord_id, payer_id, signer_name, signer_email, status, invited_at, declined_at, created_at")

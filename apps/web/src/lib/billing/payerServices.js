@@ -14,7 +14,7 @@ import { loadLandlordProperties } from "./coverage.js";
 import { checkListingGate } from "./listingGate.js";
 import { canSignIn, releaseWaiting } from "./payers.js";
 import { activePayerLink } from "./payerLinks.js";
-import { sendPayeeSignedEmail, sendPayerInviteEmail, sendPayerRequestEmail } from "./billingEmails.js";
+import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerInviteEmail, sendPayerRequestEmail } from "./billingEmails.js";
 
 const BILLING_PATH = "/dashboard/landlord?tab=billing#marketing-agreement";
 
@@ -52,13 +52,22 @@ async function invitePdfs(payerId) {
 /*
  * Email the payer: who asked, for which properties, the two PDFs, and a way in.
  * An account that can't sign in yet gets a set-password link that lands on Billing.
+ * `landlordIds`: several accounts assigned at once (an admin), in ONE email.
  */
-export async function sendPayerInvite({ landlordId, payerId }) {
-  const [landlord, payer, link] = await Promise.all([userRow(landlordId), userRow(payerId), activePayerLink(supabase, landlordId)]);
-  if (!payer?.email || !link) return false;
-  const state = await agreementState(supabase, landlordId);
-  const properties = await loadLandlordProperties(supabase, landlordId);
-  const addresses = properties.filter((p) => p.live).map((p) => p.address);
+export async function sendPayerInvite({ landlordId = null, landlordIds = null, payerId }) {
+  const ids = [...new Set([...(landlordIds ?? []), landlordId].filter(Boolean))];
+  const payer = await userRow(payerId);
+  const links = (await Promise.all(ids.map((id) => activePayerLink(supabase, id)))).filter((l) => l?.payer_id === payerId);
+  if (!payer?.email || !links.length) return false;
+  const landlords = await Promise.all(links.map((l) => userRow(l.landlord_id)));
+  const state = await agreementState(supabase, links[0].landlord_id);
+  const addresses = [];
+  for (const l of links) {
+    const properties = await loadLandlordProperties(supabase, l.landlord_id);
+    addresses.push(...properties.filter((p) => p.live).map((p) => p.address));
+  }
+  const names = landlords.map(landlordLabel);
+  const landlordName = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
   const signUrl = `${getBaseUrl()}${BILLING_PATH}`;
   let setupUrl = null;
   if (!canSignIn(payer)) {
@@ -66,12 +75,19 @@ export async function sendPayerInvite({ landlordId, payerId }) {
     setupUrl = base ? `${base}&next=${encodeURIComponent(BILLING_PATH)}` : null;
   }
   const sent = await sendPayerInviteEmail(
-    { id: payer.id, email: payer.email, name: link.signer_name || payer.name },
-    { landlordName: landlordLabel(landlord), addresses, setupUrl, signUrl, existingAgreement: state.valid },
+    { id: payer.id, email: payer.email, name: links[0].signer_name || payer.name },
+    { landlordName, addresses, setupUrl, signUrl, existingAgreement: state.valid },
     await invitePdfs(payerId)
   );
-  if (sent) await supabase.from("billing_payers").update({ invited_at: new Date().toISOString() }).eq("id", link.id);
+  if (sent) await supabase.from("billing_payers").update({ invited_at: new Date().toISOString() }).in("id", links.map((l) => l.id));
   return sent;
+}
+
+// To each landlord an admin assigned a payer to: who signs and pays now.
+export async function sendPayerAssigned({ landlordId, payerName }) {
+  const landlord = await userRow(landlordId);
+  if (!landlord?.email) return false;
+  return sendPayeeAssignedEmail(landlord, { payerName, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
 }
 
 // More listings now wait for the payer (the first of a new addendum).

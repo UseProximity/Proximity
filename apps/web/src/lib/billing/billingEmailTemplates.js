@@ -520,3 +520,17 @@ export function payeeVoidedEmail({ name, payerName, billingUrl }) {
     `),
   };
 }
+
+// To a landlord whose payer Proximity set up for them (an admin assigned it).
+export function payeeAssignedEmail({ name, payerName, billingUrl }) {
+  return {
+    subject: `${payerName} will sign and pay for your Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} now signs Proximity's marketing agreement for your listings and receives the invoices. We have emailed them the agreement to sign.</p>
+      <p>You don't need to sign anything. On your Billing page you can see when they have signed, which listings are covered, and each charge.</p>
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}

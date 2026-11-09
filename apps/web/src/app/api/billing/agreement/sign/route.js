@@ -65,8 +65,12 @@ export async function POST(req) {
     const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
     if (error) throw error;
     // Signing for an account they pay for: startSigning checks they are its payer.
-    const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : null;
-    const listingIds = accountId ? (await waitingRequests(supabase, accountId)).map((w) => w.listing_id) : ownListingIds(body.listingIds);
+    // Several accounts on one new agreement (accountIds): what each asked to publish.
+    const many = Array.isArray(body.accountIds) ? [...new Set(body.accountIds.filter((id) => isUuid(id) && id !== user.id))].slice(0, 50) : [];
+    const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : many[0] ?? null;
+    const listingIds = accountId
+      ? (await Promise.all([...new Set([accountId, ...many])].map((id) => waitingRequests(supabase, id)))).flat().map((w) => w.listing_id)
+      : ownListingIds(body.listingIds);
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,
@@ -80,6 +84,7 @@ export async function POST(req) {
       authorized: body.authorized === true,
       listingIds,
       accountId,
+      accountIds: many,
       // Units being published right now: { listingId: [unit name] }.
       requiredUnits: cleanRequiredUnits(body.requiredUnits),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].

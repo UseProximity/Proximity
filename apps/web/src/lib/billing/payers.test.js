@@ -128,6 +128,27 @@ describe("payer: the master agreement covers the account's properties", () => {
   });
 });
 
+describe("payer: one agreement for several accounts (admin assigns, Wyatt 2026-11-09)", () => {
+  it("one signature covers every account's properties, each row on its own account", async () => {
+    const db = world();
+    db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2026-11-09T00:00:00Z", created_at: "2026-11-09T00:01:00Z" });
+    const documenso = fakeDocumenso();
+    await signFor(db, documenso, "pm1", { accountIds: ["pm1", "pm2"] });
+    assert.equal(db.tables.landlord_agreements.length, 1, "one master");
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    const signed = [];
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned, onSigned: (x) => signed.push(x) });
+    assert.deepEqual(Object.keys(signed[0].accounts).sort(), ["pm1", "pm2"]);
+    assert.deepEqual([...(await coverageFor(db, "pm1", new Date("2027-02-01"))).covered.keys()], ["L1"]);
+    assert.deepEqual([...(await coverageFor(db, "pm2", new Date("2027-02-01"))).covered.keys()], ["L3"]);
+  });
+
+  it("refuses an account the signer doesn't pay for", async () => {
+    const db = world();
+    await assert.rejects(() => signFor(db, fakeDocumenso(), "pm1", { accountIds: ["pm1", "pm2"] }), (e) => e.code === "payer_signs");
+  });
+});
+
 describe("payer: addenda for what the landlord publishes", () => {
   it("a second account is added to the same master by an addendum it owns and the payer signed", async () => {
     const { db, documenso } = await ownerSignedFor("pm1");

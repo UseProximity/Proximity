@@ -512,10 +512,15 @@ export async function startSigning(
     // The landlord account whose properties this covers: the signer's own, or one
     // they pay for (billing_payers). Defaults to the signer's own.
     accountId = null,
+    // More accounts the signer pays for, on the SAME new master agreement: one
+    // signature covers several landlords' properties at once (Wyatt, 2026-11-09).
+    // Only while the payer has no agreement that counts; after that, an addendum per account.
+    accountIds = null,
     ...options
   }
 ) {
   const account = accountId ?? user?.id;
+  const extraAccounts = [...new Set((accountIds ?? []).filter((a) => a && a !== account))];
   // An Addendum to Exhibit A signed with the details saved on the agreement
   // (`fromAgreement`, Wyatt 2026-11-07): name, title, company, email and address
   // are not asked again; they are read from the agreement below.
@@ -539,6 +544,10 @@ export async function startSigning(
       403
     );
   }
+  for (const extra of extraAccounts) {
+    const l = await activePayerLink(db, extra);
+    if (!l || l.payer_id !== user.id) throw new BillingError("payer_signs", "You can only sign for accounts you pay for.", 403);
+  }
 
   return withSettingsLock(
     db,
@@ -551,19 +560,34 @@ export async function startSigning(
     async () => {
       const requested = await resolvePublishedIds(db, listingIds);
       const loaded = await coverageFor(db, account, now);
-      const { state, rows } = loaded;
+      const { state } = loaded;
+      let rows = loaded.rows;
+      // Which account each property belongs to, so its coverage row is that account's.
+      const accountOf = new Map(loaded.properties.map((p) => [p.listingId, account]));
+      let mergedProperties = loaded.properties;
+      if (extraAccounts.length) {
+        if (state.valid && !state.negotiatedOffer) {
+          throw new BillingError("one_account_at_a_time", "Your agreement is signed: each account is added with its own addendum.", 409);
+        }
+        for (const extra of extraAccounts) {
+          const more = await coverageFor(db, extra, now);
+          for (const p of more.properties) if (!accountOf.has(p.listingId)) accountOf.set(p.listingId, extra);
+          mergedProperties = [...mergedProperties, ...more.properties.filter((p) => accountOf.get(p.listingId) === extra)];
+          rows = [...rows, ...more.rows];
+        }
+      }
       // The payer's agreement still being signed for ANOTHER account they pay for:
       // that one is signed first, then this account's addendum (one pending
       // master per payer).
       if (account !== user.id && !state.valid && state.pending) {
         const owner = await pendingMasterAccount(db, state.pending.id);
-        if (owner && owner !== account) {
+        if (owner && owner !== account && !extraAccounts.includes(owner)) {
           throw new BillingError("sign_master_first", "Sign the marketing agreement you already started first. This addendum opens right after.", 409);
         }
       }
       // Units being published right now (a withdrawn lease put back) must be covered.
       // A building they have no stake in yet, named by the units being published.
-      const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
+      const properties = await withRequestedProperties(db, withRequiredUnits(mergedProperties, requiredUnits), requested, requiredUnits);
 
       // The document in progress, if any. An amendment only stands while its master counts.
       let inProgress = null;
@@ -667,6 +691,7 @@ export async function startSigning(
       const made = await createDocument(db, documenso, {
         user,
         account,
+        accountOf,
         title,
         name,
         details,
@@ -758,7 +783,7 @@ async function templateBoxes(documenso, version) {
 }
 
 
-async function createDocument(db, documenso, { user, account = user.id, title, name, details = {}, plan, version, master, now, storeExhibit, landlordAddress }) {
+async function createDocument(db, documenso, { user, account = user.id, accountOf = null, title, name, details = {}, plan, version, master, now, storeExhibit, landlordAddress }) {
   const company = details.company ?? "";
   const savedDetails = { company, email: details.email ?? "", street: details.street ?? "", suite: details.suite ?? "", city: details.city ?? "" };
   const nowIso = now.toISOString();
@@ -811,7 +836,8 @@ async function createDocument(db, documenso, { user, account = user.id, title, n
   if (proposed.length) {
     const { error: covError } = await db.from("agreement_coverage").insert(
       proposed.map((e) => ({
-        user_id: account,
+        // A master signed for several accounts: each property's row is its own account's.
+        user_id: accountOf?.get(e.listingId) ?? account,
         listing_id: e.listingId,
         address: e.address,
         units: e.wholeBuilding !== false ? [] : e.units ?? [],
