@@ -405,6 +405,8 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
     payer: { name: link.signer_name, email: link.signer_email, invitedAt: link.invited_at },
     status,
     signedAt: status === "signed" ? state.signed?.signed_at ?? null : null,
+    // What the authorized signer has done of the two things publishing needs (both are theirs, not the landlord's).
+    signerChecklist: { agreementSigned: !!state.valid, paymentMethodAdded: !needsMethod },
     // Nothing has been signed for this account yet: the landlord may still change who signs.
     canChange: !coveredList.length,
     covered: coveredList.sort((a, b) => a.address.localeCompare(b.address, "en", { numeric: true })),

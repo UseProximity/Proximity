@@ -3,6 +3,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import CollapsibleSection from "./CollapsibleSection";
+import { Requirement } from "./AgreementCard";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
@@ -145,6 +146,17 @@ export function PayerCard({ view, onChanged }) {
               : `Waiting for ${view.payer.name} (${view.payer.email}) to sign. We emailed them on ${dateOnly(view.payer.invitedAt)}.`}
         </p>
 
+        {view.signerChecklist && (
+          <div>
+            <p className="text-sm font-medium text-gray-900">Before your listings can go live, {view.payer.name} needs to:</p>
+            <ul className="mt-1 space-y-1.5">
+              <Requirement done={view.signerChecklist.agreementSigned}>Sign the marketing agreement</Requirement>
+              <Requirement done={view.signerChecklist.paymentMethodAdded}>Add a payment method</Requirement>
+            </ul>
+            <p className="mt-1 text-xs text-gray-500">Your own payment method doesn&apos;t count: {view.payer.name} pays the invoices.</p>
+          </div>
+        )}
+
         {view.waiting.length > 0 && (
           <div>
             <p className="text-sm font-medium text-gray-900">Sent to {view.payer.name}, not live yet ({view.waiting.length}):</p>
@@ -255,11 +267,14 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
       <p className="text-sm font-medium text-gray-900">Accounts you are the authorized signer for</p>
-      {!hasPaymentMethod && (
-        <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
-          Add a payment method below. Until you do, nothing new goes live for these accounts, even once it is on your agreement.
-        </p>
-      )}
+      <div className="rounded-md border border-gray-100 px-3 py-2">
+        <p className="text-sm text-gray-900">For these accounts&apos; listings to go live, you need to:</p>
+        <ul className="mt-1 space-y-1.5">
+          <Requirement done={needingAgreement.length === 0}>Sign the marketing agreement</Requirement>
+          <Requirement done={hasPaymentMethod}>Add a payment method (below on this page)</Requirement>
+        </ul>
+        <p className="mt-1 text-xs text-gray-500">These are yours as the authorized signer: the landlord&apos;s own payment method doesn&apos;t count.</p>
+      </div>
       {needingAgreement.length > 0 && (
         <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
           <p>
