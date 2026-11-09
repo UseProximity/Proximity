@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useOptimistic, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
 import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
@@ -59,11 +59,25 @@ export default function TopFilterBar({
   search,
   setSearch,
   listings,
-  filters,
-  setFilters,
+  filters: committedFilters,
+  setFilters: commitFilters,
   onReset,
   onFiltersSaved = () => {},
 }) {
+  /*
+   * Rebuilding the results (a couple of hundred cards and the map pins) is the
+   * expensive part of a filter change, and it used to run in the same update as
+   * the click, so nothing in the bar changed until it had finished (about half a
+   * second in dev when Saved went off). The commit is now a transition: the
+   * bar's own controls take the new value at once (optimistic copy) and the
+   * results follow without blocking them.
+   */
+  const [filters, setLiveFilters] = useOptimistic(committedFilters);
+  const setFilters = (next) =>
+    startTransition(() => {
+      setLiveFilters(next);
+      commitFilters(next);
+    });
   const [showFilters, setShowFilters] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const filterRef = useRef(null);
