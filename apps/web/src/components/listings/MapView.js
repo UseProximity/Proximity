@@ -21,6 +21,10 @@ import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 // SuggestedStrip's heading (bg-[#A1000A]); change both together.
 const SUGGESTED_PIN_COLOR = "#A1000A";
 
+// Pin body and star fill for unavailable listings (Browse Listings design).
+const UNAVAILABLE_PIN_COLOR = "#A3A3A3";
+const UNAVAILABLE_STAR_COLOR = "#E6E7EB";
+
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 // WashU Campus center coordinates (Danforth Campus)
@@ -346,7 +350,14 @@ function MapViewInner({
   // rating: exact float (e.g. 3.7) or null for no-review pins
   // isActive: true = lighter/brighter active color scheme
   // isSuggested: deeper red body for "Suggested for you" listings
-  function buildPinSVGElement(rating, listingId, isActive, isSuggested = false) {
+  // isUnavailable: grey body and star, taking precedence over the red variants
+  function buildPinSVGElement(
+    rating,
+    listingId,
+    isActive,
+    isSuggested = false,
+    isUnavailable = false
+  ) {
     const el = document.createElement("div");
     el.style.cssText = "width:35px;height:49px;";
     // The scale lives on an inner wrapper because Mapbox owns the marker
@@ -359,7 +370,11 @@ function MapViewInner({
     const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
     const hasRating = rating != null && rating > 0;
 
-    const bodyColor = isSuggested ? SUGGESTED_PIN_COLOR : "#E8000B";
+    const bodyColor = isUnavailable
+      ? UNAVAILABLE_PIN_COLOR
+      : isSuggested
+        ? SUGGESTED_PIN_COLOR
+        : "#E8000B";
 
     const PIN_PATH =
       "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
@@ -393,14 +408,18 @@ function MapViewInner({
       // gold tip only shows as the fill nears the top (a 5.0 shows all of it, a 2.5
       // almost none). The active/clicked state keeps the old look (pink star on a
       // lighter body), so gold only applies when not active.
-      const isGold = !isActive;
+      const isGold = !isActive && !isUnavailable;
       const goldGradient = `<linearGradient id="sg_${safeId}" x1="17.5" y1="${STAR_BOTTOM - STAR_HEIGHT}" x2="17.5" y2="${STAR_BOTTOM}" gradientUnits="userSpaceOnUse">
             <stop stop-color="#D69121"/>
             <stop offset="0.115" stop-color="#F7D14A"/>
             <stop offset="0.236" stop-color="#F7EF84"/>
             <stop offset="0.394" stop-color="#FFFDEB"/>
           </linearGradient>`;
-      const starFill = isGold ? `url(#sg_${safeId})` : "#FFA2A2";
+      const starFill = isGold
+        ? `url(#sg_${safeId})`
+        : isUnavailable
+          ? UNAVAILABLE_STAR_COLOR
+          : "#FFA2A2";
       // The outline stays cream over the unfilled part; the filled part gets a
       // matching gradient stroke so its edge doesn't show a cream rim.
       const outlineStroke = isActive ? "#FFA2A2" : "#FFFFF6";
@@ -448,11 +467,13 @@ function MapViewInner({
       const exactRating =
         (listing.rating || 0) > 0 ? listing.rating || 0 : null;
       const isSuggested = !!suggestedIds?.has(String(listing._id));
+      const isUnavailable = !!listing.unavailable;
       const markerEl = buildPinSVGElement(
         exactRating,
         listing._id,
         false,
-        isSuggested
+        isSuggested,
+        isUnavailable
       );
       markerEl.style.cursor = onListingSelect ? "pointer" : "default";
       const marker = new mapboxgl.Marker({
@@ -464,6 +485,7 @@ function MapViewInner({
       marker._listingId = listing._id;
       marker._rating = exactRating;
       marker._suggested = isSuggested;
+      marker._unavailable = isUnavailable;
       if (onListingSelect) {
         markerEl.addEventListener("click", () => {
           pinClickedRef.current = true;
@@ -701,7 +723,8 @@ function MapViewInner({
         marker._rating,
         marker._listingId,
         isActive,
-        marker._suggested
+        marker._suggested,
+        marker._unavailable
       );
       el.innerHTML = newPin.innerHTML;
     });
