@@ -79,8 +79,7 @@ export async function DELETE(req) {
     const link = await activePayerLink(db, body.landlordId);
     if (!link) throw new BillingError("no_payer", "This landlord has no authorized signer.", 404);
     const { documenso } = agreementServices();
-    const result = await endPayerFor(db, documenso, { payerId: link.payer_id, landlordId: body.landlordId });
-    await db.from("billing_payers").update({ ended_reason: "ended by an admin" }).eq("id", link.id);
+    const result = await endPayerFor(db, documenso, { payerId: link.payer_id, landlordId: body.landlordId, endLink: true });
     return NextResponse.json(result);
   } catch (err) {
     return billingErrorResponse(err, "end payer");

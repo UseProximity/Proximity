@@ -141,7 +141,7 @@ export function PayerCard({ view, onChanged }) {
           {view.status === "signed"
             ? `${view.payer.name} signed the agreement for your account${view.signedAt ? ` on ${dateOnly(view.signedAt)}` : ""}. They receive and pay your invoices.`
             : view.status === "declined"
-              ? `${view.payer.name} declined to sign. Our team is in touch with them. Questions? Email info@useproximity.org.`
+              ? `${view.payer.name} declined to sign, so the listings below aren't covered. They can still sign, or use Change signer to name someone else. Questions? Email info@useproximity.org.`
               : `Waiting for ${view.payer.name} (${view.payer.email}) to sign. We emailed them on ${dateOnly(view.payer.invitedAt)}.`}
         </p>
 
@@ -228,7 +228,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
     setBusy(true);
     try {
       const r = await call("/api/billing/payees", { method: "POST", body: { action: "void", landlordId: account.landlordId, confirm: true } });
-      toast.success(`Voided for ${account.accountName}. ${r.released} ${r.released === 1 ? "property" : "properties"} came off your agreement.`);
+      toast.success(`Voided for ${account.accountName}. ${r.released} ${r.released === 1 ? "property" : "properties"} came off your agreement. They see that you declined.`);
       setVoiding(null);
       onChanged();
     } catch (e) {
@@ -295,12 +295,30 @@ export function PaidForAccounts({ accounts, onChanged }) {
                 )}
               </div>
             )}
+            {a.drafts?.length > 0 && (
+              <div className="mt-2 text-sm text-gray-700">
+                <p className="text-xs font-medium text-gray-600">Drafts, not live yet ({a.drafts.length}):</p>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {a.drafts.map((d) => (
+                    <li key={d.listingId}>{d.address}</li>
+                  ))}
+                </ul>
+                {a.needs ? (
+                  <p className="mt-1 text-xs text-gray-500">They are on the same document when you sign; you can leave any off on the Exhibit A step.</p>
+                ) : (
+                  <button type="button" className={`${BUTTON} mt-1`} disabled={busy || !!signing} onClick={() => setSigning({ accountId: a.landlordId, includeDrafts: true })}>
+                    Add drafts to your agreement
+                  </button>
+                )}
+              </div>
+            )}
             <div className="mt-2">
               {voiding === a.landlordId ? (
                 <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-800">
                   <p>
-                    Void your agreement for {a.accountName}? Their properties come off your agreement and they will need a new one before
-                    publishing. Your agreement stays in force for everything else.
+                    Void your agreement for {a.accountName}? Their properties come off your agreement and can&apos;t be published until
+                    someone signs again. You stay their authorized signer, shown to them as having declined, and you can sign again later.
+                    Your agreement stays in force for everything else.
                   </p>
                   <div className="flex gap-2">
                     <button type="button" className={BUTTON} disabled={busy} onClick={() => setVoiding(null)}>
@@ -313,7 +331,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
                 </div>
               ) : (
                 <button type="button" className="text-xs text-gray-500 underline hover:text-gray-700" onClick={() => setVoiding(a.landlordId)}>
-                  Stop being the authorized signer for this account
+                  Void my agreement for this account
                 </button>
               )}
             </div>
@@ -324,6 +342,7 @@ export function PaidForAccounts({ accounts, onChanged }) {
         <AgreementSigningFlow
           accountId={signing.accountId ?? signing.accountIds?.[0] ?? null}
           accountIds={signing.accountIds ?? null}
+          includeDrafts={!!signing.includeDrafts}
           onFinished={(result) => {
             setSigning(null);
             onChanged(result);

@@ -111,7 +111,7 @@ describe("payer: the master agreement covers the account's properties", () => {
     assert.equal(state.holderId, "own");
     assert.equal(state.valid, true);
     const { covered } = await coverageFor(db, "pm1", new Date("2027-02-01"));
-    assert.deepEqual([...covered.keys()], ["L1"], "the live property, not the draft nobody asked to publish");
+    assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"], "the live property, and the draft riding along (the signer can leave drafts off)");
   });
 
   it("a charge on the account records the payer as who is invoiced", async () => {
@@ -139,7 +139,7 @@ describe("payer: one agreement for several accounts (admin assigns, Wyatt 2026-1
     const signed = [];
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned, onSigned: (x) => signed.push(x) });
     assert.deepEqual(Object.keys(signed[0].accounts).sort(), ["pm1", "pm2"]);
-    assert.deepEqual([...(await coverageFor(db, "pm1", new Date("2027-02-01"))).covered.keys()], ["L1"]);
+    assert.deepEqual([...(await coverageFor(db, "pm1", new Date("2027-02-01"))).covered.keys()].sort(), ["L1", "L2"]);
     assert.deepEqual([...(await coverageFor(db, "pm2", new Date("2027-02-01"))).covered.keys()], ["L3"]);
   });
 
@@ -185,8 +185,10 @@ describe("payer: addenda for what the landlord publishes", () => {
 
   it("the payer's addendum covers what was asked, and releaseWaiting publishes it and emails the landlord", async () => {
     const { db, documenso } = await ownerSignedFor("pm1");
-    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L2"] });
-    await signFor(db, documenso, "pm1", { listingIds: ["L2"], now: new Date("2027-01-07") });
+    db.tables.listings.push(listing("L9", "900 Later Ln", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" });
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L9"] });
+    await signFor(db, documenso, "pm1", { listingIds: ["L9"], now: new Date("2027-01-07") });
     documenso.complete("envelope_2", "2027-01-07T12:00:00.000Z");
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
     const published = [];
@@ -199,8 +201,8 @@ describe("payer: addenda for what the landlord publishes", () => {
         notifyLive: async (x) => emails.push(x),
       },
     });
-    assert.deepEqual(published, [["pm1", "L2"]]);
-    assert.deepEqual(r.published, ["200 Draft Ave"]);
+    assert.deepEqual(published, [["pm1", "L9"]]);
+    assert.deepEqual(r.published, ["900 Later Ln"]);
     assert.equal(emails[0].payerName, "Jane Owner");
     assert.equal(db.tables.payer_publish_requests[0].status, "published");
   });
@@ -214,6 +216,17 @@ describe("payer: addenda for what the landlord publishes", () => {
     });
     assert.deepEqual(r.published, []);
     assert.equal(db.tables.payer_publish_requests[0].status, "waiting");
+  });
+});
+
+describe("payer: drafts (Wyatt, 2026-11-09)", () => {
+  it("the signer can leave a draft off, but a live listing always stays on", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await signFor(db, documenso, "pm1", { exhibit: [{ listingId: "L2", include: false, excluded: true }, { listingId: "L1", include: false, excluded: true }] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    assert.deepEqual([...(await coverageFor(db, "pm1", new Date("2027-02-01"))).covered.keys()], ["L1"]);
   });
 });
 
@@ -251,6 +264,7 @@ describe("payer: what each side sees", () => {
     assert.equal(a.landlordId, "pm1");
     assert.equal(a.needs, "agreement");
     assert.deepEqual(a.waiting.map((w) => w.address), ["100 Live St"]);
+    assert.deepEqual(a.drafts.map((d) => d.address), ["200 Draft Ave"], "the landlord's drafts are shown to the signer");
   });
 
   it("a landlord's charges read Billed to the payer once approved: never paid, refunded or credited", () => {
@@ -264,12 +278,19 @@ describe("payer: what each side sees", () => {
 });
 
 describe("payer: voiding and changing", () => {
-  it("the payer voids for one account: its properties come off, the link ends, the master stands", async () => {
+  it("the signer voids for one account: its properties come off, they stay assigned and show as declined", async () => {
     const { db, documenso } = await ownerSignedFor("pm1");
     const r = await endPayerFor(db, documenso, { payerId: "own", landlordId: "pm1" });
-    assert.equal(r.released, 1);
-    assert.equal(db.tables.billing_payers[0].status, "ended");
+    assert.equal(r.released, 2);
+    assert.equal(db.tables.billing_payers[0].status, "active", "still the account's authorized signer");
+    assert.ok(db.tables.billing_payers[0].declined_at);
+    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
+    assert.equal(view.status, "declined");
+    assert.equal(view.canChange, true, "nothing signed now: the landlord can change signer");
     assert.equal(db.tables.landlord_agreements[0].status, "signed");
+    // An admin ending it ends the link too.
+    await endPayerFor(db, documenso, { payerId: "own", landlordId: "pm1", endLink: true });
+    assert.equal(db.tables.billing_payers[0].status, "ended");
     await assert.rejects(() => endPayerFor(db, documenso, { payerId: "pm2", landlordId: "pm1" }), (e) => e.code === "not_payer");
   });
 

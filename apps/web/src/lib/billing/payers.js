@@ -399,6 +399,7 @@ export async function payerAccounts(db, payerId, now = new Date()) {
     const u = userById.get(link.landlord_id);
     const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
     const liveUncovered = properties.filter((p) => p.live && !covered.has(p.listingId));
+    const waitingIds = new Set(waiting.map((w) => w.listing_id));
     out.push({
       landlordId: link.landlord_id,
       accountName: u?.company_name?.trim() || u?.name || u?.email || "Landlord account",
@@ -413,6 +414,11 @@ export async function payerAccounts(db, payerId, now = new Date()) {
       ],
       // What signing for it now makes: the agreement itself, or an addendum to it.
       needs: !state.valid ? "agreement" : waiting.length || liveUncovered.length ? "addendum" : null,
+      // The landlord's drafts not covered yet: the signer sees them and may add
+      // them to the agreement (Wyatt, 2026-11-09). Covering a draft does not publish it.
+      drafts: properties
+        .filter((p) => p.draft && !p.live && !covered.has(p.listingId) && !waitingIds.has(p.listingId))
+        .map((p) => ({ listingId: p.listingId, address: p.address })),
       declined: !!link.declined_at,
     });
   }
@@ -426,7 +432,8 @@ export async function payerAccounts(db, payerId, now = new Date()) {
  * the link ends. The payer's agreement stays in force for everything else. The
  * landlord then signs for themselves or names someone else. Returns { released }.
  */
-export async function endPayerFor(db, documenso, { payerId, landlordId, now = new Date() }) {
+// `endLink`: an admin ending the arrangement entirely (the link ends too).
+export async function endPayerFor(db, documenso, { payerId, landlordId, endLink = false, now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
   if (!link || link.payer_id !== payerId) throw new BillingError("not_payer", "You don't pay for that account.", 404);
   await cancelPayerDocuments(db, documenso, landlordId);
@@ -445,9 +452,24 @@ export async function endPayerFor(db, documenso, { payerId, landlordId, now = ne
     if (error) throw error;
     released = data?.length ?? 0;
   }
-  const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
-  if (waitError) throw waitError;
-  const { error } = await db.from("billing_payers").update({ status: "ended", ended_reason: "voided by the payer", ended_at: nowIso }).eq("id", link.id);
-  if (error) throw error;
+  if (endLink) {
+    // An admin ending the arrangement: the account signs for itself again.
+    const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
+    if (waitError) throw waitError;
+    const { error } = await db.from("billing_payers").update({ status: "ended", ended_reason: "ended by an admin", ended_at: nowIso }).eq("id", link.id);
+    if (error) throw error;
+  } else {
+    // The signer voided: they stay the account's authorized signer, shown as
+    // having declined (Wyatt, 2026-11-09). The landlord can change signer; the
+    // signer can sign again later. Drafts sent to them stay waiting.
+    const { error } = await db.from("billing_payers").update({ declined_at: nowIso }).eq("id", link.id);
+    if (error) throw error;
+  }
   return { released };
+}
+
+// The account's drafts not covered yet: what "Add drafts to your agreement" puts on the document.
+export async function uncoveredDraftIds(db, landlordId, now = new Date()) {
+  const { properties, covered } = await coverageFor(db, landlordId, now);
+  return properties.filter((p) => p.draft && !p.live && !covered.has(p.listingId)).map((p) => p.listingId);
 }

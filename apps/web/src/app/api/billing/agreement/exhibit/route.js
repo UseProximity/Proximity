@@ -8,7 +8,7 @@ import { cleanRequiredUnits } from "@/lib/billing/coverage";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { BillingError } from "@/lib/billing/errors";
 import { isPayerFor } from "@/lib/billing/payerLinks";
-import { waitingRequests } from "@/lib/billing/payers";
+import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
 
 /*
  * The signing popup's Exhibit A step: each property that can go on the document
@@ -42,6 +42,7 @@ export async function GET(req) {
       for (const accountId of accounts) {
         if (!(await isPayerFor(supabase, session.user.id, accountId))) throw new BillingError("not_payer", "You don't pay for that account.", 403);
         const waiting = (await waitingRequests(supabase, accountId)).map((w) => w.listing_id);
+        if (params.get("includeDrafts") === "1") waiting.push(...(await uncoveredDraftIds(supabase, accountId)));
         previews.push(await exhibitPreview(supabase, accountId, { listingIds: waiting, forPayee: true }));
       }
       if (previews.length === 1) return NextResponse.json(previews[0]);

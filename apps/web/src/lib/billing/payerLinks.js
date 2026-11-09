@@ -62,3 +62,11 @@ export async function markPayerDeclined(db, landlordIds, now = new Date()) {
   const { error } = await db.from("billing_payers").update({ declined_at: now.toISOString() }).in("landlord_id", ids).eq("status", "active");
   if (error && !missingSchema(error)) throw error;
 }
+
+// The authorized signer signed for these accounts: an earlier "declined" no longer shows.
+export async function clearPayerDeclined(db, landlordIds) {
+  const ids = [...new Set(landlordIds.filter(Boolean))];
+  if (!ids.length) return;
+  const { error } = await db.from("billing_payers").update({ declined_at: null }).in("landlord_id", ids).eq("status", "active");
+  if (error && !missingSchema(error)) throw error;
+}

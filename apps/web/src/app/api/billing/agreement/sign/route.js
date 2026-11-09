@@ -10,7 +10,7 @@ import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
-import { waitingRequests } from "@/lib/billing/payers";
+import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
@@ -68,9 +68,13 @@ export async function POST(req) {
     // Several accounts on one new agreement (accountIds): what each asked to publish.
     const many = Array.isArray(body.accountIds) ? [...new Set(body.accountIds.filter((id) => isUuid(id) && id !== user.id))].slice(0, 50) : [];
     const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : many[0] ?? null;
-    const listingIds = accountId
+    let listingIds = accountId
       ? (await Promise.all([...new Set([accountId, ...many])].map((id) => waitingRequests(supabase, id)))).flat().map((w) => w.listing_id)
       : ownListingIds(body.listingIds);
+    // "Add drafts to your agreement": the account's uncovered drafts go on it too.
+    if (accountId && body.includeDrafts === true) {
+      for (const id of new Set([accountId, ...many])) listingIds = [...listingIds, ...(await uncoveredDraftIds(supabase, id))];
+    }
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,

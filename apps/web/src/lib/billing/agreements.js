@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { activePayerLink, markPayerDeclined } from "./payerLinks.js";
+import { activePayerLink, clearPayerDeclined, markPayerDeclined } from "./payerLinks.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
@@ -375,18 +375,16 @@ function copyBoxesMatch(templateEnvelope, copyEnvelope, values) {
 }
 
 /*
- * A payer signing for an account they pay for adds what the landlord asked to
- * publish (and anything live), never the landlord's other drafts: those are left
- * off (not withdrawn) unless the popup says otherwise.
+ * An authorized signer sees the landlord's drafts too and decides on the popup
+ * which go on the document (Wyatt, 2026-11-09): drafts ride along as they do for
+ * a landlord signing for themselves, and can be left off. A live listing is never
+ * taken off the landlord's site by the signer (exhibitPreview refuses it).
  */
 function payerSelections(selections, properties, requested, forPayee) {
-  if (!forPayee) return selections;
-  const out = new Map(selections ?? []);
-  const asked = new Set(requested);
-  for (const p of properties) {
-    if (p.draft && !p.live && !asked.has(p.listingId) && !out.has(p.listingId)) out.set(p.listingId, { include: false });
-  }
-  return out;
+  if (!forPayee || !selections) return selections;
+  const live = new Set(properties.filter((p) => p.live).map((p) => p.listingId));
+  // Whatever the popup says, a live listing stays on (never withdrawn by the signer).
+  return new Map([...selections].map(([id, s]) => [id, live.has(id) ? { ...s, include: true, excluded: false } : s]));
 }
 
 // Which landlord account a master still being signed is for: the account on its
@@ -1030,6 +1028,8 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
     // document covers the accounts they pay for), with the properties of each.
     const accounts = {};
     for (const r of coveredRows ?? []) (accounts[r.user_id] ??= []).push(r.listing_id);
+    // Signing again after a decline: the landlords no longer see "Declined".
+    await clearPayerDeclined(db, [...Object.keys(accounts), row.user_id]).catch((err) => console.error("billing: clearing a decline failed", err?.message));
 
     // Live properties the landlord left off this document come off the site now that it is signed.
     if (row.withdraw_on_sign?.length) {

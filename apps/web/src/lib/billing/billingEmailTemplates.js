@@ -510,11 +510,11 @@ export function payeeSignedEmail({ name, payerName, addresses = [], billingUrl }
 // To the landlord: their payer voided the agreement for their account.
 export function payeeVoidedEmail({ name, payerName, billingUrl }) {
   return {
-    subject: `${payerName} is no longer the authorized signer for your Proximity listings`,
+    subject: `${payerName} declined to sign for your Proximity listings`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(payerName)} voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
-      <p>To keep publishing, sign the agreement yourself or name someone else to sign and pay, on your Billing page.</p>
+      <p>${e(payerName)}, your authorized signer, voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
+      <p>${e(payerName)} is still listed as your authorized signer and can sign again. If someone else should sign, use Change signer on your Billing page.</p>
       ${button(billingUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>
     `),
