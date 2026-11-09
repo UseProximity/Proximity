@@ -77,9 +77,6 @@ const FURNISHED = [
   { label: "Unfurnished", value: "unfurnished" },
 ];
 
-const PILL =
-  "h-[21px] rounded-full border border-gray-300 text-[11px] font-medium text-[#495564] hover:bg-gray-50";
-
 // A titled block. className places it (its top margin), inset is the title's
 // and chips' left padding: the design does not keep one left edge.
 function Section({ title, className = "", inset = "pl-6", children }) {
@@ -169,31 +166,13 @@ export default function FiltersPanel({ listings, filters, onApply, onReset }) {
   const price = rentRange(draft.minRent, draft.maxRent);
 
   return (
-    <div className="min-h-0 w-[363px] overflow-y-auto rounded-[28px] border border-gray-200 bg-white pb-[28px] pt-[26px] shadow-xl">
-      <div className="flex items-center justify-between pl-[18px] pr-[23px]">
-        <h2 className="text-[17px] font-semibold leading-[21px] text-black">
-          Filters By:
-        </h2>
-        <button
-          type="button"
-          onClick={() => {
-            onReset();
-            setDraft(DEFAULT_FILTERS);
-          }}
-          className={`${PILL} w-[77px]`}
-        >
-          Clear All
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={() => onApply(draft)}
-        className={`${PILL} ml-4 mt-2 w-[186px]`}
-      >
-        Apply Your Filter Preference
-      </button>
+    <div className="flex min-h-0 w-[363px] flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-xl">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[28px] pt-[26px]">
+      <h2 className="pl-[18px] text-[17px] font-semibold leading-[21px] text-black">
+        Filters By:
+      </h2>
 
-      <Section title="Price Range" className="mt-4" inset="pl-4">
+      <Section title="Price Range" className="mt-5" inset="pl-4">
         <PriceRangeSlider
           listings={listings}
           low={price.low}
@@ -215,7 +194,11 @@ export default function FiltersPanel({ listings, filters, onApply, onReset }) {
           type="date"
           value={draft.moveInDate || ""}
           onChange={(e) => set({ moveInDate: e.target.value })}
-          className="ml-6 mt-2.5 h-9 w-[280px] rounded-lg border border-gray-300 bg-white px-3 text-[11px] text-gray-900"
+          className={`ml-6 mt-2.5 h-9 w-[280px] rounded-lg border bg-white px-3 text-[11px] outline-none transition-colors focus:border-[#FF2B3A] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 ${
+            draft.moveInDate
+              ? "border-[#FF2B3A] text-gray-900"
+              : "border-gray-300 text-gray-400"
+          }`}
         />
       </Section>
       {chips("Home Type", "mt-10", "homeType", HOME_TYPES)}
@@ -233,6 +216,27 @@ export default function FiltersPanel({ listings, filters, onApply, onReset }) {
       >
         Find Your Place
       </Link>
+      </div>
+
+      <div className="flex shrink-0 gap-3 border-t border-gray-200 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => {
+            onReset();
+            setDraft(DEFAULT_FILTERS);
+          }}
+          className="h-9 shrink-0 rounded-full border border-gray-300 px-5 text-[13px] font-medium text-[#495564] hover:bg-gray-50"
+        >
+          Clear All
+        </button>
+        <button
+          type="button"
+          onClick={() => onApply(draft)}
+          className="h-9 flex-1 rounded-full bg-[#F00013] text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+        >
+          Apply Your Filter Preference
+        </button>
+      </div>
     </div>
   );
 }
