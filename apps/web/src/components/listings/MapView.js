@@ -167,7 +167,6 @@ function MapViewInner({
   const router = useRouter();
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const preSelectZoomRef = useRef(null);
   // Set by a pin click, read when the panel next opens or closes: a close
   // caused by a pin flies onto that pin; any other close leaves the map where
   // it is.
@@ -603,9 +602,6 @@ function MapViewInner({
       .join(",");
     if (valid.length > 0 && map._fitKey !== fitKey) {
       map._fitKey = fitKey;
-      // The fitted view is the new baseline, so closing the panel shouldn't
-      // zoom back to a level picked for results that are no longer shown.
-      preSelectZoomRef.current = null;
       const campusLng = WASHU_CAMPUS_CENTER.longitude;
       const campusLat = WASHU_CAMPUS_CENTER.latitude;
       // Radius that contains FIT_PERCENTILE of the listings, not all of them.
@@ -850,8 +846,8 @@ function MapViewInner({
   // Fly to the listing when the SELECTION changes. Skips flyTo when the panel
   // is mid-transition: the panelExpanded effect above fires it once the map has
   // settled at its final size. Runs in hero mode too, so clicking a pin on the
-  // homepage zooms to it the way it does on browse; deselecting flies back to
-  // the zoom the reader was at before, via preSelectZoomRef.
+  // homepage zooms to it the way it does on browse. Deselecting leaves the
+  // camera where the reader put it.
   useEffect(() => {
     if (!isActive) return;
     const map = mapRef.current;
@@ -866,9 +862,6 @@ function MapViewInner({
         (l) => String(l._id) === String(selectedListingId)
       );
       if (listing?.longitude && listing?.latitude) {
-        if (preSelectZoomRef.current == null) {
-          preSelectZoomRef.current = map.getZoom();
-        }
         map.flyTo({
           center: [listing.longitude, listing.latitude],
           zoom: Math.min(Math.max(map.getZoom(), 15), 16),
@@ -877,9 +870,6 @@ function MapViewInner({
           essential: true,
         });
       }
-    } else if (preSelectZoomRef.current != null) {
-      map.flyTo({ zoom: preSelectZoomRef.current, duration: 600 });
-      preSelectZoomRef.current = null;
     }
   }, [isActive, selectedListingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
