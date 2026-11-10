@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
@@ -23,6 +24,7 @@ import {
   DEFAULT_FILTERS,
   filterListings,
 } from "@/lib/listings/filterListings";
+import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
 // True when any filter differs from its default. The suggested strip only shows
 // on the unfiltered view: once a student narrows the list, their own question
@@ -45,6 +47,33 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  /*
+   * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
+   * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
+   * The answers browse has a filter for are pre-set in the filter bar; the
+   * rest (rent per person, neighborhood, pets...) are held by the matched id
+   * set, named in a line under the filters with a Change link back.
+   */
+  const fromFindYourPlace = searchParams.get("fyp");
+  const [fyp, setFyp] = useState(null); // { ids: Set<string>, summary: string[] }
+  useEffect(() => {
+    if (!fromFindYourPlace) return;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
+      if (!Array.isArray(raw?.ids)) return;
+      setFilters({ ...DEFAULT_FILTERS, ...(raw.filters ?? {}) });
+      setFyp({ ids: new Set(raw.ids.map(String)), summary: Array.isArray(raw.summary) ? raw.summary : [] });
+    } catch {
+      // No readable hand-off: plain browse.
+    }
+  }, [fromFindYourPlace]);
+
+  const clearFindYourPlace = () => {
+    setFyp(null);
+    const url = new URL(window.location);
+    url.searchParams.delete("fyp");
+    window.history.replaceState({}, "", url);
+  };
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
@@ -128,6 +157,7 @@ export default function BrowseContent({ session, initialListings = null }) {
     setSearch("");
     setFilters(DEFAULT_FILTERS);
     handleClearSearch();
+    if (fyp) clearFindYourPlace();
   };
 
   /*
@@ -145,18 +175,18 @@ export default function BrowseContent({ session, initialListings = null }) {
     return mins.length ? Math.min(...mins) : null;
   };
 
-  const filteredListings = useMemo(
-    () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
-    [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const filteredListings = useMemo(() => {
+    const passing = filterListings(listings, { filters, search, savedIds, campusMinutes });
+    return fyp ? passing.filter((l) => fyp.ids.has(String(l._id))) : passing;
+  }, [listings, search, filters, savedIds, fyp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const suggestedListings = useMemo(() => {
-    if (search.trim() || filtersActive(filters)) return [];
+    if (search.trim() || filtersActive(filters) || fyp) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));
     const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
     // Keep the count even if a suggested listing dropped out of the feed.
     return found.slice(0, found.length - (found.length % 2));
-  }, [listings, suggestedIds, search, filters]);
+  }, [listings, suggestedIds, search, filters, fyp]);
 
   if (loading) {
     return (
@@ -181,6 +211,24 @@ export default function BrowseContent({ session, initialListings = null }) {
           onFiltersSaved={handleFiltersSaved}
         />
       </div>
+      {fyp && (
+        <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-4 py-2 text-xs text-gray-600 md:px-8">
+          <span className="min-w-0 truncate">
+            Showing your Find Your Place matches
+            {fyp.summary.length ? `: ${fyp.summary.join(", ")}` : ""}.
+          </span>
+          <Link href="/find-your-place?edit=1" className="flex-shrink-0 font-semibold text-red-600 hover:underline">
+            Change
+          </Link>
+          <button
+            type="button"
+            onClick={clearFindYourPlace}
+            className="ml-auto flex-shrink-0 font-medium text-gray-400 hover:text-gray-600"
+          >
+            Show all listings
+          </button>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
         <AvailableListings
           session={session}

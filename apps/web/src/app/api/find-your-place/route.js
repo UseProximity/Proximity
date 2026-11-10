@@ -124,6 +124,8 @@ export async function POST(request) {
       signedIn: !!actor,
       matches: result.matches.map(({ listing_id, reason, note, near_miss }) => ({ listing_id, reason, note, near_miss })),
       totalMatches: result.totalMatches,
+      // What "Browse All Matches" hands to the browse page.
+      browse: result.browse,
     });
     if (!actor && visitor) setVisitorCookie(response, visitor);
     return response;

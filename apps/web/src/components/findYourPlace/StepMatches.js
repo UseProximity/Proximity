@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import MatchCard, { MatchCardSkeleton } from "./MatchCard";
+import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
+import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
 /*
  * The four matches as a 2x2 grid that follows the window (Wyatt, 2026-11-10):
@@ -16,8 +19,70 @@ export const MATCH_PANEL = "max-w-[1100px]";
 
 const LINK = "inline-flex h-8 flex-shrink-0 items-center rounded-full border border-red-300 bg-white px-3.5 text-xs font-medium text-red-600 hover:bg-red-50";
 
+/*
+ * "Browse All N Matches". Opens browse with the hand-off (pre-set filters plus
+ * the matched id set, see lib/findYourPlace/browseHandoff.js). N is worked out
+ * here with browse's own filter function over browse's own listing feed, so
+ * the number on the button is the number of cards the student lands on.
+ */
+function BrowseMatchesLink({ browse, shown }) {
+  const [count, setCount] = useState(null);
+
+  useEffect(() => {
+    if (!browse?.ids?.length) return;
+    let cancelled = false;
+    fetch("/api/listings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((listings) => {
+        if (cancelled || !Array.isArray(listings)) return;
+        const ids = new Set(browse.ids);
+        const passing = filterListings(listings, {
+          filters: { ...DEFAULT_FILTERS, ...browse.filters },
+          search: "",
+          savedIds: [],
+          campusMinutes: () => null, // only read by the walk filter, which is never pre-set
+        });
+        setCount(passing.filter((l) => ids.has(String(l._id))).length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [browse]);
+
+  if (!browse?.ids?.length || count === 0) {
+    return (
+      <Link href="/browse" className={LINK}>
+        Browse All Listings
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href="/browse?fyp=1"
+      className={LINK}
+      onClick={() => {
+        try {
+          window.localStorage.setItem(BROWSE_HANDOFF_KEY, JSON.stringify(browse));
+        } catch {
+          // Without storage browse opens unfiltered, which is still a working page.
+        }
+      }}
+    >
+      {/* The top picks can include a place that misses a wish (a wish only
+          ranks), while browse holds every wish as a filter. When that leaves
+          browse with no more than what is already shown, say what it is. */}
+      {count == null
+        ? "Browse All Matches"
+        : count > shown
+        ? `Browse All ${count} Matches`
+        : `Browse ${count} Exact ${count === 1 ? "Match" : "Matches"}`}
+    </Link>
+  );
+}
+
 // Page 3: the top matches, or an honest empty state.
-export default function StepMatches({ loading, error, matches, totalMatches, signedIn, onOpen, onContact, onLocked, onRetry }) {
+export default function StepMatches({ loading, error, matches, browse, signedIn, onOpen, onContact, onLocked, onRetry }) {
   if (loading) {
     return (
       <div className="flex h-full flex-col">
@@ -81,9 +146,7 @@ export default function StepMatches({ loading, error, matches, totalMatches, sig
             </p>
           )}
         </div>
-        <Link href="/browse" className={LINK}>
-          {totalMatches > matches.length ? `Browse All ${totalMatches} Matches` : "Browse All Listings"}
-        </Link>
+        <BrowseMatchesLink browse={browse} shown={matches.length} />
       </div>
       <div className={GRID}>
         {matches.map((m, i) => (

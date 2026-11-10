@@ -207,13 +207,16 @@ export function unitMatch(unit, filters) {
 // Canonical filter value → every DB value that means it (snake_case + legacy ALL_CAPS)
 const AMENITY_ALIASES = {
   dishwasher: ["dishwasher", "DISHWASHER"],
-  in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
-  ac_heating: ["ac_heating"],
+  // "laundry", "air_conditioning", "storage" and "parking" are the names
+  // listings actually carry today (amenitiesRowToArray in getListing.js). They
+  // were missing here, so those four filters matched nothing.
+  in_unit_laundry: ["in_unit_laundry", "laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
+  ac_heating: ["ac_heating", "air_conditioning"],
   mailroom: ["mailroom", "MAILROOM"],
   pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-  extra_storage: ["extra_storage", "EXTRA STORAGE"],
+  extra_storage: ["extra_storage", "storage", "EXTRA STORAGE"],
   fireplace: ["fireplace", "FIREPLACE"],
-  private_parking: ["private_parking", "FREE PARKING"],
+  private_parking: ["private_parking", "parking", "FREE PARKING"],
   pool: ["pool", "POOL"],
   study_room: ["study_room", "STUDY ROOMS"],
   gym: ["gym", "GYM"],

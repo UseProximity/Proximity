@@ -267,6 +267,8 @@ export const PROMPTS = [
   },
 ];
 export const PROMPTS_AT_ONCE = 3;
+// Where the page leaves the browse hand-off for /browse?fyp=1 to pick up.
+export const BROWSE_HANDOFF_KEY = "prx_fyp_browse";
 // The chip id a dismissed single-answer prompt is stored under.
 export const NO_PICK = "none";
 

@@ -38,6 +38,7 @@ import {
 import { PRIORITY_WEIGHTS } from "@/lib/matchmaking/questionScript";
 import { parsePreferences } from "./parsePreferences";
 import { commuteTimesFor } from "./commute";
+import { buildBrowseHandoff } from "./browseHandoff";
 import {
   NO_PREFERENCE,
   LEASE_OPTIONS,
@@ -239,6 +240,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     preferences,
     weights,
     totalMatches,
+    browse: buildBrowseHandoff({ answers, parsed, preferences, strict }),
     notes: { group: ctx.groupNote ?? null, budget: ctx.budgetNote ?? null, relax: ctx.relaxNote ?? null },
   };
   if (!pool.length) return { ...base, matches: [], usage: { parse: parseUsage, pick: null } };

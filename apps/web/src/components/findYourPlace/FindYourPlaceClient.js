@@ -110,6 +110,11 @@ export default function FindYourPlaceClient() {
       setResults(stored.results ?? null);
       setStep(stored.step === 3 && !stored.results ? 2 : stored.step ?? 1);
     }
+    // "Change" on the browse page's Find Your Place line: back to the answers.
+    if (new URLSearchParams(window.location.search).get("edit")) {
+      setStep(1);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     setReady(true);
     trackEvent("Find Your Place Opened", { resumed: !!stored });
   }, []);
@@ -178,6 +183,7 @@ export default function FindYourPlaceClient() {
         totalMatches: data.totalMatches ?? 0,
         sessionId: data.sessionId ?? null,
         key: keyOf(input),
+        browse: data.browse ?? null,
       });
       trackEvent("Find Your Place Matches Shown", {
         count: data.matches?.length ?? 0,
@@ -259,7 +265,7 @@ export default function FindYourPlaceClient() {
               loading={loading}
               error={error}
               matches={results?.matches ?? []}
-              totalMatches={results?.totalMatches ?? 0}
+              browse={results?.browse ?? null}
               signedIn={signedIn}
               onOpen={(m, i) => openListing(m, i)}
               onContact={(m, i) => openListing(m, i, "contact")}
