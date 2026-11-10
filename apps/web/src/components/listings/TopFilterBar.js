@@ -274,7 +274,7 @@ export default function TopFilterBar({
           onClick={(e) => openPill(e, "price")}
           className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             priceActive
-              ? "bg-red-600 text-white border-red-600"
+              ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           }`}
         >
@@ -287,7 +287,7 @@ export default function TopFilterBar({
           onClick={(e) => openPill(e, "bedbath")}
           className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             bedsActive || bathsActive
-              ? "bg-red-600 text-white border-red-600"
+              ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           }`}
         >
@@ -302,7 +302,7 @@ export default function TopFilterBar({
           }
           className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
             filters.savedOnly
-              ? "bg-red-600 text-white border-red-600"
+              ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           }`}
         >

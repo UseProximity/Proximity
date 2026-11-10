@@ -802,7 +802,7 @@ export default function AvailableListings({
                   }
                   className={`rounded-full p-3 shadow-lg border active:opacity-80 transition-colors ${
                     filters.savedOnly
-                      ? "bg-red-500 border-red-500"
+                      ? "bg-gray-200 border-gray-300"
                       : "bg-white border-gray-200"
                   }`}
                   aria-label={
@@ -812,9 +812,7 @@ export default function AvailableListings({
                   }
                 >
                   <svg
-                    className={`w-5 h-5 ${
-                      filters.savedOnly ? "text-white" : "text-gray-700"
-                    }`}
+                    className="w-5 h-5 text-gray-700"
                     fill={filters.savedOnly ? "currentColor" : "none"}
                     stroke="currentColor"
                     strokeWidth={2}
@@ -930,16 +928,14 @@ export default function AvailableListings({
                           savedOnly: !filters.savedOnly,
                         })
                       }
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors active:opacity-80 shadow-sm ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-700 border transition-colors active:opacity-80 shadow-sm ${
                         filters.savedOnly
-                          ? "bg-red-500 border-red-500 text-white"
-                          : "bg-white border-gray-200 text-gray-700"
+                          ? "bg-gray-200 border-gray-300"
+                          : "bg-white border-gray-200"
                       }`}
                     >
                       <svg
-                        className={`w-3.5 h-3.5 ${
-                          filters.savedOnly ? "text-white" : "text-gray-700"
-                        }`}
+                        className="w-3.5 h-3.5 text-gray-700"
                         fill={filters.savedOnly ? "currentColor" : "none"}
                         stroke="currentColor"
                         strokeWidth={2}

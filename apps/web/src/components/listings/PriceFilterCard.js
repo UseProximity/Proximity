@@ -38,8 +38,9 @@ export const rentFilters = ({ low, high }) => ({
 });
 
 // Histogram of every listing's price with the range slider under it. The bars
-// inside the selected range are drawn in the accent colour (unless highlight is
-// false). barsClass and sliderClass place the two (the bars' height included).
+// inside the selected range are drawn in the accent colour, so with no range
+// chosen they all are. barsClass and sliderClass place the two (the bars' height
+// included).
 export function PriceRangeSlider({
   listings,
   low,
@@ -48,7 +49,6 @@ export function PriceRangeSlider({
   barsClass,
   sliderClass,
   accent,
-  highlight = true,
 }) {
   const counts = useMemo(() => priceBuckets(listings), [listings]);
   const tallest = Math.max(...counts, 1);
@@ -64,7 +64,7 @@ export function PriceRangeSlider({
               className="flex-1 bg-gray-200"
               style={{
                 height: `${(count / tallest) * 90}%`,
-                ...(inRange && highlight && { backgroundColor: accent }),
+                ...(inRange && { backgroundColor: accent }),
               }}
             />
           );

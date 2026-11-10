@@ -191,7 +191,6 @@ export default function FiltersPanel({ listings, filters, onApply, onReset, draw
           barsClass="ml-[54px] mr-[68px] mt-3 h-[83px]"
           sliderClass="-mt-2 ml-[39px] mr-[51px]"
           accent={ACCENT}
-          highlight={!!(draft.minRent || draft.maxRent)}
         />
       </Section>
       {stepSlider("Bedrooms", "mt-7", BED_STEPS, "bedrooms", "maxBedrooms")}
