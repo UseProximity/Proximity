@@ -31,12 +31,13 @@ export async function GET() {
       listChargesPaidBy(supabase, session.user.id),
       activePayerLink(supabase, session.user.id),
     ]);
-    // What this account is invoiced for: its own charges (unless a payer pays
-    // them) and the charges of the accounts it pays for.
-    const billedHere = [...(link ? [] : own), ...paidFor];
+    // What this account is invoiced for: its own charges (each one the payer
+    // doesn't pay, read per charge, never from whether a payer exists now) and the
+    // charges of the accounts it pays for.
+    const billedHere = [...own.filter((c) => !c.billedElsewhere), ...paidFor];
     const summary = summarizeBalance(billedHere.map((c) => ({ status: c.status, amount_cents: c.amountCents })));
-    // With a payer, the landlord sees each charge as "Billed to" them (Project B).
-    const mine = link ? own.map((c) => payeeChargeView(c, link.signer_name)) : own;
+    // A charge billed to the payer reads "Billed to" them (Project B); one still the landlord's stays theirs.
+    const mine = link ? own.map((c) => (c.billedElsewhere ? payeeChargeView(c, link.signer_name) : c)) : own;
     const charges = [...mine, ...paidFor].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return NextResponse.json({ charges, summary, billedTo: link ? link.signer_name : null });
   } catch (err) {

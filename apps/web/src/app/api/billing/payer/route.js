@@ -6,9 +6,9 @@ import { requireDbRole } from "@/lib/userRole";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
-import { cancelOwnSigning, changePayer, landlordPayerView, namePayer } from "@/lib/billing/payers";
+import { cancelOwnSigning, changePayer, cleanPayerInput, landlordPayerView, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
-import { sendPayerInvite } from "@/lib/billing/payerServices";
+import { sendPayerDocumentCancelled, sendPayerInvite } from "@/lib/billing/payerServices";
 import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
@@ -57,10 +57,13 @@ export async function POST(req) {
     const saved = await getDisclosure(supabase, landlord.id);
     const disclosure = body.licenseDisclosure ? cleanDisclosure(body.licenseDisclosure) : null;
     if (!saved && !disclosure) throw new BillingError("license_disclosure_required", "Answer the real estate license question first.");
-    const { link } = await namePayer(supabase, { landlord, name: body.name, email: body.email });
-    if (disclosure) await saveDisclosure(supabase, landlord.id, disclosure, { source: "profile" });
+    cleanPayerInput(body);
+    // Anything they started signing themselves is cancelled first: if that fails,
+    // nobody is named, so a copy left open never blocks the payer's addendum.
     const { documenso } = agreementServices();
     await cancelOwnSigning(supabase, documenso, landlord.id);
+    const { link } = await namePayer(supabase, { landlord, name: body.name, email: body.email });
+    if (disclosure) await saveDisclosure(supabase, landlord.id, disclosure, { source: "profile" });
     after(() => sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message)));
     return NextResponse.json({ payer: await landlordPayerView(supabase, landlord.id) });
   } catch (err) {
@@ -87,8 +90,12 @@ export async function PATCH(req) {
       if (!sent) throw new BillingError("send_failed", "We couldn't send the email. Try again in a few minutes.", 502);
     } else if (body.action === "change") {
       const { documenso } = agreementServices();
-      const { link } = await changePayer(supabase, documenso, { landlord, name: body.name, email: body.email });
-      after(() => sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message)));
+      const { link, cancelled } = await changePayer(supabase, documenso, { landlord, name: body.name, email: body.email });
+      after(async () => {
+        await sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message));
+        // The old signer's document also covered other accounts: it was cancelled whole, so tell them.
+        if (cancelled) await sendPayerDocumentCancelled({ ...cancelled, causeLandlordId: landlord.id, reason: "changed" }).catch(() => {});
+      });
     } else {
       throw new BillingError("bad_action", "Choose resend or change.");
     }

@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { activePayerLink, clearPayerDeclined, markPayerDeclined, payeeLinks } from "./payerLinks.js";
+import { activePayerLink, clearDocumentRequests, clearPayerDeclined, declineDocumentRequests, markPayerDeclined, payeeLinks, stampRequests } from "./payerLinks.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
@@ -451,6 +451,8 @@ async function endDocument(db, kind, row, reason, now = new Date()) {
     .select("id");
   if (error) throw error;
   await releaseProposed(db, kind, row.id, now);
+  // Listings a signer had on it wait for their next document (a declined one was marked first).
+  if ((data ?? []).length) await clearDocumentRequests(db, { kind, id: row.id });
   return (data ?? []).length > 0;
 }
 
@@ -543,6 +545,11 @@ export async function startSigning(
     const l = await activePayerLink(db, extra);
     if (!l || l.payer_id !== user.id) throw new BillingError("payer_signs", "You can only sign for accounts you pay for.", 403);
   }
+
+  // An authorized signer opening a document locks in the listings it was opened
+  // for (Wyatt, 2026-11-09): a listing sent later waits for the next document.
+  const lockIn = (kind, id, requested = []) =>
+    account !== user.id ? stampRequests(db, { landlordIds: [account, ...extraAccounts], listingIds: [...listingIds, ...requested], kind, id }) : null;
 
   return withSettingsLock(
     db,
@@ -663,6 +670,7 @@ export async function startSigning(
           if (sameName && sameCompany && envelope.status === "DRAFT") {
             const { error } = await db.from(TABLE[inProgress.kind]).update({ withdraw_on_sign: plan.withdraw ?? [], withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [] }).eq("id", inProgress.row.id);
             if (error) throw error;
+            await lockIn(plan.kind, inProgress.row.id, requested);
             const opened = await finishDocument(db, documenso, { kind: plan.kind, row: inProgress.row, now });
             return prepare ? { prepared: true, kind: plan.kind } : opened;
           }
@@ -674,6 +682,7 @@ export async function startSigning(
               .update({ signer_title: title, authorized_at: now.toISOString(), withdraw_on_sign: plan.withdraw ?? [], withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [] })
               .eq("id", inProgress.row.id);
             if (error) throw error;
+            await lockIn(plan.kind, inProgress.row.id, requested);
             return { token: signer.token, kind: plan.kind };
           }
           if (!["DRAFT", "PENDING"].includes(envelope.status)) {
@@ -701,6 +710,7 @@ export async function startSigning(
         storeExhibit,
         landlordAddress,
       });
+      await lockIn(plan.kind, made.row.id, requested);
       // Nothing from the license answer goes on the document (2026-11-06), so it is
       // opened (distributed) straight away, while the landlord answers; the call
       // with their answer then only hands back the signing token.
@@ -1059,7 +1069,7 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
 
     if (onSigned) {
       try {
-        await onSigned({ userId: row.user_id, versionId: row.version_id, kind, signerId: row.signer_id ?? row.user_id, accounts, withdrawn: row.withdraw_on_sign ?? [] });
+        await onSigned({ userId: row.user_id, versionId: row.version_id, kind, documentId: row.id, signerId: row.signer_id ?? row.user_id, accounts, withdrawn: row.withdraw_on_sign ?? [] });
       } catch (err) {
         console.error("billing: after-signing step failed", err?.message);
       }
@@ -1069,6 +1079,9 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
 
   if (envelope.status === "REJECTED") {
     const reason = signerOf(envelope)?.rejectionReason;
+    // The listings an authorized signer had on it read Declined (before the
+    // document ends, which would otherwise put them back to waiting).
+    await declineDocumentRequests(db, { kind, id: row.id, now }).catch((err) => console.error("billing: marking declined listings failed", err?.message));
     // The webhook and the signing window's check can both land here: only the one
     // that actually ended the copy records the change request and emails the team.
     const ended = await endDocument(db, kind, row, `declined${reason ? `: ${reason}` : ""}`, now);
@@ -1367,16 +1380,21 @@ export async function voidAgreement(db, documenso, { userId }) {
  */
 // Who may open a document: its signer. An addendum a payer signed belongs to the
 // payer, not to the landlord account it covers (Project B).
-const ownDocQuery = (db, kind, cols, userId) =>
+// Without an id, only documents they signed themselves are read (newest first), so
+// the addenda they signed for other accounts never crowd their own out of the limit.
+const ownDocQuery = (db, kind, cols, userId, { id = null, admin = false } = {}) =>
   kind === "amendment"
-    ? db.from(TABLE[kind]).select(`${cols}, signer_id`).or(`user_id.eq.${userId},signer_id.eq.${userId}`)
+    ? db
+        .from(TABLE[kind])
+        .select(`${cols}, signer_id`)
+        .or(id || admin ? `user_id.eq.${userId},signer_id.eq.${userId}` : `signer_id.eq.${userId},and(signer_id.is.null,user_id.eq.${userId})`)
     : db.from(TABLE[kind]).select(cols).eq("user_id", userId);
 const ownsDoc = (row, userId, admin = false) => !!row && (admin || (row.signer_id ?? row.user_id) === userId);
 
 export async function documentFileKeys(db, { userId, kind = "master", id = null }) {
   if (!TABLE[kind]) return [];
-  let q = ownDocQuery(db, kind, "id, user_id, status, signed_file_key, signed_exhibit_file_key", userId);
-  q = id ? q.eq("id", id) : q.eq("status", "signed");
+  let q = ownDocQuery(db, kind, "id, user_id, status, signed_file_key, signed_exhibit_file_key", userId, { id });
+  q = id ? q.eq("id", id) : q.eq("status", "signed").order("signed_at", { ascending: false });
   const { data, error } = await q.limit(5);
   if (error) throw error;
   const row = (data ?? []).find((r) => ownsDoc(r, userId));
@@ -1393,8 +1411,8 @@ export async function documentFileKeys(db, { userId, kind = "master", id = null 
  */
 export async function documentParts(db, { userId, kind = "master", id = null, admin = false }) {
   if (!TABLE[kind]) return [];
-  let q = ownDocQuery(db, kind, "id, user_id, status, version_id, signed_file_key, signed_exhibit_file_key, exhibit_file_key", userId);
-  q = id ? q.eq("id", id) : q.eq("status", "signed");
+  let q = ownDocQuery(db, kind, "id, user_id, status, version_id, signed_file_key, signed_exhibit_file_key, exhibit_file_key", userId, { id, admin });
+  q = id ? q.eq("id", id) : q.eq("status", "signed").order("signed_at", { ascending: false });
   const { data, error } = await q.limit(5);
   if (error) throw error;
   const row = (data ?? []).find((r) => ownsDoc(r, userId, admin));

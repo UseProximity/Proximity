@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, applyEnvelope, coverageFor, coveringAgreement, documentParts, listAgreementDocuments, startSigning } from "./agreements.js";
-import { cleanPayerInput, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, releaseWaiting, requestPayerCoverage } from "./payers.js";
+import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments } from "./payers.js";
 import { checkListingGate, coverageOnly, gateResponseBody, payerCanFix } from "./listingGate.js";
 import { payeeChargeView, statusMessage } from "./chargeDisplay.js";
 import { lineDescription, planInvoices } from "./invoicePlan.js";
@@ -171,82 +171,153 @@ describe("payer: addenda for what the landlord publishes", () => {
     assert.ok(!pmDocs.some((d) => d.kind === "amendment"));
   });
 
-  it("a landlord's listings wait, join one pending request, and only the first emails the payer", async () => {
-    const { db } = await ownerSignedFor("pm1");
-    const first = await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L2"] });
-    assert.equal(first.firstRequest, true);
-    db.tables.listings.push(listing("L9", "900 Later Ln", false));
-    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" });
-    const second = await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L9", "L2"] });
-    assert.equal(second.firstRequest, false, "added to the addendum already waiting: no second email");
+  it("every send asks the payer to sign what isn't covered yet, never only the first", async () => {
+    const { db } = await ownerSignedFor("pm1", ["L1"]);
+    db.tables.listings.push(listing("L9", "900 Later Ln", false), listing("L10", "1000 New Rd", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" }, { user_id: "pm1", listing_id: "L10" });
+    const first = await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L9"], now: new Date("2027-02-01") });
+    assert.deepEqual(first.toSign, ["L9"]);
+    const second = await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L10", "L9"], now: new Date("2027-02-01") });
+    assert.deepEqual(second.toSign, ["L10"], "an email for the new one even though L9 is still waiting");
     assert.equal(second.added, 1);
-    assert.deepEqual(db.tables.payer_publish_requests.map((r) => r.listing_id).sort(), ["L2", "L9"]);
   });
 
-  it("the payer's addendum covers what was asked, and releaseWaiting publishes it and emails the landlord", async () => {
-    const { db, documenso } = await ownerSignedFor("pm1");
+  it("a listing the payer's agreement already covers is approved at once, and nothing is published", async () => {
+    const { db } = await ownerSignedFor("pm1");
+    const r = await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L2"], now: new Date("2027-02-01") });
+    assert.deepEqual(r.toSign, []);
+    assert.deepEqual(r.approved, ["200 Draft Ave"]);
+    assert.equal(db.tables.payer_publish_requests[0].status, "approved");
+    assert.equal(db.tables.listings.find((l) => l.id === "L2").published_at, null, "still a draft: the landlord publishes it");
+    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
+    assert.deepEqual(view.approved.map((a) => a.address), ["200 Draft Ave"]);
+  });
+});
+
+describe("payer: what the signer opened is locked in (Wyatt, 2026-11-09)", () => {
+  async function openAddendum() {
+    const { db, documenso } = await ownerSignedFor("pm1", ["L1"]);
     db.tables.listings.push(listing("L9", "900 Later Ln", false));
     db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" });
     await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L9"] });
     await signFor(db, documenso, "pm1", { listingIds: ["L9"], now: new Date("2027-01-07") });
+    return { db, documenso };
+  }
+
+  it("a listing sent while the payer is signing never cancels their document, and waits for the next one", async () => {
+    const { db, documenso } = await openAddendum();
+    const addendum = db.tables.agreement_amendments.at(-1);
+    assert.equal(addendum.status, "sent");
+    // A listing made after the payer opened the document, sent while they sign.
+    db.tables.listings.push(listing("L10", "1000 New Rd", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L10" });
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L10"] });
+    assert.equal(addendum.status, "sent", "the open document stays");
+    assert.equal(documenso.calls.cancelled.length, 0);
+    const req = (id) => db.tables.payer_publish_requests.find((r) => r.listing_id === id);
+    assert.equal(req("L9").document_id, addendum.id, "L9 is on the document");
+    assert.equal(req("L10").document_id ?? null, null, "L10 waits for the next one");
     documenso.complete("envelope_2", "2027-01-07T12:00:00.000Z");
-    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned });
-    const published = [];
-    const emails = [];
-    const r = await releaseWaiting(db, {
-      landlordId: "pm1",
-      deps: {
-        checkGate: async () => ({ allowed: true, missing: [], uncovered: [] }),
-        publish: async (landlordId, listingId) => published.push([landlordId, listingId]),
-        notifyLive: async (x) => emails.push(x),
-      },
-    });
-    assert.deepEqual(published, [["pm1", "L9"]]);
-    assert.deepEqual(r.published, ["900 Later Ln"]);
-    assert.equal(emails[0].payerName, "Jane Owner");
-    assert.equal(db.tables.payer_publish_requests[0].status, "published");
+    const signed = [];
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned, onSigned: (x) => signed.push(x) });
+    const result = await settleSignedDocument(db, { kind: signed[0].kind, id: signed[0].documentId, now: new Date("2027-02-01") });
+    assert.deepEqual(result.pm1.approved, ["900 Later Ln"]);
+    assert.equal(req("L9").status, "approved");
+    assert.equal(req("L10").status, "waiting", "still pending, not declined");
+    assert.equal(db.tables.listings.find((l) => l.id === "L9").published_at, null, "approving never publishes");
   });
 
-  it("nothing is published while the gate still refuses for something other than coverage", async () => {
+  it("a listing on the document that the signer left off reads Declined, and can be sent again", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1", ["L1"]);
+    db.tables.listings.push(listing("L9", "900 Later Ln", false), listing("L12", "1200 Kept Ct", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" }, { user_id: "pm1", listing_id: "L12" });
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L9", "L12"] });
+    await signFor(db, documenso, "pm1", { listingIds: ["L9", "L12"], exhibit: [{ listingId: "L9", include: false, excluded: true }], now: new Date("2027-01-07") });
+    documenso.complete("envelope_2", "2027-01-07T12:00:00.000Z");
+    const signed = [];
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned, onSigned: (x) => signed.push(x) });
+    const result = await settleSignedDocument(db, { kind: signed[0].kind, id: signed[0].documentId, now: new Date("2027-02-01") });
+    assert.deepEqual(result.pm1.declined, ["900 Later Ln"]);
+    assert.deepEqual(result.pm1.approved, ["1200 Kept Ct"]);
+    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
+    assert.deepEqual(view.declined.map((d) => d.address), ["900 Later Ln"]);
+    // Send again: back to waiting, no longer shown as declined.
+    const again = await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L9"], now: new Date("2027-02-01") });
+    assert.deepEqual(again.toSign, ["L9"]);
+    assert.deepEqual((await landlordPayerView(db, "pm1", new Date("2027-02-01"))).declined, []);
+  });
+
+  it("a rejected document marks its listings Declined; one cancelled unsigned puts them back to waiting", async () => {
+    const { db, documenso } = await openAddendum();
+    documenso.reject("envelope_2", "Not this one");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), {});
+    assert.equal(db.tables.payer_publish_requests.find((r) => r.listing_id === "L9").status, "declined");
+
+    const second = await openAddendum();
+    const addendum = second.db.tables.agreement_amendments.at(-1);
+    await cancelPayerDocuments(second.db, second.documenso, "pm1");
+    assert.equal(addendum.status, "voided");
+    const row = second.db.tables.payer_publish_requests.find((r) => r.listing_id === "L9");
+    assert.equal(row.status, "waiting");
+    assert.equal(row.document_id, null, "goes on the next document");
+  });
+
+  it("signing one account's addendum never touches another account the payer signs for", async () => {
+    const { db, documenso } = await openAddendum();
+    db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2027-01-06T00:00:00Z", created_at: "2027-01-06T00:00:00Z" });
+    db.tables.listings.push(listing("L11", "1100 Side St", false));
+    db.tables.listing_landlords.push({ user_id: "pm2", listing_id: "L11" });
+    await requestPayerCoverage(db, documenso, { landlordId: "pm2", listingIds: ["L11"] });
+    documenso.complete("envelope_2", "2027-01-07T12:00:00.000Z");
+    const signed = [];
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned, onSigned: (x) => signed.push(x) });
+    const result = await settleSignedDocument(db, { kind: signed[0].kind, id: signed[0].documentId, accounts: Object.keys(signed[0].accounts), now: new Date("2027-02-01") });
+    assert.deepEqual(Object.keys(result), ["pm1"], "pm2 was not on the document");
+    assert.equal(db.tables.payer_publish_requests.find((r) => r.listing_id === "L11").status, "waiting");
+  });
+
+  it("the daily safety net settles a signature whose follow-up never ran", async () => {
+    const { db, documenso } = await openAddendum();
+    documenso.complete("envelope_2", "2027-01-07T12:00:00.000Z");
+    // The webhook's after-signing step failed: nothing settled.
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_2"), { storeSigned, onSigned: async () => { throw new Error("db down"); } });
+    assert.equal(db.tables.payer_publish_requests.find((r) => r.listing_id === "L9").status, "waiting");
+    const emails = [];
+    const r = await settleStaleDocuments(db, { notify: async (landlordId, x) => emails.push([landlordId, x]), now: new Date("2027-02-01") });
+    assert.equal(r.settled, 1);
+    assert.equal(db.tables.payer_publish_requests.find((r) => r.listing_id === "L9").status, "approved");
+    assert.deepEqual(emails[0][1].approved, ["900 Later Ln"]);
+    assert.equal((await settleStaleDocuments(db, { now: new Date("2027-02-01") })).settled, 0, "safe to run again");
+  });
+
+  it("approveWaiting only approves what is covered", async () => {
     const db = world();
     await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L2"] });
-    const r = await releaseWaiting(db, {
-      landlordId: "pm1",
-      deps: { checkGate: async () => ({ allowed: false, missing: ["overdue_invoice"], uncovered: [] }), publish: async () => assert.fail("must not publish") },
-    });
-    assert.deepEqual(r.published, []);
+    const r = await approveWaiting(db, { landlordId: "pm1" });
+    assert.deepEqual(r.approved, []);
     assert.equal(db.tables.payer_publish_requests[0].status, "waiting");
   });
 });
 
-describe("payer: drafts (Wyatt, 2026-11-09)", () => {
-  it("the signer can leave any uncovered property off; a live one comes off the landlord's site once signed", async () => {
+describe("payer: one agreement for several accounts, then a change of signer", () => {
+  it("cancels the shared master and says which other accounts were on it", async () => {
     const db = world();
-    db.tables.unit_leases = [{ id: "UL1", unit_id: "U1", owner_id: "pm1", is_active: true, published_at: "2026-10-01T00:00:00Z", deleted_at: null }];
+    db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2026-11-09T00:00:00Z", created_at: "2026-11-09T00:01:00Z" });
     const documenso = fakeDocumenso();
-    await signFor(db, documenso, "pm1", { exhibit: [{ listingId: "L2", include: false, excluded: true }, { listingId: "L1", include: false, excluded: true }] });
-    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
-    const signed = [];
-    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned, onSigned: (x) => signed.push(x) });
-    assert.deepEqual([...(await coverageFor(db, "pm1", new Date("2027-02-01"))).covered.keys()], []);
-    assert.deepEqual(signed[0].withdrawn, ["L1"], "the live listing left off is withdrawn");
+    await signFor(db, documenso, "pm1", { accountIds: ["pm1", "pm2"] });
+    const r = await changePayer(db, documenso, { landlord: pm, name: "New Signer", email: "new@signer.example.com" });
+    assert.equal(db.tables.landlord_agreements[0].status, "voided");
+    assert.deepEqual(r.cancelled, { payerId: "own", otherAccounts: ["pm2"] });
+    assert.equal(r.link.signer_email, "new@signer.example.com");
   });
 
-  it("what the landlord sent but the signer left off stays waiting, is never published, and the landlord sees it as not verified", async () => {
-    const { db, documenso } = await ownerSignedFor("pm1");
-    db.tables.listings.push(listing("L9", "900 Later Ln", false));
-    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L9" });
-    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L9"] });
-    const r = await releaseWaiting(db, {
-      landlordId: "pm1",
-      afterSign: true,
-      deps: { checkGate: async () => ({ allowed: true, missing: [], uncovered: [] }), publish: async () => assert.fail("never published") },
-    });
-    assert.deepEqual(r.leftOff, ["900 Later Ln"], "listed in the landlord's email as not verified yet");
-    assert.equal(db.tables.payer_publish_requests[0].status, "waiting", "still to be signed");
-    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
-    assert.equal(view.waiting[0].waitingFor, "signature");
-    assert.ok(view.covered.every((c) => c.verifiedAt), "each verified listing says when");
+  it("a refused new signer leaves the old one and their document untouched", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await signFor(db, documenso, "pm1");
+    await assert.rejects(() => changePayer(db, documenso, { landlord: pm, name: "Sam", email: "sam@wustl.edu" }), (e) => e.code === "payer_not_landlord");
+    assert.equal(db.tables.billing_payers[0].status, "active");
+    assert.equal(db.tables.landlord_agreements[0].status, "sent", "the old signer's document was not cancelled");
   });
 });
 
@@ -255,12 +326,11 @@ describe("payer: covered but waiting on the signer's payment method", () => {
     const { db } = await ownerSignedFor("pm1");
     db.tables.billing_settings = [{ key: "payment_method_required", value: true }];
     db.tables.payment_methods = [];
-    await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L1"] });
+    await requestPayerCoverage(db, fakeDocumenso(), { landlordId: "pm1", listingIds: ["L2"], now: new Date("2027-02-01") });
     const [a] = await payerAccounts(db, "own", new Date("2027-02-01"));
-    assert.equal(a.needs, null, "nothing to sign: L1 is covered");
-    assert.deepEqual(a.waitingOnPaymentMethod.map((w) => w.listingId), ["L1"]);
+    assert.equal(a.needs, null, "nothing to sign: L2 is covered");
     const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
-    assert.equal(view.waiting[0].waitingFor, "payment_method");
+    assert.equal(view.approved[0].waitingFor, "payment_method", "approved, publishable once the signer adds a method");
   });
 });
 
@@ -349,7 +419,7 @@ describe("payer: the publish check and invoices", () => {
     const body = gateResponseBody({ missing: ["payment_method"], uncovered: [], targets: ["L1"], payer: { name: "Jane Owner" } });
     assert.equal(body.payer.name, "Jane Owner");
     assert.deepEqual(body.uncovered.map((u) => u.listingId), ["L1"], "the listing itself waits when only the payment method is missing");
-    assert.match(body.drafted, /goes live once Jane Owner signs/);
+    assert.match(body.drafted, /Once Jane Owner approves it, you can publish it/);
   });
 
   it("one invoice per payer, lines grouped and labelled by account", () => {

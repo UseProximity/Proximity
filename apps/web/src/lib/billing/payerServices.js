@@ -5,16 +5,14 @@
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { mintPasswordSetupUrl } from "@/lib/auth/passwordReset";
-import { publishProperty } from "@/lib/listings/publish";
 import { getMrecForm, MREC_FORM_FILENAME } from "@/lib/users/mrecForm";
 import { readAgreementFile } from "./agreementFiles.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { agreementState } from "./agreements.js";
-import { loadLandlordProperties } from "./coverage.js";
-import { checkListingGate } from "./listingGate.js";
-import { canSignIn, releaseWaiting } from "./payers.js";
+import { displayAddress, loadLandlordProperties } from "./coverage.js";
+import { approvedDrafts, approveWaiting, canSignIn, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod } from "./payers.js";
 import { activePayerLink } from "./payerLinks.js";
-import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerInviteEmail, sendPayerRequestEmail } from "./billingEmails.js";
+import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail } from "./billingEmails.js";
 
 const BILLING_PATH = "/dashboard/landlord?tab=billing#marketing-agreement";
 
@@ -90,7 +88,7 @@ export async function sendPayerAssigned({ landlordId, payerName }) {
   return sendPayeeAssignedEmail(landlord, { payerName, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
 }
 
-// More listings now wait for the payer (the first of a new addendum).
+// More listings now wait for the payer: one email per send (Wyatt, 2026-11-09).
 export async function sendPayerRequest({ landlordId, addresses }) {
   const link = await activePayerLink(supabase, landlordId);
   if (!link) return false;
@@ -102,49 +100,72 @@ export async function sendPayerRequest({ landlordId, addresses }) {
   );
 }
 
-const releaseDeps = {
-  checkGate: (landlordId, listingIds) => checkListingGate(supabase, landlordId, { listingIds }),
-  publish: (landlordId, listingId) => publishProperty(landlordId, false, listingId),
-  notifyLive: async ({ landlordId, payerName, addresses, leftOff = [], withdrawn = [], waitingOnPayment = false }) => {
-    const landlord = await userRow(landlordId);
-    if (!landlord?.email) return;
-    await sendPayeeSignedEmail(landlord, { payerName, addresses, leftOff, withdrawn, waitingOnPayment, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
-  },
-};
+// To the landlord: what their signer approved (ready to publish) and declined.
+async function notifyApproved(landlordId, { approved = [], declined = [], withdrawn = [] }) {
+  const landlord = await userRow(landlordId);
+  if (!landlord?.email) return;
+  const link = await activePayerLink(supabase, landlordId);
+  const payerName = link?.signer_name ?? "Your authorized signer";
+  const waitingOnPayment = link ? await signerNeedsPaymentMethod(supabase, link.payer_id) : false;
+  await sendPayeeSignedEmail(landlord, { payerName, approved, declined, withdrawn, waitingOnPayment, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
+}
 
-// Publish what each account was waiting for, after the payer signed or added a payment method.
+// Approve what each account was waiting for that is covered already (nothing to sign).
 export async function releaseWaitingFor(landlordId) {
-  return releaseWaiting(supabase, { landlordId, deps: releaseDeps });
+  const { approved } = await approveWaiting(supabase, { landlordId });
+  if (approved.length) await notifyApproved(landlordId, { approved }).catch((err) => console.error("billing: approval email failed", err?.message));
+  return approved;
 }
 
 /*
- * After a signature (agreementServices onSigned): every account it covered other
- * than the signer's own gets its waiting listings published and an email saying
- * the payer signed (with what went live).
+ * After a signature (agreementServices onSigned): only the accounts on that
+ * document (Wyatt, 2026-11-09). Each listing on it is approved or declined, and
+ * the landlord gets one email saying which, plus any live listing taken off.
+ * Nothing is published: the landlord publishes what was approved.
  */
-export async function afterPayerSigned({ signerId, accounts = {}, withdrawn = [] }) {
-  // Every account the signer signs for, not only those the document covered: one
-  // it covered nothing for may have had everything left off.
-  const { data: links } = await supabase.from("billing_payers").select("landlord_id").eq("payer_id", signerId).eq("status", "active");
-  const ids = [...new Set([...Object.keys(accounts), ...(links ?? []).map((l) => l.landlord_id)])].filter((id) => id !== signerId);
-  for (const landlordId of ids) {
-    const { published, leftOff = [], blocked } = await releaseWaiting(supabase, { landlordId, deps: releaseDeps, afterSign: true });
+export async function afterPayerSigned({ signerId, kind, documentId, accounts = {}, withdrawn = [] }) {
+  const results = documentId ? await settleSignedDocument(supabase, { kind, id: documentId, accounts: Object.keys(accounts) }) : {};
+  for (const landlordId of Object.keys(results)) {
+    if (landlordId === signerId) continue;
+    const { approved, declined } = results[landlordId];
     // Live listings of this account taken off the site because the signer left them off.
     let gone = [];
     if (withdrawn.length) {
       const { data } = await supabase.from("listing_landlords").select("listing_id, listings!inner(address)").eq("user_id", landlordId).in("listing_id", withdrawn);
       gone = (data ?? []).map((r) => r.listings?.address).filter(Boolean);
     }
-    if (!accounts[landlordId] && !leftOff.length && !gone.length) continue;
-    const link = await activePayerLink(supabase, landlordId);
-    await releaseDeps
-      .notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: published, leftOff, withdrawn: gone, waitingOnPayment: !!blocked })
-      .catch(() => {});
+    if (!accounts[landlordId] && !approved.length && !declined.length && !gone.length) continue;
+    await notifyApproved(landlordId, { approved, declined, withdrawn: gone }).catch((err) => console.error("billing: signed email failed", err?.message));
   }
 }
 
-// After a payer adds a payment method: the accounts they pay for may now go live.
+// The daily safety net (cron): settle signatures whose follow-up never finished.
+export async function settleStalePayerDocuments() {
+  return settleStaleDocuments(supabase, { notify: (landlordId, r) => notifyApproved(landlordId, r) });
+}
+
+// After a payer adds a payment method: each account's approved drafts can now be published.
 export async function afterPayerMethodAdded(payerId) {
   const { data } = await supabase.from("billing_payers").select("landlord_id").eq("payer_id", payerId).eq("status", "active");
-  for (const r of data ?? []) await releaseWaitingFor(r.landlord_id).catch((err) => console.error("billing: release after payment method failed", err?.message));
+  for (const r of data ?? []) {
+    try {
+      await approveWaiting(supabase, { landlordId: r.landlord_id });
+      const ready = await approvedDrafts(supabase, r.landlord_id);
+      if (ready.length) await notifyApproved(r.landlord_id, { approved: ready.map((x) => displayAddress(x.listings)) });
+    } catch (err) {
+      console.error("billing: ready-to-publish email after payment method failed", err?.message);
+    }
+  }
+}
+
+// The payer's document was cancelled because one account changed signer or ended:
+// what they were signing for the other accounts has to be reopened.
+export async function sendPayerDocumentCancelled({ payerId, otherAccounts = [], causeLandlordId, reason = "changed" }) {
+  const payer = await userRow(payerId);
+  if (!payer?.email || !otherAccounts.length) return false;
+  const [cause, ...others] = await Promise.all([userRow(causeLandlordId), ...otherAccounts.map((id) => userRow(id))]);
+  return sendPayerDocumentCancelledEmail(
+    { id: payer.id, email: payer.email, name: payer.name },
+    { causeName: landlordLabel(cause), accountNames: others.map(landlordLabel), reason, signUrl: `${getBaseUrl()}${BILLING_PATH}` }
+  );
 }

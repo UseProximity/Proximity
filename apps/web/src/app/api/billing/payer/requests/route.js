@@ -12,9 +12,10 @@ import { sendPayerRequest } from "@/lib/billing/payerServices";
 
 /*
  * The landlord confirmed that what they are publishing goes to their payer
- * (Project B): { listingIds }. Each waits as a draft on the addendum still
- * waiting for the payer, or starts a new one (the payer is emailed then, once).
- * It goes live as soon as the payer signs, and the landlord is emailed.
+ * (Project B): { listingIds }. Each waits as a draft for the next document the
+ * payer opens, and the payer is emailed once per send. When the payer signs it
+ * is approved, and the landlord publishes it (Wyatt, 2026-11-09). One the
+ * payer's agreement already covers is approved at once.
  *
  * @auth landlord (own listings only)
  */
@@ -35,9 +36,9 @@ export async function POST(req) {
     }
     if (!own.length) throw new BillingError("nothing_to_add", "Choose your own listings to send.");
     const { documenso } = agreementServices();
-    const { firstRequest } = await requestPayerCoverage(supabase, documenso, { landlordId: session.user.id, listingIds: own });
-    if (firstRequest) {
-      const { data: listings } = await supabase.from("listings").select("address").in("id", own);
+    const { toSign } = await requestPayerCoverage(supabase, documenso, { landlordId: session.user.id, listingIds: own });
+    if (toSign.length) {
+      const { data: listings } = await supabase.from("listings").select("address").in("id", toSign);
       const addresses = (listings ?? []).map((l) => l.address).filter(Boolean);
       after(() => sendPayerRequest({ landlordId: session.user.id, addresses }).catch((err) => console.error("billing: payer request email failed", err?.message)));
     }

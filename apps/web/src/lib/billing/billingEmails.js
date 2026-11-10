@@ -127,6 +127,8 @@ export const sendPayerInviteEmail = (payer, input, attachments = null) =>
   toLandlord("billing_payer_invite", payer, t.payerInviteEmail({ name: payer.name, ...input }), attachments);
 export const sendPayerRequestEmail = (payer, input) =>
   toLandlord("billing_payer_request", payer, t.payerRequestEmail({ name: payer.name, ...input }));
+export const sendPayerDocumentCancelledEmail = (payer, input) =>
+  toLandlord("billing_payer_document_cancelled", payer, t.payerDocumentCancelledEmail({ name: payer.name, ...input }));
 export const sendPayeeSignedEmail = (landlord, input) =>
   toLandlord("billing_payee_signed", landlord, t.payeeSignedEmail({ name: landlord.name, ...input }));
 export const sendPayeeVoidedEmail = (landlord, input) =>

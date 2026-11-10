@@ -221,13 +221,23 @@ export default function PaymentsSection() {
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
 
   // Someone else signs and pays for this account (Project B, Wyatt 2026-11-09):
-  // the agreement's status and the charges, nothing else.
+  // the agreement's status and the charges. Safety net: an invoice still in the
+  // landlord's own name (from before the signer, or an admin charge) stays
+  // payable here, so it never goes overdue unseen.
   if (payer) {
+    const ownOpen = invoices.filter((inv) => ["open", "failed", "processing"].includes(inv.status));
     return (
       <div className="space-y-4 max-w-3xl">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <PayerCard view={payer} onChanged={(next) => (next ? setPayer(next) : load().catch(() => {}))} />
         <ChargesCard charges={charges} summary={summary} busy={busy} onApprove={approve} onContest={setContesting} billedTo={billedTo ?? payer.payer.name} />
+        {ownOpen.length > 0 && (
+          <>
+            <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
+            <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+            <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />
+          </>
+        )}
         {contesting && <ContestChargeModal charge={contesting} busy={busy} onCancel={() => setContesting(null)} onSubmit={contest} />}
       </div>
     );

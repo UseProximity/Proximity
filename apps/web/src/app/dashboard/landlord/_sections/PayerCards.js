@@ -15,7 +15,9 @@ import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/acco
  *                      license answer when they have none: it still shows on
  *                      their listings)
  *   PayerCard          the landlord's view once named: Pending, Declined or Signed,
- *                      with Resend and Change signer. Never the agreement itself.
+ *                      with Resend and Change signer, what the signer approved
+ *                      (the landlord publishes it) and declined (Send again).
+ *                      Never the agreement itself.
  *   PaidForAccounts    the payer's view: each account they pay for, its covered
  *                      properties, what waits for their signature (Sign) and Void.
  */
@@ -115,6 +117,20 @@ export function PayerCard({ view, onChanged }) {
   const [email, setEmail] = useState("");
   const status = STATUS[view.status] ?? STATUS.pending;
 
+  // A declined listing goes back to the signer (Wyatt, 2026-11-09).
+  const sendAgain = async (listingId) => {
+    setBusy(true);
+    try {
+      const r = await call("/api/billing/payer/requests", { method: "POST", body: { listingIds: [listingId] } });
+      toast.success(`Sent to ${view.payer.name} again.`);
+      onChanged(r.payer);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const act = async (body, done) => {
     setBusy(true);
     try {
@@ -159,18 +175,55 @@ export function PayerCard({ view, onChanged }) {
 
         {view.waiting.length > 0 && (
           <div>
-            <p className="text-sm font-medium text-gray-900">Sent to {view.payer.name}, not live yet ({view.waiting.length}):</p>
+            <p className="text-sm font-medium text-gray-900">Sent to {view.payer.name}, waiting for approval ({view.waiting.length}):</p>
             <ul className="mt-1 space-y-1 text-sm text-gray-800">
               {view.waiting.map((w) => (
                 <li key={w.listingId}>
                   {w.address}{" "}
                   <span className="text-xs text-gray-500">
                     {w.waitingFor === "payment_method"
-                      ? `(verified, waiting for ${view.payer.name} to add a payment method)`
-                      : w.waitingFor === "publishing"
-                        ? "(verified, going live)"
-                        : `(not verified yet, sent ${dateOnly(w.since)})`}
+                      ? `(approved, waiting for ${view.payer.name} to add a payment method)`
+                      : w.waitingFor === "approval"
+                        ? "(approved)"
+                        : `(waiting for ${view.payer.name}, sent ${dateOnly(w.since)})`}
                   </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {view.approved?.length > 0 && (
+          <div>
+            <p className="text-sm font-medium text-gray-900">Approved by {view.payer.name}, ready to publish ({view.approved.length}):</p>
+            <ul className="mt-1 space-y-1 text-sm text-gray-800">
+              {view.approved.map((a) => (
+                <li key={a.listingId}>
+                  <span className="text-green-700" aria-hidden="true">✓ </span>
+                  {a.address}{" "}
+                  <span className="text-xs text-gray-500">
+                    {a.waitingFor === "payment_method"
+                      ? `(you can publish it once ${view.payer.name} adds a payment method)`
+                      : `(approved ${dateOnly(a.approvedAt)}, publish it from your drafts)`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {view.declined?.length > 0 && (
+          <div>
+            <p className="text-sm font-medium text-gray-900">Declined by {view.payer.name} ({view.declined.length}):</p>
+            <ul className="mt-1 space-y-1.5 text-sm text-gray-800">
+              {view.declined.map((d) => (
+                <li key={d.listingId} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {d.address} <span className="text-xs text-gray-500">(declined {dateOnly(d.declinedAt)})</span>
+                  </span>
+                  <button type="button" className={BUTTON} disabled={busy} onClick={() => sendAgain(d.listingId)}>
+                    Send again
+                  </button>
                 </li>
               ))}
             </ul>

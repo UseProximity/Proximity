@@ -99,6 +99,8 @@ export function chargeView(row, now = new Date()) {
     signedRentCents: row.signed_rent_cents ?? null,
     commissionRatePercent: row.commission_rate_percent != null ? Number(row.commission_rate_percent) : null,
     actions: landlordActions(row),
+    // Invoiced to someone else (the account's authorized signer), not the landlord.
+    billedElsewhere: !!row.payer_id && row.payer_id !== row.landlord_id,
     // Refunds and credits an admin made on this Paid charge, oldest first (never the admin's reason).
     adjustments: (row.adjustments ?? [])
       .map((a) => ({ kind: a.kind, amountCents: a.amount_cents, createdAt: a.created_at }))

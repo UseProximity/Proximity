@@ -480,7 +480,7 @@ export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl 
   };
 }
 
-// More of a landlord's listings are waiting for the payer's signature (a new addendum).
+// More of a landlord's listings are waiting for the payer's signature (one email per send).
 export function payerRequestEmail({ name, landlordName, addresses = [], signUrl }) {
   return {
     subject: `${landlordName} added listings for you to sign`,
@@ -488,26 +488,42 @@ export function payerRequestEmail({ name, landlordName, addresses = [], signUrl 
       ${hello(name)}
       <p>${e(landlordName)} wants to publish ${addresses.length === 1 ? "a listing" : "listings"} on Proximity under your marketing agreement:</p>
       <ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}</ul>
-      <p>${addresses.length === 1 ? "It stays" : "They stay"} a draft until you sign a short addendum adding ${addresses.length === 1 ? "it" : "them"} to your agreement.</p>
+      <p>${addresses.length === 1 ? "It stays" : "They stay"} a draft until you approve ${addresses.length === 1 ? "it" : "them"} by signing a short addendum. If you are signing something for them already, that stays as it is: these go on the next one.</p>
       ${button(signUrl, "Review and sign")}
     `),
   };
 }
 
-// To the landlord: their authorized signer signed, what went live, and what they left off.
-export function payeeSignedEmail({ name, payerName, addresses = [], leftOff = [], withdrawn = [], waitingOnPayment = false, billingUrl }) {
+// To the landlord: their authorized signer signed. What they approved (the
+// landlord publishes it), what they declined, and any live listing taken off.
+export function payeeSignedEmail({ name, payerName, approved = [], declined = [], withdrawn = [], waitingOnPayment = false, billingUrl }) {
   const list = (items) => `<ul>${items.slice(0, 30).map((a) => `<li>${e(a)}</li>`).join("")}</ul>`;
+  const one = approved.length === 1;
   return {
-    subject: addresses.length ? `${payerName} signed. Your listings are live` : `${payerName} signed your Proximity agreement`,
+    subject: approved.length ? `${payerName} approved ${one ? "your listing" : "your listings"}. Publish when you're ready` : `${payerName} signed your Proximity agreement`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(payerName)} signed${addresses.length ? `, so ${addresses.length === 1 ? "this listing is" : "these listings are"} now live on Proximity:` : " the Proximity marketing agreement for your account."}</p>
-      ${addresses.length ? list(addresses) : ""}
-      ${leftOff.length ? `<p>Not verified yet: ${e(payerName)} didn't include ${leftOff.length === 1 ? "this one" : "these"}, so ${leftOff.length === 1 ? "it stays a draft" : "they stay drafts"} until they do:</p>${list(leftOff)}` : ""}
+      <p>${e(payerName)} signed${approved.length ? ` and approved ${one ? "this listing" : "these listings"}:` : " the Proximity marketing agreement for your account."}</p>
+      ${approved.length ? list(approved) : ""}
+      ${approved.length ? `<p>${one ? "It is" : "They are"} still ${one ? "a draft" : "drafts"}. ${waitingOnPayment ? `You can publish ${one ? "it" : "them"} once ${e(payerName)} adds a payment method.` : `Publish ${one ? "it" : "them"} from your drafts when you're ready.`}</p>` : ""}
+      ${declined.length ? `<p>${e(payerName)} declined ${declined.length === 1 ? "this one" : "these"}, so ${declined.length === 1 ? "it stays a draft" : "they stay drafts"}:</p>${list(declined)}<p>You can send ${declined.length === 1 ? "it" : "them"} again from your Billing page.</p>` : ""}
       ${withdrawn.length ? `<p>${e(payerName)} also left ${withdrawn.length === 1 ? "this listing" : "these listings"} off, so ${withdrawn.length === 1 ? "it was" : "they were"} taken off the site:</p>${list(withdrawn)}` : ""}
-      ${waitingOnPayment ? `<p>Anything else you sent ${e(payerName)} is covered and goes live once they add a payment method.</p>` : ""}
-      ${leftOff.length || withdrawn.length ? `<p>Questions about ${leftOff.length + withdrawn.length === 1 ? "it" : "them"}? Talk to ${e(payerName)}; they can add ${leftOff.length + withdrawn.length === 1 ? "it" : "them"} with a short addendum.</p>` : ""}
       ${button(billingUrl, "View on Billing")}
+    `),
+  };
+}
+
+// To a payer: a document they were signing was cancelled because one account changed signer or ended.
+export function payerDocumentCancelledEmail({ name, causeName, accountNames = [], reason = "changed", signUrl }) {
+  const others = accountNames.length === 1 ? accountNames[0] : `${accountNames.slice(0, -1).join(", ")} and ${accountNames.at(-1)}`;
+  return {
+    subject: "The agreement you were signing was cancelled",
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(causeName)} ${reason === "ended" ? "no longer has you as their authorized signer" : "changed who signs for their account"}, so the agreement you were signing for them${accountNames.length ? ` and ${e(others)}` : ""} was cancelled. A document can't be changed once it is sent for signature.</p>
+      ${accountNames.length ? `<p>Nothing is lost for ${e(others)}: open your Billing page to sign for ${accountNames.length === 1 ? "them" : "those accounts"} again.</p>` : ""}
+      ${button(signUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
     `),
   };
 }

@@ -10,15 +10,16 @@ import AgreementSigningFlow from "@/app/dashboard/landlord/_sections/AgreementSi
  * landlord's marketing agreement yet (listing gate, `uncovered`). It is the
  * signing popup (AgreementSigningFlow: details, Exhibit A, license), opened for
  * the properties being published, which are always on Exhibit A. Once Documenso
- * confirms the signature, `onSigned` runs: the caller publishes again. Closing it
- * leaves everything as a draft.
+ * confirms the signature, `onSigned` runs. Signing only covers the drafts: the
+ * opener then asks before publishing (Wyatt, 2026-11-09). Closing it leaves
+ * everything as a draft.
  *
  * Props: uncovered [{ listingId, address, missingUnits? }], onSigned(), onClose().
  */
 /*
  * A landlord with a payer (Project B, Wyatt 2026-11-09) never signs: they confirm
- * that what they are publishing goes to their payer's addendum. It stays a draft
- * until the payer signs, then goes live and the landlord is emailed.
+ * that what they are publishing goes to their payer's addendum. It stays a draft:
+ * once the payer signs it is approved, the landlord is emailed, and they publish it.
  */
 function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
   const [busy, setBusy] = useState(false);
@@ -33,7 +34,7 @@ function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
       const res = await fetch("/api/billing/payer/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingIds: ids }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not send it. Please try again.");
-      toast.success(`Sent to ${payer.name}. It goes live as soon as they sign.`, { duration: 8000 });
+      toast.success(`Sent to ${payer.name}. We'll email you when they approve it, then you can publish it.`, { duration: 8000 });
       onSent();
     } catch (e) {
       setError(e.message);
@@ -47,8 +48,8 @@ function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
           Send to {payer.name} to sign
         </h2>
         <p className="mt-2 text-sm text-gray-700">
-          {payer.name} is your authorized signer, so {what} will be added to an addendum for them to sign. It stays a draft until they
-          sign, then it goes live and we email you.
+          {payer.name} is your authorized signer, so {what} will be added to an addendum for them to sign. It stays a draft. Once they
+          approve it, we email you and you can publish it.
         </p>
         {ids.length === 0 && <p className="mt-2 text-sm text-red-700">Save it first, then publish again.</p>}
         {error && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
@@ -58,6 +59,44 @@ function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
           </button>
           <button type="button" onClick={send} disabled={busy || ids.length === 0} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
             {busy ? "Sending..." : `Send to ${payer.name}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/*
+ * After the landlord signed: their drafts are covered, and publishing is their
+ * choice, the same as a listing their authorized signer approved (Wyatt, 2026-11-09).
+ */
+function CoveredDialog({ names, onPublish, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const what = names.length === 1 ? names[0] : "these listings";
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="covered-title">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+        <h2 id="covered-title" className="text-base font-semibold text-gray-900">
+          Signed. {names.length === 1 ? "It is" : "They are"} covered
+        </h2>
+        <p className="mt-2 text-sm text-gray-700">
+          {what} {names.length === 1 ? "is" : "are"} now on your marketing agreement and still {names.length === 1 ? "a draft" : "drafts"}. Publish now, or
+          keep {names.length === 1 ? "it" : "them"} as {names.length === 1 ? "a draft" : "drafts"} and publish later.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+            Keep as draft
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onPublish();
+            }}
+            className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+          >
+            {busy ? "Publishing..." : "Publish now"}
           </button>
         </div>
       </div>
@@ -97,7 +136,8 @@ export default function CoverageSignDialog({ uncovered, onSigned, onClose }) {
 
 /*
  * Open the dialog from anywhere (a toast handler, a form submit). Resolves
- * "signed" once the landlord has signed (after onSigned ran), or "closed".
+ * "signed" once the landlord signed and chose Publish now (after onSigned ran),
+ * "covered" when they signed and kept it a draft, or "closed".
  */
 // `payer` ({ name }, from the publish response): send to the payer instead of
 // signing. Resolves "sent" then: still a draft, so the caller does not publish.
@@ -115,17 +155,29 @@ export function openCoverageDialog({ uncovered, onSigned, payer = null }) {
       root.render(<SendToPayerDialog uncovered={uncovered} payer={payer} onSent={() => done("sent")} onClose={() => done("closed")} />);
       return;
     }
+    const names = [...new Set(uncovered.map((u) => u.address).filter((a) => a && a !== "This listing"))];
     root.render(
       <CoverageSignDialog
         uncovered={uncovered}
         onClose={() => done("closed")}
-        onSigned={async () => {
-          try {
-            await onSigned?.();
-          } finally {
-            done("signed");
-          }
-        }}
+        onSigned={() =>
+          root.render(
+            <CoveredDialog
+              names={names}
+              onClose={() => {
+                toast.success("Saved as a draft. Publish it from your drafts when you're ready.");
+                done("covered");
+              }}
+              onPublish={async () => {
+                try {
+                  await onSigned?.();
+                } finally {
+                  done("signed");
+                }
+              }}
+            />
+          )
+        }
       />
     );
   });

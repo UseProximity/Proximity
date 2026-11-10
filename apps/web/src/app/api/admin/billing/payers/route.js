@@ -8,7 +8,7 @@ import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cancelOwnSigning, cleanPayerInput, endPayerFor, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
-import { sendPayerAssigned, sendPayerInvite } from "@/lib/billing/payerServices";
+import { sendPayerAssigned, sendPayerDocumentCancelled, sendPayerInvite } from "@/lib/billing/payerServices";
 
 /*
  * An admin sets who signs and pays for landlord accounts (Project B, Wyatt
@@ -44,9 +44,10 @@ export async function POST(req) {
         const { data: landlord, error } = await db.from("users").select("id, name, email").eq("id", id).maybeSingle();
         if (error) throw error;
         if (!landlord) throw new BillingError("not_found", "Landlord not found.", 404);
+        // Their own copy in progress is cancelled first: if that fails, nothing is named.
+        await cancelOwnSigning(db, documenso, landlord.id);
         const { link } = await namePayer(db, { landlord, ...input, createdBy: session.user.id });
         payerId = link.payer_id;
-        await cancelOwnSigning(db, documenso, landlord.id);
         assigned.push(landlord.id);
       } catch (err) {
         failed.push({ landlordId: id, error: err instanceof BillingError ? err.message : "Could not assign." });
@@ -80,6 +81,8 @@ export async function DELETE(req) {
     if (!link) throw new BillingError("no_payer", "This landlord has no authorized signer.", 404);
     const { documenso } = agreementServices();
     const result = await endPayerFor(db, documenso, { payerId: link.payer_id, landlordId: body.landlordId, endLink: true });
+    // A document the payer was signing for other accounts too was cancelled: tell them.
+    if (result.cancelled) after(() => sendPayerDocumentCancelled({ ...result.cancelled, causeLandlordId: body.landlordId, reason: "ended" }).catch(() => {}));
     return NextResponse.json(result);
   } catch (err) {
     return billingErrorResponse(err, "end payer");

@@ -3437,7 +3437,7 @@
       {
         "table": "payer_publish_requests",
         "status": "unreleased",
-        "description": "Project B (202611090001): listings a landlord with a payer asked to publish; drafts (status waiting) until the payer signs the covering document, then published; one the signer leaves off just stays waiting (lib/billing/payers.js releaseWaiting). One waiting row per listing. RLS on, service role only.",
+        "description": "Project B (202611090001, 202611090002): listings a landlord with a payer asked to publish. status waiting | approved | declined | published (legacy) | cancelled. Waiting rows are locked to the document the signer opened (document_kind + document_id); signing it approves the covered ones and declines the ones left off, rejecting it declines them, cancelling it clears the lock. Approving never publishes: the landlord publishes (lib/billing/payers.js settleSignedDocument, approveWaiting; daily retry settleStaleDocuments in cron billing-review-clock). One waiting row per listing. RLS on, service role only.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
@@ -3445,7 +3445,9 @@
           "payer_link_id:uuid",
           "status:text",
           "created_at:timestamptz",
-          "resolved_at:timestamptz"
+          "resolved_at:timestamptz",
+          "document_kind:text",
+          "document_id:uuid"
         ]
       }
     ],

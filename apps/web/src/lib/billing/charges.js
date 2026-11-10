@@ -19,7 +19,7 @@ const MAX_REASON_LENGTH = 2000;
 // The landlord-facing columns. resolution_note is the admin's internal note and
 // is never sent to a landlord.
 const LANDLORD_COLUMNS = `
-  id, landlord_id, amount_cents, description, trigger_type, status, created_at,
+  id, landlord_id, payer_id, amount_cents, description, trigger_type, status, created_at,
   pending_at, paid_at, voided_at, contest_reason, signed_rent_cents, commission_rate_percent,
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),

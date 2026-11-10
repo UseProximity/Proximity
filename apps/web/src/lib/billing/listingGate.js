@@ -107,7 +107,7 @@ export function gateResponseBody(gate) {
       // Covered but waiting on the payer's payment method: the listings themselves.
       uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing" })),
       payer: gate.payer,
-      drafted: waits ? `Saved as a draft. It goes live once ${gate.payer.name} signs.` : draftedMessage(gate.missing, gate.uncovered ?? []),
+      drafted: waits ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.` : draftedMessage(gate.missing, gate.uncovered ?? []),
     };
   }
   return {

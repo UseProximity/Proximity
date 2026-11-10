@@ -7,11 +7,15 @@
  *                         email gets a billing-only landlord account (no password
  *                         yet: the invite carries a set-password link).
  *   requestPayerCoverage  the landlord confirmed that what they are publishing
- *                         goes to their payer: it waits as a draft, on the
- *                         addendum still waiting for the payer's signature, or a
- *                         new one when the last was signed
- *   releaseWaiting        after the payer signs (or adds a payment method): what
- *                         is now allowed goes live and the landlord is emailed
+ *                         goes to their payer: it waits as a draft for the next
+ *                         document the payer opens (one already open is never
+ *                         changed or cancelled by it)
+ *   settleSignedDocument  after the payer signs: each listing on the document is
+ *                         approved (covered) or declined (left off). Nothing is
+ *                         published: the landlord publishes an approved listing
+ *                         when they choose (Wyatt, 2026-11-09)
+ *   approveWaiting        any waiting listing the payer's agreement already covers
+ *                         is approved
  *   landlordPayerView     what the landlord's Billing tab shows: status only,
  *                         never the agreement
  *   payerAccounts         what the payer sees: each account they pay for, its
@@ -25,7 +29,7 @@
  * (`deps`) so the rules can be tested without email or listings.
  */
 import { BillingError } from "./errors.js";
-import { activePayerLink, payeeLinks } from "./payerLinks.js";
+import { activePayerLink, clearDocumentRequests, payeeLinks } from "./payerLinks.js";
 import { agreementState, coverageFor, voidDocument } from "./agreements.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { displayAddress } from "./coverage.js";
@@ -185,13 +189,19 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
     .select("id, landlord_id, payer_id, signer_name, signer_email, status, invited_at, declined_at, created_at")
     .single();
   if (linkError) {
+    // Nothing points at a billing account made just now: remove it rather than leave an orphan.
+    if (created) await db.from("users").delete().eq("id", payer.id).eq("billing_only", true);
     if (linkError.code === "23505") throw new BillingError("payer_exists", "You already have an authorized signer. Reload the page.", 409);
     throw linkError;
   }
   return { link, payer, created };
 }
 
-// Cancel the landlord's own documents still being signed (they have a payer now).
+/*
+ * Cancel the landlord's own documents still being signed, BEFORE a payer is
+ * named: a copy left open would block the payer's addendum. Throws when one
+ * can't be cancelled, so nothing is named half way.
+ */
 export async function cancelOwnSigning(db, documenso, landlordId) {
   const state = await agreementState(db, landlordId);
   const own = [];
@@ -200,7 +210,13 @@ export async function cancelOwnSigning(db, documenso, landlordId) {
   const { data: masters } = await db.from("landlord_agreements").select("id").eq("user_id", landlordId).in("status", ["not_sent", "sent"]);
   for (const m of masters ?? []) own.push(["master", m.id]);
   for (const [kind, id] of own) {
-    await voidDocument(db, documenso, { userId: landlordId, kind, id }).catch((err) => console.error("billing: cancelling own signing failed", err?.message));
+    try {
+      await voidDocument(db, documenso, { userId: landlordId, kind, id });
+    } catch (err) {
+      if (err?.code === "already_ended") continue;
+      console.error("billing: cancelling own signing failed", err?.message);
+      throw new BillingError("own_signing_open", "We couldn't cancel the agreement you started signing. Try again in a minute, or contact us.", 409);
+    }
   }
 }
 
@@ -228,44 +244,75 @@ export async function changePayer(db, documenso, { landlord, name, email, now = 
   }
   const input = cleanPayerInput({ name, email });
   if (input.email === link.signer_email) throw new BillingError("same_payer", "That is already your authorized signer. Use Resend instead.");
-  await cancelPayerDocuments(db, documenso, landlord.id);
+  // The new signer is named first; the old one's document is cancelled only once
+  // that worked, so a refusal leaves everything exactly as it was.
   const { error } = await db
     .from("billing_payers")
     .update({ status: "ended", ended_reason: "changed by the landlord", ended_at: now.toISOString() })
     .eq("id", link.id)
     .eq("status", "active");
   if (error) throw error;
+  let made;
   try {
-    const made = await namePayer(db, { landlord, ...input, now });
+    made = await namePayer(db, { landlord, ...input, now });
     // Waiting listings now wait on the new payer.
     const { error: moveError } = await db.from("payer_publish_requests").update({ payer_link_id: made.link.id }).eq("landlord_id", landlord.id).eq("status", "waiting");
-    if (moveError) throw moveError;
-    return made;
+    if (moveError) {
+      await db.from("billing_payers").update({ status: "ended", ended_reason: "naming failed", ended_at: now.toISOString() }).eq("id", made.link.id);
+      throw moveError;
+    }
   } catch (err) {
     // The new payer was refused: the old one stays.
     await db.from("billing_payers").update({ status: "active", ended_reason: null, ended_at: null }).eq("id", link.id);
     throw err;
   }
-}
-
-// Documents still being signed for this account by its payer: the addendum, or a master started for it.
-async function cancelPayerDocuments(db, documenso, landlordId) {
-  const state = await agreementState(db, landlordId);
-  if (state.pendingAmendment) {
-    await voidDocument(db, documenso, { userId: landlordId, kind: "amendment", id: state.pendingAmendment.id }).catch(() => {});
-  }
-  if (state.pending && !state.valid && state.holderId !== landlordId) {
-    const { data } = await db.from("agreement_coverage").select("id").eq("agreement_id", state.pending.id).eq("user_id", landlordId).neq("status", "released").limit(1);
-    if (data?.length) await voidDocument(db, documenso, { userId: state.holderId, kind: "master", id: state.pending.id }).catch(() => {});
-  }
+  // Only now: the old signer's copy for this account stops working.
+  const cancelled = await cancelPayerDocuments(db, documenso, landlord.id, { payerId: link.payer_id }).catch((err) => {
+    console.error("billing: cancelling the old signer's document failed", err?.message);
+    return null;
+  });
+  return { ...made, oldPayerId: link.payer_id, cancelled };
 }
 
 /*
- * The landlord confirmed: these listings go to their payer's addendum. They stay
- * drafts, waiting. If the payer has a copy open for this account it is
- * cancelled, so the next one they open lists everything waiting (a signed copy
- * can't change). Returns { added, firstRequest }: firstRequest when nothing was
- * waiting before, so the payer is emailed once per addendum, not per listing.
+ * Documents still being signed for this account by its payer: the addendum, or a
+ * master started for it. Only for a change of signer or the arrangement ending
+ * (a signed-off account), never because the landlord sent more listings.
+ * A master can't be edited once sent, so one also covering other accounts is
+ * cancelled whole (Wyatt, 2026-11-09: cancel and email the payer). Returns
+ * { payerId, otherAccounts } when that happened, so the caller emails the payer.
+ */
+export async function cancelPayerDocuments(db, documenso, landlordId, { payerId = null } = {}) {
+  // Whose master: the payer given (the old one, after a change of signer), else the current one.
+  const holderId = payerId ?? (await activePayerLink(db, landlordId))?.payer_id ?? null;
+  const { data: amendments, error: amendError } = await db.from("agreement_amendments").select("id").eq("user_id", landlordId).in("status", ["not_sent", "sent"]);
+  if (amendError && !missingSchema(amendError)) throw amendError;
+  for (const a of amendments ?? []) {
+    await voidDocument(db, documenso, { userId: landlordId, kind: "amendment", id: a.id }).catch(() => {});
+  }
+  if (!holderId || holderId === landlordId) return null;
+  const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", holderId).in("status", ["not_sent", "sent"]);
+  if (masterError) throw masterError;
+  for (const m of masters ?? []) {
+    const { data } = await db.from("agreement_coverage").select("user_id").eq("agreement_id", m.id).neq("status", "released").limit(500);
+    const onIt = new Set((data ?? []).map((r) => r.user_id));
+    const { data: stamped } = await db.from("payer_publish_requests").select("landlord_id").eq("document_kind", "master").eq("document_id", m.id).eq("status", "waiting");
+    for (const r of stamped ?? []) onIt.add(r.landlord_id);
+    if (!onIt.has(landlordId)) continue;
+    await voidDocument(db, documenso, { userId: holderId, kind: "master", id: m.id });
+    const otherAccounts = [...onIt].filter((id) => id !== landlordId && id !== holderId);
+    if (otherAccounts.length) return { payerId: holderId, otherAccounts };
+  }
+  return null;
+}
+
+/*
+ * The landlord confirmed: these listings go to their payer. They stay drafts,
+ * waiting for the next document the payer opens. A document the payer already
+ * has open is locked in and never cancelled by this (Wyatt, 2026-11-09). A
+ * listing the payer's agreement already covers is approved at once.
+ * Returns { added, approved, toSign }: `toSign` (listing ids) are what the payer
+ * is emailed about, once per send.
  */
 export async function requestPayerCoverage(db, documenso, { landlordId, listingIds = [], now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
@@ -285,9 +332,11 @@ export async function requestPayerCoverage(db, documenso, { landlordId, listingI
   }
   // Asking again clears an earlier decline.
   if (link.declined_at) await db.from("billing_payers").update({ declined_at: null }).eq("id", link.id);
-  // A copy the payer has open for this account can't change: cancel it so the next one lists everything.
-  if (fresh.length) await cancelPayerDocuments(db, documenso, landlordId);
-  return { added: fresh.length, firstRequest: waiting.size === 0 && fresh.length > 0, link };
+  // Already covered (the payer signed it before): approved now, nothing to sign.
+  const { approved } = await approveWaiting(db, { landlordId, now });
+  const { covered } = await coverageFor(db, landlordId, now);
+  const toSign = fresh.filter((id) => !covered.has(id));
+  return { added: fresh.length, approved, toSign, link };
 }
 
 // The listing ids waiting on the payer, oldest first.
@@ -315,66 +364,148 @@ export async function cancelWaiting(db, landlordId, listingIds, now = new Date()
   if (error && !missingSchema(error)) throw error;
 }
 
-/*
- * After the payer signs (or adds a payment method): every waiting listing the
- * listing gate now allows goes live, and the landlord is emailed which. Listings
- * that are gone are dropped. `deps`: { checkGate(landlordId, listingIds) -> gate,
- * publish(landlordId, listingId), notifyLive({ landlordId, payerName, addresses }) }.
- */
-// `afterSign`: right after the signer signed. Anything still not covered then was
-// left off by them: it simply stays waiting (a draft, never published) and the
-// landlord's email lists it as not verified yet (Wyatt, 2026-11-09).
-export async function releaseWaiting(db, { landlordId, deps, afterSign = false, now = new Date() }) {
-  let waiting = await waitingRequests(db, landlordId);
-  const leftOff = [];
-  if (afterSign && waiting.length) {
-    const { covered, properties } = await coverageFor(db, landlordId, now);
-    const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
-    const off = waiting.filter((w) => !covered.has(w.listing_id));
-    leftOff.push(...off.map((w) => nameOf.get(w.listing_id) ?? "A listing"));
-    waiting = waiting.filter((w) => covered.has(w.listing_id));
-  }
-  if (!waiting.length) return { published: [], leftOff };
-  const ids = waiting.map((w) => w.listing_id);
+// The waiting listings that are gone (deleted): they drop off.
+async function dropGone(db, landlordId, ids, now) {
+  if (!ids.length) return { alive: [], byId: new Map() };
   const { data: listings, error } = await db.from("listings").select("id, address, city, state, zipcode, deleted_at").in("id", ids);
   if (error) throw error;
   const byId = new Map((listings ?? []).map((l) => [l.id, l]));
   const gone = ids.filter((id) => !byId.get(id) || byId.get(id).deleted_at);
   if (gone.length) await cancelWaiting(db, landlordId, gone, now);
-  const alive = ids.filter((id) => !gone.includes(id));
-  if (!alive.length) return { published: [], leftOff };
+  return { alive: ids.filter((id) => !gone.includes(id)), byId };
+}
 
-  const gate = await deps.checkGate(landlordId, alive);
-  // Never published while anything else stands in the way (the signer's payment method, an overdue invoice).
-  if (!gate.allowed && gate.missing.some((m) => m !== "agreement")) return { published: [], leftOff, blocked: gate.missing };
-  const stillUncovered = new Set((gate.uncovered ?? []).map((u) => u.listingId));
-  const published = [];
-  for (const id of alive) {
-    if (stillUncovered.has(id)) continue;
-    try {
-      await deps.publish(landlordId, id);
-      const { error: doneError } = await db
-        .from("payer_publish_requests")
-        .update({ status: "published", resolved_at: now.toISOString() })
-        .eq("landlord_id", landlordId)
-        .eq("listing_id", id)
-        .eq("status", "waiting");
-      if (doneError) throw doneError;
-      published.push(displayAddress(byId.get(id)));
-    } catch (err) {
-      console.error("billing: publishing a listing after the payer signed failed", err?.message);
+async function resolveRequests(db, landlordId, ids, status, now) {
+  if (!ids.length) return;
+  const { error } = await db
+    .from("payer_publish_requests")
+    .update({ status, resolved_at: now.toISOString() })
+    .eq("landlord_id", landlordId)
+    .in("listing_id", ids)
+    .eq("status", "waiting");
+  if (error) throw error;
+}
+
+/*
+ * Every waiting listing of this account that the payer's agreement now covers is
+ * approved: the landlord can publish it. Nothing is published here (Wyatt,
+ * 2026-11-09). Listings that are gone are dropped. Returns { approved } (addresses).
+ */
+export async function approveWaiting(db, { landlordId, now = new Date() }) {
+  const waiting = await waitingRequests(db, landlordId);
+  if (!waiting.length) return { approved: [] };
+  const { covered } = await coverageFor(db, landlordId, now);
+  const { alive, byId } = await dropGone(db, landlordId, waiting.filter((w) => covered.has(w.listing_id)).map((w) => w.listing_id), now);
+  await resolveRequests(db, landlordId, alive, "approved", now);
+  return { approved: alive.map((id) => displayAddress(byId.get(id))) };
+}
+
+/*
+ * The payer signed a document (kind, id). Only the listings on it change
+ * (Wyatt, 2026-11-09): each is approved when it is now covered, or declined when
+ * the signer left it off. Listings sent after the document was opened stay
+ * waiting for the next one. Accounts with nothing on it are not touched.
+ * Returns { [landlordId]: { approved: [address], declined: [address] } }.
+ * Safe to run again: only waiting rows change.
+ */
+export async function settleSignedDocument(db, { kind, id, accounts = [], now = new Date() }) {
+  const { data: rows, error } = await db
+    .from("payer_publish_requests")
+    .select("landlord_id, listing_id")
+    .eq("document_kind", kind)
+    .eq("document_id", id)
+    .eq("status", "waiting");
+  if (missingSchema(error)) return {};
+  if (error) throw error;
+  const byAccount = new Map();
+  for (const r of rows ?? []) byAccount.set(r.landlord_id, [...(byAccount.get(r.landlord_id) ?? []), r.listing_id]);
+  for (const a of accounts) if (!byAccount.has(a)) byAccount.set(a, []);
+  const out = {};
+  for (const [landlordId, stamped] of byAccount) {
+    const { covered } = await coverageFor(db, landlordId, now);
+    const { alive, byId } = await dropGone(db, landlordId, stamped, now);
+    const declinedIds = alive.filter((lid) => !covered.has(lid));
+    await resolveRequests(db, landlordId, declinedIds, "declined", now);
+    // The approved ones: on this document, and any other waiting listing it now covers.
+    const { approved } = await approveWaiting(db, { landlordId, now });
+    out[landlordId] = { approved, declined: declinedIds.map((lid) => displayAddress(byId.get(lid))) };
+  }
+  return out;
+}
+
+/*
+ * A daily safety net for a signature whose follow-up never finished (a failed
+ * webhook step): waiting listings still locked to a signed document are settled,
+ * and ones locked to a document that ended unsigned go back to waiting.
+ * `notify(landlordId, { approved, declined })` emails the landlord.
+ */
+export async function settleStaleDocuments(db, { notify = null, now = new Date() } = {}) {
+  const { data, error } = await db
+    .from("payer_publish_requests")
+    .select("document_kind, document_id")
+    .eq("status", "waiting")
+    .not("document_id", "is", null)
+    .limit(500);
+  if (missingSchema(error)) return { settled: 0, cleared: 0 };
+  if (error) throw error;
+  const docs = new Map((data ?? []).map((r) => [`${r.document_kind}:${r.document_id}`, { kind: r.document_kind, id: r.document_id }]));
+  let settled = 0;
+  let cleared = 0;
+  for (const { kind, id } of docs.values()) {
+    const table = kind === "amendment" ? "agreement_amendments" : "landlord_agreements";
+    const { data: doc, error: docError } = await db.from(table).select("id, status").eq("id", id).maybeSingle();
+    if (docError) throw docError;
+    if (doc && ["sent", "not_sent"].includes(doc.status)) continue;
+    if (doc?.status === "signed") {
+      const result = await settleSignedDocument(db, { kind, id, now });
+      settled += 1;
+      for (const [landlordId, r] of Object.entries(result)) {
+        if (notify && (r.approved.length || r.declined.length)) await notify(landlordId, r).catch(() => {});
+      }
+    } else {
+      await clearDocumentRequests(db, { kind, id });
+      cleared += 1;
     }
   }
-  // After a signature the caller sends one email with everything; otherwise say what went live.
-  if (!afterSign && published.length && deps.notifyLive) {
-    const link = await activePayerLink(db, landlordId);
-    try {
-      await deps.notifyLive({ landlordId, payerName: link?.signer_name ?? "Your authorized signer", addresses: published });
-    } catch (err) {
-      console.error("billing: listing-live email failed", err?.message);
-    }
+  return { settled, cleared };
+}
+
+// Requests of one status, latest first, one per listing, each with its listing row.
+async function requestsWithListings(db, landlordId, status) {
+  const { data, error } = await db
+    .from("payer_publish_requests")
+    .select("id, listing_id, resolved_at")
+    .eq("landlord_id", landlordId)
+    .eq("status", status)
+    .order("resolved_at", { ascending: false });
+  if (missingSchema(error)) return [];
+  if (error) throw error;
+  const latest = [];
+  const seen = new Set();
+  for (const r of [...(data ?? [])].sort((a, b) => String(b.resolved_at ?? "").localeCompare(String(a.resolved_at ?? "")))) {
+    if (seen.has(r.listing_id)) continue;
+    seen.add(r.listing_id);
+    latest.push(r);
   }
-  return { published, leftOff };
+  if (!latest.length) return [];
+  const { data: listings, error: listingError } = await db
+    .from("listings")
+    .select("id, address, city, state, zipcode, published_at, deleted_at")
+    .in("id", latest.map((r) => r.listing_id));
+  if (listingError) throw listingError;
+  const byId = new Map((listings ?? []).map((l) => [l.id, l]));
+  return latest.map((r) => ({ ...r, listings: byId.get(r.listing_id) ?? null })).filter((r) => r.listings && !r.listings.deleted_at);
+}
+
+// The listings an account's payer approved that are still drafts: ready for the landlord to publish.
+export async function approvedDrafts(db, landlordId) {
+  return (await requestsWithListings(db, landlordId, "approved")).filter((r) => !r.listings.published_at);
+}
+
+// The listings the payer declined, latest first, unless sent again or covered since.
+async function declinedRequests(db, landlordId, skip) {
+  const skipped = new Set(skip);
+  return (await requestsWithListings(db, landlordId, "declined")).filter((r) => !skipped.has(r.listing_id));
 }
 
 /*
@@ -400,6 +531,8 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
   const live = properties.filter((p) => p.live);
   const liveUncovered = live.filter((p) => !covered.has(p.listingId));
   const needsMethod = await signerNeedsPaymentMethod(db, link.payer_id, now);
+  const approved = await approvedDrafts(db, landlordId);
+  const declined = await declinedRequests(db, landlordId, [...waiting.map((w) => w.listing_id), ...covered.keys()]);
   const status = link.declined_at ? "declined" : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length || !state.valid ? "pending" : "signed";
   return {
     payer: { name: link.signer_name, email: link.signer_email, invitedAt: link.invited_at },
@@ -415,8 +548,12 @@ export async function landlordPayerView(db, landlordId, now = new Date()) {
       listingId: w.listing_id,
       address: nameOf.get(w.listing_id) ?? "Listing",
       since: w.created_at,
-      waitingFor: covered.has(w.listing_id) ? (needsMethod ? "payment_method" : "publishing") : "signature",
+      waitingFor: covered.has(w.listing_id) ? (needsMethod ? "payment_method" : "approval") : "signature",
     })),
+    // Approved by the signer, still drafts: the landlord publishes them (Wyatt, 2026-11-09).
+    approved: approved.map((r) => ({ listingId: r.listing_id, address: displayAddress(r.listings), approvedAt: r.resolved_at, waitingFor: needsMethod ? "payment_method" : null })),
+    // On a document the signer signed (or rejected) and left off: they can be sent again.
+    declined: declined.map((r) => ({ listingId: r.listing_id, address: displayAddress(r.listings), declinedAt: r.resolved_at })),
 
   };
 }
@@ -481,7 +618,7 @@ export async function payerAccounts(db, payerId, now = new Date()) {
 export async function endPayerFor(db, documenso, { payerId, landlordId, endLink = false, now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
   if (!link || link.payer_id !== payerId) throw new BillingError("not_payer", "You don't pay for that account.", 404);
-  await cancelPayerDocuments(db, documenso, landlordId);
+  const cancelled = await cancelPayerDocuments(db, documenso, landlordId);
   const nowIso = now.toISOString();
   const { data: masters } = await db.from("landlord_agreements").select("id").eq("user_id", payerId);
   const masterIds = (masters ?? []).map((m) => m.id);
@@ -510,7 +647,7 @@ export async function endPayerFor(db, documenso, { payerId, landlordId, endLink 
     const { error } = await db.from("billing_payers").update({ declined_at: nowIso }).eq("id", link.id);
     if (error) throw error;
   }
-  return { released };
+  return { released, cancelled };
 }
 
 // The account's drafts not covered yet: what "Add drafts to your agreement" puts on the document.
