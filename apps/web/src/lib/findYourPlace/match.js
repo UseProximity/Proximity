@@ -355,9 +355,14 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
   // available (the chat ranker's rule): one strong unpriced lead is worth a
   // message to the owner, a page of them is guesswork.
   const priced = (l) => perPersonById[l.id] != null;
-  const take = (listing, reason, allowUnpriced = false) => {
+  // Likewise at most one pick past their commute limit while closer places
+  // are still available. The commute is a preference, so one standout further
+  // away may make the set, but it should not be most of it.
+  const overLimit = (id) => commute?.limit != null && minutesOf(id) != null && minutesOf(id) > commute.limit;
+  const take = (listing, reason, relaxed = false) => {
     if (!listing || seen.has(listing.id) || seenBuildings.has(buildingKey(listing))) return;
-    if (!allowUnpriced && !priced(listing) && chosen.some((c) => !priced(c.listing))) return;
+    if (!relaxed && !priced(listing) && chosen.some((c) => !priced(c.listing))) return;
+    if (!relaxed && overLimit(listing.id) && chosen.some((c) => overLimit(c.listing.id))) return;
     seen.add(listing.id);
     seenBuildings.add(buildingKey(listing));
     chosen.push({ listing, reason });
@@ -372,7 +377,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     if (chosen.length >= MATCH_COUNT) break;
     take(l, null);
   }
-  // Nothing priced left to fill with: unpriced places are better than gaps.
+  // Nothing priced or close enough left to fill with: those are better than gaps.
   for (const l of ordered) {
     if (chosen.length >= MATCH_COUNT) break;
     take(l, null, true);
@@ -380,7 +385,6 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
   // A full fit is never listed under a near miss, and a place inside their
   // commute limit is never listed under one past it. Otherwise the model's
   // order stands (the sort is stable).
-  const overLimit = (id) => commute?.limit != null && minutesOf(id) != null && minutesOf(id) > commute.limit;
   chosen.sort(
     (a, b) =>
       (relaxById[a.listing.id] ? 1 : 0) - (relaxById[b.listing.id] ? 1 : 0) ||
