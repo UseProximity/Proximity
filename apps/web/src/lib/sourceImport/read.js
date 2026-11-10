@@ -937,6 +937,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // only the portal says which length costs what. Its link is often added
   // by script, but the site's own /application/ page states it plainly.
   let portalMissed = false;
+  let portalPending = false;
   if (!learned) {
     const knownOll = knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null;
     let portal = crawl.fetched.map((f) => findRealPageOll(f.html)).find(Boolean) ?? null;
@@ -953,7 +954,15 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     portal ??= knownOll ? { propertyId: knownOll.propertyId ?? null, siteId: knownOll.siteId ?? null } : null;
     if (portal) {
       const rp = await readRealPageOll(portal, { known: knownOll, onStep });
-      if (rp?.units?.length) {
+      if (rp?.pending) {
+        // The walk ran out of time with apartments still to price. What it
+        // has is kept on the monitor and the next read carries on; until
+        // then the listing keeps the prices it has.
+        portalMissed = true;
+        portalPending = true;
+        learned = rp.learned;
+        console.log(`[source-import] realpage portal ${rp.learned.siteId}: ${rp.quoted} of ${rp.apartments} apartments priced so far, to be continued`);
+      } else if (rp?.units?.length) {
         const byName = new Map(readerUnits.map((u) => [planKey(u.name), u]));
         for (const u of rp.units) {
           const e = byName.get(planKey(u.name));
@@ -1293,6 +1302,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
   snapshot.portal = learned ?? (portalMissed && knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null);
+  // The portal walk is part way through: nothing in this read is final.
+  snapshot.portalPending = portalPending;
   return snapshot;
 }
 
