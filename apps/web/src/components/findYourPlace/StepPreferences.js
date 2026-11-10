@@ -10,16 +10,18 @@ import { PROMPTS, PROMPTS_AT_ONCE, TEXT_MAX, applyChipToText, promptSentence } f
  * live in the Delmar Loop or DeMun."), which the student can edit or add to in
  * their own words. Three prompts show at a time, each with all of its ideas.
  *
- * Picking an idea answers the prompt: the whole prompt disappears (its words
- * are in the box now, and the box is where they are changed) and the next
- * prompt takes its place (Wyatt, 2026-11-10). If the student deletes or
- * rewords that sentence, the prompt comes back, since the answer is gone.
+ * A picked idea leaves its row: its words are in the box now, and the box is
+ * where they are changed (Wyatt, 2026-11-10). A prompt whose ideas are
+ * mutually exclusive (furnishing) goes away entirely on a pick; one where
+ * several can apply (amenities) stays with what is left. If the student
+ * deletes or rewords the sentence, the picks come back, since they are gone
+ * from the box.
  */
 
 // Spread a prompt's ideas evenly over as few lines as fit, so no line is left
 // holding a single chip: 9 at five a line is 5 and 4, not 5, 3 and 1.
 function linesOf(options, perLine = 5) {
-  if (options.length <= perLine) return [options];
+  if (options.length <= perLine) return options.length ? [options] : [];
   const count = Math.ceil(options.length / perLine);
   const base = Math.floor(options.length / count);
   const extra = options.length % count;
@@ -33,22 +35,28 @@ function linesOf(options, perLine = 5) {
   return lines;
 }
 export default function StepPreferences({ text, chips, onChange, onSkip }) {
-  // A prompt is answered only while its sentence still stands in the box.
-  const answered = (prompt) => {
-    const sentence = promptSentence(prompt, chips[prompt.id] ?? []);
-    return !!sentence && text.includes(sentence);
+  // A prompt's picks only count while its sentence still stands in the box.
+  const picked = (prompt) => {
+    const ids = chips[prompt.id] ?? [];
+    const sentence = promptSentence(prompt, ids);
+    return sentence && text.includes(sentence) ? ids : [];
   };
 
   const pick = (prompt, optionId) => {
-    const before = answered(prompt) ? chips[prompt.id] : [];
-    const after = [optionId];
+    const before = picked(prompt);
+    const after = prompt.single ? [optionId] : [...before, optionId];
     onChange({
       chips: { ...chips, [prompt.id]: after },
       text: applyChipToText(text, prompt, before, after),
     });
   };
 
-  const open = PROMPTS.filter((prompt) => !answered(prompt));
+  // Each prompt with the ideas it still has to offer; prompts with none are done.
+  const open = PROMPTS.map((prompt) => {
+    const taken = picked(prompt);
+    const left = prompt.single && taken.length ? [] : prompt.options.filter((o) => !taken.includes(o.id));
+    return { prompt, left };
+  }).filter((row) => row.left.length);
 
   return (
     <div className="flex h-full flex-col">
@@ -73,13 +81,13 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
       />
 
       <div className="mt-3 space-y-2">
-        {open.slice(0, PROMPTS_AT_ONCE).map((prompt) => (
+        {open.slice(0, PROMPTS_AT_ONCE).map(({ prompt, left }) => (
           <div key={prompt.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
             <span className="flex h-8 flex-shrink-0 items-center text-sm font-medium text-gray-700 sm:w-[104px] [@media(min-height:780px)]:h-9">
               {prompt.label}:
             </span>
             <div className="min-w-0 flex-1 space-y-2">
-              {linesOf(prompt.options, prompt.perLine).map((line, i) => (
+              {linesOf(left, prompt.perLine).map((line, i) => (
                 // A line of three or more stretches to fill the width; a pair keeps its size.
                 <div key={i} className="flex flex-wrap gap-2 sm:flex-nowrap">
                   {line.map((o) => (

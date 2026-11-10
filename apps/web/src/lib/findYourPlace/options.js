@@ -174,13 +174,18 @@ export function sanitizeAnswers(raw) {
 
 /*
  * The prompts under the free-text box. Each is a labelled row with all of its
- * ideas. Three prompts show at a time (Wyatt, 2026-11-10): picking an idea
- * answers that prompt, so the whole prompt goes away and the next one takes
- * its place. So there is always something new to react to, and never a wall
- * of chips. Anything more (a second neighborhood, say) is typed in the box.
+ * ideas. Three prompts show at a time (Wyatt, 2026-11-10).
+ *
+ * A picked idea always leaves its row, since its words are in the text box
+ * now. What happens to the rest of the row depends on the prompt:
+ *   - `single: true`  the ideas are mutually exclusive (furnished or not), so
+ *                     one pick answers the prompt and the whole row goes.
+ *   - otherwise       several can apply (amenities, neighborhoods), so the
+ *                     row stays with the ideas not yet picked.
+ * When a row goes, or runs out, the next prompt takes its place.
  *
  * `perLine` is the most ideas one line holds (default 5). The page spreads a
- * prompt's ideas evenly over as few lines as that allows and stretches each
+ * prompt's remaining ideas evenly over as few lines as that allows and stretches each
  * line to fill the width, so no line is left holding a single chip.
  *
  * `phrase` is how an option reads inside its sentence. The sentences land in
