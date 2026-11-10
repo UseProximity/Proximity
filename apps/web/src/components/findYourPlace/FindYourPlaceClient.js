@@ -83,6 +83,8 @@ export default function FindYourPlaceClient() {
   const [error, setError] = useState(null);
   const [wall, setWall] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
+  // Bumped by Start over so page 1 remounts with its "Other" fields closed.
+  const [round, setRound] = useState(0);
   const mainRef = useRef(null);
   // Where the page starts under the site header (and any environment banner),
   // so the panel can be sized to exactly the rest of the screen.
@@ -210,6 +212,7 @@ export default function FindYourPlaceClient() {
     setChips({});
     setResults(null);
     setError(null);
+    setRound((n) => n + 1);
     goTo(1);
   };
 
@@ -269,6 +272,7 @@ export default function FindYourPlaceClient() {
         <div data-fyp-body className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-12 [@media(min-height:780px)]:sm:py-7">
           {step === 1 && (
             <StepBasics
+              key={round}
               answers={answers}
               onChange={setAnswers}
             />
