@@ -125,19 +125,12 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
             {walk != null ? ` | ${walk} min walk` : ""}
             {shuttle != null ? ` | ${shuttle} min to shuttle` : ""}
           </span>
-          {numReviews > 0 && Number.isFinite(rating) && rating > 0 && (
-            <span className="flex flex-shrink-0 items-center gap-0.5" title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}>
-              <Star className="h-3 w-3 fill-red-400 text-red-400" />
-              <span className="font-semibold tabular-nums text-gray-700">{rating.toFixed(1)}</span>
-              <span className="tabular-nums text-gray-400">({numReviews})</span>
-            </span>
-          )}
         </div>
 
         <p className="mt-2 line-clamp-3 text-xs leading-snug text-gray-700">{match.reason}</p>
         {match.note && <p className="mt-1 line-clamp-2 text-xs leading-snug text-red-600">{match.note}</p>}
 
-        <div className="mt-auto pt-2">
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <button
             type="button"
             onClick={(e) => {
@@ -148,6 +141,13 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
           >
             Contact
           </button>
+          {numReviews > 0 && Number.isFinite(rating) && rating > 0 && (
+            <span className="flex flex-shrink-0 items-center gap-0.5 text-xs" title={`${rating.toFixed(1)} out of 5 from ${numReviews} review${numReviews === 1 ? "" : "s"}`}>
+              <Star className="h-3 w-3 fill-red-400 text-red-400" />
+              <span className="font-semibold tabular-nums text-gray-700">{rating.toFixed(1)}</span>
+              <span className="tabular-nums text-gray-400">({numReviews})</span>
+            </span>
+          )}
         </div>
       </div>
     </div>
