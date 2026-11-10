@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
@@ -47,6 +47,41 @@ export default function BrowseContent({ session, initialListings = null }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   // Desktop only: hide the map and show the listings as a wider grid.
   const [mapHidden, setMapHidden] = useState(false);
+  /*
+   * The fade-through of a toggle (see AvailableListings) marks <body> with
+   * data-map-switching, and AvailableListings removes it once the new layout is
+   * in place. That removal follows a change of mapHidden, which two toggles in
+   * quick succession can cancel out, leaving the map offset and the column
+   * faded. So the mark is also removed here, after a safety timeout and on
+   * unmount. Every toggle still flips mapHidden, so two quick toggles are two
+   * flips; only the safety timer restarts.
+   */
+  const switchTimers = useRef({});
+  const endMapSwitch = () =>
+    document.body.removeAttribute("data-map-switching");
+  const toggleMap = () => {
+    const timers = switchTimers.current;
+    clearTimeout(timers.safety);
+    cancelAnimationFrame(timers.frame);
+    document.body.setAttribute("data-map-switching", "");
+    timers.flip = setTimeout(() => setMapHidden((hidden) => !hidden), 120);
+    // Two frames, like AvailableListings: the new layout has been drawn, still
+    // invisible, before the mark goes and its width change can animate.
+    timers.safety = setTimeout(() => {
+      timers.frame = requestAnimationFrame(() =>
+        requestAnimationFrame(endMapSwitch)
+      );
+    }, 700);
+  };
+  useEffect(() => {
+    const timers = switchTimers.current;
+    return () => {
+      clearTimeout(timers.flip);
+      clearTimeout(timers.safety);
+      cancelAnimationFrame(timers.frame);
+      endMapSwitch();
+    };
+  }, []);
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
@@ -183,12 +218,9 @@ export default function BrowseContent({ session, initialListings = null }) {
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
-          onToggleMap={() => {
-            // A fade-through (see AvailableListings): fade out now, and switch
-            // the layout once that has finished, while it is invisible.
-            document.body.setAttribute("data-map-switching", "");
-            setTimeout(() => setMapHidden((hidden) => !hidden), 120);
-          }}
+          // A fade-through: fade out now, and switch the layout once that has
+          // finished, while it is invisible.
+          onToggleMap={toggleMap}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">

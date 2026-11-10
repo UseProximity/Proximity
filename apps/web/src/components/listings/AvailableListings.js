@@ -178,7 +178,9 @@ export default function AvailableListings({
    * invisible), the mark is removed: the cards fade back in and the map glides
    * back in from the right. Only opacity and transform animate, so they keep
    * running while the page is busy with the heavy re-render. The map is resumed
-   * at its final size at that point.
+   * at its final size at that point. (BrowseContent removes the mark too, after
+   * a timeout, in case two quick toggles leave mapHidden unchanged and this
+   * never runs.)
    */
   useEffect(() => {
     // After a frame has been drawn with the new layout, so the fade starts from it.

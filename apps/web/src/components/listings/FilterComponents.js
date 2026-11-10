@@ -88,6 +88,7 @@ export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
           type="range"
           min={MIN} max={MAX} step={STEP}
           value={minVal}
+          aria-valuetext={`$${minVal.toLocaleString()}`}
           onChange={(e) => {
             const v = Math.min(Number(e.target.value), maxVal - STEP);
             setDraft({ ...draft, minRent: v <= MIN ? "" : String(v) });
@@ -99,6 +100,7 @@ export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
           type="range"
           min={MIN} max={MAX} step={STEP}
           value={maxVal}
+          aria-valuetext={maxVal < MAX ? `$${maxVal.toLocaleString()}` : "$4,000+"}
           onChange={(e) => {
             const v = Math.max(Number(e.target.value), minVal + STEP);
             setDraft({ ...draft, maxRent: v >= MAX ? "" : String(v) });
@@ -253,6 +255,7 @@ export function RangeSlider({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value}
+      aria-valuetext={ticks ? ticks[Math.round((value - min) / step)] : formatLabel(value)}
       onKeyDown={onKeyDown(handle, value)}
       className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300"
       style={{ left: handleX(pct), backgroundColor: accent }}
@@ -364,6 +367,7 @@ export function StepSlider({ steps, value, onChange }) {
           <div className="absolute h-full rounded-full bg-red-500 left-0" style={{ width: `${pct}%` }} />
         </div>
         <input type="range" min={0} max={steps.length - 1} step={1} value={idx}
+          aria-valuetext={steps[idx].label}
           onChange={(e) => onChange(steps[parseInt(e.target.value)].value)}
           className="px-range px-range-single" />
       </div>
@@ -399,6 +403,7 @@ export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxCh
           />
         </div>
         <input type="range" min={0} max={lastIdx} step={1} value={minIdx}
+          aria-valuetext={steps[minIdx].label}
           onChange={(e) => {
             const i = Math.min(parseInt(e.target.value), maxIdx);
             onMinChange(steps[i].value);
@@ -407,6 +412,7 @@ export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxCh
           style={{ zIndex: minIdx >= maxIdx ? 5 : 3 }}
         />
         <input type="range" min={0} max={lastIdx} step={1} value={maxIdx}
+          aria-valuetext={steps[maxIdx].label}
           onChange={(e) => {
             const i = Math.max(parseInt(e.target.value), minIdx);
             onMaxChange(steps[i].value);

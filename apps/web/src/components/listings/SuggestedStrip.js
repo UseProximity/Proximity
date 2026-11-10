@@ -11,7 +11,8 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
  * to their highlighted map pins (SUGGESTED_PIN_COLOR in MapView; keep the two
  * in step).
  *
- * layout="grid" is the desktop two-column panel, "stack" the mobile list.
+ * layout="grid" is the desktop panel (two columns of cards, or with wide, for
+ * the map-hidden page, one scrolling row in a box), "stack" the mobile list.
  *
  * Analytics: suggested_impression / suggested_click here; saves and contacts
  * that follow a click carry source=suggested on their existing events.
@@ -65,11 +66,12 @@ export default function SuggestedStrip({
   useEffect(() => {
     const row = rowRef.current;
     if (!wide || !row) return;
-    const update = () =>
-      setCanScroll({
-        prev: row.scrollLeft > 1,
-        next: row.scrollLeft + row.clientWidth < row.scrollWidth - 1,
-      });
+    // Keeps the old object when nothing changed, so scrolling does not re-render.
+    const update = () => {
+      const prev = row.scrollLeft > 1;
+      const next = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+      setCanScroll((c) => (c.prev === prev && c.next === next ? c : { prev, next }));
+    };
     // A plain mouse wheel moves the row a card per turn while it can, then hands
     // the wheel back to the page. (Not a React onWheel: that one cannot
     // preventDefault.)
