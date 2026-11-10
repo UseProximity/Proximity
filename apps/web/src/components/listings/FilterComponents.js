@@ -1,126 +1,17 @@
 "use client";
 
-// Shared filter sub-components used by TopFilterBar (desktop) and mobile filter panel
+// Shared parts of the browse filters: the price range, the bed and bath steps,
+// the card shell and the range sliders. The Price and Beds & Baths cards (the
+// desktop bar) and the side panel (desktop, and the phone's filter drawer) are
+// built from them.
 
-import React, { useRef, useState } from "react";
-
-export const SLIDER_CSS = `
-  .px-range {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 0;
-    background: transparent;
-    outline: none;
-    position: absolute;
-  }
-  .px-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #ef4444;
-    border: 2.5px solid #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-    cursor: pointer;
-  }
-  .px-range::-moz-range-thumb {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #ef4444;
-    border: 2.5px solid #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-    cursor: pointer;
-  }
-  .px-range-dual { pointer-events: none; }
-  .px-range-dual::-webkit-slider-thumb { pointer-events: auto; }
-  .px-range-dual::-moz-range-thumb  { pointer-events: auto; }
-  .px-range-single { pointer-events: auto; }
-`;
+import { useRef } from "react";
 
 // Price range shared by every price slider. The right end ($4000+) means no
 // upper limit, so a max of PRICE_MAX or more is stored as "".
 export const PRICE_MIN = 400;
 export const PRICE_MAX = 4000;
 export const PRICE_STEP = 50;
-
-export function FilterSection({ title, children, defaultOpen = true }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-between w-full text-left mb-2"
-      >
-        <span className="font-semibold text-gray-900 text-sm">{title}</span>
-        <svg
-          className={`w-4 h-4 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  );
-}
-
-export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
-  const MIN = PRICE_MIN, MAX = PRICE_MAX, STEP = PRICE_STEP;
-  const minVal = minRent ? Math.max(MIN, Number(minRent)) : MIN;
-  const maxVal = maxRent ? Math.min(MAX, Number(maxRent)) : MAX;
-  const minPct = ((minVal - MIN) / (MAX - MIN)) * 100;
-  const maxPct = ((maxVal - MIN) / (MAX - MIN)) * 100;
-
-  return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div
-            className="absolute h-full rounded-full bg-red-500"
-            style={{ left: `${minPct}%`, width: `${maxPct - minPct}%` }}
-          />
-        </div>
-        <input
-          type="range"
-          min={MIN} max={MAX} step={STEP}
-          value={minVal}
-          aria-valuetext={`$${minVal.toLocaleString()}`}
-          onChange={(e) => {
-            const v = Math.min(Number(e.target.value), maxVal - STEP);
-            setDraft({ ...draft, minRent: v <= MIN ? "" : String(v) });
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: minVal > MAX - STEP ? 5 : 3 }}
-        />
-        <input
-          type="range"
-          min={MIN} max={MAX} step={STEP}
-          value={maxVal}
-          aria-valuetext={maxVal < MAX ? `$${maxVal.toLocaleString()}` : "$4,000+"}
-          onChange={(e) => {
-            const v = Math.max(Number(e.target.value), minVal + STEP);
-            setDraft({ ...draft, maxRent: v >= MAX ? "" : String(v) });
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: 4 }}
-        />
-      </div>
-      <div className="flex justify-between text-xs mt-1">
-        <span className="text-gray-400">$400</span>
-        <span className="text-red-500 font-semibold text-center">
-          {minVal > MIN ? `$${minVal.toLocaleString()}` : "min."}
-          {" – "}
-          {maxVal < MAX ? `$${maxVal.toLocaleString()}` : "$4,000+"}
-        </span>
-        <span className="text-gray-400">$4,000+</span>
-      </div>
-    </div>
-  );
-}
 
 // Shell of the pink-header filter cards (Price, Beds & Baths): title band,
 // body and the red Apply pill. onApply is called when Apply is pressed.
@@ -275,7 +166,9 @@ export function RangeSlider({
     <div>
       <div
         ref={rowRef}
-        className="relative h-[17px] cursor-pointer touch-none select-none"
+        // The ::before is not drawn: it makes the row 12px taller above and below
+        // for a finger, without moving anything.
+        className="relative h-[17px] cursor-pointer touch-none select-none before:absolute before:inset-x-0 before:-inset-y-3"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -353,89 +246,6 @@ export function StepRange({ steps, low = 0, high, single, accent, onChange }) {
   );
 }
 
-export function StepSlider({ steps, value, onChange }) {
-  const lastIsAny = steps[steps.length - 1]?.value === "";
-  const idx = value === ""
-    ? (lastIsAny ? steps.length - 1 : 0)
-    : Math.max(0, steps.findIndex((s) => s.value === value));
-  const pct = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
-
-  return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div className="absolute h-full rounded-full bg-red-500 left-0" style={{ width: `${pct}%` }} />
-        </div>
-        <input type="range" min={0} max={steps.length - 1} step={1} value={idx}
-          aria-valuetext={steps[idx].label}
-          onChange={(e) => onChange(steps[parseInt(e.target.value)].value)}
-          className="px-range px-range-single" />
-      </div>
-      <div className="flex justify-between mt-1">
-        {steps.map((s, i) => (
-          <span
-            key={i}
-            onClick={() => onChange(s.value)}
-            className={`text-xs leading-none cursor-pointer select-none ${idx === i ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
-          >
-            {s.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxChange, onSnapTo }) {
-  const lastIdx = steps.length - 1;
-  const minIdx = minValue === "" ? 0       : Math.max(0, steps.findIndex((s) => s.value === minValue));
-  const maxIdx = maxValue === "" ? lastIdx : Math.max(0, steps.findIndex((s) => s.value === maxValue));
-  const minPct = (minIdx / lastIdx) * 100;
-  const maxPct = (maxIdx / lastIdx) * 100;
-
-  return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div
-            className="absolute h-full rounded-full bg-red-500"
-            style={{ left: `${minPct}%`, width: `${maxPct - minPct}%` }}
-          />
-        </div>
-        <input type="range" min={0} max={lastIdx} step={1} value={minIdx}
-          aria-valuetext={steps[minIdx].label}
-          onChange={(e) => {
-            const i = Math.min(parseInt(e.target.value), maxIdx);
-            onMinChange(steps[i].value);
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: minIdx >= maxIdx ? 5 : 3 }}
-        />
-        <input type="range" min={0} max={lastIdx} step={1} value={maxIdx}
-          aria-valuetext={steps[maxIdx].label}
-          onChange={(e) => {
-            const i = Math.max(parseInt(e.target.value), minIdx);
-            onMaxChange(steps[i].value);
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: 4 }}
-        />
-      </div>
-      <div className="flex justify-between mt-1">
-        {steps.map((s, i) => (
-          <span
-            key={i}
-            onClick={() => onSnapTo ? onSnapTo(s.value) : (onMinChange(s.value), onMaxChange(s.value))}
-            className={`text-xs leading-none cursor-pointer select-none ${(i === minIdx || i === maxIdx) ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
-          >
-            {s.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export const BED_STEPS = [
   { label: "0",  value: "0" },
   { label: "1",  value: "1" },
@@ -452,21 +262,4 @@ export const BATH_STEPS = [
   { label: "2.5", value: "2.5" },
   { label: "3",   value: "3"   },
   { label: "4+",  value: "4"   },
-];
-
-export const DIST_STEPS = [
-  { label: "10 min", value: "10" },
-  { label: "15 min", value: "15" },
-  { label: "20 min", value: "20" },
-  { label: "30 min", value: "30" },
-  { label: "45 min", value: "45" },
-  { label: "Any",    value: ""   },
-];
-
-export const SHTT_STEPS = [
-  { label: "2 min",  value: "2"  },
-  { label: "5 min",  value: "5"  },
-  { label: "10 min", value: "10" },
-  { label: "20 min", value: "20" },
-  { label: "Any",    value: ""   },
 ];

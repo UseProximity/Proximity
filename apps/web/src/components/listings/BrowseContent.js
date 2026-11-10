@@ -113,8 +113,9 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   /*
    * Saved filters feed the student's running filter summary (the lightest
-   * suggestion signal). Called only from the explicit Done / Apply Filters
-   * buttons, never on every slider tick. Fire-and-forget.
+   * suggestion signal). Called only from the Apply buttons (of the Price and
+   * Beds & Baths cards and the side panel on desktop, and of the filter drawer
+   * on a phone), never on every slider tick. Fire-and-forget.
    */
   const handleFiltersSaved = (saved) => {
     if (!userId) return;
@@ -232,6 +233,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           suggestedLabel={
             suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
           }
+          allListings={listings}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
           filters={filters}

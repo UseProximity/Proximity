@@ -14,17 +14,7 @@ import BackToTop from "@/components/ui/BackToTop";
 import SuggestedStrip, {
   SuggestedHeading,
 } from "@/components/listings/SuggestedStrip";
-import {
-  SLIDER_CSS,
-  FilterSection,
-  DualRangeSlider,
-  StepSlider,
-  DualStepSlider,
-  BED_STEPS,
-  BATH_STEPS,
-  DIST_STEPS,
-  SHTT_STEPS,
-} from "@/components/listings/FilterComponents";
+import FiltersPanel from "@/components/listings/FiltersPanel";
 
 import { setListingSource } from "@/utils/analytics";
 
@@ -38,6 +28,8 @@ export default function AvailableListings({
   suggestedListings = [],
   suggestedMode = "suggested",
   suggestedLabel = "Suggested for you",
+  // Every listing, before the filters: the price histogram of the filter drawer.
+  allListings,
   onFiltersSaved = () => {},
   // Desktop: the map is hidden and the listings fill the page as a wider grid.
   mapHidden = false,
@@ -449,12 +441,6 @@ export default function AvailableListings({
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [mobileDraft, setMobileDraft] = useState(filters);
-
-  // Sync mobileDraft when filter panel opens
-  useEffect(() => {
-    if (mobileFiltersOpen) setMobileDraft(filters);
-  }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
    * Clear the map overlay card and the expanded panel when the RENTER changes
@@ -509,16 +495,6 @@ export default function AvailableListings({
     params.delete("panel");
     const qs = params.toString();
     router.replace("/browse" + (qs ? "?" + qs : ""));
-  };
-
-  const toggleMobileArray = (field, value) => {
-    const arr = mobileDraft[field] || [];
-    setMobileDraft({
-      ...mobileDraft,
-      [field]: arr.includes(value)
-        ? arr.filter((v) => v !== value)
-        : [...arr, value],
-    });
   };
 
   const emptyState = (
@@ -1091,8 +1067,6 @@ export default function AvailableListings({
               className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl flex flex-col"
               style={{ maxHeight: "90vh" }}
             >
-              <style>{SLIDER_CSS}</style>
-
               {/* Drag handle */}
               <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
                 <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -1121,375 +1095,18 @@ export default function AvailableListings({
                 </button>
               </div>
 
-              {/* Body */}
-              <div className="overflow-y-auto flex-1 px-4 py-4 space-y-6">
-                {/* Price Range */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Price Range
-                  </p>
-                  <DualRangeSlider
-                    minRent={mobileDraft.minRent}
-                    maxRent={mobileDraft.maxRent}
-                    draft={mobileDraft}
-                    setDraft={setMobileDraft}
-                  />
-                </div>
-
-                {/* Bedrooms */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Bedrooms
-                  </p>
-                  <DualStepSlider
-                    steps={BED_STEPS}
-                    minValue={mobileDraft.bedrooms || "0"}
-                    maxValue={mobileDraft.maxBedrooms || "5"}
-                    onMinChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bedrooms: v === "0" ? "" : v,
-                      })
-                    }
-                    onMaxChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        maxBedrooms: v === "5" ? "" : v,
-                      })
-                    }
-                    onSnapTo={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bedrooms: v === "0" ? "" : v,
-                        maxBedrooms: v === "5" ? "" : v,
-                      })
-                    }
-                  />
-                </div>
-
-                {/* Bathrooms */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Bathrooms
-                  </p>
-                  <DualStepSlider
-                    steps={BATH_STEPS}
-                    minValue={mobileDraft.bathrooms || "1"}
-                    maxValue={mobileDraft.maxBathrooms || "4"}
-                    onMinChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bathrooms: v === "1" ? "" : v,
-                      })
-                    }
-                    onMaxChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        maxBathrooms: v === "4" ? "" : v,
-                      })
-                    }
-                    onSnapTo={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bathrooms: v === "1" ? "" : v,
-                        maxBathrooms: v === "4" ? "" : v,
-                      })
-                    }
-                  />
-                </div>
-
-                {/* Home Type */}
-                <FilterSection title="Home Type">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "House", value: "house" },
-                      { label: "Townhouse", value: "townhouse" },
-                      { label: "Apartment", value: "apartment" },
-                      { label: "Single Bedroom", value: "singleBedroom" },
-                      { label: "Condo", value: "condo" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.homeType?.includes(opt.value) || false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("homeType", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Lease Availability */}
-                <FilterSection title="Lease Availability">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Semester Lease", value: "semester" },
-                      { label: "10-Month Lease", value: "10-month" },
-                      { label: "12-Month Lease", value: "12-month" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.leaseAvailability?.includes(opt.value) ||
-                        false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("leaseAvailability", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Amenities */}
-                <FilterSection title="Amenities">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Dishwasher", value: "dishwasher" },
-                      { label: "Extra Storage", value: "extraStorage" },
-                      { label: "In-Unit Laundry", value: "inUnitLaundry" },
-                      { label: "Fireplace", value: "fireplace" },
-                      { label: "Private Parking", value: "freeParking" },
-                      { label: "Mailroom", value: "mailroom" },
-                      { label: "Pool", value: "pool" },
-                      { label: "Pets Allowed", value: "petsAllowed" },
-                      { label: "Study Rooms", value: "studyRooms" },
-                      { label: "Gym / Fitness", value: "gym" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.amenities?.includes(opt.value) || false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("amenities", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Utilities Included */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-2">
-                    Utilities Included
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { value: "water", label: "Water" },
-                      { value: "electric", label: "Electric" },
-                      { value: "gas", label: "Gas" },
-                      { value: "internet", label: "Internet" },
-                      { value: "trash", label: "Trash" },
-                      { value: "hotWater", label: "Hot Water" },
-                      { value: "sewer", label: "Sewer" },
-                      { value: "yardCare", label: "Yard Care" },
-                    ].map(({ value, label }) => {
-                      const selected = (
-                        mobileDraft.utilitiesIncluded || []
-                      ).includes(value);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            const cur = mobileDraft.utilitiesIncluded || [];
-                            setMobileDraft({
-                              ...mobileDraft,
-                              utilitiesIncluded: selected
-                                ? cur.filter((v) => v !== value)
-                                : [...cur, value],
-                            });
-                          }}
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Move-in Date */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Move-in Date
-                  </label>
-                  <input
-                    type="date"
-                    value={mobileDraft.moveInDate || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        moveInDate: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  />
-                </div>
-
-                {/* Furnished */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Furnished
-                  </label>
-                  <select
-                    value={mobileDraft.furnished || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        furnished: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
-                  >
-                    <option value="">Any</option>
-                    <option value="furnished">Furnished</option>
-                    <option value="unfurnished">Unfurnished</option>
-                  </select>
-                </div>
-
-                {/* Lease Structure */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Lease Structure
-                  </label>
-                  <select
-                    value={mobileDraft.leaseStructure || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        leaseStructure: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
-                  >
-                    <option value="">Any</option>
-                    <option value="individual">Individual Lease</option>
-                    <option value="joint">Joint Lease</option>
-                  </select>
-                </div>
-
-                {/* Toggles */}
-                <div className="space-y-3">
-                  {[
-                    { label: "Sublease Friendly", field: "subleaseFriendly" },
-                  ].map(({ label, field }) => (
-                    <label
-                      key={field}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <span className="text-sm font-medium text-gray-700">
-                        {label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMobileDraft({
-                            ...mobileDraft,
-                            [field]: !mobileDraft[field],
-                          })
-                        }
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          mobileDraft[field] ? "bg-red-500" : "bg-gray-200"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                            mobileDraft[field]
-                              ? "translate-x-6"
-                              : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Walking Distance to Campus */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Walking Distance to Campus
-                  </p>
-                  <StepSlider
-                    steps={DIST_STEPS}
-                    value={mobileDraft.distance || ""}
-                    onChange={(v) =>
-                      setMobileDraft({ ...mobileDraft, distance: v })
-                    }
-                  />
-                </div>
-
-                {/* Walking Distance to Shuttle */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Walking Distance to Shuttle
-                  </p>
-                  <StepSlider
-                    steps={SHTT_STEPS}
-                    value={mobileDraft.distanceToShuttle || ""}
-                    onChange={(v) =>
-                      setMobileDraft({ ...mobileDraft, distanceToShuttle: v })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between px-4 py-4 border-t border-gray-100 flex-shrink-0">
-                <button
-                  onClick={() => {
-                    handleReset();
-                    setMobileFiltersOpen(false);
-                  }}
-                  className="text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
-                >
-                  Reset all
-                </button>
-                <button
-                  onClick={() => {
-                    setFilters(mobileDraft);
-                    onFiltersSaved(mobileDraft);
-                    setMobileFiltersOpen(false);
-                  }}
-                  className="px-8 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full text-sm transition-colors shadow-md"
-                >
-                  Apply Filters
-                </button>
-              </div>
+              {/* Body and footer: the desktop side panel, in the drawer */}
+              <FiltersPanel
+                drawer
+                listings={allListings}
+                filters={filters}
+                onReset={handleReset}
+                onApply={(next) => {
+                  setFilters(next);
+                  onFiltersSaved(next);
+                  setMobileFiltersOpen(false);
+                }}
+              />
             </div>
           </div>
         )}

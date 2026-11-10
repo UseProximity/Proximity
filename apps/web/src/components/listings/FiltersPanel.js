@@ -88,9 +88,11 @@ function Section({ title, className = "", inset = "pl-6", children }) {
   );
 }
 
-// Side filters panel of the browse page. It edits its own copy of the filters;
-// onApply gets that copy, onReset clears the site's filters and search.
-export default function FiltersPanel({ listings, filters, onApply, onReset }) {
+// Side filters panel of the browse page, and the body of the phone's filter
+// drawer (drawer: it fills the drawer, which has the heading, and its chips are
+// large enough to tap). It edits its own copy of the filters; onApply gets that
+// copy, onReset clears the site's filters and search.
+export default function FiltersPanel({ listings, filters, onApply, onReset, drawer = false }) {
   const [draft, setDraft] = useState(filters);
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const toggle = (field, value) =>
@@ -149,7 +151,7 @@ export default function FiltersPanel({ listings, filters, onApply, onReset }) {
               key={value}
               type="button"
               onClick={() => (single ? set({ [field]: value }) : toggle(field, value))}
-              className={`h-[22px] rounded-full border px-3.5 text-[11px] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-colors ${
+              className={`${drawer ? "h-9 px-4 text-xs" : "h-[22px] px-3.5 text-[11px]"} rounded-full border font-medium shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-colors ${
                 selected
                   ? "border-[#FF2B3A] bg-[#FF2B3A] text-white"
                   : "border-gray-200 bg-white text-[#495564] hover:border-gray-300"
@@ -166,11 +168,19 @@ export default function FiltersPanel({ listings, filters, onApply, onReset }) {
   const price = rentRange(draft.minRent, draft.maxRent);
 
   return (
-    <div className="flex min-h-0 w-[363px] flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-xl">
-      <div className="min-h-0 flex-1 overflow-y-auto pb-[28px] pt-[26px]">
-      <h2 className="pl-[18px] text-[17px] font-semibold leading-[21px] text-black">
-        Filters By:
-      </h2>
+    <div
+      className={`flex min-h-0 flex-col ${
+        drawer
+          ? "flex-1"
+          : "w-[363px] overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-xl"
+      }`}
+    >
+      <div className={`min-h-0 flex-1 overflow-y-auto pb-[28px] ${drawer ? "" : "pt-[26px]"}`}>
+      {!drawer && (
+        <h2 className="pl-[18px] text-[17px] font-semibold leading-[21px] text-black">
+          Filters By:
+        </h2>
+      )}
 
       <Section title="Price Range" className="mt-5" inset="pl-4">
         <PriceRangeSlider
