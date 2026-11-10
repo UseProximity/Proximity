@@ -18,7 +18,9 @@ import {
   rentFilters,
 } from "@/components/listings/PriceFilterCard";
 
-const ACCENT = "#FF2B3A";
+const ACCENT = "panel";
+// No edit waiting to be sent. One object, so "nothing waiting" is not a change.
+const NO_EDITS = {};
 
 // The design shows one stop fewer than the filter has: its last stop is the
 // open end ("" = any distance), so the "45" and "20" minute values are not
@@ -76,15 +78,18 @@ const AMENITIES = [
   { label: "Study Rooms", value: "study_room" },
   { label: "Gym / Fitness", value: "gym" },
 ];
+// Every value is one the listing data records (the feed's utilitiesRowToArray).
+// The design's Hot Water and Yard Care are not recorded, so they matched
+// nothing; Heat and Cable take their places.
 const UTILITIES = [
   { label: "Water", value: "water" },
   { label: "Electric", value: "electric" },
   { label: "Gas", value: "gas" },
   { label: "Internet", value: "internet" },
   { label: "Trash", value: "trash" },
-  { label: "Hot Water", value: "hotWater" },
+  { label: "Heat", value: "heat" },
   { label: "Sewer", value: "sewer" },
-  { label: "Yard Care", value: "yardCare" },
+  { label: "Cable", value: "cable" },
 ];
 const FURNISHED = [
   { label: "Any", value: "" },
@@ -110,10 +115,14 @@ function Section({ title, className = "", inset = "pl-5", large = false, onClear
 
 // Side filters panel of the browse page, and the body of the phone's filter
 // drawer (drawer: it fills the drawer, which has the heading, and its chips are
-// large enough to tap). It edits its own copy of the filters. On the page the
-// copy is sent to onChange as it changes, so the results update live and there
-// is no Apply button; the drawer covers the results, so it keeps Apply, which
-// sends the copy to onApply. onReset clears the site's filters and search.
+// large enough to tap). It shows the page's filters with its own edits that
+// have not been sent yet on top, and keeps no other copy of them: a change or
+// a reset made anywhere else on the page shows here at once and is never
+// overwritten by an old copy. On the page the edits (only the fields that
+// changed) go to onChange as they are made, so the results update live and
+// there is no Apply button; the drawer covers the results, so it holds its
+// edits until Apply, which sends the edited filters to onApply. onReset clears
+// the site's filters and search.
 export default function FiltersPanel({
   listings,
   filters,
@@ -122,14 +131,21 @@ export default function FiltersPanel({
   onReset,
   drawer = false,
 }) {
-  const [draft, setDraft] = useState(filters);
-  useLiveFilters(draft, (next) => onChange?.(next));
-  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const [edits, setEdits] = useState(NO_EDITS);
+  const draft = { ...filters, ...edits };
+  useLiveFilters(edits, (sent) => {
+    if (drawer || sent === NO_EDITS) return;
+    onChange(sent);
+    setEdits(NO_EDITS);
+  });
+  const set = (patch) => setEdits((e) => ({ ...e, ...patch }));
+  // The field's value as shown: an edit not sent yet, else the page's filter.
+  const shown = (e, field) => (field in e ? e[field] : filters[field]) || [];
   const toggle = (field, value) =>
-    setDraft((d) => {
-      const cur = d[field] || [];
+    setEdits((e) => {
+      const cur = shown(e, field);
       return {
-        ...d,
+        ...e,
         [field]: cur.includes(value)
           ? cur.filter((v) => v !== value)
           : [...cur, value],
@@ -151,9 +167,9 @@ export default function FiltersPanel({
     const value = `${months}-month`;
     if (!DURATIONS.includes(value))
       setAddedDurations((added) => (added.includes(value) ? added : [...added, value]));
-    setDraft((d) => {
-      const cur = d.leaseAvailability || [];
-      return cur.includes(value) ? d : { ...d, leaseAvailability: [...cur, value] };
+    setEdits((e) => {
+      const cur = shown(e, "leaseAvailability");
+      return cur.includes(value) ? e : { ...e, leaseAvailability: [...cur, value] };
     });
   };
   const durationOptions = [...DURATIONS, ...addedDurations]
@@ -306,7 +322,7 @@ export default function FiltersPanel({
       type="button"
       onClick={() => {
         onReset();
-        setDraft(DEFAULT_FILTERS);
+        setEdits(NO_EDITS);
       }}
       className={`shrink-0 rounded-full border font-medium text-[#495564] hover:bg-gray-50 ${className}`}
     >
@@ -354,9 +370,9 @@ export default function FiltersPanel({
         large={drawer}
         onClear={clearer("moveInMonth", "moveInDay", "moveInDate")}
       >
-        {/* Month alone shows everything you could move into that month: what is
-            available now, plus what opens in that month. A day narrows the
-            ones opening that month to on or before that day. The day needs a
+        {/* Month alone shows everything you could move into by the end of the
+            next such month: what is available now, plus what opens before
+            then. A day makes it by that day of the month. The day needs a
             month first. */}
         <div className={`ml-5 mt-2 flex gap-2 ${drawer ? "w-[280px]" : "w-[236px]"}`}>
           {moveInSelect(

@@ -116,10 +116,6 @@ export default function AvailableListings({
   /* ── Left panel expanded listing ── */
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
-  // For the map's pin click handler, which is kept from when the markers were
-  // built and so cannot see the current state.
-  const expandedRef = useRef(expandedListing);
-  expandedRef.current = expandedListing;
   const panelRef = useRef(null);
   // The first visible card, and how far below the column top it sat, when a
   // panel opened, so closing it (button or browser back) puts the reader back
@@ -155,8 +151,7 @@ export default function AvailableListings({
   const anchoring = useRef(false);
   // Set by a map pin click. If it closes the panel, that close ends in the
   // smooth scroll to the pin's card (below), so the saved card is only restored,
-  // not held. Not guarded on an open panel: the marker listener keeps the
-  // handler from when the markers were built, so it can't see that.
+  // not held.
   const pinClose = useRef(false);
   // True while a pin-click close waits for the width slide to end before
   // scrolling to the pin's card: scrolled any earlier, the target is worked out
@@ -718,7 +713,7 @@ export default function AvailableListings({
             setSelectedListing(listing);
             // With a panel open, the pin only brings up its card on the map.
             // The panel stays until that card is clicked, which replaces it.
-            if (expandedRef.current) return;
+            if (expandedListing) return;
             pinClose.current = true;
             scrollAtSlideEnd.current = false;
             closePanel();

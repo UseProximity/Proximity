@@ -22,15 +22,8 @@ import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
   filterListings,
+  filtersActive,
 } from "@/lib/listings/filterListings";
-
-// True when any filter differs from its default. The suggested strip only shows
-// on the unfiltered view: once a student narrows the list, their own question
-// is the ranking.
-const filtersActive = (filters) =>
-  Object.keys(DEFAULT_FILTERS).some(
-    (k) => JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !== JSON.stringify(DEFAULT_FILTERS[k])
-  );
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -189,6 +182,8 @@ export default function BrowseContent({ session, initialListings = null }) {
     [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // The suggested strip only shows on the unfiltered view: once a student
+  // narrows the list, their own question is the ranking.
   const suggestedListings = useMemo(() => {
     if (search.trim() || filtersActive(filters)) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));

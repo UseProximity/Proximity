@@ -20,7 +20,6 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
 /*
  * The strip's heading. AvailableListings renders it in the results row, on the
  * left where the listing count normally sits, and moves the count to the right.
- * With the map hidden (wide) the strip draws it inside its own box instead.
  */
 // Card grid of the map-hidden page, shared with AvailableListings so the
 // suggestions and the listings under them line up: as many columns as fit, at

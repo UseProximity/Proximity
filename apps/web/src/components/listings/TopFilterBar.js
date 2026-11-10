@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
 import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
 import FiltersPanel from "@/components/listings/FiltersPanel";
+import { filtersActive } from "@/lib/listings/filterListings";
 
 function FilterDropdownPortal({ children, isOpen }) {
   const [mounted, setMounted] = useState(false);
@@ -25,7 +26,8 @@ function FilterDropdownPortal({ children, isOpen }) {
 }
 
 // Dropdown holding one of the filter cards or the side panel; pos holds the
-// fixed offsets (top / left / right / bottom) it is anchored at.
+// fixed offsets (top / left / right / bottom) it is anchored at. They are
+// measured from the button that opened it, so they are set inline.
 function CardDropdown({ isOpen, pos, onClose, modal = true, children }) {
   return (
     <FilterDropdownPortal isOpen={isOpen}>
@@ -75,16 +77,10 @@ export default function TopFilterBar({
    * results follow without blocking them.
    */
   const [filters, setLiveFilters] = useOptimistic(committedFilters);
-  // The side panel edits its own copy of the filters. With the map hidden the
-  // bar stays usable while the panel is open, so a change or a reset made in the
-  // bar bumps this and the panel starts over from the new filters (its unapplied
-  // edits are dropped), instead of later applying its old copy over them.
-  const [panelEpoch, setPanelEpoch] = useState(0);
   const setFilters = (next) =>
     startTransition(() => {
       setLiveFilters(next);
       commitFilters(next);
-      setPanelEpoch((epoch) => epoch + 1);
     });
   const [showFilters, setShowFilters] = useState(false);
   // For the document listeners below, which are set up once.
@@ -169,27 +165,7 @@ export default function TopFilterBar({
     return () => document.body.removeAttribute("data-filters-panel");
   }, [showFilters]);
 
-  const hasActiveFilters =
-    filters.bedrooms ||
-    filters.maxBedrooms ||
-    filters.bathrooms ||
-    filters.maxBathrooms ||
-    filters.minRent ||
-    filters.maxRent ||
-    filters.distance ||
-    filters.distanceToShuttle ||
-    filters.moveInDate ||
-    filters.moveInMonth ||
-    filters.homeType?.length > 0 ||
-    filters.leaseAvailability?.length > 0 ||
-    filters.amenities?.length > 0 ||
-    filters.furnished ||
-    filters.utilitiesIncluded?.length > 0 ||
-    filters.subleaseFriendly ||
-    filters.subleaseOnly ||
-    filters.leaseStructure ||
-    filters.savedOnly ||
-    search;
+  const hasActiveFilters = filtersActive(filters) || search;
 
   // Pill display labels for beds/baths
   const bedLabel =
@@ -220,15 +196,21 @@ export default function TopFilterBar({
   const bedBathLabel = [bedLabel, bathLabel].filter(Boolean).join(" · ") || "Beds & Baths";
 
   // The dropdown cards and the side panel filter live: each change they send
-  // takes effect at once and the control stays open. Unlike a change made in
-  // the bar it does not restart the panel (the change is the panel's own). The
-  // filters are saved to the student's filter summary once, when the control
-  // closes, not on every change.
+  // (only the fields that changed) takes effect at once and the control stays
+  // open. One that changes nothing is dropped: a new filters object, even an
+  // equal one, re-filters the page, scrolls the list to the top and closes an
+  // open listing. The filters are saved to the student's filter summary once,
+  // when the control closes, not on every change.
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
   const unsaved = useRef(null);
   const applyLive = (values) => {
-    const next = { ...filtersRef.current, ...values };
+    const current = filtersRef.current;
+    const changed = Object.keys(values).some(
+      (k) => JSON.stringify(values[k]) !== JSON.stringify(current[k])
+    );
+    if (!changed) return;
+    const next = { ...current, ...values };
     filtersRef.current = next;
     unsaved.current = next;
     startTransition(() => {
@@ -389,10 +371,7 @@ export default function TopFilterBar({
 
         {/* Clear All */}
         <button
-          onClick={() => {
-            onReset();
-            setPanelEpoch((epoch) => epoch + 1);
-          }}
+          onClick={onReset}
           className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
@@ -458,7 +437,6 @@ export default function TopFilterBar({
         modal={false}
       >
         <FiltersPanel
-          key={panelEpoch}
           listings={listings}
           filters={filters}
           onChange={applyLive}

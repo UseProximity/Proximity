@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { cheapestLiveRent } from "@/lib/listings/filterListings";
 import {
   FilterCard,
   RangeSlider,
   useLiveFilters,
+  accentClasses,
   PRICE_MIN,
   PRICE_MAX,
   PRICE_STEP,
@@ -14,12 +16,17 @@ const BAR_COUNT = 20;
 const BUCKET = (PRICE_MAX - PRICE_MIN) / BAR_COUNT;
 
 // Listings per price bucket. Prices outside the slider's range fall into the
-// first and last bars, so the last bar is the "$4000+" bucket.
+// first and last bars, so the last bar is the "$4000+" bucket. A listing is
+// counted at the rent the price filter tests (its cheapest live offering), so
+// the bars move with the results: one with no published rent passes any range
+// and is in no bar, and unavailable listings are left out.
 function priceBuckets(listings) {
   const counts = new Array(BAR_COUNT).fill(0);
   listings.forEach((l) => {
-    if (l.minRent == null) return;
-    const i = Math.floor((l.minRent - PRICE_MIN) / BUCKET);
+    if (l.unavailable) return;
+    const rent = cheapestLiveRent(l);
+    if (rent == null) return;
+    const i = Math.floor((rent - PRICE_MIN) / BUCKET);
     counts[Math.min(BAR_COUNT - 1, Math.max(0, i))] += 1;
   });
   return counts;
@@ -41,7 +48,7 @@ export const rentFilters = ({ low, high }) => ({
 // Histogram of every listing's price with the range slider under it. The bars
 // inside the selected range are drawn in the accent colour, so with no range
 // chosen they all are. barsClass and sliderClass place the two (the bars' height
-// included).
+// included). A bar's own height comes from its count, so it is set inline.
 export function PriceRangeSlider({
   listings,
   low,
@@ -53,6 +60,7 @@ export function PriceRangeSlider({
 }) {
   const counts = useMemo(() => priceBuckets(listings), [listings]);
   const tallest = Math.max(...counts, 1);
+  const red = accentClasses(accent);
   return (
     <>
       <div className={`flex items-end gap-[2px] ${barsClass}`}>
@@ -62,11 +70,8 @@ export function PriceRangeSlider({
           return (
             <div
               key={i}
-              className="flex-1 bg-gray-200"
-              style={{
-                height: `${(count / tallest) * 90}%`,
-                ...(inRange && { backgroundColor: accent }),
-              }}
+              className={`flex-1 ${inRange ? red.bg : "bg-gray-200"}`}
+              style={{ height: `${(count / tallest) * 90}%` }}
             />
           );
         })}
@@ -148,7 +153,7 @@ export default function PriceFilterCard({ listings, minRent, maxRent, onChange }
         onChange={(low, high) => setRange({ low, high })}
         barsClass="mt-3 ml-[34px] mr-[36px] h-[72px]"
         sliderClass="-mt-2 px-4"
-        accent="#F71C1E"
+        accent="card"
       />
       <div className="mt-2 flex gap-2 px-4">
         {[

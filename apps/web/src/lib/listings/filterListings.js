@@ -45,20 +45,52 @@ export const DEFAULT_FILTERS = {
   distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
   moveInDate: "", // older "move in by" date (YYYY-MM-DD), from saved filters
-  moveInMonth: "", // '' | '1'..'12': available now, or opening in that month (any year)
-  moveInDay: "", // '' | '1'..'31', with moveInMonth: opening on or before that day of it
+  moveInMonth: "", // '' | '1'..'12': open by the end of the next such month
+  moveInDay: "", // '' | '1'..'31', with moveInMonth: open by that day of it
   homeType: [], // ['apartment','house','studio','townhouse','single_room','condo']
   leaseAvailability: [], // lease durations: ['6-month','10-month','12-month', any '<n>-month']
   amenities: [],
   furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: [],
+  // The next three have no control on the web any more. They are kept because
+  // the mobile app's filter sheet still sets them and older saved filter
+  // summaries hold them.
   subleaseFriendly: false,
   subleaseOnly: false, // only show actual sublease offerings
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
 };
 
+// True when any filter differs from its default.
+export const filtersActive = (filters) =>
+  Object.keys(DEFAULT_FILTERS).some(
+    (k) =>
+      JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !==
+      JSON.stringify(DEFAULT_FILTERS[k])
+  );
+
 const num = (v) => (v === "" || v == null ? null : Number(v));
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/*
+ * The date (YYYY-MM-DD) a "move in in August" filter means: the last day of
+ * the next August, or with a day, that day of it. The current month counts as
+ * this year's unless the chosen day has already passed, which means next
+ * year's. A day the month does not have that year (Feb 29) becomes its last
+ * day. `today` is the renter's own date, not UTC, so an evening in St. Louis
+ * is not already tomorrow.
+ */
+export function moveInDeadline(month, day, today = new Date()) {
+  const m = Number(month);
+  if (!(m >= 1 && m <= 12)) return null;
+  const d = Number(day) || null;
+  const thisMonth = today.getMonth() + 1;
+  const passed = m < thisMonth || (m === thisMonth && d && d < today.getDate());
+  const year = today.getFullYear() + (passed ? 1 : 0);
+  const lastDay = new Date(year, m, 0).getDate();
+  return `${year}-${pad2(m)}-${pad2(Math.min(d ?? lastDay, lastDay))}`;
+}
 
 /*
  * Lease durations, matched against unit_leases.lease_term_months, the array of
@@ -117,18 +149,16 @@ export function leaseMatches(lease, filters) {
     if (new Date(lease.availableFrom) > new Date(filters.moveInDate)) return false;
   }
 
-  // "Move in in January": an offering that is available now (no stated date,
-  // or one that has passed) can be moved into in any month, so it always
-  // passes. One that opens later must open in that month, whatever the year,
-  // and with a day as well, on or before that day of it. Read from the date's
-  // text, not a Date, so a time zone cannot move it into the neighbouring month.
+  // "Move in in August": the offering must be open by the end of the next
+  // August (with a day, by that day of it). So one that is open already or
+  // opens any time before then passes, and one that opens after it, or in the
+  // August of a later year, does not. No stated date is not a late one.
+  // Compared as date text, not Dates, so a time zone cannot move it a day.
   if (filters.moveInMonth) {
     const opens = String(lease.availableFrom ?? "").slice(0, 10);
-    const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(opens) || [];
-    const availableNow = !month || opens <= new Date().toISOString().slice(0, 10);
-    if (!availableNow) {
-      if (Number(month) !== Number(filters.moveInMonth)) return false;
-      if (filters.moveInDay && Number(day) > Number(filters.moveInDay)) return false;
+    const deadline = moveInDeadline(filters.moveInMonth, filters.moveInDay);
+    if (deadline && /^\d{4}-\d{2}-\d{2}$/.test(opens) && opens > deadline) {
+      return false;
     }
   }
 
@@ -152,6 +182,7 @@ function categoricalLeaseFilters(filters) {
     filters.furnished ||
     filters.subleaseOnly ||
     filters.moveInDate ||
+    filters.moveInMonth ||
     filters.leaseAvailability?.length
   );
 }
@@ -178,6 +209,18 @@ function unitPool(listing) {
   const units = listing.unitTypes ?? [];
   const open = units.filter((u) => u.available !== false);
   return open.length ? open : units;
+}
+
+/**
+ * The cheapest published rent among the offerings a renter could take: the
+ * rent the price filter tests. null when no live offering states one.
+ */
+export function cheapestLiveRent(listing) {
+  const rents = unitPool(listing)
+    .flatMap((u) => u.leases ?? [])
+    .map((l) => l.rent)
+    .filter((r) => r != null);
+  return rents.length ? Math.min(...rents) : null;
 }
 
 /**

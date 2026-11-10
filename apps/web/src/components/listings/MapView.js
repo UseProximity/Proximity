@@ -54,12 +54,25 @@ function pinMarkup(color, inner, scale = 1) {
 }
 
 // Listings whose pins would sit closer than this on screen merge into one
-// numbered pin. One pin width. Clustering stops at CLUSTER_MAX_ZOOM so
-// listings at the same spot can always be told apart by zooming in; a cluster
-// click zooms in by CLUSTER_ZOOM_STEP levels.
+// numbered pin. One pin width. Clustering stops at CLUSTER_MAX_ZOOM; a cluster
+// click zooms in by CLUSTER_ZOOM_STEP levels. From that zoom on, listings at
+// the same spot (the same building, say), which no zoom can separate, are set
+// side by side instead of on top of each other, so each one can be clicked.
 const CLUSTER_RADIUS_PX = 30;
 const CLUSTER_MAX_ZOOM = 17;
 const CLUSTER_ZOOM_STEP = 2;
+// Pins closer than this once clustering has stopped count as the same spot,
+// and are set this far apart, centred on it.
+const STACK_RADIUS_PX = 6;
+const STACK_SPREAD_PX = 26;
+
+// Zoom the camera flies to for a picked pin: between 15 and 16. Zoomed in far
+// enough to have split a stack of pins, it stays there, or the pin just picked
+// would merge back with its neighbours.
+const pinFlyZoom = (map) =>
+  map.getZoom() >= CLUSTER_MAX_ZOOM
+    ? map.getZoom()
+    : Math.min(Math.max(map.getZoom(), 15), 16);
 
 // How long a pin takes to slide into or out of a group, or to appear.
 const PIN_MOTION = { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" };
@@ -96,17 +109,23 @@ function percentile(values, p) {
 }
 
 // Groups listings whose pins overlap at the map's current zoom. Returns
-// { members, lng, lat } per pin (lng/lat is the members' average). The pinned
-// listing (the selected one) is never merged, so its larger pin stays visible.
+// { members, lng, lat, dx } per pin (lng/lat is the members' average, dx the
+// pin's sideways offset in px). The pinned listing (the selected one) is never
+// merged, so its larger pin stays visible. Once clustering has stopped nothing
+// is merged: listings at the same spot each get their own pin, side by side.
 function clusterListings(map, listings, pinnedId) {
   const toGroup = (members) => ({
     members,
     lng: members.reduce((sum, l) => sum + l.longitude, 0) / members.length,
     lat: members.reduce((sum, l) => sum + l.latitude, 0) / members.length,
+    dx: 0,
   });
-  const pinned = listings.filter((l) => String(l._id) === String(pinnedId));
+  const spread = map.getZoom() >= CLUSTER_MAX_ZOOM;
+  const pinned = spread
+    ? []
+    : listings.filter((l) => String(l._id) === String(pinnedId));
   const pool = listings.filter((l) => !pinned.includes(l));
-  const radius = map.getZoom() < CLUSTER_MAX_ZOOM ? CLUSTER_RADIUS_PX : 0;
+  const radius = spread ? STACK_RADIUS_PX : CLUSTER_RADIUS_PX;
   const points = pool.map((l) => map.project([l.longitude, l.latitude]));
   const taken = new Set();
   const groups = pinned.map((l) => toGroup([l]));
@@ -126,7 +145,19 @@ function clusterListings(map, listings, pinnedId) {
     }
     groups.push(toGroup(members));
   });
-  return groups;
+  if (!spread) return groups;
+  return groups.flatMap((group) =>
+    group.members.length === 1
+      ? [group]
+      : [...group.members]
+          // By id, so each listing keeps its place whatever order they came in.
+          .sort((a, b) => String(a._id).localeCompare(String(b._id)))
+          .map((listing, i, all) => ({
+            ...group,
+            members: [listing],
+            dx: (i - (all.length - 1) / 2) * STACK_SPREAD_PX,
+          }))
+  );
 }
 
 // Pin for two or more merged listings: the pin shape with the count where the
@@ -585,7 +616,7 @@ function MapViewInner({
         (l) => l.longitude && l.latitude && !(hideUnavailable && l.unavailable)
       );
       map.markers = clusterListings(map, shown, selectedId).map(
-        ({ members, lng, lat }) => {
+        ({ members, lng, lat, dx }) => {
           const isCluster = members.length > 1;
           const listing = members[0];
           const isSelected = !isCluster && listing._id === selectedId;
@@ -596,7 +627,7 @@ function MapViewInner({
             suggestedIds?.has(String(l._id))
           );
           // The listings in the pin plus everything that changes how it looks.
-          const look = `${allUnavailable}:${anySuggested}`;
+          const look = `${allUnavailable}:${anySuggested}:${dx}`;
           const key = isCluster
             ? `${members.map((l) => l._id).join(",")}:${look}`
             : `${listing._id}:${isSelected}:${exactRating}:${look}`;
@@ -630,6 +661,7 @@ function MapViewInner({
           const marker = new mapboxgl.Marker({
             element: markerEl,
             anchor: "bottom",
+            offset: [dx, 0],
           })
             .setLngLat([lng, lat])
             .addTo(map);
@@ -841,7 +873,7 @@ function MapViewInner({
       pin?.longitude && pin?.latitude
         ? {
             center: [pin.longitude, pin.latitude],
-            zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+            zoom: pinFlyZoom(map),
             offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
           }
         : null;
@@ -858,7 +890,7 @@ function MapViewInner({
           map.resize(); // one final sync before calculating offset
           map.flyTo({
             center: [listing.longitude, listing.latitude],
-            zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+            zoom: pinFlyZoom(map),
             offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
             duration: 700,
             essential: true,
@@ -915,7 +947,7 @@ function MapViewInner({
       if (listing?.longitude && listing?.latitude) {
         map.flyTo({
           center: [listing.longitude, listing.latitude],
-          zoom: Math.min(Math.max(map.getZoom(), 15), 16),
+          zoom: pinFlyZoom(map),
           offset: [0, -Math.round(map.getContainer().clientHeight * 0.2)],
           duration: 700,
           essential: true,

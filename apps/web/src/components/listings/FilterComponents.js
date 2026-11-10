@@ -71,6 +71,14 @@ export function FilterCard({ title, onClear, children }) {
   );
 }
 
+// The two reds of the browse filters, as classes: "card" for the bar's
+// dropdown cards, "panel" for the side panel and the phone's drawer.
+const ACCENTS = {
+  card: { bg: "bg-[#F71C1E]", text: "text-[#F71C1E]" },
+  panel: { bg: "bg-[#FF2B3A]", text: "text-[#FF2B3A]" },
+};
+export const accentClasses = (accent) => ACCENTS[accent] ?? ACCENTS.card;
+
 // Handle size in px. A handle's centre sits at handleX(pct), which keeps the
 // first and last handle inside the track (half a handle in from each end).
 const HANDLE_PX = 17;
@@ -81,12 +89,18 @@ const LABEL_MERGE_PCT = 16;
 // Two-handle range slider in the Browse Listings design: a red track between
 // round red handles, with a red label under each. low and high are numbers
 // between min and max, at least one step apart; formatLabel(value) gives the
-// label text. accent is the red of handles, track and labels. With single, only
+// label text. accent ("card" or "panel") is the red of handles, track and
+// labels. With single, only
 // the high handle shows and the track runs from the left end to it (pass low as
 // min). With ticks (one label per step, from min), every step is labelled
 // instead, the selected ones in red, each one clickable to pick that step, and
 // formatLabel is not needed. minGap is how
-// close the handles may get (default one step; 0 lets them meet).
+// close the handles may get (default one step; 0 lets them meet). onChange is
+// called only when low or high actually changes.
+//
+// The handles, track and labels are placed with inline left / width values:
+// they are worked out from the slider's values, which a Tailwind class cannot
+// carry. Everything else here is classes.
 //
 // Dragging is handled here with pointer events rather than two overlaid
 // <input type="range">. With those, the browser's hit-testing and z-order
@@ -99,7 +113,7 @@ export function RangeSlider({
   max,
   step = 1,
   minGap = step,
-  accent = "#F71C1E",
+  accent = "card",
   single = false,
   low,
   high,
@@ -107,7 +121,12 @@ export function RangeSlider({
   formatLabel,
   ticks,
 }) {
+  const red = accentClasses(accent);
   const rowRef = useRef(null);
+  // A pointer move that stays on the same step is not a change.
+  const change = (nextLow, nextHigh) => {
+    if (nextLow !== low || nextHigh !== high) onChange(nextLow, nextHigh);
+  };
   // Drag in progress: { handle, offset, startX }. handle is null until known.
   const drag = useRef(null);
   const pctOf = (v) => ((v - min) / (max - min)) * 100;
@@ -128,8 +147,8 @@ export function RangeSlider({
   // Moves a handle, keeping it on the track and minGap clear of the other one.
   const move = (handle, value) => {
     const v = Math.min(max, Math.max(min, value));
-    if (handle === "low") onChange(Math.min(v, high - minGap), high);
-    else onChange(low, Math.max(v, low + minGap));
+    if (handle === "low") change(Math.min(v, high - minGap), high);
+    else change(low, Math.max(v, low + minGap));
   };
   // Starts dragging a handle pressed at client x. Pressing on the handle keeps
   // the pointer's offset from its centre; pressing on the track jumps it there.
@@ -186,8 +205,8 @@ export function RangeSlider({
       aria-valuenow={value}
       aria-valuetext={ticks ? ticks[Math.round((value - min) / step)] : formatLabel(value)}
       onKeyDown={onKeyDown(handle, value)}
-      className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-      style={{ left: handleX(pct), backgroundColor: accent }}
+      className={`absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${red.bg}`}
+      style={{ left: handleX(pct) }}
     />
   );
   const label = (pct, text, color = "") => (
@@ -214,9 +233,8 @@ export function RangeSlider({
       >
         <div className="absolute inset-x-[8.5px] top-1/2 h-0.5 -translate-y-1/2 bg-gray-200" />
         <div
-          className="absolute top-1/2 h-0.5 -translate-y-1/2"
+          className={`absolute top-1/2 h-0.5 -translate-y-1/2 ${red.bg}`}
           style={{
-            backgroundColor: accent,
             left: handleX(lowPct),
             width: `calc(${handleX(highPct)} - ${handleX(lowPct)})`,
           }}
@@ -225,8 +243,7 @@ export function RangeSlider({
         {renderHandle("high", high, highPct)}
       </div>
       <div
-        className="relative mt-0.5 h-[18px] text-[10px] font-medium leading-[18px]"
-        style={{ color: accent }}
+        className={`relative mt-0.5 h-[18px] text-[10px] font-medium leading-[18px] ${red.text}`}
       >
         {ticks ? (
           // Each step's label is a button: clicking it picks exactly that step
@@ -238,7 +255,7 @@ export function RangeSlider({
               <button
                 key={text}
                 type="button"
-                onClick={() => onChange(single ? low : v, v)}
+                onClick={() => change(single ? low : v, v)}
                 className={`absolute -translate-x-1/2 cursor-pointer whitespace-nowrap px-1 hover:text-gray-700 ${
                   selected ? "" : "text-gray-400"
                 }`}
