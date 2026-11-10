@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import { WalkScale } from "@/components/listings/MapPopupCard";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
@@ -30,7 +31,7 @@ function campusWalk(listing) {
 export function MatchCardSkeleton() {
   return (
     <div className="flex h-full min-h-[150px] flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg sm:flex-row">
-      <div className="aspect-video animate-pulse bg-gray-200 sm:aspect-auto sm:h-full sm:w-[42%]" />
+      <div className="aspect-video animate-pulse bg-gray-200 sm:aspect-auto sm:h-full sm:w-[36%]" />
       <div className="flex-1 space-y-2 p-3">
         <div className="h-3.5 w-2/3 animate-pulse rounded bg-gray-200" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-gray-100" />
@@ -70,6 +71,9 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
 
   const street = (listing.address ?? "").split(",")[0].trim();
   const title = listing.title || street;
+  // Under a named building the full address; under a street-address title, the rest of it.
+  const cityStateZip =
+    listing.title && listing.title !== street ? listing.address : (listing.address ?? "").replace(/^[^,]+,\s*/, "");
   const units = listing.unitTypes ?? [];
   const beds = range(units.map((u) => u.bedrooms));
   const baths = range(units.map((u) => u.bathrooms));
@@ -100,7 +104,7 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
       }
       className="group flex h-full min-h-[150px] cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg transition-colors hover:border-red-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 sm:flex-row"
     >
-      <div className="relative aspect-video flex-shrink-0 bg-gray-100 sm:aspect-auto sm:h-full sm:w-[42%]">
+      <div className="relative aspect-video flex-shrink-0 bg-gray-100 sm:aspect-auto sm:h-full sm:w-[36%]">
         {image ? (
           <Image src={image} alt={listing.address ?? title} fill sizes="(max-width: 640px) 100vw, 320px" className="object-cover" />
         ) : (
@@ -112,25 +116,36 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col p-3">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="min-w-0 truncate text-sm font-bold text-gray-900">{title}</h3>
+        <div className="flex flex-shrink-0 items-start justify-between gap-2">
+          <h3 className="min-w-0 truncate text-sm font-bold leading-snug text-gray-900">{title}</h3>
           <span className="flex-shrink-0 whitespace-nowrap text-sm font-bold text-[#3C4142]">
             {rent}
             {rent !== "Contact for Pricing" && <span className="text-xs font-normal">/mo</span>}
           </span>
         </div>
-        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
-          <span className="truncate">
-            {beds ?? "N/A"} bed | {baths ?? "N/A"} bath
-            {walk != null ? ` | ${walk} min walk` : ""}
-            {shuttle != null ? ` | ${shuttle} min to shuttle` : ""}
-          </span>
+        {/* Same lines, in the same order, as the browse listing card: address,
+            then beds, baths and lease type, then the walk and shuttle badges. */}
+        {cityStateZip && <p className="mt-0.5 flex-shrink-0 truncate text-xs text-gray-500">{cityStateZip}</p>}
+        <p className="mt-2 flex-shrink-0 truncate text-xs text-gray-500">
+          {beds ?? "N/A"} bed | {baths ?? "N/A"} bath
+          {listing.leaseType ? ` | ${listing.leaseType}` : ""}
+        </p>
+        {(walk != null || shuttle != null) && (
+          <div className="mt-1.5 flex flex-shrink-0 items-center gap-3">
+            {walk != null && <WalkScale minutes={walk} label="campus" />}
+            {shuttle != null && <WalkScale minutes={shuttle} label="shuttle" />}
+          </div>
+        )}
+
+        {/* The explanation takes whatever height the card has left. On a short
+            window it scrolls inside the card rather than squeezing the facts
+            above it or pushing Contact out of view. */}
+        <div className="scrollbar-hidden mt-2.5 min-h-0 flex-1 overflow-y-auto">
+          <p className="text-xs leading-relaxed text-gray-700">{match.reason}</p>
+          {match.note && <p className="mt-1 text-xs leading-snug text-red-600">{match.note}</p>}
         </div>
 
-        <p className="mt-2 line-clamp-3 text-xs leading-snug text-gray-700">{match.reason}</p>
-        {match.note && <p className="mt-1 line-clamp-2 text-xs leading-snug text-red-600">{match.note}</p>}
-
-        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+        <div className="flex flex-shrink-0 items-end justify-between gap-2 pt-2">
           <button
             type="button"
             onClick={(e) => {
