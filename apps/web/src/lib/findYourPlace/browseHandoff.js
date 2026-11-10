@@ -1,22 +1,14 @@
 /*
- * "Browse All N Matches": what the browse page needs to show a student the
- * rest of their matches (Wyatt, 2026-11-10). Two parts, used together:
+ * "Browse All N Matches": the browse page opened with the student's answers
+ * pre-set in its own filter bar (Wyatt, 2026-11-10).
  *
- *   filters  Answers browse has a filter for, pre-set in its own filter bar
- *            where the student can see and change them: bedrooms, move-in
- *            date, lease length, furnishing, amenities.
- *   ids      The listings that pass everything browse has NO filter for:
- *            rent per person (browse filters on a lease's rent, which may be
- *            for the whole unit), the group and sublease rules, the
- *            neighborhood they named, and pets (judged from the description
- *            as well as the flag, which the matcher trusts more than browse's
- *            flag-only filter). Browse shows only these.
- *
- * `summary` names what the ids are holding to, for the line browse shows under
- * its filters.
+ * Only filters browse already has are used, so the result is deliberately a
+ * bit looser than the matcher: the student sees them in the bar and can change
+ * any of them. Answers browse has no filter for (a neighborhood, a bike or
+ * drive limit, anything typed freely) are not applied; `notApplied` names the
+ * ones worth telling the student about, for the line under the filters.
  */
-import { neighborhoodScore } from "@/lib/matchmaking/listingFilter";
-import { needsPetFriendly, descriptionAllowsPets } from "@/lib/matchmaking/listingConstraints";
+import { needsPetFriendly } from "@/lib/matchmaking/listingConstraints";
 import { NO_PREFERENCE, moveInCutoff } from "./options";
 
 // Parsed amenity key (a listing_amenities column) -> browse's amenity filter value.
@@ -47,50 +39,50 @@ const NEIGHBORHOOD_NAMES = {
   DeBaliviere: "DeBaliviere",
 };
 
-const amenityRow = (listing) => {
-  const a = listing.listing_amenities;
-  return (Array.isArray(a) ? a[0] : a) ?? null;
-};
-
 const dollars = (n) => "$" + Math.round(n).toLocaleString("en-US");
 
-export function buildBrowseHandoff({ answers, parsed, preferences, strict }) {
+export function buildBrowseHandoff({ answers, parsed, preferences }) {
   const filters = {};
-  const summary = [];
+  const notApplied = [];
 
   // Bedrooms: an exact headcount up to 4 is one unit of that size. A 5+ group
   // may be housed across several units, which no bedroom filter can express.
   const group = parseInt(answers.group, 10);
-  if (Number.isFinite(group) && group >= 1 && group <= 4) {
+  const oneUnit = Number.isFinite(group) && group >= 1 && group <= 4;
+  if (oneUnit) {
     filters.bedrooms = String(group);
     filters.maxBedrooms = String(group);
   } else if (Number.isFinite(group)) {
-    summary.push("room for " + group);
+    notApplied.push("room for " + group);
   }
 
-  if (typeof answers.budget === "number") summary.push("up to " + dollars(answers.budget) + " per person");
+  /*
+   * Rent. Browse's max-rent filter reads a lease's rent as posted, which is
+   * per person on some listings and for the whole unit on others. The cap is
+   * therefore the student's per-person max times the headcount: nothing they
+   * could afford is hidden, at the cost of letting through some per-person
+   * listings above their max. The looser side is the right side to err on.
+   */
+  if (typeof answers.budget === "number") {
+    if (oneUnit) filters.maxRent = String(answers.budget * group);
+    else notApplied.push("up to " + dollars(answers.budget) + " per person");
+  }
 
   const cutoff = answers.moveIn && answers.moveIn !== NO_PREFERENCE ? moveInCutoff(answers.moveIn) : null;
   if (cutoff) filters.moveInDate = cutoff;
 
   if (BROWSE_LEASE[answers.lease]) filters.leaseAvailability = BROWSE_LEASE[answers.lease];
-  else if (/^\d+$/.test(answers.lease ?? "")) summary.push(answers.lease + " month lease");
+  else if (/^\d+$/.test(answers.lease ?? "")) notApplied.push(answers.lease + " month lease");
 
   if (parsed.furnished === "yes") filters.furnished = "furnished";
   else if (parsed.furnished === "no") filters.furnished = "unfurnished";
 
-  const amenities = [...new Set(parsed.amenities.map((k) => BROWSE_AMENITY[k]).filter(Boolean))];
-  if (amenities.length) filters.amenities = amenities;
+  const amenities = parsed.amenities.map((k) => BROWSE_AMENITY[k]).filter(Boolean);
+  // Browse's own "Pets Allowed" filter (the listing's flag).
+  if (needsPetFriendly(preferences)) amenities.push("pets_allowed");
+  if (amenities.length) filters.amenities = [...new Set(amenities)];
 
-  let fits = strict;
-  if (parsed.areas.length) {
-    fits = fits.filter((x) => neighborhoodScore(x.listing, parsed.areas) > 0);
-    summary.push(parsed.areas.map((a) => NEIGHBORHOOD_NAMES[a] ?? a).join(" or "));
-  }
-  if (needsPetFriendly(preferences)) {
-    fits = fits.filter((x) => amenityRow(x.listing)?.pets_allowed === true || descriptionAllowsPets(x.listing));
-    summary.push("pets allowed");
-  }
+  if (parsed.areas.length) notApplied.push(parsed.areas.map((a) => NEIGHBORHOOD_NAMES[a] ?? a).join(" or "));
 
-  return { ids: fits.map((x) => String(x.listing.id)), filters, summary };
+  return { filters, notApplied };
 }

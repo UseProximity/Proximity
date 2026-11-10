@@ -240,7 +240,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     preferences,
     weights,
     totalMatches,
-    browse: buildBrowseHandoff({ answers, parsed, preferences, strict }),
+    browse: buildBrowseHandoff({ answers, parsed, preferences }),
     notes: { group: ctx.groupNote ?? null, budget: ctx.budgetNote ?? null, relax: ctx.relaxNote ?? null },
   };
   if (!pool.length) return { ...base, matches: [], usage: { parse: parseUsage, pick: null } };

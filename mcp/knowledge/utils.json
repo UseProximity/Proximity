@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-10T21:38:18.690Z",
+  "_generated": "2026-11-10T21:49:19.946Z",
   "count": 335,
   "utils": [
     {
@@ -785,7 +785,7 @@
     },
     {
       "file": "src/lib/findYourPlace/browseHandoff.js",
-      "description": "\"Browse All N Matches\": what the browse page needs to show a student the"
+      "description": "\"Browse All N Matches\": the browse page opened with the student's answers"
     },
     {
       "file": "src/lib/findYourPlace/commute.js",

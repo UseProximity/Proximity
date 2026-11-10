@@ -20,29 +20,28 @@ export const MATCH_PANEL = "max-w-[1100px]";
 const LINK = "inline-flex h-8 flex-shrink-0 items-center rounded-full border border-red-300 bg-white px-3.5 text-xs font-medium text-red-600 hover:bg-red-50";
 
 /*
- * "Browse All N Matches". Opens browse with the hand-off (pre-set filters plus
- * the matched id set, see lib/findYourPlace/browseHandoff.js). N is worked out
- * here with browse's own filter function over browse's own listing feed, so
- * the number on the button is the number of cards the student lands on.
+ * "Browse All N Matches". Opens browse in a new tab with the answers pre-set in
+ * its filter bar (lib/findYourPlace/browseHandoff.js). N is worked out here
+ * with browse's own filter function over browse's own listing feed, so the
+ * number on the button is the number of cards the student lands on.
  */
-function BrowseMatchesLink({ browse, shown }) {
+function BrowseMatchesLink({ browse }) {
   const [count, setCount] = useState(null);
 
   useEffect(() => {
-    if (!browse?.ids?.length) return;
+    if (!browse?.filters) return;
     let cancelled = false;
     fetch("/api/listings")
       .then((res) => (res.ok ? res.json() : null))
       .then((listings) => {
         if (cancelled || !Array.isArray(listings)) return;
-        const ids = new Set(browse.ids);
         const passing = filterListings(listings, {
           filters: { ...DEFAULT_FILTERS, ...browse.filters },
           search: "",
           savedIds: [],
           campusMinutes: () => null, // only read by the walk filter, which is never pre-set
         });
-        setCount(passing.filter((l) => ids.has(String(l._id))).length);
+        setCount(passing.length);
       })
       .catch(() => {});
     return () => {
@@ -50,9 +49,9 @@ function BrowseMatchesLink({ browse, shown }) {
     };
   }, [browse]);
 
-  if (!browse?.ids?.length || count === 0) {
+  if (!browse?.filters || count === 0) {
     return (
-      <Link href="/browse" className={LINK}>
+      <Link href="/browse" target="_blank" rel="noopener noreferrer" className={LINK}>
         Browse All Listings
       </Link>
     );
@@ -60,6 +59,8 @@ function BrowseMatchesLink({ browse, shown }) {
   return (
     <Link
       href="/browse?fyp=1"
+      target="_blank"
+      rel="noopener noreferrer"
       className={LINK}
       onClick={() => {
         try {
@@ -69,14 +70,7 @@ function BrowseMatchesLink({ browse, shown }) {
         }
       }}
     >
-      {/* The top picks can include a place that misses a wish (a wish only
-          ranks), while browse holds every wish as a filter. When that leaves
-          browse with no more than what is already shown, say what it is. */}
-      {count == null
-        ? "Browse All Matches"
-        : count > shown
-        ? `Browse All ${count} Matches`
-        : `Browse ${count} Exact ${count === 1 ? "Match" : "Matches"}`}
+      {count == null ? "Browse All Matches" : `Browse All ${count} Matches`}
     </Link>
   );
 }
@@ -146,7 +140,7 @@ export default function StepMatches({ loading, error, matches, browse, signedIn,
             </p>
           )}
         </div>
-        <BrowseMatchesLink browse={browse} shown={matches.length} />
+        <BrowseMatchesLink browse={browse} />
       </div>
       <div className={GRID}>
         {matches.map((m, i) => (

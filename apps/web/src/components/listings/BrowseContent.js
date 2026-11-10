@@ -50,19 +50,20 @@ export default function BrowseContent({ session, initialListings = null }) {
   /*
    * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
    * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
-   * The answers browse has a filter for are pre-set in the filter bar; the
-   * rest (rent per person, neighborhood, pets...) are held by the matched id
-   * set, named in a line under the filters with a Change link back.
+   * The answers browse has a filter for are pre-set in the filter bar, where
+   * they can be changed like any other; a line under the bar says where they
+   * came from, names what could not be applied, and links back to change the
+   * answers.
    */
   const fromFindYourPlace = searchParams.get("fyp");
-  const [fyp, setFyp] = useState(null); // { ids: Set<string>, summary: string[] }
+  const [fyp, setFyp] = useState(null); // { notApplied: string[] }
   useEffect(() => {
     if (!fromFindYourPlace) return;
     try {
       const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
-      if (!Array.isArray(raw?.ids)) return;
-      setFilters({ ...DEFAULT_FILTERS, ...(raw.filters ?? {}) });
-      setFyp({ ids: new Set(raw.ids.map(String)), summary: Array.isArray(raw.summary) ? raw.summary : [] });
+      if (!raw?.filters || typeof raw.filters !== "object") return;
+      setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
+      setFyp({ notApplied: Array.isArray(raw.notApplied) ? raw.notApplied : [] });
     } catch {
       // No readable hand-off: plain browse.
     }
@@ -175,18 +176,18 @@ export default function BrowseContent({ session, initialListings = null }) {
     return mins.length ? Math.min(...mins) : null;
   };
 
-  const filteredListings = useMemo(() => {
-    const passing = filterListings(listings, { filters, search, savedIds, campusMinutes });
-    return fyp ? passing.filter((l) => fyp.ids.has(String(l._id))) : passing;
-  }, [listings, search, filters, savedIds, fyp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredListings = useMemo(
+    () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
+    [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const suggestedListings = useMemo(() => {
-    if (search.trim() || filtersActive(filters) || fyp) return [];
+    if (search.trim() || filtersActive(filters)) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));
     const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
     // Keep the count even if a suggested listing dropped out of the feed.
     return found.slice(0, found.length - (found.length % 2));
-  }, [listings, suggestedIds, search, filters, fyp]);
+  }, [listings, suggestedIds, search, filters]);
 
   if (loading) {
     return (
@@ -214,8 +215,8 @@ export default function BrowseContent({ session, initialListings = null }) {
       {fyp && (
         <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-4 py-2 text-xs text-gray-600 md:px-8">
           <span className="min-w-0 truncate">
-            Showing your Find Your Place matches
-            {fyp.summary.length ? `: ${fyp.summary.join(", ")}` : ""}.
+            Filters set from your Find Your Place answers.
+            {fyp.notApplied.length ? ` Not filtered here: ${fyp.notApplied.join(", ")}.` : ""}
           </span>
           <Link href="/find-your-place?edit=1" className="flex-shrink-0 font-semibold text-red-600 hover:underline">
             Change
@@ -223,9 +224,10 @@ export default function BrowseContent({ session, initialListings = null }) {
           <button
             type="button"
             onClick={clearFindYourPlace}
+            aria-label="Dismiss"
             className="ml-auto flex-shrink-0 font-medium text-gray-400 hover:text-gray-600"
           >
-            Show all listings
+            Dismiss
           </button>
         </div>
       )}

@@ -112,7 +112,7 @@ export default function FindYourPlaceClient() {
       // Matches saved before the browse hand-off existed carry no `browse`,
       // which left the button reading "Browse All Listings". Drop them so the
       // next "Show My Matches" searches again.
-      const saved = stored.results?.browse ? stored.results : null;
+      const saved = stored.results?.browse?.notApplied ? stored.results : null;
       setResults(saved);
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }
