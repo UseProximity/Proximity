@@ -275,7 +275,9 @@ function PropertyChoice({ p, choice, onChange }) {
  * "nothing" (nothing needs signing: never reported as signed).
  */
 // `accountId`: a payer signing for a landlord account they pay for (Project B); left out, their own.
-export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, accountId = null, accountIds = null, includeDrafts = false, onFinished }) {
+// `takeover`: a landlord with an authorized signer signing their own agreement
+// instead; the signer is removed once it is signed (Wyatt, 2026-11-10).
+export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, accountId = null, accountIds = null, includeDrafts = false, takeover = false, onFinished }) {
   const signer = useSignerDetails();
   const license = useLicenseDisclosure();
   const [step, setStep] = useState(0);
@@ -302,7 +304,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     closeRef.current?.focus();
     let live = true;
     const units = requiredUnits && Object.keys(requiredUnits).length ? `&units=${encodeURIComponent(JSON.stringify(requiredUnits))}` : "";
-    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}${accountId ? `&accountId=${accountId}` : ""}${accountIds?.length ? `&accountIds=${accountIds.join(",")}` : ""}${includeDrafts ? "&includeDrafts=1" : ""}`)
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}${accountId ? `&accountId=${accountId}` : ""}${accountIds?.length ? `&accountIds=${accountIds.join(",")}` : ""}${includeDrafts ? "&includeDrafts=1" : ""}${takeover ? "&takeover=1" : ""}`)
       .then((r) => {
         if (!live) return;
         if (r.kind === "none") return onFinished("nothing");
@@ -337,7 +339,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setPhase("opening");
     setError(null);
     try {
-      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }) }, retries: 20 });
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }), ...(takeover && { takeover: true }) }, retries: 20 });
       if (r.alreadySigned) return onFinished("signed");
       setSession(r);
       setPhase("signing");
@@ -369,7 +371,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setError(null);
     return addendum ? openAddendum() : confirmExhibit();
   };
-  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }) });
+  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }), ...(takeover && { takeover: true }) });
 
   // Units the landlord added or renamed show in the next preview; keep the list in step.
   const updateChoice = (p, next) => {

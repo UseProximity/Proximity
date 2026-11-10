@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-09T22:03:11.582Z",
+  "_generated": "2026-11-10T20:31:29.855Z",
   "count": 258,
   "routes": [
     {
@@ -1419,18 +1419,13 @@
     {
       "path": "/api/billing/payees",
       "methods": [
-        "GET",
-        "POST"
+        "GET"
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "super",
-        "POST": "super"
+        "GET": "super"
       },
-      "tables": [
-        "billing_payers",
-        "users"
-      ],
+      "tables": [],
       "file": "src/app/api/billing/payees/route.js"
     },
     {
