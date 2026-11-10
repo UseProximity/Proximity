@@ -187,12 +187,12 @@ function MapViewInner({
   const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
   const [hideUnavailable, setHideUnavailable] = useState(false);
-  /*
-   * Bumped every time the marker set is rebuilt, so the effect that paints the
-   * selected pin knows to run again. Without it a rebuild leaves the map with
-   * no pin selected even though a panel is open.
-   */
-  const [markersVersion, setMarkersVersion] = useState(0);
+  // The selection as the pins last saw it, and the pin renderer of the current
+  // marker effect (null while there is none): a selection change re-renders the
+  // pins through it rather than re-running that effect, so the pins that did
+  // not change are kept (see renderPins).
+  const selectedRef = useRef(selectedListingId);
+  const renderPinsRef = useRef(null);
   const [activeRouteId, setActiveRouteId] = useState(null);
 
   // Function to calculate distance between two points using Haversine formula
@@ -524,26 +524,35 @@ function MapViewInner({
     const map = mapRef.current;
     if (!map) return;
 
-    // Update markers: remove previous markers and add new ones. Rebuilt after
-    // every zoom too, because which listings merge into a cluster depends on it.
+    // Update the markers. Run again after every zoom (which listings merge into
+    // a cluster depends on it) and on every selection change (the selected
+    // listing is never merged). A pin that comes out the same, with the same
+    // listings and the same highlight, is kept as it is; only the others are
+    // removed or built, so a zoom or a selection does not rebuild every pin.
     const renderPins = () => {
-      if (map.markers) {
-        map.markers.forEach((marker) => marker.remove());
-      }
-      map.markers = [];
+      const selectedId = selectedRef.current;
+      const previous = new Map((map.markers ?? []).map((m) => [m._key, m]));
+      const added = new Set();
 
       // Hidden unavailable listings take no part in clusters (count or color).
       const shown = listings.filter(
         (l) => l.longitude && l.latitude && !(hideUnavailable && l.unavailable)
       );
-      clusterListings(map, shown, selectedListingId).forEach(
+      map.markers = clusterListings(map, shown, selectedId).map(
         ({ members, lng, lat }) => {
           const isCluster = members.length > 1;
           const listing = members[0];
+          const isSelected = !isCluster && listing._id === selectedId;
+          const key = isCluster
+            ? members.map((l) => l._id).join(",")
+            : `${listing._id}:${isSelected}`;
+          const kept = previous.get(key);
+          if (kept) {
+            previous.delete(key);
+            return kept;
+          }
           const exactRating =
             (listing.rating || 0) > 0 ? listing.rating || 0 : null;
-          const isSuggested = !!suggestedIds?.has(String(listing._id));
-          const isUnavailable = !!listing.unavailable;
           const markerEl = isCluster
             ? buildClusterPinElement(
                 members.length,
@@ -553,9 +562,9 @@ function MapViewInner({
             : buildPinSVGElement(
                 exactRating,
                 listing._id,
-                listing._id === selectedListingId,
-                isSuggested,
-                isUnavailable
+                isSelected,
+                !!suggestedIds?.has(String(listing._id)),
+                !!listing.unavailable
               );
           markerEl.style.cursor =
             isCluster || onListingSelect ? "pointer" : "default";
@@ -565,8 +574,11 @@ function MapViewInner({
           })
             .setLngLat([lng, lat])
             .addTo(map);
+          marker._key = key;
+          marker._cluster = isCluster;
+          marker._selected = isSelected;
+          added.add(marker);
           if (isCluster) {
-            marker._cluster = true;
             markerEl.addEventListener("click", () => {
               map.easeTo({
                 center: [lng, lat],
@@ -577,25 +589,38 @@ function MapViewInner({
                 duration: 600,
               });
             });
-          } else {
-            marker._listingId = listing._id;
-            marker._rating = exactRating;
-            marker._suggested = isSuggested;
-            marker._unavailable = isUnavailable;
-            if (onListingSelect) {
-              markerEl.addEventListener("click", () => {
-                pinClickedRef.current = true;
-                onListingSelect(listing);
-              });
-            }
+          } else if (onListingSelect) {
+            markerEl.addEventListener("click", () => {
+              pinClickedRef.current = true;
+              onListingSelect(listing);
+            });
           }
-          map.markers.push(marker);
+          return marker;
         }
       );
+      previous.forEach((marker) => marker.remove());
 
-      // Tell the selection effect to repaint (it also restacks the pins).
-      setMarkersVersion((v) => v + 1);
+      // Stack the pins: southern ones on top of northern ones (the order
+      // clusterListings returns), the selected one on top of all. With nothing
+      // selected the single pins also sit above the clusters, as they always
+      // have. The pins that were kept are already in that order, unless that
+      // rule just changed; the new ones were added last, so each is put in
+      // front of the pin that follows it.
+      const singlesOver = selectedId === undefined;
+      const rank = (m) => (m._selected ? 2 : singlesOver && !m._cluster ? 1 : 0);
+      const stack = [...map.markers].sort((a, b) => rank(a) - rank(b));
+      const ruleChanged = map._singlesOver !== singlesOver;
+      map._singlesOver = singlesOver;
+      const container = map.getCanvasContainer();
+      let next = null;
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const el = stack[i].getElement();
+        if ((ruleChanged || added.has(stack[i])) && el.nextSibling !== next)
+          container.insertBefore(el, next);
+        next = el;
+      }
     };
+    renderPinsRef.current = renderPins;
     renderPins();
     map.on("zoomend", renderPins);
 
@@ -713,6 +738,7 @@ function MapViewInner({
     }
 
     return () => {
+      renderPinsRef.current = null;
       map.off("zoomend", renderPins);
       // Cleanup only markers added by this effect. Do NOT remove the map instance here
       if (map.markers) {
@@ -727,7 +753,6 @@ function MapViewInner({
     showShuttleStops,
     suggestedIds,
     hideUnavailable,
-    selectedListingId,
     paused,
   ]);
 
@@ -803,56 +828,14 @@ function MapViewInner({
     map.flyTo({ ...target, duration: 700, essential: true });
   }, [panelSlideEnd]);
 
-  /*
-   * Paint the selected pin, and lift it above its neighbours.
-   *
-   * Kept separate from the camera effect below, and re-run on markersVersion,
-   * because the marker set is rebuilt from scratch whenever `listings` or the
-   * shuttle-stop toggle changes and every pin is rebuilt UNSELECTED. Selection
-   * lives in React state, not on the marker, so a rebuild silently dropped the
-   * highlight while a panel was still open: the browse feed refetch that lands
-   * a second after a ?panel= deep link was enough to do it, as was toggling
-   * shuttle stops. Re-running on a rebuild is cheap; re-running the flyTo
-   * below would not be, since it would yank the camera back on every rebuild.
-   *
-   * Runs in hero mode too. The homepage map shows the same pins and pops the
-   * same card on a click, so a click there should read the same way it does on
-   * browse: the pin you picked is the one lit up.
-   */
+  // A new selection: render the pins again, which highlights the selected one,
+  // lifts it above its neighbours and pulls it out of any cluster. Runs in hero
+  // mode too: the homepage map shows the same pins and pops the same card on a
+  // click, so the pin you picked is the one lit up there as well.
   useEffect(() => {
-    if (!isActive || paused) return;
-    const map = mapRef.current;
-    if (!map?.markers) return;
-    map.markers.forEach((marker) => {
-      if (marker._cluster) return;
-      const isActive = marker._listingId === selectedListingId;
-      const el = marker.getElement();
-      const newPin = buildPinSVGElement(
-        marker._rating,
-        marker._listingId,
-        isActive,
-        marker._suggested,
-        marker._unavailable
-      );
-      el.innerHTML = newPin.innerHTML;
-    });
-    // Re-establish correct south-on-top stacking, then pin selected last
-    const sorted = [...map.markers].sort(
-      (a, b) => b.getLngLat().lat - a.getLngLat().lat
-    );
-    sorted.forEach((marker) => {
-      if (marker._listingId === selectedListingId) return;
-      const el = marker.getElement();
-      if (el?.parentNode) el.parentNode.appendChild(el);
-    });
-    if (selectedListingId) {
-      const activeMarker = map.markers.find(
-        (m) => m._listingId === selectedListingId
-      );
-      const el = activeMarker?.getElement();
-      if (el?.parentNode) el.parentNode.appendChild(el);
-    }
-  }, [isActive, selectedListingId, markersVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+    selectedRef.current = selectedListingId;
+    renderPinsRef.current?.();
+  }, [selectedListingId]);
 
   // Fly to the listing when the SELECTION changes. Skips flyTo when the panel
   // is mid-transition: the panelExpanded effect above fires it once the map has
