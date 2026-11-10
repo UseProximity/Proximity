@@ -84,9 +84,9 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
         className="mt-3 block min-h-[72px] w-full flex-1 resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 focus:border-red-300 focus:bg-white"
       />
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 divide-y divide-gray-100">
         {open.slice(0, PROMPTS_AT_ONCE).map(({ prompt, left }) => (
-          <div key={prompt.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+          <div key={prompt.id} className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:gap-2">
             <span className="flex h-8 flex-shrink-0 items-center text-sm font-medium text-gray-700 sm:w-[104px] [@media(min-height:780px)]:h-9">
               {prompt.label}:
             </span>
