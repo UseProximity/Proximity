@@ -44,30 +44,70 @@ export const DEFAULT_FILTERS = {
   maxBathrooms: "", // max bathrooms
   distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
-  moveInDate: "",
-  homeType: [], // ['house','apartment','condo','townhouse','singleBedroom']
-  leaseAvailability: [], // ['semester','10-month','12-month','summer']
+  moveInDate: "", // older "move in by" date (YYYY-MM-DD), from saved filters
+  moveInMonth: "", // '' | '1'..'12': open by the end of the next such month
+  moveInDay: "", // '' | '1'..'31', with moveInMonth: open by that day of it
+  homeType: [], // ['apartment','house','studio','townhouse','single_room','condo']
+  leaseAvailability: [], // lease durations: ['6-month','10-month','12-month', any '<n>-month']
   amenities: [],
   furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: [],
+  // The next three have no control on the web any more. They are kept because
+  // the mobile app's filter sheet still sets them and older saved filter
+  // summaries hold them.
   subleaseFriendly: false,
   subleaseOnly: false, // only show actual sublease offerings
   leaseStructure: "", // '' | 'individual' | 'joint'
   savedOnly: false,
 };
 
+// True when any filter differs from its default.
+export const filtersActive = (filters) =>
+  Object.keys(DEFAULT_FILTERS).some(
+    (k) =>
+      JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !==
+      JSON.stringify(DEFAULT_FILTERS[k])
+  );
+
 const num = (v) => (v === "" || v == null ? null : Number(v));
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
 /*
- * Lease-length buckets, matched against unit_leases.lease_term_months — the
- * array of every term a landlord will accept, so [4,5,10,12] is one flexible
- * offering that satisfies "semester", "10-month" AND "12-month".
+ * The date (YYYY-MM-DD) a "move in in August" filter means: the last day of
+ * the next August, or with a day, that day of it. The current month counts as
+ * this year's unless the chosen day has already passed, which means next
+ * year's. A day the month does not have that year (Feb 29) becomes its last
+ * day. `today` is the renter's own date, not UTC, so an evening in St. Louis
+ * is not already tomorrow.
  */
-const TERM_BUCKETS = {
+export function moveInDeadline(month, day, today = new Date()) {
+  const m = Number(month);
+  if (!(m >= 1 && m <= 12)) return null;
+  const d = Number(day) || null;
+  const thisMonth = today.getMonth() + 1;
+  const passed = m < thisMonth || (m === thisMonth && d && d < today.getDate());
+  const year = today.getFullYear() + (passed ? 1 : 0);
+  const lastDay = new Date(year, m, 0).getDate();
+  return `${year}-${pad2(m)}-${pad2(Math.min(d ?? lastDay, lastDay))}`;
+}
+
+/*
+ * Lease durations, matched against unit_leases.lease_term_months, the array of
+ * every term a landlord will accept, so [6,10,12] is one flexible offering that
+ * satisfies "6-month", "10-month" AND "12-month". A duration is "<n>-month"
+ * for any number of months (the panel offers 6, 10, 12 and lets the renter add
+ * others). "summer" and "semester" are the older buckets, kept so filters saved
+ * before the change still work.
+ */
+const LEGACY_TERM_BUCKETS = {
   summer: (m) => m <= 3,
   semester: (m) => m >= 4 && m <= 6,
-  "10-month": (m) => m === 10,
-  "12-month": (m) => m === 12,
+};
+const termBucket = (key) => {
+  const months = /^(\d+)-month$/.exec(key);
+  if (months) return (m) => m === Number(months[1]);
+  return LEGACY_TERM_BUCKETS[key];
 };
 
 // ---------------------------------------------------------------------------
@@ -94,7 +134,7 @@ export function leaseMatches(lease, filters) {
     const months = lease.leaseTermMonths ?? [];
     if (months.length) {
       const ok = filters.leaseAvailability.some((key) => {
-        const inBucket = TERM_BUCKETS[key];
+        const inBucket = termBucket(key);
         return inBucket ? months.some(inBucket) : true;
       });
       if (!ok) return false;
@@ -107,6 +147,19 @@ export function leaseMatches(lease, filters) {
   // carry no available_from yet, and an unstated date is not a late one.
   if (filters.moveInDate && lease.availableFrom) {
     if (new Date(lease.availableFrom) > new Date(filters.moveInDate)) return false;
+  }
+
+  // "Move in in August": the offering must be open by the end of the next
+  // August (with a day, by that day of it). So one that is open already or
+  // opens any time before then passes, and one that opens after it, or in the
+  // August of a later year, does not. No stated date is not a late one.
+  // Compared as date text, not Dates, so a time zone cannot move it a day.
+  if (filters.moveInMonth) {
+    const opens = String(lease.availableFrom ?? "").slice(0, 10);
+    const deadline = moveInDeadline(filters.moveInMonth, filters.moveInDay);
+    if (deadline && /^\d{4}-\d{2}-\d{2}$/.test(opens) && opens > deadline) {
+      return false;
+    }
   }
 
   return true;
@@ -129,6 +182,7 @@ function categoricalLeaseFilters(filters) {
     filters.furnished ||
     filters.subleaseOnly ||
     filters.moveInDate ||
+    filters.moveInMonth ||
     filters.leaseAvailability?.length
   );
 }
@@ -204,16 +258,19 @@ export function unitMatch(unit, filters) {
 // Property scope
 // ---------------------------------------------------------------------------
 
-// Canonical filter value → every DB value that means it (snake_case + legacy ALL_CAPS)
+// Canonical filter value → every DB value that means it (snake_case + legacy
+// ALL_CAPS). The feed names amenities after the listing_amenities columns
+// (laundry, air_conditioning, storage, parking), which four of the filter's
+// values did not include, so those four matched nothing.
 const AMENITY_ALIASES = {
   dishwasher: ["dishwasher", "DISHWASHER"],
-  in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
-  ac_heating: ["ac_heating"],
+  in_unit_laundry: ["laundry", "in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
+  ac_heating: ["air_conditioning", "ac_heating"],
   mailroom: ["mailroom", "MAILROOM"],
   pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-  extra_storage: ["extra_storage", "EXTRA STORAGE"],
+  extra_storage: ["storage", "extra_storage", "EXTRA STORAGE"],
   fireplace: ["fireplace", "FIREPLACE"],
-  private_parking: ["private_parking", "FREE PARKING"],
+  private_parking: ["parking", "private_parking", "FREE PARKING"],
   pool: ["pool", "POOL"],
   study_room: ["study_room", "STUDY ROOMS"],
   gym: ["gym", "GYM"],
@@ -245,20 +302,17 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
   if (filters.homeType?.length) {
     const ok = filters.homeType.some((type) => {
       switch (type) {
-        case "house":
-          return lt.includes("house");
-        case "apartment":
-          return lt.includes("apartment");
-        case "condo":
-          return lt.includes("condo");
-        case "townhouse":
-          return lt.includes("townhouse");
-        // A shape question rather than a building type — answered from the
-        // units themselves now that they are available here.
-        case "singleBedroom":
+        // Shape questions rather than building types (no listing has a Studio
+        // or Single Room home type), answered from the units themselves: a
+        // studio is a 0-bedroom unit, a single room a 1-bedroom one.
+        case "studio":
+          return unitPool(listing).some((u) => u.bedrooms === 0);
+        case "single_room":
           return unitPool(listing).some((u) => u.bedrooms === 1);
+        // A building type: the listing's home type label, which has to be the
+        // whole word ("townhouse" contains "house").
         default:
-          return true;
+          return lt === type;
       }
     });
     if (!ok) return false;
@@ -351,6 +405,26 @@ export function matchListing(listing, ctx) {
     matchedUnitId: narrowed ? best.unit.id ?? null : null,
     priceUnknown: !best.priceKnown,
   };
+}
+
+/**
+ * The rents the price histogram draws: one per available listing that fits
+ * every filter except the price range itself (so the bars show where the
+ * places a renter is looking for sit, inside the range and outside it), at
+ * its cheapest offering that fits. A listing with no published rent on a
+ * fitting offering has no bar to be in.
+ */
+export function fittingRents(listings, { filters, search = "", savedIds = [], campusMinutes }) {
+  const open = { ...filters, minRent: "", maxRent: "" };
+  const ctx = { filters: open, search, savedIds, campusMinutes };
+  return listings.flatMap((listing) => {
+    if (listing.unavailable || !propertyMatches(listing, ctx)) return [];
+    const rents = unitPool(listing)
+      .map((u) => unitMatch(u, open))
+      .filter((m) => m?.priceKnown)
+      .map((m) => m.lease.rent);
+    return rents.length ? [Math.min(...rents)] : [];
+  });
 }
 
 /**
