@@ -37,7 +37,11 @@ import { sameSite } from "@/lib/listingDraft/fetchSite";
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
 const REJECTED_QUIET_DAYS = 30;
-const MAX_LEASES_PER_UNIT = 40;
+// A floor plan priced by a leasing portal carries a lease per apartment per
+// lease length: five apartments at ten lengths is fifty.
+const MAX_LEASES_PER_UNIT = 120;
+// What a leasing portal read in full may change without the team's review.
+const PORTAL_AUTO_KINDS = new Set(["lease_new", "lease_withdrawn", "lease_updated"]);
 
 // ---------------------------------------------------------------- state
 
@@ -873,7 +877,14 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   // A claim is the first real read of the building: its changes are already
   // checked one by one on the tab, so a cautious read does not hold them all.
   if (mode === "sync" && snapshot.confidence === "low" && !takeover) holdReason = "low_confidence";
-  if (mode === "sync" && !holdReason) {
+  /*
+   * A leasing portal read in full (RealPage) is the landlord's own price
+   * list, and its pricing engine moves every rent between one week and the
+   * next. That is not the building-wide surprise the churn hold exists for,
+   * and holding it would leave last week's prices up (Wyatt, 2026-11-10).
+   */
+  const portalPriced = snapshot.portal?.kind === "realpage-oll" && snapshot.confidence === "high";
+  if (mode === "sync" && !holdReason && !portalPriced) {
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
     // Churn is leases appearing, vanishing or repricing. A lease whose blurb
     // or lengths were reworded is the same lease; counting those once held
@@ -936,6 +947,11 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
    */
   if (mode === "sync" && teamReview) {
     for (const c of changes) {
+      // The one exception (Wyatt, 2026-11-10): prices, lease lengths and
+      // availability from a leasing portal read in full apply on their own
+      // and are reported in the weekly summary. Everything else the same
+      // read found still waits for the team.
+      if (portalPriced && PORTAL_AUTO_KINDS.has(c.kind)) continue;
       c.auto = false;
       c.judge = false;
       c.detail = { ...(c.detail ?? {}), teamReview: true };

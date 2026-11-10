@@ -65,6 +65,7 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
+import { REALPAGE_OLL_HINT_RE, REALPAGE_OLL_KIND, findRealPageOll, readRealPageOll } from "./readers/realpageOll.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
 import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes, judgeSamePlan } from "./model.js";
@@ -930,6 +931,57 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     }
   }
 
+  // 2c. The RealPage leasing portal behind an Apartments247 (or any other)
+  // marketing site: every apartment, priced for each lease length the
+  // landlord sells. The marketing site shows one rent range per apartment;
+  // only the portal says which length costs what. Its link is often added
+  // by script, but the site's own /application/ page states it plainly.
+  let portalMissed = false;
+  if (!learned) {
+    const knownOll = knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null;
+    let portal = crawl.fetched.map((f) => findRealPageOll(f.html)).find(Boolean) ?? null;
+    if (!portal && !knownOll && crawl.fetched.some((f) => REALPAGE_OLL_HINT_RE.test(f.html))) {
+      let applyUrl = null;
+      try {
+        applyUrl = new URL("/application/", main.finalUrl).href;
+      } catch {
+        applyUrl = null;
+      }
+      const page = applyUrl ? await crawl.follow(applyUrl).catch(() => null) : null;
+      portal = page ? findRealPageOll(page.html) : null;
+    }
+    portal ??= knownOll ? { propertyId: knownOll.propertyId ?? null, siteId: knownOll.siteId ?? null } : null;
+    if (portal) {
+      const rp = await readRealPageOll(portal, { known: knownOll, onStep });
+      if (rp?.units?.length) {
+        const byName = new Map(readerUnits.map((u) => [planKey(u.name), u]));
+        for (const u of rp.units) {
+          const e = byName.get(planKey(u.name));
+          if (!e) continue;
+          u.floorPlanImageUrl ??= e.floorPlanImageUrl;
+          u.area ??= e.area;
+          u.bedrooms ??= e.bedrooms;
+          u.bathrooms ??= e.bathrooms;
+          if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
+        }
+        platform = readerUnits.length ? `${platform}+${REALPAGE_OLL_KIND}` : REALPAGE_OLL_KIND;
+        readerUnits = await dedupeLayouts([...rp.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
+        notes.push(...rp.notes);
+        // A walk the portal cut short is not the whole building: a sync
+        // must not withdraw the apartments it never reached.
+        confidence = rp.complete ? "high" : "low";
+        portalMissed = !rp.complete;
+        learned = rp.learned;
+        console.log(`[source-import] realpage portal ${rp.learned.siteId}: ${rp.units.length} plans, ${rp.apartments} apartments, ${rp.quoted} priced by lease length${rp.complete ? "" : " (incomplete)"}`);
+      } else if (knownOll) {
+        // The portal priced this building before and gave nothing today.
+        // The marketing site alone would read as every lease withdrawn.
+        portalMissed = true;
+        notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
+      }
+    }
+  }
+
   // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
     const page = crawl.fetched.find((f) => ENTRATA_HINT_RE.test(f.html) && parseEntrataFloorPlans(f.html, f.finalUrl));
@@ -1211,6 +1263,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
   const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
+  // A portal that was not read in full never applies on its own.
+  if (portalMissed) confidence = "low";
   const snapshot = makeSnapshot({
     sourceUrl,
     indexUrl: sourceUrl === pastedUrl ? null : pastedUrl,
@@ -1237,7 +1291,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   snapshot.model = modelUsed;
   snapshot.trace = trace;
   // Where the numbers live, for the sync to go straight there next time.
-  snapshot.portal = learned;
+  // A portal that gave nothing today is still where the numbers live.
+  snapshot.portal = learned ?? (portalMissed && knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null);
   return snapshot;
 }
 

@@ -20,6 +20,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail } from "@/lib/email";
 import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
+import { nextSundayCheckAt } from "./readers/realpageOllParse.js";
 import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
 import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
@@ -178,7 +179,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         last_error: null,
         consecutive_failures: 0,
         last_fingerprint: fp,
-        next_check_at: plusDays(interval),
+        // A listing priced by a leasing portal is refreshed weekly, on
+        // Sunday (Wyatt, 2026-11-10): the walk is slow and costs renders.
+        next_check_at: snapshot.portal?.kind === "realpage-oll" ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
       })
       .eq("id", m.id);
     await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);

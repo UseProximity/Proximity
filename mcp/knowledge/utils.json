@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-09T20:44:14.504Z",
-  "count": 329,
+  "_generated": "2026-11-10T21:28:13.357Z",
+  "count": 332,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1170,6 +1170,18 @@
     {
       "file": "src/lib/sourceImport/readers/g5.js",
       "description": "G5 (g5marketingcloud.com) inventory reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOll.js",
+      "description": "RealPage Online Leasing portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.js",
+      "description": "RealPage Online Leasing: the parts that need no network."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",

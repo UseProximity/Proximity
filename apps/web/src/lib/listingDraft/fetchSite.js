@@ -533,7 +533,12 @@ export async function renderPage(rawUrl, opts = {}) {
   return shared(`render:${opts.raw ? 1 : 0}:${opts.waitMs ?? 0}:${rawUrl}`, () => renderPageUncached(rawUrl, opts));
 }
 
-async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+// The longest one render may run. A portal walked screen by screen (the
+// RealPage reader) needs minutes; everything else keeps the one minute.
+const MAX_RENDER_MS = 300000;
+
+async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null, timeoutMs = 60000 } = {}) {
+  const renderMs = Math.min(Math.max(Number(timeoutMs) || 60000, 1000), MAX_RENDER_MS);
   if (!renderAllowed("firecrawl")) return null;
   let url;
   try {
@@ -555,9 +560,9 @@ async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = n
         onlyMainContent: false,
         ...(waitMs ? { waitFor: waitMs } : {}),
         ...(actions ? { actions } : {}),
-        timeout: 60000,
+        timeout: renderMs,
       }),
-      signal: AbortSignal.timeout(90000),
+      signal: AbortSignal.timeout(renderMs + 30000),
     });
     if (!res.ok) {
       console.warn(`[render] firecrawl ${res.status} for ${rawUrl.slice(0, 100)}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
