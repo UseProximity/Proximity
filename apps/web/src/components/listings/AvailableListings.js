@@ -302,9 +302,12 @@ export default function AvailableListings({
     router.push(`/browse${qs ? `?${qs}` : ""}`);
   };
 
-  // Compare replaces an open detail panel, which would hide the grid it picks from.
+  // Compare replaces an open detail panel, which would hide the grid it picks from,
+  // and the selected listing, so no map card for it is left behind once it exits.
   useEffect(() => {
-    if (compare && expandedListing) closePanel();
+    if (!compare) return;
+    setSelectedListing(null);
+    if (expandedListing) closePanel();
   }, [!!compare]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compare is desktop only: leaving the desktop layout closes it and clears it.
