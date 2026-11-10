@@ -29,7 +29,8 @@ export default function AvailableListings({
   suggestedListings = [],
   suggestedMode = "suggested",
   suggestedLabel = "Suggested for you",
-  // Every listing, before the filters: the price histogram of the filter drawer.
+  // Every listing, before the filters: the price histogram of the filter drawer,
+  // and where Compare Listings looks up the card that was picked.
   allListings,
   onFiltersSaved = () => {},
   // Desktop: the map is hidden and the listings fill the page as a wider grid.

@@ -36,7 +36,13 @@ function unitTabs(listing) {
 function compareRows(listing, unit) {
   const leases = unit?.leases ?? [];
 
-  const price = getRentRangeLabel(leases);
+  // The rent as the listing page labels it: "/person" only where the landlord
+  // said the rent is per person, "/mo" otherwise. Each basis is its own range, so
+  // a unit whose leases disagree shows both, side by side, instead of a range that
+  // mixes per-person and whole-unit rents.
+  const rents = [false, true]
+    .map((perPerson) => [perPerson, getRentRangeLabel(leases.filter((l) => !!l.rentIsPerPerson === perPerson))])
+    .filter(([, rent]) => rent !== "Contact for Pricing");
 
   const bedText =
     unit?.bedrooms == null
@@ -62,10 +68,17 @@ function compareRows(listing, unit) {
   return [
     [
       "Price:",
-      <>
-        <span className="font-bold">{price}</span>
-        {price !== "Contact for Pricing" && "/mo"}
-      </>,
+      rents.length ? (
+        rents.map(([perPerson, rent], i) => (
+          <span key={perPerson}>
+            {i > 0 && " · "}
+            <span className="font-bold">{rent}</span>
+            {perPerson ? "/person" : "/mo"}
+          </span>
+        ))
+      ) : (
+        <span className="font-bold">Contact for Pricing</span>
+      ),
     ],
     ["Rooms:", `${bedText}\n${bathText}`],
     ["Available on:", !from ? "N/A" : from === to ? from : `${from} to ${to}`],
