@@ -1,45 +1,54 @@
 "use client";
 
 import { Chip } from "./ui";
-import { PROMPTS, PROMPTS_AT_ONCE, OPTIONS_AT_ONCE, TEXT_MAX, applyChipToText, promptSentence } from "@/lib/findYourPlace/options";
+import { PROMPTS, PROMPTS_AT_ONCE, TEXT_MAX, applyChipToText, promptSentence } from "@/lib/findYourPlace/options";
 
 /*
  * Page 2: one open text box, with prompts underneath for ideas.
  *
  * The box is the answer. Picking a chip writes a sentence into it ("I'd like to
  * live in the Delmar Loop or DeMun."), which the student can edit or add to in
- * their own words. Three prompts show at a time with three ideas each; a
- * picked idea is replaced by the prompt's next one, and a prompt with nothing
- * left gives its place to the next prompt.
+ * their own words. Three prompts show at a time, each with all of its ideas.
  *
- * A picked chip disappears: its words are in the box now, and the box is where
- * they are changed (Wyatt, 2026-11-10). If the student deletes or rewords that
- * sentence, the prompt's chips come back, since the pick is no longer there.
+ * Picking an idea answers the prompt: the whole prompt disappears (its words
+ * are in the box now, and the box is where they are changed) and the next
+ * prompt takes its place (Wyatt, 2026-11-10). If the student deletes or
+ * rewords that sentence, the prompt comes back, since the answer is gone.
  */
+
+// Spread a prompt's ideas evenly over as few lines as fit, so no line is left
+// holding a single chip: 9 at five a line is 5 and 4, not 5, 3 and 1.
+function linesOf(options, perLine = 5) {
+  if (options.length <= perLine) return [options];
+  const count = Math.ceil(options.length / perLine);
+  const base = Math.floor(options.length / count);
+  const extra = options.length % count;
+  const lines = [];
+  let at = 0;
+  for (let i = 0; i < count; i++) {
+    const size = base + (i < extra ? 1 : 0);
+    lines.push(options.slice(at, at + size));
+    at += size;
+  }
+  return lines;
+}
 export default function StepPreferences({ text, chips, onChange, onSkip }) {
-  // A prompt's picks only count while its sentence still stands in the box.
-  const picked = (prompt) => {
-    const ids = chips[prompt.id] ?? [];
-    const sentence = promptSentence(prompt, ids);
-    return sentence && text.includes(sentence) ? ids : [];
+  // A prompt is answered only while its sentence still stands in the box.
+  const answered = (prompt) => {
+    const sentence = promptSentence(prompt, chips[prompt.id] ?? []);
+    return !!sentence && text.includes(sentence);
   };
 
-  const toggle = (prompt, optionId) => {
-    const before = picked(prompt);
-    const after = prompt.single ? [optionId] : [...before, optionId];
+  const pick = (prompt, optionId) => {
+    const before = answered(prompt) ? chips[prompt.id] : [];
+    const after = [optionId];
     onChange({
       chips: { ...chips, [prompt.id]: after },
       text: applyChipToText(text, prompt, before, after),
     });
   };
 
-  // The prompts that still have something to offer, with what is left of each.
-  const open = PROMPTS.map((prompt) => {
-    const taken = picked(prompt);
-    // One answer only (furnishing): once it is picked the prompt is done.
-    const left = prompt.single && taken.length ? [] : prompt.options.filter((o) => !taken.includes(o.id));
-    return { prompt, left };
-  }).filter((row) => row.left.length);
+  const open = PROMPTS.filter((prompt) => !answered(prompt));
 
   return (
     <div className="flex h-full flex-col">
@@ -64,29 +73,30 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
       />
 
       <div className="mt-3 space-y-2">
-        {open.slice(0, PROMPTS_AT_ONCE).map(({ prompt, left }) => {
-          const shown = left.slice(0, OPTIONS_AT_ONCE);
-          return (
-            <div key={prompt.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
-              <span className="flex h-8 flex-shrink-0 items-center text-sm font-medium text-gray-700 sm:w-[104px] [@media(min-height:780px)]:h-9">
-                {prompt.label}:
-              </span>
-              {/* A full row of three stretches to fill the line; fewer keep their size. */}
-              <div className="flex min-w-0 flex-1 flex-wrap gap-2 sm:flex-nowrap">
-                {shown.map((o) => (
-                  <Chip
-                    key={o.id}
-                    dense
-                    className={shown.length >= OPTIONS_AT_ONCE ? "min-w-0 sm:flex-auto" : ""}
-                    onClick={() => toggle(prompt, o.id)}
-                  >
-                    {o.label}
-                  </Chip>
-                ))}
-              </div>
+        {open.slice(0, PROMPTS_AT_ONCE).map((prompt) => (
+          <div key={prompt.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+            <span className="flex h-8 flex-shrink-0 items-center text-sm font-medium text-gray-700 sm:w-[104px] [@media(min-height:780px)]:h-9">
+              {prompt.label}:
+            </span>
+            <div className="min-w-0 flex-1 space-y-2">
+              {linesOf(prompt.options, prompt.perLine).map((line, i) => (
+                // A line of three or more stretches to fill the width; a pair keeps its size.
+                <div key={i} className="flex flex-wrap gap-2 sm:flex-nowrap">
+                  {line.map((o) => (
+                    <Chip
+                      key={o.id}
+                      dense
+                      className={line.length >= 3 ? "min-w-0 sm:flex-auto" : ""}
+                      onClick={() => pick(prompt, o.id)}
+                    >
+                      {o.label}
+                    </Chip>
+                  ))}
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );

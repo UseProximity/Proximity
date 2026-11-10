@@ -173,11 +173,15 @@ export function sanitizeAnswers(raw) {
 // ── Page 2 ──────────────────────────────────────────────────────────────────
 
 /*
- * The prompts under the free-text box. Each is a labelled row of ideas. Three
- * prompts show at a time, each with three ideas (Wyatt, 2026-11-10): picking
- * an idea takes it off the row and the prompt's next one steps in, and when a
- * prompt has nothing left the next prompt takes its place. So there is always
- * something new to react to, and never a wall of chips.
+ * The prompts under the free-text box. Each is a labelled row with all of its
+ * ideas. Three prompts show at a time (Wyatt, 2026-11-10): picking an idea
+ * answers that prompt, so the whole prompt goes away and the next one takes
+ * its place. So there is always something new to react to, and never a wall
+ * of chips. Anything more (a second neighborhood, say) is typed in the box.
+ *
+ * `perLine` is the most ideas one line holds (default 5). The page spreads a
+ * prompt's ideas evenly over as few lines as that allows and stretches each
+ * line to fill the width, so no line is left holding a single chip.
  *
  * `phrase` is how an option reads inside its sentence. The sentences land in
  * the text box, where the student can edit them or keep typing: the box is what
@@ -220,6 +224,7 @@ export const PROMPTS = [
       { id: "balcony", label: "Balcony", phrase: "a balcony" },
       { id: "utilities", label: "Utilities included", phrase: "utilities included" },
     ],
+    perLine: 5,
     sentence: (p) => `I'm looking for ${andList(p)}.`,
   },
   {
@@ -254,7 +259,6 @@ export const PROMPTS = [
   },
 ];
 export const PROMPTS_AT_ONCE = 3;
-export const OPTIONS_AT_ONCE = 3;
 
 function andList(items) {
   if (items.length <= 1) return items[0] ?? "";
