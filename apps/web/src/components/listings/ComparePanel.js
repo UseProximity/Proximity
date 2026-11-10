@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, X } from "lucide-react";
 import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { availabilityLabel } from "@/utils/availability";
@@ -90,14 +90,25 @@ function compareRows(listing, unit) {
 
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
 // so both cards keep the selector's height and their rows line up.
-function Slot({ listing, tabs, reserve, emptyText, onRemove }) {
+function Slot({ listing, tabs, reserve, empty, onRemove }) {
   // Which unit this card shows. The slot is keyed by listing, so a removed or
   // replaced listing starts again on its first unit.
   const [picked, setPicked] = useState(0);
   if (!listing) {
     return (
-      <div className="flex min-w-0 flex-1 items-center justify-center rounded-[20px] border border-dashed border-gray-300 px-6 text-center text-sm text-gray-500">
-        {emptyText}
+      // The padding is on the inner box, not here: a flex item's own padding and
+      // border change its share of the row, and this card must match the filled one.
+      <div className="flex min-w-0 flex-1 justify-center rounded-[20px] border border-dashed border-red-200 bg-[#fffafa]">
+        <div className="flex flex-col items-center gap-4 px-8 pt-28 text-center">
+          <div className="relative flex h-16 w-16 items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-red-100/70 motion-safe:animate-pulse" />
+            <ArrowLeft className="relative h-7 w-7 text-red-600" />
+          </div>
+          <div>
+            <p className="text-base font-bold text-black">{empty[0]}</p>
+            <p className="mt-1 max-w-[16rem] text-balance text-sm text-gray-500">{empty[1]}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -176,10 +187,10 @@ function Slot({ listing, tabs, reserve, emptyText, onRemove }) {
 export default function ComparePanel({ slots, onRemove, onClose }) {
   const tabs = slots.map((l) => l && unitTabs(l));
   const reserve = tabs.some((t) => t?.length > 1);
-  const anyPicked = slots.some(Boolean);
-  const emptyText = anyPicked
-    ? "Pick another listing from the grid to compare"
-    : "Pick a listing from the grid to compare";
+  // The title and hint of an empty slot: the next step is in the grid on the left.
+  const empty = slots.some(Boolean)
+    ? ["Pick another listing", "Click a second listing in the grid on the left to compare it with this one."]
+    : ["Pick a listing", "Click any listing in the grid on the left to start comparing."];
   return (
     <div className="flex h-full flex-col rounded-[20px] border border-[#e6e7eb] bg-[#f9fafb]">
       <div className="relative flex shrink-0 items-center justify-center py-4">
@@ -202,7 +213,7 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
               listing={listing}
               tabs={tabs[i]}
               reserve={reserve}
-              emptyText={emptyText}
+              empty={empty}
               onRemove={() => onRemove(i)}
             />
           ))}
