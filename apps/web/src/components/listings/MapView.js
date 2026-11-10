@@ -73,8 +73,8 @@ function pinScaleForZoom(zoom) {
 // leave the dense area around campus unreadably small.
 const FIT_PERCENTILE = 0.6;
 const FIT_MIN_DELTA_DEG = 0.008; // ~0.5 mi, so a sparse result set can't over-zoom
-// Browse sits this many zoom levels further out than the fit, so the first view
-// shows more clusters around the listings. (Not the homepage map.)
+// The fit sits this many zoom levels further out, so the first view shows more
+// clusters around the listings.
 const FIT_ZOOM_OUT = 0.75;
 
 function percentile(values, p) {
@@ -668,7 +668,7 @@ function MapViewInner({
         });
         map.flyTo({
           center: [campusLng, campusLat],
-          zoom: (camera ? camera.zoom : 13) - (heroMode ? 0 : FIT_ZOOM_OUT),
+          zoom: (camera ? camera.zoom : 13) - FIT_ZOOM_OUT,
           duration: 1400,
           essential: true,
         });
