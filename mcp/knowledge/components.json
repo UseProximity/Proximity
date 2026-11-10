@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-08T23:01:45.959Z",
-  "count": 194,
+  "_generated": "2026-11-10T21:19:27.226Z",
+  "count": 195,
   "components": [
     {
       "name": "ErrorReporter",
@@ -81,6 +81,11 @@
     {
       "name": "ReplySenderControls",
       "file": "src/components/admin/ReplySenderControls.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ReviewDuplicatesPanel",
+      "file": "src/components/admin/ReviewDuplicatesPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

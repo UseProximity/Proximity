@@ -25,8 +25,10 @@
  * not duplicated onto the review row.
  *
  * Listing resolution (no user choice): the reviewer-selected address is compared against
- * our catalog. On an EXACT street-address match the review is attached to that listing
- * (tie-break across same-address listings: prefer non-sublease, then a landlord-owned one).
+ * our catalog by property key (lib/reviews/listingMatch.js). On a match the review is
+ * attached to that listing (tie-break across same-address listings: prefer a live one,
+ * then non-sublease, then a landlord-owned one). An address with no street number is
+ * refused: it names a street, not a building.
  * With no match we auto-create a minimal listing "stub" owned by the shared Proximity
  * account, with real walk/drive times computed (same as the landlord add-listing flow).
  *
@@ -57,6 +59,8 @@ import { normalizeReviewSource } from "@/lib/reviews/source";
 import { listingPlaceName } from "@/lib/reviews/placeName";
 import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
 import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
+import { findListingForReviewAddress } from "@/lib/reviews/listingMatch";
+import { buildingAddress, NO_STREET_NUMBER_MESSAGE } from "@/utils/reviewAddress";
 import {
   ensureReviewerAccount,
   normalizeClassYear,
@@ -111,43 +115,6 @@ async function resolveOtherHomeTypeId() {
   return data?.id ?? null;
 }
 
-// Canonical forms for common USPS street-type suffixes + directionals. Lets equivalent
-// address spellings compare equal — the same building is entered as "Ave" by one source
-// (a hand-typed listing) and "Avenue" by another (the Mapbox autocomplete), and both must
-// resolve to the same listing instead of spawning a duplicate.
-const STREET_TOKEN_SYNONYMS = {
-  ave: "avenue", av: "avenue", avenu: "avenue",
-  st: "street", str: "street",
-  rd: "road",
-  dr: "drive", drv: "drive",
-  blvd: "boulevard", blv: "boulevard",
-  ln: "lane",
-  ct: "court", crt: "court",
-  pl: "place",
-  ter: "terrace", terr: "terrace",
-  cir: "circle",
-  pkwy: "parkway", pky: "parkway",
-  hwy: "highway",
-  sq: "square",
-  trl: "trail",
-  pt: "point",
-  // directionals
-  n: "north", s: "south", e: "east", w: "west",
-  ne: "northeast", nw: "northwest", se: "southeast", sw: "southwest",
-};
-
-// Normalize the street-address line (drop city/state/zip) and canonicalize common
-// abbreviations so equivalent forms compare equal ("608 Kingsland Ave" == "608 Kingsland Avenue").
-function normStreet(addr) {
-  const line = String(addr || "").split(",")[0].trim().toLowerCase();
-  const cleaned = line.replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  return cleaned
-    .split(" ")
-    .map((tok) => STREET_TOKEN_SYNONYMS[tok] || tok)
-    .join(" ");
-}
-
 // Compute listing_walk_times rows (campus places + nearest shuttle) for a coordinate —
 // same data the landlord add-listing flow stores, resolved to location_id rows.
 async function buildWalkTimeRows(lat, lng) {
@@ -200,53 +167,6 @@ async function buildDriveTimeRows(lat, lng) {
     console.error("[reviewReferral] resolve drive-time locations failed:", e?.message);
   }
   return rows;
-}
-
-// Find an existing listing whose street address matches the searched address (after
-// canonicalizing suffix/directional abbreviations; see normStreet), within a tight geo box.
-// Same-address ties: prefer a non-sublease, then one whose owner has the 'landlord' role.
-async function findExactAddressListingId({ address, lat, lng }) {
-  const target = normStreet(address);
-  if (!target || lat == null || lng == null) return null;
-
-  const latPad = 0.01;
-  const lngPad = 0.013;
-  const { data } = await supabase
-    .from("listings")
-    .select("id, address, lease_type, created_at")
-    .is("deleted_at", null)
-    // A review sandbox listing is hidden, so a real review must not be filed on it.
-    .eq("review_sandbox", false)
-    .gte("latitude", lat - latPad)
-    .lte("latitude", lat + latPad)
-    .gte("longitude", lng - lngPad)
-    .lte("longitude", lng + lngPad)
-    .limit(100);
-
-  const exact = (data || []).filter((l) => normStreet(l.address) === target);
-  if (exact.length === 0) return null;
-  if (exact.length === 1) return exact[0].id;
-
-  const ids = exact.map((l) => l.id);
-  const { data: lls } = await supabase
-    .from("listing_landlords")
-    .select("listing_id, owner:users!user_id(roles!role_id(name))")
-    .in("listing_id", ids);
-  const hasLandlordOwner = {};
-  for (const ll of lls || []) {
-    if (ll.owner?.roles?.name === "landlord") hasLandlordOwner[ll.listing_id] = true;
-  }
-
-  exact.sort((a, b) => {
-    const aSub = (a.lease_type || "").toLowerCase() === "sublease";
-    const bSub = (b.lease_type || "").toLowerCase() === "sublease";
-    if (aSub !== bSub) return aSub ? 1 : -1; // non-sublease first
-    const aLL = !!hasLandlordOwner[a.id];
-    const bLL = !!hasLandlordOwner[b.id];
-    if (aLL !== bLL) return aLL ? -1 : 1; // landlord-owned first
-    return new Date(a.created_at) - new Date(b.created_at); // stable
-  });
-  return exact[0].id;
 }
 
 // First real (non-placeholder, non-system) owner account for a listing.
@@ -622,20 +542,32 @@ export async function POST(req) {
     }
 
     // ── Resolve the listing: exact address match, else create a stub ────────
-    const addressText = String(address || "").trim();
-    if (!addressText || latitude == null || longitude == null) {
+    if (!String(address || "").trim() || latitude == null || longitude == null) {
       return NextResponse.json(
         { error: "Search and select your property address." },
         { status: 400 }
       );
     }
+    // A bare street ("Delmar Boulevard, ...") names no building, so it can neither be
+    // matched to a listing nor stand as a property of its own. A named place keeps the
+    // street address that follows its name. See utils/reviewAddress.js.
+    const addressText = buildingAddress(address);
+    if (!addressText) {
+      return NextResponse.json({ error: NO_STREET_NUMBER_MESSAGE }, { status: 400 });
+    }
     const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
 
-    let resolvedListingId = await findExactAddressListingId({
+    const matched = await findListingForReviewAddress({
       address: addressText,
       lat: latitude,
       lng: longitude,
     });
+    if (matched.error) {
+      // Not "no match": that would make a second property beside the real one.
+      console.error("[reviewReferral] address match failed:", matched.error);
+      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
+    }
+    let resolvedListingId = matched.listingId;
     let isNewProperty = false;
 
     if (!resolvedListingId) {
