@@ -957,7 +957,11 @@ function MapViewInner({
       )}
       {!heroMode && onBrowseArea && (
         <div
-          className="absolute top-16 md:top-3 left-1/2 z-10 transition-all duration-300"
+          // With a listing open the map is only 42vw wide: below 1200px the
+          // button goes under the Hide / Show Unavailable one rather than on it.
+          className={`absolute top-16 left-1/2 z-10 transition-all duration-300 ${
+            panelExpanded ? "md:top-12 min-[1200px]:top-3" : "md:top-3"
+          }`}
           style={{
             opacity: showBrowseButton ? 1 : 0,
             transform: `translateX(-50%) translateY(${

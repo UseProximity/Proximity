@@ -246,7 +246,7 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
     const ok = filters.homeType.some((type) => {
       switch (type) {
         // Shape questions rather than building types (no listing has a Studio
-        // or Single Room home type) — answered from the units themselves: a
+        // or Single Room home type), answered from the units themselves: a
         // studio is a 0-bedroom unit, a single room a 1-bedroom one.
         case "studio":
           return unitPool(listing).some((u) => u.bedrooms === 0);
