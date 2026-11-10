@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { getStripe } from "@/lib/billing/stripe";
 import { syncCheckoutSession } from "@/lib/billing/paymentMethods";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
+import { afterPayerMethodAdded } from "@/lib/billing/payerServices";
 
 /*
  * The landlord came back from Stripe Checkout: record the method they added now,
@@ -26,6 +27,8 @@ export async function POST(req) {
       throw new BillingError("bad_session", "We could not find that setup session.", 404);
     }
     const result = await syncCheckoutSession(supabase, getStripe(), { sessionId, userId: session.user.id });
+    // A payer's new method can let the accounts they pay for publish what waited on it.
+    if (result?.status === "active") after(() => afterPayerMethodAdded(session.user.id).catch(() => {}));
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     return billingErrorResponse(err, "sync checkout session");

@@ -17,7 +17,7 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
-import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
 import { displayAddress } from "@/lib/billing/coverage";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
@@ -124,6 +124,7 @@ export async function POST(req) {
     // Set when the property must be added to the landlord's marketing agreement
     // before it can go live: it is saved as a draft and the page asks them to sign.
     let needsCoverage = false;
+    let payerFor = null;
     // Set when something else on Billing (a payment method, an overdue invoice)
     // must be fixed first: saved as a draft, and the page says what is missing.
     let billingBlock = null;
@@ -271,9 +272,11 @@ export async function POST(req) {
           // The agreement-only draft is for those pages too (review of 2026-11-07).
           if (body.draftIfBillingBlocked !== true) {
             return NextResponse.json(gateResponseBody(gate), { status: 403 });
-          } else if (gate.missing.length === 1 && gate.missing[0] === "agreement") {
+          } else if (coverageOnly(gate)) {
             draft = true;
             needsCoverage = true;
+            // A landlord with a payer: the page sends it to the payer instead of signing.
+            payerFor = gate.payer ?? null;
           } else {
             draft = true;
             billingBlock = gateResponseBody(gate);
@@ -1032,8 +1035,11 @@ export async function POST(req) {
       // publishes the draft (api/landlord/publish).
       return NextResponse.json(
         {
-          message: "Draft saved. Sign your marketing agreement for this property to publish it.",
+          message: payerFor
+            ? `Draft saved. It goes live once ${payerFor.name} signs.`
+            : "Draft saved. Sign your marketing agreement for this property to publish it.",
           code: "agreement_needed",
+          ...(payerFor && { payer: payerFor }),
           listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
           // Units added to an existing property are named, so the addendum lists them.
           uncovered: [

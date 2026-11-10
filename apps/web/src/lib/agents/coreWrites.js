@@ -20,7 +20,7 @@ import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed } from "@/lib/listings/unitNames";
 import { setFact } from "./store";
-import { checkListingGate, gateResponseBody, isLeaseHeldForBilling, HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
+import { checkListingGate, coverageOnly, gateResponseBody, isLeaseHeldForBilling, HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 import { money, shortDate } from "./sections";
 
 export const LEASE_FIELDS = {
@@ -108,10 +108,12 @@ async function relistBlocked({ lease, listingId }) {
   const gate = await checkListingGate(supabase, lease.owner_id, { listingIds: [listingId], unitIds: lease.unit_id ? [lease.unit_id] : [] });
   if (gate.allowed) return null;
   const body = gateResponseBody(gate);
-  const agreementOnly = gate.missing.length === 1 && gate.missing[0] === "agreement" && (gate.uncovered ?? []).length > 0;
+  const agreementOnly = coverageOnly(gate) && (body.uncovered ?? []).length > 0;
   return {
     error: agreementOnly
-      ? `I can't put ${unitName} back on the market yet: ${gate.uncovered[0].address} isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
+      ? gate.payer
+        ? `I can't put ${unitName} back on the market yet: it needs to be on ${gate.payer.name}'s agreement first. Send it to them with the button below, and it goes back up once they sign.`
+        : `I can't put ${unitName} back on the market yet: ${gate.uncovered[0].address} isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
       : `I can't put ${unitName} back on the market yet. ${body.error}`,
     blocked: { kind: agreementOnly ? "agreement" : "billing", unitName, gate: body },
   };

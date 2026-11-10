@@ -5,7 +5,7 @@
 // desktop bar) and the side panel (desktop, and the phone's filter drawer) are
 // built from them.
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 // Price range shared by every price slider. The right end ($4000+) means no
 // upper limit, so a max of PRICE_MAX or more is stored as "".
@@ -13,26 +13,71 @@ export const PRICE_MIN = 400;
 export const PRICE_MAX = 4000;
 export const PRICE_STEP = 50;
 
-// Shell of the pink-header filter cards (Price, Beds & Baths): title band,
-// body and the red Apply pill. onApply is called when Apply is pressed.
-export function FilterCard({ title, onApply, children }) {
+// Sends a filter control's values on as they change, so the results update
+// live with no Apply step. `values` must be a new object only when something
+// changed. Changes are batched over a short delay (a slider drag is many
+// changes and each one rebuilds the results), and a change still waiting when
+// the control closes is sent then, so none is lost.
+export function useLiveFilters(values, onChange, delay = 120) {
+  const latest = useRef({ values, onChange });
+  latest.current = { values, onChange };
+  const sent = useRef(values);
+  const timer = useRef(null);
+  const send = () => {
+    timer.current = null;
+    sent.current = latest.current.values;
+    latest.current.onChange(sent.current);
+  };
+  useEffect(() => {
+    if (values === sent.current) return;
+    timer.current = setTimeout(send, delay);
+    return () => clearTimeout(timer.current);
+  }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      if (timer.current) send();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+}
+
+// Shell of the bar's dropdown cards (Price, Beds & Baths), styled like the
+// rest of the browse page: a white card with a small bold title and the body.
+// The cards filter live, so there is no Apply button.
+// Tiny "Clear" shown next to a filter's title while that filter has something
+// filled in; onClear empties just that filter.
+export function ClearFilter({ onClear }) {
   return (
-    <div className="w-80 overflow-hidden rounded-[28px] border border-gray-300 bg-white shadow-xl">
-      <h3 className="bg-[#ffefef] px-6 py-3.5 text-[17px] font-semibold leading-[21px] text-black">
+    <button
+      type="button"
+      onClick={onClear}
+      className="text-[10px] font-medium leading-none text-[#F71C1E] hover:underline"
+    >
+      Clear
+    </button>
+  );
+}
+
+// onClear (optional): shows Clear beside the title, for a card that is one filter.
+export function FilterCard({ title, onClear, children }) {
+  return (
+    <div className="w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+      <h3 className="flex items-baseline gap-2 border-b border-gray-100 px-4 py-2.5 text-[13px] font-bold leading-4 text-gray-900">
         {title}
+        {onClear && <ClearFilter onClear={onClear} />}
       </h3>
-      <div className="pb-4">
-        {children}
-        <button
-          onClick={onApply}
-          className="mx-auto mt-4 block h-7 w-[84px] rounded-full bg-[#F00013] text-[17px] text-white transition-opacity hover:opacity-90"
-        >
-          Apply
-        </button>
-      </div>
+      <div className="pb-4">{children}</div>
     </div>
   );
 }
+
+// The two reds of the browse filters, as classes: "card" for the bar's
+// dropdown cards, "panel" for the side panel and the phone's drawer.
+const ACCENTS = {
+  card: { bg: "bg-[#F71C1E]", text: "text-[#F71C1E]" },
+  panel: { bg: "bg-[#FF2B3A]", text: "text-[#FF2B3A]" },
+};
+export const accentClasses = (accent) => ACCENTS[accent] ?? ACCENTS.card;
 
 // Handle size in px. A handle's centre sits at handleX(pct), which keeps the
 // first and last handle inside the track (half a handle in from each end).
@@ -44,11 +89,18 @@ const LABEL_MERGE_PCT = 16;
 // Two-handle range slider in the Browse Listings design: a red track between
 // round red handles, with a red label under each. low and high are numbers
 // between min and max, at least one step apart; formatLabel(value) gives the
-// label text. accent is the red of handles, track and labels. With single, only
+// label text. accent ("card" or "panel") is the red of handles, track and
+// labels. With single, only
 // the high handle shows and the track runs from the left end to it (pass low as
 // min). With ticks (one label per step, from min), every step is labelled
-// instead, the selected ones in red, and formatLabel is not needed. minGap is how
-// close the handles may get (default one step; 0 lets them meet).
+// instead, the selected ones in red, each one clickable to pick that step, and
+// formatLabel is not needed. minGap is how
+// close the handles may get (default one step; 0 lets them meet). onChange is
+// called only when low or high actually changes.
+//
+// The handles, track and labels are placed with inline left / width values:
+// they are worked out from the slider's values, which a Tailwind class cannot
+// carry. Everything else here is classes.
 //
 // Dragging is handled here with pointer events rather than two overlaid
 // <input type="range">. With those, the browser's hit-testing and z-order
@@ -61,7 +113,7 @@ export function RangeSlider({
   max,
   step = 1,
   minGap = step,
-  accent = "#F71C1E",
+  accent = "card",
   single = false,
   low,
   high,
@@ -69,7 +121,12 @@ export function RangeSlider({
   formatLabel,
   ticks,
 }) {
+  const red = accentClasses(accent);
   const rowRef = useRef(null);
+  // A pointer move that stays on the same step is not a change.
+  const change = (nextLow, nextHigh) => {
+    if (nextLow !== low || nextHigh !== high) onChange(nextLow, nextHigh);
+  };
   // Drag in progress: { handle, offset, startX }. handle is null until known.
   const drag = useRef(null);
   const pctOf = (v) => ((v - min) / (max - min)) * 100;
@@ -90,8 +147,8 @@ export function RangeSlider({
   // Moves a handle, keeping it on the track and minGap clear of the other one.
   const move = (handle, value) => {
     const v = Math.min(max, Math.max(min, value));
-    if (handle === "low") onChange(Math.min(v, high - minGap), high);
-    else onChange(low, Math.max(v, low + minGap));
+    if (handle === "low") change(Math.min(v, high - minGap), high);
+    else change(low, Math.max(v, low + minGap));
   };
   // Starts dragging a handle pressed at client x. Pressing on the handle keeps
   // the pointer's offset from its centre; pressing on the track jumps it there.
@@ -148,8 +205,8 @@ export function RangeSlider({
       aria-valuenow={value}
       aria-valuetext={ticks ? ticks[Math.round((value - min) / step)] : formatLabel(value)}
       onKeyDown={onKeyDown(handle, value)}
-      className="absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-      style={{ left: handleX(pct), backgroundColor: accent }}
+      className={`absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${red.bg}`}
+      style={{ left: handleX(pct) }}
     />
   );
   const label = (pct, text, color = "") => (
@@ -176,9 +233,8 @@ export function RangeSlider({
       >
         <div className="absolute inset-x-[8.5px] top-1/2 h-0.5 -translate-y-1/2 bg-gray-200" />
         <div
-          className="absolute top-1/2 h-0.5 -translate-y-1/2"
+          className={`absolute top-1/2 h-0.5 -translate-y-1/2 ${red.bg}`}
           style={{
-            backgroundColor: accent,
             left: handleX(lowPct),
             width: `calc(${handleX(highPct)} - ${handleX(lowPct)})`,
           }}
@@ -187,16 +243,26 @@ export function RangeSlider({
         {renderHandle("high", high, highPct)}
       </div>
       <div
-        className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px]"
-        style={{ color: accent }}
+        className={`relative mt-0.5 h-[18px] text-[10px] font-medium leading-[18px] ${red.text}`}
       >
         {ticks ? (
+          // Each step's label is a button: clicking it picks exactly that step
+          // (both handles go to it; with single, the one handle does).
           ticks.map((text, i) => {
             const v = min + i * step;
-            return label(
-              pctOf(v),
-              text,
-              v === high || (!single && v === low) ? "" : "text-gray-400"
+            const selected = v === high || (!single && v === low);
+            return (
+              <button
+                key={text}
+                type="button"
+                onClick={() => change(single ? low : v, v)}
+                className={`absolute -translate-x-1/2 cursor-pointer whitespace-nowrap px-1 hover:text-gray-700 ${
+                  selected ? "" : "text-gray-400"
+                }`}
+                style={{ left: handleX(pctOf(v)) }}
+              >
+                {text}
+              </button>
             );
           })
         ) : highPct - lowPct < LABEL_MERGE_PCT ? (

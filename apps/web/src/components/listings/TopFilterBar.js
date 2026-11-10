@@ -1,10 +1,11 @@
 "use client";
 
-import { startTransition, useEffect, useOptimistic, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
 import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
 import FiltersPanel from "@/components/listings/FiltersPanel";
+import { filtersActive } from "@/lib/listings/filterListings";
 
 function FilterDropdownPortal({ children, isOpen }) {
   const [mounted, setMounted] = useState(false);
@@ -25,7 +26,8 @@ function FilterDropdownPortal({ children, isOpen }) {
 }
 
 // Dropdown holding one of the filter cards or the side panel; pos holds the
-// fixed offsets (top / left / right / bottom) it is anchored at.
+// fixed offsets (top / left / right / bottom) it is anchored at. They are
+// measured from the button that opened it, so they are set inline.
 function CardDropdown({ isOpen, pos, onClose, modal = true, children }) {
   return (
     <FilterDropdownPortal isOpen={isOpen}>
@@ -58,7 +60,7 @@ const CHEVRON = (
 export default function TopFilterBar({
   search,
   setSearch,
-  listings,
+  rentsFor,
   filters: committedFilters,
   setFilters: commitFilters,
   onReset,
@@ -77,18 +79,21 @@ export default function TopFilterBar({
    * results follow without blocking them.
    */
   const [filters, setLiveFilters] = useOptimistic(committedFilters);
-  // The side panel edits its own copy of the filters. With the map hidden the
-  // bar stays usable while the panel is open, so a change or a reset made in the
-  // bar bumps this and the panel starts over from the new filters (its unapplied
-  // edits are dropped), instead of later applying its old copy over them.
-  const [panelEpoch, setPanelEpoch] = useState(0);
   const setFilters = (next) =>
     startTransition(() => {
       setLiveFilters(next);
       commitFilters(next);
-      setPanelEpoch((epoch) => epoch + 1);
     });
   const [showFilters, setShowFilters] = useState(false);
+  // Rents for the Price card's histogram: the listings that fit the filters.
+  const priceOpen = showFilters === "price";
+  const rents = useMemo(
+    () => (priceOpen ? rentsFor(filters) : []),
+    [priceOpen, rentsFor, filters]
+  );
+  // For the document listeners below, which are set up once.
+  const showFiltersRef = useRef(showFilters);
+  showFiltersRef.current = showFilters;
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const filterRef = useRef(null);
 
@@ -100,7 +105,7 @@ export default function TopFilterBar({
     }
     const rect = e.currentTarget.getBoundingClientRect();
     // Anchor to left edge of button, clamp so dropdown doesn't overflow right side
-    const left = Math.min(rect.left, window.innerWidth - 320 - 12);
+    const left = Math.min(rect.left, window.innerWidth - 256 - 12);
     setDropdownPos({ top: rect.bottom + 6, left });
     setShowFilters(name);
   };
@@ -115,11 +120,27 @@ export default function TopFilterBar({
     // card out from under the cursor before the click finished. (Not on every
     // click either: a slider drag released outside must not close the panel.)
     let pressedOutside = false;
+    let pressedAt = null;
     const onMouseDown = (event) => {
       pressedOutside = isOutside(event.target);
+      pressedAt = { x: event.clientX, y: event.clientY };
     };
     const onClick = (event) => {
-      if (pressedOutside && isOutside(event.target)) setShowFilters(false);
+      if (!pressedOutside || !isOutside(event.target)) return;
+      // The side panel leaves the page usable: scrolling the cards or
+      // dragging the map keeps it open. A click on the map (a pin or anywhere
+      // else on it) or on a listing card closes it, and that click still does
+      // its own job. A drag ends in a click too, so one that moved is not
+      // counted.
+      if (showFiltersRef.current === "more-filters") {
+        const moved =
+          pressedAt &&
+          Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) > 4;
+        const onMap = event.target.closest(".mapboxgl-canvas-container");
+        const onCard = event.target.closest("[data-listing-id]");
+        if (!onCard && (!onMap || moved)) return;
+      }
+      setShowFilters(false);
     };
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("click", onClick, true);
@@ -129,8 +150,10 @@ export default function TopFilterBar({
     };
   }, []);
 
+  // The Price and Beds & Baths dropdowns hold the page still while open. The
+  // side panel does not.
   useEffect(() => {
-    if (showFilters) {
+    if (showFilters && showFilters !== "more-filters") {
       const orig = document.body.style.overflow;
       document.body.style.overflow = "hidden";
       return () => {
@@ -139,8 +162,9 @@ export default function TopFilterBar({
     }
   }, [showFilters]);
 
-  // Marks the page while the side panel is open, so the map-hidden card grid can
-  // make room for it (styled in AvailableListings, with no re-render).
+  // Marks the page while the side panel is open, so the map can darken behind
+  // it and the map-hidden card grid can make room for it (styled in
+  // AvailableListings, with no re-render).
   useEffect(() => {
     document.body.toggleAttribute(
       "data-filters-panel",
@@ -149,26 +173,7 @@ export default function TopFilterBar({
     return () => document.body.removeAttribute("data-filters-panel");
   }, [showFilters]);
 
-  const hasActiveFilters =
-    filters.bedrooms ||
-    filters.maxBedrooms ||
-    filters.bathrooms ||
-    filters.maxBathrooms ||
-    filters.minRent ||
-    filters.maxRent ||
-    filters.distance ||
-    filters.distanceToShuttle ||
-    filters.moveInDate ||
-    filters.homeType?.length > 0 ||
-    filters.leaseAvailability?.length > 0 ||
-    filters.amenities?.length > 0 ||
-    filters.furnished ||
-    filters.utilitiesIncluded?.length > 0 ||
-    filters.subleaseFriendly ||
-    filters.subleaseOnly ||
-    filters.leaseStructure ||
-    filters.savedOnly ||
-    search;
+  const hasActiveFilters = filtersActive(filters) || search;
 
   // Pill display labels for beds/baths
   const bedLabel =
@@ -198,13 +203,34 @@ export default function TopFilterBar({
   const bathsActive = !!(filters.bathrooms || filters.maxBathrooms);
   const bedBathLabel = [bedLabel, bathLabel].filter(Boolean).join(" · ") || "Beds & Baths";
 
-  // Apply button of the card dropdowns: filters take effect, then it closes.
-  const applyCard = (values) => {
-    const next = { ...filters, ...values };
-    setFilters(next);
-    onFiltersSaved(next);
-    setShowFilters(false);
+  // The dropdown cards and the side panel filter live: each change they send
+  // (only the fields that changed) takes effect at once and the control stays
+  // open. One that changes nothing is dropped: a new filters object, even an
+  // equal one, re-filters the page, scrolls the list to the top and closes an
+  // open listing. The filters are saved to the student's filter summary once,
+  // when the control closes, not on every change.
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const unsaved = useRef(null);
+  const applyLive = (values) => {
+    const current = filtersRef.current;
+    const changed = Object.keys(values).some(
+      (k) => JSON.stringify(values[k]) !== JSON.stringify(current[k])
+    );
+    if (!changed) return;
+    const next = { ...current, ...values };
+    filtersRef.current = next;
+    unsaved.current = next;
+    startTransition(() => {
+      setLiveFilters(next);
+      commitFilters(next);
+    });
   };
+  useEffect(() => {
+    if (showFilters || !unsaved.current) return;
+    onFiltersSaved(unsaved.current);
+    unsaved.current = null;
+  }, [showFilters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -367,10 +393,7 @@ export default function TopFilterBar({
 
         {/* Clear All */}
         <button
-          onClick={() => {
-            onReset();
-            setPanelEpoch((epoch) => epoch + 1);
-          }}
+          onClick={onReset}
           className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
@@ -410,10 +433,10 @@ export default function TopFilterBar({
         onClose={() => setShowFilters(false)}
       >
         <PriceFilterCard
-          listings={listings}
+          rents={rents}
           minRent={filters.minRent}
           maxRent={filters.maxRent}
-          onApply={applyCard}
+          onChange={applyLive}
         />
       </CardDropdown>
 
@@ -423,7 +446,7 @@ export default function TopFilterBar({
         pos={dropdownPos}
         onClose={() => setShowFilters(false)}
       >
-        <BedBathFilterCard filters={filters} onApply={applyCard} />
+        <BedBathFilterCard filters={filters} onChange={applyLive} />
       </CardDropdown>
 
       {/* ── Filters panel ── */}
@@ -431,15 +454,14 @@ export default function TopFilterBar({
         isOpen={showFilters === "more-filters"}
         pos={dropdownPos}
         onClose={() => setShowFilters(false)}
-        // With the map hidden the cards sit beside the panel and stay usable:
-        // no click-catching layer (a click outside still closes it, see above).
-        modal={!mapHidden}
+        // The cards and the map stay usable beside the panel: no click-catching
+        // layer (picking a listing closes it, see above).
+        modal={false}
       >
         <FiltersPanel
-          key={panelEpoch}
-          listings={listings}
+          rentsFor={rentsFor}
           filters={filters}
-          onApply={applyCard}
+          onChange={applyLive}
           onReset={onReset}
         />
       </CardDropdown>

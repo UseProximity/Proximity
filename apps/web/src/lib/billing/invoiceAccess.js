@@ -51,7 +51,23 @@ export function invoiceView(row) {
     // What an admin has since refunded or credited on this invoice's charges.
     refundedCents: adjustedOn(row, "refund"),
     creditedCents: adjustedOn(row, "credit"),
+    // A payer's invoice (Project B): what each account they pay for adds, by name.
+    accounts: accountsOn(row),
   };
+}
+
+function accountsOn(row) {
+  const by = new Map();
+  for (const c of row.charges ?? []) {
+    if (!c.landlord_id || c.landlord_id === row.landlord_id) continue;
+    const name = c.account?.company_name?.trim() || c.account?.name || c.account?.email || "Landlord account";
+    const prev = by.get(c.landlord_id) ?? { name, totalCents: 0 };
+    prev.totalCents += c.amount_cents ?? 0;
+    by.set(c.landlord_id, prev);
+  }
+  if (!by.size) return [];
+  const own = (row.charges ?? []).filter((c) => c.landlord_id === row.landlord_id).reduce((n, c) => n + (c.amount_cents ?? 0), 0);
+  return [...(own ? [{ name: "Your own listings", totalCents: own }] : []), ...[...by.values()].sort((a, b) => a.name.localeCompare(b.name))];
 }
 
 const adjustedOn = (row, kind) =>
@@ -60,7 +76,7 @@ const adjustedOn = (row, kind) =>
 export async function listInvoicesForLandlord(db, landlordId) {
   const { data, error } = await db
     .from("billing_invoices")
-    .select(`${COLUMNS}, charges:charges!invoice_id(adjustments:charge_adjustments(kind, amount_cents))`)
+    .select(`${COLUMNS}, charges:charges!invoice_id(landlord_id, amount_cents, account:users!landlord_id(name, company_name, email), adjustments:charge_adjustments(kind, amount_cents))`)
     .eq("landlord_id", landlordId)
     .order("billing_period", { ascending: false });
   if (error) throw error;

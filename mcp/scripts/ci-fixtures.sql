@@ -20,7 +20,10 @@
 BEGIN;
 
 -- ── Tear down the previous run ───────────────────────────────────────────────
--- Children first; listing_images and unit_leases have no cascade from listings.
+-- Children first; listing_images and unit_leases have no cascade from listings,
+-- and agreement_coverage RESTRICTs listing deletes (it guards real billing), so
+-- coverage a test run attached to the fixture listing has to go before it does.
+DELETE FROM agreement_coverage WHERE listing_id IN (SELECT id FROM listings WHERE address = '1 CI Fixture Way, St. Louis, MO 63130');
 DELETE FROM listing_images  WHERE listing_id IN (SELECT id FROM listings WHERE address = '1 CI Fixture Way, St. Louis, MO 63130');
 DELETE FROM unit_leases     WHERE unit_id IN (SELECT u.id FROM listing_units u JOIN listings l ON l.id = u.listing_id WHERE l.address = '1 CI Fixture Way, St. Louis, MO 63130');
 DELETE FROM listing_units   WHERE listing_id IN (SELECT id FROM listings WHERE address = '1 CI Fixture Way, St. Louis, MO 63130');

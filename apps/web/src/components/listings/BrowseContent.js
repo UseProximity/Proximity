@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
@@ -22,15 +22,9 @@ import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
   filterListings,
+  filtersActive,
+  fittingRents,
 } from "@/lib/listings/filterListings";
-
-// True when any filter differs from its default. The suggested strip only shows
-// on the unfiltered view: once a student narrows the list, their own question
-// is the ranking.
-const filtersActive = (filters) =>
-  Object.keys(DEFAULT_FILTERS).some(
-    (k) => JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !== JSON.stringify(DEFAULT_FILTERS[k])
-  );
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -116,9 +110,10 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   /*
    * Saved filters feed the student's running filter summary (the lightest
-   * suggestion signal). Called only from the Apply buttons (of the Price and
-   * Beds & Baths cards and the side panel on desktop, and of the filter drawer
-   * on a phone), never on every slider tick. Fire-and-forget.
+   * suggestion signal). Called once when a filter control closes after a change
+   * (the Price and Beds & Baths cards and the side panel on desktop, which
+   * filter live) and from the Apply button of the phone's filter drawer, never
+   * on every slider tick. Fire-and-forget.
    */
   const handleFiltersSaved = (saved) => {
     if (!userId) return;
@@ -191,6 +186,16 @@ export default function BrowseContent({ session, initialListings = null }) {
     [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // For the price histograms: the rents of the available listings that fit
+  // the given filters (the page's, or a filter control's unapplied ones).
+  const rentsFor = useCallback(
+    (forFilters) =>
+      fittingRents(listings, { filters: forFilters, search, savedIds, campusMinutes }),
+    [listings, search, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // The suggested strip only shows on the unfiltered view: once a student
+  // narrows the list, their own question is the ranking.
   const suggestedListings = useMemo(() => {
     if (search.trim() || filtersActive(filters)) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));
@@ -216,7 +221,7 @@ export default function BrowseContent({ session, initialListings = null }) {
         <TopFilterBar
           search={search}
           setSearch={setSearch}
-          listings={listings}
+          rentsFor={rentsFor}
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}
@@ -238,7 +243,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           suggestedLabel={
             suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
           }
-          allListings={listings}
+          rentsFor={rentsFor}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
           compare={compare}

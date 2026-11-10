@@ -418,7 +418,8 @@ const entryFromRow = (r) => ({
  * are entries of a document in progress that is being replaced.
  * Entries are { listingId, address, wholeBuilding, units }.
  */
-export function planCoverage({ properties, rows, master, masterValid, requestedIds = [], carry = [], selections = null }) {
+// `requestedExcludable`: an authorized signer may leave off even what is being published (Project B).
+export function planCoverage({ properties, rows, master, masterValid, requestedIds = [], carry = [], selections = null, requestedExcludable = false }) {
   const byId = new Map(properties.map((p) => [p.listingId, p]));
   const requested = new Set(requestedIds.filter((id) => byId.has(id)));
   const covered = coveredMap(rows, { master, masterValid });
@@ -430,7 +431,7 @@ export function planCoverage({ properties, rows, master, masterValid, requestedI
   // signed (`withdraw`), never before, so an abandoned popup changes nothing.
   const released = new Set(
     // (A property on the agreement already cannot be taken off by an addendum.)
-    properties.filter((p) => selections?.get(p.listingId)?.excluded === true && !requested.has(p.listingId) && !covered.has(p.listingId)).map((p) => p.listingId)
+    properties.filter((p) => selections?.get(p.listingId)?.excluded === true && (requestedExcludable || !requested.has(p.listingId)) && !covered.has(p.listingId)).map((p) => p.listingId)
   );
   // Excluded properties where the landlord has leases that are not withdrawn yet
   // (live, or published units on a draft building) come off the site on signing.

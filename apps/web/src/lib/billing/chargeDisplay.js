@@ -47,6 +47,8 @@ export function statusMessage(charge) {
       return "On a monthly invoice. Payment is not complete yet.";
     case "paid":
       return refundedInFull(charge) ? "Refunded in full." : "Paid.";
+    case "billed":
+      return `Billed to ${charge.billedTo || "your authorized signer"}. To dispute it, contact us.`;
     case "contested":
       return "Contested. We will email you the outcome.";
     case "voided":
@@ -97,6 +99,8 @@ export function chargeView(row, now = new Date()) {
     signedRentCents: row.signed_rent_cents ?? null,
     commissionRatePercent: row.commission_rate_percent != null ? Number(row.commission_rate_percent) : null,
     actions: landlordActions(row),
+    // Invoiced to someone else (the account's authorized signer), not the landlord.
+    billedElsewhere: !!row.payer_id && row.payer_id !== row.landlord_id,
     // Refunds and credits an admin made on this Paid charge, oldest first (never the admin's reason).
     adjustments: (row.adjustments ?? [])
       .map((a) => ({ kind: a.kind, amountCents: a.amount_cents, createdAt: a.created_at }))
@@ -171,4 +175,23 @@ export function splitChargeHistory(charges, now = new Date()) {
   }
   const past = [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
   return { current, past };
+}
+
+/*
+ * A charge as a landlord with a payer sees it (Project B, Wyatt 2026-11-09): the
+ * charge itself, and Approve or Contest while it is in review. Once approved it
+ * reads "Billed to <payer>": never invoiced, paid, refunded or credited, which
+ * are the payer's business.
+ */
+export function payeeChargeView(view, payerName) {
+  const billed = ["approved", "invoiced", "paid"].includes(view.status);
+  if (!billed) return { ...view, adjustments: [], billedTo: payerName };
+  return {
+    ...view,
+    status: "billed",
+    billedTo: payerName,
+    adjustments: [],
+    // Kept in this month's list while approved; listed by month once on an invoice.
+    settledAt: view.status === "approved" ? null : view.createdAt,
+  };
 }

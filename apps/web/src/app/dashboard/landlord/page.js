@@ -124,6 +124,12 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
    * routes act on the signed-in user, not the viewed one).
    */
   const canSeePayments = role === "landlord" && !isViewingAs;
+  /*
+   * A billing account, made for someone who signs and pays for other landlords'
+   * listings (Project B, Wyatt 2026-11-09): a landlord with no properties,
+   * analytics or listing tools, only their profile and Billing.
+   */
+  const billingOnly = user?.billing_only === true;
 
   const renderContent = () => {
     if (selectedProperty)
@@ -144,10 +150,14 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
      * blank panel or an error.
      */
     const view =
-      (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
-      (activeView === "billing" && !canSeePayments)
-        ? "properties"
-        : activeView;
+      billingOnly && !["profile", "billing"].includes(activeView)
+        ? canSeePayments
+          ? "billing"
+          : "profile"
+        : (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
+            (activeView === "billing" && !canSeePayments)
+          ? "properties"
+          : activeView;
 
     switch (view) {
       case "properties":
@@ -339,7 +349,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <User className="h-4 w-4" />
                     My Profile
                   </button>
-                  {isLandlord && (
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("analytics")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -352,6 +362,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Analytics
                   </button>
                   )}
+                  {!billingOnly && (<>
                   <button
                     onClick={() => setPropertiesOpen((o) => !o)}
                     aria-expanded={propertiesOpen}
@@ -394,7 +405,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                       ))}
                     </div>
                   )}
-                  {isLandlord && (
+                  </>)}
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("reviews")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -407,7 +419,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Reviews
                   </button>
                   )}
-                  {agentsOn && (<>
+                  {agentsOn && !billingOnly && (<>
                   <button
                     onClick={() => handleNavigation("questions")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -450,7 +462,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Billing
                   </button>
                   )}
-                  {isLandlord && (
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("integrations")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${

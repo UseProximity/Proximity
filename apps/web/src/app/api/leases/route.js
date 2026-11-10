@@ -5,7 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
-import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 // Create a lease on a unit that already exists — step 3 of the
@@ -67,7 +67,7 @@ export async function POST(req) {
     const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
     const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [], unitIds: [unitId] });
     if (!gate.allowed) {
-      if ((gate.missing.length === 1 && gate.missing[0] === "agreement") || body.draftIfBillingBlocked !== true) {
+      if (coverageOnly(gate) || body.draftIfBillingBlocked !== true) {
         return Response.json(gateResponseBody(gate), { status: 403 });
       }
       draft = true;

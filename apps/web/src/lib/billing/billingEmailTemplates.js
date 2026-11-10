@@ -451,3 +451,107 @@ export function autopayOffEmail({ name, reason, methodDescription = null, paymen
     `),
   };
 }
+
+/*
+ * A landlord named this person to sign the marketing agreement and pay for their
+ * account (Project B, Wyatt 2026-11-09). The agreement and the Missouri Broker
+ * Disclosure Form are attached: the form is received BEFORE signing (§11(a)).
+ * `setupUrl` when the account has no way to sign in yet (a set-password link),
+ * else `signUrl` (their Billing page).
+ */
+export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl = null, signUrl, existingAgreement = false }) {
+  const list = addresses.length
+    ? `<ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}${addresses.length > 20 ? `<li>and ${addresses.length - 20} more</li>` : ""}</ul>`
+    : "";
+  const ask = existingAgreement
+    ? "add their properties to your Proximity marketing agreement with a short addendum, and to pay Proximity's fees for them"
+    : "sign Proximity's marketing agreement for their properties and to pay Proximity's fees for them";
+  return {
+    subject: `${landlordName} asked you to sign for their Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the authorized signer for their account: the person who signs the marketing agreement and pays the invoices. They asked you to ${ask}.</p>
+      ${list}
+      <p>Two documents are attached: the marketing agreement, and the Missouri Broker Disclosure Form. Please read the disclosure form before you sign.</p>
+      ${setupUrl ? button(setupUrl, "Set a password and review") : button(signUrl, "Review and sign")}
+      <p>${setupUrl ? "You'll set a password for your Proximity billing account, then review and sign on your Billing page. The link works for 14 days." : "Log in to Proximity, then review and sign on your Billing page."} Nothing is charged until a student who found the property on Proximity signs a lease.</p>
+      <p>Not the right person, or have questions about the terms? Just reply to this email.</p>
+    `),
+  };
+}
+
+// More of a landlord's listings are waiting for the payer's signature (one email per send).
+export function payerRequestEmail({ name, landlordName, addresses = [], signUrl }) {
+  return {
+    subject: `${landlordName} added listings for you to sign`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} wants to publish ${addresses.length === 1 ? "a listing" : "listings"} on Proximity under your marketing agreement:</p>
+      <ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}</ul>
+      <p>${addresses.length === 1 ? "It stays" : "They stay"} a draft until you approve ${addresses.length === 1 ? "it" : "them"} by signing a short addendum. If you are signing something for them already, that stays as it is: these go on the next one.</p>
+      ${button(signUrl, "Review and sign")}
+    `),
+  };
+}
+
+// To the landlord: their authorized signer signed. What they approved (the
+// landlord publishes it), what they declined, and any live listing taken off.
+export function payeeSignedEmail({ name, payerName, approved = [], declined = [], withdrawn = [], waitingOnPayment = false, billingUrl }) {
+  const list = (items) => `<ul>${items.slice(0, 30).map((a) => `<li>${e(a)}</li>`).join("")}</ul>`;
+  const one = approved.length === 1;
+  return {
+    subject: approved.length ? `${payerName} approved ${one ? "your listing" : "your listings"}. Publish when you're ready` : `${payerName} signed your Proximity agreement`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} signed${approved.length ? ` and approved ${one ? "this listing" : "these listings"}:` : " the Proximity marketing agreement for your account."}</p>
+      ${approved.length ? list(approved) : ""}
+      ${approved.length ? `<p>${one ? "It is" : "They are"} still ${one ? "a draft" : "drafts"}. ${waitingOnPayment ? `You can publish ${one ? "it" : "them"} once ${e(payerName)} adds a payment method.` : `Publish ${one ? "it" : "them"} from your drafts when you're ready.`}</p>` : ""}
+      ${declined.length ? `<p>${e(payerName)} declined ${declined.length === 1 ? "this one" : "these"}, so ${declined.length === 1 ? "it stays a draft" : "they stay drafts"}:</p>${list(declined)}<p>You can send ${declined.length === 1 ? "it" : "them"} again from your Billing page.</p>` : ""}
+      ${withdrawn.length ? `<p>${e(payerName)} also left ${withdrawn.length === 1 ? "this listing" : "these listings"} off, so ${withdrawn.length === 1 ? "it was" : "they were"} taken off the site:</p>${list(withdrawn)}` : ""}
+      ${button(billingUrl, "View on Billing")}
+    `),
+  };
+}
+
+// To a payer: a document they were signing was cancelled because one account changed signer or ended.
+export function payerDocumentCancelledEmail({ name, causeName, accountNames = [], reason = "changed", signUrl }) {
+  const others = accountNames.length === 1 ? accountNames[0] : `${accountNames.slice(0, -1).join(", ")} and ${accountNames.at(-1)}`;
+  return {
+    subject: "The agreement you were signing was cancelled",
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(causeName)} ${reason === "ended" ? "no longer has you as their authorized signer" : "changed who signs for their account"}, so the agreement you were signing for them${accountNames.length ? ` and ${e(others)}` : ""} was cancelled. A document can't be changed once it is sent for signature.</p>
+      ${accountNames.length ? `<p>Nothing is lost for ${e(others)}: open your Billing page to sign for ${accountNames.length === 1 ? "them" : "those accounts"} again.</p>` : ""}
+      ${button(signUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// To the landlord: their payer voided the agreement for their account.
+export function payeeVoidedEmail({ name, payerName, billingUrl }) {
+  return {
+    subject: `${payerName} declined to sign for your Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)}, your authorized signer, voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
+      <p>${e(payerName)} is still listed as your authorized signer and can sign again. If someone else should sign, use Change signer on your Billing page.</p>
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// To a landlord whose payer Proximity set up for them (an admin assigned it).
+export function payeeAssignedEmail({ name, payerName, billingUrl }) {
+  return {
+    subject: `${payerName} is now the authorized signer for your Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} is now the authorized signer for your account: they sign Proximity's marketing agreement for your listings and receive the invoices. We have emailed them the agreement to sign.</p>
+      <p>You don't need to sign anything. On your Billing page you can see when they have signed, which listings are covered, and each charge.</p>
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
