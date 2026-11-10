@@ -1,6 +1,6 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-07T22:42:34.797Z",
+  "_generated": "2026-11-10T00:40:30.775Z",
   "count": 110,
   "envVars": [
     {
@@ -268,10 +268,6 @@
       "public": false
     },
     {
-      "name": "LOCAL_DELMAR_WAITLIST_URL",
-      "public": false
-    },
-    {
       "name": "MOBILE_JWT_SECRET",
       "public": false
     },
@@ -441,6 +437,10 @@
     },
     {
       "name": "WEBSITE_SYNC_TEAM_REVIEW",
+      "public": false
+    },
+    {
+      "name": "X",
       "public": false
     }
   ]
