@@ -1,7 +1,7 @@
 "use client";
 
-import { Chip } from "./ui";
-import { PROMPTS, PROMPTS_AT_ONCE, TEXT_MAX, applyChipToText, promptSentence } from "@/lib/findYourPlace/options";
+import { Chip, QuietChip } from "./ui";
+import { PROMPTS, PROMPTS_AT_ONCE, NO_PICK, TEXT_MAX, applyChipToText, promptSentence } from "@/lib/findYourPlace/options";
 
 /*
  * Page 2: one open text box, with prompts underneath for ideas.
@@ -13,7 +13,8 @@ import { PROMPTS, PROMPTS_AT_ONCE, TEXT_MAX, applyChipToText, promptSentence } f
  * A picked idea leaves its row: its words are in the box now, and the box is
  * where they are changed (Wyatt, 2026-11-10). A prompt whose ideas are
  * mutually exclusive (furnishing) goes away entirely on a pick; one where
- * several can apply (amenities) stays with what is left. If the student
+ * several can apply (amenities) stays with what is left. The exclusive ones
+ * also carry a "No Preference" chip that clears the row. If the student
  * deletes or rewords the sentence, the picks come back, since they are gone
  * from the box.
  */
@@ -54,8 +55,11 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
   // Each prompt with the ideas it still has to offer; prompts with none are done.
   const open = PROMPTS.map((prompt) => {
     const taken = picked(prompt);
-    const left = prompt.single && taken.length ? [] : prompt.options.filter((o) => !taken.includes(o.id));
-    return { prompt, left };
+    const dismissed = (chips[prompt.id] ?? []).includes(NO_PICK);
+    const done = dismissed || (prompt.single && taken.length > 0);
+    const left = done ? [] : prompt.options.filter((o) => !taken.includes(o.id));
+    // "No Preference" rides along as the last chip of an exclusive prompt.
+    return { prompt, left: left.length && prompt.single ? [...left, { id: NO_PICK, label: "No Preference" }] : left };
   }).filter((row) => row.left.length);
 
   return (
@@ -90,7 +94,16 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
               {linesOf(left, prompt.perLine).map((line, i) => (
                 // A line of three or more stretches to fill the width; a pair keeps its size.
                 <div key={i} className="flex flex-wrap gap-2 sm:flex-nowrap">
-                  {line.map((o) => (
+                  {line.map((o) =>
+                    o.id === NO_PICK ? (
+                      <QuietChip
+                        key={o.id}
+                        className={line.length >= 3 ? "min-w-0 sm:flex-auto" : ""}
+                        onClick={() => onChange({ chips: { ...chips, [prompt.id]: [NO_PICK] } })}
+                      >
+                        {o.label}
+                      </QuietChip>
+                    ) : (
                     <Chip
                       key={o.id}
                       dense
@@ -99,7 +112,8 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
                     >
                       {o.label}
                     </Chip>
-                  ))}
+                    )
+                  )}
                 </div>
               ))}
             </div>

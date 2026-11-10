@@ -77,7 +77,7 @@ function MatchCard({ match, position, signedIn, onOpen, onContact, onLocked }) {
         <CardSkeleton />
       )}
       <p className="mt-2.5 px-1 text-sm leading-snug text-gray-700">{match.reason}</p>
-      {match.note && <p className="mt-1 px-1 text-sm leading-snug text-gray-500">{match.note}</p>}
+      {match.note && <p className="mt-1 px-1 text-sm leading-snug text-red-600">{match.note}</p>}
     </div>
   );
 }

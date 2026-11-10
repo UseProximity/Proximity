@@ -26,13 +26,13 @@ export function Chip({ selected, onClick, round = false, dense = false, classNam
 }
 
 // The grey "No Preference" chip.
-export function QuietChip({ selected, onClick, children }) {
+export function QuietChip({ selected, onClick, className = "", children }) {
   return (
     <button
       type="button"
       aria-pressed={!!selected}
       onClick={onClick}
-      className={`${PILL} px-4 ${
+      className={`${PILL} ${className} px-4 whitespace-nowrap ${
         selected
           ? "bg-gray-400 border-gray-400 text-white"
           : "bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200 hover:text-gray-500"

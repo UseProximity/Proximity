@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import StepBasics from "./StepBasics";
 import StepPreferences from "./StepPreferences";
@@ -18,9 +18,9 @@ import {
 
 const STORAGE_KEY = "prx_fyp_v1";
 const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
-const SOURCE = "find-your-place";
+const SOURCE = "matchmaking";
 
-// The five questions fill the bar to here; it completes when the matches show.
+// The five questions fill the bar to here; it completes on "Show My Matches".
 const QUESTIONS_FILL = 0.8;
 
 const ERRORS = {
@@ -70,7 +70,6 @@ function answersFromProfile(saved) {
 
 export default function FindYourPlaceClient() {
   const router = useRouter();
-  const pathname = usePathname();
   const { status } = useSession();
   const signedIn = status === "authenticated";
 
@@ -178,12 +177,20 @@ export default function FindYourPlaceClient() {
   };
 
   const answered = answeredCount(answers);
-  const progress = step === 1 ? (answered / QUESTION_COUNT) * QUESTIONS_FILL : step === 2 ? QUESTIONS_FILL : loading || error ? QUESTIONS_FILL : 1;
+  // Full as soon as the matches are asked for, not when they arrive.
+  const progress = step === 1 ? (answered / QUESTION_COUNT) * QUESTIONS_FILL : step === 2 ? QUESTIONS_FILL : 1;
 
   const openListing = (match, position, tab) => {
     trackEvent(tab ? "Find Your Place Contact Clicked" : "Find Your Place Listing Clicked", { listingId: match.listing_id, position });
     setListingSource(match.listing_id, SOURCE);
-    router.push(`${pathname}?listing=${match.listing_id}${tab ? `&listingTab=${tab}` : ""}`, { scroll: false });
+    // The listing's panel on the browse page, in a new tab, so the matches stay
+    // open behind it (Wyatt, 2026-11-10). `src=matchmaking` is the value the
+    // browse page attributes opens, saves and contacts to this flow with.
+    window.open(
+      `/browse?panel=${match.listing_id}&src=matchmaking${tab ? `&listingTab=${tab}` : ""}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
   };
 
   const BACKDROP = "bg-[#f9f9f9] bg-[url('/assets/find-your-place-bg.svg')]";

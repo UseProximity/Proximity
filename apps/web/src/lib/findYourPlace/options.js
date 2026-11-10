@@ -180,6 +180,8 @@ export function sanitizeAnswers(raw) {
  * now. What happens to the rest of the row depends on the prompt:
  *   - `single: true`  the ideas are mutually exclusive (furnished or not), so
  *                     one pick answers the prompt and the whole row goes.
+ *                     These rows also offer "No Preference", which clears
+ *                     the row without writing anything (stored as NO_PICK).
  *   - otherwise       several can apply (amenities, neighborhoods), so the
  *                     row stays with the ideas not yet picked.
  * When a row goes, or runs out, the next prompt takes its place.
@@ -265,6 +267,8 @@ export const PROMPTS = [
   },
 ];
 export const PROMPTS_AT_ONCE = 3;
+// The chip id a dismissed single-answer prompt is stored under.
+export const NO_PICK = "none";
 
 function andList(items) {
   if (items.length <= 1) return items[0] ?? "";
@@ -306,6 +310,7 @@ export function sanitizeChips(raw) {
   const out = {};
   for (const prompt of PROMPTS) {
     const ids = Array.isArray(raw?.[prompt.id]) ? raw[prompt.id] : [];
+    // NO_PICK is not an option, so a dismissed prompt simply drops out here.
     const known = prompt.options.filter((o) => ids.includes(o.id)).map((o) => o.id);
     if (known.length) out[prompt.id] = prompt.single ? known.slice(0, 1) : known;
   }
