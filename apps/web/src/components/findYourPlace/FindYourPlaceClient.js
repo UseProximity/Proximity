@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import StepBasics from "./StepBasics";
 import StepPreferences from "./StepPreferences";
-import StepMatches from "./StepMatches";
+import StepMatches, { MATCH_PANEL } from "./StepMatches";
 import { ProgressBar, FooterButton, ChoiceDialog } from "./ui";
 import { trackEvent, setListingSource } from "@/utils/analytics";
 import {
@@ -146,8 +146,19 @@ export default function FindYourPlaceClient() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const run = async (override = {}) => {
-    const payload = { answers, text, chips, ...override, sessionId: results?.sessionId ?? null };
+  // What a set of matches was found for. Going Back and forward again with
+  // nothing changed shows the same matches instead of searching again (and
+  // getting a different four).
+  const keyOf = (input) => JSON.stringify([input.answers, input.text.trim(), input.chips]);
+
+  const run = async (override = {}, { force = false } = {}) => {
+    const input = { answers, text, chips, ...override };
+    const payload = { ...input, sessionId: results?.sessionId ?? null };
+    if (!force && results?.matches && results.key === keyOf(input)) {
+      setError(null);
+      goTo(3);
+      return;
+    }
     setError(null);
     setLoading(true);
     goTo(3);
@@ -162,7 +173,12 @@ export default function FindYourPlaceClient() {
         setError(ERRORS[data.error] ?? ERRORS.generic);
         return;
       }
-      setResults({ matches: data.matches ?? [], totalMatches: data.totalMatches ?? 0, sessionId: data.sessionId ?? null });
+      setResults({
+        matches: data.matches ?? [],
+        totalMatches: data.totalMatches ?? 0,
+        sessionId: data.sessionId ?? null,
+        key: keyOf(input),
+      });
       trackEvent("Find Your Place Matches Shown", {
         count: data.matches?.length ?? 0,
         fits: data.totalMatches ?? 0,
@@ -210,7 +226,7 @@ export default function FindYourPlaceClient() {
     >
       <div
         className={`mx-auto flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white transition-[max-width] duration-300 ${
-          step === 3 ? "max-w-[1180px]" : "max-w-[760px]"
+          step === 3 ? MATCH_PANEL : "max-w-[760px]"
         }`}
       >
         <div className="border-b border-gray-100 px-5 py-3 sm:px-8">
@@ -221,11 +237,7 @@ export default function FindYourPlaceClient() {
           {step === 1 && (
             <StepBasics
               answers={answers}
-              onChange={(next) => {
-                setAnswers(next);
-                // A changed answer makes the old matches stale.
-                if (results) setResults((r) => (r ? { ...r, matches: null } : r));
-              }}
+              onChange={setAnswers}
             />
           )}
           {step === 2 && (
@@ -255,7 +267,7 @@ export default function FindYourPlaceClient() {
                 trackEvent("Find Your Place Wall Shown", { listingId: m.listing_id, position: i });
                 setWall(true);
               }}
-              onRetry={() => run()}
+              onRetry={() => run({}, { force: true })}
             />
           )}
         </div>

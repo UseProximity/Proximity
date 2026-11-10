@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-10T20:58:04.233Z",
-  "count": 199,
+  "_generated": "2026-11-10T21:27:17.782Z",
+  "count": 200,
   "components": [
     {
       "name": "ErrorReporter",
@@ -371,6 +371,11 @@
     {
       "name": "FindYourPlaceClient",
       "file": "src/components/findYourPlace/FindYourPlaceClient.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MatchCard",
+      "file": "src/components/findYourPlace/MatchCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
