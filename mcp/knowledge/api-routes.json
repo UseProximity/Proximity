@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-09T22:03:11.582Z",
-  "count": 258,
+  "_generated": "2026-11-10T20:58:04.225Z",
+  "count": 260,
   "routes": [
     {
       "path": "/api/account",
@@ -935,6 +935,21 @@
         "listing_walk_times"
       ],
       "file": "src/app/api/admin/update-campus-walk-times/route.js"
+    },
+    {
+      "path": "/api/admin/update-listing-bike-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_bike_times"
+      ],
+      "file": "src/app/api/admin/update-listing-bike-times/route.js"
     },
     {
       "path": "/api/admin/update-listing-drive-times",
@@ -2246,6 +2261,20 @@
         "user_filter_summaries"
       ],
       "file": "src/app/api/filter-summary/route.js"
+    },
+    {
+      "path": "/api/find-your-place",
+      "methods": [
+        "POST"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "POST": "optional"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/find-your-place/route.js"
     },
     {
       "path": "/api/getUser",

@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-08T23:01:45.959Z",
-  "count": 194,
+  "_generated": "2026-11-10T20:58:04.233Z",
+  "count": 199,
   "components": [
     {
       "name": "ErrorReporter",
@@ -366,6 +366,31 @@
     {
       "name": "FeedbackWidget",
       "file": "src/components/feedback/FeedbackWidget.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "FindYourPlaceClient",
+      "file": "src/components/findYourPlace/FindYourPlaceClient.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepBasics",
+      "file": "src/components/findYourPlace/StepBasics.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepMatches",
+      "file": "src/components/findYourPlace/StepMatches.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepPreferences",
+      "file": "src/components/findYourPlace/StepPreferences.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ui",
+      "file": "src/components/findYourPlace/ui.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

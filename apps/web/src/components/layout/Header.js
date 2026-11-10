@@ -125,7 +125,7 @@ export function Header({ session }) {
   // Primary links live inline in the bar; secondary links are tucked under "More".
   const primaryLinks = [
     { href: "/browse", label: "Browse Listings" },
-    { href: "/matchmaking", label: "Matchmaking" },
+    { href: "/find-your-place", label: "Find Your Place" },
     { href: addHref, label: addLabel },
   ];
   const moreLinks = [

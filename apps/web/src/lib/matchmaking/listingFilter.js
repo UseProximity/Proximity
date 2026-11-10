@@ -322,6 +322,9 @@ function leaseMonthsOf(listing) {
 // or anything unrecognized returns null (no constraint from that label). The
 // agent may pass free-form strings ("summer sublet"), which bucket as semester.
 function leaseBucketTest(label) {
+  // An exact length in months ("9 months"), from Find Your Place's "Other".
+  const exact = /^(\d{1,2})\s*months?$/i.exec(String(label ?? "").trim());
+  if (exact) return (m) => m === Number(exact[1]);
   if (label === "Semester only" || /\b(?:summer|semester)\b/i.test(label ?? "")) return (m) => m <= 7;
   if (/academic/i.test(label ?? "")) return (m) => m >= 8 && m <= 10;
   if (label === "Full year only") return (m) => m >= 11;
@@ -970,9 +973,12 @@ export async function fetchActiveListings() {
       .eq("review_sandbox", sandbox);
   // Never recommend a listing made by an App Store review sandbox account to a real
   // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
-  // the sandbox listings, fetched on their own so they never push a real one out of
-  // the 80.
-  const { data, error } = await active(false).limit(80);
+  // the sandbox listings, fetched on their own.
+  //
+  // Every live listing is ranked (Wyatt, 2026-11-10). This used to stop at 80
+  // rows in no particular order, so with a few hundred live listings most of
+  // the market was never considered. 1000 is PostgREST's own page ceiling.
+  const { data, error } = await active(false).limit(1000);
   if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
   let rows = data ?? [];
   if (sandboxViewerInScope()) {
@@ -1069,12 +1075,18 @@ function neighborhoodFailure(x, { areas, wantsHood }) {
 // Shared preference-derived inputs for relaxFailures.
 function relaxInputsOf(preferences) {
   const areas = Array.isArray(preferences?.area) ? preferences.area : [];
+  /*
+   * `_softArea` / `_softFurnished` (Find Your Place): the student mentioned a
+   * neighborhood or furnishing as a wish, not a requirement. The wish still
+   * scores (neighborhoodNorm reads preferences.area), it just stops being a
+   * constraint a listing can fail.
+   */
   return {
     budgetMax: preferences?.budget_max ?? Infinity,
     leaseTests: leaseTestsFor(preferences?.lease_term),
-    furnishedPref: furnishedPrefOf(preferences),
+    furnishedPref: preferences?._softFurnished ? null : furnishedPrefOf(preferences),
     areas,
-    wantsHood: areas.some((a) => a && a !== "No preference"),
+    wantsHood: !preferences?._softArea && areas.some((a) => a && a !== "No preference"),
   };
 }
 
@@ -1175,7 +1187,10 @@ export function splitEligible(allListings, preferences) {
 // diverse candidate pool plus per-dimension norms and fit scores. Shared by
 // rankListings (production) and the saturation simulation so both score the
 // candidates identically.
-export function buildRankContext(allListings, preferences, weights, limit = 10) {
+// `poolSize` caps the strict pool handed back. The chat ranker keeps the
+// default (a diverse 24 the model can read in one go); Find Your Place asks for
+// everything and scores the whole field itself.
+export function buildRankContext(allListings, preferences, weights, limit = 10, { poolSize = 24 } = {}) {
   const groupRange = parseGroupRange(preferences.group_size);
   const groupSize = parseGroupSize(preferences.group_size); // representative size for prose
   const relaxInputs = relaxInputsOf(preferences);
@@ -1368,7 +1383,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // then let a tagged slice of the shadow pool ride along so the ranker always
   // sees what one relaxation would buy (cheapest budget-misses first). The
   // shadow slice grows when the strict pool is thin.
-  const strictPicked = buildDiversePool(preferred, 24, vettingById);
+  const strictPicked = buildDiversePool(preferred, poolSize, vettingById);
   const shadowSorted = [...shadow].sort(
     (a, b) =>
       (a.relax.constraint === "budget" ? a.perPerson : 5e8) -
@@ -1376,7 +1391,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   );
   const shadowPicked = shadowSorted.slice(
     0,
-    Math.min(shadowSorted.length, Math.max(6, 30 - strictPicked.length))
+    Math.min(shadowSorted.length, Math.max(6, Math.max(30, poolSize) - strictPicked.length))
   );
   const relaxById = {};
   for (const s of shadowPicked) relaxById[s.listing.id] = s.relax;

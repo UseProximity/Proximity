@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-09T20:44:14.504Z",
-  "count": 329,
+  "_generated": "2026-11-10T20:58:04.294Z",
+  "count": 334,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -784,6 +784,22 @@
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
     },
     {
+      "file": "src/lib/findYourPlace/commute.js",
+      "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
+    },
+    {
+      "file": "src/lib/findYourPlace/match.js",
+      "description": "Find Your Place: answers in, top four places out."
+    },
+    {
+      "file": "src/lib/findYourPlace/options.js",
+      "description": "Find Your Place: the questions, answer options and prompt chips, shared by"
+    },
+    {
+      "file": "src/lib/findYourPlace/parsePreferences.js",
+      "description": "Find Your Place, page 2: turn whatever the student wrote into preferences"
+    },
+    {
       "file": "src/lib/geo/neighborhoods.js",
       "description": "Canonical neighborhood table for the WashU market. Listings only carry"
     },
@@ -1274,6 +1290,10 @@
     {
       "file": "src/utils/availability.js",
       "description": "How an offering's start date reads to a person."
+    },
+    {
+      "file": "src/utils/bikeTimes.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/chatThreadGrouping.js",

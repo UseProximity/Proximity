@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-11-09T03:32:08.993Z",
-  "count": 46,
+  "_generated": "2026-11-10T20:58:04.245Z",
+  "count": 47,
   "pages": [
     {
       "path": "/",
@@ -90,6 +90,10 @@
     {
       "path": "/dashboard/view-as/[userId]",
       "file": "src/app/dashboard/view-as/[userId]/page.js"
+    },
+    {
+      "path": "/find-your-place",
+      "file": "src/app/find-your-place/page.js"
     },
     {
       "path": "/guides",
