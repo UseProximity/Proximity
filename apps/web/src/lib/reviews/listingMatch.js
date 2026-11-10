@@ -1,4 +1,5 @@
 import defaultClient from "@/lib/supabase";
+import { PROXIMITY_PLACEHOLDER_EMAIL } from "@/lib/listings/placeholderOwner";
 
 /*
  * Which listing a review belongs on.
@@ -63,9 +64,10 @@ export function metersBetween(aLat, aLng, bLat, bLng) {
 }
 
 /*
- * The same street line in another ZIP is the same building only when it is
- * also in the same spot: two sources can disagree about the ZIP along a
- * boundary, while "100 Main" in two towns is two buildings.
+ * The same street line is the same building for certain only when both sides
+ * carry the same ZIP. With another ZIP, or none on one side, it must also be
+ * in the same spot: two sources can disagree about the ZIP along a boundary,
+ * while "100 Main" in two towns is two buildings.
  */
 const SAME_SPOT_METERS = 300;
 // About 330 m each way: wide enough for two geocoders' idea of one building.
@@ -87,8 +89,20 @@ export async function findListingForReviewAddress({ address, lat, lng, supabase 
   const target = canonStreet(street);
   const zip = zipOf(key);
 
-  // A review sandbox listing is hidden, so a real review must not be filed on it.
-  const live = () => supabase.from("listings").select(COLUMNS).is("deleted_at", null).eq("review_sandbox", false);
+  /*
+   * A review sandbox listing is hidden, so a real review must not be filed on
+   * it. Neither is an unpublished draft a place for one: no student can see
+   * it, and it is its owner's alone until they publish (the add-listing
+   * lookup treats it the same way). Review stubs are published, so a second
+   * review at a stub's address still finds the stub.
+   */
+  const live = () =>
+    supabase
+      .from("listings")
+      .select(COLUMNS)
+      .is("deleted_at", null)
+      .eq("review_sandbox", false)
+      .not("published_at", "is", null);
   const [byKey, nearby] = await Promise.all([
     // The key's street holds only letters, digits and spaces, so it is safe in a pattern.
     live().like("property_key", `${street}|%`).order("created_at", { ascending: true }).limit(200),
@@ -108,29 +122,32 @@ export async function findListingForReviewAddress({ address, lat, lng, supabase 
   const matches = [...seen.values()].filter((row) => {
     if (canonStreet(streetOf(row.property_key)) !== target) return false;
     const rowZip = zipOf(row.property_key);
-    if (!zip || !rowZip || zip === rowZip) return true;
+    if (zip && zip === rowZip) return true;
     if (row.latitude == null || row.longitude == null) return false;
     return metersBetween(lat, lng, Number(row.latitude), Number(row.longitude)) <= SAME_SPOT_METERS;
   });
   if (matches.length === 0) return { listingId: null };
   if (matches.length === 1) return { listingId: matches[0].id };
 
-  const { data: lls } = await supabase
+  const { data: lls, error: ownerError } = await supabase
     .from("listing_landlords")
-    .select("listing_id, owner:users!user_id(roles!role_id(name))")
+    .select("listing_id, owner:users!user_id(email)")
     .in("listing_id", matches.map((l) => l.id));
+  if (ownerError) return { error: ownerError.message };
+  // The Proximity placeholder holds the landlord role too, so it is told apart
+  // by its email: a stub it "owns" must not tie with a real landlord's listing.
   const landlordOwned = new Set(
-    (lls ?? []).filter((ll) => ll.owner?.roles?.name === "landlord").map((ll) => ll.listing_id)
+    (lls ?? [])
+      .filter((ll) => ll.owner && ll.owner.email !== PROXIMITY_PLACEHOLDER_EMAIL)
+      .map((ll) => ll.listing_id)
   );
 
   /*
-   * Several listings at one address. A live one before a draft (students can
-   * see it), then a standard listing before a sublease, then one a landlord
-   * owns, then the oldest.
+   * Several listings at one address. A standard listing before a sublease,
+   * then one a real landlord owns before a review stub, then the oldest.
    */
   const isSublease = (l) => (l.lease_type || "").toLowerCase() === "sublease";
   matches.sort((a, b) => {
-    if (!!a.published_at !== !!b.published_at) return a.published_at ? -1 : 1;
     if (isSublease(a) !== isSublease(b)) return isSublease(a) ? 1 : -1;
     if (landlordOwned.has(a.id) !== landlordOwned.has(b.id)) return landlordOwned.has(a.id) ? -1 : 1;
     return new Date(a.created_at) - new Date(b.created_at);

@@ -27,12 +27,16 @@ export async function GET(req) {
   const supabase = getSupabaseClient(getDbTarget(req));
   try {
     // Looked up, never created: a read must not write to the database it is reading.
-    const { data: placeholder } = await supabase
+    const { data: placeholder, error: placeholderError } = await supabase
       .from("users")
       .select("id")
       .eq("email", PROXIMITY_PLACEHOLDER_EMAIL)
       .maybeSingle();
-    const suspects = await findReviewDuplicateSuspects(supabase, placeholder?.id ?? null);
+    // Without the placeholder every stub looks landlord-owned and the report
+    // reads "none", so an unresolved placeholder is an error, not an empty list.
+    if (placeholderError) throw placeholderError;
+    if (!placeholder?.id) throw new Error("Proximity placeholder account not found");
+    const suspects = await findReviewDuplicateSuspects(supabase, placeholder.id);
     return Response.json(suspects, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("GET /api/admin/review-duplicates failed:", err);

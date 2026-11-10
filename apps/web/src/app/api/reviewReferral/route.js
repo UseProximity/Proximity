@@ -369,6 +369,38 @@ export async function POST(req) {
     }
 
     /*
+     * ── Validate the address and find its listing ───────────────────────────
+     * Done before the reviewer is resolved: a signed-out reviewer's account is
+     * created below, and a refusal after that point answers without the setup
+     * token, so a simple retry would lose the inline profile setup.
+     */
+    if (!String(address || "").trim() || latitude == null || longitude == null) {
+      return NextResponse.json(
+        { error: "Search and select your property address." },
+        { status: 400 }
+      );
+    }
+    // A bare street ("Delmar Boulevard, ...") names no building, so it can neither be
+    // matched to a listing nor stand as a property of its own. A named place keeps the
+    // street address that follows its name. See utils/reviewAddress.js.
+    const addressText = buildingAddress(address);
+    if (!addressText) {
+      return NextResponse.json({ error: NO_STREET_NUMBER_MESSAGE }, { status: 400 });
+    }
+    const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
+
+    const matched = await findListingForReviewAddress({
+      address: addressText,
+      lat: latitude,
+      lng: longitude,
+    });
+    if (matched.error) {
+      // Not "no match": that would make a second property beside the real one.
+      console.error("[reviewReferral] address match failed:", matched.error);
+      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
+    }
+
+    /*
      * ── Resolve the reviewer ────────────────────────────────────────────────
      * Either a session, or the contact block a signed-out reviewer filled in at
      * the bottom of the form. In BOTH cases the school is proved by an email
@@ -541,32 +573,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
-    // ── Resolve the listing: exact address match, else create a stub ────────
-    if (!String(address || "").trim() || latitude == null || longitude == null) {
-      return NextResponse.json(
-        { error: "Search and select your property address." },
-        { status: 400 }
-      );
-    }
-    // A bare street ("Delmar Boulevard, ...") names no building, so it can neither be
-    // matched to a listing nor stand as a property of its own. A named place keeps the
-    // street address that follows its name. See utils/reviewAddress.js.
-    const addressText = buildingAddress(address);
-    if (!addressText) {
-      return NextResponse.json({ error: NO_STREET_NUMBER_MESSAGE }, { status: 400 });
-    }
-    const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
-
-    const matched = await findListingForReviewAddress({
-      address: addressText,
-      lat: latitude,
-      lng: longitude,
-    });
-    if (matched.error) {
-      // Not "no match": that would make a second property beside the real one.
-      console.error("[reviewReferral] address match failed:", matched.error);
-      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
-    }
+    // ── Resolve the listing: the address match made above, else create a stub ─
     let resolvedListingId = matched.listingId;
     let isNewProperty = false;
 

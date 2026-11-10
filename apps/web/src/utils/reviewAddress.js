@@ -11,19 +11,29 @@
  * kilometres away.
  */
 
-const startsWithNumber = (segment) => /^\s*\d/.test(segment || "");
+/*
+ * A street number and then a street: "6650 Delmar Blvd", "6650A Delmar",
+ * "6650-52 Delmar". A numbered street on its own ("39th Street") starts with
+ * a digit too but names no building.
+ */
+const isStreetAddress = (segment) => {
+  const text = String(segment || "").trim();
+  if (/^\d+(st|nd|rd|th)\b/i.test(text)) return false;
+  return /^\d+[a-z]?(-\d+)?\s+\S/i.test(text);
+};
 
 /*
- * The part of a picked address that names a building: the address itself when
- * it starts with a street number, the address after the place name when a
- * named place carries one, and null when there is no street number at all.
+ * The part of a picked address that names a building, or null when there is no
+ * street number at all. A named place carries its street address after the
+ * name, and the name may itself start with a number ("3949 Apartments, 3949
+ * Lindell Blvd, ..."), so a street address in the second part always wins.
  */
 export function buildingAddress(address) {
   const text = String(address || "").trim();
   if (!text) return null;
   const parts = text.split(",");
-  if (startsWithNumber(parts[0])) return text;
-  if (startsWithNumber(parts[1])) return parts.slice(1).join(",").trim();
+  if (isStreetAddress(parts[1])) return parts.slice(1).join(",").trim();
+  if (isStreetAddress(parts[0])) return text;
   return null;
 }
 
