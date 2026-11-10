@@ -3,14 +3,17 @@
  * from the grid. It lays over the map area; AvailableListings owns the selection
  * and passes it in as slots ([left, right], each a listing or null).
  *
- * Every value that a listing can vary on (several units, several lease
- * offerings) is shown as the range across all of them, never a single pick.
- * Nothing is marked as better: the comparison is neutral.
+ * A listing with several units gets a selector, and its unit rows show the
+ * selected unit only. Within that unit, a value that differs between its lease
+ * offerings is shown as the range across them, never a single pick. Nothing is
+ * marked as better: the comparison is neutral.
  */
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, X } from "lucide-react";
+import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { availabilityLabel } from "@/utils/availability";
 import { durationLabel } from "@/components/listings/LeaseOptions";
@@ -20,28 +23,31 @@ import {
   getRentRangeLabel,
 } from "@/utils/listingFormatters";
 
-// "min-max" of a list of numbers, or just the number when they are all equal.
-const span = (values, fmt = String) =>
-  Math.min(...values) === Math.max(...values)
-    ? fmt(values[0])
-    : `${fmt(Math.min(...values))}-${fmt(Math.max(...values))}`;
-
-function compareRows(listing) {
+// The listing's units in the order of the listing page (the landlord's order,
+// then beds, then baths), each with its label.
+function unitTabs(listing) {
   const units = listing.unitTypes ?? [];
-  const leases = units.flatMap((u) => u.leases ?? []);
+  const tabs = buildUnitTabs(units);
+  // A listing with no available unit (greyed out in the grid) still shows its units.
+  return tabs.length ? tabs : buildUnitTabs(units.map((u) => ({ ...u, available: true })));
+}
+
+// The unit rows are the selected unit's; the building rows are the listing's.
+function compareRows(listing, unit) {
+  const leases = unit?.leases ?? [];
 
   const price = getRentRangeLabel(leases);
 
-  const beds = units.map((u) => u.bedrooms).filter(Number.isFinite);
-  const baths = units.map((u) => u.bathrooms).filter(Number.isFinite);
-  const bedText = !beds.length
-    ? "N/A"
-    : Math.max(...beds) === 0
-    ? "Studio"
-    : `${span(beds, (n) => (n === 0 ? "Studio" : n))} ${Math.max(...beds) === 1 ? "bedroom" : "bedrooms"}`;
-  const bathText = !baths.length
-    ? "N/A"
-    : `${span(baths)} ${Math.max(...baths) === 1 ? "bathroom" : "bathrooms"}`;
+  const bedText =
+    unit?.bedrooms == null
+      ? "N/A"
+      : unit.bedrooms === 0
+      ? "Studio"
+      : `${unit.bedrooms} ${unit.bedrooms === 1 ? "bedroom" : "bedrooms"}`;
+  const bathText =
+    unit?.bathrooms == null
+      ? "N/A"
+      : `${unit.bathrooms} ${unit.bathrooms === 1 ? "bathroom" : "bathrooms"}`;
 
   const dates = leases.map((l) => l.availableFrom).filter(Boolean).sort();
   const from = dates.length ? availabilityLabel(dates[0]).text : null;
@@ -82,7 +88,12 @@ function compareRows(listing) {
   ];
 }
 
-function Slot({ listing, emptyText, onRemove }) {
+// `tabs` are the listing's units; `reserve` is set when either listing has several,
+// so both cards keep the selector's height and their rows line up.
+function Slot({ listing, tabs, reserve, emptyText, onRemove }) {
+  // Which unit this card shows. The slot is keyed by listing, so a removed or
+  // replaced listing starts again on its first unit.
+  const [picked, setPicked] = useState(0);
   if (!listing) {
     return (
       <div className="flex min-w-0 flex-1 items-center justify-center rounded-[20px] border border-dashed border-gray-300 px-6 text-center text-sm text-gray-500">
@@ -127,7 +138,32 @@ function Slot({ listing, emptyText, onRemove }) {
           View listing
         </a>
       </div>
-      {compareRows(listing).map(([label, value], i) => (
+      {reserve && (
+        <div className="h-14 px-4 pt-1">
+          {tabs.length > 1 && (
+            <>
+              <p className="text-xs text-black">{tabs.length} units</p>
+              <div className="scrollbar-hidden mt-1 flex gap-1.5 overflow-x-auto">
+                {tabs.map((tab, i) => (
+                  <button
+                    key={tab.unit.id ?? i}
+                    onClick={() => setPicked(i)}
+                    aria-pressed={i === picked}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      i === picked
+                        ? "bg-gray-200 text-gray-700 border-gray-300"
+                        : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {compareRows(listing, tabs[picked]?.unit).map(([label, value], i) => (
         <div key={label} className={`px-6 py-4 ${i % 2 === 0 ? "bg-[#fff9f9]" : ""}`}>
           <p className="text-xs text-black">{label}</p>
           <p className="mt-1 whitespace-pre-line text-base font-medium text-[#495564]">{value}</p>
@@ -138,6 +174,8 @@ function Slot({ listing, emptyText, onRemove }) {
 }
 
 export default function ComparePanel({ slots, onRemove, onClose }) {
+  const tabs = slots.map((l) => l && unitTabs(l));
+  const reserve = tabs.some((t) => t?.length > 1);
   const anyPicked = slots.some(Boolean);
   const emptyText = anyPicked
     ? "Pick another listing from the grid to compare"
@@ -160,8 +198,10 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
         <div className="flex min-h-full gap-3.5 px-3.5 pb-3.5">
           {slots.map((listing, i) => (
             <Slot
-              key={i}
+              key={`${i}-${listing?._id}`}
               listing={listing}
+              tabs={tabs[i]}
+              reserve={reserve}
               emptyText={emptyText}
               onRemove={() => onRemove(i)}
             />
