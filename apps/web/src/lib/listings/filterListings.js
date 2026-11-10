@@ -45,7 +45,7 @@ export const DEFAULT_FILTERS = {
   distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
   moveInDate: "",
-  homeType: [], // ['house','apartment','condo','townhouse','singleBedroom']
+  homeType: [], // ['apartment','house','studio','townhouse','single_room','condo']
   leaseAvailability: [], // ['semester','10-month','12-month','summer']
   amenities: [],
   furnished: "", // '' | 'furnished' | 'unfurnished'
@@ -245,20 +245,17 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
   if (filters.homeType?.length) {
     const ok = filters.homeType.some((type) => {
       switch (type) {
-        case "house":
-          return lt.includes("house");
-        case "apartment":
-          return lt.includes("apartment");
-        case "condo":
-          return lt.includes("condo");
-        case "townhouse":
-          return lt.includes("townhouse");
-        // A shape question rather than a building type — answered from the
-        // units themselves now that they are available here.
-        case "singleBedroom":
+        // Shape questions rather than building types (no listing has a Studio
+        // or Single Room home type) — answered from the units themselves: a
+        // studio is a 0-bedroom unit, a single room a 1-bedroom one.
+        case "studio":
+          return unitPool(listing).some((u) => u.bedrooms === 0);
+        case "single_room":
           return unitPool(listing).some((u) => u.bedrooms === 1);
+        // A building type: the listing's home type label, which has to be the
+        // whole word ("townhouse" contains "house").
         default:
-          return true;
+          return lt === type;
       }
     });
     if (!ok) return false;
