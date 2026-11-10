@@ -196,6 +196,7 @@ export const PROMPTS = [
   {
     id: "neighborhood",
     label: "Neighborhood",
+    single: true,
     options: [
       { id: "loop", label: "Delmar Loop", phrase: "the Delmar Loop" },
       { id: "cwe", label: "Central West End", phrase: "the Central West End" },
