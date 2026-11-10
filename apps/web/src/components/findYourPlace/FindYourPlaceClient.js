@@ -116,11 +116,6 @@ export default function FindYourPlaceClient() {
       setResults(saved);
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }
-    // "Change" on the browse page's Find Your Place line: back to the answers.
-    if (new URLSearchParams(window.location.search).get("edit")) {
-      setStep(1);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
     setReady(true);
     trackEvent("Find Your Place Opened", { resumed: !!stored });
   }, []);

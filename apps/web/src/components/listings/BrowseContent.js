@@ -15,7 +15,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
@@ -51,30 +50,18 @@ export default function BrowseContent({ session, initialListings = null }) {
    * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
    * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
    * The answers browse has a filter for are pre-set in the filter bar, where
-   * they can be changed like any other; a line under the bar says where they
-   * came from, names what could not be applied, and links back to change the
-   * answers.
+   * they can be changed or cleared like any other.
    */
   const fromFindYourPlace = searchParams.get("fyp");
-  const [fyp, setFyp] = useState(null); // { notApplied: string[] }
   useEffect(() => {
     if (!fromFindYourPlace) return;
     try {
       const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
-      if (!raw?.filters || typeof raw.filters !== "object") return;
-      setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
-      setFyp({ notApplied: Array.isArray(raw.notApplied) ? raw.notApplied : [] });
+      if (raw?.filters && typeof raw.filters === "object") setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
     } catch {
       // No readable hand-off: plain browse.
     }
   }, [fromFindYourPlace]);
-
-  const clearFindYourPlace = () => {
-    setFyp(null);
-    const url = new URL(window.location);
-    url.searchParams.delete("fyp");
-    window.history.replaceState({}, "", url);
-  };
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
@@ -158,7 +145,6 @@ export default function BrowseContent({ session, initialListings = null }) {
     setSearch("");
     setFilters(DEFAULT_FILTERS);
     handleClearSearch();
-    if (fyp) clearFindYourPlace();
   };
 
   /*
@@ -212,25 +198,6 @@ export default function BrowseContent({ session, initialListings = null }) {
           onFiltersSaved={handleFiltersSaved}
         />
       </div>
-      {fyp && (
-        <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-4 py-2 text-xs text-gray-600 md:px-8">
-          <span className="min-w-0 truncate">
-            Filters set from your Find Your Place answers.
-            {fyp.notApplied.length ? ` Not filtered here: ${fyp.notApplied.join(", ")}.` : ""}
-          </span>
-          <Link href="/find-your-place?edit=1" className="flex-shrink-0 font-semibold text-red-600 hover:underline">
-            Change
-          </Link>
-          <button
-            type="button"
-            onClick={clearFindYourPlace}
-            aria-label="Dismiss"
-            className="ml-auto flex-shrink-0 font-medium text-gray-400 hover:text-gray-600"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
         <AvailableListings
           session={session}

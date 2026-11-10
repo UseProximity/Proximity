@@ -5,8 +5,9 @@
  * Only filters browse already has are used, so the result is deliberately a
  * bit looser than the matcher: the student sees them in the bar and can change
  * any of them. Answers browse has no filter for (a neighborhood, a bike or
- * drive limit, anything typed freely) are not applied; `notApplied` names the
- * ones worth telling the student about, for the line under the filters.
+ * drive limit, anything typed freely) are not applied; `notApplied` names
+ * them. Nothing shows it today (the line under browse's filters was removed,
+ * Wyatt 2026-11-10), but it is kept so a caller can tell what was left out.
  */
 import { needsPetFriendly } from "@/lib/matchmaking/listingConstraints";
 import { NO_PREFERENCE, moveInCutoff } from "./options";
