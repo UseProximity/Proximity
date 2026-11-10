@@ -113,9 +113,10 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   /*
    * Saved filters feed the student's running filter summary (the lightest
-   * suggestion signal). Called only from the Apply buttons (of the Price and
-   * Beds & Baths cards and the side panel on desktop, and of the filter drawer
-   * on a phone), never on every slider tick. Fire-and-forget.
+   * suggestion signal). Called once when a filter control closes after a change
+   * (the Price and Beds & Baths cards and the side panel on desktop, which
+   * filter live) and from the Apply button of the phone's filter drawer, never
+   * on every slider tick. Fire-and-forget.
    */
   const handleFiltersSaved = (saved) => {
     if (!userId) return;

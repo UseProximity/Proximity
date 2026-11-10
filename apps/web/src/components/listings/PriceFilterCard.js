@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   FilterCard,
   RangeSlider,
+  useLiveFilters,
   PRICE_MIN,
   PRICE_MAX,
   PRICE_STEP,
@@ -54,7 +55,7 @@ export function PriceRangeSlider({
   const tallest = Math.max(...counts, 1);
   return (
     <>
-      <div className={`flex items-end gap-[3.34px] ${barsClass}`}>
+      <div className={`flex items-end gap-[2px] ${barsClass}`}>
         {counts.map((count, i) => {
           const start = PRICE_MIN + i * BUCKET;
           const inRange = start < high && start + BUCKET > low;
@@ -92,10 +93,11 @@ const bounds = (field, { low, high }) =>
   field === "low" ? [PRICE_MIN, high - PRICE_STEP] : [low + PRICE_STEP, PRICE_MAX];
 
 // Price Range card of the Price dropdown: histogram of every listing's price,
-// the range slider, Min and Max boxes and Apply. onApply gets
-// { minRent, maxRent } as filter strings, "" meaning no limit.
-export default function PriceFilterCard({ listings, minRent, maxRent, onApply }) {
+// the range slider and Min and Max boxes. onChange gets { minRent, maxRent } as
+// filter strings ("" meaning no limit) as the range changes.
+export default function PriceFilterCard({ listings, minRent, maxRent, onChange }) {
   const [range, setRange] = useState(rentRange(minRent, maxRent));
+  useLiveFilters(range, (r) => onChange(rentFilters(r)));
   // What is being typed in a box ({ field, text }), until the box loses focus.
   const [typing, setTyping] = useState(null);
 
@@ -133,30 +135,34 @@ export default function PriceFilterCard({ listings, minRent, maxRent, onApply })
   return (
     <FilterCard
       title="Price Range"
-      onApply={() => onApply(rentFilters(range))}
+      onClear={
+        range.low > PRICE_MIN || range.high < PRICE_MAX
+          ? () => setRange({ low: PRICE_MIN, high: PRICE_MAX })
+          : undefined
+      }
     >
       <PriceRangeSlider
         listings={listings}
         low={range.low}
         high={range.high}
         onChange={(low, high) => setRange({ low, high })}
-        barsClass="mt-3 ml-[47px] mr-[38px] h-[125px]"
-        sliderClass="-mt-2 pl-[29px] pr-[18px]"
+        barsClass="mt-3 ml-[34px] mr-[36px] h-[72px]"
+        sliderClass="-mt-2 px-4"
         accent="#F71C1E"
       />
-      <div className="mt-3 flex gap-3 px-6">
+      <div className="mt-2 flex gap-2 px-4">
         {[
           ["low", "Min price"],
           ["high", "Max price"],
         ].map(([field, label]) => (
           <label
             key={field}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 focus-within:border-[#F71C1E]"
+            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1 focus-within:border-[#F71C1E]"
           >
-            <span className="block text-[11px] leading-none text-gray-500">
+            <span className="block text-[10px] leading-none text-gray-500">
               {label}
             </span>
-            <span className="mt-1 flex items-center gap-0.5 text-sm text-gray-900">
+            <span className="mt-0.5 flex items-center gap-0.5 text-xs text-gray-900">
               $
               <input
                 inputMode="numeric"

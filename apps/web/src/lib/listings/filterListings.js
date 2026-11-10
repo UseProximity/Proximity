@@ -44,9 +44,11 @@ export const DEFAULT_FILTERS = {
   maxBathrooms: "", // max bathrooms
   distance: "", // walking time to campus (minutes)
   distanceToShuttle: "", // walking time to shuttle stop (minutes)
-  moveInDate: "",
+  moveInDate: "", // older "move in by" date (YYYY-MM-DD), from saved filters
+  moveInMonth: "", // '' | '1'..'12': available now, or opening in that month (any year)
+  moveInDay: "", // '' | '1'..'31', with moveInMonth: opening on or before that day of it
   homeType: [], // ['apartment','house','studio','townhouse','single_room','condo']
-  leaseAvailability: [], // ['semester','10-month','12-month','summer']
+  leaseAvailability: [], // lease durations: ['6-month','10-month','12-month', any '<n>-month']
   amenities: [],
   furnished: "", // '' | 'furnished' | 'unfurnished'
   utilitiesIncluded: [],
@@ -59,15 +61,21 @@ export const DEFAULT_FILTERS = {
 const num = (v) => (v === "" || v == null ? null : Number(v));
 
 /*
- * Lease-length buckets, matched against unit_leases.lease_term_months — the
- * array of every term a landlord will accept, so [4,5,10,12] is one flexible
- * offering that satisfies "semester", "10-month" AND "12-month".
+ * Lease durations, matched against unit_leases.lease_term_months, the array of
+ * every term a landlord will accept, so [6,10,12] is one flexible offering that
+ * satisfies "6-month", "10-month" AND "12-month". A duration is "<n>-month"
+ * for any number of months (the panel offers 6, 10, 12 and lets the renter add
+ * others). "summer" and "semester" are the older buckets, kept so filters saved
+ * before the change still work.
  */
-const TERM_BUCKETS = {
+const LEGACY_TERM_BUCKETS = {
   summer: (m) => m <= 3,
   semester: (m) => m >= 4 && m <= 6,
-  "10-month": (m) => m === 10,
-  "12-month": (m) => m === 12,
+};
+const termBucket = (key) => {
+  const months = /^(\d+)-month$/.exec(key);
+  if (months) return (m) => m === Number(months[1]);
+  return LEGACY_TERM_BUCKETS[key];
 };
 
 // ---------------------------------------------------------------------------
@@ -94,7 +102,7 @@ export function leaseMatches(lease, filters) {
     const months = lease.leaseTermMonths ?? [];
     if (months.length) {
       const ok = filters.leaseAvailability.some((key) => {
-        const inBucket = TERM_BUCKETS[key];
+        const inBucket = termBucket(key);
         return inBucket ? months.some(inBucket) : true;
       });
       if (!ok) return false;
@@ -107,6 +115,21 @@ export function leaseMatches(lease, filters) {
   // carry no available_from yet, and an unstated date is not a late one.
   if (filters.moveInDate && lease.availableFrom) {
     if (new Date(lease.availableFrom) > new Date(filters.moveInDate)) return false;
+  }
+
+  // "Move in in January": an offering that is available now (no stated date,
+  // or one that has passed) can be moved into in any month, so it always
+  // passes. One that opens later must open in that month, whatever the year,
+  // and with a day as well, on or before that day of it. Read from the date's
+  // text, not a Date, so a time zone cannot move it into the neighbouring month.
+  if (filters.moveInMonth) {
+    const opens = String(lease.availableFrom ?? "").slice(0, 10);
+    const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(opens) || [];
+    const availableNow = !month || opens <= new Date().toISOString().slice(0, 10);
+    if (!availableNow) {
+      if (Number(month) !== Number(filters.moveInMonth)) return false;
+      if (filters.moveInDay && Number(day) > Number(filters.moveInDay)) return false;
+    }
   }
 
   return true;
@@ -204,16 +227,19 @@ export function unitMatch(unit, filters) {
 // Property scope
 // ---------------------------------------------------------------------------
 
-// Canonical filter value → every DB value that means it (snake_case + legacy ALL_CAPS)
+// Canonical filter value → every DB value that means it (snake_case + legacy
+// ALL_CAPS). The feed names amenities after the listing_amenities columns
+// (laundry, air_conditioning, storage, parking), which four of the filter's
+// values did not include, so those four matched nothing.
 const AMENITY_ALIASES = {
   dishwasher: ["dishwasher", "DISHWASHER"],
-  in_unit_laundry: ["in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
-  ac_heating: ["ac_heating"],
+  in_unit_laundry: ["laundry", "in_unit_laundry", "IN-UNIT LAUNDRY", "IN UNIT LAUNDRY"],
+  ac_heating: ["air_conditioning", "ac_heating"],
   mailroom: ["mailroom", "MAILROOM"],
   pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-  extra_storage: ["extra_storage", "EXTRA STORAGE"],
+  extra_storage: ["storage", "extra_storage", "EXTRA STORAGE"],
   fireplace: ["fireplace", "FIREPLACE"],
-  private_parking: ["private_parking", "FREE PARKING"],
+  private_parking: ["parking", "private_parking", "FREE PARKING"],
   pool: ["pool", "POOL"],
   study_room: ["study_room", "STUDY ROOMS"],
   gym: ["gym", "GYM"],

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FilterCard,
+  ClearFilter,
   StepRange,
+  useLiveFilters,
   stepIndex,
   stepLimits,
   BED_STEPS,
@@ -13,8 +15,13 @@ import {
 function StepSection({ title, steps, range, onChange }) {
   return (
     <div>
-      <p className="px-6 text-base font-semibold leading-5 text-black">{title}</p>
-      <div className="mt-2 pl-[26px] pr-[21px]">
+      <p className="flex items-baseline gap-2 px-4 text-xs font-semibold leading-4 text-gray-900">
+        {title}
+        {(range.low > 0 || range.high < steps.length - 1) && (
+          <ClearFilter onClear={() => onChange({ low: 0, high: steps.length - 1 })} />
+        )}
+      </p>
+      <div className="mt-1.5 px-4">
         <StepRange
           steps={steps}
           low={range.low}
@@ -26,10 +33,10 @@ function StepSection({ title, steps, range, onChange }) {
   );
 }
 
-// Bedrooms & Bathrooms card of the Beds & Baths dropdown. onApply gets the
+// Bedrooms & Bathrooms card of the Beds & Baths dropdown. onChange gets the
 // four filter values (bedrooms, maxBedrooms, bathrooms, maxBathrooms), "" at
-// the 0 / 1 and 5+ / 4+ ends meaning no limit.
-export default function BedBathFilterCard({ filters, onApply }) {
+// the 0 / 1 and 5+ / 4+ ends meaning no limit, as they change.
+export default function BedBathFilterCard({ filters, onChange }) {
   const [beds, setBeds] = useState({
     low: stepIndex(BED_STEPS, filters.bedrooms, 0),
     high: stepIndex(BED_STEPS, filters.maxBedrooms, BED_STEPS.length - 1),
@@ -39,16 +46,16 @@ export default function BedBathFilterCard({ filters, onApply }) {
     high: stepIndex(BATH_STEPS, filters.maxBathrooms, BATH_STEPS.length - 1),
   });
 
+  const ranges = useMemo(() => ({ beds, baths }), [beds, baths]);
+  useLiveFilters(ranges, (r) => {
+    const [bedrooms, maxBedrooms] = stepLimits(BED_STEPS, r.beds);
+    const [bathrooms, maxBathrooms] = stepLimits(BATH_STEPS, r.baths);
+    onChange({ bedrooms, maxBedrooms, bathrooms, maxBathrooms });
+  });
+
   return (
-    <FilterCard
-      title="Bedrooms & Bathrooms"
-      onApply={() => {
-        const [bedrooms, maxBedrooms] = stepLimits(BED_STEPS, beds);
-        const [bathrooms, maxBathrooms] = stepLimits(BATH_STEPS, baths);
-        onApply({ bedrooms, maxBedrooms, bathrooms, maxBathrooms });
-      }}
-    >
-      <div className="mt-3.5 space-y-5">
+    <FilterCard title="Bedrooms & Bathrooms">
+      <div className="mt-3 space-y-3">
         <StepSection title="Bedrooms" steps={BED_STEPS} range={beds} onChange={setBeds} />
         <StepSection title="Bathrooms" steps={BATH_STEPS} range={baths} onChange={setBaths} />
       </div>

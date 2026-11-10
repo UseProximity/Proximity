@@ -5,7 +5,7 @@
 // desktop bar) and the side panel (desktop, and the phone's filter drawer) are
 // built from them.
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 // Price range shared by every price slider. The right end ($4000+) means no
 // upper limit, so a max of PRICE_MAX or more is stored as "".
@@ -13,23 +13,60 @@ export const PRICE_MIN = 400;
 export const PRICE_MAX = 4000;
 export const PRICE_STEP = 50;
 
-// Shell of the pink-header filter cards (Price, Beds & Baths): title band,
-// body and the red Apply pill. onApply is called when Apply is pressed.
-export function FilterCard({ title, onApply, children }) {
+// Sends a filter control's values on as they change, so the results update
+// live with no Apply step. `values` must be a new object only when something
+// changed. Changes are batched over a short delay (a slider drag is many
+// changes and each one rebuilds the results), and a change still waiting when
+// the control closes is sent then, so none is lost.
+export function useLiveFilters(values, onChange, delay = 120) {
+  const latest = useRef({ values, onChange });
+  latest.current = { values, onChange };
+  const sent = useRef(values);
+  const timer = useRef(null);
+  const send = () => {
+    timer.current = null;
+    sent.current = latest.current.values;
+    latest.current.onChange(sent.current);
+  };
+  useEffect(() => {
+    if (values === sent.current) return;
+    timer.current = setTimeout(send, delay);
+    return () => clearTimeout(timer.current);
+  }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      if (timer.current) send();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+}
+
+// Shell of the bar's dropdown cards (Price, Beds & Baths), styled like the
+// rest of the browse page: a white card with a small bold title and the body.
+// The cards filter live, so there is no Apply button.
+// Tiny "Clear" shown next to a filter's title while that filter has something
+// filled in; onClear empties just that filter.
+export function ClearFilter({ onClear }) {
   return (
-    <div className="w-80 overflow-hidden rounded-[28px] border border-gray-300 bg-white shadow-xl">
-      <h3 className="bg-[#ffefef] px-6 py-3.5 text-[17px] font-semibold leading-[21px] text-black">
+    <button
+      type="button"
+      onClick={onClear}
+      className="text-[10px] font-medium leading-none text-[#F71C1E] hover:underline"
+    >
+      Clear
+    </button>
+  );
+}
+
+// onClear (optional): shows Clear beside the title, for a card that is one filter.
+export function FilterCard({ title, onClear, children }) {
+  return (
+    <div className="w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+      <h3 className="flex items-baseline gap-2 border-b border-gray-100 px-4 py-2.5 text-[13px] font-bold leading-4 text-gray-900">
         {title}
+        {onClear && <ClearFilter onClear={onClear} />}
       </h3>
-      <div className="pb-4">
-        {children}
-        <button
-          onClick={onApply}
-          className="mx-auto mt-4 block h-7 w-[84px] rounded-full bg-[#F00013] text-[17px] text-white transition-opacity hover:opacity-90"
-        >
-          Apply
-        </button>
-      </div>
+      <div className="pb-4">{children}</div>
     </div>
   );
 }
@@ -47,7 +84,8 @@ const LABEL_MERGE_PCT = 16;
 // label text. accent is the red of handles, track and labels. With single, only
 // the high handle shows and the track runs from the left end to it (pass low as
 // min). With ticks (one label per step, from min), every step is labelled
-// instead, the selected ones in red, and formatLabel is not needed. minGap is how
+// instead, the selected ones in red, each one clickable to pick that step, and
+// formatLabel is not needed. minGap is how
 // close the handles may get (default one step; 0 lets them meet).
 //
 // Dragging is handled here with pointer events rather than two overlaid
@@ -187,16 +225,27 @@ export function RangeSlider({
         {renderHandle("high", high, highPct)}
       </div>
       <div
-        className="relative mt-1 h-[21px] text-[11px] font-medium leading-[21px]"
+        className="relative mt-0.5 h-[18px] text-[10px] font-medium leading-[18px]"
         style={{ color: accent }}
       >
         {ticks ? (
+          // Each step's label is a button: clicking it picks exactly that step
+          // (both handles go to it; with single, the one handle does).
           ticks.map((text, i) => {
             const v = min + i * step;
-            return label(
-              pctOf(v),
-              text,
-              v === high || (!single && v === low) ? "" : "text-gray-400"
+            const selected = v === high || (!single && v === low);
+            return (
+              <button
+                key={text}
+                type="button"
+                onClick={() => onChange(single ? low : v, v)}
+                className={`absolute -translate-x-1/2 cursor-pointer whitespace-nowrap px-1 hover:text-gray-700 ${
+                  selected ? "" : "text-gray-400"
+                }`}
+                style={{ left: handleX(pctOf(v)) }}
+              >
+                {text}
+              </button>
             );
           })
         ) : highPct - lowPct < LABEL_MERGE_PCT ? (
