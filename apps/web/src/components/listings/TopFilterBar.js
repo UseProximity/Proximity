@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useOptimistic, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useOptimistic, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
 import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
@@ -60,7 +60,7 @@ const CHEVRON = (
 export default function TopFilterBar({
   search,
   setSearch,
-  listings,
+  rentsFor,
   filters: committedFilters,
   setFilters: commitFilters,
   onReset,
@@ -83,6 +83,12 @@ export default function TopFilterBar({
       commitFilters(next);
     });
   const [showFilters, setShowFilters] = useState(false);
+  // Rents for the Price card's histogram: the listings that fit the filters.
+  const priceOpen = showFilters === "price";
+  const rents = useMemo(
+    () => (priceOpen ? rentsFor(filters) : []),
+    [priceOpen, rentsFor, filters]
+  );
   // For the document listeners below, which are set up once.
   const showFiltersRef = useRef(showFilters);
   showFiltersRef.current = showFilters;
@@ -411,7 +417,7 @@ export default function TopFilterBar({
         onClose={() => setShowFilters(false)}
       >
         <PriceFilterCard
-          listings={listings}
+          rents={rents}
           minRent={filters.minRent}
           maxRent={filters.maxRent}
           onChange={applyLive}
@@ -437,7 +443,7 @@ export default function TopFilterBar({
         modal={false}
       >
         <FiltersPanel
-          listings={listings}
+          rentsFor={rentsFor}
           filters={filters}
           onChange={applyLive}
           onReset={onReset}

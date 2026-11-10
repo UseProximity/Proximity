@@ -30,7 +30,7 @@ export default function AvailableListings({
   suggestedMode = "suggested",
   suggestedLabel = "Suggested for you",
   // Every listing, before the filters: the price histogram of the filter drawer.
-  allListings,
+  rentsFor,
   onFiltersSaved = () => {},
   // Desktop: the map is hidden and the listings fill the page as a wider grid.
   mapHidden = false,
@@ -1100,7 +1100,7 @@ export default function AvailableListings({
               {/* Body and footer: the desktop side panel, in the drawer */}
               <FiltersPanel
                 drawer
-                listings={allListings}
+                rentsFor={rentsFor}
                 filters={filters}
                 onReset={handleReset}
                 onApply={(next) => {

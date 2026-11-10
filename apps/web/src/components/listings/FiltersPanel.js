@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { DEFAULT_FILTERS } from "@/lib/listings/filterListings";
 import {
@@ -122,9 +122,10 @@ function Section({ title, className = "", inset = "pl-5", large = false, onClear
 // changed) go to onChange as they are made, so the results update live and
 // there is no Apply button; the drawer covers the results, so it holds its
 // edits until Apply, which sends the edited filters to onApply. onReset clears
-// the site's filters and search.
+// the site's filters and search. rentsFor(filters) gives the rents the price
+// histogram draws for those filters.
 export default function FiltersPanel({
-  listings,
+  rentsFor,
   filters,
   onChange,
   onApply,
@@ -315,6 +316,14 @@ export default function FiltersPanel({
   );
 
   const price = rentRange(draft.minRent, draft.maxRent);
+  // The histogram follows the filters as shown (the drawer's unapplied edits
+  // included). The price range does not change it, so a drag of the price
+  // slider does not work it out again.
+  const histogramKey = JSON.stringify({ ...draft, minRent: "", maxRent: "" });
+  const rents = useMemo(
+    () => rentsFor(JSON.parse(histogramKey)),
+    [rentsFor, histogramKey]
+  );
   // Clear All: top right of the panel as in the design, in the footer of the
   // phone's drawer (which has its own heading).
   const clearAll = (className) => (
@@ -350,7 +359,7 @@ export default function FiltersPanel({
 
       <Section title="Price Range" className="mt-4" large={drawer} onClear={clearer("minRent", "maxRent")}>
         <PriceRangeSlider
-          listings={listings}
+          rents={rents}
           low={price.low}
           high={price.high}
           onChange={(low, high) => set(rentFilters({ low, high }))}

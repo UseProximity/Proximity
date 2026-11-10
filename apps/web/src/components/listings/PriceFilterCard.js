@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { cheapestLiveRent } from "@/lib/listings/filterListings";
 import {
   FilterCard,
   RangeSlider,
@@ -15,17 +14,11 @@ import {
 const BAR_COUNT = 20;
 const BUCKET = (PRICE_MAX - PRICE_MIN) / BAR_COUNT;
 
-// Listings per price bucket. Prices outside the slider's range fall into the
-// first and last bars, so the last bar is the "$4000+" bucket. A listing is
-// counted at the rent the price filter tests (its cheapest live offering), so
-// the bars move with the results: one with no published rent passes any range
-// and is in no bar, and unavailable listings are left out.
-function priceBuckets(listings) {
+// Rents per price bucket. Prices outside the slider's range fall into the
+// first and last bars, so the last bar is the "$4000+" bucket.
+function priceBuckets(rents) {
   const counts = new Array(BAR_COUNT).fill(0);
-  listings.forEach((l) => {
-    if (l.unavailable) return;
-    const rent = cheapestLiveRent(l);
-    if (rent == null) return;
+  rents.forEach((rent) => {
     const i = Math.floor((rent - PRICE_MIN) / BUCKET);
     counts[Math.min(BAR_COUNT - 1, Math.max(0, i))] += 1;
   });
@@ -45,12 +38,13 @@ export const rentFilters = ({ low, high }) => ({
   maxRent: high >= PRICE_MAX ? "" : String(high),
 });
 
-// Histogram of every listing's price with the range slider under it. The bars
-// inside the selected range are drawn in the accent colour, so with no range
-// chosen they all are. barsClass and sliderClass place the two (the bars' height
+// Histogram of rents (see fittingRents: the available listings that fit the
+// other filters) with the range slider under it, so it changes as the other
+// filters do. The bars inside the selected range are drawn in the accent
+// colour, so with no range chosen they all are. barsClass and sliderClass place the two (the bars' height
 // included). A bar's own height comes from its count, so it is set inline.
 export function PriceRangeSlider({
-  listings,
+  rents,
   low,
   high,
   onChange,
@@ -58,7 +52,7 @@ export function PriceRangeSlider({
   sliderClass,
   accent,
 }) {
-  const counts = useMemo(() => priceBuckets(listings), [listings]);
+  const counts = useMemo(() => priceBuckets(rents), [rents]);
   const tallest = Math.max(...counts, 1);
   const red = accentClasses(accent);
   return (
@@ -97,10 +91,10 @@ export function PriceRangeSlider({
 const bounds = (field, { low, high }) =>
   field === "low" ? [PRICE_MIN, high - PRICE_STEP] : [low + PRICE_STEP, PRICE_MAX];
 
-// Price Range card of the Price dropdown: histogram of every listing's price,
-// the range slider and Min and Max boxes. onChange gets { minRent, maxRent } as
+// Price Range card of the Price dropdown: the rent histogram, the range
+// slider and Min and Max boxes. onChange gets { minRent, maxRent } as
 // filter strings ("" meaning no limit) as the range changes.
-export default function PriceFilterCard({ listings, minRent, maxRent, onChange }) {
+export default function PriceFilterCard({ rents, minRent, maxRent, onChange }) {
   const [range, setRange] = useState(rentRange(minRent, maxRent));
   useLiveFilters(range, (r) => onChange(rentFilters(r)));
   // What is being typed in a box ({ field, text }), until the box loses focus.
@@ -147,7 +141,7 @@ export default function PriceFilterCard({ listings, minRent, maxRent, onChange }
       }
     >
       <PriceRangeSlider
-        listings={listings}
+        rents={rents}
         low={range.low}
         high={range.high}
         onChange={(low, high) => setRange({ low, high })}

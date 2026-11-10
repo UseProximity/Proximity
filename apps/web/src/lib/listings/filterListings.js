@@ -212,18 +212,6 @@ function unitPool(listing) {
 }
 
 /**
- * The cheapest published rent among the offerings a renter could take: the
- * rent the price filter tests. null when no live offering states one.
- */
-export function cheapestLiveRent(listing) {
-  const rents = unitPool(listing)
-    .flatMap((u) => u.leases ?? [])
-    .map((l) => l.rent)
-    .filter((r) => r != null);
-  return rents.length ? Math.min(...rents) : null;
-}
-
-/**
  * Match one unit and pick the offering a renter would land on.
  * Returns { unit, lease, priceKnown } or null.
  */
@@ -417,6 +405,26 @@ export function matchListing(listing, ctx) {
     matchedUnitId: narrowed ? best.unit.id ?? null : null,
     priceUnknown: !best.priceKnown,
   };
+}
+
+/**
+ * The rents the price histogram draws: one per available listing that fits
+ * every filter except the price range itself (so the bars show where the
+ * places a renter is looking for sit, inside the range and outside it), at
+ * its cheapest offering that fits. A listing with no published rent on a
+ * fitting offering has no bar to be in.
+ */
+export function fittingRents(listings, { filters, search = "", savedIds = [], campusMinutes }) {
+  const open = { ...filters, minRent: "", maxRent: "" };
+  const ctx = { filters: open, search, savedIds, campusMinutes };
+  return listings.flatMap((listing) => {
+    if (listing.unavailable || !propertyMatches(listing, ctx)) return [];
+    const rents = unitPool(listing)
+      .map((u) => unitMatch(u, open))
+      .filter((m) => m?.priceKnown)
+      .map((m) => m.lease.rent);
+    return rents.length ? [Math.min(...rents)] : [];
+  });
 }
 
 /**

@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
@@ -23,6 +23,7 @@ import {
   DEFAULT_FILTERS,
   filterListings,
   filtersActive,
+  fittingRents,
 } from "@/lib/listings/filterListings";
 
 export default function BrowseContent({ session, initialListings = null }) {
@@ -182,6 +183,14 @@ export default function BrowseContent({ session, initialListings = null }) {
     [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // For the price histograms: the rents of the available listings that fit
+  // the given filters (the page's, or a filter control's unapplied ones).
+  const rentsFor = useCallback(
+    (forFilters) =>
+      fittingRents(listings, { filters: forFilters, search, savedIds, campusMinutes }),
+    [listings, search, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // The suggested strip only shows on the unfiltered view: once a student
   // narrows the list, their own question is the ranking.
   const suggestedListings = useMemo(() => {
@@ -209,7 +218,7 @@ export default function BrowseContent({ session, initialListings = null }) {
         <TopFilterBar
           search={search}
           setSearch={setSearch}
-          listings={listings}
+          rentsFor={rentsFor}
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}
@@ -229,7 +238,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           suggestedLabel={
             suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
           }
-          allListings={listings}
+          rentsFor={rentsFor}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
           filters={filters}
