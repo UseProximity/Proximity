@@ -311,6 +311,14 @@ export default function AvailableListings({
     if (expandedListing) closePanel();
   }, [!!compare]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A detail panel and Compare are never open together: a panel that opens while
+  // Compare is open (browser Back or Forward onto a ?panel= URL) closes Compare,
+  // before paint. Keyed on the panel's id only, so Compare opening over a panel
+  // (which closes it, above) does not close itself.
+  useLayoutEffect(() => {
+    if (compare && expandedListing) setCompare(null);
+  }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Compare is desktop only: leaving the desktop layout closes it and clears it.
   useEffect(() => {
     if (!isDesktop) setCompare(null);
