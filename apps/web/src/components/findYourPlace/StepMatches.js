@@ -59,7 +59,7 @@ function MatchCard({ match, position, signedIn, onOpen, onContact, onLocked }) {
                 }
           }
         >
-          <ListingCard listing={listing} onCardClick={() => onOpen(match, position)} />
+          <ListingCard listing={listing} onCardClick={() => onOpen(match, position)} compact />
           <button
             type="button"
             onClick={(e) => {
@@ -89,7 +89,7 @@ export default function StepMatches({ loading, error, matches, totalMatches, sig
       <div>
         <h2 className="text-[15px] font-semibold text-gray-900">Finding your top matches...</h2>
         <p className="mt-1 text-sm text-gray-500">Checking every live listing against what you told us.</p>
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <CardSkeleton key={i} />
           ))}
@@ -147,7 +147,8 @@ export default function StepMatches({ loading, error, matches, totalMatches, sig
           Nothing fits every answer right now, so these are the closest. Each one says what it misses.
         </p>
       )}
-      <div className="mt-6 grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+      {/* Four across on a desktop so the whole set is on screen at once. */}
+      <div className="mt-5 grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
         {matches.map((m, i) => (
           <MatchCard
             key={m.listing_id}
@@ -160,7 +161,7 @@ export default function StepMatches({ loading, error, matches, totalMatches, sig
           />
         ))}
       </div>
-      <div className="mt-7 flex flex-wrap gap-2">
+      <div className="mt-6 flex flex-wrap gap-2">
         <Link
           href="/browse"
           className="inline-flex h-9 items-center rounded-full border border-red-300 bg-white px-4 text-sm font-medium text-red-600 hover:bg-red-50"

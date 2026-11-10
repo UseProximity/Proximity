@@ -2,23 +2,25 @@
 
 // Small shared pieces for the Find Your Place pages.
 
-const PILL = "h-9 inline-flex items-center justify-center rounded-full border text-sm font-medium transition-colors select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300";
+// Sizes step down on a short window so a whole step still fits on screen.
+const PILL = "h-8 [@media(min-height:780px)]:h-9 inline-flex items-center justify-center rounded-full border text-sm font-medium transition-colors select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300";
 
 // A red answer chip. `round` is the number chips (1, 2, 3...).
-export function Chip({ selected, onClick, round = false, children, ...rest }) {
+// `dense` is the tighter chip used in the page 2 prompt rows.
+export function Chip({ selected, onClick, round = false, dense = false, className = "", children, ...rest }) {
   return (
     <button
       type="button"
       aria-pressed={!!selected}
       onClick={onClick}
-      className={`${PILL} ${round ? "w-9" : "px-4"} ${
+      className={`${PILL} ${className} ${round ? "w-8 [@media(min-height:780px)]:w-9" : dense ? "px-3 whitespace-nowrap" : "px-4"} ${
         selected
           ? "bg-red-600 border-red-600 text-white"
           : "bg-white border-red-300 text-red-600 hover:bg-red-50 active:bg-red-100"
       }`}
       {...rest}
     >
-      {children}
+      {dense ? <span className="truncate">{children}</span> : children}
     </button>
   );
 }
@@ -56,7 +58,7 @@ export function OtherChip({ onClick, children }) {
 
 // Pill-shaped field classes, for the rent box and the "Other" inputs.
 export const FIELD = (active) =>
-  `h-9 rounded-full border bg-white px-4 text-sm font-medium outline-none transition-colors placeholder:text-gray-400 focus:border-red-400 ${
+  `h-8 [@media(min-height:780px)]:h-9 rounded-full border bg-white px-4 text-sm font-medium outline-none transition-colors placeholder:text-gray-400 focus:border-red-400 ${
     active ? "border-red-600 text-red-600" : "border-gray-200 text-gray-700"
   }`;
 
@@ -74,11 +76,11 @@ export function ProgressBar({ value }) {
   );
 }
 
-export function Question({ title, children }) {
+export function Question({ title, children, innerRef }) {
   return (
-    <section>
+    <section ref={innerRef}>
       <h2 className="text-[15px] font-medium text-gray-900">{title}</h2>
-      <div className="mt-4 flex flex-wrap items-center gap-2">{children}</div>
+      <div className="mt-2 [@media(min-height:780px)]:mt-3 flex flex-wrap items-center gap-2">{children}</div>
     </section>
   );
 }

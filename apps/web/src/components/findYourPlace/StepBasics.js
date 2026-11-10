@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chip, QuietChip, OtherChip, Question, FIELD } from "./ui";
 import {
   NO_PREFERENCE,
@@ -46,8 +46,18 @@ export default function StepBasics({ answers, onChange }) {
     set({ modes, commuteMax: next && next.id === mode?.id ? answers.commuteMax : null });
   };
 
+  // On a short window the follow-up can open below the fold of the panel:
+  // bring it into view rather than leaving it to be found.
+  const followUpRef = useRef(null);
+  const modeId = mode?.id ?? null;
+  useEffect(() => {
+    // Scroll the panel's own body only. scrollIntoView would move the page too.
+    const body = followUpRef.current?.closest("[data-fyp-body]");
+    if (modeId && body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
+  }, [modeId]);
+
   return (
-    <div className="space-y-10">
+    <div className="flex flex-col gap-[clamp(0.5rem,calc(4dvh-18px),1.75rem)]">
       <Question title="How many people are you planning to live with, including yourself?">
         {GROUP_OPTIONS.map((g) =>
           g === "5+" ? (
@@ -229,7 +239,7 @@ export default function StepBasics({ answers, onChange }) {
       </Question>
 
       {mode && (
-        <Question title={mode.question}>
+        <Question title={mode.question} innerRef={followUpRef}>
           {mode.times.map((t) => (
             <Chip key={t} selected={answers.commuteMax === t} onClick={() => set({ commuteMax: answers.commuteMax === t ? null : t })}>
               {timeLabel(mode, t)}

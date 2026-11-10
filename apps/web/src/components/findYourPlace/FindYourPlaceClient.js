@@ -11,7 +11,6 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
 import {
   NO_PREFERENCE,
   QUESTION_COUNT,
-  PROMPTS_VISIBLE_AT_START,
   LEASE_OPTIONS,
   answeredCount,
   nextOccurrence,
@@ -80,13 +79,26 @@ export default function FindYourPlaceClient() {
   const [answers, setAnswers] = useState(EMPTY_ANSWERS);
   const [text, setText] = useState("");
   const [chips, setChips] = useState({});
-  const [visible, setVisible] = useState(PROMPTS_VISIBLE_AT_START);
   const [results, setResults] = useState(null); // { matches, totalMatches, sessionId }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [wall, setWall] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
-  const topRef = useRef(null);
+  const mainRef = useRef(null);
+  // Where the page starts under the site header (and any environment banner),
+  // so the panel can be sized to exactly the rest of the screen.
+  const [topOffset, setTopOffset] = useState(104);
+
+  useEffect(() => {
+    if (!ready) return;
+    const measure = () => {
+      const el = mainRef.current;
+      if (el) setTopOffset(Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [ready]);
 
   // Restore an in-progress or finished run (also how the matches survive the
   // trip to the sign-in page and back).
@@ -96,7 +108,6 @@ export default function FindYourPlaceClient() {
       setAnswers({ ...EMPTY_ANSWERS, ...(stored.answers ?? {}) });
       setText(stored.text ?? "");
       setChips(stored.chips ?? {});
-      setVisible(stored.visible ?? PROMPTS_VISIBLE_AT_START);
       setResults(stored.results ?? null);
       setStep(stored.step === 3 && !stored.results ? 2 : stored.step ?? 1);
     }
@@ -107,11 +118,11 @@ export default function FindYourPlaceClient() {
   useEffect(() => {
     if (!ready) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, answers, text, chips, visible, results }));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, answers, text, chips, results }));
     } catch {
       // Private mode or a full store: the run just won't survive a reload.
     }
-  }, [ready, step, answers, text, chips, visible, results]);
+  }, [ready, step, answers, text, chips, results]);
 
   // A signed-in student starts from what their profile already says. Only on
   // an untouched form, and every answer stays one tap to change.
@@ -133,7 +144,7 @@ export default function FindYourPlaceClient() {
 
   const goTo = (next) => {
     setStep(next);
-    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const run = async (override = {}) => {
@@ -175,16 +186,31 @@ export default function FindYourPlaceClient() {
     router.push(`${pathname}?listing=${match.listing_id}${tab ? `&listingTab=${tab}` : ""}`, { scroll: false });
   };
 
-  if (!ready) return <div className="min-h-[70vh] bg-gray-50" />;
+  const BACKDROP = "bg-[#f9f9f9] bg-[url('/assets/find-your-place-bg.svg')]";
+  if (!ready) return <div className={`min-h-[80vh] ${BACKDROP}`} />;
 
   return (
-    <main className="min-h-[calc(100vh-5rem)] bg-gray-50 px-3 py-8 sm:px-6 sm:py-14">
-      <div ref={topRef} className="mx-auto flex min-h-[640px] w-full max-w-[760px] scroll-mt-24 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-5 py-4 sm:px-8">
+    /*
+     * The panel fills the screen under the header and never makes the page
+     * scroll (Wyatt, 2026-11-10): the main area is exactly the leftover height
+     * and, on a screen too short for a step, the panel's own body scrolls. The
+     * height is a measured value, so it is the one inline style here.
+     */
+    <main
+      ref={mainRef}
+      className={`min-h-[480px] px-3 py-2 sm:px-6 sm:py-3 [@media(min-height:780px)]:sm:py-6 ${BACKDROP}`}
+      style={{ height: `calc(100dvh - ${topOffset}px)` }}
+    >
+      <div
+        className={`mx-auto flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white transition-[max-width] duration-300 ${
+          step === 3 ? "max-w-[1180px]" : "max-w-[760px]"
+        }`}
+      >
+        <div className="border-b border-gray-100 px-5 py-3 sm:px-8">
           <ProgressBar value={progress} />
         </div>
 
-        <div className="flex-1 px-5 py-8 sm:px-12 sm:py-12">
+        <div data-fyp-body className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-12 [@media(min-height:780px)]:sm:py-7">
           {step === 1 && (
             <StepBasics
               answers={answers}
@@ -199,11 +225,9 @@ export default function FindYourPlaceClient() {
             <StepPreferences
               text={text}
               chips={chips}
-              visible={visible}
               onChange={(patch) => {
                 if (patch.text !== undefined) setText(patch.text);
                 if (patch.chips !== undefined) setChips(patch.chips);
-                if (patch.visible !== undefined) setVisible(patch.visible);
               }}
               onSkip={() => {
                 trackEvent("Find Your Place Preferences Skipped");
@@ -229,7 +253,7 @@ export default function FindYourPlaceClient() {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3.5">
+        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2.5">
           {step > 1 ? <FooterButton onClick={() => goTo(step - 1)}>Back</FooterButton> : <span />}
           {step === 1 && (
             <FooterButton
