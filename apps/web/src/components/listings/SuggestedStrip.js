@@ -129,7 +129,11 @@ export default function SuggestedStrip({
       {wide && (
         <div className="mb-4 flex items-center justify-between">
           <SuggestedHeading label={label} />
-          {(canScroll.prev || canScroll.next) && (
+          {/* The row holds three whole cards, so it scrolls when there are more.
+              Known from the count, so the buttons are there from the first
+              render: appearing later, they grow this row and push the cards
+              below it down (and off the card the reader was on). */}
+          {listings.length > 3 && (
             <div className="flex gap-2">
               {[
                 ["Previous suggestions", -1, canScroll.prev, "M15 19l-7-7 7-7"],

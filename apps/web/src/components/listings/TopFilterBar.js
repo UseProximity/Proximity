@@ -104,13 +104,27 @@ export default function TopFilterBar({
   };
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (event.target.closest(".filter-dropdown")) return;
-      if (filterRef.current && !filterRef.current.contains(event.target))
-        setShowFilters(false);
+    const isOutside = (target) =>
+      !target.closest(".filter-dropdown") &&
+      filterRef.current &&
+      !filterRef.current.contains(target);
+    // Closes on a click that began and ended outside, not on the mousedown: with
+    // the map hidden the grid slides when the side panel closes, which moved the
+    // card out from under the cursor before the click finished. (Not on every
+    // click either: a slider drag released outside must not close the panel.)
+    let pressedOutside = false;
+    const onMouseDown = (event) => {
+      pressedOutside = isOutside(event.target);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    const onClick = (event) => {
+      if (pressedOutside && isOutside(event.target)) setShowFilters(false);
+    };
+    document.addEventListener("mousedown", onMouseDown, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown, true);
+      document.removeEventListener("click", onClick, true);
+    };
   }, []);
 
   useEffect(() => {

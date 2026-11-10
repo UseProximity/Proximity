@@ -129,6 +129,30 @@ export default function AvailableListings({
   // there instead of at the top. A card, not a pixel offset: the grid is wider
   // while the column is still narrowing, so a pixel offset points elsewhere.
   const gridScroll = useRef(null);
+  const topCard = () => {
+    const col = panelRef.current;
+    const colTop = col?.getBoundingClientRect().top;
+    const card = [...(col?.querySelectorAll("[data-listing-id]") ?? [])].find(
+      (c) => c.getBoundingClientRect().bottom > colTop
+    );
+    return (
+      card && {
+        id: card.dataset.listingId,
+        offset: card.getBoundingClientRect().top - colTop,
+      }
+    );
+  };
+  // Hiding or showing the map re-flows the cards (three columns <-> two), so the
+  // same scroll offset would show other cards. This render is the one that
+  // flips the layout and the DOM is still the old one, so note the card at the
+  // top of the view now and put it back below. Left alone when the column is at
+  // the top, and when a panel is open, whose saved card must be kept.
+  const shownMapHidden = useRef(mapHidden);
+  if (shownMapHidden.current !== mapHidden) {
+    shownMapHidden.current = mapHidden;
+    if (!expandedListing)
+      gridScroll.current = panelRef.current?.scrollTop ? topCard() : null;
+  }
   // True from a close until the column's width transition ends: the card above
   // is held in place on every resize of the column meanwhile (see below).
   const anchoring = useRef(false);
@@ -247,15 +271,7 @@ export default function AvailableListings({
   }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
-    const col = panelRef.current;
-    const colTop = col?.getBoundingClientRect().top;
-    const card = [...(col?.querySelectorAll("[data-listing-id]") ?? [])].find(
-      (c) => c.getBoundingClientRect().bottom > colTop
-    );
-    gridScroll.current = card && {
-      id: card.dataset.listingId,
-      offset: card.getBoundingClientRect().top - colTop,
-    };
+    gridScroll.current = topCard();
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
@@ -314,6 +330,11 @@ export default function AvailableListings({
       col.scrollTop +=
         card.getBoundingClientRect().top - col.getBoundingClientRect().top - offset;
   };
+
+  // The new layout is in place and still invisible (see the fade-through above).
+  useLayoutEffect(() => {
+    if (!expandedListing) anchorGrid();
+  }, [mapHidden]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the column slides narrower the grid reflows and the saved card would
   // drift. A ResizeObserver runs after layout and before paint, so re-pinning
@@ -579,6 +600,21 @@ export default function AvailableListings({
          * in on open, and there is no exit handshake left to hang on.
          */}
         <div className="will-change-[opacity] transition-opacity duration-[200ms] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[120ms]">
+        {/* Outside the grid wrapper below: its slide beside the filters panel is a
+            transform, and a transformed element is the containing block of its
+            fixed descendants, which would carry this button away with it. */}
+        {!expandedListing && (
+          <BackToTop
+            scrollRef={panelRef}
+            after={600}
+            position={
+              mapHidden
+                ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[412px]"
+                : "bottom-6 left-[calc(40vw-3.75rem)]"
+            }
+            tone="light"
+          />
+        )}
         {expandedListing ? (
           <motion.div
             key={`detail-${expandedListing._id}`}
@@ -608,23 +644,13 @@ export default function AvailableListings({
             // Done in CSS, so opening the panel does not re-render the cards.
             className={
               mapHidden
-                ? "mx-auto w-[calc(60vw+6px)] transition-transform duration-300 [body[data-filters-panel]_&]:w-[min(calc(60vw+6px),calc(100vw-412px))] [body[data-filters-panel]_&]:-translate-x-[194px]"
+                ? "mx-auto w-[calc(60vw+6px)] transition-transform duration-300 motion-reduce:duration-[1ms] [body[data-filters-panel]_&]:w-[min(calc(60vw+6px),calc(100vw-412px))] [body[data-filters-panel]_&]:-translate-x-[194px]"
                 : undefined
             }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
-            <BackToTop
-              scrollRef={panelRef}
-              after={600}
-              position={
-                mapHidden
-                  ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[412px]"
-                  : "bottom-6 left-[calc(40vw-3.75rem)]"
-              }
-              tone="light"
-            />
             <div
               className={`flex items-center gap-2 mb-3 ${
                 !showSuggested
