@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-08T23:01:45.959Z",
-  "count": 194,
+  "_generated": "2026-11-10T17:27:14.714Z",
+  "count": 198,
   "components": [
     {
       "name": "ErrorReporter",
@@ -499,6 +499,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "BedBathFilterCard",
+      "file": "src/components/listings/BedBathFilterCard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "BrowseContent",
       "file": "src/components/listings/BrowseContent.js",
       "description": "No description. Run generate after adding a description above."
@@ -509,6 +514,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ComparePanel",
+      "file": "src/components/listings/ComparePanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "CoverageSignDialog",
       "file": "src/components/listings/CoverageSignDialog.js",
       "description": "No description. Run generate after adding a description above."
@@ -516,6 +526,11 @@
     {
       "name": "FilterComponents",
       "file": "src/components/listings/FilterComponents.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "FiltersPanel",
+      "file": "src/components/listings/FiltersPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -586,6 +601,11 @@
     {
       "name": "ModalListing",
       "file": "src/components/listings/ModalListing.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PriceFilterCard",
+      "file": "src/components/listings/PriceFilterCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

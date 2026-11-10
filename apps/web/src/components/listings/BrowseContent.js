@@ -47,6 +47,9 @@ export default function BrowseContent({ session, initialListings = null }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   // Desktop only: hide the map and show the listings as a wider grid.
   const [mapHidden, setMapHidden] = useState(false);
+  // Compare Listings (desktop): null when closed, else the [left, right] listings
+  // picked so far (each null while empty). Separate from the filters on purpose.
+  const [compare, setCompare] = useState(null);
   /*
    * The fade-through of a toggle (see AvailableListings) marks <body> with
    * data-map-switching, and AvailableListings removes it once the new layout is
@@ -222,6 +225,8 @@ export default function BrowseContent({ session, initialListings = null }) {
           // A fade-through: fade out now, and switch the layout once that has
           // finished, while it is invisible.
           onToggleMap={toggleMap}
+          compareOpen={!!compare}
+          onToggleCompare={() => setCompare((c) => (c ? null : [null, null]))}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
@@ -236,6 +241,8 @@ export default function BrowseContent({ session, initialListings = null }) {
           allListings={listings}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
+          compare={compare}
+          setCompare={setCompare}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
