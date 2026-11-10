@@ -107,8 +107,12 @@ export default function FindYourPlaceClient() {
       setAnswers({ ...EMPTY_ANSWERS, ...(stored.answers ?? {}) });
       setText(stored.text ?? "");
       setChips(stored.chips ?? {});
-      setResults(stored.results ?? null);
-      setStep(stored.step === 3 && !stored.results ? 2 : stored.step ?? 1);
+      // Matches saved before the browse hand-off existed carry no `browse`,
+      // which left the button reading "Browse All Listings". Drop them so the
+      // next "Show My Matches" searches again.
+      const saved = stored.results?.browse ? stored.results : null;
+      setResults(saved);
+      setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }
     // "Change" on the browse page's Find Your Place line: back to the answers.
     if (new URLSearchParams(window.location.search).get("edit")) {
