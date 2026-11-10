@@ -354,8 +354,6 @@ export default function TopFilterBar({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            // The side panel docks where the compare panel is, so it replaces it.
-            if (compareOpen && showFilters !== "more-filters") onToggleCompare();
             // Docked at the right edge, a little below the bar (as in the design).
             setDropdownPos({
               top: filterRef.current.getBoundingClientRect().bottom + 17,
