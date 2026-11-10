@@ -202,7 +202,19 @@ export default function FindYourPlaceClient() {
     }
   };
 
+  // Wipe every answer and the saved matches, and go back to the first page.
+  const startOver = () => {
+    trackEvent("Find Your Place Started Over", { fromStep: step });
+    setAnswers(EMPTY_ANSWERS);
+    setText("");
+    setChips({});
+    setResults(null);
+    setError(null);
+    goTo(1);
+  };
+
   const answered = answeredCount(answers);
+  const canStartOver = step > 1 || answered > 0 || answers.modes.length > 0 || !!text || !!results;
   // Full as soon as the matches are asked for, not when they arrive.
   const progress = step === 1 ? (answered / QUESTION_COUNT) * QUESTIONS_FILL : step === 2 ? QUESTIONS_FILL : 1;
 
@@ -239,8 +251,19 @@ export default function FindYourPlaceClient() {
           step === 3 ? MATCH_PANEL : "max-w-[760px]"
         }`}
       >
-        <div className="border-b border-gray-100 px-5 py-3 sm:px-8">
-          <ProgressBar value={progress} />
+        <div className="flex items-center gap-4 border-b border-gray-100 px-5 py-2.5 sm:px-8">
+          <div className="min-w-0 flex-1">
+            <ProgressBar value={progress} />
+          </div>
+          {/* Always in the same place; only live once there is something to clear. */}
+          <button
+            type="button"
+            onClick={startOver}
+            disabled={!canStartOver}
+            className="flex-shrink-0 text-xs font-medium text-gray-500 hover:text-red-600 disabled:invisible"
+          >
+            Start over
+          </button>
         </div>
 
         <div data-fyp-body className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-12 [@media(min-height:780px)]:sm:py-7">
