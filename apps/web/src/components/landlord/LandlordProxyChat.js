@@ -323,7 +323,7 @@ function BlockedActions({ item, busy, onRetry }) {
         <button
           type="button"
           disabled={busy}
-          onClick={() => openCoverageDialog({ uncovered, onSigned: () => onRetry(item.id) })}
+          onClick={() => openCoverageDialog({ uncovered, payer: agreement.find((b) => b.payer)?.payer ?? null, onSigned: () => onRetry(item.id) })}
           className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
           Add {places.length === 1 ? places[0] : "these addresses"} to my agreement

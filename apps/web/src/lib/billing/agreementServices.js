@@ -23,6 +23,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
+import { afterPayerSigned } from "./payerServices.js";
 
 export function documensoClient() {
   return createDocumensoClient({
@@ -42,7 +43,16 @@ export function agreementServices() {
       storeExhibit: storeFromDocumenso,
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       // A negotiated version signed: the change request it answered is resolved.
-      onSigned: ({ userId, versionId }) => resolveChangeRequestOnSigned(supabase, { userId, versionId }),
+      // A payer's signature also publishes what the accounts they pay for were waiting on.
+      // Each step runs on its own, so one failing never skips the other; a payer's
+      // follow-up that still fails is retried by the daily billing-review-clock cron.
+      onSigned: async ({ userId, versionId, kind, documentId, signerId, accounts, withdrawn }) => {
+        const steps = await Promise.allSettled([
+          resolveChangeRequestOnSigned(supabase, { userId: signerId ?? userId, versionId }),
+          afterPayerSigned({ signerId: signerId ?? userId, kind, documentId, accounts, withdrawn }),
+        ]);
+        for (const s of steps) if (s.status === "rejected") console.error("billing: an after-signing step failed", s.reason?.message);
+      },
       // A rejection: the reason opens a change request (or joins the open one).
       onDeclined: async ({ userId, reason, doc }) => {
         const { opened } = await recordDecline(supabase, { userId, reason, doc });

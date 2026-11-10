@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-09T03:32:09.055Z",
-  "count": 324,
+  "_generated": "2026-11-09T20:44:14.504Z",
+  "count": 329,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -552,6 +552,22 @@
       "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
     },
     {
+      "file": "src/lib/billing/payerLinks.js",
+      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+    },
+    {
+      "file": "src/lib/billing/payers.js",
+      "description": "A payer for a landlord account (Project B, Wyatt 2026-11-09). See"
+    },
+    {
+      "file": "src/lib/billing/payers.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/payerServices.js",
+      "description": "The real email, storage and publishing behind payers.js, for the routes and"
+    },
+    {
       "file": "src/lib/billing/paymentMethodHandlers.js",
       "description": "Webhook handlers for payment method events, registered in webhookHandlers.js."
     },
@@ -882,6 +898,10 @@
     {
       "file": "src/lib/listings/propertyName.js",
       "description": "Display-name uniqueness for properties."
+    },
+    {
+      "file": "src/lib/listings/publish.js",
+      "description": "Publishing drafts: the work behind POST /api/landlord/publish, here so a"
     },
     {
       "file": "src/lib/listings/queryListings.js",

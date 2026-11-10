@@ -29,7 +29,7 @@ export async function GET(req, { params }) {
   try {
     const { id } = await params;
     if (!isUuid(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
-    return NextResponse.json({ documents: await listAgreementDocuments(supabase, id) });
+    return NextResponse.json({ documents: await listAgreementDocuments(supabase, id, { admin: true }) });
   } catch (err) {
     return billingErrorResponse(err, "list a landlord's agreement documents");
   }

@@ -9,6 +9,7 @@ const STATUS = {
   approved: { label: "Approved", className: "bg-blue-100 text-blue-800" },
   invoiced: { label: "Invoiced", className: "bg-indigo-100 text-indigo-800" },
   paid: { label: "Paid", className: "bg-green-100 text-green-800" },
+  billed: { label: "Billed", className: "bg-blue-100 text-blue-800" },
   contested: { label: "Contested", className: "bg-red-100 text-red-800" },
   voided: { label: "Removed", className: "bg-gray-100 text-gray-500" },
 };
@@ -54,6 +55,7 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
             <span className="ml-2 text-xs font-normal text-gray-400">{dateOnly(charge.createdAt)}</span>
           </p>
           <p className="mt-0.5 text-xs text-gray-600">
+            <Detail label="Account" value={charge.accountName} />
             <Detail label="Listing" value={charge.listingLabel} />
             <Detail label="Lease" value={charge.leaseLabel} />
             <Detail label="Student" value={charge.studentName} />
@@ -167,11 +169,12 @@ function PastCharges({ past }) {
   );
 }
 
-export default function ChargesCard({ charges, summary, busy, onApprove, onContest }) {
+// `billedTo`: a payer pays this account's charges (Project B): no balance tiles, they aren't this account's to pay.
+export default function ChargesCard({ charges, summary, busy, onApprove, onContest, billedTo = null }) {
   const { current, past } = splitChargeHistory(charges);
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap gap-3">
+      {!billedTo && <div className="flex flex-wrap gap-3">
         <Tile
           label="Current balance"
           value={formatCents(summary.balanceCents)}
@@ -182,14 +185,15 @@ export default function ChargesCard({ charges, summary, busy, onApprove, onConte
           value={formatCents(summary.inReviewCents)}
           hint="Not collected until approved."
         />
-      </div>
+      </div>}
 
       <div className="bg-white rounded-lg border border-gray-100 shadow-sm">
         <div className="px-4 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Charges</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Charges are reviewed before they are collected. Approve the ones that look right or contest the ones
-            that do not. Everything approved is collected once a month on a single invoice.
+            {billedTo
+              ? `Charges are reviewed before they are billed to ${billedTo}. Approve the ones that look right or contest the ones that do not.`
+              : "Charges are reviewed before they are collected. Approve the ones that look right or contest the ones that do not. Everything approved is collected once a month on a single invoice."}
           </p>
         </div>
         {charges.length === 0 ? (
