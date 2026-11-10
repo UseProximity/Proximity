@@ -7,11 +7,12 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
 /*
  * Pinned "Suggested for you" strip at the top of the /browse list. Renders
  * nothing when there are no suggestions, so a student without enough signal
- * never sees an empty "suggested" heading. The heading swatch ties the cards
- * to their highlighted map pins (SUGGESTED_PIN_COLOR in MapView; keep the two
- * in step).
+ * never sees an empty "suggested" heading. The heading badge ties the cards
+ * to their badged map pins (SUGGESTED_BADGE in MapView; keep the two in step).
  *
- * layout="grid" is the desktop two-column panel, "stack" the mobile list.
+ * layout="grid" is the desktop panel (two columns of cards, or with wide, for
+ * the map-hidden page, the same width-fitting grid as the listings under it),
+ * "stack" the mobile list.
  *
  * Analytics: suggested_impression / suggested_click here; saves and contacts
  * that follow a click carry source=suggested on their existing events.
@@ -20,13 +21,26 @@ import { trackEvent, setListingSource } from "@/utils/analytics";
  * The strip's heading. AvailableListings renders it in the results row, on the
  * left where the listing count normally sits, and moves the count to the right.
  */
+// Card grid of the map-hidden page, shared with AvailableListings so the
+// suggestions and the listings under them line up: as many columns as fit, at
+// least 300px each. The page caps its width so that is four at most.
+export const WIDE_GRID_CLASS =
+  "grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-x-6 gap-y-4";
+
 export function SuggestedHeading({ label = "Suggested for you" }) {
   return (
     <div className="flex items-center gap-2">
-      <span
+      <svg
         aria-hidden="true"
-        className="h-2 w-2 rounded-full bg-[#A1000A]"
-      />
+        viewBox="20.5 -0.5 10 10"
+        className="h-3.5 w-3.5 shrink-0"
+      >
+        <circle cx="25.5" cy="4.5" r="5" fill="#F5B301" />
+        <path
+          d="M25.5 1.8l0.77 1.93 1.93 0.77-1.93 0.77-0.77 1.93-0.77-1.93-1.93-0.77 1.93-0.77z"
+          fill="white"
+        />
+      </svg>
       <h2 className="text-xs font-bold text-gray-900">{label}</h2>
     </div>
   );
@@ -41,10 +55,14 @@ export default function SuggestedStrip({
   label = "Suggested for you",
   selectedId = null,
   onCardClick,
+  // The map is hidden: the cards use the page's width-fitting grid, wrapping
+  // onto as many rows as they need (never a scrolling row).
+  wide = false,
 }) {
+  const key = listings.map((l) => l._id).join(",");
+
   // One impression per distinct set shown, not per re-render.
   const lastImpression = useRef("");
-  const key = listings.map((l) => l._id).join(",");
   useEffect(() => {
     if (!key || lastImpression.current === key) return;
     lastImpression.current = key;
@@ -62,7 +80,11 @@ export default function SuggestedStrip({
     <section aria-label={label} className="mb-6">
       <div
         className={
-          layout === "grid" ? "grid grid-cols-2 gap-3" : "space-y-4"
+          layout === "grid"
+            ? wide
+              ? WIDE_GRID_CLASS
+              : "grid grid-cols-2 gap-3"
+            : "space-y-4"
         }
       >
         {listings.map((listing, i) => (

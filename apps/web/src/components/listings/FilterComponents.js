@@ -1,196 +1,314 @@
 "use client";
 
-// Shared filter sub-components used by TopFilterBar (desktop) and mobile filter panel
+// Shared parts of the browse filters: the price range, the bed and bath steps,
+// the card shell and the range sliders. The Price and Beds & Baths cards (the
+// desktop bar) and the side panel (desktop, and the phone's filter drawer) are
+// built from them.
 
-import React, { useState } from "react";
+import { useEffect, useRef } from "react";
 
-export const SLIDER_CSS = `
-  .px-range {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 0;
-    background: transparent;
-    outline: none;
-    position: absolute;
-  }
-  .px-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #ef4444;
-    border: 2.5px solid #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-    cursor: pointer;
-  }
-  .px-range::-moz-range-thumb {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #ef4444;
-    border: 2.5px solid #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-    cursor: pointer;
-  }
-  .px-range-dual { pointer-events: none; }
-  .px-range-dual::-webkit-slider-thumb { pointer-events: auto; }
-  .px-range-dual::-moz-range-thumb  { pointer-events: auto; }
-  .px-range-single { pointer-events: auto; }
-`;
+// Price range shared by every price slider. The right end ($4000+) means no
+// upper limit, so a max of PRICE_MAX or more is stored as "".
+export const PRICE_MIN = 400;
+export const PRICE_MAX = 4000;
+export const PRICE_STEP = 50;
 
-export function FilterSection({ title, children, defaultOpen = true }) {
-  const [open, setOpen] = useState(defaultOpen);
+// Sends a filter control's values on as they change, so the results update
+// live with no Apply step. `values` must be a new object only when something
+// changed. Changes are batched over a short delay (a slider drag is many
+// changes and each one rebuilds the results), and a change still waiting when
+// the control closes is sent then, so none is lost.
+export function useLiveFilters(values, onChange, delay = 120) {
+  const latest = useRef({ values, onChange });
+  latest.current = { values, onChange };
+  const sent = useRef(values);
+  const timer = useRef(null);
+  const send = () => {
+    timer.current = null;
+    sent.current = latest.current.values;
+    latest.current.onChange(sent.current);
+  };
+  useEffect(() => {
+    if (values === sent.current) return;
+    timer.current = setTimeout(send, delay);
+    return () => clearTimeout(timer.current);
+  }, [values]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      if (timer.current) send();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+}
+
+// Shell of the bar's dropdown cards (Price, Beds & Baths), styled like the
+// rest of the browse page: a white card with a small bold title and the body.
+// The cards filter live, so there is no Apply button.
+// Tiny "Clear" shown next to a filter's title while that filter has something
+// filled in; onClear empties just that filter.
+export function ClearFilter({ onClear }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      className="text-[10px] font-medium leading-none text-[#F71C1E] hover:underline"
+    >
+      Clear
+    </button>
+  );
+}
+
+// onClear (optional): shows Clear beside the title, for a card that is one filter.
+export function FilterCard({ title, onClear, children }) {
+  return (
+    <div className="w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
+      <h3 className="flex items-baseline gap-2 border-b border-gray-100 px-4 py-2.5 text-[13px] font-bold leading-4 text-gray-900">
+        {title}
+        {onClear && <ClearFilter onClear={onClear} />}
+      </h3>
+      <div className="pb-4">{children}</div>
+    </div>
+  );
+}
+
+// The two reds of the browse filters, as classes: "card" for the bar's
+// dropdown cards, "panel" for the side panel and the phone's drawer.
+const ACCENTS = {
+  card: { bg: "bg-[#F71C1E]", text: "text-[#F71C1E]" },
+  panel: { bg: "bg-[#FF2B3A]", text: "text-[#FF2B3A]" },
+};
+export const accentClasses = (accent) => ACCENTS[accent] ?? ACCENTS.card;
+
+// Handle size in px. A handle's centre sits at handleX(pct), which keeps the
+// first and last handle inside the track (half a handle in from each end).
+const HANDLE_PX = 17;
+const handleX = (pct) => `calc(${pct}% + ${(0.5 - pct / 100) * HANDLE_PX}px)`;
+// Labels whose handles are closer than this (% of the track) merge into one.
+const LABEL_MERGE_PCT = 16;
+
+// Two-handle range slider in the Browse Listings design: a red track between
+// round red handles, with a red label under each. low and high are numbers
+// between min and max, at least one step apart; formatLabel(value) gives the
+// label text. accent ("card" or "panel") is the red of handles, track and
+// labels. With single, only
+// the high handle shows and the track runs from the left end to it (pass low as
+// min). With ticks (one label per step, from min), every step is labelled
+// instead, the selected ones in red, each one clickable to pick that step, and
+// formatLabel is not needed. minGap is how
+// close the handles may get (default one step; 0 lets them meet). onChange is
+// called only when low or high actually changes.
+//
+// The handles, track and labels are placed with inline left / width values:
+// they are worked out from the slider's values, which a Tailwind class cannot
+// carry. Everything else here is classes.
+//
+// Dragging is handled here with pointer events rather than two overlaid
+// <input type="range">. With those, the browser's hit-testing and z-order
+// decided which handle moved, so handles close together could not be told
+// apart (the wrong one moved, or one stuck behind the other), and the clamping
+// fought the native drag value. Here the handle is chosen once, on press, and
+// then follows the pointer, clamped a step clear of the other handle.
+export function RangeSlider({
+  min,
+  max,
+  step = 1,
+  minGap = step,
+  accent = "card",
+  single = false,
+  low,
+  high,
+  onChange,
+  formatLabel,
+  ticks,
+}) {
+  const red = accentClasses(accent);
+  const rowRef = useRef(null);
+  // A pointer move that stays on the same step is not a change.
+  const change = (nextLow, nextHigh) => {
+    if (nextLow !== low || nextHigh !== high) onChange(nextLow, nextHigh);
+  };
+  // Drag in progress: { handle, offset, startX }. handle is null until known.
+  const drag = useRef(null);
+  const pctOf = (v) => ((v - min) / (max - min)) * 100;
+  const lowPct = pctOf(low);
+  const highPct = pctOf(high);
+
+  // Client x of a handle's centre, and the step-snapped value under a client x.
+  const centreX = (v) => {
+    const r = rowRef.current.getBoundingClientRect();
+    return r.left + HANDLE_PX / 2 + (pctOf(v) / 100) * (r.width - HANDLE_PX);
+  };
+  const valueAt = (x) => {
+    const r = rowRef.current.getBoundingClientRect();
+    const raw =
+      min + ((x - r.left - HANDLE_PX / 2) / (r.width - HANDLE_PX)) * (max - min);
+    return min + Math.round((raw - min) / step) * step;
+  };
+  // Moves a handle, keeping it on the track and minGap clear of the other one.
+  const move = (handle, value) => {
+    const v = Math.min(max, Math.max(min, value));
+    if (handle === "low") change(Math.min(v, high - minGap), high);
+    else change(low, Math.max(v, low + minGap));
+  };
+  // Starts dragging a handle pressed at client x. Pressing on the handle keeps
+  // the pointer's offset from its centre; pressing on the track jumps it there.
+  const grab = (handle, x) => {
+    const d = x - centreX(handle === "low" ? low : high);
+    const onHandle = Math.abs(d) <= HANDLE_PX / 2;
+    drag.current = { handle, offset: onHandle ? d : 0 };
+    if (!onHandle) move(handle, valueAt(x));
+  };
+
+  const onPointerDown = (e) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const x = e.clientX;
+    const lowX = centreX(low);
+    const highX = centreX(high);
+    if (single) {
+      grab("high", x);
+    } else if (
+      Math.abs(x - lowX) <= HANDLE_PX / 2 &&
+      Math.abs(x - highX) <= HANDLE_PX / 2
+    ) {
+      // Both handles are under the pointer: the first move decides which one.
+      drag.current = { handle: null, startX: x };
+    } else {
+      grab(Math.abs(x - lowX) <= Math.abs(x - highX) ? "low" : "high", x);
+    }
+  };
+  const onPointerMove = (e) => {
+    if (!drag.current) return;
+    if (!drag.current.handle) {
+      const { startX } = drag.current;
+      if (Math.abs(e.clientX - startX) < 2) return;
+      grab(e.clientX < startX ? "low" : "high", startX);
+    }
+    move(drag.current.handle, valueAt(e.clientX - drag.current.offset));
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+  const onKeyDown = (handle, value) => (e) => {
+    const dir = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    move(handle, value + dir * step);
+  };
+
+  const renderHandle = (handle, value, pct) => (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={handle === "low" ? "Minimum" : "Maximum"}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      aria-valuetext={ticks ? ticks[Math.round((value - min) / step)] : formatLabel(value)}
+      onKeyDown={onKeyDown(handle, value)}
+      className={`absolute h-[17px] w-[17px] -translate-x-1/2 cursor-pointer rounded-full border-2 border-[#FFFBFB] shadow-[0_0_3px_1px_rgba(0,0,0,0.15)] outline-none focus-visible:ring-2 focus-visible:ring-red-300 ${red.bg}`}
+      style={{ left: handleX(pct) }}
+    />
+  );
+  const label = (pct, text, color = "") => (
+    <span
+      key={text}
+      className={`absolute -translate-x-1/2 whitespace-nowrap ${color}`}
+      style={{ left: handleX(pct) }}
+    >
+      {text}
+    </span>
+  );
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-between w-full text-left mb-2"
+      <div
+        ref={rowRef}
+        // The ::before is not drawn: it makes the row 12px taller above and below
+        // for a finger, without moving anything.
+        className="relative h-[17px] cursor-pointer touch-none select-none before:absolute before:inset-x-0 before:-inset-y-3"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
-        <span className="font-semibold text-gray-900 text-sm">{title}</span>
-        <svg
-          className={`w-4 h-4 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  );
-}
-
-export function DualRangeSlider({ minRent, maxRent, setDraft, draft }) {
-  const MIN = 400, MAX = 5000, STEP = 50;
-  const minVal = minRent ? Math.max(MIN, Number(minRent)) : MIN;
-  const maxVal = maxRent ? Math.min(MAX, Number(maxRent)) : MAX;
-  const minPct = ((minVal - MIN) / (MAX - MIN)) * 100;
-  const maxPct = ((maxVal - MIN) / (MAX - MIN)) * 100;
-
-  return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div
-            className="absolute h-full rounded-full bg-red-500"
-            style={{ left: `${minPct}%`, width: `${maxPct - minPct}%` }}
-          />
-        </div>
-        <input
-          type="range"
-          min={MIN} max={MAX} step={STEP}
-          value={minVal}
-          onChange={(e) => {
-            const v = Math.min(Number(e.target.value), maxVal - STEP);
-            setDraft({ ...draft, minRent: v <= MIN ? "" : String(v) });
+        <div className="absolute inset-x-[8.5px] top-1/2 h-0.5 -translate-y-1/2 bg-gray-200" />
+        <div
+          className={`absolute top-1/2 h-0.5 -translate-y-1/2 ${red.bg}`}
+          style={{
+            left: handleX(lowPct),
+            width: `calc(${handleX(highPct)} - ${handleX(lowPct)})`,
           }}
-          className="px-range px-range-dual"
-          style={{ zIndex: minVal > MAX - STEP ? 5 : 3 }}
         />
-        <input
-          type="range"
-          min={MIN} max={MAX} step={STEP}
-          value={maxVal}
-          onChange={(e) => {
-            const v = Math.max(Number(e.target.value), minVal + STEP);
-            setDraft({ ...draft, maxRent: v >= MAX ? "" : String(v) });
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: 4 }}
-        />
+        {!single && renderHandle("low", low, lowPct)}
+        {renderHandle("high", high, highPct)}
       </div>
-      <div className="flex justify-between text-xs mt-1">
-        <span className="text-gray-400">$400</span>
-        <span className="text-red-500 font-semibold text-center">
-          {minVal > MIN ? `$${minVal.toLocaleString()}` : "min."}
-          {" – "}
-          {maxVal < MAX ? `$${maxVal.toLocaleString()}` : "$4,000+"}
-        </span>
-        <span className="text-gray-400">$4,000+</span>
+      <div
+        className={`relative mt-0.5 h-[18px] text-[10px] font-medium leading-[18px] ${red.text}`}
+      >
+        {ticks ? (
+          // Each step's label is a button: clicking it picks exactly that step
+          // (both handles go to it; with single, the one handle does).
+          ticks.map((text, i) => {
+            const v = min + i * step;
+            const selected = v === high || (!single && v === low);
+            return (
+              <button
+                key={text}
+                type="button"
+                onClick={() => change(single ? low : v, v)}
+                className={`absolute -translate-x-1/2 cursor-pointer whitespace-nowrap px-1 hover:text-gray-700 ${
+                  selected ? "" : "text-gray-400"
+                }`}
+                style={{ left: handleX(pctOf(v)) }}
+              >
+                {text}
+              </button>
+            );
+          })
+        ) : highPct - lowPct < LABEL_MERGE_PCT ? (
+          label(
+            (lowPct + highPct) / 2,
+            `${formatLabel(low)} – ${formatLabel(high)}`
+          )
+        ) : (
+          <>
+            {label(lowPct, formatLabel(low))}
+            {label(highPct, formatLabel(high))}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-export function StepSlider({ steps, value, onChange }) {
-  const lastIsAny = steps[steps.length - 1]?.value === "";
-  const idx = value === ""
-    ? (lastIsAny ? steps.length - 1 : 0)
-    : Math.max(0, steps.findIndex((s) => s.value === value));
-  const pct = steps.length > 1 ? (idx / (steps.length - 1)) * 100 : 0;
+// Index of a filter value in steps ({ label, value }). "" (the open end), or a
+// value the steps do not offer, gives fallback.
+export const stepIndex = (steps, value, fallback) => {
+  const i = value ? steps.findIndex((s) => s.value === value) : -1;
+  return i < 0 ? fallback : i;
+};
 
+// Filter strings for a range of step indexes: "" at either end means no limit.
+export const stepLimits = (steps, { low, high }) => [
+  low === 0 ? "" : steps[low].value,
+  high === steps.length - 1 ? "" : steps[high].value,
+];
+
+// RangeSlider over named steps, labelling every step. low and high are step
+// indexes and may be equal; with single only high is used.
+export function StepRange({ steps, low = 0, high, single, accent, onChange }) {
   return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div className="absolute h-full rounded-full bg-red-500 left-0" style={{ width: `${pct}%` }} />
-        </div>
-        <input type="range" min={0} max={steps.length - 1} step={1} value={idx}
-          onChange={(e) => onChange(steps[parseInt(e.target.value)].value)}
-          className="px-range px-range-single" />
-      </div>
-      <div className="flex justify-between mt-1">
-        {steps.map((s, i) => (
-          <span
-            key={i}
-            onClick={() => onChange(s.value)}
-            className={`text-xs leading-none cursor-pointer select-none ${idx === i ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
-          >
-            {s.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function DualStepSlider({ steps, minValue, maxValue, onMinChange, onMaxChange, onSnapTo }) {
-  const lastIdx = steps.length - 1;
-  const minIdx = minValue === "" ? 0       : Math.max(0, steps.findIndex((s) => s.value === minValue));
-  const maxIdx = maxValue === "" ? lastIdx : Math.max(0, steps.findIndex((s) => s.value === maxValue));
-  const minPct = (minIdx / lastIdx) * 100;
-  const maxPct = (maxIdx / lastIdx) * 100;
-
-  return (
-    <div className="px-1">
-      <div className="relative h-8 flex items-center">
-        <div className="absolute w-full h-1.5 rounded-full bg-gray-200">
-          <div
-            className="absolute h-full rounded-full bg-red-500"
-            style={{ left: `${minPct}%`, width: `${maxPct - minPct}%` }}
-          />
-        </div>
-        <input type="range" min={0} max={lastIdx} step={1} value={minIdx}
-          onChange={(e) => {
-            const i = Math.min(parseInt(e.target.value), maxIdx);
-            onMinChange(steps[i].value);
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: minIdx >= maxIdx ? 5 : 3 }}
-        />
-        <input type="range" min={0} max={lastIdx} step={1} value={maxIdx}
-          onChange={(e) => {
-            const i = Math.max(parseInt(e.target.value), minIdx);
-            onMaxChange(steps[i].value);
-          }}
-          className="px-range px-range-dual"
-          style={{ zIndex: 4 }}
-        />
-      </div>
-      <div className="flex justify-between mt-1">
-        {steps.map((s, i) => (
-          <span
-            key={i}
-            onClick={() => onSnapTo ? onSnapTo(s.value) : (onMinChange(s.value), onMaxChange(s.value))}
-            className={`text-xs leading-none cursor-pointer select-none ${(i === minIdx || i === maxIdx) ? "text-red-500 font-semibold" : "text-gray-400 hover:text-red-400"}`}
-          >
-            {s.label}
-          </span>
-        ))}
-      </div>
-    </div>
+    <RangeSlider
+      min={0}
+      max={steps.length - 1}
+      minGap={0}
+      accent={accent}
+      single={single}
+      low={low}
+      high={high}
+      onChange={onChange}
+      ticks={steps.map((s) => s.label)}
+    />
   );
 }
 
@@ -210,21 +328,4 @@ export const BATH_STEPS = [
   { label: "2.5", value: "2.5" },
   { label: "3",   value: "3"   },
   { label: "4+",  value: "4"   },
-];
-
-export const DIST_STEPS = [
-  { label: "10 min", value: "10" },
-  { label: "15 min", value: "15" },
-  { label: "20 min", value: "20" },
-  { label: "30 min", value: "30" },
-  { label: "45 min", value: "45" },
-  { label: "Any",    value: ""   },
-];
-
-export const SHTT_STEPS = [
-  { label: "2 min",  value: "2"  },
-  { label: "5 min",  value: "5"  },
-  { label: "10 min", value: "10" },
-  { label: "20 min", value: "20" },
-  { label: "Any",    value: ""   },
 ];

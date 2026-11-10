@@ -10,7 +10,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@supabase/mcp-server-supabase@latest",
+        "@supabase/mcp-server-supabase@0.5.9",
         "--project-ref=imawamfhakroxtugmlne"
       ],
       "env": {
@@ -21,7 +21,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@supabase/mcp-server-supabase@latest",
+        "@supabase/mcp-server-supabase@0.5.9",
         "--project-ref=ngytjsckypjxddzpaekt"
       ],
       "env": {

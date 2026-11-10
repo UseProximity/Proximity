@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-10T21:27:17.782Z",
-  "count": 200,
+  "_generated": "2026-11-10T21:54:06.566Z",
+  "count": 203,
   "components": [
     {
       "name": "ErrorReporter",
@@ -529,6 +529,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "BedBathFilterCard",
+      "file": "src/components/listings/BedBathFilterCard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "BrowseContent",
       "file": "src/components/listings/BrowseContent.js",
       "description": "No description. Run generate after adding a description above."
@@ -546,6 +551,11 @@
     {
       "name": "FilterComponents",
       "file": "src/components/listings/FilterComponents.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "FiltersPanel",
+      "file": "src/components/listings/FiltersPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -616,6 +626,11 @@
     {
       "name": "ModalListing",
       "file": "src/components/listings/ModalListing.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PriceFilterCard",
+      "file": "src/components/listings/PriceFilterCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

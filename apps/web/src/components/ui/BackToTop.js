@@ -36,7 +36,7 @@ export default function BackToTop({
       aria-label="Back to top"
       aria-hidden={!show}
       tabIndex={show ? 0 : -1}
-      className={`fixed ${position} z-40 flex h-11 w-11 items-center justify-center rounded-full transition-[opacity,background-color,color] duration-300 ${toneClass} ${
+      className={`fixed ${position} z-40 flex h-11 w-11 items-center justify-center rounded-full transition-[opacity,right,background-color,color] duration-300 motion-reduce:duration-[1ms] ${toneClass} ${
         show ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >

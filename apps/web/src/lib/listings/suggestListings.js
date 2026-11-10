@@ -212,6 +212,7 @@ const FILTER_GROUPS = [
   ["distance"],
   ["distanceToShuttle"],
   ["moveInDate"],
+  ["moveInMonth", "moveInDay"],
   ["homeType"],
   ["leaseAvailability"],
   ["amenities"],

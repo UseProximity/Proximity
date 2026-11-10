@@ -10,7 +10,7 @@
  * Wyatt 2026-11-10), but it is kept so a caller can tell what was left out.
  */
 import { needsPetFriendly } from "@/lib/matchmaking/listingConstraints";
-import { NO_PREFERENCE, moveInCutoff } from "./options";
+import { NO_PREFERENCE, moveInCutoff, nextOccurrence } from "./options";
 
 // Parsed amenity key (a listing_amenities column) -> browse's amenity filter value.
 const BROWSE_AMENITY = {
@@ -25,9 +25,9 @@ const BROWSE_AMENITY = {
   mailroom: "mailroom",
 };
 
-// Find Your Place lease answer -> browse's lease-length buckets.
+// Find Your Place lease answer -> browse's duration chips ("<n>-month").
 const BROWSE_LEASE = {
-  semester: ["summer", "semester"],
+  semester: ["6-month"],
   academic: ["10-month"],
   full: ["12-month"],
 };
@@ -69,11 +69,20 @@ export function buildBrowseHandoff({ answers, parsed, preferences }) {
     else notApplied.push("up to " + dollars(answers.budget) + " per person");
   }
 
-  const cutoff = answers.moveIn && answers.moveIn !== NO_PREFERENCE ? moveInCutoff(answers.moveIn) : null;
-  if (cutoff) filters.moveInDate = cutoff;
+  /*
+   * Move-in. Browse's control is a month: "open by the end of the next such
+   * month", the same rule the matcher uses. A month further out than its next
+   * occurrence (picked under "Other") has no such control, so it falls back to
+   * the older move-in-by date, which still filters but has no chip.
+   */
+  if (answers.moveIn && answers.moveIn !== NO_PREFERENCE) {
+    const month = Number(answers.moveIn.slice(5, 7));
+    if (nextOccurrence(month) === answers.moveIn) filters.moveInMonth = String(month);
+    else filters.moveInDate = moveInCutoff(answers.moveIn);
+  }
 
   if (BROWSE_LEASE[answers.lease]) filters.leaseAvailability = BROWSE_LEASE[answers.lease];
-  else if (/^\d+$/.test(answers.lease ?? "")) notApplied.push(answers.lease + " month lease");
+  else if (/^\d+$/.test(answers.lease ?? "")) filters.leaseAvailability = [answers.lease + "-month"];
 
   if (parsed.furnished === "yes") filters.furnished = "furnished";
   else if (parsed.furnished === "no") filters.furnished = "unfurnished";

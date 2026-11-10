@@ -88,7 +88,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId } = await req.json();
+    // `favorited` (optional boolean) is the state the caller wants, so a
+    // repeated or out-of-order request cannot flip it the wrong way. Without it
+    // the call toggles, which is what the mobile app sends.
+    const { listingId, favorited } = await req.json();
     if (!listingId || typeof listingId !== "string" || !listingId.trim()) {
       return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
@@ -116,7 +119,13 @@ export async function POST(req) {
       .eq("interaction_type_id", favoriteTypeId)
       .maybeSingle();
 
-    if (existing) {
+    const want = typeof favorited === "boolean" ? favorited : !existing;
+    // Already in the wanted state: nothing to write (and no second "saves" tick).
+    if (want === !!existing) {
+      return NextResponse.json({ favorited: want });
+    }
+
+    if (!want) {
       // Remove favorite
       await deleteAsUser(supabase, {
         userId,
