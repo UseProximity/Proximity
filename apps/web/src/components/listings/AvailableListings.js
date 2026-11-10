@@ -13,6 +13,7 @@ import ListDetailPanel from "@/components/listings/ListDetailPanel";
 import BackToTop from "@/components/ui/BackToTop";
 import SuggestedStrip, {
   SuggestedHeading,
+  WIDE_GRID_CLASS,
 } from "@/components/listings/SuggestedStrip";
 import FiltersPanel from "@/components/listings/FiltersPanel";
 
@@ -115,6 +116,10 @@ export default function AvailableListings({
   /* ── Left panel expanded listing ── */
   const panelId = searchParams.get("panel");
   const [expandedListing, setExpandedListing] = useState(null);
+  // For the map's pin click handler, which is kept from when the markers were
+  // built and so cannot see the current state.
+  const expandedRef = useRef(expandedListing);
+  expandedRef.current = expandedListing;
   const panelRef = useRef(null);
   // The first visible card, and how far below the column top it sat, when a
   // panel opened, so closing it (button or browser back) puts the reader back
@@ -265,7 +270,9 @@ export default function AvailableListings({
   }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
-    gridScroll.current = topCard();
+    // Replacing an open panel (from a pin's card) keeps the grid position
+    // saved when the first panel opened.
+    if (!expandedListing) gridScroll.current = topCard();
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
@@ -489,6 +496,9 @@ export default function AvailableListings({
 
   const handlePinClose = () => {
     setSelectedListing(null);
+    // The card of a pin picked while a panel is open: closing it leaves the
+    // panel as it is.
+    if (expandedListing) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("lat");
     params.delete("lng");
@@ -587,7 +597,7 @@ export default function AvailableListings({
             after={600}
             position={
               mapHidden
-                ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[412px]"
+                ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[325px]"
                 : "bottom-6 left-[calc(40vw-3.75rem)]"
             }
             tone="light"
@@ -616,13 +626,14 @@ export default function AvailableListings({
             key="grid"
             // Three columns of the same card width as the two-column grid
             // ((40vw - 36px) / 2 each, 30px apart), centred.
-            // While the side filters panel is open (it sets data-filters-panel
-            // on <body>) the grid slides left into the space beside it, and
-            // narrows only if the window is too small for three full columns.
-            // Done in CSS, so opening the panel does not re-render the cards.
+            // With the map hidden the grid takes the page's width, capped so it
+            // never passes four columns. While the side filters panel is open
+            // (it sets data-filters-panel on <body>) the grid gives up the
+            // panel's width and re-fits its columns beside it. Done in CSS, so
+            // opening the panel does not re-render the cards.
             className={
               mapHidden
-                ? "mx-auto w-[calc(60vw+6px)] transition-transform duration-300 motion-reduce:duration-[1ms] [body[data-filters-panel]_&]:w-[min(calc(60vw+6px),calc(100vw-412px))] [body[data-filters-panel]_&]:-translate-x-[194px]"
+                ? "mx-auto w-full max-w-[1400px] [body[data-filters-panel]_&]:mx-0 [body[data-filters-panel]_&]:w-[calc(100%-313px)]"
                 : undefined
             }
             initial={{ opacity: 0 }}
@@ -630,19 +641,11 @@ export default function AvailableListings({
             transition={{ duration: 0.18 }}
           >
             <div
-              className={`flex items-center gap-2 mb-3 ${
-                !showSuggested
-                  ? "px-1"
-                  : mapHidden
-                    ? // Flush with the suggestions box, which is wider than the grid.
-                      "-ml-3"
-                    : "px-1 justify-between"
+              className={`flex items-center gap-2 mb-3 px-1 ${
+                showSuggested ? "justify-between" : ""
               }`}
             >
-              {/* With the map hidden the heading sits inside the suggestions' box. */}
-              {showSuggested && !mapHidden && (
-                <SuggestedHeading label={suggestedLabel} />
-              )}
+              {showSuggested && <SuggestedHeading label={suggestedLabel} />}
               <p className="text-xs font-semibold text-gray-500">
                 {resultCount}{" "}
                 {viewportBounds ? "listings in this area" : "Listings Found"}
@@ -678,9 +681,7 @@ export default function AvailableListings({
             ) : (
               <div
                 className={
-                  mapHidden
-                    ? "grid grid-cols-3 gap-x-[30px] gap-y-4"
-                    : "grid grid-cols-2 gap-3"
+                  mapHidden ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
                 }
               >
                 {visibleListings.map((listing) => (
@@ -714,12 +715,15 @@ export default function AvailableListings({
           setFilters={setFilters}
           handleReset={handleReset}
           onListingSelect={(listing) => {
+            setSelectedListing(listing);
+            // With a panel open, the pin only brings up its card on the map.
+            // The panel stays until that card is clicked, which replaces it.
+            if (expandedRef.current) return;
             pinClose.current = true;
             scrollAtSlideEnd.current = false;
-            setSelectedListing(listing);
             closePanel();
           }}
-          selectedListingId={expandedListing?._id || selectedListing?._id}
+          selectedListingId={selectedListing?._id || expandedListing?._id}
           searchLocation={searchLocation}
           onSearchLocationConsumed={handleSearchLocationConsumed}
           isActive={isDesktop}
@@ -729,7 +733,14 @@ export default function AvailableListings({
           panelSlideEnd={slideEnd}
           suggestedIds={suggestedIdSet}
         />
-        {selectedListing && !expandedListing && (
+        {/* Darkens the map while the side filters panel is open (it sets
+            data-filters-panel on the body, see TopFilterBar). It takes no
+            clicks, so the map can still be moved and its pins picked. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[15] bg-black opacity-0 transition-opacity duration-200 [body[data-filters-panel]_&]:opacity-20"
+        />
+        {selectedListing && selectedListing._id !== expandedListing?._id && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}

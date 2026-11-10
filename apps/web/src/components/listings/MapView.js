@@ -17,32 +17,56 @@ import { useRouter } from "next/navigation";
 import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
 import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 
-// Pin body for "Suggested for you" listings. Matches the swatch in
-// SuggestedStrip's heading (bg-[#A1000A]); change both together.
-const SUGGESTED_PIN_COLOR = "#A1000A";
-
-// Pin body and star fill for unavailable listings (Browse Listings design).
+// Pin colors (Browse Listings Figma).
+const AVAILABLE_PIN_COLOR = "#F71C1E";
 const UNAVAILABLE_PIN_COLOR = "#A3A3A3";
 const UNAVAILABLE_STAR_COLOR = "#E6E7EB";
-const AVAILABLE_PIN_COLOR = "#E8000B";
 
-// Pin shape shared by single and cluster pins.
+// Pin and star shapes from the Figma design: a flat 30 by 42 pin with a soft
+// drop shadow (lighter than the Figma's), the same size at every zoom. The star's top and bottom are
+// used to fill it from the bottom up by rating.
 const PIN_PATH =
-  "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
-// The scale lives on an inner wrapper because Mapbox owns the marker
-// element's own transform (it writes the lng/lat translate there each frame).
-// Scaling from the bottom center keeps the pin's tip on its coordinate.
-const WRAP_OPEN =
-  '<div style="width:35px;height:49px;transform-origin:bottom center;transform:scale(var(--pin-scale,1));will-change:transform">';
-const WRAP_CLOSE = "</div>";
+  "M30 15.191C30 29 15 42 15 42C15 42 0 29.936 0 15.191C0 6.801 6.716 0 15 0C23.284 0 30 6.801 30 15.191Z";
+const STAR_PATH =
+  "M6.398 13.684C6.009 13.73 5.853 14.21 6.14 14.475L10.209 18.238C10.326 18.347 10.378 18.508 10.347 18.664L9.267 24.1C9.191 24.483 9.6 24.78 9.941 24.589L14.778 21.882C14.917 21.804 15.086 21.804 15.225 21.882L20.06 24.589C20.402 24.78 20.81 24.483 20.734 24.1L19.654 18.664C19.623 18.508 19.675 18.347 19.792 18.238L23.86 14.476C24.148 14.21 23.992 13.73 23.604 13.684L18.1 13.031C17.942 13.012 17.805 12.913 17.738 12.768L15.417 7.736C15.253 7.381 14.748 7.381 14.585 7.736L12.263 12.768C12.197 12.913 12.059 13.012 11.901 13.031L6.398 13.684Z";
+const STAR_TOP = 7.47;
+const STAR_BOTTOM = 24.65;
+// "Suggested for you" pins are the normal pin with a gold sparkle badge on the
+// top right corner. SuggestedStrip's heading shows the same badge; change both
+// together.
+const SUGGESTED_BADGE =
+  '<circle cx="25.5" cy="4.5" r="5" fill="#F5B301"/><path d="M25.5 1.8l0.77 1.93 1.93 0.77-1.93 0.77-0.77 1.93-0.77-1.93-1.93-0.77 1.93-0.77z" fill="white"/>';
+// The pin you clicked keeps the flat design and is drawn larger.
+const SELECTED_PIN_SCALE = 1.3;
+// A pin under the pointer grows by this much, and eases back when it leaves.
+const HOVER_PIN_GROWTH = 1.1;
+
+// A pin is three nested boxes. Mapbox owns the marker element's own transform
+// (it writes the lng/lat translate there each frame), so the merge and split
+// motion runs on the first wrapper and the selected size and the shadow sit on
+// the second. Both scale from the bottom center, which keeps the pin's tip on
+// its coordinate.
+function pinMarkup(color, inner, scale = 1) {
+  return `<div style="width:30px;height:42px;transform-origin:bottom center"><div style="width:30px;height:42px;transform-origin:bottom center;transform:scale(${scale});transition:transform 150ms ease-out;filter:drop-shadow(1px 2px 2px rgba(0,0,0,0.18))"><svg width="30" height="42" viewBox="0 0 30 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible">
+    <path d="${PIN_PATH}" fill="${color}"/>
+    ${inner}
+  </svg></div></div>`;
+}
 
 // Listings whose pins would sit closer than this on screen merge into one
-// numbered pin. Roughly one pin width. Clustering stops at CLUSTER_MAX_ZOOM so
+// numbered pin. One pin width. Clustering stops at CLUSTER_MAX_ZOOM so
 // listings at the same spot can always be told apart by zooming in; a cluster
 // click zooms in by CLUSTER_ZOOM_STEP levels.
-const CLUSTER_RADIUS_PX = 35;
+const CLUSTER_RADIUS_PX = 30;
 const CLUSTER_MAX_ZOOM = 17;
 const CLUSTER_ZOOM_STEP = 2;
+
+// How long a pin takes to slide into or out of a group, or to appear.
+const PIN_MOTION = { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+// Stacking order: a pin further south gets a higher z-index, at about a metre
+// of latitude per step. The selected pin sits above them all.
+const pinZIndex = (lat) => Math.round((90 - lat) * 100000);
+const TOP_PIN_Z_INDEX = 20000000;
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -51,22 +75,6 @@ const WASHU_CAMPUS_CENTER = {
   longitude: -90.3053,
   latitude: 38.6489,
 };
-
-// Pins shrink as the map zooms out so dense blocks overlap less, but far more
-// slowly than the map itself (which halves in scale per zoom level) — a pin is
-// still readable when the whole metro is in view. Exponent 1 would shrink in
-// lockstep with the map; 0.25 keeps pins comfortably oversized when zoomed out.
-const PIN_FULL_SIZE_ZOOM = 15.5;
-const PIN_SHRINK_EXPONENT = 0.25;
-const PIN_MIN_SCALE = 0.7;
-
-function pinScaleForZoom(zoom) {
-  if (zoom >= PIN_FULL_SIZE_ZOOM) return 1;
-  return Math.max(
-    PIN_MIN_SCALE,
-    Math.pow(2, PIN_SHRINK_EXPONENT * (zoom - PIN_FULL_SIZE_ZOOM))
-  );
-}
 
 // Initial fit covers the bulk of the listings rather than their full extent:
 // a handful of far-flung ones would otherwise pull the camera way back and
@@ -88,9 +96,8 @@ function percentile(values, p) {
 }
 
 // Groups listings whose pins overlap at the map's current zoom. Returns
-// { members, lng, lat } per pin (lng/lat is the members' average), north first
-// so southern pins are added last and render on top. The pinned listing (the
-// selected one) is never merged, so its highlighted pin stays visible.
+// { members, lng, lat } per pin (lng/lat is the members' average). The pinned
+// listing (the selected one) is never merged, so its larger pin stays visible.
 function clusterListings(map, listings, pinnedId) {
   const toGroup = (members) => ({
     members,
@@ -119,24 +126,25 @@ function clusterListings(map, listings, pinnedId) {
     }
     groups.push(toGroup(members));
   });
-  return groups.sort((a, b) => b.lat - a.lat);
+  return groups;
 }
 
 // Pin for two or more merged listings: the pin shape with the count where the
-// star would be. Grey only when every listing is unavailable, else the
-// suggested color if any listing is suggested, else the normal red.
+// star would be. Grey only when every listing is unavailable, else the normal
+// red, with the suggested badge if any listing in it is suggested.
 function buildClusterPinElement(count, isUnavailable, hasSuggested) {
-  const color = isUnavailable
-    ? UNAVAILABLE_PIN_COLOR
-    : hasSuggested
-      ? SUGGESTED_PIN_COLOR
-      : AVAILABLE_PIN_COLOR;
+  const color = isUnavailable ? UNAVAILABLE_PIN_COLOR : AVAILABLE_PIN_COLOR;
+  const badge = hasSuggested && !isUnavailable ? SUGGESTED_BADGE : "";
+  // The Figma count is 20px bold with its baseline at 25; longer counts shrink
+  // to fit the pin and keep the same vertical center.
+  const fontSize = count > 99 ? 12 : count > 9 ? 16 : 20;
+  const baseline = (17.75 + fontSize * 0.3636).toFixed(2);
   const el = document.createElement("div");
-  el.style.cssText = "width:35px;height:49px;user-select:none;";
-  el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="${PIN_PATH}" fill="${color}" stroke="${color}" stroke-width="2"/>
-    <text x="17.5" y="19.5" text-anchor="middle" dominant-baseline="central" fill="white" font-size="${count > 99 ? 12 : 18}" font-weight="700">${count}</text>
-  </svg>${WRAP_CLOSE}`;
+  el.style.cssText = "width:30px;height:42px;user-select:none;";
+  el.innerHTML = pinMarkup(
+    color,
+    `<text x="15" y="${baseline}" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="700">${count}</text>${badge}`
+  );
   return el;
 }
 
@@ -168,7 +176,7 @@ function MapViewInner({
   // Ticks each time the listings column finishes its width slide.
   panelSlideEnd = 0,
   // Set of listing ids in the browse "Suggested for you" strip; their pins get
-  // a deeper red body (same size) so the strip can be found on the map.
+  // a gold badge so the strip can be found on the map.
   suggestedIds = null,
 }) {
   const router = useRouter();
@@ -182,6 +190,10 @@ function MapViewInner({
   // slide ends (see the panelSlideEnd effect).
   const pendingPinRef = useRef(null);
   const listingsRef = useRef(listings);
+  // Pins outlive a re-render of the listings (see renderPins), so a pin's click
+  // reads the current handler and the current listing object from refs.
+  const onListingSelectRef = useRef(onListingSelect);
+  onListingSelectRef.current = onListingSelect;
   // Set synchronously at the top of the panelExpanded effect so the
   // selectedListingId effect (which runs after, in definition order) can
   // read it and skip its own flyTo.
@@ -355,18 +367,9 @@ function MapViewInner({
         }
       });
 
-      // Drive pin size from the zoom level via one CSS variable on the
-      // container — every pin inherits it, so no per-marker work per frame.
-      const syncPinScale = () => {
-        const container = mapContainerRef.current;
-        if (!container || !mapRef.current) return;
-        container.style.setProperty(
-          "--pin-scale",
-          pinScaleForZoom(mapRef.current.getZoom()).toFixed(3)
-        );
-      };
-      syncPinScale();
-      mapRef.current.on("zoom", syncPinScale);
+      // Pins carry a z-index (south on top). Keep that stacking inside the
+      // marker layer so pins never cover the map controls or the buttons.
+      mapRef.current.getCanvasContainer().style.isolation = "isolate";
     }
 
     if (!heroMode) {
@@ -425,11 +428,12 @@ function MapViewInner({
     };
   }, [isActive, heroMode, showRouteToCampus, hideRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Builds an inline-SVG pin element with a dynamically clipped star fill.
-  // rating: exact float (e.g. 3.7) or null for no-review pins
-  // isActive: true = lighter/brighter active color scheme
-  // isSuggested: deeper red body for "Suggested for you" listings
-  // isUnavailable: grey body and star, taking precedence over the red variants
+  // Builds a flat pin element for one listing (Figma design).
+  // rating: exact float (e.g. 3.7) or null; a rated pin shows a star filled
+  //   from the bottom up by the rating, an unrated one a dot
+  // isActive: the selected pin, same design drawn larger
+  // isSuggested: adds the gold badge for "Suggested for you" listings
+  // isUnavailable: grey body and star, with no badge
   function buildPinSVGElement(
     rating,
     listingId,
@@ -438,80 +442,40 @@ function MapViewInner({
     isUnavailable = false
   ) {
     const el = document.createElement("div");
-    el.style.cssText = "width:35px;height:49px;";
-
-    const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
-    const hasRating = rating != null && rating > 0;
+    el.style.cssText = "width:30px;height:42px;";
 
     const bodyColor = isUnavailable
       ? UNAVAILABLE_PIN_COLOR
-      : isSuggested
-        ? SUGGESTED_PIN_COLOR
-        : AVAILABLE_PIN_COLOR;
+      : AVAILABLE_PIN_COLOR;
+    const badge = isSuggested && !isUnavailable ? SUGGESTED_BADGE : "";
+    const markColor = isUnavailable ? UNAVAILABLE_STAR_COLOR : "white";
+    const scale = isActive ? SELECTED_PIN_SCALE : 1;
 
-    const STAR_PATH =
-      "M17.0293 8.79004C17.1878 8.34883 17.8122 8.34883 17.9707 8.79004L20.4404 15.668C20.6507 16.2534 21.2013 16.6479 21.8232 16.6602L29.2773 16.8076C29.7553 16.817 29.9486 17.427 29.5635 17.71L23.6768 22.0293C23.1599 22.4086 22.9415 23.0747 23.1328 23.6865L25.2832 30.5664C25.4241 31.0173 24.9192 31.3935 24.5273 31.1299L18.3379 26.9619C17.8315 26.621 17.1685 26.621 16.6621 26.9619L10.4727 31.1299C10.0808 31.3935 9.57593 31.0173 9.7168 30.5664L11.8672 23.6865C12.0585 23.0747 11.8401 22.4086 11.3232 22.0293L5.43652 17.71C5.05135 17.427 5.24468 16.817 5.72266 16.8076L13.1768 16.6602C13.7987 16.6479 14.3493 16.2534 14.5596 15.668L17.0293 8.79004Z";
-
-    if (!hasRating) {
-      const pinBodyStop2 = isActive ? "#FFDFDF" : bodyColor;
-      const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
-      const circleFill = isActive ? "#FFA2A2" : "white";
-      el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
-            <stop stop-color="white"/>
-            <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
-          </linearGradient>
-        </defs>
-        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="${bodyColor}" stroke-width="2"/>
-        <circle cx="17.5" cy="20" r="5.5" fill="${circleFill}" opacity="0.9"/>
-      </svg>${WRAP_CLOSE}`;
-    } else {
-      // Star y-bounds: top≈8.34, bottom≈31.4, height≈23. Clip from bottom up for fractional fill.
-      const STAR_BOTTOM = 31.4;
-      const STAR_HEIGHT = 23.06;
-      const fillHeight = ((rating / 5) * STAR_HEIGHT).toFixed(2);
-      const clipY = (STAR_BOTTOM - parseFloat(fillHeight)).toFixed(2);
-
-      const pinBodyStop2 = isActive ? "#FFDFDF" : bodyColor;
-      const pinBodyOpacity = isActive ? ' stop-opacity="0.9"' : "";
-      // Every rated star fills with a gold gradient pinned to the full star, so the
-      // gold tip only shows as the fill nears the top (a 5.0 shows all of it, a 2.5
-      // almost none). The active/clicked state keeps the old look (pink star on a
-      // lighter body), so gold only applies when not active.
-      const isGold = !isActive && !isUnavailable;
-      const goldGradient = `<linearGradient id="sg_${safeId}" x1="17.5" y1="${STAR_BOTTOM - STAR_HEIGHT}" x2="17.5" y2="${STAR_BOTTOM}" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#D69121"/>
-            <stop offset="0.115" stop-color="#F7D14A"/>
-            <stop offset="0.236" stop-color="#F7EF84"/>
-            <stop offset="0.394" stop-color="#FFFDEB"/>
-          </linearGradient>`;
-      const starFill = isGold
-        ? `url(#sg_${safeId})`
-        : isUnavailable
-          ? UNAVAILABLE_STAR_COLOR
-          : "#FFA2A2";
-      // The outline stays cream over the unfilled part; the filled part gets a
-      // matching gradient stroke so its edge doesn't show a cream rim.
-      const outlineStroke = isActive ? "#FFA2A2" : "#FFFFF6";
-
-      el.innerHTML = `${WRAP_OPEN}<svg width="35" height="49" viewBox="0 0 35 49" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="pg_${safeId}" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
-            <stop stop-color="white"/>
-            <stop offset="0.18" stop-color="${pinBodyStop2}"${pinBodyOpacity}/>
-          </linearGradient>
-          ${isGold ? goldGradient : ""}
-          <clipPath id="sc_${safeId}">
-            <rect x="4" y="${clipY}" width="27" height="${parseFloat(fillHeight) + 0.5}"/>
-          </clipPath>
-        </defs>
-        <path d="${PIN_PATH}" fill="url(#pg_${safeId})" stroke="${bodyColor}" stroke-width="2"/>
-        <path d="${STAR_PATH}" fill="none" stroke="${outlineStroke}" stroke-width="0.75"/>
-        <path d="${STAR_PATH}" fill="${starFill}" stroke="${starFill}" stroke-width="0.75" clip-path="url(#sc_${safeId})"/>
-      </svg>${WRAP_CLOSE}`;
+    if (!(rating != null && rating > 0)) {
+      el.innerHTML = pinMarkup(
+        bodyColor,
+        `<circle cx="15" cy="15.2" r="4.5" fill="${markColor}"/>${badge}`,
+        scale
+      );
+      return el;
     }
 
+    // The outline is always whole; the fill is the same star clipped from the
+    // bottom up to the rating (a 5.0 fills it, a 2.5 fills the lower half).
+    const safeId = String(listingId).replace(/[^a-zA-Z0-9]/g, "_");
+    const fillHeight = (Math.min(rating, 5) / 5) * (STAR_BOTTOM - STAR_TOP);
+    const clipY = (STAR_BOTTOM - fillHeight).toFixed(2);
+    el.innerHTML = pinMarkup(
+      bodyColor,
+      `<defs>
+        <clipPath id="sc_${safeId}">
+          <rect x="4" y="${clipY}" width="22" height="${(fillHeight + 1).toFixed(2)}"/>
+        </clipPath>
+      </defs>
+      <path d="${STAR_PATH}" stroke="${markColor}" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${STAR_PATH}" fill="${markColor}" stroke="${markColor}" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#sc_${safeId})"/>${badge}`,
+      scale
+    );
     return el;
   }
 
@@ -527,15 +491,94 @@ function MapViewInner({
     const map = mapRef.current;
     if (!map) return;
 
-    // Update the markers. Run again after every zoom (which listings merge into
-    // a cluster depends on it) and on every selection change (the selected
-    // listing is never merged). A pin that comes out the same, with the same
-    // listings and the same highlight, is kept as it is; only the others are
-    // removed or built, so a zoom or a selection does not rebuild every pin.
+    // Update the markers. Runs on every frame of a zoom (which listings merge
+    // into a cluster depends on it), so pins group and split live, on every
+    // selection change (the selected listing is never merged) and whenever the
+    // listings change. A pin that comes out the same, with the same listings
+    // and the same look, is kept as it is; only the others are removed or
+    // built. So a new listings array holding the same listings (saving one
+    // re-runs the filters) leaves every pin where it is.
+    const reduceMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    // Pins still fading out. Mapbox keeps positioning them until removed.
+    const leaving = new Set();
+    const motionEl = (marker) => marker.getElement().firstElementChild;
+    // Screen offset from one pin to another, as a CSS translate.
+    const offsetTo = (from, to) => {
+      const a = map.project(from.getLngLat());
+      const b = map.project(to.getLngLat());
+      return `translate(${(b.x - a.x).toFixed(1)}px, ${(b.y - a.y).toFixed(1)}px)`;
+    };
+    const sizeOf = (marker) => (marker._selected ? SELECTED_PIN_SCALE : 1);
+
+    // A new pin. `source` is the pin its first listing was in before. The same
+    // listing changing state (selected or not) grows or shrinks in place; a pin
+    // split off a larger group slides out of it; anything else fades in.
+    const animateIn = (marker, source) => {
+      if (reduceMotion) return;
+      if (source && !source._cluster && !marker._cluster) {
+        motionEl(marker).animate(
+          [
+            { transform: `scale(${sizeOf(source) / sizeOf(marker)})` },
+            { transform: "none" },
+          ],
+          PIN_MOTION
+        );
+        return;
+      }
+      const split = source && source._members.length > marker._members.length;
+      motionEl(marker).animate(
+        [
+          {
+            opacity: 0,
+            transform: `${split ? offsetTo(marker, source) : ""} scale(0.6)`,
+          },
+          { opacity: 1, transform: "none" },
+        ],
+        PIN_MOTION
+      );
+    };
+
+    // A pin that is going away. `target` is the pin its first listing is in
+    // now. A pin joining a larger group slides into it while fading; anything
+    // else fades where it is.
+    const animateOut = (marker, target) => {
+      const sameListing = target && !target._cluster && !marker._cluster;
+      if (reduceMotion || sameListing) {
+        marker.remove();
+        return;
+      }
+      const merge = target && target._members.length > marker._members.length;
+      marker.getElement().style.pointerEvents = "none";
+      leaving.add(marker);
+      const done = () => {
+        leaving.delete(marker);
+        marker.remove();
+      };
+      const animation = motionEl(marker).animate(
+        [
+          { opacity: 1, transform: "none" },
+          {
+            opacity: 0,
+            transform: `${merge ? offsetTo(marker, target) : ""} scale(0.6)`,
+          },
+        ],
+        { ...PIN_MOTION, fill: "forwards" }
+      );
+      animation.onfinish = done;
+      animation.oncancel = done;
+    };
+
     const renderPins = () => {
       const selectedId = selectedRef.current;
       const previous = new Map((map.markers ?? []).map((m) => [m._key, m]));
-      const added = new Set();
+      // Which pin each listing was in before this render.
+      const cameFrom = new Map();
+      previous.forEach((m) =>
+        m._members.forEach((l) => cameFrom.set(l._id, m))
+      );
+      const added = [];
 
       // Hidden unavailable listings take no part in clusters (count or color).
       const shown = listings.filter(
@@ -546,41 +589,59 @@ function MapViewInner({
           const isCluster = members.length > 1;
           const listing = members[0];
           const isSelected = !isCluster && listing._id === selectedId;
+          const exactRating =
+            (listing.rating || 0) > 0 ? listing.rating || 0 : null;
+          const allUnavailable = members.every((l) => l.unavailable);
+          const anySuggested = members.some((l) =>
+            suggestedIds?.has(String(l._id))
+          );
+          // The listings in the pin plus everything that changes how it looks.
+          const look = `${allUnavailable}:${anySuggested}`;
           const key = isCluster
-            ? members.map((l) => l._id).join(",")
-            : `${listing._id}:${isSelected}`;
+            ? `${members.map((l) => l._id).join(",")}:${look}`
+            : `${listing._id}:${isSelected}:${exactRating}:${look}`;
           const kept = previous.get(key);
           if (kept) {
             previous.delete(key);
+            kept._members = members;
             return kept;
           }
-          const exactRating =
-            (listing.rating || 0) > 0 ? listing.rating || 0 : null;
           const markerEl = isCluster
-            ? buildClusterPinElement(
-                members.length,
-                members.every((l) => l.unavailable),
-                members.some((l) => suggestedIds?.has(String(l._id)))
-              )
+            ? buildClusterPinElement(members.length, allUnavailable, anySuggested)
             : buildPinSVGElement(
                 exactRating,
                 listing._id,
                 isSelected,
-                !!suggestedIds?.has(String(listing._id)),
-                !!listing.unavailable
+                anySuggested,
+                allUnavailable
               );
           markerEl.style.cursor =
             isCluster || onListingSelect ? "pointer" : "default";
+          // Grow under the pointer, on the wrapper that holds the pin's size
+          // (it has the transition, so the growth and the shrink are smooth).
+          const sizeEl = markerEl.firstElementChild.firstElementChild;
+          const baseScale = isSelected ? SELECTED_PIN_SCALE : 1;
+          markerEl.addEventListener("mouseenter", () => {
+            sizeEl.style.transform = `scale(${baseScale * HOVER_PIN_GROWTH})`;
+          });
+          markerEl.addEventListener("mouseleave", () => {
+            sizeEl.style.transform = `scale(${baseScale})`;
+          });
           const marker = new mapboxgl.Marker({
             element: markerEl,
             anchor: "bottom",
           })
             .setLngLat([lng, lat])
             .addTo(map);
+          // Southern pins on top of northern ones, single or grouped alike;
+          // only the selected pin sits above them all. Set after addTo, on the
+          // element Mapbox positions.
+          markerEl.style.zIndex = isSelected ? TOP_PIN_Z_INDEX : pinZIndex(lat);
           marker._key = key;
+          marker._members = members;
           marker._cluster = isCluster;
           marker._selected = isSelected;
-          added.add(marker);
+          added.push(marker);
           if (isCluster) {
             markerEl.addEventListener("click", () => {
               map.easeTo({
@@ -595,37 +656,31 @@ function MapViewInner({
           } else if (onListingSelect) {
             markerEl.addEventListener("click", () => {
               pinClickedRef.current = true;
-              onListingSelect(listing);
+              onListingSelectRef.current?.(
+                listingsRef.current.find((l) => l._id === listing._id) ??
+                  listing
+              );
             });
           }
           return marker;
         }
       );
-      previous.forEach((marker) => marker.remove());
 
-      // Stack the pins: southern ones on top of northern ones (the order
-      // clusterListings returns), the selected one on top of all. With nothing
-      // selected the single pins also sit above the clusters, as they always
-      // have. The pins that were kept are already in that order, unless that
-      // rule just changed; the new ones were added last, so each is put in
-      // front of the pin that follows it.
-      const singlesOver = selectedId === undefined;
-      const rank = (m) => (m._selected ? 2 : singlesOver && !m._cluster ? 1 : 0);
-      const stack = [...map.markers].sort((a, b) => rank(a) - rank(b));
-      const ruleChanged = map._singlesOver !== singlesOver;
-      map._singlesOver = singlesOver;
-      const container = map.getCanvasContainer();
-      let next = null;
-      for (let i = stack.length - 1; i >= 0; i--) {
-        const el = stack[i].getElement();
-        if ((ruleChanged || added.has(stack[i])) && el.nextSibling !== next)
-          container.insertBefore(el, next);
-        next = el;
-      }
+      // Which pin each listing is in now, then move the changed pins.
+      const wentTo = new Map();
+      map.markers.forEach((m) =>
+        m._members.forEach((l) => wentTo.set(l._id, m))
+      );
+      added.forEach((marker) =>
+        animateIn(marker, cameFrom.get(marker._members[0]._id))
+      );
+      previous.forEach((marker) =>
+        animateOut(marker, wentTo.get(marker._members[0]._id))
+      );
     };
     renderPinsRef.current = renderPins;
     renderPins();
-    map.on("zoomend", renderPins);
+    map.on("zoom", renderPins);
 
     // Zoom to fit all visible listings whenever the SET of listings changes.
     // Keyed on the ids, not the array: the feed refetch after first paint hands
@@ -742,13 +797,12 @@ function MapViewInner({
 
     return () => {
       renderPinsRef.current = null;
-      map.off("zoomend", renderPins);
-      // Cleanup only markers added by this effect. Do NOT remove the map instance here
-      if (map.markers) {
-        map.markers.forEach((marker) => marker.remove());
-        map.markers = [];
-      }
-      // Keep global helpers and the map alive; map removal is handled by the mount/unmount effect
+      map.off("zoom", renderPins);
+      leaving.forEach((marker) => marker.remove());
+      leaving.clear();
+      // The pins stay on the map: the next run keeps the ones that did not
+      // change and only moves the rest. They go with the map itself, whose
+      // removal is handled by the mount/unmount effect.
     };
   }, [
     isActive,
@@ -831,7 +885,7 @@ function MapViewInner({
     map.flyTo({ ...target, duration: 700, essential: true });
   }, [panelSlideEnd]);
 
-  // A new selection: render the pins again, which highlights the selected one,
+  // A new selection: render the pins again, which draws the selected one larger,
   // lifts it above its neighbours and pulls it out of any cluster. Runs in hero
   // mode too: the homepage map shows the same pins and pops the same card on a
   // click, so the pin you picked is the one lit up there as well.
@@ -896,6 +950,8 @@ function MapViewInner({
       const el = document.createElement("div");
       el.style.cssText =
         "width:14px;height:14px;background:#1a1a1a;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:default;";
+      // Above every listing pin, so the searched spot is never hidden by one.
+      el.style.zIndex = TOP_PIN_Z_INDEX + 1;
       map._searchMarker = new mapboxgl.Marker({ element: el })
         .setLngLat([lng, lat])
         .addTo(map);
