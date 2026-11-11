@@ -5,8 +5,8 @@
  *
  * A listing with several units gets a selector, and its unit rows show the
  * selected unit only. Within that unit, a value that differs between its lease
- * offerings is shown as the range across them, never a single pick. Nothing is
- * marked as better: the comparison is neutral.
+ * offerings is shown as the range across them, never a single pick. The winner of
+ * the objective rows gets a small "Better" pill (see compareBest.js).
  */
 "use client";
 
@@ -16,6 +16,7 @@ import { ArrowLeft, Check, ChevronLeft, ChevronRight, Minus, X } from "lucide-re
 import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
 import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS } from "@/components/listings/AmenityPill";
+import { Winner, bestRows } from "@/components/listings/compareBest";
 import { availabilityLabel } from "@/utils/availability";
 import { durationLabel } from "@/components/listings/LeaseOptions";
 import {
@@ -31,6 +32,14 @@ function unitTabs(listing) {
   const tabs = buildUnitTabs(units);
   // A listing with no available unit (greyed out in the grid) still shows its units.
   return tabs.length ? tabs : buildUnitTabs(units.map((u) => ({ ...u, available: true })));
+}
+
+// The unit a card shows when it opens. It is the unit that satisfied the active
+// filters (as the detail panel does), or the first unit when nothing was filtered.
+function initialPick(listing, tabs) {
+  const matched = listing?.matchedUnitId;
+  const i = matched ? tabs.findIndex((tab) => tab.unit.id === matched) : -1;
+  return i > 0 ? i : 0;
 }
 
 // The unit rows are the selected unit's; the building rows are the listing's.
@@ -179,16 +188,7 @@ const ROW = "flex items-center border-t border-[#e6e7eb] py-4";
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
 // so both columns keep the selector's height and their rows line up. `rows` is the
 // grid row span of the table.
-function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
-  // Which unit this card shows. It opens on the unit that satisfied the active
-  // filters (as the detail panel does), or on the first unit when nothing was
-  // filtered. The slot is keyed by listing, so a removed or replaced listing
-  // starts again from there.
-  const [picked, setPicked] = useState(() => {
-    const matched = listing?.matchedUnitId;
-    const i = matched ? tabs.findIndex((tab) => tab.unit.id === matched) : -1;
-    return i > 0 ? i : 0;
-  });
+function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, onRemove }) {
   if (!listing) {
     return (
       <div className="min-w-0 p-3.5" style={{ gridRow: rows }}>
@@ -250,7 +250,7 @@ function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
             {tabs.length > 1 && (
               <>
                 <p className="text-xs text-black">{tabs.length} units</p>
-                <UnitPills tabs={tabs} picked={picked} onPick={setPicked} />
+                <UnitPills tabs={tabs} picked={picked} onPick={onPick} />
               </>
             )}
           </div>
@@ -258,7 +258,7 @@ function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
       </div>
       {compareRows(listing, tabs[picked]?.unit).map(([label, value]) => (
         <div key={label} className={`${ROW} whitespace-pre-line px-6 text-base font-medium text-[#495564]`}>
-          {value}
+          {best.has(label) ? <Winner>{value}</Winner> : value}
         </div>
       ))}
     </div>
@@ -348,6 +348,21 @@ function ListSection({ title, a, b }) {
 
 export default function ComparePanel({ slots, onRemove, onClose }) {
   const tabs = slots.map((l) => l && unitTabs(l));
+  // The unit each card shows is kept here, not in the card, because the winners
+  // are found by comparing the two selected units. A slot's pick is dropped when its
+  // listing leaves, so a removed or replaced listing starts again from its
+  // initial unit.
+  const [picks, setPicks] = useState({});
+  const pickKey = (i) => `${i}-${slots[i]?._id}`;
+  const pickedOf = (i) => picks[pickKey(i)] ?? initialPick(slots[i], tabs[i]);
+  useEffect(() => {
+    const live = new Set(slots.map((l, i) => l && `${i}-${l._id}`));
+    setPicks((p) => {
+      const kept = Object.entries(p).filter(([k]) => live.has(k));
+      return kept.length === Object.keys(p).length ? p : Object.fromEntries(kept);
+    });
+  }, [slots]);
+  const best = bestRows(slots, slots.map((l, i) => l && tabs[i][pickedOf(i)]?.unit));
   const reserve = tabs.some((t) => t?.length > 1);
   // The title and hint of an empty slot: the next step is in the grid on the left.
   const empty = slots.some(Boolean)
@@ -431,6 +446,9 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
                   key={`${i}-${listing?._id}`}
                   listing={listing}
                   tabs={tabs[i]}
+                  picked={listing ? pickedOf(i) : 0}
+                  onPick={(n) => setPicks((p) => ({ ...p, [pickKey(i)]: n }))}
+                  best={best[i]}
                   reserve={reserve}
                   rows={rows}
                   empty={empty}

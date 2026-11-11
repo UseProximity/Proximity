@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-11T15:21:21.133Z",
-  "count": 199,
+  "_generated": "2026-11-11T23:17:45.884Z",
+  "count": 200,
   "components": [
     {
       "name": "ErrorReporter",
@@ -686,6 +686,11 @@
     {
       "name": "lookupPlace",
       "file": "src/components/listings/add/lookupPlace.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "compareBest",
+      "file": "src/components/listings/compareBest.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
