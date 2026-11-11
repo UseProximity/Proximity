@@ -10,9 +10,9 @@
  */
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Minus, X } from "lucide-react";
 import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
 import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS } from "@/components/listings/AmenityPill";
@@ -171,9 +171,15 @@ function UnitPills({ tabs, picked, onPick }) {
   );
 }
 
+// The cells of the comparison table. Each column is a subgrid over the table's
+// rows, so a row is as tall as its taller cell in every column.
+const COLUMNS = "grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]";
+const ROW = "flex items-center border-t border-[#e6e7eb] py-4";
+
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
-// so both cards keep the selector's height and their rows line up.
-function Slot({ listing, tabs, reserve, empty, onRemove }) {
+// so both columns keep the selector's height and their rows line up. `rows` is the
+// grid row span of the table.
+function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
   // Which unit this card shows. It opens on the unit that satisfied the active
   // filters (as the detail panel does), or on the first unit when nothing was
   // filtered. The slot is keyed by listing, so a removed or replaced listing
@@ -185,17 +191,17 @@ function Slot({ listing, tabs, reserve, empty, onRemove }) {
   });
   if (!listing) {
     return (
-      // The padding is on the inner box, not here: a flex item's own padding and
-      // border change its share of the row, and this card must match the filled one.
-      <div className="flex min-w-0 flex-1 justify-center rounded-[20px] border border-dashed border-red-200 bg-[#fffafa]">
-        <div className="flex flex-col items-center gap-4 px-8 pt-28 text-center">
-          <div className="relative flex h-16 w-16 items-center justify-center">
-            <span className="absolute inset-0 rounded-full bg-red-100/70 motion-safe:animate-pulse" />
-            <ArrowLeft className="relative h-7 w-7 text-red-600" />
-          </div>
-          <div>
-            <p className="text-base font-bold text-black">{empty[0]}</p>
-            <p className="mt-1 max-w-[16rem] text-balance text-sm text-gray-500">{empty[1]}</p>
+      <div className="min-w-0 p-3.5" style={{ gridRow: rows }}>
+        <div className="flex h-full justify-center rounded-[20px] border border-dashed border-red-200 bg-[#fffafa]">
+          <div className="flex flex-col items-center gap-4 px-8 pt-28 text-center">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-red-100/70 motion-safe:animate-pulse" />
+              <ArrowLeft className="relative h-7 w-7 text-red-600" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-black">{empty[0]}</p>
+              <p className="mt-1 max-w-[16rem] text-balance text-sm text-gray-500">{empty[1]}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -204,54 +210,55 @@ function Slot({ listing, tabs, reserve, empty, onRemove }) {
   const { title, subtitle } = getListingHeading(listing);
   const image = listing.images?.[0];
   return (
-    <div className="min-w-0 flex-1 overflow-hidden rounded-[20px] border border-[#e6e7eb] bg-white">
-      <div className="relative m-2 aspect-[363/164] overflow-hidden rounded-t-[15px] bg-gray-100">
-        {image ? (
-          <Image src={image} alt={listing.address} fill sizes="30vw" priority className="object-cover" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-            No image
+    <div className="grid min-w-0 grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
+      <div className="min-w-0">
+        <div className="relative m-2 aspect-[363/164] overflow-hidden rounded-t-[15px] bg-gray-100">
+          {image ? (
+            <Image src={image} alt={listing.address} fill sizes="30vw" priority className="object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+              No image
+            </div>
+          )}
+          <button
+            onClick={onRemove}
+            aria-label="Remove from comparison"
+            className="absolute left-2 top-2 rounded-full border border-white/50 bg-white/90 p-1 text-gray-600 shadow-md transition-colors hover:text-gray-900"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          {/* The heart of the grid cards, same place and same behaviour. */}
+          <div className="absolute right-2 top-2 rounded-full border border-white/50 bg-white/90 p-0.5 shadow-xl backdrop-blur-md">
+            <HeartIcon listingId={listing._id} size="sm" />
+          </div>
+        </div>
+        <div className="px-4 pb-4 pt-1">
+          <h3 className="truncate text-base font-bold text-black">{title}</h3>
+          <p className="truncate text-xs font-medium text-[#404040]">{subtitle}</p>
+          {/* New tab, so the comparison (kept only in memory) is not lost. */}
+          <a
+            href={`/listings/${listing._id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            View listing
+          </a>
+        </div>
+        {reserve && (
+          <div className="h-14 px-4 pt-1">
+            {tabs.length > 1 && (
+              <>
+                <p className="text-xs text-black">{tabs.length} units</p>
+                <UnitPills tabs={tabs} picked={picked} onPick={setPicked} />
+              </>
+            )}
           </div>
         )}
-        <button
-          onClick={onRemove}
-          aria-label="Remove from comparison"
-          className="absolute left-2 top-2 rounded-full border border-white/50 bg-white/90 p-1 text-gray-600 shadow-md transition-colors hover:text-gray-900"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-        {/* The heart of the grid cards, same place and same behaviour. */}
-        <div className="absolute right-2 top-2 rounded-full border border-white/50 bg-white/90 p-0.5 shadow-xl backdrop-blur-md">
-          <HeartIcon listingId={listing._id} size="sm" />
-        </div>
       </div>
-      <div className="px-4 pb-4 pt-1">
-        <h3 className="truncate text-base font-bold text-black">{title}</h3>
-        <p className="truncate text-xs font-medium text-[#404040]">{subtitle}</p>
-        {/* New tab, so the comparison (kept only in memory) is not lost. */}
-        <a
-          href={`/listings/${listing._id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 inline-block rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
-        >
-          View listing
-        </a>
-      </div>
-      {reserve && (
-        <div className="h-14 px-4 pt-1">
-          {tabs.length > 1 && (
-            <>
-              <p className="text-xs text-black">{tabs.length} units</p>
-              <UnitPills tabs={tabs} picked={picked} onPick={setPicked} />
-            </>
-          )}
-        </div>
-      )}
-      {compareRows(listing, tabs[picked]?.unit).map(([label, value], i) => (
-        <div key={label} className={`px-6 py-4 ${i % 2 === 0 ? "bg-[#fff9f9]" : ""}`}>
-          <p className="text-xs text-black">{label}</p>
-          <p className="mt-1 whitespace-pre-line text-base font-medium text-[#495564]">{value}</p>
+      {compareRows(listing, tabs[picked]?.unit).map(([label, value]) => (
+        <div key={label} className={`${ROW} whitespace-pre-line px-6 text-base font-medium text-[#495564]`}>
+          {value}
         </div>
       ))}
     </div>
@@ -273,43 +280,50 @@ function Pills({ items }) {
   );
 }
 
-// What the two listings share, shown once, then what only each has. An empty
-// list almost always means "not listed", not "none", so when a listing lists
-// nothing no overlap or difference is claimed: it shows "Not listed" and the
-// other shows its own items.
+function Mark({ has }) {
+  return has ? (
+    <Check role="img" aria-label="Has it" className="h-4 w-4 text-gray-900" />
+  ) : (
+    <Minus role="img" aria-label="Not listed" className="h-4 w-4 text-gray-400" />
+  );
+}
+
+// A section of the table: what the two listings share, shown once, then a row per
+// item only one of them has. An empty list almost always means "not listed", not
+// "none", so when a listing lists nothing no overlap is claimed: the other
+// listing's items each get a check, and this one a dash.
 function ListSection({ title, a, b }) {
-  const notListed = <p className="text-sm text-gray-500">Not listed</p>;
-  const mixed = a.length > 0 && b.length > 0;
-  const both = mixed ? a.filter((x) => b.includes(x)) : [];
-  const only = mixed ? [a.filter((x) => !b.includes(x)), b.filter((x) => !a.includes(x))] : [a, b];
+  const both = a.length && b.length ? a.filter((x) => b.includes(x)) : [];
+  const items = [...new Set([...a, ...b])].filter((x) => !both.includes(x));
+  const label = `${ROW} px-4 text-xs text-black`;
   return (
-    <div className="px-6 py-4">
-      <h3 className="text-base font-bold text-black">{title}</h3>
+    <>
+      <h3 className={`${ROW} col-span-3 bg-[#f9fafb] px-4 py-3 text-base font-bold text-black`}>{title}</h3>
       {!a.length && !b.length ? (
-        <div className="mt-2">{notListed}</div>
+        <p className={`${ROW} col-span-3 px-4 text-sm text-gray-500`}>Not listed</p>
       ) : (
         <>
           {both.length > 0 && (
-            <div className="mt-2">
-              <p className="mb-2 text-xs text-black">Both have</p>
-              <Pills items={both} />
-            </div>
-          )}
-          {(!mixed || only.some((items) => items.length)) && (
-            <div className="mt-3">
-              <p className="mb-2 text-xs text-black">Only this one</p>
-              <div className="grid grid-cols-2 gap-3.5">
-                {only.map((items, i) => (
-                  <div key={i} className="min-w-0">
-                    {!(i ? b : a).length ? notListed : <Pills items={items} />}
-                  </div>
-                ))}
+            <>
+              <p className={label}>Both have</p>
+              <div className={`${ROW} col-span-2 border-l px-6`}>
+                <Pills items={both} />
               </div>
-            </div>
+            </>
           )}
+          {items.map((item) => (
+            <Fragment key={item}>
+              <p className={label}>{item}</p>
+              {[a, b].map((list, i) => (
+                <div key={i} className={`${ROW} border-l px-6`}>
+                  <Mark has={list.includes(item)} />
+                </div>
+              ))}
+            </Fragment>
+          ))}
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -320,6 +334,11 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
   const empty = slots.some(Boolean)
     ? ["Pick another listing", "Click a second listing in the grid on the left to compare it with this one."]
     : ["Pick a listing", "Click any listing in the grid on the left to start comparing."];
+  // The row labels are the same for every listing and unit, so the first listing's give them.
+  const first = slots.find(Boolean);
+  const labels = first ? compareRows(first).map(([label]) => label) : [];
+  const rows = `1 / span ${labels.length + 1}`;
+  const both = slots.every(Boolean);
   return (
     <div className="flex h-full flex-col rounded-[20px] border border-[#e6e7eb] bg-[#f9fafb]">
       <div className="relative flex shrink-0 items-center justify-center py-4">
@@ -332,37 +351,49 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
         </button>
         <h2 className="text-xl font-bold text-black">Compare listings</h2>
       </div>
-      {/* The scroller is this outer box. The inner row is at least as tall as it
+      {/* The scroller is this outer box. The table is at least as tall as it
           (so empty slots fill the panel) and grows past it with the rows. */}
       <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full flex-col gap-3.5 px-3.5 pb-3.5">
-          <div className="flex flex-1 gap-3.5">
-            {slots.map((listing, i) => (
-              <Slot
-                key={`${i}-${listing?._id}`}
-                listing={listing}
-                tabs={tabs[i]}
-                reserve={reserve}
-                empty={empty}
-                onRemove={() => onRemove(i)}
-              />
-            ))}
-          </div>
-          {slots.every(Boolean) && (
-            <div className="shrink-0 overflow-hidden rounded-[20px] border border-[#e6e7eb] bg-white">
-              <ListSection
-                title="Amenities"
-                a={listLabels(slots[0].amenities, AMENITY_LABELS)}
-                b={listLabels(slots[1].amenities, AMENITY_LABELS)}
-              />
-              <div className="border-t border-[#e6e7eb]" />
-              <ListSection
-                title="Utilities included"
-                a={listLabels(slots[0].utilitiesIncluded, UTILITY_LABELS)}
-                b={listLabels(slots[1].utilitiesIncluded, UTILITY_LABELS)}
-              />
+        <div className="flex min-h-full flex-col px-3.5 pb-3.5">
+          <div className={`flex flex-col overflow-hidden rounded-[20px] border border-[#e6e7eb] bg-white ${both ? "" : "flex-1"}`}>
+            <div className={`grid flex-1 divide-x divide-[#e6e7eb] ${first ? COLUMNS : "grid-cols-2"}`}>
+              {first && (
+                <div className="grid grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
+                  <div />
+                  {labels.map((label) => (
+                    <div key={label} className={`${ROW} px-4 text-xs text-black`}>
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {slots.map((listing, i) => (
+                <Slot
+                  key={`${i}-${listing?._id}`}
+                  listing={listing}
+                  tabs={tabs[i]}
+                  reserve={reserve}
+                  rows={rows}
+                  empty={empty}
+                  onRemove={() => onRemove(i)}
+                />
+              ))}
             </div>
-          )}
+            {both && (
+              <div className={`grid ${COLUMNS}`}>
+                <ListSection
+                  title="Amenities"
+                  a={listLabels(slots[0].amenities, AMENITY_LABELS)}
+                  b={listLabels(slots[1].amenities, AMENITY_LABELS)}
+                />
+                <ListSection
+                  title="Utilities included"
+                  a={listLabels(slots[0].utilitiesIncluded, UTILITY_LABELS)}
+                  b={listLabels(slots[1].utilitiesIncluded, UTILITY_LABELS)}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
