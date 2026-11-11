@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T18:52:22.778Z",
-  "count": 333,
+  "_generated": "2026-11-11T19:40:28.446Z",
+  "count": 335,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1314,6 +1314,14 @@
     {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitFormat.js",
+      "description": "Whether a unit name is an apartment (\"Apt 201\", \"Unit 5548\", \"305\") or a"
+    },
+    {
+      "file": "src/utils/unitFormat.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/unitName.js",

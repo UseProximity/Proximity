@@ -171,7 +171,7 @@ async function buildViews(events, db) {
         break;
       case "lease_withdrawn":
         view = {
-          title: "Lease no longer on the website",
+          title: d.unitGone ? "Unit no longer on the website" : "Lease no longer on the website",
           rows: [row("This lease", lease ? `${money(lease.rent, lease.rent_is_per_person)}, ${lease.unavailable ? "already unavailable" : "available"}` : money(d.rent), "Not on the website: mark it unavailable")],
         };
         break;
@@ -191,7 +191,7 @@ async function buildViews(events, db) {
             row("Unit type", NOT_ON_PROXIMITY, [cleanLabel(u.name), layout(u), sqft(u.area)].filter(Boolean).join(", ")),
             ...(prices ? [row("Prices", NOT_ON_PROXIMITY, prices)] : []),
           ],
-          note: "Added as a draft until you publish it.",
+          note: d.draft ? "Added as a draft until you publish it." : "Published with these prices.",
         };
         break;
       }
