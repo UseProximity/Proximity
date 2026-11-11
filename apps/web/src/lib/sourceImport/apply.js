@@ -83,6 +83,10 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 // ---------------------------------------------------------------- matching
 
 const norm = (s) => String(s ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+// The same words in any order: a leasing portal's "Highland - A3" is the
+// listing's "A3-Highland" (Mansions on the Plaza, 2026-11-11).
+const words = (s) => String(s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(" ");
+export const sameName = (a, b) => !!norm(a) && (norm(a) === norm(b) || words(a) === words(b));
 
 /*
  * Pair the snapshot's units with the listing's. Name first; then, among units
@@ -110,8 +114,7 @@ export function matchUnits(snapUnits, dbUnits) {
   }
   for (const s of snapUnits) {
     if (byName.has(s) || s.pinnedUnitId) continue;
-    const sName = norm(s.name);
-    const hit = sName ? pool.find((p) => !p.used && norm(p.u.name) === sName) : null;
+    const hit = norm(s.name) ? pool.find((p) => !p.used && sameName(p.u.name, s.name)) : null;
     if (hit) {
       hit.used = true;
       byName.set(s, hit.u);
@@ -374,7 +377,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     if (snap.floorPlanImageUrl && !db.floor_plan_image_url) specPatch.floorPlanImageUrl = snap.floorPlanImageUrl;
     // Paired by layout and size, but the site calls it something else: say so.
     // ...unless the sync already knows the site's name for this unit (learn.js).
-    if (snap.name && db.name && norm(snap.name) !== norm(db.name) && !snap.aliasOf) {
+    if (snap.name && db.name && !sameName(snap.name, db.name) && !snap.aliasOf) {
       specDiff.name = { old: db.name, new: snap.name };
     }
     if (Object.keys(specPatch).length) {

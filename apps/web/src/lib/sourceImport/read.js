@@ -437,11 +437,16 @@ function unitsFromModel(listing) {
  * One key for a floor plan's name across sources: SightMap says "Unit 04",
  * the portal "04", the website "Plan 04".
  */
+// Word order does not matter: a leasing portal's "Highland - A3" is the
+// website's "A3-Highland" (Mansions on the Plaza, 2026-11-11).
 export const planKey = (s) =>
   String(s ?? "")
     .toLowerCase()
     .replace(/\b(floor\s*plan|floorplan|plan|unit|the|apartment|apt)\b/g, "")
-    .replace(/[^a-z0-9]/g, "");
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .sort()
+    .join("");
 
 /* Same layout: equal beds and baths, sizes within 2 sq ft. */
 const sameLayout = (a, b) =>

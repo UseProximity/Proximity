@@ -1910,7 +1910,7 @@
           "floor_plan_image_url": "R2 URL of a downloadable floor plan",
           "published_at": "NULL = draft unit on a live property; students see it only once published"
         },
-        "notes": "source_seen_at (migration 202611110002, dev applied 2026-11-11, prod pending): when a sync or import last matched this unit to its website or created it from one; null units are never withdrawn by a sync. status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
+        "notes": "source_seen_at (migration 202611110002, dev and prod applied 2026-11-11): when a sync or import last matched this unit to its website or created it from one; null units are never withdrawn by a sync. status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 1083,
           "prod_last_write": "2026-10-12"
