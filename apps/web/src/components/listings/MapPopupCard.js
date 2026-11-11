@@ -221,8 +221,8 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 z-[2] bg-black/30 rounded-full p-px hidden md:block">
-          <HeartIcon listingId={listing._id} size="sm" onPhoto />
+        <div className="absolute top-3 right-3 z-[2] hidden md:block">
+          <HeartIcon listingId={listing._id} />
         </div>
       )}
     </div>

@@ -94,7 +94,7 @@ export default function ListingDetailClient({
         <span className="flex-1 font-semibold text-gray-900 text-sm truncate">
           {listing.title || listing.address?.split(",")[0]}
         </span>
-        <div className="bg-white/90 backdrop-blur-md rounded-full p-1.5 shadow border border-gray-100 flex-shrink-0">
+        <div className="flex-shrink-0">
           <HeartIcon listingId={listing._id} />
         </div>
       </div>

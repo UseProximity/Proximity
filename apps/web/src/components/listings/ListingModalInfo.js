@@ -2112,7 +2112,7 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />

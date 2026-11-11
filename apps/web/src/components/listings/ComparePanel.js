@@ -228,8 +228,8 @@ function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
             <X className="h-3.5 w-3.5" />
           </button>
           {/* The heart of the grid cards, same place and same behaviour. */}
-          <div className="absolute right-2 top-2 rounded-full border border-white/50 bg-white/90 p-0.5 shadow-xl backdrop-blur-md">
-            <HeartIcon listingId={listing._id} size="sm" />
+          <div className="absolute right-2 top-2">
+            <HeartIcon listingId={listing._id} />
           </div>
         </div>
         <div className="px-4 pb-4 pt-1">
