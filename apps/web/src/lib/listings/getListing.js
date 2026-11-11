@@ -26,7 +26,7 @@ import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
-import { listedByFor } from "@/lib/users/licenseDisclosure";
+import { listedByForListing } from "@/lib/users/licenseDisclosure";
 import { sortUnits } from "@/utils/unitOrder";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
 import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
@@ -180,8 +180,10 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), be
  * Missouri requires a licensed agent's name, company and company phone on every
  * listing they market (MREC, 2026-11-04). Each landlord who declared a license
  * (lib/users/licenseDisclosure.js) gets a `listedBy` on their offerings and, for
- * the property's primary landlord, on `owner`. Landlords who are not licensees
- * get none. A failed lookup leaves the listing as it is rather than failing it.
+ * the property's primary landlord, on `owner`. When an authorized signer's
+ * agreement covers a landlord's offering here, the signer's details show instead,
+ * or the landlord's when the signer is not a licensee (Wyatt, 2026-11-10).
+ * Landlords with no licensee behind them get none. A failed lookup leaves the listing as it is rather than failing it.
  */
 async function attachListedBy(built) {
   const leases = (built.unitTypes ?? []).flatMap((u) => u.leases ?? []);
@@ -189,7 +191,7 @@ async function attachListedBy(built) {
   if (!ids.length) return;
   let listed;
   try {
-    listed = await listedByFor(supabase, ids);
+    listed = await listedByForListing(supabase, built._id, ids);
   } catch (err) {
     console.error("[getListing] license disclosure fetch error:", err);
     return;

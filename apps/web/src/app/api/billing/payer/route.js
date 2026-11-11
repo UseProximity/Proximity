@@ -9,7 +9,6 @@ import { billingErrorResponse } from "@/lib/billing/http";
 import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
 import { finishTakeover, sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
-import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
  * The signed-in landlord's payer: the person who signs the marketing agreement
@@ -18,10 +17,10 @@ import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/lice
  *   GET    { payer: null } or what the Billing tab shows: the payer's name and
  *          email, status (pending | declined | signed), covered and waiting
  *          listings, and whether the signer can still be changed. Never the agreement.
- *   POST   { name, email, licenseDisclosure? } names the payer and emails them
- *          the agreement, the MREC form and a link. The landlord's own license
- *          answer is asked here when they have none (it still shows on their
- *          listings: "Listed by").
+ *   POST   { name, email } names the payer and emails them the agreement, the
+ *          MREC form and a link. No license question here: the signer answers it
+ *          when they sign, and their details are the "Listed by" on the listings
+ *          their agreement covers (Wyatt, 2026-11-10).
  *   PATCH  { action: "resend" } emails the payer again (at most every 30 minutes);
  *          { action: "change", name, email } names someone else (only before
  *          anything was signed for this account);
@@ -62,17 +61,12 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const landlord = await landlordOf(session.user.id);
     if (landlord.billing_only) throw new BillingError("billing_only", "A billing account has no listings to hand to someone else.", 409);
-    // Their own license answer first, so nothing is named without it.
-    const saved = await getDisclosure(supabase, landlord.id);
-    const disclosure = body.licenseDisclosure ? cleanDisclosure(body.licenseDisclosure) : null;
-    if (!saved && !disclosure) throw new BillingError("license_disclosure_required", "Answer the real estate license question first.");
     cleanPayerInput(body);
     // Anything they started signing themselves is cancelled first: if that fails,
     // nobody is named, so a copy left open never blocks the payer's addendum.
     const { documenso } = agreementServices();
     await cancelOwnSigning(supabase, documenso, landlord.id);
     const { link } = await namePayer(supabase, { landlord, name: body.name, email: body.email });
-    if (disclosure) await saveDisclosure(supabase, landlord.id, disclosure, { source: "profile" });
     after(() => sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message)));
     return NextResponse.json({ payer: await landlordPayerView(supabase, landlord.id) });
   } catch (err) {
