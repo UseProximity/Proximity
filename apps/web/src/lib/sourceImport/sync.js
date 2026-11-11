@@ -20,6 +20,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail } from "@/lib/email";
 import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
+import { nextSundayCheckAt } from "./readers/realpageOllParse.js";
 import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
 import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
@@ -146,6 +147,22 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    /*
+     * A leasing portal too large to walk in one run: what it has so far is
+     * on the monitor and the listing is due again at once, so the next run
+     * carries on. Nothing is compared or applied from half a price list.
+     */
+    if (snapshot.portalPending) {
+      const p = snapshot.portal?.progress;
+      const note = `Leasing portal part read: ${p?.priced?.length ?? 0} of ${Object.keys(p?.units ?? {}).length} apartments priced, continuing on the next run`;
+      onStep(note);
+      await supabase
+        .from("listing_source_monitors")
+        .update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date().toISOString() })
+        .eq("id", m.id);
+      console.log(`[source-sync] ${label}: ${note}`);
+      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], holdReason: null, teamReview, refused: snapshot.trace?.refused ?? [], summary: summarize(snapshot), pages: [], unitPages: [], note };
+    }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
     const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
@@ -178,7 +195,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         last_error: null,
         consecutive_failures: 0,
         last_fingerprint: fp,
-        next_check_at: plusDays(interval),
+        // A listing priced by a leasing portal is refreshed weekly, on
+        // Sunday (Wyatt, 2026-11-10): the walk is slow and costs renders.
+        next_check_at: snapshot.portal?.kind === "realpage-oll" ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
       })
       .eq("id", m.id);
     await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);
