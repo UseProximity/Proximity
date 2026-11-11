@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-09T20:44:14.504Z",
-  "count": 329,
+  "_generated": "2026-11-10T21:19:27.286Z",
+  "count": 332,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1068,8 +1068,16 @@
       "description": "Batched \"your review is live\" confirmations."
     },
     {
+      "file": "src/lib/reviews/duplicateReport.js",
+      "description": "Review stubs that may be a building already listed under another address."
+    },
+    {
       "file": "src/lib/reviews/invites.js",
       "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/listingMatch.js",
+      "description": "Which listing a review belongs on."
     },
     {
       "file": "src/lib/reviews/onboarding.js",
@@ -1294,6 +1302,10 @@
     {
       "file": "src/utils/listingFormatters.js",
       "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
+    },
+    {
+      "file": "src/utils/reviewAddress.js",
+      "description": "Address rules for the review flow, shared by the form and the route so the"
     },
     {
       "file": "src/utils/unitCounts.js",
