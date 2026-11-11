@@ -10,9 +10,9 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowLeft, ChevronLeft, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { availabilityLabel } from "@/utils/availability";
@@ -101,12 +101,85 @@ function compareRows(listing, unit) {
   ];
 }
 
+// The unit selector: one row of pills. A building with many units overflows the
+// card, and the row has no scrollbar, so an arrow shows on each side that has
+// more units to reach. The picked unit is always scrolled into view.
+function UnitPills({ tabs, picked, onPick }) {
+  const rowRef = useRef(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  const measure = () => {
+    const row = rowRef.current;
+    if (!row) return;
+    const left = row.scrollLeft > 1;
+    const right = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+    setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+  };
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const pill = row?.children[picked];
+    if (pill) {
+      const start = pill.offsetLeft;
+      const end = start + pill.offsetWidth;
+      // Room for the arrow that lies over each end of the row.
+      if (start < row.scrollLeft + 28) row.scrollLeft = start - 28;
+      else if (end > row.scrollLeft + row.clientWidth - 28) row.scrollLeft = end - row.clientWidth + 28;
+    }
+    measure();
+  }, [picked]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const observer = new ResizeObserver(measure);
+    observer.observe(rowRef.current);
+    return () => observer.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const step = (dir) => {
+    const row = rowRef.current;
+    row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: "smooth" });
+  };
+  const arrow = "absolute inset-y-0 flex items-center from-white via-white to-transparent text-gray-600 transition-colors hover:text-gray-900";
+  return (
+    <div className="relative mt-1">
+      <div ref={rowRef} onScroll={measure} className="scrollbar-hidden relative flex gap-1.5 overflow-x-auto">
+        {tabs.map((tab, i) => (
+          <button
+            key={tab.unit.id ?? i}
+            onClick={() => onPick(i)}
+            aria-pressed={i === picked}
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              i === picked
+                ? "bg-gray-200 text-gray-700 border-gray-300"
+                : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {more.left && (
+        <button onClick={() => step(-1)} aria-label="Earlier units" className={`${arrow} left-0 bg-gradient-to-r pr-3`}>
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+      {more.right && (
+        <button onClick={() => step(1)} aria-label="More units" className={`${arrow} right-0 bg-gradient-to-l pl-3`}>
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
 // so both cards keep the selector's height and their rows line up.
 function Slot({ listing, tabs, reserve, empty, onRemove }) {
-  // Which unit this card shows. The slot is keyed by listing, so a removed or
-  // replaced listing starts again on its first unit.
-  const [picked, setPicked] = useState(0);
+  // Which unit this card shows. It opens on the unit that satisfied the active
+  // filters (as the detail panel does), or on the first unit when nothing was
+  // filtered. The slot is keyed by listing, so a removed or replaced listing
+  // starts again from there.
+  const [picked, setPicked] = useState(() => {
+    const matched = listing?.matchedUnitId;
+    const i = matched ? tabs.findIndex((tab) => tab.unit.id === matched) : -1;
+    return i > 0 ? i : 0;
+  });
   if (!listing) {
     return (
       // The padding is on the inner box, not here: a flex item's own padding and
@@ -167,22 +240,7 @@ function Slot({ listing, tabs, reserve, empty, onRemove }) {
           {tabs.length > 1 && (
             <>
               <p className="text-xs text-black">{tabs.length} units</p>
-              <div className="scrollbar-hidden mt-1 flex gap-1.5 overflow-x-auto">
-                {tabs.map((tab, i) => (
-                  <button
-                    key={tab.unit.id ?? i}
-                    onClick={() => setPicked(i)}
-                    aria-pressed={i === picked}
-                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                      i === picked
-                        ? "bg-gray-200 text-gray-700 border-gray-300"
-                        : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              <UnitPills tabs={tabs} picked={picked} onPick={setPicked} />
             </>
           )}
         </div>

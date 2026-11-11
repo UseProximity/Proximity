@@ -295,13 +295,14 @@ export default function AvailableListings({
     loadDetail(String(listing._id));
   };
 
-  const closePanel = () => {
+  // `replace` closes the panel without a new history entry (see Compare below).
+  const closePanel = ({ replace = false } = {}) => {
     clearPanel(); // immediate UI
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
     params.delete("unit");
     const qs = params.toString();
-    router.push(`/browse${qs ? `?${qs}` : ""}`);
+    router[replace ? "replace" : "push"](`/browse${qs ? `?${qs}` : ""}`);
   };
 
   // With the map visible the compare panel slides out when the reader closes it,
@@ -319,16 +320,21 @@ export default function AvailableListings({
         : null
     );
   }
+  // A slide the map toggle or a panel cut short never reports its end, so the
+  // panel it left behind is dropped here and cannot come back with the map.
+  if (leaving && (mapHidden || expandedListing)) setLeaving(null);
   const shownCompare = compare ?? (mapHidden || expandedListing ? null : leaving);
 
   // Compare replaces an open detail panel, which would hide the grid it picks from,
   // and the selected listing, so no map card for it is left behind once it exits.
   // Before paint: with the map hidden Compare opens from a timer (the fade), so a
-  // later effect would let one frame show both.
+  // later effect would let one frame show both. The panel's history entry is
+  // replaced, not followed by a new one: Back would otherwise land on the panel's
+  // URL, reopen it and throw the comparison away.
   useLayoutEffect(() => {
     if (!compare) return;
     setSelectedListing(null);
-    if (expandedListing) closePanel();
+    if (expandedListing) closePanel({ replace: true });
   }, [!!compare]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A detail panel and Compare are never open together: a panel that opens while
@@ -351,8 +357,13 @@ export default function AvailableListings({
     const id = e.target.closest("[data-listing-id]")?.dataset.listingId;
     if (!id || e.target.closest("button")) return;
     e.stopPropagation();
+    // A Cmd, Ctrl, Shift or Alt click is the browser's (open in a new tab or
+    // window), as it is on the card outside Compare: it picks nothing.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
     setCompare((prev) => {
+      // Compare can close (a timer, an effect) between this click and its update.
+      if (!prev) return prev;
       const [left, right] = prev;
       if (left && String(left._id) === id) return [null, right];
       if (right && String(right._id) === id) return [left, null];
@@ -842,7 +853,7 @@ export default function AvailableListings({
                 <ComparePanel
                   slots={shownCompare}
                   onRemove={(i) =>
-                    setCompare((c) => c.map((l, j) => (j === i ? null : l)))
+                    setCompare((c) => c && c.map((l, j) => (j === i ? null : l)))
                   }
                   onClose={onCloseCompare}
                 />
