@@ -51,6 +51,14 @@ export const SCHEDULE_SLACK_MS = 6 * 60 * 60 * 1000;
  * leasing portals refresh. Admins can ask for one any time.
  */
 export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
+
+/*
+ * The time one sync gives the read, out of a five-minute function: the rest
+ * is for applying and the knowledge pass. Past KNOWLEDGE_CUTOFF_MS the
+ * knowledge pass waits for the next run.
+ */
+const READ_BUDGET_MS = 210000;
+const KNOWLEDGE_CUTOFF_MS = 200000;
 export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
 const plusDays = (days) => nextCheckAt(days);
 
@@ -151,6 +159,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
       deep: goDeep,
+      deadline: started + READ_BUDGET_MS,
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
@@ -186,7 +195,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       }
     }
     let pages = [];
-    if (knowledge) {
+    const late = Date.now() - started > KNOWLEDGE_CUTOFF_MS;
+    if (knowledge && late) console.log(`[source-sync] ${label}: read ran long, pages go into knowledge on the next run`);
+    if (knowledge && !late) {
       onStep("Reading the pages into knowledge");
       const flyers = snapshot.trace?.found?.flyers ?? [];
       // Every page this listing already knows (found by earlier whole-site reads), plus the start page and flyers.

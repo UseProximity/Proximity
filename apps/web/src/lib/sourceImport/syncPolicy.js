@@ -26,6 +26,7 @@ export const DENY = {
   property: "the landlord's description and specials win over the website's",
   partialRead: "the read did not see the website's whole list of units, so nothing it missed is taken as let",
   roughPrice: "the website shows a starting-at price, not this lease's price",
+  roughWithdraw: "the website shows no exact price for this plan, so it cannot say this lease's price is gone",
   takenDown: "the landlord took this lease down, so the website does not put it back",
   noLettings: "the read showed no units or no prices, so it says nothing about what is let",
   notFromSite: "not on the website, left as is: the website has never shown this unit",
@@ -66,6 +67,10 @@ export function decideSyncChange(c, { snapshot }) {
       if (c.lookalike) return { apply: false, reason: c.note ?? DENY.unknown };
       if (fromUnitPage || d.unitPageGone) return { apply: true, reason: null };
       if (!snapshot?.unitListComplete) return { apply: false, reason: DENY.partialRead };
+      // One price gone from a plan the site still lists: only when the page
+      // states that plan's prices exactly (read by a feed, or exact on the page).
+      const f = c.facts ?? {};
+      if (!d.unitGone && f.fromModel && (f.noPrice || f.rentsExact === false)) return { apply: false, reason: DENY.roughWithdraw };
       return { apply: true, reason: null };
     }
     case "unit_relisted":

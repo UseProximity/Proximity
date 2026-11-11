@@ -503,9 +503,19 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       }
     }
     // A price the site no longer offers (or a unit it stopped offering).
+    // What the site said about this plan's prices, for the policy: a page read
+    // by the model that shows only a "starting at", or no price for a plan it
+    // still lists as available, cannot say one of the listing's prices is gone
+    // (Mansions on the Plaza, 2026-11-11: one "from $2,133" per plan read as
+    // every per-length portal price withdrawn).
+    const priceFacts = {
+      fromModel: !!snap.fromModel,
+      rentsExact: snap.offers.every((o) => o.rent == null || o.rentExact !== false),
+      noPrice: snap.available && !snap.offers.some((o) => o.rent != null),
+    };
     for (const l of goneLeases) {
       if (mode === "import") continue;
-      push({ kind: "lease_withdrawn", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: "unavailable", old: false, new: true, detail: { op: "lease_withdraw", leaseId: l.id, label, rent: l.rent } });
+      push({ kind: "lease_withdrawn", facts: priceFacts, unitKey: snap.key, unitId: db.id, leaseId: l.id, field: "unavailable", old: false, new: true, detail: { op: "lease_withdraw", leaseId: l.id, label, rent: l.rent } });
     }
   }
   /*

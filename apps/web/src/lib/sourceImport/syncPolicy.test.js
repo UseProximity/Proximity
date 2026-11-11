@@ -39,6 +39,14 @@ test("withdrawals need a read of the whole unit list", () => {
   assert.deepEqual(decide({ kind: "missing_unit" }), { apply: false, reason: DENY.noLettings });
   // A unit the website never showed (added by hand, another link): left as is.
   assert.deepEqual(decide({ kind: "missing_unit", notFromSite: true }), { apply: false, reason: DENY.notFromSite });
+  // A price gone from a plan the page shows only a starting-at for, or no price
+  // for while still listing it: not taken as let. A feed's read always is.
+  assert.deepEqual(decide({ kind: "lease_withdrawn", facts: { fromModel: true, rentsExact: false } }), { apply: false, reason: DENY.roughWithdraw });
+  assert.deepEqual(decide({ kind: "lease_withdrawn", facts: { fromModel: true, rentsExact: true, noPrice: true } }), { apply: false, reason: DENY.roughWithdraw });
+  assert.equal(decide({ kind: "lease_withdrawn", facts: { fromModel: true, rentsExact: true, noPrice: false } }).apply, true);
+  assert.equal(decide({ kind: "lease_withdrawn", facts: { fromModel: false, rentsExact: false } }).apply, true);
+  // A whole unit gone from a full list is let, whatever its last price looked like.
+  assert.equal(decide({ kind: "lease_withdrawn", detail: { unitGone: true }, facts: { fromModel: true, rentsExact: false } }).apply, true);
   // Perhaps the same unit renamed: the old one stays up.
   const renamed = decide({ kind: "lease_withdrawn", lookalike: true, note: "may be this unit renamed" });
   assert.equal(renamed.apply, false);

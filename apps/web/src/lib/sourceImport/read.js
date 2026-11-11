@@ -65,7 +65,7 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
-import { walkPortal } from "./readers/portalWalk.js";
+import { walkPortal, PORTAL_RUN_MS } from "./readers/portalWalk.js";
 import { WALKED_PORTALS, isWalkedPortal } from "./readers/portals.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
@@ -740,10 +740,14 @@ export function readProperty(args) {
  * where that unit's data lives, so nothing else is opened: no own-site hop,
  * no floor plan index, no per-apartment pages, no exploring for gaps.
  */
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, _crawl = null, _brandName = null, _modelDraft = null }) {
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
+  // A server function lives five minutes: the read keeps to the time it was
+  // given (deadline, set by the sync), exploring less and walking a portal
+  // on the next run rather than running out of time.
+  const timeLeft = () => (deadline ? deadline - Date.now() : Infinity);
   const crawl = _crawl ?? new Crawl({ allowUrl });
   let main = crawl.fetched[0] ?? null;
   let modelCost = 0;
@@ -946,13 +950,18 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // range per apartment; only the portal says which length costs what. Its
   // link is often added by script, so a page that hints at the portal gets
   // the pages that state it plainly (RealPage: the site's /application/).
+  //
+  // The portal's link is often only on a page the explorer opens later (the
+  // site's application or FAQ page: Mansions on the Plaza, 2026-11-11), so
+  // this runs again after each round of exploring, until a portal is tried.
   let portalMissed = false;
   let portalPending = false;
   let walkedKind = null;
-  if (!learned) {
+  const tryWalkedPortals = async () => {
+    if (learned || walkedKind) return false;
     for (const def of WALKED_PORTALS) {
       const known = knownPortal?.kind === def.kind ? knownPortal : null;
-      let portal = crawl.fetched.map((f) => def.find(f.html)).find(Boolean) ?? null;
+      let portal = crawl.fetched.map((f) => def.find(f.html)).find(Boolean) ?? def.find(crawl.links.map((l) => l.url).join("\n")) ?? null;
       if (!portal && !known && crawl.fetched.some((f) => def.hintRe.test(f.html))) {
         for (const url of def.extraPages(main.finalUrl)) {
           const page = await crawl.follow(url).catch(() => null);
@@ -963,7 +972,18 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       portal ??= known ? def.fromKnown(known) : null;
       if (!portal) continue;
       walkedKind = def.kind;
-      const rp = await walkPortal(def, portal, { known, onStep });
+      const runMs = Math.min(PORTAL_RUN_MS, timeLeft() - 50000);
+      if (runMs < 60000) {
+        // Found with too little time left to walk it: remembered, and the
+        // next read walks it first. Nothing is applied from this one.
+        const target = await def.resolve(portal, known).catch(() => null);
+        learned = { kind: def.kind, ...(target?.learned ?? {}), progress: null };
+        portalMissed = true;
+        portalPending = true;
+        console.log(`[source-import] ${def.kind} portal found late; walked on the next read`);
+        return true;
+      }
+      const rp = await walkPortal(def, portal, { known, onStep, runMs });
       if (rp?.pending) {
         // The walk ran out of time with apartments still to price. What it
         // has is kept on the monitor and the next read carries on; until
@@ -998,9 +1018,11 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         portalMissed = true;
         notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
       }
-      break;
+      return true;
     }
-  }
+    return false;
+  };
+  await tryWalkedPortals();
 
   // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
@@ -1050,7 +1072,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
-    if (explored >= MAX_EXPLORED) return 0;
+    if (explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
     const facts = factsAbout({ units: unitsNow, flyers, listing: listingNow, readerNotes: notes });
     if (!facts.missing.length) return 0;
     const visited = new Set(crawl.fetched.map((f) => f.finalUrl));
@@ -1070,6 +1092,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     modelCost += picks.cost;
     let added = 0;
     for (const p of picks.pages) {
+      if (timeLeft() < 60000) break;
       const before = crawl.fetched.length;
       await crawl.follow(p.url);
       const opened = crawl.fetched.length > before;
@@ -1083,6 +1106,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     return added;
   };
   await explore(readerUnits, null);
+  // A portal link found on a page the explorer just opened.
+  await tryWalkedPortals();
 
   /*
    * "What's included" and fee-guide flyers: pictures, read by the model's
@@ -1192,6 +1217,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // Still missing something after the extraction: one more hunt, and if it
   // opened anything, read again with those pages in hand.
   if (await explore(units, listing)) {
+    await tryWalkedPortals();
     await readFlyers();
     await extractAndFill(true);
   }
