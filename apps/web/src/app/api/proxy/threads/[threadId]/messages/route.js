@@ -54,22 +54,31 @@ export async function POST(req, { params }) {
 
     if ((req.headers.get("accept") ?? "").includes("application/x-ndjson")) {
       const enc = new TextEncoder();
+      /*
+       * The work after the reply (asking the landlord, logging) is handed to
+       * after(), as on the JSON path, so it finishes even when the student
+       * closes the tab and the stream is cancelled. It is registered here,
+       * before the response goes out, and runs once handleStudentMessage
+       * hands it over (or does nothing when there is none).
+       */
+      let handOver;
+      const laterWork = new Promise((resolve) => { handOver = resolve; });
+      after(async () => {
+        const work = await laterWork;
+        if (work) await work();
+      });
       const stream = new ReadableStream({
         async start(controller) {
           const send = (obj) => { try { controller.enqueue(enc.encode(`${JSON.stringify(obj)}\n`)); } catch {} };
-          // The work after the reply (asking the landlord, logging) runs once
-          // "done" is sent; the stream stays open until it finishes, so the
-          // function lives that long, and the student is not waiting on it.
-          let later = null;
           try {
-            const result = await handleStudentMessage({ ...args, defer: (work) => { later = work; }, onReplyDelta: (text) => send({ type: "delta", text }) });
+            const result = await handleStudentMessage({ ...args, defer: (work) => handOver(work), onReplyDelta: (text) => send({ type: "delta", text }) });
             if (result.error) send({ type: "error", error: result.error, code: result.code ?? null });
             else send({ type: "done", ...shape(result) });
           } catch (err) {
             console.error("POST /api/proxy/threads/[id]/messages (stream) failed:", err);
             send({ type: "error", error: "Proxy could not answer just now. Please try again." });
           }
-          if (later) await later();
+          handOver(null);
           try { controller.close(); } catch {}
         },
       });

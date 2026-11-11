@@ -8,11 +8,43 @@
  * string the SDK's partial parser drops).
  *
  * replyStreamer decides whether to show that text at all. The reply streams
- * only once answered_keys and unanswered_questions are complete, because
+ * only once intent, answered_keys and unanswered_questions are complete, because
  * when nothing could be answered and the question goes to the landlord, the
  * student gets one fixed line instead of the model's words, and seeing
  * "I don't have that" type out and then change would read as a glitch.
  */
+
+/*
+ * Intents whose reply is the model's own words even when nothing in the
+ * knowledge base was used and the landlord is asked: small talk, and a
+ * student who wants to apply or negotiate (Wyatt, 2026-11-11: "I'd like to
+ * apply" used to get "I don't have that yet"). proxy.js and replyStreamer
+ * both read it, so what streams is what is saved.
+ */
+export const KEEPS_OWN_REPLY = new Set(["small_talk", "apply", "negotiate"]);
+
+/*
+ * The final tool's input in the shape proxy.js expects. Eager streaming turns
+ * off the API's check of the input against the schema, so a field of the wrong
+ * type is fixed or dropped here instead of throwing after the student's
+ * message is saved. Returns null when there is no input at all.
+ */
+export function normalizeFinal(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const list = (v) => (Array.isArray(v) ? v : []);
+  return {
+    ...input,
+    intent: typeof input.intent === "string" ? input.intent : "question",
+    answered_keys: list(input.answered_keys).filter((k) => typeof k === "string"),
+    unanswered_questions: list(input.unanswered_questions)
+      .map((u) => (typeof u === "string" ? { question: u, lease_number: 0 } : u && typeof u === "object" ? u : null))
+      .filter((u) => u && typeof u.question === "string" && u.question.trim()),
+    reply: typeof input.reply === "string" ? input.reply : "",
+    offered_question: typeof input.offered_question === "string" ? input.offered_question : "",
+    nudged: input.nudged === true,
+    clarifier_reply: input.clarifier_reply === true,
+  };
+}
 
 // Same as stripEmDashes in model.js, kept here so this file has no imports (it is unit tested).
 const noEmDash = (t) => t.replace(/\s*\u2014\s*/g, ", ");
@@ -93,11 +125,11 @@ export function replyStreamer({ onDelta, isUsedKey, canAsk }) {
   return (raw) => {
     const { done, reply } = scanFinalJson(raw);
     if (show === null) {
-      if (!("answered_keys" in done) || !("unanswered_questions" in done)) return;
+      if (!("intent" in done) || !("answered_keys" in done) || !("unanswered_questions" in done)) return;
       const used = (Array.isArray(done.answered_keys) ? done.answered_keys : []).filter(isUsedKey);
       const asks = (Array.isArray(done.unanswered_questions) ? done.unanswered_questions : []).filter((u) => String(u?.question ?? "").trim());
       // Mirrors "nothingAnswered" in proxy.js: that reply is replaced by one fixed line.
-      show = !(canAsk && asks.length && !used.length && done.intent !== "small_talk");
+      show = !(canAsk && asks.length && !used.length && !KEEPS_OWN_REPLY.has(done.intent));
     }
     if (!show || !reply) return;
     // Trailing spaces wait for the next word: "online " becomes "online, "

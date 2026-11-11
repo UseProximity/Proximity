@@ -48,10 +48,12 @@ function termLabel(months) {
 
 export async function buildProxyContext(listingId) {
   // Read at once rather than one after another: every second counts while a student waits.
+  // The owner labels are read once and shared with studentFacts.
+  const ownersRead = ownerLabels(listingId);
   const [{ data: row, error }, owners, facts] = await Promise.all([
     supabase.from("listings").select(SELECT).eq("id", listingId).maybeSingle(),
-    ownerLabels(listingId),
-    studentFacts(listingId),
+    ownersRead,
+    studentFacts(listingId, ownersRead),
   ]);
   if (error) throw new Error(`proxy context: ${error.message}`);
   if (!row || row.deleted_at) return null;

@@ -95,10 +95,15 @@ export async function parseStructured({ model = SONNET, system, messages, schema
  *   onFinalInput    called with the final tool's raw JSON so far as the model
  *                   writes it, so a caller can show part of it (Proxy's reply)
  *                   before the call finishes. Turns on streaming.
+ *   eagerFinal      send the final tool with eager_input_streaming. On with
+ *                   onFinalInput; Proxy also sets it on its unstreamed (mobile)
+ *                   calls so both share one cached prompt. The API then does
+ *                   not check the final input, so the caller must (Proxy's
+ *                   normalizeFinal).
  */
 export async function runTools({
   model = SONNET, system, systemTail = null, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
-  tag, listingId = null, kind = "tools", finalTool = "final", effort = null, onFinalInput = null,
+  tag, listingId = null, kind = "tools", finalTool = "final", effort = null, onFinalInput = null, eagerFinal = !!onFinalInput,
 }) {
   await checkBudget({ listingId, kind });
   const client = getClient();
@@ -109,7 +114,7 @@ export async function runTools({
   const systemBlocks = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
   if (systemTail) systemBlocks.push({ type: "text", text: systemTail });
   // Without eager streaming the API holds each tool field back until it is complete.
-  const toolDefs = onFinalInput ? tools.map((t) => (t.name === finalTool ? { ...t, eager_input_streaming: true } : t)) : tools;
+  const toolDefs = eagerFinal ? tools.map((t) => (t.name === finalTool ? { ...t, eager_input_streaming: true } : t)) : tools;
   for (let round = 0; round < maxRounds; round++) {
     const last = round === maxRounds - 1;
     // Always "auto": the current models reject a forced tool_choice. A model
@@ -151,9 +156,17 @@ export async function runTools({
     // it when the rounds ran out stopped the question reaching the landlord
     // (PR #365 review).
     const said = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    // Cut off by max_tokens is not an answer: eager streaming does not
-    // validate the final input, so its reply could stop mid-sentence.
-    if (resp.stop_reason === "max_tokens") break;
+    /*
+     * Cut off by max_tokens is never an answer: the final tool's input stops
+     * part way (a landlord chat reply came back with no text at all), and with
+     * eager streaming part of it may already be on the student's screen. The
+     * caller gets `truncated` and says so instead (Wyatt, 2026-11-11: tell the
+     * person it was too much, do not raise the limit).
+     */
+    if (resp.stop_reason === "max_tokens") {
+      await log({ listingId, kind, model, usage, tag });
+      return { final: null, text: "", usage, calls, truncated: true };
+    }
     if (resp.stop_reason !== "tool_use") text = said || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });
