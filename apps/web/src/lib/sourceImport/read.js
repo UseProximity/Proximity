@@ -65,7 +65,8 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
-import { REALPAGE_OLL_HINT_RE, REALPAGE_OLL_KIND, findRealPageOll, readRealPageOll } from "./readers/realpageOll.js";
+import { walkPortal } from "./readers/portalWalk.js";
+import { WALKED_PORTALS, isWalkedPortal } from "./readers/portals.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
 import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes, judgeSamePlan } from "./model.js";
@@ -399,15 +400,20 @@ function unitsFromModel(listing) {
     const apartments = (u.apartments ?? []).map((a) => String(a).trim()).filter(Boolean);
     const rents = (u.apartmentRents ?? []).length === apartments.length ? u.apartmentRents : null;
     const dates = (u.apartmentDates ?? []).length === apartments.length ? u.apartmentDates : null;
+    // "now" is a stated fact; null is the site saying nothing.
+    const saysNow = (d) => typeof d === "string" && /^(now|immediately|today|available now)$/i.test(d.trim());
+    // A per-apartment rent is that apartment's price; a plan's own figure can be a "starting at".
     const offers = apartments.length
       ? apartments.map((a, i) => ({
           rent: rents ? rents[i] : u.rent,
           rentIsPerPerson: perPerson,
+          rentIsExact: rents ? true : u.rentIsExact !== false,
           leaseTermMonths: u.leaseTermMonths ?? [],
           availableFrom: dates ? dates[i] : u.availableFrom,
+          availableNow: saysNow(dates ? dates[i] : u.availableFrom),
           apartments: [a],
         }))
-      : [{ rent: u.rent, rentIsPerPerson: perPerson, leaseTermMonths: u.leaseTermMonths ?? [], availableFrom: u.availableFrom, apartments: [] }];
+      : [{ rent: u.rent, rentIsPerPerson: perPerson, rentIsExact: u.rentIsExact !== false, leaseTermMonths: u.leaseTermMonths ?? [], availableFrom: u.availableFrom, availableNow: saysNow(u.availableFrom), apartments: [] }];
     return {
       name: u.name,
       bedrooms: u.bedrooms,
@@ -418,6 +424,7 @@ function unitsFromModel(listing) {
       photos: [],
       offers: offers.filter((o) => o.rent != null || o.apartments.length),
       rentUnknown: u.rentBasis === "unknown" && u.rent != null,
+      fromModel: true,
     };
   });
 }
@@ -733,7 +740,7 @@ export function readProperty(args) {
  * where that unit's data lives, so nothing else is opened: no own-site hop,
  * no floor plan index, no per-apartment pages, no exploring for gaps.
  */
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, _crawl = null, _brandName = null, _modelDraft = null }) {
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
@@ -828,6 +835,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let platform = "generic";
   let readerUnits = [];
   let confidence = "low";
+  // A feed or portal lists every plan; a reader that stopped short does not.
+  let readerComplete = true;
 
   // 0. G5 inventory service (Mills and other G5-hosted estates).
   let g5Concessions = [];
@@ -931,29 +940,30 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     }
   }
 
-  // 2c. The RealPage leasing portal behind an Apartments247 (or any other)
-  // marketing site: every apartment, priced for each lease length the
-  // landlord sells. The marketing site shows one rent range per apartment;
-  // only the portal says which length costs what. Its link is often added
-  // by script, but the site's own /application/ page states it plainly.
+  // 2c. A leasing portal walked like a renter would (readers/portals.js:
+  // RealPage behind Apartments247 sites so far): every apartment, priced for
+  // each lease length the landlord sells. The marketing site shows one rent
+  // range per apartment; only the portal says which length costs what. Its
+  // link is often added by script, so a page that hints at the portal gets
+  // the pages that state it plainly (RealPage: the site's /application/).
   let portalMissed = false;
   let portalPending = false;
+  let walkedKind = null;
   if (!learned) {
-    const knownOll = knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null;
-    let portal = crawl.fetched.map((f) => findRealPageOll(f.html)).find(Boolean) ?? null;
-    if (!portal && !knownOll && crawl.fetched.some((f) => REALPAGE_OLL_HINT_RE.test(f.html))) {
-      let applyUrl = null;
-      try {
-        applyUrl = new URL("/application/", main.finalUrl).href;
-      } catch {
-        applyUrl = null;
+    for (const def of WALKED_PORTALS) {
+      const known = knownPortal?.kind === def.kind ? knownPortal : null;
+      let portal = crawl.fetched.map((f) => def.find(f.html)).find(Boolean) ?? null;
+      if (!portal && !known && crawl.fetched.some((f) => def.hintRe.test(f.html))) {
+        for (const url of def.extraPages(main.finalUrl)) {
+          const page = await crawl.follow(url).catch(() => null);
+          portal = page ? def.find(page.html) : null;
+          if (portal) break;
+        }
       }
-      const page = applyUrl ? await crawl.follow(applyUrl).catch(() => null) : null;
-      portal = page ? findRealPageOll(page.html) : null;
-    }
-    portal ??= knownOll ? { propertyId: knownOll.propertyId ?? null, siteId: knownOll.siteId ?? null } : null;
-    if (portal) {
-      const rp = await readRealPageOll(portal, { known: knownOll, onStep });
+      portal ??= known ? def.fromKnown(known) : null;
+      if (!portal) continue;
+      walkedKind = def.kind;
+      const rp = await walkPortal(def, portal, { known, onStep });
       if (rp?.pending) {
         // The walk ran out of time with apartments still to price. What it
         // has is kept on the monitor and the next read carries on; until
@@ -961,7 +971,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         portalMissed = true;
         portalPending = true;
         learned = rp.learned;
-        console.log(`[source-import] realpage portal ${rp.learned.siteId}: ${rp.quoted} of ${rp.apartments} apartments priced so far, to be continued`);
+        console.log(`[source-import] ${def.kind} portal: ${rp.quoted} of ${rp.apartments} apartments priced so far, to be continued`);
       } else if (rp?.units?.length) {
         const byName = new Map(readerUnits.map((u) => [planKey(u.name), u]));
         for (const u of rp.units) {
@@ -973,7 +983,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
           u.bathrooms ??= e.bathrooms;
           if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
         }
-        platform = readerUnits.length ? `${platform}+${REALPAGE_OLL_KIND}` : REALPAGE_OLL_KIND;
+        platform = readerUnits.length ? `${platform}+${def.kind}` : def.kind;
         readerUnits = await dedupeLayouts([...rp.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
         notes.push(...rp.notes);
         // A walk the portal cut short is not the whole building: a sync
@@ -981,13 +991,14 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         confidence = rp.complete ? "high" : "low";
         portalMissed = !rp.complete;
         learned = rp.learned;
-        console.log(`[source-import] realpage portal ${rp.learned.siteId}: ${rp.units.length} plans, ${rp.apartments} apartments, ${rp.quoted} priced by lease length${rp.complete ? "" : " (incomplete)"}`);
-      } else if (knownOll) {
+        console.log(`[source-import] ${def.kind} portal: ${rp.units.length} plans, ${rp.apartments} apartments, ${rp.quoted} priced by lease length${rp.complete ? "" : " (incomplete)"}`);
+      } else if (known) {
         // The portal priced this building before and gave nothing today.
         // The marketing site alone would read as every lease withdrawn.
         portalMissed = true;
         notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
       }
+      break;
     }
   }
 
@@ -1010,7 +1021,9 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     console.log(`[source-import] ${target.name}: ${planUrls.length} floor plan pages under ${floorPlanIndex.finalUrl}`);
     if (planUrls.length) {
       onStep(`Reading ${Math.min(planUrls.length, 16)} floor plan pages`);
-      const result = await fetchFloorPlanUnits(chooseFloorPlansToRead(planUrls));
+      const chosen = chooseFloorPlansToRead(planUrls);
+      if (chosen.length < planUrls.length) readerComplete = false;
+      const result = await fetchFloorPlanUnits(chosen);
       if (result.plans.length) {
         platform = "rentcafe";
         readerUnits = unitsFromFloorPlans(result).map((u) => ({ ...u, source: "the floor plan pages" }));
@@ -1027,10 +1040,13 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    * Hunting for what is still missing. The readers (and, the second time,
    * the extraction) have read what they could; factsAbout says exactly
    * what is known and what is not, and the model picks which links to open
-   * to find the rest. Twice at most, eight pages in all.
+   * to find the rest. Twice at most, eight pages in all; a deep read (the
+   * weekly one, or an admin's) goes much further into the site, the way the
+   * portal readers do, before settling for "the site doesn't say".
    */
   const flyers = [];
-  const MAX_EXPLORED = 8;
+  const MAX_EXPLORED = deep ? 24 : 8;
+  const PER_HUNT = deep ? 12 : 4;
   let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
@@ -1049,7 +1065,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       missing: facts.missing,
       visited: [...visited],
       links: candidates,
-      max: Math.min(4, MAX_EXPLORED - explored),
+      max: Math.min(PER_HUNT, MAX_EXPLORED - explored),
     });
     modelCost += picks.cost;
     let added = 0;
@@ -1149,7 +1165,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     const flyerTerms = [...new Set(flyers.flatMap((f) => f.leaseTermMonths))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 36).sort((a, b) => a - b);
     if (flyerTerms.length) {
       let applied = 0;
-      for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; applied += 1; }
+      for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; o.termsInferred = true; applied += 1; }
       if (applied) {
         runNotes.push(`Lease lengths (${flyerTerms.join(", ")} months) come from the site's fee guide. Check them against each floor plan.`);
       }
@@ -1159,7 +1175,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
       const siteTerms = findLeaseTerms(crawl.pages.map((p) => p.text).join("\n"));
       if (siteTerms.length && siteTerms.length <= 6) {
-        for (const u of units) for (const o of u.offers) o.leaseTermMonths = siteTerms;
+        for (const u of units) for (const o of u.offers) { o.leaseTermMonths = siteTerms; o.termsInferred = true; }
         runNotes.push(`Lease lengths (${siteTerms.join(", ")} months) were read from the site's general text, not from each floor plan. Check them.`);
       }
     }
@@ -1279,6 +1295,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     indexUrl: sourceUrl === pastedUrl ? null : pastedUrl,
     platform,
     confidence,
+    // Whether a unit missing from this read can be taken as let.
+    unitListComplete: readerUnits.length ? readerComplete && !portalMissed : listing?.unitListComplete === true,
     property: {
       name: listing?.title ?? target.name ?? null,
       address: listing?.address ?? target.address ?? null,
@@ -1301,7 +1319,10 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   snapshot.trace = trace;
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
-  snapshot.portal = learned ?? (portalMissed && knownPortal?.kind === REALPAGE_OLL_KIND ? knownPortal : null);
+  snapshot.portal = learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null);
+  // A portal walked screen by screen (readers/portalWalk.js) is the
+  // landlord's own price list: its weekly repricing is not churn.
+  if (snapshot.portal && isWalkedPortal(snapshot.portal)) snapshot.portal = { ...snapshot.portal, walked: true };
   // The portal walk is part way through: nothing in this read is final.
   snapshot.portalPending = portalPending;
   return snapshot;

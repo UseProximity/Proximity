@@ -20,14 +20,13 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail } from "@/lib/email";
 import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
-import { nextSundayCheckAt } from "./readers/realpageOllParse.js";
+import { nextSundayCheckAt } from "./readers/portalWalkParse.js";
 import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
 import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
 import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
 import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
-import { syncTeamReview } from "@/lib/agents/flags";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -45,6 +44,13 @@ const MAX_BACKOFF_DAYS = 14;
  * at every daily run (Wyatt, 2026-11-07).
  */
 export const SCHEDULE_SLACK_MS = 6 * 60 * 60 * 1000;
+
+/*
+ * The weekly deep read (Wyatt, 2026-11-11): on Sunday's run every listing is
+ * read much further into its site (read.js explore), the same day walked
+ * leasing portals refresh. Admins can ask for one any time.
+ */
+export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
 export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
 const plusDays = (days) => nextCheckAt(days);
 
@@ -128,22 +134,23 @@ async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
  *   onStep      progress text, for a job
  *   knowledge   also read the pages into the listing's knowledge (default)
  */
-export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null } = {}) {
+export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null, deep = null } = {}) {
   const listing = m.listings;
   const label = listing.title ?? listing.address;
   const interval = m.check_interval_days || DEFAULT_INTERVAL_DAYS;
   const started = Date.now();
   const baseUrl = getBaseUrl();
+  const goDeep = deep ?? isDeepDay();
   try {
     await ensureAgent(listing.id);
     // Only the sites the landlord gave us (Wyatt, 2026-11-07).
     const allowUrl = await givenSiteFilterFor(listing.id);
-    const teamReview = syncTeamReview();
     const snapshot = await readProperty({
       allowUrl,
       pastedUrl: m.index_url ?? m.source_url,
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
+      deep: goDeep,
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
@@ -161,7 +168,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         .update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date().toISOString() })
         .eq("id", m.id);
       console.log(`[source-sync] ${label}: ${note}`);
-      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], holdReason: null, teamReview, refused: snapshot.trace?.refused ?? [], summary: summarize(snapshot), pages: [], unitPages: [], note };
+      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: summarize(snapshot), pages: [], unitPages: [], note };
     }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
@@ -172,7 +179,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     let result = null;
     if (!unchanged) {
       onStep("Saving");
-      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, teamReview, listingLabel: label, userId: actorId });
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId });
     }
     let pages = [];
     if (knowledge) {
@@ -197,7 +204,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         last_fingerprint: fp,
         // A listing priced by a leasing portal is refreshed weekly, on
         // Sunday (Wyatt, 2026-11-10): the walk is slow and costs renders.
-        next_check_at: snapshot.portal?.kind === "realpage-oll" ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
+        next_check_at: snapshot.portal?.walked ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
       })
       .eq("id", m.id);
     await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);
@@ -205,13 +212,16 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       listingId: listing.id,
       listing: label,
       status,
+      deep: goDeep,
       platform: snapshot.platform,
       confidence: snapshot.confidence,
+      unitListComplete: !!snapshot.unitListComplete,
       seconds: Math.round((Date.now() - started) / 1000),
       applied: result?.applied ?? [],
       held: result?.held ?? [],
+      denied: result?.denied ?? [],
+      deniedNew: result?.deniedNew ?? 0,
       holdReason: result?.holdReason ?? null,
-      teamReview,
       refused: snapshot.trace?.refused ?? [],
       summary: summarize(snapshot),
       pages,
@@ -256,11 +266,11 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
  *   listingId  one listing, on demand
  *   force      run it even if not due, muted, or still a draft
  */
-export async function runSourceSync({ listingId = null, limit = 30, force = false, email = true } = {}) {
+export async function runSourceSync({ listingId = null, limit = 30, force = false, email = true, deep = null } = {}) {
   await ensureMonitors();
   const monitors = await dueMonitors({ listingId, limit, force });
   const items = [];
-  for (const m of monitors) items.push(await syncMonitor(m, { force, email }));
+  for (const m of monitors) items.push(await syncMonitor(m, { force, email, deep }));
 
   // One digest per run, when there is anything to say.
   const worth = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");

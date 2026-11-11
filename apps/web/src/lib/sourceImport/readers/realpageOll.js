@@ -30,30 +30,17 @@
  *     once the date has moved, so the list is read again after each pass.
  *   - A floor plan with one apartment opens with it already chosen.
  *   - One render has a time limit, so a walk reports what it priced and the
- *     next render carries on from there.
+ *     next render carries on from there (readers/portalWalk.js runs that
+ *     loop for every walked portal; this file is only what RealPage needs).
  */
-import { renderPage } from "@/lib/listingDraft/fetchSite";
-import { REALPAGE_OLL_RE, appUrl, findRealPageOll, mergeWalk, siteIdFromLanding, unitsFromWalk } from "./realpageOllParse.js";
+import { REALPAGE_OLL_RE, appUrl, findRealPageOll, siteIdFromLanding } from "./realpageOllParse.js";
+import { walkPortal, WALK_MS } from "./portalWalk.js";
 
 export { findRealPageOll, REALPAGE_OLL_HINT_RE, nextSundayCheckAt } from "./realpageOllParse.js";
+import { REALPAGE_OLL_HINT_RE as REALPAGE_OLL_HINT_RE_LOCAL } from "./realpageOllParse.js";
 
 export const REALPAGE_OLL_KIND = "realpage-oll";
 
-/*
- * Time. A server function here lives five minutes and a sync does more than
- * read the portal, so one run gives the portal PORTAL_RUN_MS. A building of
- * a dozen apartments fits; a larger one is finished by the next run, which
- * picks up from the progress kept on the monitor (a walk is one render, as
- * long as the renderer allows: WALK_MS, or SHORT_WALK_MS where it will not
- * run a script that long).
- */
-const PORTAL_RUN_MS = 175000;
-const WALK_MS = 120000;
-const SHORT_WALK_MS = 40000;
-const RENDER_SLACK_MS = 35000;
-const MAX_RUNS = 6;
-// Progress older than this is prices from another week: start again.
-const PROGRESS_FRESH_MS = 3 * 86400000;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
 /* The site number, from the portal's landing page. */
@@ -331,105 +318,42 @@ const WALK = String.raw`
   return JSON.stringify(out);
 })()`;
 
-export const walkScript = ({ skip = [], budgetMs = WALK_MS } = {}) => WALK.replace("__OPTS__", JSON.stringify({ skip: skip.map(String), budgetMs }));
-
-async function walkOnce(siteId, { skip, budgetMs }) {
-  const r = await renderPage(appUrl(siteId), {
-    waitMs: 6000,
-    raw: true,
-    timeoutMs: budgetMs + RENDER_SLACK_MS,
-    actions: [{ type: "executeJavascript", script: walkScript({ skip, budgetMs }) }],
-  });
-  const returned = r?.returns?.find((v) => typeof v === "string" && v.startsWith("{"));
-  if (!returned) {
-    console.warn(`[source-import] realpage portal ${siteId}: walk returned nothing (${r ? `html ${r.html.length}, returns ${JSON.stringify(r.returns).slice(0, 200)}` : "render failed"})`);
-    return null;
-  }
-  try {
-    return JSON.parse(returned);
-  } catch (err) {
-    console.warn(`[source-import] realpage portal ${siteId}: walk unreadable: ${err?.message}`);
-    return null;
-  }
+export function walkScript({ skip = [], budgetMs = WALK_MS } = {}) {
+  return WALK.replace("__OPTS__", JSON.stringify({ skip: skip.map(String), budgetMs }));
 }
 
 /*
- * Read a building through its portal. Returns raw snapshot units (one per
- * floor plan, one offer per apartment and price, lease lengths from the
- * Lease Terms step), or null when the portal gave nothing.
- *
- *   portal   { propertyId, siteId } from findRealPageOll (either may be null)
- *   known    what an earlier read learned: the site number, the walk length
- *            the renderer allowed, and a walk left unfinished
- *   onStep   progress text for the workspace
- *
- * `complete` says every apartment the portal lists was read. When it is
- * false and `pending` is true, the walk ran out of time with more to do:
- * `learned.progress` holds what it has, and the next read carries on.
+ * The portal as readers/portalWalk.js needs it. Found on the landlord's site
+ * by its landing page link, or (when a script adds that link) on the site's
+ * own /application/ page; opened unframed by site number.
  */
-export async function readRealPageOll(portal, { known = null, onStep = () => {}, today = new Date().toISOString().slice(0, 10), runMs = PORTAL_RUN_MS } = {}) {
-  onStep("Reading the leasing portal");
-  const sameBuilding = known && (!portal.propertyId || !known.propertyId || known.propertyId === portal.propertyId);
-  const siteId = portal.siteId ?? (sameBuilding ? known?.siteId : null) ?? (await resolveSiteId(portal.propertyId));
-  if (!siteId) {
-    console.warn(`[source-import] realpage portal ${portal.propertyId}: no site number on its landing page`);
-    return null;
-  }
-  const prior = sameBuilding && known?.progress && Date.now() - Date.parse(known.progress.startedAt ?? 0) < PROGRESS_FRESH_MS && (known.progress.runs ?? 0) < MAX_RUNS ? known.progress : null;
-  const walk = { plans: prior?.plans ?? [], units: prior?.units ?? {}, priced: prior?.priced ?? [], log: [] };
-  const startedAt = prior?.startedAt ?? new Date().toISOString();
-  const deadline = Date.now() + runMs;
-  let walkMs = sameBuilding && known?.walkMs ? known.walkMs : WALK_MS;
-  let complete = false;
-  let progressed = false;
-  for (;;) {
-    const budgetMs = Math.min(walkMs, deadline - Date.now() - RENDER_SLACK_MS);
-    if (budgetMs < 30000) break;
-    const before = walk.priced.length;
-    const got = await walkOnce(siteId, { skip: walk.priced.map((q) => q.number), budgetMs });
-    if (!got) {
-      // The renderer may not run a script this long: carry on in short walks.
-      if (walkMs > SHORT_WALK_MS) {
-        walkMs = SHORT_WALK_MS;
-        continue;
-      }
-      break;
+export const realpageOllPortal = {
+  kind: REALPAGE_OLL_KIND,
+  label: "RealPage",
+  hintRe: REALPAGE_OLL_HINT_RE_LOCAL,
+  find: findRealPageOll,
+  // Pages worth one fetch when the link is not in the HTML.
+  extraPages: (siteUrl) => {
+    try {
+      return [new URL("/application/", siteUrl).href];
+    } catch {
+      return [];
     }
-    mergeWalk(walk, got);
-    const total = Object.keys(walk.units).length;
-    onStep(`Priced ${walk.priced.length} of ${total} apartment${total === 1 ? "" : "s"} at every lease length the portal offers`);
-    if (walk.priced.length > before) progressed = true;
-    if (got.done) {
-      complete = true;
-      break;
-    }
-    // A walk that priced nothing and was not cut off by the clock is stuck.
-    if (walk.priced.length === before && !got.timeUp) break;
-  }
-  const built = unitsFromWalk(walk, today);
-  const pending = !complete && progressed;
-  if (!built.units.length && !pending) return null;
-  const notes = [...built.notes];
-  if (!complete && !pending) notes.push("The leasing portal stopped answering before every apartment was read; what is here is what it gave. Check it against the portal.");
-  return {
-    units: built.units,
-    concessions: [],
-    notes,
-    complete,
-    pending,
-    learned: {
-      kind: REALPAGE_OLL_KIND,
-      propertyId: portal.propertyId ?? (sameBuilding ? known?.propertyId : null) ?? null,
-      siteId,
-      walkMs,
-      lengths: built.lengths,
-      apartments: complete ? walk.priced.map((q) => ({ number: q.number, plan: q.plan, moveIn: q.moveIn, termPrices: q.terms })) : [],
-      // What an unfinished walk has so far, for the next read to carry on.
-      progress: pending ? { startedAt, runs: (prior?.runs ?? 0) + 1, plans: walk.plans, units: walk.units, priced: walk.priced } : null,
-    },
-    apartments: built.apartments,
-    quoted: built.quoted,
-  };
+  },
+  fromKnown: (known) => ({ propertyId: known.propertyId ?? null, siteId: known.siteId ?? null }),
+  sameBuilding: (portal, known) => !portal.propertyId || !known.propertyId || known.propertyId === portal.propertyId,
+  async resolve(portal, known) {
+    const siteId = portal.siteId ?? known?.siteId ?? (await resolveSiteId(portal.propertyId));
+    if (!siteId) return null;
+    return { id: siteId, learned: { propertyId: portal.propertyId ?? known?.propertyId ?? null, siteId } };
+  },
+  appUrl: (target) => appUrl(target.id),
+  walkScript,
+};
+
+/* Read a building through its RealPage portal (readers/portalWalk.js walkPortal). */
+export function readRealPageOll(portal, opts = {}) {
+  return walkPortal(realpageOllPortal, portal, opts);
 }
 
 export { REALPAGE_OLL_RE };

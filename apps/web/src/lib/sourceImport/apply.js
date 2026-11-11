@@ -33,6 +33,7 @@ import { listingUnitFormat, formatConflict } from "@/utils/unitFormat";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
+import { decideSyncChange, DENY } from "./syncPolicy.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
@@ -43,8 +44,6 @@ const REJECTED_QUIET_DAYS = 30;
 // A floor plan priced by a leasing portal carries a lease per apartment per
 // lease length: five apartments at ten lengths is fifty.
 const MAX_LEASES_PER_UNIT = 120;
-// What a leasing portal read in full may change without the team's review.
-const PORTAL_AUTO_KINDS = new Set(["lease_new", "lease_withdrawn", "lease_updated"]);
 
 // ---------------------------------------------------------------- state
 
@@ -458,13 +457,21 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const lp = { ...(repriced ?? {}) };
       const diff = {};
       if (repriced) diff.rent = { old: l.rent, new: o.rent };
-      if (o.leaseTermMonths.length && !sameTerms(o.leaseTermMonths, l.lease_term_months)) {
+      /*
+       * A sync changes only what the site states (Wyatt, 2026-11-11: missing
+       * facts never cause a change). Lease lengths read off the site's general
+       * text rather than this plan, and a page read by the model that gives no
+       * date, leave the lease's own values alone.
+       */
+      const termsStated = !(mode === "sync" && o.termsInferred);
+      const dateStated = !(mode === "sync" && snap.fromModel && !o.dateStated);
+      if (termsStated && o.leaseTermMonths.length && !sameTerms(o.leaseTermMonths, l.lease_term_months)) {
         lp.lease_term_months = o.leaseTermMonths;
         diff.leaseTermMonths = { old: l.lease_term_months ?? [], new: o.leaseTermMonths };
       }
       // A date that has arrived means available now: a site that says
       // "today" one day and "now" the next has not changed anything.
-      if (moveInKey(o.availableFrom) !== moveInKey(l.available_from)) {
+      if (dateStated && moveInKey(o.availableFrom) !== moveInKey(l.available_from)) {
         lp.available_from = o.availableFrom;
         diff.availableFrom = { old: l.available_from ?? null, new: o.availableFrom };
       }
@@ -487,7 +494,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           detail: { op: "lease_update", leaseId: l.id, label, patch: { ...lp, unavailable: false, is_active: true } },
         });
       } else if (Object.keys(lp).length) {
-        push({ kind: repriced ? "rent_change" : "lease_updated", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
+        push({ kind: repriced ? "rent_change" : "lease_updated", facts: { fromModel: !!snap.fromModel, rentExact: o.rentExact !== false }, unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
       }
     }
     // A price the site no longer offers (or a unit it stopped offering).
@@ -518,6 +525,15 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const lookalike = changes.find(
         (c) => c.kind === "unit_new" && Number(c.new?.bedrooms) === Number(u.bedrooms) && Number(c.new?.bathrooms) === Number(u.bathrooms)
       );
+      /*
+       * Perhaps the same unit under a new name. Neither side is acted on as if
+       * it were certain: the old unit's leases stay up and the new one goes in
+       * as a draft, so students never see the same home twice.
+       */
+      if (lookalike && !lookalike.detail?.draft) {
+        lookalike.detail = { ...lookalike.detail, draft: true, publish: false };
+        lookalike.note = `added as a draft: it has the same layout as ${label} and may be that unit renamed`;
+      }
       for (const l of live) {
         push({
           kind: "lease_withdrawn",
@@ -526,7 +542,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           field: "unavailable",
           old: false,
           new: true,
-          ...(lookalike ? { auto: false, judge: false, note: `the website's new ${lookalike.detail?.label ?? "unit"} has the same layout and may be this unit renamed` } : {}),
+          ...(lookalike ? { auto: false, judge: false, lookalike: true, note: `the website's new ${lookalike.detail?.label ?? "unit"} has the same layout and may be this unit renamed` } : {}),
           detail: { op: "lease_withdraw", leaseId: l.id, unitId: u.id, label, rent: l.rent, unitGone: true },
         });
       }
@@ -782,11 +798,31 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     // The lease is part of the key: two leases of one floor plan given the
     // same update are two changes, not one (the second used to be dropped).
     const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.detail?.leaseId ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
-    const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy)].map(keyOf));
+    // Nor do the sync's own denials: a landlord reviewing a change is asked even if the sync said no.
+    const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy && !e.detail?.autoDenied)].map(keyOf));
     fresh = changes.filter((c) => {
       const key = `${c.kind}|${c.unitKey ?? ""}|${c.leaseId ?? c.detail?.leaseId ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
       if (seen.has(key)) return false;
       // ...and the same change twice in one read is one event too.
+      seen.add(key);
+      return true;
+    });
+    if (!fresh.length) return [];
+  } else if (status === "rejected") {
+    /*
+     * A change the sync denied on its own (syncPolicy.js) is recorded once:
+     * the website saying the same thing tomorrow is the same denial, not a
+     * new one for the digest. The decision itself is made fresh every run,
+     * so a lease that waited on the listing gate applies once the gate opens.
+     */
+    const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
+    const { data: before } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail")
+      .eq("listing_id", listingId).eq("status", "rejected").is("verdict_by", null).gte("created_at", since).limit(2000);
+    const keyOf = (kind, unitKey, leaseId, field, value, reason) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}|${reason ?? ""}`;
+    const seen = new Set((before ?? []).filter((e) => e.detail?.autoDenied).map((e) => keyOf(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value, e.detail.autoDenied)));
+    fresh = changes.filter((c) => {
+      const key = keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new, c.denyReason);
+      if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
@@ -803,7 +839,16 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     confidence: c.auto ? "high" : "low",
     status,
     applied,
-    detail: { ...c.detail, note: c.note ?? null, judge: c.judgeResult ?? null, unitId: c.unitId ?? c.detail.unitId ?? null, leaseId: c.leaseId ?? c.detail.leaseId ?? null },
+    // Denied by the sync itself: a verdict with nobody behind it.
+    ...(status === "rejected" ? { verdict: "rejected", verdict_at: new Date().toISOString() } : {}),
+    detail: {
+      ...c.detail,
+      note: c.note ?? null,
+      judge: c.judgeResult ?? null,
+      unitId: c.unitId ?? c.detail.unitId ?? null,
+      leaseId: c.leaseId ?? c.detail.leaseId ?? null,
+      ...(status === "rejected" ? { autoDenied: c.denyReason ?? "denied" } : {}),
+    },
   }));
   const { data, error } = await supabase.from("listing_source_events").insert(rows).select("id");
   if (!error) return data ?? [];
@@ -891,6 +936,7 @@ export async function holdUnitsBelongingElsewhere({ state, changes, ownerIds }) 
     if (where || removed.has(key)) {
       c.auto = false;
       c.judge = false;
+      c.elsewhere = true;
       c.note = where ? `already on ${where}; held instead of added` : "removed from this listing before; held instead of added back";
     }
   }
@@ -905,7 +951,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, teamReview = false, listingLabel = null, takeover = null }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -917,38 +963,26 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   const label = listingLabel ?? state.title ?? state.address;
   if (mode === "sync") await holdUnitsBelongingElsewhere({ state, changes, ownerIds });
 
+  /*
+   * The recurring sync decides every change itself, with no queue (Wyatt,
+   * 2026-11-11; lib/sourceImport/syncPolicy.js). A takeover, and a sync that
+   * only proposes (a landlord adding a website), keep the review flow.
+   */
+  const policyRun = mode === "sync" && autoApply && !takeover;
+
   // Holds: a snapshot the reader was unsure of, or too much churn at once.
   let holdReason = null;
   // A claim is the first real read of the building: its changes are already
   // checked one by one on the tab, so a cautious read does not hold them all.
-  if (mode === "sync" && snapshot.confidence === "low" && !takeover) holdReason = "low_confidence";
-  /*
-   * A leasing portal read in full (RealPage) is the landlord's own price
-   * list, and its pricing engine moves every rent between one week and the
-   * next. That is not the building-wide surprise the churn hold exists for,
-   * and holding it would leave last week's prices up (Wyatt, 2026-11-10).
-   */
-  const portalPriced = snapshot.portal?.kind === "realpage-oll" && snapshot.confidence === "high";
-  if (mode === "sync" && !holdReason && !portalPriced) {
-    const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
-    // Churn is leases appearing, vanishing or repricing. A lease whose blurb
-    // or lengths were reworded is the same lease; counting those once held
-    // a building because every lease gained the words "Available now".
-    const touched = changes.filter(
-      (c) =>
-        // A unit's own page speaks for that unit alone, so its changes are
-        // not the building-wide churn this hold exists for.
-        !c.detail?.fromUnitPage &&
-        (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
-    ).length;
-    if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
-  }
+  // The policy judges each change on its own, so it never holds a whole run
+  // for a cautious read either.
+  if (mode === "sync" && snapshot.confidence === "low" && !takeover && !policyRun) holdReason = "low_confidence";
 
   /*
    * Landlord-set values are never overwritten by a sync (PRD v3, "When
    * sources disagree"): a lease, unit or property field a landlord set after
    * launch has a core provenance row with landlord_set, and any change to it
-   * is held for the landlord instead of applied.
+   * is held for the landlord (denied, under the policy) instead of applied.
    */
   if (mode === "sync") {
     const protectedIds = await landlordSetScopes(listingId);
@@ -969,7 +1003,6 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   // A lease going live passes the listing gate, as the landlord's own publish
   // would; the importer and sync used to skip it.
-  // Under launch review it still runs, so the team sees why one would wait.
   // Every such change is checked, for its own unit, before the model's second
   // opinion can promote it (a relist it promoted used to skip the gate).
   if (mode === "sync" && changes.some(putsLeaseLive)) {
@@ -992,23 +1025,76 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     }
   }
 
-  /*
-   * Launch review (Wyatt, 2026-11-07, lib/agents/flags.js syncTeamReview):
-   * nothing a sync finds changes what students see on its own. Every change,
-   * a unit's own page included, waits for the Proximity team, and the
-   * landlord does not see it.
-   */
-  if (mode === "sync" && teamReview) {
+  // The policy's verdict on every change, before the churn guard counts them.
+  if (policyRun) {
     for (const c of changes) {
-      // The one exception (Wyatt, 2026-11-10): prices, lease lengths and
-      // availability from a leasing portal read in full apply on their own
-      // and are reported in the weekly summary. Everything else the same
-      // read found still waits for the team.
-      if (portalPriced && PORTAL_AUTO_KINDS.has(c.kind)) continue;
-      c.auto = false;
-      c.judge = false;
-      c.detail = { ...(c.detail ?? {}), teamReview: true };
+      const v = decideSyncChange(c, { snapshot });
+      c.verdict = v;
+      if (v.reason && v.apply) c.note = v.reason;
     }
+  }
+
+  /*
+   * The churn guard. More than a fifth of the listing's leases changing at
+   * once is more likely a misread than a building re-let overnight, so the
+   * run is skipped and the team is told (the policy run applies nothing from
+   * it; the review flow holds it).
+   *
+   * A leasing portal read in full (RealPage) is the landlord's own price
+   * list, and its pricing engine moves every rent between one week and the
+   * next. That is not the building-wide surprise the churn hold exists for,
+   * and holding it would leave last week's prices up (Wyatt, 2026-11-10).
+   */
+  const portalPriced = !!snapshot.portal?.walked && snapshot.confidence === "high";
+  if (mode === "sync" && !holdReason && !portalPriced) {
+    const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
+    // Churn is leases appearing, vanishing or repricing. A lease whose blurb
+    // or lengths were reworded is the same lease; counting those once held
+    // a building because every lease gained the words "Available now".
+    const touched = changes.filter(
+      (c) =>
+        // A unit's own page speaks for that unit alone, so its changes are
+        // not the building-wide churn this hold exists for.
+        !c.detail?.fromUnitPage &&
+        // Only what would actually happen: a denied change is no churn.
+        (!policyRun || c.verdict?.apply) &&
+        (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
+    ).length;
+    if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
+  }
+
+  if (policyRun) {
+    const applied = [];
+    const denied = [];
+    for (const c of changes) {
+      // A skipped run still takes what a unit's own page said: the landlord
+      // pointed at that page for that unit (Wyatt, 2026-11-06).
+      const verdict = holdReason === "churn_hold" && !c.detail?.fromUnitPage ? { apply: false, reason: DENY.churn } : c.verdict;
+      if (!verdict.apply) {
+        c.auto = false;
+        c.denyReason = verdict.reason;
+        denied.push(c);
+        continue;
+      }
+      try {
+        c.note = (await executeChange(c, { state, userId: actor })) + (c.note ? `; ${c.note}` : "");
+        c.auto = true;
+        applied.push(c);
+      } catch (err) {
+        c.auto = false;
+        c.denyReason = `failed: ${err.message}`;
+        denied.push(c);
+      }
+    }
+    await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
+    const deniedNew = await recordEvents({ monitorId, listingId, changes: denied, applied: false, status: "rejected" });
+    if (holdReason && monitorId) {
+      await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, denyReason: DENY.churn, detail: { op: "none", label } }], applied: false, status: "rejected" });
+    }
+    if (applied.length) {
+      await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
+    }
+    return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, summary: summarize(snapshot), takeover: false };
   }
 
   // The model's second opinion on the changes the rules would not apply.
@@ -1066,7 +1152,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
   if (holdReason && monitorId) {
-    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label, ...(teamReview ? { teamReview: true } : {}) } }], applied: false, status: "open" });
+    await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
   }
   if (applied.length && mode === "sync") {
     await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
