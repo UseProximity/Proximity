@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { agreementView, cleanSignerTitle, markAgreementSigned, summarizeAgreementRows } from "./agreements.js";
 import { signatureStillValid } from "./agreementVersions.js";
 import { gateDecision, gateMessage, gateResponseBody } from "./listingGate.js";
-import { MAX_SIGNED_PDF_BYTES, signedAgreementKey, validateSignedPdf } from "./agreementPdf.js";
+import { MAX_DOCUMENSO_PDF_BYTES, MAX_SIGNED_PDF_BYTES, signedAgreementKey, validateSignedPdf } from "./agreementPdf.js";
 
 const ON = { requirePaymentMethod: true, requireAgreement: true };
 
@@ -31,6 +31,16 @@ describe("gate: overdue invoice (PR #370 review)", () => {
   it("names every reason at once", () => {
     const d = gateDecision({ role: "landlord", requirePaymentMethod: true, requireAgreement: false, hasPaymentMethod: false, agreementSigned: true, overdueInvoice: true });
     assert.equal(gateMessage(d.missing), "Before you can publish a listing you need to pay your overdue invoice and add an active payment method. You can do this under Billing in your landlord dashboard. Your drafts are saved.");
+  });
+});
+
+describe("hasOverdueInvoice (review of 2026-11-07)", () => {
+  it("a bank payment still settling keeps publishing blocked until it clears", async () => {
+    const { hasOverdueInvoice } = await import("./listingGate.js");
+    let statuses = null;
+    const db = { from: () => { const q = { select: () => q, eq: () => q, not: () => q, in: (_c, v) => ((statuses = v), q), limit: async () => ({ data: [{ id: "i1" }], error: null }) }; return q; } };
+    assert.equal(await hasOverdueInvoice(db, "l1"), true);
+    assert.ok(statuses.includes("processing"));
   });
 });
 
@@ -115,6 +125,18 @@ describe("agreementView", () => {
     assert.equal(agreementView(summarizeAgreementRows([], { liveVersion: live }), { signingAvailable: false }).canSign, false);
   });
 
+  it("a version made for one landlord reads like any updated agreement, with nothing saying it is theirs alone (2026-11-08)", () => {
+    const own = { ...live, id: "v9", landlord_id: "u1", label: "December 2026" };
+    const v = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: own }));
+    assert.equal(v.status, "signed", "their signed agreement keeps counting until they sign the new one");
+    assert.equal(v.newVersionReady, true);
+    assert.equal(v.canSign, true);
+    assert.equal(v.liveVersionLabel, "December 2026");
+    assert.doesNotMatch(JSON.stringify(v), /negotiat|landlord_id/i);
+    const standard = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: live }));
+    assert.equal(standard.newVersionReady, false);
+  });
+
   it("exposes the signature, never the file key", () => {
     const v = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: live }));
     assert.equal(v.status, "signed");
@@ -185,6 +207,11 @@ describe("signed agreement files", () => {
   it("accepts a PDF within the limit", () => {
     assert.doesNotThrow(() => validateSignedPdf(pdf()));
     assert.doesNotThrow(() => validateSignedPdf(pdf(MAX_SIGNED_PDF_BYTES)));
+  });
+
+  it("a signed copy from Documenso may be larger than an upload (review of 2026-11-07)", () => {
+    assert.doesNotThrow(() => validateSignedPdf(pdf(MAX_SIGNED_PDF_BYTES + 1), "signed agreement", MAX_DOCUMENSO_PDF_BYTES));
+    assert.throws(() => validateSignedPdf(pdf(MAX_DOCUMENSO_PDF_BYTES + 1), "signed agreement", MAX_DOCUMENSO_PDF_BYTES), /50 MB/);
   });
 
   it("refuses an empty file, an oversized one, and anything that is not a PDF", () => {

@@ -31,14 +31,22 @@ export const OPT_OUT_INBOX = "info@useproximity.org";
  * `reason` is the one line telling someone why this landed in their inbox. On a
  * commercial send it is what identifies the message, so it is required there and
  * the call sites all pass one.
+ *
+ * `unsubscribeUrl` (mass email only, see lib/massEmail/unsubscribe.js) puts a real
+ * Unsubscribe link in the footer and replaces the "reply unsubscribe" line.
  */
-export function emailFooter({ reason, commercial = false } = {}) {
-  const optOut = commercial
+export function emailFooter({ reason, commercial = false, unsubscribeUrl = null } = {}) {
+  const optOut = unsubscribeUrl
     ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
+         Don&#39;t want these emails?
+         <a href="${escapeAttr(unsubscribeUrl)}" style="color:#999;text-decoration:underline">Unsubscribe</a>
+       </p>`
+    : commercial
+      ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
          Don&#39;t want these? Reply to this email with &quot;unsubscribe&quot; and we
          will stop sending them.
        </p>`
-    : "";
+      : "";
 
   return `
       <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">
@@ -46,4 +54,19 @@ export function emailFooter({ reason, commercial = false } = {}) {
         ${optOut}
         <p style="color:#999;font-size:12px;line-height:1.5;margin:0">${POSTAL_ADDRESS}</p>
       </div>`;
+}
+
+// The same footer for the plain-text part of an email. `reason` is plain text here.
+export function emailFooterText({ reason, commercial = false, unsubscribeUrl = null } = {}) {
+  const lines = ["--"];
+  if (reason) lines.push(reason);
+  if (unsubscribeUrl) lines.push(`Don't want these emails? Unsubscribe: ${unsubscribeUrl}`);
+  else if (commercial) lines.push(`Don't want these? Reply to this email with "unsubscribe" and we will stop sending them.`);
+  lines.push(POSTAL_ADDRESS);
+  return lines.join("\n");
+}
+
+// The URL goes in an href: only quotes and angle brackets could break out of it.
+function escapeAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

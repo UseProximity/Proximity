@@ -25,7 +25,6 @@ const fromVersion = (v) => ({
   buttonUrl: v?.button_url ?? "",
   attachments: v?.attachments ?? [],
   footerReason: v?.footer_reason ?? DEFAULT_FOOTER_REASON,
-  commercial: v?.commercial === true,
 });
 
 const BODY_HELP = "Blank line = new paragraph. \"- \" starts a bullet, \"## \" a heading. **bold**, [link text](https://... or /dashboard/landlord).";
@@ -109,7 +108,11 @@ export default function EmailEditor({ template, dbTarget, writable, mrecUploaded
       button_label: form.buttonLabel,
       button_url: form.buttonUrl,
     };
-    const footerHtml = emailFooter({ reason: escapeHtml(form.footerReason || DEFAULT_FOOTER_REASON), commercial: form.commercial });
+    // Each recipient gets their own unsubscribe link; the preview shows where it sits.
+    const footerHtml = emailFooter({
+      reason: escapeHtml(form.footerReason || DEFAULT_FOOTER_REASON),
+      unsubscribeUrl: `${BASE_URL}/unsubscribe`,
+    });
     return renderMassEmail(version, SAMPLE, { baseUrl: BASE_URL, setupUrl: sampleSetup ? `${BASE_URL}/reset-password` : null, footerHtml });
   }, [form, sampleSetup]);
 
@@ -218,12 +221,9 @@ export default function EmailEditor({ template, dbTarget, writable, mrecUploaded
             <span className="text-sm font-medium text-gray-700">Why they are getting it (footer)</span>
             <input value={form.footerReason} onChange={(e) => set({ footerReason: e.target.value })} className={FIELD} maxLength={300} disabled={!writable} />
           </label>
-          <label className="flex items-start gap-2 text-sm text-gray-700">
-            <input type="checkbox" className="mt-1" checked={form.commercial} onChange={(e) => set({ commercial: e.target.checked })} disabled={!writable} />
-            <span>
-              Marketing email: adds &quot;reply unsubscribe&quot; to the footer. Tick it for promotions; leave it off for account and billing notices.
-            </span>
-          </label>
+          <p className="text-xs text-gray-500">
+            Every email also gets its own Unsubscribe link in the footer. People who unsubscribe are skipped on every send.
+          </p>
         </div>
 
         {error && <Notice kind="error">{error}</Notice>}

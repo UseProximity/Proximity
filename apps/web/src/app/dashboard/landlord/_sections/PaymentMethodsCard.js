@@ -86,11 +86,12 @@ export default function PaymentMethodsCard({ methods, busy, onAdd, onSetDefault,
           {needsAction ? (methods.length ? "Needs attention" : "Not added") : "Active"}
         </span>
       }
-      summary={current ? `${current.description} is charged for your monthly invoice.` : "No active payment method yet."}
+      summary={current ? `${current.description} is your default payment method.` : "No active payment method yet."}
     >
       <p className="px-4 pt-4 text-sm text-gray-500">
-        Your monthly invoice is charged automatically to your default payment method. A bank account (ACH) is
-        recommended. Card and bank details are entered on Stripe&apos;s secure page and never reach Proximity.
+        Your monthly invoice is emailed to you, and you pay it with Pay now. Turn on autopay below to have it charged
+        automatically instead. A bank account (ACH) is recommended. Card and bank details are entered on Stripe&apos;s
+        secure page and never reach Proximity.
       </p>
 
       {/* One line: each method's own row says what is wrong with it. */}

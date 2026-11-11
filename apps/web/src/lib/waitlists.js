@@ -21,21 +21,12 @@
  */
 const PLACEHOLDERS = ["name", "email", "phone"];
 
-const WAITLISTS = {
-  "6650 delmar|63130": {
-    label: "Waitlist",
-    /*
-     * A getter, not a string, so the env var is read at request time.
-     *
-     * No hardcoded fallback on purpose. The only sensible default would be the
-     * landlord's live form, and an environment that forgot to set this would
-     * then quietly send real students into their real sheet from a place we
-     * never meant to. Unset is treated as "no waitlist here", which hides the
-     * button rather than pointing it somewhere we did not choose.
-     */
-    getUrl: () => process.env.LOCAL_DELMAR_WAITLIST_URL || null,
-  },
-};
+/*
+ * Empty for now. LOCAL on Delmar (6650 delmar|63130) used to be here. Its
+ * button was removed on 2026-11-09. To add a building back, add an entry like:
+ *   "6650 delmar|63130": { label: "Waitlist", getUrl: () => process.env.X || null },
+ */
+const WAITLISTS = {};
 
 /**
  * The waitlist for a property key, or null when it doesn't run one.

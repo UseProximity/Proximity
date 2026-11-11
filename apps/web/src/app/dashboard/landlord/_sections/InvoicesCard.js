@@ -57,6 +57,15 @@ function InvoiceRow({ invoice, busy, paying, result, onPay }) {
             : NOTE[invoice.status === "open" && !invoice.invoiceDate ? "preparing" : invoice.status]}
         </p>
       )}
+      {invoice.accounts?.length > 0 && (
+        <ul className="mt-1 text-xs text-gray-600">
+          {invoice.accounts.map((a) => (
+            <li key={a.name}>
+              {a.name}: {formatCents(a.totalCents)}
+            </li>
+          ))}
+        </ul>
+      )}
       {invoice.refundedCents > 0 && (
         <p className="mt-1 text-xs text-gray-700">
           {formatCents(invoice.refundedCents)} refunded to the card or bank account you paid with.

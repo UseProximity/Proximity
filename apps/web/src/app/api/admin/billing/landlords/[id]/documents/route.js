@@ -22,21 +22,21 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  */
 
 export async function GET(req, { params }) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   const supabase = billingDb.db;
   try {
     const { id } = await params;
     if (!isUuid(id)) throw new BillingError("not_found", "That landlord was not found.", 404);
-    return NextResponse.json({ documents: await listAgreementDocuments(supabase, id) });
+    return NextResponse.json({ documents: await listAgreementDocuments(supabase, id, { admin: true }) });
   } catch (err) {
     return billingErrorResponse(err, "list a landlord's agreement documents");
   }
 }
 
 export async function POST(req, { params }) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const billingDb = adminBillingDb(req);
   if (!billingDb.writable) return readOnlyResponse(billingDb);

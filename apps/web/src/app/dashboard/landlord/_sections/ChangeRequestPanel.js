@@ -52,7 +52,7 @@ function StatusBadge({ status }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${s.className}`}>{s.label}</span>;
 }
 
-function FileInput({ inputKey, onFile }) {
+export function FileInput({ inputKey, onFile }) {
   return (
     <label className="block text-sm text-gray-700">
       Attach your marked-up copy (optional, PDF or Word, up to 4 MB)

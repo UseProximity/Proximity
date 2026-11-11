@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-08T13:54:38.405Z",
-  "count": 325,
+  "_generated": "2026-11-11T00:56:00.400Z",
+  "count": 333,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -340,6 +340,10 @@
       "description": "Which database an admin billing route reads (Wyatt, 2026-11-06): the admin"
     },
     {
+      "file": "src/lib/billing/adminLandlords.js",
+      "description": "Finding a landlord, and their properties and leases, for the admin billing"
+    },
+    {
       "file": "src/lib/billing/adminReview.js",
       "description": "The admin side of the charge lifecycle, behind the admin review view:"
     },
@@ -484,6 +488,10 @@
       "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
     },
     {
+      "file": "src/lib/billing/declineNote.js",
+      "description": "A landlord who rejects the agreement in Documenso's signing window gets a change"
+    },
+    {
       "file": "src/lib/billing/documenso.js",
       "description": "Documenso, the e-signature provider for the marketing agreement (Teams plan)."
     },
@@ -550,6 +558,22 @@
     {
       "file": "src/lib/billing/overdueJob.js",
       "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
+    },
+    {
+      "file": "src/lib/billing/payerLinks.js",
+      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+    },
+    {
+      "file": "src/lib/billing/payers.js",
+      "description": "A payer for a landlord account (Project B, Wyatt 2026-11-09). See"
+    },
+    {
+      "file": "src/lib/billing/payers.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/payerServices.js",
+      "description": "The real email, storage and publishing behind payers.js, for the routes and"
     },
     {
       "file": "src/lib/billing/paymentMethodHandlers.js",
@@ -884,6 +908,10 @@
       "description": "Display-name uniqueness for properties."
     },
     {
+      "file": "src/lib/listings/publish.js",
+      "description": "Publishing drafts: the work behind POST /api/landlord/publish, here so a"
+    },
+    {
       "file": "src/lib/listings/queryListings.js",
       "description": "Server-side listing data for pages that render listings in their initial"
     },
@@ -934,6 +962,10 @@
     {
       "file": "src/lib/massEmail/unowned.js",
       "description": "Live listings with no landlord account, and getting them one before a mass"
+    },
+    {
+      "file": "src/lib/massEmail/unsubscribe.js",
+      "description": "Unsubscribing from mass email (Wyatt, 2026-11-08)."
     },
     {
       "file": "src/lib/matchmaking/anonymousSessions.js",

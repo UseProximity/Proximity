@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
+import LandlordPicker, { landlordName } from "@/components/admin/billing/LandlordPicker";
 
 const STATUS = {
   draft: ["gray", "Draft"],
@@ -292,18 +293,28 @@ function LiveRow({ v, kindLabel, busy, run }) {
 
 /*
  * The agreement documents: the standard agreement and the standard Exhibit A
- * amendment, each with its own live version, plus versions negotiated with one
- * landlord. Upload a PDF as a new version, take it through Documenso, make it live.
+ * amendment, each with its own live version, plus versions for one landlord (a
+ * different fee or wording agreed with them). Upload a PDF as a new version, take
+ * it through Documenso, make it live. A landlord's own version looks exactly like
+ * the standard one to them (Wyatt, 2026-11-08): same flow, same wording, and its
+ * name defaults to the standard version's because the landlord sees it.
  */
 export default function AgreementVersions({ versions, documensoConnected, busy, run }) {
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState("master");
   const [file, setFile] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [forOne, setForOne] = useState(false);
+  const [landlord, setLandlord] = useState(null);
   const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.landlordId);
   const live = liveStandard("master");
   const liveAmendment = liveStandard("amendment");
-  const negotiatedLive = versions.filter((v) => v.status === "live" && v.landlordId);
+  const ownLive = versions.filter((v) => v.status === "live" && v.landlordId);
+  // A landlord sees the version's name, so theirs starts as the standard one's.
+  const standardLabel = liveStandard(kind)?.label ?? "";
+  useEffect(() => {
+    if (forOne) setLabel(standardLabel);
+  }, [forOne, standardLabel]);
   const drafts = versions.filter((v) => v.status === "draft" || v.status === "ready");
   const retired = versions.filter((v) => v.status === "retired");
   const inForce = retired.filter((v) => v.stillInForce);
@@ -314,13 +325,16 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
     const form = new FormData();
     form.set("label", label);
     form.set("kind", kind);
+    if (forOne && landlord) form.set("landlordId", landlord.id);
     if (file) form.set("file", file);
     return run(async () => {
       await call("/api/admin/billing/agreement-versions", { method: "POST", body: form });
       setLabel("");
       setFile(null);
       setFileInputKey((k) => k + 1);
-    }, "Uploaded. Follow the steps below to make it live.");
+      setForOne(false);
+      setLandlord(null);
+    }, forOne ? `Uploaded for ${landlordName(landlord)}. Follow the steps below to make it live for them.` : "Uploaded. Follow the steps below to make it live.");
   };
 
   const discard = (v) => {
@@ -356,8 +370,8 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           No amendment version is live yet. Landlords who already signed cannot add new properties until one is.
         </p>
       )}
-      {negotiatedLive.map((v) => (
-        <LiveRow key={v.id} v={v} kindLabel={`Negotiated ${KIND_LABEL[v.kind].toLowerCase()}`} busy={busy} run={run} />
+      {ownLive.map((v) => (
+        <LiveRow key={v.id} v={v} kindLabel={KIND_LABEL[v.kind]} busy={busy} run={run} />
       ))}
 
       {inForce.length > 0 && (
@@ -417,7 +431,9 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
       <form onSubmit={upload} className="space-y-2 border-t border-gray-100 pt-4">
         <p className="text-sm font-medium text-gray-900">Upload a new version</p>
         <p className="text-xs text-gray-500">
-          A version for one landlord (a negotiated change) is uploaded from their change request, under Change requests.
+          For everyone, it replaces the standard version once it is live. For one landlord (a different fee or wording agreed with
+          them), only they sign it, and they see it exactly like the standard one. If they already signed, they are asked to sign
+          their new version and their current agreement keeps counting until they do.
         </p>
         <details className="rounded-md border border-gray-200 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium text-gray-700">Boxes to place in Documenso, and their labels</summary>
@@ -426,6 +442,24 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           </div>
         </details>
         <div className="flex flex-wrap gap-3">
+          <label className="block w-48 text-sm text-gray-700">
+            Who signs it
+            <select
+              className={`${FIELD} mt-1`}
+              value={forOne ? "one" : "everyone"}
+              onChange={(e) => {
+                const one = e.target.value === "one";
+                setForOne(one);
+                if (!one) {
+                  setLandlord(null);
+                  setLabel("");
+                }
+              }}
+            >
+              <option value="everyone">Everyone (standard)</option>
+              <option value="one">One landlord</option>
+            </select>
+          </label>
           <label className="block w-48 text-sm text-gray-700">
             Document
             <select className={`${FIELD} mt-1`} value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -436,6 +470,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
             Name
             <input className={`${FIELD} mt-1`} value={label} maxLength={80} placeholder="December 2026" onChange={(e) => setLabel(e.target.value)} required />
+            {forOne && <span className="mt-1 block text-xs text-gray-500">The landlord sees this name. Keep it like the standard version&apos;s.</span>}
           </label>
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
             PDF (up to 4 MB)
@@ -449,8 +484,16 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             />
           </label>
         </div>
-        <button type="submit" disabled={busy || !file} className={PRIMARY}>
-          {busy ? "Working..." : "Upload"}
+        {forOne && (
+          <div className="text-sm text-gray-700">
+            Landlord
+            <div className="mt-1 max-w-md">
+              <LandlordPicker value={landlord} onChange={setLandlord} disabled={busy} />
+            </div>
+          </div>
+        )}
+        <button type="submit" disabled={busy || !file || (forOne && !landlord)} className={PRIMARY}>
+          {busy ? "Working..." : forOne && landlord ? `Upload for ${landlordName(landlord)}` : "Upload"}
         </button>
       </form>
 

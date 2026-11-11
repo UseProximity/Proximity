@@ -19,7 +19,7 @@ import { MREC_FORM_FILENAME, getMrecForm, saveMrecForm } from "@/lib/users/mrecF
  * @auth admin
  */
 export async function GET(req) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const form = await getMrecForm(supabase);
@@ -34,7 +34,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     if (!(req.headers.get("content-type") || "").includes("multipart/form-data")) {

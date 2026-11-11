@@ -37,7 +37,7 @@
 import { BillingError } from "./errors.js";
 import { MIN_INVOICE_CENTS } from "./constants.js";
 import { billingPeriodFor } from "./billingPeriod.js";
-import { withSettingsLock } from "./settings.js";
+import { getBillingSetting, setBillingSetting, withSettingsLock } from "./settings.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 import { scheduleAutopay } from "./autopay.js";
 import { invoiceIdempotencyKey, lineDescription, planInvoices } from "./invoicePlan.js";
@@ -58,17 +58,23 @@ import {
 const PAGE = 1000;
 
 const CHARGE_COLUMNS = `
-  id, landlord_id, amount_cents, trigger_type, status, invoice_id, created_at,
+  id, landlord_id, payer_id, amount_cents, trigger_type, status, invoice_id, created_at,
   signed_rent_cents, commission_rate_percent,
+  account:users!landlord_id(name, company_name, email),
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
   student:users!student_id(name)
 `;
 
 // The invoice-line fields planInvoices and lineDescription read.
+// A charge on a landlord account someone else pays for is invoiced to that payer
+// (charges.payer_id, Project B): one invoice per payer, its lines marked with the
+// account they came from.
+const accountLabel = (a) => a?.company_name?.trim() || a?.name || a?.email || "Landlord account";
 const toPlanningRow = (c) => ({
   id: c.id,
-  landlord_id: c.landlord_id,
+  landlord_id: c.payer_id ?? c.landlord_id,
+  account_label: c.payer_id ? accountLabel(c.account) : null,
   amount_cents: c.amount_cents,
   trigger_type: c.trigger_type,
   status: c.status,
@@ -100,7 +106,8 @@ function approvedUninvoiced(db, landlordId) {
       .is("invoice_id", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
-    if (landlordId) q = q.eq("landlord_id", landlordId);
+    // Charges this account is invoiced for: its own without a payer, and those it pays for.
+    if (landlordId) q = q.or(`payer_id.eq.${landlordId},and(payer_id.is.null,landlord_id.eq.${landlordId})`);
     return q;
   });
 }
@@ -116,7 +123,7 @@ async function chargesOnInvoice(db, localInvoiceId) {
   return data.map(toPlanningRow);
 }
 
-const ROW_COLUMNS = "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, hosted_invoice_url";
+const ROW_COLUMNS = "id, landlord_id, billing_period, stripe_invoice_id, status, total_cents, invoice_date, hosted_invoice_url, announced_at";
 
 /*
  * Open rows a live run re-checks: this month's, plus any from an earlier month
@@ -124,12 +131,15 @@ const ROW_COLUMNS = "id, landlord_id, billing_period, stripe_invoice_id, status,
  * the second part a row left half done in one month would never be picked up
  * again, and the charges claimed onto it would never be billed.
  */
-async function openInvoicesToResume(db, billingPeriod, landlordId) {
+async function openInvoicesToResume(db, billingPeriod, landlordId, { unfinishedOnly = false } = {}) {
+  // Also any month's invoice issued but never announced (a run stopped between
+  // finalizing it and emailing it; review of 2026-11-07). The daily follow-up
+  // (`unfinishedOnly`) looks at those and the never-finalized ones only.
   let q = db
     .from("billing_invoices")
     .select(ROW_COLUMNS)
     .eq("status", "open")
-    .or(`billing_period.eq.${billingPeriod},invoice_date.is.null`)
+    .or(unfinishedOnly ? "invoice_date.is.null,announced_at.is.null" : `billing_period.eq.${billingPeriod},invoice_date.is.null,announced_at.is.null`)
     .order("billing_period", { ascending: true });
   if (landlordId) q = q.eq("landlord_id", landlordId);
   const { data, error } = await q;
@@ -278,6 +288,9 @@ async function continueInvoice({ db, stripe, now, notify, hooks }, row, known) {
       .eq("id", row.id);
     if (error) throw error;
     sentNow = true;
+  } else if (!row.announced_at) {
+    // Finalized and saved, but the run stopped before telling the landlord.
+    sentNow = true;
   }
 
   // Sent just now (or finished by this resumed run): schedule autopay and email it.
@@ -298,7 +311,7 @@ async function announceInvoice({ db, now, notify }, { row, invoice, landlord, em
   } catch (err) {
     console.error("billing: could not schedule autopay", row.id, err?.message);
   }
-  if (!notify?.invoiceIssued || !landlord?.email) return;
+  if (!notify?.invoiceIssued || !landlord?.email) return markAnnounced(db, row.id, now);
   try {
     await notify.invoiceIssued({
       landlord,
@@ -315,6 +328,14 @@ async function announceInvoice({ db, now, notify }, { row, invoice, landlord, em
   } catch (err) {
     console.error("billing: invoice email failed", row.id, err?.message);
   }
+  await markAnnounced(db, row.id, now);
+}
+
+// Recorded after the email is attempted (an admin can resend a failed one), so a
+// run stopped before this point announces the invoice next time instead of never.
+async function markAnnounced(db, invoiceId, now) {
+  const { error } = await db.from("billing_invoices").update({ announced_at: now.toISOString() }).eq("id", invoiceId).is("announced_at", null);
+  if (error) console.error("billing: could not record the invoice as announced", invoiceId, error.message);
 }
 
 async function billLandlord(ctx, planned) {
@@ -428,11 +449,17 @@ export async function runBillingRun({
   onlyLandlordId = null,
   notify = {},
   hooks = {},
+  // The daily follow-up: only finish invoices an earlier run left unfinished or
+  // un-emailed; bill nobody new.
+  unfinishedOnly = false,
+  // Stop starting new landlords after this long (the cron has 300 seconds); the
+  // run is then recorded as unfinished and the next day's follow-up continues it.
+  timeBudgetMs = RUN_TIME_BUDGET_MS,
 }) {
   const billingPeriod = billingPeriodFor(now);
-  const charges = await approvedUninvoiced(db, onlyLandlordId);
+  const charges = unfinishedOnly ? [] : await approvedUninvoiced(db, onlyLandlordId);
   const plan = planInvoices(charges.map(toPlanningRow), { billingPeriod });
-  const openRows = await openInvoicesToResume(db, billingPeriod, onlyLandlordId);
+  const openRows = await openInvoicesToResume(db, billingPeriod, onlyLandlordId, { unfinishedOnly });
   // Only this month's row stands in for this month's invoice. A stranded row from
   // an earlier month is finished separately and does not stop this month's.
   const billedLandlords = new Set(openRows.filter((r) => r.billing_period === billingPeriod).map((r) => r.landlord_id));
@@ -468,13 +495,45 @@ export async function runBillingRun({
     };
   }
 
-  return withRunLock(db, now, () => liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords }));
+  return withRunLock(db, now, async () => {
+    const result = await liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords, timeBudgetMs });
+    // A whole-run (not one landlord's) that stopped early is continued by the
+    // daily follow-up; one that finished clears the mark.
+    if (!onlyLandlordId && !unfinishedOnly) {
+      await setBillingSetting(db, RUN_UNFINISHED_KEY, result.unfinished ? { billingPeriod, at: now.toISOString() } : false);
+    }
+    return result;
+  });
 }
 
-async function liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords }) {
+// What the daily follow-up does (api/cron/billing-run on days that are not the
+// billing day): continue a run that stopped early this month, else finish any
+// invoice left unfinished or un-emailed. Returns null when there is nothing to do.
+export async function followUpBillingRun({ db, stripe, now = new Date(), notify = {} }) {
+  const mark = await getBillingSetting(db, RUN_UNFINISHED_KEY, null);
+  if (mark?.billingPeriod === billingPeriodFor(now)) {
+    return runBillingRun({ db, stripe, now, dryRun: false, notify });
+  }
+  const stranded = (await openInvoicesToResume(db, billingPeriodFor(now), null, { unfinishedOnly: true })).filter((r) => !r.invoice_date || !r.announced_at);
+  if (!stranded.length) return null;
+  return runBillingRun({ db, stripe, now, dryRun: false, notify, unfinishedOnly: true });
+}
+
+const RUN_TIME_BUDGET_MS = 240 * 1000;
+export const RUN_UNFINISHED_KEY = "billing_run_unfinished";
+
+async function liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, openRows, billedLandlords, timeBudgetMs }) {
   const ctx = { db, stripe, now, notify, hooks };
   const results = [];
+  const started = Date.now();
+  let unfinished = false;
   const attempt = async (landlordId, fn) => {
+    // Out of time: leave the rest for the follow-up rather than be killed mid-invoice.
+    if (Date.now() - started > timeBudgetMs) {
+      unfinished = true;
+      results.push({ landlordId, outcome: "not_reached" });
+      return;
+    }
     try {
       results.push({ landlordId, ...(await fn()) });
     } catch (err) {
@@ -500,7 +559,9 @@ async function liveRun({ db, stripe, now, notify, hooks, billingPeriod, plan, op
       deferred: count("deferred"),
       alreadyBilled: count("already_billed"),
       errors: count("error"),
+      notReached: count("not_reached"),
     },
+    unfinished,
   };
 }
 

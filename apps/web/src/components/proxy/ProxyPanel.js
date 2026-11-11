@@ -44,8 +44,8 @@
  * thread read, which is what stops the email Proxy would otherwise send for
  * an answer the student already saw here.
  *
- * The owner's "View as Student" preview and admins get test mode: real
- * answers, nothing logged or sent on.
+ * The owner's "View as Student" preview gets test mode: real answers, nothing
+ * logged or sent on. Staff get it only on listings that are not live yet.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

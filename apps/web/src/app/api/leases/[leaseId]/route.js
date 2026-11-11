@@ -114,7 +114,7 @@ export async function PATCH(req, { params }) {
 
   // A lease the overdue-invoice job withdrew stays withdrawn until an admin
   // restores it, or putting it back by hand would undo the withdrawal.
-  // The database refuses this as well (202611010002_billing_holds.sql); checking
+  // The database refuses this as well (202611010003_billing_holds.sql); checking
   // here first gives the landlord the reason in plain words.
   const goingLive = patch.is_active === true || patch.unavailable === false;
   if (goingLive && (await isLeaseHeldForBilling(supabase, leaseId))) {

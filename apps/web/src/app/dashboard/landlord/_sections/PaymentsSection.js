@@ -9,6 +9,7 @@ import AutopayCard from "./AutopayCard";
 import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
+import { PaidForAccounts, PayerCard, SignerChecklist } from "./PayerCards";
 
 const NOTICES = {
   success: { tone: "green", text: "Payment method saved." },
@@ -36,8 +37,13 @@ async function call(url, options) {
 export default function PaymentsSection() {
   const [methods, setMethods] = useState([]);
   const [charges, setCharges] = useState([]);
+  const [requestsKey, setRequestsKey] = useState(0);
   const [invoices, setInvoices] = useState([]);
   const [gate, setGate] = useState(null);
+  // Project B: this account's payer (status only), and the accounts this user pays for.
+  const [payer, setPayer] = useState(null);
+  const [payees, setPayees] = useState([]);
+  const [billedTo, setBilledTo] = useState(null);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
   const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,17 +58,22 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
-    const [m, c, i, g] = await Promise.all([
+    const [m, c, i, g, p, a] = await Promise.all([
       call("/api/billing/payment-methods"),
       call("/api/billing/charges"),
       call("/api/billing/invoices"),
       call("/api/billing/gate"),
+      call("/api/billing/payer"),
+      call("/api/billing/payees"),
     ]);
     setMethods(m.methods);
     setCharges(c.charges);
     setSummary(c.summary);
+    setBilledTo(c.billedTo ?? null);
     setInvoices(i.invoices);
     setGate(g);
+    setPayer(p.payer ?? null);
+    setPayees(a.accounts ?? []);
   }, []);
 
   useEffect(() => {
@@ -199,12 +210,46 @@ export default function PaymentsSection() {
 
   // After the signing dialog: refresh, and say where things stand.
   const agreementChanged = (result) => {
+    // A rejection may have opened a change request: show it.
+    setRequestsKey((k) => k + 1);
     if (result === "signed") toast.success("Thank you. It is signed, and the properties on it are covered.");
     else if (result === "pending") toast.success("Signed. Your copy is being saved and will appear here in a minute.");
+    else if (result === "nothing") toast("Nothing needs signing right now. Your properties are covered.");
     load().catch((e) => toast.error(e.message));
   };
 
   if (loading) return <p className="text-sm text-gray-500">Loading payments...</p>;
+
+  // Someone else signs and pays for this account (Project B, Wyatt 2026-11-09):
+  // the agreement's status and the charges. Safety net: an invoice still in the
+  // landlord's own name (from before the signer, or an admin charge) stays
+  // payable here, so it never goes overdue unseen.
+  if (payer) {
+    const ownOpen = invoices.filter((inv) => ["open", "failed", "processing"].includes(inv.status));
+    return (
+      <div className="space-y-4 max-w-3xl">
+        {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
+        <PayerCard view={payer} onChanged={(next) => (next ? setPayer(next) : load().catch(() => {}))} />
+        <ChargesCard charges={charges} summary={summary} busy={busy} onApprove={approve} onContest={setContesting} billedTo={billedTo ?? payer.payer.name} />
+        {ownOpen.length > 0 && (
+          <>
+            <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
+            <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+            <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />
+          </>
+        )}
+        {contesting && <ContestChargeModal charge={contesting} busy={busy} onCancel={() => setContesting(null)} onSubmit={contest} />}
+      </div>
+    );
+  }
+
+  const paidFor = payees.length ? (
+    <PaidForAccounts
+      accounts={payees}
+      hasPaymentMethod={!gate?.requirePaymentMethod || methods.some((m) => m.status === "active")}
+      onChanged={(result) => agreementChanged(result ?? "refresh")}
+    />
+  ) : null;
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -218,15 +263,19 @@ export default function PaymentsSection() {
           {notice.text}
         </div>
       )}
-      {gate && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
-      {gate && (
+      {gate && !gate.billingOnly && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
+      {payees.length > 0 && <SignerChecklist accounts={payees} hasPaymentMethod={!gate?.requirePaymentMethod || methods.some((m) => m.status === "active")} />}
+      {gate?.agreement && (
         <AgreementCard
           gate={gate}
           hasActivePaymentMethod={methods.some((m) => m.status === "active")}
           onChanged={agreementChanged}
           busy={busy}
+          billingOnly={!!gate.billingOnly}
+          paidFor={paidFor}
           changeRequests={
             <ChangeRequestPanel
+              key={requestsKey}
               documentKind={gate.agreement?.amendment ? "amendment" : "master"}
               amendmentId={gate.agreement?.amendment?.id ?? undefined}
             />

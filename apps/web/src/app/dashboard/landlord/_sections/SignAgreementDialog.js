@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Spinner from "./Spinner";
+import DeclineDetailsForm from "./DeclineDetailsForm";
 
 // Documenso's signing page, embedded. Loaded only when the dialog opens.
 const EmbedSignDocument = dynamic(() => import("@documenso/embed-react").then((m) => m.EmbedSignDocument), {
@@ -34,6 +35,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export default function SignAgreementDialog({ token, host, name, email, kind = "master", onClose, onFinished }) {
   const [phase, setPhase] = useState("signing"); // signing | saving | declined | error
   const [message, setMessage] = useState(null);
+  const [reason, setReason] = useState("");
   const closeRef = useRef(null);
 
   useEffect(() => {
@@ -63,7 +65,9 @@ export default function SignAgreementDialog({ token, host, name, email, kind = "
     onFinished(agreement ? "signed" : "pending");
   }, [confirm, onFinished]);
 
-  const rejected = useCallback(async () => {
+  // Documenso's reject popup hands us the reason: it prefills the change request form.
+  const rejected = useCallback(async (data) => {
+    setReason(typeof data?.reason === "string" ? data.reason : "");
     await post("/api/billing/agreement/sync").catch(() => null);
     setPhase("declined");
   }, []);
@@ -108,15 +112,7 @@ export default function SignAgreementDialog({ token, host, name, email, kind = "
             <Spinner label="Signed. Saving your copy..." />
           </div>
         )}
-        {phase === "declined" && (
-          <div className="space-y-2 px-6 py-16 text-center text-sm text-gray-700">
-            <p>You declined to sign. We have let the team know, and someone will be in touch.</p>
-            <p>
-              You can sign later from Billing, or ask for changes there. Until then the properties it covers stay as
-              drafts if the agreement is required.
-            </p>
-          </div>
-        )}
+        {phase === "declined" && <DeclineDetailsForm reason={reason} kind={kind} onClose={onClose} />}
         {phase === "error" && (
           <div className="space-y-2 px-6 py-16 text-center text-sm text-gray-700">
             <p>The agreement could not be opened. Close this window and try again in a few minutes.</p>

@@ -28,7 +28,7 @@ const withBillingLink = (message, href) => (
  */
 export function publishErrorToast(data, fallback, { retry } = {}) {
   if (retry && needsCoverageOnly(data)) {
-    openCoverageDialog({ uncovered: data.uncovered, onSigned: retry });
+    openCoverageDialog({ uncovered: data.uncovered, onSigned: retry, payer: data.payer ?? null });
     return null;
   }
   if (data?.code === "billing_setup_required") {

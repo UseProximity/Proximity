@@ -4,13 +4,15 @@
  *   student      a signed-in account (web session or mobile token)
  *   visitor      a signed-out browser, named by the prx_vid cookie; a first
  *                visit mints one, and the route sets it on its response
- *   tester       a landlord looking at their own listing, or an admin: real
- *                answers, nothing logged, counted or sent to a landlord
+ *   tester       a landlord looking at their own listing: real answers,
+ *                nothing logged, counted or sent to a landlord
  *                (PRD: "Test mode")
  *
  * Proxy is on for a listing only when both switches are on (lib/agents/flags).
- * A tester may talk to Proxy on any listing while the global switch is on, so
- * the pilot can be tried before it is turned on for students.
+ * Staff (super, admin) talk to Proxy as a normal student on a live listing they
+ * do not own, so their questions reach the landlord and count like anyone's.
+ * On a listing that is unpublished or whose Proxy is not live yet, staff get
+ * test mode instead, so a pilot can be tried before it is turned on.
  */
 import supabase from "@/lib/supabase";
 import { getRequestUser } from "@/lib/getRequestUser";
@@ -36,9 +38,10 @@ export async function proxyActor(req) {
   };
 }
 
-export async function isTester({ userId, role, listingId }) {
+const isStaff = (role) => role === "super" || role === "admin";
+
+async function ownsListing({ userId, listingId }) {
   if (!userId) return false;
-  if (role === "super" || role === "admin") return true;
   const { data } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", userId).limit(1);
   return (data ?? []).length > 0;
 }
@@ -51,9 +54,10 @@ export async function proxyAvailable({ listingId, userId, role }) {
   if (!agentsEnabled()) return { ok: false, status: 404, error: "Proxy is not available yet." };
   const { data: listing } = await supabase.from("listings").select("id, deleted_at, published_at, title, address").eq("id", listingId).maybeSingle();
   if (!listing || listing.deleted_at) return { ok: false, status: 404, error: "Listing not found." };
-  const testMode = await isTester({ userId, role, listingId });
+  const [owner, agent] = await Promise.all([ownsListing({ userId, listingId }), getAgent(listingId)]);
+  const live = !!listing.published_at && agentIsLive(agent);
+  const testMode = owner || (!!userId && isStaff(role) && !live);
   if (!listing.published_at && !testMode) return { ok: false, status: 404, error: "Listing not found." };
-  const agent = await getAgent(listingId);
   if (!agentIsLive(agent) && !testMode) return { ok: false, status: 404, error: "Proxy is not available on this listing yet." };
   return { ok: true, testMode, listing, agent };
 }

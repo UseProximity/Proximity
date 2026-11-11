@@ -12,6 +12,8 @@
  *   canLogin      they have a password, Google or Apple sign-in. Without one the
  *                 email's button becomes a set-password link.
  *   lastSent      when this template last went to them, and which version
+ *   suppressed    their address bounced or marked us as spam: never emailed
+ *   unsubscribed  they used the unsubscribe link or button: never emailed
  *
  * `db` is a service-role Supabase client. Nothing here returns a password hash.
  */
@@ -19,6 +21,21 @@
 const PAGE = 1000;
 const CHUNK = 150; // ids per .in() filter, to keep request URLs short
 export const DELIVERED = ["sent", "redirected"];
+
+/*
+ * Why a picked person is not emailed in this send, or null to send (review of
+ * 2026-11-07): already reached by this template (unless sending again), already
+ * reached by this batch or lately by this version, or their address bounced or
+ * marked us as spam.
+ */
+export function skipReason(u, { reached, sentInBatch, suppressed, unsubscribed = new Set(), batchId, repeatGuardHours }) {
+  if (reached.has(u.id)) return "already sent this email";
+  if (sentInBatch.has(u.id)) return batchId ? "already sent in this batch" : `sent this version in the last ${repeatGuardHours} hours`;
+  const email = String(u.email ?? "").trim().toLowerCase();
+  if (suppressed.has(email)) return "their address bounced or marked our email as spam";
+  if (unsubscribed.has(email)) return "they unsubscribed from these emails";
+  return null;
+}
 
 async function pageAll(buildQuery) {
   const rows = [];
@@ -70,29 +87,38 @@ export async function findAudience(db, { role = "landlord", templateId = null } 
   );
   const ids = people.map((u) => u.id);
 
-  const listingRows = await inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("listing_landlords")
-      .select("user_id, listings!inner(id, title, address, published_at, deleted_at, unavailable)")
-      .in("user_id", chunk)
-      .not("listings.published_at", "is", null)
-      .is("listings.deleted_at", null)
-      .eq("listings.unavailable", false);
-    if (error) throw error;
-    return data ?? [];
-  });
-  const leaseRows = await inChunks(ids, async (chunk) => {
-    const { data, error } = await db
-      .from("unit_leases")
-      .select("owner_id, sublease")
-      .in("owner_id", chunk)
-      .eq("is_active", true)
-      .eq("unavailable", false)
-      .is("deleted_at", null)
-      .not("published_at", "is", null);
-    if (error) throw error;
-    return data ?? [];
-  });
+  // Paged within each chunk too: a chunk of landlords can own more than 1,000
+  // live leases, and a query stops at 1,000 rows (review of 2026-11-07).
+  const listingRows = await inChunks(ids, (chunk) =>
+    pageAll(() =>
+      db
+        .from("listing_landlords")
+        .select("user_id, listing_id, listings!inner(id, title, address, published_at, deleted_at, unavailable)")
+        .in("user_id", chunk)
+        .not("listings.published_at", "is", null)
+        .is("listings.deleted_at", null)
+        .eq("listings.unavailable", false)
+        .order("user_id")
+        .order("listing_id")
+    )
+  );
+  const leaseRows = await inChunks(ids, (chunk) =>
+    pageAll(() =>
+      db
+        .from("unit_leases")
+        .select("id, owner_id, sublease")
+        .in("owner_id", chunk)
+        .eq("is_active", true)
+        .eq("unavailable", false)
+        .is("deleted_at", null)
+        .not("published_at", "is", null)
+        .order("id")
+    )
+  );
+  const suppressedRows = await pageAll(() => db.from("email_suppressions").select("email").order("email"));
+  const suppressed = new Set(suppressedRows.map((r) => r.email));
+  const unsubscribedRows = await pageAll(() => db.from("mass_email_unsubscribes").select("email").order("email"));
+  const unsubscribed = new Set(unsubscribedRows.map((r) => r.email));
   const sentRows = templateId
     ? await pageAll(() =>
         db
@@ -137,6 +163,8 @@ export async function findAudience(db, { role = "landlord", templateId = null } 
       subleaseOnly: listings.length === 0 && leases.count > 0 && leases.sublease === leases.count,
       live: listings.length > 0 || leases.count > 0,
       lastSent: lastSentBy.get(u.id) ?? null,
+      suppressed: suppressed.has(String(u.email).trim().toLowerCase()),
+      unsubscribed: unsubscribed.has(String(u.email).trim().toLowerCase()),
       createdAt: u.created_at,
     };
   });

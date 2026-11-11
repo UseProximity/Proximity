@@ -13,7 +13,7 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
@@ -22,15 +22,9 @@ import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
   filterListings,
+  filtersActive,
+  fittingRents,
 } from "@/lib/listings/filterListings";
-
-// True when any filter differs from its default. The suggested strip only shows
-// on the unfiltered view: once a student narrows the list, their own question
-// is the ranking.
-const filtersActive = (filters) =>
-  Object.keys(DEFAULT_FILTERS).some(
-    (k) => JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !== JSON.stringify(DEFAULT_FILTERS[k])
-  );
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -45,6 +39,43 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Desktop only: hide the map and show the listings as a wider grid.
+  const [mapHidden, setMapHidden] = useState(false);
+  /*
+   * The fade-through of a toggle (see AvailableListings) marks <body> with
+   * data-map-switching, and AvailableListings removes it once the new layout is
+   * in place. That removal follows a change of mapHidden, which two toggles in
+   * quick succession can cancel out, leaving the map offset and the column
+   * faded. So the mark is also removed here, after a safety timeout and on
+   * unmount. Every toggle still flips mapHidden, so two quick toggles are two
+   * flips; only the safety timer restarts.
+   */
+  const switchTimers = useRef({});
+  const endMapSwitch = () =>
+    document.body.removeAttribute("data-map-switching");
+  const toggleMap = () => {
+    const timers = switchTimers.current;
+    clearTimeout(timers.safety);
+    cancelAnimationFrame(timers.frame);
+    document.body.setAttribute("data-map-switching", "");
+    timers.flip = setTimeout(() => setMapHidden((hidden) => !hidden), 120);
+    // Two frames, like AvailableListings: the new layout has been drawn, still
+    // invisible, before the mark goes and its width change can animate.
+    timers.safety = setTimeout(() => {
+      timers.frame = requestAnimationFrame(() =>
+        requestAnimationFrame(endMapSwitch)
+      );
+    }, 700);
+  };
+  useEffect(() => {
+    const timers = switchTimers.current;
+    return () => {
+      clearTimeout(timers.flip);
+      clearTimeout(timers.safety);
+      cancelAnimationFrame(timers.frame);
+      endMapSwitch();
+    };
+  }, []);
   // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
   // a listing contacted from the strip stays put until the next reload.
   const [suggestedIds, setSuggestedIds] = useState([]);
@@ -76,8 +107,10 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   /*
    * Saved filters feed the student's running filter summary (the lightest
-   * suggestion signal). Called only from the explicit Done / Apply Filters
-   * buttons, never on every slider tick. Fire-and-forget.
+   * suggestion signal). Called once when a filter control closes after a change
+   * (the Price and Beds & Baths cards and the side panel on desktop, which
+   * filter live) and from the Apply button of the phone's filter drawer, never
+   * on every slider tick. Fire-and-forget.
    */
   const handleFiltersSaved = (saved) => {
     if (!userId) return;
@@ -150,6 +183,16 @@ export default function BrowseContent({ session, initialListings = null }) {
     [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // For the price histograms: the rents of the available listings that fit
+  // the given filters (the page's, or a filter control's unapplied ones).
+  const rentsFor = useCallback(
+    (forFilters) =>
+      fittingRents(listings, { filters: forFilters, search, savedIds, campusMinutes }),
+    [listings, search, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // The suggested strip only shows on the unfiltered view: once a student
+  // narrows the list, their own question is the ranking.
   const suggestedListings = useMemo(() => {
     if (search.trim() || filtersActive(filters)) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));
@@ -175,10 +218,15 @@ export default function BrowseContent({ session, initialListings = null }) {
         <TopFilterBar
           search={search}
           setSearch={setSearch}
+          rentsFor={rentsFor}
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
+          mapHidden={mapHidden}
+          // A fade-through: fade out now, and switch the layout once that has
+          // finished, while it is invisible.
+          onToggleMap={toggleMap}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
@@ -190,7 +238,9 @@ export default function BrowseContent({ session, initialListings = null }) {
           suggestedLabel={
             suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
           }
+          rentsFor={rentsFor}
           onFiltersSaved={handleFiltersSaved}
+          mapHidden={mapHidden}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}

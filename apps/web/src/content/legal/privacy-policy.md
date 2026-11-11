@@ -1,7 +1,7 @@
 # Proximity Privacy Policy
 
 **Effective date:** September 18, 2026
-**Last updated:** November 2, 2026
+**Last updated:** November 8, 2026
 
 Proximity LLC ("Proximity," "we," "us," or "our"), a limited liability company organized
 under the laws of the State of Missouri, United States, operates the Proximity website at
@@ -245,6 +245,9 @@ Android app offer email and password or Google.
   it to us with your device platform (iOS or Android) and the time it was last seen. We use
   it only to deliver notifications to your device. It is not tied to any advertising
   profile.
+- **Error reports**: when something fails on the website, we record the error, the page or
+  request, the kind of account (for example "landlord") and the browser, to find and fix the
+  problem. They do not include your name or email address.
 - **Website analytics**: see Section 5.1.
 
 ### 1.6 Information we do **not** collect
@@ -258,7 +261,9 @@ Android app offer email and password or Google.
 - **Advertising identifiers.** The mobile apps contain no advertising, attribution, or
   crash-reporting code, and no third-party analytics beyond what is described in Section
   5.
-- **Payment card or bank details.** Proximity does not process payments.
+- **Full card or bank account numbers.** Landlords enter payment details on Stripe's own
+  page; we receive only the card brand, last four digits, expiry date or bank name
+  (Section 1.9).
 - **Government ID, income, credit, or background-check information.**
 - **Biometric data.**
 
@@ -318,8 +323,22 @@ we have already asked, and deleted on request.
 
 A landlord may tell us when a student who contacted them through Proximity signs a lease.
 We record that a lease was signed, the listing it was for, and when. We use this to keep an
-accurate record of the introductions we make and, once commissions take effect (Terms
-§1), to bill landlords who pay one.
+accurate record of the introductions we make and to bill landlords who pay a commission
+(Terms §6A).
+
+**Billing.** For a landlord who pays Proximity, we keep their billing address, the charges and
+invoices on their account and their status, and, from Stripe, the payment method's type,
+brand, last four digits, expiry date or bank name. If they turn on autopay, we keep the exact
+authorization they agreed to, when, and the browser it was given from.
+
+**The marketing agreement.** When a landlord signs, we keep the name, title, company, email and
+address they sign with, the properties and units on Exhibit A, and a copy of each signed
+document. A landlord who asks for changes to the agreement can send us messages and files,
+which we keep with the request.
+
+**License details.** A landlord who is a licensed agent or broker gives us their brokerage, its
+phone number and their Missouri license number. The name, brokerage and phone are shown on
+their listings (Section 6.1); the license number is not published.
 
 **How to have it removed.** Email **info@useproximity.org** and ask us to delete your
 information. You do not need an account, and you do not need to explain why. We will
@@ -526,6 +545,8 @@ We do not sell your personal information for money.
   number you give are **not** published: they are used to route inquiries to you.
 - **Reviews you post** are public, with your display name unless you post anonymously.
 - **Landlord replies to reviews** are public.
+- **"Listed by"** on a licensed landlord's listings: their name, brokerage and the
+  brokerage's phone number.
 
 Public content may be indexed by search engines and copied by third parties beyond our
 control.
@@ -558,7 +579,9 @@ and only for the purposes we specify:
 |---|---|---|
 | **Supabase** | All application data described in Section 1 | Managed database hosting |
 | **Vercel** | Requests to the website and API, server logs, aggregate web analytics | Application hosting, scheduled jobs, analytics |
-| **Cloudflare** | Profile photos, listing photos, floor plans; photos and PDFs attached to messages; lease documents transiently | Object storage and delivery |
+| **Cloudflare** | Profile photos, listing photos, floor plans; photos and PDFs attached to messages; lease documents transiently; signed agreements and files landlords attach to agreement requests, in private storage | Object storage and delivery |
+| **Stripe** | Landlords' name, email, billing address, payment details entered on Stripe's page, invoices and payments | Billing landlords and taking payment |
+| **Documenso** | Signers' name, title, company, email and address, the agreement and its Exhibit A, and the signature | Signing the marketing agreement and its addenda |
 | **Anthropic PBC** | Matchmaking transcripts and preferences (including your first name); uploaded lease documents; listing-draft page content; photos and documents attached to messages; Proxy conversations, questions, and landlord answers; what landlords tell their agent and the documents they give us; existing student-landlord conversations, read once; messages in tour conversations | AI features (Section 4) |
 | **Google** | Sign-in identity; property street addresses (Street View imagery for listing photos and for pages of reviewed properties that are not listed); website usage (analytics) | Authentication, listing imagery, analytics |
 | **Expo, Apple, and Google (Firebase Cloud Messaging)** | Your device's push token, your device platform, and the content of any notification we send you. Expo's push service forwards notifications to Apple's push notification service (iOS) or Google's Firebase Cloud Messaging (Android). | Delivering push notifications to the mobile apps |
@@ -567,7 +590,7 @@ and only for the purposes we specify:
 | **Google Workspace** | Recipient email addresses and message content | Sending other transactional and inquiry email, and as a fallback for message alerts |
 | **Amazon Web Services** (Simple Email Service, S3, SNS) | Email addresses of the people we send message alerts and related notices to, and the full text of those alerts; the complete content of email replies sent to a Proximity reply address, including headers and attachments, which is stored for 30 days and then deleted; delivery, bounce, and complaint reports | Sending message alerts and verification emails, receiving replies by email, and handling bounces |
 | **Nango**, and the property-management system a landlord connects (Buildium, AppFolio, DoorLoop, Rentec Direct) | Landlord-authorized property and unit availability, rent, and lease-end dates. Nango holds the property-management credentials; we store only a reference to the connection, never the credential itself. We do not import tenant records. | Optional landlord listing sync |
-| **Firecrawl, Jina, Tavily** | Public web pages a landlord gives us | Pre-filling a listing draft from a property website, and suggesting updates to it |
+| **Firecrawl, Jina, Tavily** | Public web pages a landlord gives us, and other pages on the same website about the same property | Pre-filling a listing draft from a property website, and keeping the listing up to date |
 
 ### 6.4 For legal reasons
 
@@ -671,6 +694,10 @@ the end of that period instead:
   other participant and of the introductions we make, and erase them after three years.
   If you want a conversation removed sooner, email info@useproximity.org and we will
   consider it, but we will not normally remove a record the other person is relying on.
+- **Billing records and signed agreements are kept.** We keep a landlord's billing records,
+  with their name, for 5 years after deletion for tax and accounting, and signed agreements
+  and requests to change them for 10 years, as a record of what was agreed. An unpaid
+  invoice stays due after deletion.
 - **Public content already copied elsewhere cannot be recalled.** We cannot remove material
   that third parties have already saved, cached, or indexed.
 
@@ -692,6 +719,8 @@ the end of that period instead:
 | Proxy conversations started while signed out | Emptied, including any confirmed email address, 90 days after their last message, unless added to an account first. |
 | Listing knowledge | While the listing is on Proximity. It describes the property, not the people who asked about it. |
 | Lease Check | The uploaded document is deleted from storage as soon as the analysis completes, and within 24 hours if you leave before it does. The results are erased under Section 8. |
+| Billing records (charges, invoices, payments, refunds, credits) | While your account is active, then 5 years after deletion for tax and accounting, then erased. |
+| Signed agreements and agreement requests | While your account is active, then 10 years after deletion as a record of what was agreed, then erased. |
 | Saved listings and saved browse filters | While your account is active, then erased under Section 8. Saved browse filters are replaced each time you save a new set. |
 | Waitlist entries | While your account is active, then erased under Section 8. |
 | Review invitations | Retained as a record of who we have already asked. An invitation stops working once it is used or expires, and the record is erased if that person deletes a Proximity account (Section 8). |
@@ -721,6 +750,9 @@ the end of that period instead:
   the app in your device settings at any time.
 - **Email notifications.** On the website you can turn off emails about new messages in
   your profile settings. The mobile apps do not have this setting.
+- **Emails about Proximity.** Our announcements and other promotional emails say so, and you
+  can stop them by replying "unsubscribe" or emailing info@useproximity.org. Emails about
+  your account, listings, invoices or agreements are still sent.
 - **Suggested listings.** Suggestions are based only on activity described in Section 2.2.
   If you would rather not see them, applying any filter on the browse page turns them off
   for that view, and you can email info@useproximity.org to have your saved browse filters

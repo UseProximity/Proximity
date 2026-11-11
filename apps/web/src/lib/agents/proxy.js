@@ -143,7 +143,7 @@ async function countInquiry({ listingId, userId }) {
 
 /*
  * Returns { messages: [new chat_messages rows], outcome, questionIds, error? }.
- * `testMode`: a landlord or admin trying their own listing. Real answers, but
+ * `testMode`: a landlord trying their own listing, or staff on one not live yet. Real answers, but
  * nothing is logged as a student question, counted or sent to a landlord.
  *
  * `defer`: runs work the reply does not wait on (asking the landlord, passing

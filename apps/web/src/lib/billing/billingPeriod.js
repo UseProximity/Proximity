@@ -3,7 +3,7 @@
  * month in America/Chicago time.
  *
  * Vercel crons are UTC and know nothing about months or DST, so the cron fires
- * every Monday and the run calls isBillingDay(): on any Monday that is not the
+ * every day and the run calls isBillingDay(): on any day that is not the
  * first one of its month it exits without touching anything.
  */
 import { BILLING_TIME_ZONE } from "./constants.js";

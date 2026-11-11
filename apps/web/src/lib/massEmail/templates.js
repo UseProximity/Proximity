@@ -80,7 +80,6 @@ export function cleanVersion(input) {
     button_url: buttonUrl,
     attachments,
     footer_reason: footerReason,
-    commercial: input?.commercial === true,
   };
 }
 

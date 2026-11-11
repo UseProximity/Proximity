@@ -30,15 +30,20 @@ export async function GET() {
       checkListingGate(supabase, session.user.id),
       coverageFor(supabase, session.user.id),
       getEnrollmentWindow(supabase),
-      supabase.from("users").select("name, company_name").eq("id", session.user.id).maybeSingle(),
+      supabase.from("users").select("name, company_name, billing_only").eq("id", session.user.id).maybeSingle(),
     ]);
+    // A landlord with a payer never sees the agreement (Project B): /api/billing/payer has their status.
+    const delegated = !!coverage.state.payerLink;
     return NextResponse.json({
       allowed: gate.allowed,
       missing: gate.missing,
       message: gate.allowed ? null : gateMessage(gate.missing),
       requirePaymentMethod: gate.requirePaymentMethod,
       requireAgreement: gate.requireAgreement,
-      agreement: agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
+      agreement: delegated ? null : agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
+      delegated,
+      // A billing account (made for a payer): no listings of its own.
+      billingOnly: account.data?.billing_only === true,
       // The account's name, to start the signing form's "Full name" box with.
       accountName: account.data?.name?.trim() || null,
       // And its company, for the "Company" box.

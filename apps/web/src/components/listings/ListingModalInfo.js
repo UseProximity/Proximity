@@ -2583,20 +2583,28 @@ export default function ListingModalInfo({
                 </Section>
               )}
               {/* Our brokerage disclosure closes every listing, whichever
-                  sections this view shows. */}
-              <p className="mt-8 border-t border-gray-100 pt-3 pb-4 text-[11px] leading-4 text-gray-400">
-                Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
-              </p>
+                  sections this view shows. With Proxy on, it rides under
+                  Proxy's input instead (below). */}
+              {!(show("contact") && (listing.agent?.live || preview)) && (
+                <p className="mt-8 border-t border-gray-100 pt-3 pb-4 text-[11px] leading-4 text-gray-400">
+                  Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
+                </p>
+              )}
               {/* Proxy's input sits under the chat and pins to the bottom
                   while the reader is in Contact. It keeps its place in the
-                  page either way, so the page never jumps when it pins. */}
+                  page either way, so the page never jumps when it pins. The
+                  brokerage disclosure sits right under the input. */}
               {show("contact") && (listing.agent?.live || preview) && (
                 <div
-                  ref={setProxyInputSlot}
-                  className={`-mx-10 border-t border-gray-100 bg-white px-10 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] ${
+                  className={`-mx-10 border-t border-gray-100 bg-white px-10 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
                     activeTab === "contact" ? "sticky bottom-0 z-40" : ""
                   }`}
-                />
+                >
+                  <div ref={setProxyInputSlot} />
+                  <p className="mt-2 text-[11px] leading-4 text-gray-400">
+                    Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
+                  </p>
+                </div>
               )}
             </div>
           </motion.div>

@@ -61,6 +61,8 @@ const toTeam = (kind, message) =>
 // Landlord-facing. `landlord` is { id, email, name }.
 export const sendContestOutcomeEmail = (landlord, input) =>
   toLandlord("billing_contest_outcome", landlord, t.contestOutcomeEmail({ name: landlord.name, ...input }));
+export const sendChargeCreatedEmail = (landlord, input) =>
+  toLandlord("billing_charge_created", landlord, t.chargeCreatedEmail({ name: landlord.name, ...input }));
 export const sendPaymentFailedEmail = (landlord, input) =>
   toLandlord("billing_payment_failed", landlord, t.paymentFailedEmail({ name: landlord.name, ...input }));
 export const sendInvoicePaidEmail = (landlord, input) =>
@@ -115,5 +117,21 @@ export const sendChangeRequestUpdateEmail = (landlord, input, { sandbox = false 
 // Invoices and autopay. Each resolves true when handed to the mailer.
 export const sendInvoiceIssuedEmail = (landlord, input) =>
   toLandlord(INVOICE_ISSUED_KIND, landlord, t.invoiceIssuedEmail({ name: landlord.name, ...input }));
+export const sendAutopayMovedEmail = (landlord, input) =>
+  toLandlord("billing_autopay_moved", landlord, t.autopayMovedEmail({ name: landlord.name, ...input }));
 export const sendAutopayOffEmail = (landlord, input) =>
   toLandlord(AUTOPAY_OFF_KIND, landlord, t.autopayOffEmail({ name: landlord.name, ...input }));
+
+// A payer for another landlord account (Project B). `attachments` are the agreement and the MREC form.
+export const sendPayerInviteEmail = (payer, input, attachments = null) =>
+  toLandlord("billing_payer_invite", payer, t.payerInviteEmail({ name: payer.name, ...input }), attachments);
+export const sendPayerRequestEmail = (payer, input) =>
+  toLandlord("billing_payer_request", payer, t.payerRequestEmail({ name: payer.name, ...input }));
+export const sendPayerDocumentCancelledEmail = (payer, input) =>
+  toLandlord("billing_payer_document_cancelled", payer, t.payerDocumentCancelledEmail({ name: payer.name, ...input }));
+export const sendPayeeSignedEmail = (landlord, input) =>
+  toLandlord("billing_payee_signed", landlord, t.payeeSignedEmail({ name: landlord.name, ...input }));
+export const sendPayeeVoidedEmail = (landlord, input) =>
+  toLandlord("billing_payee_voided", landlord, t.payeeVoidedEmail({ name: landlord.name, ...input }));
+export const sendPayeeAssignedEmail = (landlord, input) =>
+  toLandlord("billing_payee_assigned", landlord, t.payeeAssignedEmail({ name: landlord.name, ...input }));

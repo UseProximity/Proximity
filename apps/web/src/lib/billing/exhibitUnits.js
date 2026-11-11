@@ -16,18 +16,27 @@
  */
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
-import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequiredUnits } from "./coverage.js";
+import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
 
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date() } = {}) {
+// `forPayee`: an authorized signer previewing a document for an account they sign for (Project B):
+// every property, drafts included, and any not covered yet can be left off.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false } = {}) {
   const requested = await resolvePublishedIds(db, listingIds);
   const loaded = await coverageFor(db, userId, now);
   const { state, rows, covered } = loaded;
-  const properties = withRequiredUnits(loaded.properties, requiredUnits);
-  const plan = planCoverage({ properties, rows, master: state.signed, masterValid: state.valid, requestedIds: requested });
+  const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
+  // A document already in progress (an addendum started from a publish, then closed)
+  // is planned with, as startSigning does, so "Continue signing" picks it up again.
+  // A negotiated version waiting to be signed is planned as a new agreement (startSigning).
+  const masterValid = state.valid && !state.negotiatedOffer;
+  const inProgress = masterValid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : state.pending?.exhibit ?? [];
+  const carryFromAmendment = !masterValid && state.pendingAmendment ? state.pendingAmendment.proposed_exhibit ?? [] : [];
+  const carry = [...inProgress, ...carryFromAmendment];
+  const plan = planCoverage({ properties, rows, master: state.signed, masterValid, requestedIds: requested, carry });
   if (plan.kind === "none") return { kind: "none", properties: [] };
-  const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId)]);
+  const locked = new Set([...requested, ...properties.filter((p) => p.live).map((p) => p.listingId), ...carry.map((e) => e.listingId)]);
   // Every property, on an amendment too, so nothing goes on (or changes) unseen:
   // what is covered already shows as covered and stays as it is (Wyatt, 2026-11-07).
   const shown = properties;
@@ -49,7 +58,9 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
         locked: locked.has(p.listingId),
         // Anything but a property being published, or one on the agreement already,
         // can be left off; one with the landlord's leases then comes off the site.
-        canExclude: !requested.includes(p.listingId) && !cov,
+        // A payer never takes a landlord's property off their site (Project B).
+        // An authorized signer may leave off anything not covered yet, even what the landlord sent (Project B).
+        canExclude: (forPayee || !requested.includes(p.listingId)) && !cov,
         units: p.unitList,
         leaseUnits: p.leaseUnits,
         requiredUnits: p.requiredUnits ?? [],

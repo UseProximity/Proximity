@@ -19,7 +19,7 @@ import { autopayByLandlord } from "./autopay.js";
 import { BillingError } from "./errors.js";
 import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
-import { getLiveVersion, resignCutoff } from "./agreementVersions.js";
+import { getLiveVersion, liveLandlordVersions, resignCutoff } from "./agreementVersions.js";
 import { summarizeAgreementRows } from "./agreements.js";
 import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
@@ -125,7 +125,7 @@ async function coverageRowsFor(db, ids) {
       return await pageAll(() =>
         db
           .from("agreement_coverage")
-          .select("user_id, listing_id, address, agreement_id, amendment_id, status")
+          .select("user_id, listing_id, address, agreement_id, amendment_id, status, covered_at")
           .in("user_id", chunk)
           .eq("status", "covered")
           .order("id")
@@ -152,7 +152,8 @@ async function pendingAmendmentUsers(db, ids) {
  * live offerings their agreement does not cover (and how many offerings), and
  * covered addresses that have changed since they were signed for.
  */
-export function coverageSummary({ offerings = [], coverageRows = [], state }) {
+// `signer`: the account's authorized signer ({ name }) when someone else holds its agreement (Project B).
+export function coverageSummary({ offerings = [], coverageRows = [], state, signer = null }) {
   const covered = coveredMap(coverageRows, { master: state.signed, masterValid: state.valid });
   const byListing = new Map();
   for (const o of offerings) {
@@ -167,9 +168,22 @@ export function coverageSummary({ offerings = [], coverageRows = [], state }) {
   const addressChanged = [...byListing.values()]
     .filter((p) => covered.has(p.listingId) && covered.get(p.listingId).address !== p.address)
     .map((p) => ({ listingId: p.listingId, signedAddress: covered.get(p.listingId).address, currentAddress: p.address }));
+  // Every covered listing with how it is covered (Wyatt, 2026-11-09): whose
+  // agreement, the agreement itself or an addendum to it, and since when.
+  const coveredList = [...covered.entries()]
+    .map(([listingId, row]) => ({
+      listingId,
+      address: byListing.get(listingId)?.address ?? row.address,
+      via: signer ? "authorized_signer" : "own",
+      signerName: signer?.name ?? state.signed?.signer_name ?? null,
+      document: row.amendment_id ? "addendum" : "agreement",
+      coveredAt: row.covered_at ?? null,
+    }))
+    .sort((a, b) => String(a.address).localeCompare(String(b.address), "en", { numeric: true }));
   return {
     liveProperties: byListing.size,
     coveredCount: covered.size,
+    coveredList,
     uncovered,
     uncoveredOfferings: uncovered.reduce((n, p) => n + p.offerings, 0),
     addressChanged,
@@ -230,6 +244,8 @@ export function agreementSummary(state) {
   return {
     status,
     negotiated: !!signed?.agreement_version?.landlord_id,
+    // Signed, and a version made for them alone has gone live since: they are asked to sign it.
+    newVersionReady: !!state.negotiatedOffer,
     flaggedForReview: !!state.flaggedForReview,
     commissionRatePercent: signed?.commission_rate_percent == null ? null : Number(signed.commission_rate_percent),
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
@@ -249,7 +265,7 @@ export function matchesFilter(row, filter) {
     case "unsigned":
       return row.agreement.status !== "signed";
     case "needs_resign":
-      return row.agreement.status === "needs_resign";
+      return row.agreement.status === "needs_resign" || !!row.agreement.newVersionReady;
     case "in_progress":
       return row.agreement.status === "in_progress";
     case "no_method":
@@ -276,14 +292,14 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   const landlords = await pageAll(() =>
     db
       .from("users")
-      .select("id, name, email, created_at, roles!role_id!inner(name)")
+      .select("id, name, email, created_at, billing_only, roles!role_id!inner(name)")
       .eq("roles.name", "landlord")
       .is("deleted_at", null)
       .order("id")
   );
   const ids = landlords.map((l) => l.id);
 
-  const [live, agreements, methods, invoices, lastEmails, liveVersion, cutoff, settings, offerings, covRows, amending] = await Promise.all([
+  const [live, agreements, methods, invoices, lastEmails, liveVersion, ownVersions, cutoff, settings, offerings, covRows, amending] = await Promise.all([
     liveListingOwners(db, ids),
     agreementRows(db, ids).then((r) => groupBy(r, "user_id")),
     inChunks(ids, async (chunk) => {
@@ -306,6 +322,7 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
     }).then((r) => groupBy(r, "landlord_id")),
     lastRequestEmails(db, ids),
     getLiveVersion(db),
+    liveLandlordVersions(db),
     resignCutoff(db),
     getGateSettings(db),
     liveOfferings(db, ids).then((r) => groupBy(r, "owner_id")),
@@ -314,11 +331,25 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   ]);
 
   const autopays = await autopayByLandlord(db, ids);
+  // Who pays for whom (Project B): an account with a payer is judged on the payer's
+  // agreement and payment method, and is never asked to sign itself.
+  const payerLinks = await inChunks(ids, async (chunk) => {
+    const { data, error } = await db.from("billing_payers").select("landlord_id, payer_id, signer_name, signer_email, declined_at").in("landlord_id", chunk).eq("status", "active").is("listing_id", null);
+    if (missingSchema(error)) return [];
+    if (error) throw error;
+    return data;
+  });
+  const payerOf = new Map(payerLinks.map((p) => [p.landlord_id, p]));
+  const paysFor = new Map();
+  for (const p of payerLinks) paysFor.set(p.payer_id, (paysFor.get(p.payer_id) ?? 0) + 1);
   const licenses = await disclosuresFor(db, ids);
   const rows = landlords.map((l) => {
-    const state = summarizeAgreementRows(agreements.get(l.id) ?? [], { liveVersion, cutoff, now });
-    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state });
-    const payment = paymentSummary(methods.get(l.id), now);
+    const payer = payerOf.get(l.id) ?? null;
+    const holder = payer?.payer_id ?? l.id;
+    // The version this landlord signs: their own when one is live, else the standard one.
+    const state = summarizeAgreementRows(agreements.get(holder) ?? [], { liveVersion: ownVersions.get(holder) ?? liveVersion, cutoff, now });
+    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state, signer: payer ? { name: payer.signer_name } : null });
+    const payment = paymentSummary(methods.get(holder), now);
     const invoice = invoiceSummary(invoices.get(l.id));
     const publishing = gateDecision({
       role: "landlord",
@@ -343,6 +374,10 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       publishing: { allowed: publishing.allowed, missing: publishing.missing },
       lastAgreementEmailAt: email?.created_at ?? null,
       lastAgreementEmailStatus: email?.status ?? null,
+      // Project B: who signs and pays for this account, how many accounts it pays for, and whether it is a billing account.
+      payer: payer ? { id: payer.payer_id, name: payer.signer_name, email: payer.signer_email, declined: !!payer.declined_at } : null,
+      paysForCount: paysFor.get(l.id) ?? 0,
+      billingOnly: l.billing_only === true,
     };
   });
 
@@ -365,6 +400,9 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
 
 // ── The signing email ───────────────────────────────────────────────────────
 
+// Has something to sign: no signature that counts, or a new version made for them alone.
+export const needsSigningEmail = (row) => row.agreement.status !== "signed" || !!row.agreement.newVersionReady;
+
 /*
  * Who "Email everyone who hasn't signed" reaches: landlords with something live
  * (an importer-made account with nothing live has nothing to publish), without a
@@ -375,7 +413,9 @@ export function bulkAudience(rows, now = new Date()) {
     (r) =>
       r.hasLiveListing &&
       r.email &&
-      r.agreement.status !== "signed" &&
+      // Their payer signs, not them (Project B).
+      !r.payer &&
+      needsSigningEmail(r) &&
       (!r.lastAgreementEmailAt || now.getTime() - new Date(r.lastAgreementEmailAt).getTime() > BULK_RESEND_GAP_MS)
   );
 }
@@ -389,7 +429,7 @@ export async function sendAgreementRequests({ targets, send, limit = 300 }) {
   let sent = 0;
   let failed = 0;
   for (const t of batch) {
-    if (await send({ id: t.id, name: t.name, email: t.email }, t.agreement.status === "needs_resign")) sent += 1;
+    if (await send({ id: t.id, name: t.name, email: t.email }, t.agreement.status === "needs_resign" || !!t.agreement.newVersionReady)) sent += 1;
     else failed += 1;
   }
   return { attempted: batch.length, sent, failed, remaining: targets.length - batch.length };
@@ -400,7 +440,7 @@ export function singleTarget(rows, userId, now = new Date()) {
   const row = rows.find((r) => r.id === userId);
   if (!row) throw new BillingError("not_found", "That landlord was not found.", 404);
   if (!row.email) throw new BillingError("no_email", "This landlord has no email address.");
-  if (row.agreement.status === "signed") throw new BillingError("already_signed", "This landlord has already signed the current agreement.", 409);
+  if (!needsSigningEmail(row)) throw new BillingError("already_signed", "This landlord has already signed the current agreement.", 409);
   if (row.lastAgreementEmailAt && now.getTime() - new Date(row.lastAgreementEmailAt).getTime() < SINGLE_RESEND_GAP_MS) {
     throw new BillingError("just_sent", "This landlord was emailed a moment ago.", 409);
   }

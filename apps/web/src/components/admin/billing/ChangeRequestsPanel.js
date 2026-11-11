@@ -8,11 +8,11 @@
  * selected request's thread with:
  *   Reply      a message to the landlord (optionally with a file); emailed to them
  *   Accept     agree to it (optional note to the landlord), then upload the
- *              negotiated document as a version for this landlord only, below
+ *              agreed document as a version for this landlord only, below
  *   Decline    closes it with a note to the landlord saying why
  * Every answer is emailed to the landlord. Files open through a five minute link.
  *
- * Accepted requests show "Upload negotiated version": it posts to the agreement
+ * Accepted requests show "Upload their version": it posts to the agreement
  * versions route with landlordId and changeRequestId, and the version is then
  * connected, checked and made live on the "Landlords and agreements" tab
  * (`onOpenAgreements` switches to it).
@@ -72,9 +72,23 @@ function Thread({ request }) {
   );
 }
 
-// The negotiated document for one accepted request: a version for this landlord only.
-function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
-  const [label, setLabel] = useState(`${request.landlord?.name || request.landlord?.email || "Landlord"} (negotiated)`.slice(0, 80));
+// The agreed document for one accepted request: a version for this landlord only.
+// The landlord sees its name, so it starts as the standard version's (Wyatt, 2026-11-08).
+function LandlordVersionUpload({ request, busy, run, onOpenAgreements }) {
+  const [label, setLabel] = useState("");
+  const kind = request.documentKind ?? "master";
+  useEffect(() => {
+    let live = true;
+    call("/api/admin/billing/agreement-versions")
+      .then((r) => {
+        const standard = (r.versions ?? []).find((v) => v.status === "live" && v.kind === kind && !v.landlordId);
+        if (live && standard) setLabel((prev) => prev || standard.label);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [kind]);
   const [file, setFile] = useState(null);
   const [done, setDone] = useState(false);
 
@@ -107,18 +121,19 @@ function NegotiatedUpload({ request, busy, run, onOpenAgreements }) {
         run(async () => {
           await call("/api/admin/billing/agreement-versions", { method: "POST", body: form });
           setDone(true);
-        }, "Negotiated version uploaded.");
+        }, "Their version is uploaded.");
       }}
     >
-      <p className="text-sm font-medium text-gray-900">Upload negotiated version</p>
+      <p className="text-sm font-medium text-gray-900">Upload their version</p>
       <p className="text-xs text-gray-500">
         A {DOC[request.documentKind]?.toLowerCase() ?? "marketing agreement"} for {request.landlord?.name || request.landlord?.email} only. Other
-        landlords keep the standard one.
+        landlords keep the standard one. They see it exactly like the standard one.
       </p>
       <div className="flex flex-wrap gap-3">
         <label className="block min-w-[12rem] flex-1 text-sm text-gray-700">
           Name
           <input className={`${FIELD} mt-1`} value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} required />
+          <span className="mt-1 block text-xs text-gray-500">The landlord sees this name. Keep it like the standard version&apos;s.</span>
         </label>
         <label className="block min-w-[12rem] flex-1 text-sm text-gray-700">
           PDF (up to 4 MB)
@@ -246,7 +261,7 @@ function RequestDetail({ request, busy, run, onOpenAgreements }) {
       )}
 
       {request.status === "accepted" && (
-        <NegotiatedUpload key={request.id} request={request} busy={busy} run={run} onOpenAgreements={onOpenAgreements} />
+        <LandlordVersionUpload key={request.id} request={request} busy={busy} run={run} onOpenAgreements={onOpenAgreements} />
       )}
     </div>
   );

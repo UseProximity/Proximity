@@ -13,10 +13,17 @@
 import { appEnv, isProdData, outreachEnabled } from "@/lib/appEnv";
 import { DOCUMENSO_EMAILS_OFF, createDocumensoClient, documensoConfigured, documensoSetting } from "./documenso.js";
 import { storeSignedAgreement } from "./agreementFiles.js";
+import { MAX_DOCUMENSO_PDF_BYTES } from "./agreementPdf.js";
+
+// A signed copy from Documenso may be larger than an upload (agreementPdf.js).
+const storeFromDocumenso = (file) => storeSignedAgreement({ ...file, maxBytes: MAX_DOCUMENSO_PDF_BYTES });
 import { stripeBillingAddress } from "./billingAddress.js";
-import { resolveChangeRequestOnSigned } from "./changeRequests.js";
+import { recordDecline, resolveChangeRequestOnSigned } from "./changeRequests.js";
 import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
+import { afterPayerSigned } from "./payerServices.js";
 
 export function documensoClient() {
   return createDocumensoClient({
@@ -32,14 +39,39 @@ export function agreementServices() {
     documenso: documensoClient(),
     signingAvailable: documensoConfigured(),
     options: {
-      storeSigned: storeSignedAgreement,
-      storeExhibit: storeSignedAgreement,
+      storeSigned: storeFromDocumenso,
+      storeExhibit: storeFromDocumenso,
       landlordAddress: (userId) => stripeBillingAddress(supabase, userId),
       // A negotiated version signed: the change request it answered is resolved.
-      onSigned: ({ userId, versionId }) => resolveChangeRequestOnSigned(supabase, { userId, versionId }),
+      // A payer's signature also publishes what the accounts they pay for were waiting on.
+      // Each step runs on its own, so one failing never skips the other; a payer's
+      // follow-up that still fails is retried by the daily billing-review-clock cron.
+      onSigned: async ({ userId, versionId, kind, documentId, signerId, accounts, withdrawn }) => {
+        const steps = await Promise.allSettled([
+          resolveChangeRequestOnSigned(supabase, { userId: signerId ?? userId, versionId }),
+          afterPayerSigned({ signerId: signerId ?? userId, kind, documentId, accounts, withdrawn }),
+        ]);
+        for (const s of steps) if (s.status === "rejected") console.error("billing: an after-signing step failed", s.reason?.message);
+      },
+      // A rejection: the reason opens a change request (or joins the open one).
+      onDeclined: async ({ userId, reason, doc }) => {
+        const { opened } = await recordDecline(supabase, { userId, reason, doc });
+        return { opened };
+      },
+      // One team email for the decline and the change request it opened, never two.
+      // A review sandbox account never reaches the team inbox (lib/reviewSandbox.js).
       notify: {
-        declined: ({ landlord, reason, kind }) =>
-          sendAgreementDeclinedTeamEmail({ landlordName: landlord?.name, landlordEmail: landlord?.email, reason, kind }),
+        declined: async ({ landlord, reason, kind, changeRequest }) => {
+          if (landlord?.id && (await sandboxIdsAmong([landlord.id])).has(landlord.id)) return;
+          await sendAgreementDeclinedTeamEmail({
+            landlordName: landlord?.name,
+            landlordEmail: landlord?.email,
+            reason,
+            kind,
+            changeRequest,
+            adminUrl: `${getBaseUrl()}/dashboard/admin`,
+          });
+        },
       },
     },
   };

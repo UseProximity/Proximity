@@ -233,6 +233,14 @@ export async function settleInvoicePaid(db, stripe, row, stripeInvoice, { notify
 // Autopay tried this invoice (not skipped it).
 const autopayCharged = (row) => !!row.autopay_attempted_at && !row.autopay_skipped_reason;
 
+// Whether a payment on this invoice was made with the autopay method (by Stripe payment method id).
+async function onAutopayMethod(db, row, stripePaymentMethodId) {
+  if (!row.autopay_payment_method_id || !stripePaymentMethodId) return false;
+  const { data, error } = await db.from("payment_methods").select("stripe_payment_method_id").eq("id", row.autopay_payment_method_id).maybeSingle();
+  if (error) throw error;
+  return data?.stripe_payment_method_id === stripePaymentMethodId;
+}
+
 // Whether a failed payment on this invoice was autopay's: autopay tried it, with the method that failed.
 async function failedOnAutopayMethod(db, row, stripePaymentMethodId) {
   if (!autopayCharged(row) || !row.autopay_payment_method_id) return false;
@@ -252,8 +260,15 @@ export const invoiceHandlers = {
   "invoice.paid": async (event, { db }) => {
     const row = await localInvoice(db, event.data.object.id);
     if (!row) return;
-    await settleInvoicePaid(db, getStripe(), row, event.data.object, { notify: await notifier() });
-    if (autopayCharged(row)) await noteAutopaySuccess(db, { landlordId: row.landlord_id });
+    const stripe = getStripe();
+    await settleInvoicePaid(db, stripe, row, event.data.object, { notify: await notifier() });
+    // Only a payment made with the autopay method proves it works: a landlord who
+    // paid by hand with another method after autopay failed keeps the failure on
+    // the count, so a dead account is still switched off (review of 2026-11-07).
+    if (autopayCharged(row)) {
+      const method = await paidWith(stripe, event.data.object.id).catch(() => null);
+      if (method?.id && (await onAutopayMethod(db, row, method.id))) await noteAutopaySuccess(db, { landlordId: row.landlord_id });
+    }
   },
 
   "invoice.payment_failed": async (event, { db }) => {

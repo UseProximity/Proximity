@@ -21,6 +21,15 @@ import {
 
 const idOf = (v) => (v && typeof v === "object" ? v.id : v) ?? null;
 
+// A payer's method became usable: listings waiting on it for the accounts they pay
+// for may now go live (Project B). Loaded only then, so tests need no database.
+async function releaseForPayer(result) {
+  if (result?.userId && result.status === "active") {
+    const { afterPayerMethodAdded } = await import("./payerServices.js");
+    await afterPayerMethodAdded(result.userId).catch((err) => console.error("billing: release after method failed", err?.message));
+  }
+}
+
 async function refresh(event, { db }) {
   await refreshDisplayFields(db, event.data.object);
 }
@@ -30,11 +39,11 @@ export const paymentMethodHandlers = {
     const session = event.data.object;
     // Checkout is also used in other modes; only setup sessions carry a payment method.
     if (session.mode !== "setup" || !session.setup_intent) return;
-    await syncSetupIntent(db, getStripe(), idOf(session.setup_intent));
+    await releaseForPayer(await syncSetupIntent(db, getStripe(), idOf(session.setup_intent)));
   },
 
   "setup_intent.succeeded": async (event, { db }) => {
-    await syncSetupIntent(db, getStripe(), event.data.object.id);
+    await releaseForPayer(await syncSetupIntent(db, getStripe(), event.data.object.id));
   },
 
   "setup_intent.setup_failed": async (event, { db }) => {
@@ -44,7 +53,9 @@ export const paymentMethodHandlers = {
   },
 
   "payment_method.updated": refresh,
+  // The card updater: handled under both names (see STRIPE_EVENT_ALIASES).
   "payment_method.card_automatically_updated": refresh,
+  "payment_method.automatically_updated": refresh,
 
   "payment_method.detached": async (event, { db }) => {
     const result = await removeByStripeId(db, getStripe(), event.data.object.id);

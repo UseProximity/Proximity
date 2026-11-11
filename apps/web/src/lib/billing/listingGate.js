@@ -31,16 +31,23 @@
  * whatever the switches say: otherwise a new listing or offering would put them
  * straight back on the market. That clears as soon as the invoice is paid.
  *
+ * A landlord account with a payer (billing_payers, Wyatt 2026-11-09) is checked
+ * against the payer: the payer's agreement covers it and the payer's payment
+ * method counts. The answer then carries `payer` ({ name }), so the page asks the
+ * landlord to send what they are publishing to the payer's addendum instead of
+ * opening signing: it stays a draft until the payer signs.
+ *
  * Separately, a lease the overdue job withdrew cannot be put back by anyone but an
- * admin: the database refuses it (202611010002_billing_holds.sql), and
+ * admin: the database refuses it (202611010003_billing_holds.sql), and
  * isLeaseHeldForBilling lets a route say so in plain words first.
  *
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { getBillingSetting } from "./settings.js";
 import { agreementState, coverageFor } from "./agreements.js";
-import { resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
+import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
+import { activePayerLink } from "./payerLinks.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
 export const AGREEMENT_REQUIRED = "agreement_required";
@@ -89,6 +96,20 @@ export function draftedMessage(missing, uncovered = []) {
 // The body a route returns when the gate says no. `uncovered` lets the page open
 // the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
+  if (gate.payer) {
+    const waits = payerCanFix(gate.missing);
+    return {
+      error: waits
+        ? `This needs to be added to ${gate.payer.name}'s agreement before it goes live. Your draft is saved.`
+        : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
+      code: "billing_setup_required",
+      missing: gate.missing,
+      // Covered but waiting on the payer's payment method: the listings themselves.
+      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing" })),
+      payer: gate.payer,
+      drafted: waits ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.` : draftedMessage(gate.missing, gate.uncovered ?? []),
+    };
+  }
   return {
     error: gateMessage(gate.missing, gate.uncovered ?? []),
     code: "billing_setup_required",
@@ -97,6 +118,13 @@ export function gateResponseBody(gate) {
     drafted: draftedMessage(gate.missing, gate.uncovered ?? []),
   };
 }
+
+// With a payer, a missing agreement or payment method is the payer's to fix: the
+// listing waits for them. An overdue invoice still blocks outright.
+export const payerCanFix = (missing = []) => missing.length > 0 && missing.every((m) => m === "agreement" || m === "payment_method");
+
+// Whether signing (or, with a payer, sending to the payer) is all that stands in the way.
+export const coverageOnly = (gate) => (gate.payer ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
 
 async function userOf(db, userId) {
   const { data, error } = await db
@@ -111,8 +139,10 @@ async function userOf(db, userId) {
 
 /*
  * Whether the landlord has an invoice the overdue job actioned that is still
- * unpaid. Reads as no until the billing tables exist, so listing keeps working in
- * an environment that does not have them yet.
+ * unpaid. A bank payment still settling (processing) counts as unpaid until it
+ * clears: it can still fail, and publishing reopened in the meantime stayed open
+ * when it did (review of 2026-11-07). Reads as no until the billing tables exist,
+ * so listing keeps working in an environment that does not have them yet.
  */
 export async function hasOverdueInvoice(db, userId) {
   const { data, error } = await db
@@ -120,13 +150,38 @@ export async function hasOverdueInvoice(db, userId) {
     .select("id")
     .eq("landlord_id", userId)
     .not("overdue_actioned_at", "is", null)
-    .in("status", ["open", "failed"])
+    .in("status", ["open", "failed", "processing"])
     .limit(1);
   if (error) {
     if (error.code === "PGRST205" || error.code === "42P01") return false;
     throw error;
   }
-  return data.length > 0;
+  if (data.length > 0) return true;
+  // A payer's overdue invoice carrying this landlord's charges blocks them too:
+  // the overdue job withdrew their leases for it.
+  const { data: billed, error: billedError } = await db
+    .from("charges")
+    .select("invoice_id")
+    .eq("landlord_id", userId)
+    .not("payer_id", "is", null)
+    .not("invoice_id", "is", null)
+    .in("status", ["invoiced"])
+    .limit(500);
+  if (billedError) {
+    if (["PGRST205", "42P01", "42703"].includes(billedError.code)) return false;
+    throw billedError;
+  }
+  const ids = [...new Set((billed ?? []).map((c) => c.invoice_id))];
+  if (!ids.length) return false;
+  const { data: overdue, error: overdueError } = await db
+    .from("billing_invoices")
+    .select("id")
+    .in("id", ids)
+    .not("overdue_actioned_at", "is", null)
+    .in("status", ["open", "failed", "processing"])
+    .limit(1);
+  if (overdueError) throw overdueError;
+  return overdue.length > 0;
 }
 
 export async function getGateSettings(db) {
@@ -148,22 +203,26 @@ export async function getGateSettings(db) {
  *   unitIds      units whose lease is going on the market now (a withdrawn one put
  *                back, or a new one): each must be covered too, since a unit with
  *                only withdrawn leases needs no coverage (Wyatt, 2026-11-07)
+ *   newUnits     [{ listingId, name }] units about to be added to a property (add
+ *                listing onto an existing one): on a property covered by named
+ *                units, each needs an addendum (review of 2026-11-07)
  *   newProperty  a property that does not exist yet (add listing): never covered
  *   neither      the dashboard's question: does the landlord's master count?
  */
-export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newProperty = false, now = new Date() } = {}) {
+export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newUnits = [], newProperty = false, now = new Date() } = {}) {
   const { role, sandbox } = await userOf(db, userId);
   if (role !== "landlord" || sandbox) {
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
   }
 
-  const [settings, overdueInvoice] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId)]);
+  const [settings, overdueInvoice, payerLink] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), activePayerLink(db, userId)]);
   let hasPaymentMethod = true;
   if (settings.requirePaymentMethod) {
+    // The payer's payment method counts for an account they pay for.
     const { data, error } = await db
       .from("payment_methods")
       .select("status, type, exp_month, exp_year, deleted_at")
-      .eq("user_id", userId)
+      .eq("user_id", payerLink?.payer_id ?? userId)
       .is("deleted_at", null);
     if (error) throw error;
     hasPaymentMethod = hasActivePaymentMethod(data, now);
@@ -187,7 +246,21 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
           if (label) extraUnits.set(u.listing_id, [...(extraUnits.get(u.listing_id) ?? []), label]);
         }
       }
+      for (const u of newUnits ?? []) {
+        const label = String(u?.name ?? "").trim();
+        if (!u?.listingId || !label) continue;
+        extraUnits ??= new Map();
+        extraUnits.set(u.listingId, [...new Set([...(extraUnits.get(u.listingId) ?? []), label])]);
+      }
       uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
+      // A building they have no stake in yet (an offering in someone else's): its address.
+      const unnamed = uncovered.filter((u) => u.listingId && u.address === "New property").map((u) => u.listingId);
+      if (unnamed.length) {
+        const { data: listings, error: listingError } = await db.from("listings").select("id, address, city, state, zipcode").in("id", unnamed);
+        if (listingError) throw listingError;
+        const byId = new Map((listings ?? []).map((l) => [l.id, displayAddress(l)]));
+        uncovered = uncovered.map((u) => (byId.has(u.listingId) ? { ...u, address: byId.get(u.listingId) } : u));
+      }
       if (newProperty) uncovered.push({ listingId: null, address: "New property" });
       agreementSigned = uncovered.length === 0;
     } else {
@@ -200,6 +273,11 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     ...gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice }),
     ...settings,
     uncovered,
+    ...(payerLink && {
+      payer: { name: payerLink.signer_name },
+      // What would wait for the payer: the properties being published.
+      targets: listingIds?.length ? await resolvePublishedIds(db, listingIds) : [],
+    }),
   };
 }
 

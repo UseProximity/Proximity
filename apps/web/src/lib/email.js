@@ -512,13 +512,15 @@ export async function sendTeamEmail({ to, subject, html }) {
  */
 export const MASS_EMAIL_ADDRESS = "info@useproximity.org";
 
-export async function sendMassEmail({ to, subject, html, attachments = [], userId = null, req = null }) {
+export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null }) {
   const message = {
     logAs: { kind: "mass_email", userId },
     to,
     replyTo: MASS_EMAIL_ADDRESS,
     subject,
     html,
+    ...(text && { text }),
+    ...(headers && { headers }),
     ...(attachments.length && { attachments }),
   };
   const outcome = (provider, info) => ({

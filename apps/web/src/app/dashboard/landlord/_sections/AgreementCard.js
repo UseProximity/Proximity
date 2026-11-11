@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import CollapsibleSection from "./CollapsibleSection";
+import { NamePayerForm } from "./PayerCards";
 
 const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
@@ -136,13 +137,16 @@ function Documents({ open, busy }) {
  * when there is nothing to do. The checklist only lists a requirement that is
  * switched on. `changeRequests` is the "Request changes" panel, at the bottom.
  */
-export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged, busy, user, changeRequests = null }) {
+// `paidFor`: the accounts this user pays for (PaidForAccounts). `billingOnly`: a billing
+// account made for a payer, with no listings of its own (Project B).
+export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged, busy, user, changeRequests = null, paidFor = null, billingOnly = false }) {
   const agreement = gate.agreement;
   const status = STATUS[agreement.status] ?? STATUS.not_signed;
   const signedOk = agreement.status === "signed";
   const [signing, setSigning] = useState(null);
   const [error, setError] = useState(null);
   const [docsKey, setDocsKey] = useState(0);
+  const [namingPayer, setNamingPayer] = useState(false);
   const uncoveredLive = agreement.uncoveredLive ?? [];
   const covered = agreement.covered ?? [];
 
@@ -153,7 +157,9 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
     ? new Date(`${enrollmentWindow.deadline}T12:00:00Z`).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "UTC" })
     : null;
   // Open when there is something to sign; folded once it is all done.
-  const needsAction = !signedOk || !!agreement.amendment || uncoveredLive.length > 0;
+  // A new version of their agreement is ready to sign, while the one they signed still counts.
+  const updated = signedOk && agreement.canSign && !!agreement.newVersionReady;
+  const needsAction = billingOnly ? !!paidFor : !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || updated;
 
   // Opens one signed document as a single PDF in a new tab (opened first, so it is not blocked as a popup).
   const openFile = useCallback(async ({ kind, id }) => {
@@ -166,7 +172,8 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Could not open that document.");
       }
-      const link = URL.createObjectURL(await res.blob());
+      // A large PDF comes back as a short-lived link instead of the file.
+      const link = (res.headers.get("content-type") ?? "").includes("application/json") ? (await res.json()).url : URL.createObjectURL(await res.blob());
       if (tab) tab.location.href = link;
       else window.open(link, "_blank");
     } catch (e) {
@@ -233,14 +240,27 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {signedOk && (
+        {signedOk && !billingOnly && (
           <div>
             <p className="text-sm font-medium text-gray-900">This agreement covers these properties ({covered.length}):</p>
             {covered.length ? <PropertyList items={covered} /> : <p className="text-sm text-gray-500">None yet. Properties are added when you publish them.</p>}
           </div>
         )}
 
-        {agreement.amendment && (
+        {updated && (
+          <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
+            <p>
+              We have updated the agreement{agreement.liveVersionLabel ? ` (${agreement.liveVersionLabel})` : ""}. Please review and sign the
+              new version. It replaces your current agreement, and every property it covers stays covered. Until you sign, your current
+              agreement still applies.
+            </p>
+            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
+              Review and sign
+            </SignButton>
+          </div>
+        )}
+
+        {agreement.amendment && !updated && (
           <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
             <p>
               You started an Exhibit A amendment adding {agreement.amendment.adding.join("; ")}. Sign it to publish{" "}
@@ -252,7 +272,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
           </div>
         )}
 
-        {signedOk && !agreement.amendment && uncoveredLive.length > 0 && (
+        {signedOk && !agreement.amendment && !updated && uncoveredLive.length > 0 && (
           <div className="space-y-2 rounded-md border border-amber-200 px-3 py-3">
             <p className="text-sm text-gray-800">
               {uncoveredLive.length === 1 ? "This live property is" : "These live properties are"} not fully on your agreement yet. Add{" "}
@@ -267,20 +287,35 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
         {agreement.declinedAt && (
           <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
-            You declined the agreement on {dateOnly(agreement.declinedAt)}. You can review and sign it whenever you are ready, or ask for changes below.
+            You declined the agreement on {dateOnly(agreement.declinedAt)}. Your reason went to the team under Request changes below, where you
+            can add details or files. You can review and sign it whenever you are ready.
           </p>
         )}
 
-        {!signedOk && agreement.canSign && (
+        {!signedOk && agreement.canSign && !billingOnly && (
           <>
             <p className="text-sm text-gray-700">{masterIntro}</p>
-            <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
-              {agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
-            </SignButton>
+            <div className="flex flex-wrap items-center gap-3">
+              <SignButton busy={busy || !!signing} onClick={() => start({ listingIds: [] })}>
+                {agreement.status === "in_progress" ? "Continue signing" : "Review and sign"}
+              </SignButton>
+              {!namingPayer && (
+                <button type="button" className="text-sm text-gray-600 underline hover:text-gray-800" onClick={() => setNamingPayer(true)}>
+                  Someone else is the authorized signer?
+                </button>
+              )}
+            </div>
+            {namingPayer && <NamePayerForm onCancel={() => setNamingPayer(false)} onDone={() => { setNamingPayer(false); onChanged("payer"); }} />}
           </>
         )}
 
-        {!signedOk && !agreement.canSign && (
+        {billingOnly && !signedOk && !paidFor && (
+          <p className="text-sm text-gray-600">Nothing to sign yet. When a landlord names you as their authorized signer, their properties show here.</p>
+        )}
+
+        {paidFor}
+
+        {!signedOk && !agreement.canSign && !billingOnly && (
           <p className="text-sm text-gray-600">
             The agreement is not ready to sign here yet. We will email you when it is. Questions? Email info@useproximity.org.
           </p>

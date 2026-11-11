@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
 import { startSigning } from "@/lib/billing/agreements";
@@ -10,6 +10,8 @@ import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
+import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
+import { releaseWaitingFor } from "@/lib/billing/payerServices";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
@@ -32,11 +34,14 @@ import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
  *               the document opens. Without a complete answer nothing opens.
  *   listingIds  the properties being published (from the publish dialog); left
  *               out when the landlord signs from the Payments tab
+ *   accountId   a landlord account the signer pays for (billing_payers): the
+ *               document covers that account's properties, what it asked to
+ *               publish and anything it has live (Project B). Left out: their own.
  * Answers { token, host, kind } for Documenso's embedded signing page, or
  * { alreadySigned: true } when everything asked for is covered. A copy already
  * in progress for the same document is reused.
  *
- * @auth landlord (own agreement only)
+ * @auth landlord (own agreement, or one for an account they pay for)
  */
 // Only well-formed ids, at most 200. Which of them are really the landlord's is
 // decided by the coverage plan, which ignores anything they have no stake in.
@@ -60,6 +65,17 @@ export async function POST(req) {
     }
     const { data: user, error } = await supabase.from("users").select("id, name, email").eq("id", session.user.id).single();
     if (error) throw error;
+    // Signing for an account they pay for: startSigning checks they are its payer.
+    // Several accounts on one new agreement (accountIds): what each asked to publish.
+    const many = Array.isArray(body.accountIds) ? [...new Set(body.accountIds.filter((id) => isUuid(id) && id !== user.id))].slice(0, 50) : [];
+    const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : many[0] ?? null;
+    let listingIds = accountId
+      ? (await Promise.all([...new Set([accountId, ...many])].map((id) => waitingRequests(supabase, id)))).flat().map((w) => w.listing_id)
+      : ownListingIds(body.listingIds);
+    // "Add drafts to your agreement": the account's uncovered drafts go on it too.
+    if (accountId && body.includeDrafts === true) {
+      for (const id of new Set([accountId, ...many])) listingIds = [...listingIds, ...(await uncoveredDraftIds(supabase, id))];
+    }
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const result = await startSigning(supabase, documenso, {
       user,
@@ -71,7 +87,9 @@ export async function POST(req) {
       signerAddress2: typeof body.signerAddress2 === "string" ? body.signerAddress2 : "",
       signerCity: typeof body.signerCity === "string" ? body.signerCity : "",
       authorized: body.authorized === true,
-      listingIds: ownListingIds(body.listingIds),
+      listingIds,
+      accountId,
+      accountIds: many,
       // Units being published right now: { listingId: [unit name] }.
       requiredUnits: cleanRequiredUnits(body.requiredUnits),
       // The Exhibit A step's choices: [{ listingId, include, wholeBuilding, units }].
@@ -80,6 +98,12 @@ export async function POST(req) {
       prepare,
       ...options,
     });
+    // Nothing to sign for accounts they sign for: anything already covered that the gate now allows goes live.
+    if (result.alreadySigned && accountId) {
+      after(async () => {
+        for (const id of new Set([accountId, ...many])) await releaseWaitingFor(id).catch((err) => console.error("billing: release after nothing to sign failed", err?.message));
+      });
+    }
     return NextResponse.json(result.token ? { token: result.token, kind: result.kind, host: documensoHost() } : result);
   } catch (err) {
     if (err?.name === "DocumensoError") {

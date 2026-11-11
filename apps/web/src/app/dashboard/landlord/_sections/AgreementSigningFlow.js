@@ -222,6 +222,8 @@ function PropertyChoice({ p, choice, onChange }) {
             <p className="text-xs text-gray-500">Covers every unit in the building, including ones you add later.</p>
           ) : (
             <div className="space-y-2">
+              {/* Exhibit A: "Units: ..., and any unit at this address the landlord later lists through Proximity." (Wyatt, 2026-11-07) */}
+              <p className="text-xs text-gray-500">Also covers any unit you list at this address later, so adding one never needs another addendum.</p>
               {p.units.length ? (
                 // Side by side, wrapping, so a property with many units stays short.
                 <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -269,9 +271,11 @@ function PropertyChoice({ p, choice, onChange }) {
  *
  * Then Documenso's signing page opens with everything filled but the signature
  * and initials. `listingIds` are the properties being published (publish dialog).
- * onFinished(result): "signed" | "pending" (signed, still saving) | "closed".
+ * onFinished(result): "signed" | "pending" (signed, still saving) | "closed" |
+ * "nothing" (nothing needs signing: never reported as signed).
  */
-export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, onFinished }) {
+// `accountId`: a payer signing for a landlord account they pay for (Project B); left out, their own.
+export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, accountId = null, accountIds = null, includeDrafts = false, onFinished }) {
   const signer = useSignerDetails();
   const license = useLicenseDisclosure();
   const [step, setStep] = useState(0);
@@ -287,6 +291,8 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
   const [addendum, setAddendum] = useState(false);
   // Live properties left off: confirmed before they come off the site.
   const [confirmingOff, setConfirmingOff] = useState(false);
+  // Signing for another landlord's account (an authorized signer): the wording says "the landlord's".
+  const forAccount = !!(accountId || accountIds?.length);
   const prepared = useRef(null);
   const closeRef = useRef(null);
   const ids = listingIds.join(",");
@@ -296,10 +302,10 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     closeRef.current?.focus();
     let live = true;
     const units = requiredUnits && Object.keys(requiredUnits).length ? `&units=${encodeURIComponent(JSON.stringify(requiredUnits))}` : "";
-    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}`)
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}${accountId ? `&accountId=${accountId}` : ""}${accountIds?.length ? `&accountIds=${accountIds.join(",")}` : ""}${includeDrafts ? "&includeDrafts=1" : ""}`)
       .then((r) => {
         if (!live) return;
-        if (r.kind === "none") return onFinished("signed");
+        if (r.kind === "none") return onFinished("nothing");
         setPreview(r);
         setChoices(Object.fromEntries(r.properties.map((p) => [p.listingId, p.choice])));
         if (r.kind === "amendment" && r.signingAs) {
@@ -331,7 +337,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setPhase("opening");
     setError(null);
     try {
-      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit() }, retries: 20 });
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }) }, retries: 20 });
       if (r.alreadySigned) return onFinished("signed");
       setSession(r);
       setPhase("signing");
@@ -363,7 +369,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
     setError(null);
     return addendum ? openAddendum() : confirmExhibit();
   };
-  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit() });
+  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }) });
 
   // Units the landlord added or renamed show in the next preview; keep the list in step.
   const updateChoice = (p, next) => {
@@ -500,7 +506,7 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
                     <p className="font-medium">Withdraw these listings from the site?</p>
                     <ul className="list-disc pl-5 text-xs">
                       {liveExcluded.map((p) => (
-                        <li key={p.listingId}>{p.address}: every listing of yours there</li>
+                        <li key={p.listingId}>{p.address}: {forAccount ? "every listing the landlord has there" : "every listing of yours there"}</li>
                       ))}
                       {unitsOff.map(({ p, units }) => (
                         <li key={`units-${p.listingId}`}>
@@ -508,7 +514,12 @@ export default function AgreementSigningFlow({ listingIds = [], requiredUnits = 
                         </li>
                       ))}
                     </ul>
-                    <p className="text-xs">They are withdrawn when you sign, so students will no longer see them. Until then nothing changes. You can publish them again later by adding them to your agreement with a short addendum.</p>
+                    <p className="text-xs">
+                      They are withdrawn when you sign, so students will no longer see them. Until then nothing changes.{" "}
+                      {forAccount
+                        ? "We email the landlord which ones you left off. They can be added later with a short addendum."
+                        : "You can publish them again later by adding them to your agreement with a short addendum."}
+                    </p>
                     <div className="flex justify-end gap-2">
                       <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
                         Go back

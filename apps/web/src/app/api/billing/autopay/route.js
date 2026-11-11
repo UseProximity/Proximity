@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
-import { autopayState, disableAutopay, enableAutopay } from "@/lib/billing/autopay";
+import { autopayState, disableAutopay, enableAutopay, lazyAutopayNotify } from "@/lib/billing/autopay";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -38,6 +38,7 @@ export async function POST(req) {
       paymentMethodId: body.paymentMethodId,
       authorized: body.authorized === true,
       userAgent: req.headers.get("user-agent"),
+      notify: lazyAutopayNotify,
     });
     return NextResponse.json(await autopayState(supabase, session.user.id));
   } catch (err) {

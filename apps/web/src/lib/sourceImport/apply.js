@@ -153,16 +153,30 @@ export function putsLeaseLive(c) {
   return d.op === "lease_update" && d.patch?.unavailable === false;
 }
 
-/* The gate for one owner and listing. Fails closed: an error holds the change. */
-async function gateFor(userId, listingId) {
+/*
+ * The gate for one owner and listing, and the units going live (each must be on
+ * the agreement, not just the building; review of 2026-11-07). Fails closed: an
+ * error holds the change.
+ */
+async function gateFor(userId, listingId, unitIds = []) {
   if (!userId) return { allowed: true };
   try {
-    const g = await checkListingGate(supabase, userId, { listingIds: [listingId] });
+    const g = await checkListingGate(supabase, userId, { listingIds: [listingId], unitIds: unitIds.filter(Boolean) });
     return { allowed: !!g.allowed, message: g.allowed ? null : gateMessage(g.missing ?? [], g.uncovered ?? []) };
   } catch (err) {
     console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
     return { allowed: false, message: "Could not check the listing gate; held for the landlord." };
   }
+}
+
+// One gate answer per unit for a run (a sync can put several leases on one unit live).
+function cachedGate(userId, listingId) {
+  const seen = new Map();
+  return (unitId) => {
+    const key = unitId ?? "";
+    if (!seen.has(key)) seen.set(key, gateFor(userId, listingId, unitId ? [unitId] : []));
+    return seen.get(key);
+  };
 }
 
 // ---------------------------------------------------------------- planning
@@ -261,12 +275,14 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   const utilities = mode === "import" ? p.utilities : [];
   const have = new Set((state.listing_custom_amenities ?? []).map((a) => a.label.toLowerCase()));
   const customAmenities = mode === "import" ? p.customAmenities.filter((a) => !have.has(a.toLowerCase())) : [];
-  const haveConcessions = new Set((state.listing_concessions ?? []).filter((c) => c.active).map((c) => norm(c.description).slice(0, 40)));
-  const concessions = p.concessions.filter((c) => !haveConcessions.has(norm(c).slice(0, 40)));
+  // A special reworded between reads ("Two Months FREE!" one day, "Receive
+  // 2 months free" the next) is the same special, not a new one and a gone one.
+  const activeConcessions = (state.listing_concessions ?? []).filter((c) => c.active);
+  const concessions = p.concessions.filter((c) => !activeConcessions.some((h) => sameSpecial(h.description, c)));
   const staleConcessions =
     mode === "sync"
-      ? (state.listing_concessions ?? [])
-          .filter((c) => c.active && c.last_verified_source === "source-sync" && !p.concessions.some((n) => norm(n).slice(0, 40) === norm(c.description).slice(0, 40)))
+      ? activeConcessions
+          .filter((c) => c.last_verified_source === "source-sync" && !p.concessions.some((n) => sameSpecial(n, c.description)))
           .map((c) => c.id)
       : [];
   if (Object.keys(patch).length || amenities.length || utilities.length || customAmenities.length || concessions.length || staleConcessions.length) {
@@ -292,6 +308,15 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     (a, b) => (a.bedrooms ?? 99) - (b.bedrooms ?? 99) || (a.bathrooms ?? 99) - (b.bathrooms ?? 99) || (a.area ?? 0) - (b.area ?? 0) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
   );
   const { pairs, unmatched } = matchUnits(ordered, state.listing_units);
+  /*
+   * A site that prices nothing ("Call For Price" on every plan, LOCAL on
+   * Delmar, Wyatt 2026-11-09) says nothing about which plans are let, even
+   * the ones on a waitlist: every plan is offered at a price to ask for. The
+   * sync keeps the leases a plan has, and a new plan gets one live lease with
+   * no price.
+   */
+  const pricesUnknown = mode === "sync" && ordered.length > 0 && !ordered.some((u) => (u.offers ?? []).some((o) => o.rent != null));
+  const askForPrice = { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] };
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
@@ -300,13 +325,13 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         unitKey: snap.key,
         field: "unit",
         old: null,
-        new: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, offers: snap.offers.length },
+        new: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, offers: pricesUnknown ? 1 : snap.offers.length },
         detail: {
           op: "unit_insert",
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: snap.floorPlanImageUrl },
-          offers: snap.offers,
-          available: snap.available,
+          offers: pricesUnknown ? [askForPrice] : snap.offers,
+          available: pricesUnknown ? true : snap.available,
           photos: snap.photos,
           draft: mode === "sync",
         },
@@ -350,6 +375,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     if (snap.photos.length && unitPhotoCount === 0) {
       push({ kind: "photos_added", unitKey: snap.key, unitId: db.id, field: "unit", old: 0, new: snap.photos.length, detail: { op: "photos_add", unitId: db.id, label, urls: snap.photos } });
     }
+    if (pricesUnknown) continue;
 
     // Leases: one per price. The site's offers against the owner's leases.
     const mine = db.unit_leases.filter((l) => isMine(l, ownerIds));
@@ -417,7 +443,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         lp.lease_term_months = o.leaseTermMonths;
         diff.leaseTermMonths = { old: l.lease_term_months ?? [], new: o.leaseTermMonths };
       }
-      if ((o.availableFrom ?? null) !== (l.available_from ?? null)) {
+      // A date that has arrived means available now: a site that says
+      // "today" one day and "now" the next has not changed anything.
+      if (moveInKey(o.availableFrom) !== moveInKey(l.available_from)) {
         lp.available_from = o.availableFrom;
         diff.availableFrom = { old: l.available_from ?? null, new: o.availableFrom };
       }
@@ -502,6 +530,34 @@ async function insertImages({ state, userId, unitId, urls, slug }) {
  * Available now. 6 Weeks Free! Sign by 10/31...". The editor caps this at
  * 300 characters.
  */
+/*
+ * Two wordings of one special: the same opening, or the same numbers (months
+ * free, dollar amounts) with most of the same words.
+ */
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+const SPECIAL_STOP = new Set(["when", "with", "your", "this", "that", "from", "receive", "apply", "some", "please", "more", "information", "contact", "office", "leasing", "lease", "free", "month", "months"]);
+export function sameSpecial(a, b) {
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return false;
+  if (na.slice(0, 40) === nb.slice(0, 40)) return true;
+  const nums = (t) => new Set((t.match(/\d[\d,]*/g) ?? []).map((x) => x.replace(/,/g, "")));
+  const words = (t) => new Set(t.split(/[^a-z]+/).filter((w) => w.length >= 4 && !SPECIAL_STOP.has(w)));
+  const jac = (x, y) => { const u = new Set([...x, ...y]); if (!u.size) return 0; let i = 0; for (const v of x) if (y.has(v)) i++; return i / u.size; };
+  const words2nums = (t) => t.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (w) => String(NUMBER_WORDS[w]));
+  const la = words2nums(String(a).toLowerCase()), lb = words2nums(String(b).toLowerCase());
+  const xa = nums(la), xb = nums(lb);
+  const sameNums = xa.size > 0 && xa.size === xb.size && [...xa].every((v) => xb.has(v));
+  const overlap = jac(words(la), words(lb));
+  if (xa.size || xb.size) return sameNums && (overlap >= 0.3 || (/free/.test(la) && /free/.test(lb)));
+  return overlap >= 0.7;
+}
+
+/* A move-in date for comparing: null when it is today, past or unknown. */
+export function moveInKey(date, today = new Date().toISOString().slice(0, 10)) {
+  const d = date ? String(date).slice(0, 10) : null;
+  return d && d > today ? d : null;
+}
+
 export function leaseBlurb(offer) {
   const parts = [apartmentsLabel(offer.apartments), offer.availableNow && !offer.availableFrom ? "Available now" : null, offer.special].filter(Boolean);
   if (!parts.length) return null;
@@ -644,7 +700,7 @@ export async function executeChange(change, { state, userId }) {
     case "lease_update": {
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
       // The database keeps a lease withdrawn for an overdue invoice off the market
-      // until an admin restores it (202611010002_billing_holds.sql).
+      // until an admin restores it (202611010003_billing_holds.sql).
       if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       return Object.keys(d.patch).join(", ");
@@ -671,13 +727,15 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     // website is a new change. Rejections from a bulk clear-out do not count.
     const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
     const [{ data: open }, { data: rejected }] = await Promise.all([
-      supabase.from("listing_source_events").select("kind, unit_key, field, new_value").eq("listing_id", listingId).eq("status", "open"),
+      supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "open"),
       supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail").eq("listing_id", listingId).eq("status", "rejected").gte("verdict_at", since).limit(2000),
     ]);
-    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
+    // The lease is part of the key: two leases of one floor plan given the
+    // same update are two changes, not one (the second used to be dropped).
+    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.detail?.leaseId ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
     const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy)].map(keyOf));
     fresh = changes.filter((c) => {
-      const key = `${c.kind}|${c.unitKey ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
+      const key = `${c.kind}|${c.unitKey ?? ""}|${c.leaseId ?? c.detail?.leaseId ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
       if (seen.has(key)) return false;
       // ...and the same change twice in one read is one event too.
       seen.add(key);
@@ -856,15 +914,17 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   // A lease going live passes the listing gate, as the landlord's own publish
   // would; the importer and sync used to skip it.
   // Under launch review it still runs, so the team sees why one would wait.
-  if (mode === "sync" && changes.some((c) => (c.auto || teamReview) && putsLeaseLive(c))) {
-    const gate = await gateFor(primaryOwner(state), listingId);
-    if (!gate.allowed) {
-      for (const c of changes.filter(putsLeaseLive)) {
-        c.auto = false;
-        c.judge = false;
-        c.gated = true;
-        c.note = `waiting for the landlord to publish: ${gate.message}`;
-      }
+  // Every such change is checked, for its own unit, before the model's second
+  // opinion can promote it (a relist it promoted used to skip the gate).
+  if (mode === "sync" && changes.some(putsLeaseLive)) {
+    const gateOf = cachedGate(primaryOwner(state), listingId);
+    for (const c of changes.filter(putsLeaseLive)) {
+      const gate = await gateOf(c.unitId ?? c.detail?.unitId ?? null);
+      if (gate.allowed) continue;
+      c.auto = false;
+      c.judge = false;
+      c.gated = true;
+      c.note = `waiting for the landlord to publish: ${gate.message}`;
     }
   }
 
@@ -961,20 +1021,30 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
+  /*
+   * What a change creates (a lease, photos) belongs to the listing's landlord,
+   * not to whoever approved it: the team approving a sync change during launch
+   * review was becoming the lease's owner, shown to students as the landlord
+   * and missed by the next sync (The Victor, 2026-11-08). A co-owner accepting
+   * their own change still owns it.
+   */
+  const owner = userId && ownerIdsOf(state).includes(userId) ? userId : primaryOwner(state) ?? userId;
   // Accepting a change that puts a lease live is a publish: the same gate,
   // checked for the listing's landlord even when the team accepts it.
-  const live = (events ?? []).filter((e) => !e.applied && putsLeaseLive(e));
-  const gate = live.length ? await gateFor(primaryOwner(state) ?? userId, listingId) : { allowed: true };
+  const gateOf = cachedGate(primaryOwner(state) ?? userId, listingId);
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
-    if (!gate.allowed && putsLeaseLive(e)) {
-      results.push({ id: e.id, ok: false, error: gate.message });
-      continue;
+    if (putsLeaseLive(e)) {
+      const gate = await gateOf(e.detail?.unitId ?? null);
+      if (!gate.allowed) {
+        results.push({ id: e.id, ok: false, error: gate.message });
+        continue;
+      }
     }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
-      const note = await executeChange(change, { state, userId: userId ?? primaryOwner(state) });
+      const note = await executeChange(change, { state, userId: owner });
       await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note } }).eq("id", e.id);
       results.push({ id: e.id, ok: true, note });
     } catch (err) {
