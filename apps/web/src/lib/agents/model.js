@@ -156,11 +156,17 @@ export async function runTools({
     // it when the rounds ran out stopped the question reaching the landlord
     // (PR #365 review).
     const said = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    // Cut off by max_tokens is not an answer with eager streaming: the final
-    // input is not validated, so its reply could stop mid-sentence, and part
-    // of it may already be on the student's screen. Other callers (the
-    // landlord chat) keep the retry below.
-    if (eagerFinal && resp.stop_reason === "max_tokens") break;
+    /*
+     * Cut off by max_tokens is never an answer: the final tool's input stops
+     * part way (a landlord chat reply came back with no text at all), and with
+     * eager streaming part of it may already be on the student's screen. The
+     * caller gets `truncated` and says so instead (Wyatt, 2026-11-11: tell the
+     * person it was too much, do not raise the limit).
+     */
+    if (resp.stop_reason === "max_tokens") {
+      await log({ listingId, kind, model, usage, tag });
+      return { final: null, text: "", usage, calls, truncated: true };
+    }
     if (resp.stop_reason !== "tool_use") text = said || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });
