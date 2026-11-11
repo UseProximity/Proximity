@@ -6,6 +6,15 @@
  * the landlord) is already recorded. Nothing here emails the student: only
  * what the landlord sends back does (Wyatt, 2026-11-01).
  *
+ * Sent with "Accept: application/x-ndjson", the answer streams as it is
+ * written (Wyatt, 2026-11-11), one JSON object per line:
+ *   { type: "delta", text }                          more of Proxy's reply
+ *   { type: "done", messages, outcome, intent, ... } the saved messages, as the plain response
+ *   { type: "error", error, code }                   in place of done
+ * Checks that fail before Proxy starts (no access, not available) still
+ * answer with a plain JSON error and status. Without the header, the plain
+ * JSON response as before (the mobile app).
+ *
  * @auth public
  */
 export const dynamic = "force-dynamic";
@@ -35,20 +44,46 @@ export async function POST(req, { params }) {
     try { body = await req.json(); } catch { body = {}; }
     const leaseId = UUID.test(body?.leaseId ?? "") ? body.leaseId : null;
 
-    const result = await handleStudentMessage({
-      thread, body: body?.body, userId: actor.userId, visitorId: actor.visitorId,
-      ip: clientIp(req.headers), leaseId, testMode: avail.testMode,
-      // Asking the landlord and logging run once the reply is out.
-      defer: (work) => after(work),
-    });
-    if (result.error) return NextResponse.json({ error: result.error, code: result.code ?? null }, { status: result.status ?? 400 });
-
-    return NextResponse.json({
+    const args = { thread, body: body?.body, userId: actor.userId, visitorId: actor.visitorId, ip: clientIp(req.headers), leaseId, testMode: avail.testMode };
+    const shape = (result) => ({
       messages: result.messages.map((m) => shapeMessage(m, { userId: actor.userId })),
       outcome: result.outcome,
       intent: result.intent,
       questionIds: result.questionIds,
     });
+
+    if ((req.headers.get("accept") ?? "").includes("application/x-ndjson")) {
+      const enc = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (obj) => { try { controller.enqueue(enc.encode(`${JSON.stringify(obj)}\n`)); } catch {} };
+          // The work after the reply (asking the landlord, logging) runs once
+          // "done" is sent; the stream stays open until it finishes, so the
+          // function lives that long, and the student is not waiting on it.
+          let later = null;
+          try {
+            const result = await handleStudentMessage({ ...args, defer: (work) => { later = work; }, onReplyDelta: (text) => send({ type: "delta", text }) });
+            if (result.error) send({ type: "error", error: result.error, code: result.code ?? null });
+            else send({ type: "done", ...shape(result) });
+          } catch (err) {
+            console.error("POST /api/proxy/threads/[id]/messages (stream) failed:", err);
+            send({ type: "error", error: "Proxy could not answer just now. Please try again." });
+          }
+          if (later) await later();
+          try { controller.close(); } catch {}
+        },
+      });
+      return new Response(stream, { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
+    }
+
+    const result = await handleStudentMessage({
+      ...args,
+      // Asking the landlord and logging run once the reply is out.
+      defer: (work) => after(work),
+    });
+    if (result.error) return NextResponse.json({ error: result.error, code: result.code ?? null }, { status: result.status ?? 400 });
+
+    return NextResponse.json(shape(result));
   } catch (err) {
     console.error("POST /api/proxy/threads/[id]/messages failed:", err);
     return NextResponse.json({ error: "Proxy could not answer just now. Please try again." }, { status: 500 });
