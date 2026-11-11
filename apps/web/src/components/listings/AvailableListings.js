@@ -38,6 +38,7 @@ export default function AvailableListings({
   // Compare Listings: null when closed, else the [left, right] picks (or null).
   compare = null,
   setCompare = () => {},
+  onCloseCompare = () => {},
   filters,
   setFilters,
   handleReset,
@@ -190,7 +191,7 @@ export default function AvailableListings({
       )
     );
     return () => cancelAnimationFrame(frame);
-  }, [mapHidden]);
+  }, [mapHidden, wideLayout]); // Compare with the map hidden fades through too
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -305,7 +306,9 @@ export default function AvailableListings({
 
   // Compare replaces an open detail panel, which would hide the grid it picks from,
   // and the selected listing, so no map card for it is left behind once it exits.
-  useEffect(() => {
+  // Before paint: with the map hidden Compare opens from a timer (the fade), so a
+  // later effect would let one frame show both.
+  useLayoutEffect(() => {
     if (!compare) return;
     setSelectedListing(null);
     if (expandedListing) closePanel();
@@ -807,7 +810,7 @@ export default function AvailableListings({
               onRemove={(i) =>
                 setCompare((c) => c.map((l, j) => (j === i ? null : l)))
               }
-              onClose={() => setCompare(null)}
+              onClose={onCloseCompare}
             />
           </div>
         )}

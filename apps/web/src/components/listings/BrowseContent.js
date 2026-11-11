@@ -56,12 +56,12 @@ export default function BrowseContent({ session, initialListings = null }) {
   const switchTimers = useRef({});
   const endMapSwitch = () =>
     document.body.removeAttribute("data-map-switching");
-  const toggleMap = () => {
+  const fadeThrough = (flip) => {
     const timers = switchTimers.current;
     clearTimeout(timers.safety);
     cancelAnimationFrame(timers.frame);
     document.body.setAttribute("data-map-switching", "");
-    timers.flip = setTimeout(() => setMapHidden((hidden) => !hidden), 120);
+    timers.flip = setTimeout(flip, 120);
     // Two frames, like AvailableListings: the new layout has been drawn, still
     // invisible, before the mark goes and its width change can animate.
     timers.safety = setTimeout(() => {
@@ -70,6 +70,12 @@ export default function BrowseContent({ session, initialListings = null }) {
       );
     }, 700);
   };
+  const toggleMap = () => fadeThrough(() => setMapHidden((hidden) => !hidden));
+  // With the map hidden, Compare also swaps the wide grid for the two-column one
+  // and the compare panel, so it fades through like the map toggle. With the map
+  // visible the columns do not change and it switches at once.
+  const changeCompare = (next) =>
+    mapHidden ? fadeThrough(() => setCompare(next)) : setCompare(next);
   useEffect(() => {
     const timers = switchTimers.current;
     return () => {
@@ -231,7 +237,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           // finished, while it is invisible.
           onToggleMap={toggleMap}
           compareOpen={!!compare}
-          onToggleCompare={() => setCompare((c) => (c ? null : [null, null]))}
+          onToggleCompare={() => changeCompare((c) => (c ? null : [null, null]))}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
@@ -248,6 +254,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           mapHidden={mapHidden}
           compare={compare}
           setCompare={setCompare}
+          onCloseCompare={() => changeCompare(null)}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
