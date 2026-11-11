@@ -83,7 +83,7 @@ export const COMMUTE_MODES = [
     id: "walk",
     label: "Walk",
     question: "What's the longest walk to campus you'd be okay with, in minutes?",
-    times: [5, 10, 15, 20],
+    times: [10, 15, 20, 25],
     unit: "walk to campus",
   },
   {
@@ -97,7 +97,7 @@ export const COMMUTE_MODES = [
     id: "shuttle",
     label: "Shuttle",
     question: "What's the longest walk to a shuttle stop you'd be okay with, in minutes?",
-    times: [5, 10, 15, 20],
+    times: [3, 5, 10, 15],
     unit: "walk to a shuttle stop",
   },
   {
