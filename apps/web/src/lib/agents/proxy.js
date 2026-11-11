@@ -25,7 +25,7 @@
 import supabase from "@/lib/supabase";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
-import { replyStreamer } from "./replyStream";
+import { replyStreamer, normalizeFinal, KEEPS_OWN_REPLY } from "./replyStream";
 import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_USER_ID } from "./threads";
 import { sanitizeStudentText, screenStudentText, CONTACT_NOTE } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
@@ -51,7 +51,7 @@ Rules:
 - A message that mixes questions: answer what you know, and put only the rest in unanswered_questions, each as one clear question in the student's words.
 - Whenever your reply says you do not have something the student asked for, that thing goes in unanswered_questions too, so the landlord can fill it in. When the whole message is something you do not have, your reply is one plain sentence saying you do not have it yet (the asking is added after you). When you answer what they asked but there is an obvious detail you do not have that they probably care about (they ask what kind of dryer and you know it is a top loader but not the brand), do NOT send anything yet: answer, then offer in one short sentence ("Want me to ask the landlord for the brand too?") and put that question in offered_question. When an offer is pending (see STATE) and the student says yes, put the offered question in unanswered_questions and say you have asked; if they say no or move on, drop it. When part of what they actually asked is unknown, answer the rest and end with one short sentence that you have asked the landlord about that part. Never tell the student to check or confirm with the landlord themselves.
 - If the student wants to tour, set intent "tour" and tell them to tap the calendar button next to Send to pick the times they can make it (the STATE says whether they are signed in; only when they are not, add that they need to sign in first). Do not send a tour request to the landlord as a question.
-- If the student wants to apply or negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "apply" or "negotiate" when that is what they want.
+- If the student wants to apply or negotiate, or asks something about their own situation that only the landlord can decide, that is an unanswered question for the landlord. Tell the student you are passing it on. Intent is "apply" or "negotiate" when that is what they want. When they want to apply, also encourage them to tour first: they can tap the calendar button next to Send to pick the times they can make it (only when the STATE says they are not signed in, add that they need to sign in first). Never say you do not have something when they only said they want to apply.
 - Nudge toward a tour only when nudge_allowed is true: one natural sentence built from a real fact about this place, never pushy, never in a reply that also says you are asking the landlord or that nothing is available. Report nudged: true when you did.
 - When the listing has no lease on offer (see availability), answer facts but do not offer to ask the landlord: say nothing is available right now and that they can browse similar places on Proximity.
 - When a landlord's clarifying question is pending, the student's next message is the reply to it unless it is clearly a new, unrelated question. Then set clarifier_reply: true, and your reply says you have passed their answer to the landlord and will post the landlord's answer here. Do not answer the pending question yourself and do not send it to the landlord again.
@@ -84,6 +84,8 @@ const TOOLS = [
     input_schema: {
       type: "object",
       properties: {
+        // First, so the reply streaming in knows what kind of message this is (replyStream.js).
+        intent: { type: "string", enum: ["question", "small_talk", "tour", "apply", "negotiate", "other_listing", "abuse"] },
         answered_keys: { type: "array", items: { type: "string" }, description: "Keys (in brackets in the knowledge base) of the facts the reply drew on." },
         unanswered_questions: {
           type: "array",
@@ -96,13 +98,12 @@ const TOOLS = [
             required: ["question", "lease_number"],
           },
         },
-        intent: { type: "string", enum: ["question", "small_talk", "tour", "apply", "negotiate", "other_listing", "abuse"] },
         reply: { type: "string", description: "What the student sees." },
         nudged: { type: "boolean" },
         clarifier_reply: { type: "boolean" },
         offered_question: { type: "string", description: "A question you offered to ask the landlord and are waiting for a yes on, in the student's words. Empty when none." },
       },
-      required: ["answered_keys", "unanswered_questions", "intent", "reply", "nudged", "clarifier_reply", "offered_question"],
+      required: ["intent", "answered_keys", "unanswered_questions", "reply", "nudged", "clarifier_reply", "offered_question"],
     },
   },
 ];
@@ -245,7 +246,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     result = await runTools({
       // Low effort: a short, rule-bound answer from facts in the prompt needs
       // little deliberation, and thinking time is time the student waits.
-      model: SONNET, system, systemTail, tools: TOOLS, handlers, maxRounds: 4, maxTokens: 1500, effort: PROXY_EFFORT, onFinalInput,
+      model: SONNET, system, systemTail, tools: TOOLS, handlers, maxRounds: 4, maxTokens: 1500, effort: PROXY_EFFORT, onFinalInput, eagerFinal: true,
       messages: toModelHistory([...history, studentMsg], { userId }),
       tag: "proxy-answer", listingId, kind: testMode ? "test_answer" : "answer",
     });
@@ -255,7 +256,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
   }
   mark("model");
   // Prose with no structured result still answers the student.
-  const final = result?.final ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false, offered_question: "" } : null);
+  const final = normalizeFinal(result?.final) ?? (result?.text ? { reply: result.text, answered_keys: [], unanswered_questions: [], intent: "question", nudged: false, clarifier_reply: false, offered_question: "" } : null);
 
   let outcome;
   let questionIds = [];
@@ -295,7 +296,9 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     // One grey sentence (Wyatt, 2026-10-27): when nothing could be answered
     // the model's "I don't have that" is folded into the asking line; when
     // part was answered, the answer posts and the asking line follows it.
-    const nothingAnswered = !usedKeys.length && asking && final.intent !== "small_talk";
+    // Wanting to apply or negotiate is not a question Proxy failed to answer:
+    // the model's own reply ("I've let the landlord know") stays.
+    const nothingAnswered = !usedKeys.length && asking && !KEEPS_OWN_REPLY.has(final.intent);
     if (nothingAnswered) {
       const body = `I don't have that yet, but I've asked the landlord and will let you know when they respond. ${await askedLine({ thread, userId })}`;
       const posted = await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds: [] } });

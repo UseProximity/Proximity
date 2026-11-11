@@ -1,7 +1,7 @@
 // node --test apps/web/src/lib/agents/replyStream.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { scanFinalJson, replyStreamer } from "./replyStream.js";
+import { scanFinalJson, replyStreamer, normalizeFinal } from "./replyStream.js";
 
 const FULL = JSON.stringify({
   intent: "question", answered_keys: ["fees.application"], unanswered_questions: [], clarifier_reply: false,
@@ -47,9 +47,36 @@ test("nothing streams when the whole question goes to the landlord", () => {
 });
 
 test("a reply written before the keys waits for them", () => {
-  const early = JSON.stringify({ reply: "Yes, pets are allowed.", answered_keys: ["policies.pets"], unanswered_questions: [] });
+  const early = JSON.stringify({ reply: "Yes, pets are allowed.", answered_keys: ["policies.pets"], unanswered_questions: [], intent: "question" });
   const seen = [];
   const feed = replyStreamer({ onDelta: (d) => seen.push(d), isUsedKey: () => true, canAsk: true });
   for (let i = 1; i <= early.length; i++) feed(early.slice(0, i));
   assert.deepEqual(seen, ["Yes, pets are allowed."]);
+});
+
+test("replyStreamer waits for the intent, and streams an apply reply", () => {
+  const shown = [];
+  const feed = replyStreamer({ onDelta: (t) => shown.push(t), isUsedKey: () => false, canAsk: true });
+  const head = '{"answered_keys":[],"unanswered_questions":[{"question":"Can I apply?","lease_number":0}],"intent":"apply","reply":"Great, I have';
+  feed(head.replace(',"intent":"apply"', ""));
+  assert.equal(shown.join(""), "");
+  feed(head);
+  assert.equal(shown.join(""), "Great, I have");
+});
+
+test("replyStreamer still hides a reply that becomes the asking line", () => {
+  const shown = [];
+  const feed = replyStreamer({ onDelta: (t) => shown.push(t), isUsedKey: () => false, canAsk: true });
+  feed('{"intent":"question","answered_keys":[],"unanswered_questions":[{"question":"Pets?","lease_number":0}],"reply":"I do not have');
+  assert.equal(shown.join(""), "");
+});
+
+test("normalizeFinal fixes fields of the wrong type", () => {
+  assert.equal(normalizeFinal(null), null);
+  assert.equal(normalizeFinal("hi"), null);
+  const f = normalizeFinal({ answered_keys: "fees.application", unanswered_questions: ["Pets?", 3, { question: " " }, { question: "Parking?", lease_number: 2 }], reply: 5 });
+  assert.deepEqual(f.answered_keys, []);
+  assert.deepEqual(f.unanswered_questions, [{ question: "Pets?", lease_number: 0 }, { question: "Parking?", lease_number: 2 }]);
+  assert.equal(f.reply, "");
+  assert.equal(f.intent, "question");
 });
