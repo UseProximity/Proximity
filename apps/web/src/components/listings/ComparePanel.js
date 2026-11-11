@@ -265,9 +265,16 @@ function Slot({ listing, tabs, reserve, rows, empty, onRemove }) {
   );
 }
 
-// A listing's amenities or utilities as the details panel labels them.
-function listLabels(keys, labels) {
-  return [...new Set((keys ?? []).map((k) => labels[k] || labels[k?.toLowerCase()]).filter(Boolean))];
+// Two entries are the same item whatever their case or spacing.
+const norm = (s) => s.trim().replace(/\s+/g, " ").toLowerCase();
+const inList = (list, item) => list.some((x) => norm(x) === norm(item));
+
+// A listing's amenities or utilities as the details panel labels them: the
+// standard ones by their label, then the free-text ones as written. An item that
+// is both (a standard "Gym" and a custom "gym") is one, under the standard label.
+function listLabels(keys, labels, custom = []) {
+  const items = [...(keys ?? []).map((k) => labels[k] || labels[k?.toLowerCase()]), ...(custom ?? [])];
+  return items.filter(Boolean).filter((x, i, all) => all.findIndex((y) => norm(y) === norm(x)) === i);
 }
 
 function Pills({ items }) {
@@ -296,8 +303,8 @@ function Mark({ has }) {
 // listing's items each get a check, and this one a dash.
 function ListSection({ title, a, b }) {
   const mixed = a.length > 0 && b.length > 0;
-  const both = mixed ? a.filter((x) => b.includes(x)) : [];
-  const items = [...new Set([...a, ...b])].filter((x) => !both.includes(x));
+  const both = mixed ? a.filter((x) => inList(b, x)) : [];
+  const items = [...a, ...b.filter((x) => !inList(a, x))].filter((x) => !inList(both, x));
   // A comparison is only claimed when both listings list something.
   const summary = !mixed
     ? null
@@ -328,7 +335,7 @@ function ListSection({ title, a, b }) {
               <p className={label}>{item}</p>
               {[a, b].map((list, i) => (
                 <div key={i} className={`${ROW} border-l px-6`}>
-                  <Mark has={list.includes(item)} />
+                  <Mark has={inList(list, item)} />
                 </div>
               ))}
             </Fragment>
@@ -435,8 +442,8 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
               <div className={`grid ${COLUMNS}`}>
                 <ListSection
                   title="Amenities"
-                  a={listLabels(slots[0].amenities, AMENITY_LABELS)}
-                  b={listLabels(slots[1].amenities, AMENITY_LABELS)}
+                  a={listLabels(slots[0].amenities, AMENITY_LABELS, slots[0].customAmenities)}
+                  b={listLabels(slots[1].amenities, AMENITY_LABELS, slots[1].customAmenities)}
                 />
                 <ListSection
                   title="Utilities included"
