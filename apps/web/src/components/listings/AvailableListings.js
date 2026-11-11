@@ -330,11 +330,18 @@ export default function AvailableListings({
   // Before paint: with the map hidden Compare opens from a timer (the fade), so a
   // later effect would let one frame show both. The panel's history entry is
   // replaced, not followed by a new one: Back would otherwise land on the panel's
-  // URL, reopen it and throw the comparison away.
+  // URL, reopen it and throw the comparison away. The listing that was open goes
+  // into the first slot, taken from the lists a grid click picks from (the main
+  // one first: it alone carries the unit the active filters matched).
   useLayoutEffect(() => {
     if (!compare) return;
     setSelectedListing(null);
-    if (expandedListing) closePanel({ replace: true });
+    if (expandedListing) {
+      const id = String(expandedListing._id);
+      const open = listings.find((l) => String(l._id) === id) ?? suggestedListings.find((l) => String(l._id) === id);
+      if (open) setCompare((c) => c && [open, c[1]]);
+      closePanel({ replace: true });
+    }
   }, [!!compare]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A detail panel and Compare are never open together: a panel that opens while
