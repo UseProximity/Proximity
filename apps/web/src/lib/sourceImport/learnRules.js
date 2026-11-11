@@ -16,6 +16,8 @@
  *     divided by the bedrooms before they are compared with the leases.
  */
 
+import { unitFormat } from "../../utils/unitFormat.js";
+
 export const LEASE_FIELDS = ["rent", "rent_is_per_person", "lease_term_months", "available_from", "description"];
 
 const norm = (v) => {
@@ -124,4 +126,21 @@ export function applyAliases(units, aliases, liveUnitIds) {
 export function renamedUnitKey(dbUnit, syncedUnit) {
   if (!dbUnit || !syncedUnit?.siteKey || !syncedUnit.name) return null;
   return String(dbUnit.name ?? "").trim() !== String(syncedUnit.name).trim() ? syncedUnit.siteKey : null;
+}
+
+/*
+ * Whether the website's name for a unit can be learned from a spec mismatch:
+ * only when the name is the one thing that differs (same beds, baths and
+ * size), and never across shapes, a floor plan's name ("Moreno") against
+ * one apartment ("Apt 734"), which is a different kind of unit that happens
+ * to share a layout, not the same unit renamed.
+ */
+export function learnableSiteName(change) {
+  if (change?.kind !== "spec_mismatch" || change.field !== "name") return false;
+  const site = change.new?.name;
+  const mine = change.old?.name;
+  if (!site || !mine || !change.unitKey || !change.unitId) return false;
+  const a = unitFormat(site);
+  const b = unitFormat(mine);
+  return !(a && b && a !== b);
 }

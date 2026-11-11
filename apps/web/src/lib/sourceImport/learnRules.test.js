@@ -75,3 +75,14 @@ test("a unit the landlord renamed", () => {
   assert.equal(renamedUnitKey({ name: "Candy" }, { name: "Candy", siteKey: "n:candy" }), null);
   assert.equal(renamedUnitKey({ name: "2 Bedroom" }, { name: "Candy" }), null);
 });
+
+test("a website name is learned only when the name is all that differs", async () => {
+  const { learnableSiteName } = await import("./learnRules.js");
+  const base = { kind: "spec_mismatch", unitKey: "n:x", unitId: "u1" };
+  assert.equal(learnableSiteName({ ...base, field: "name", old: { name: "2 Bedroom" }, new: { name: "Candy" } }), true);
+  // A floor plan against one apartment: a different kind of unit, not a rename.
+  assert.equal(learnableSiteName({ ...base, field: "name", old: { name: "Apt 734" }, new: { name: "Moreno" } }), false);
+  // Size differs too: a layout match, not a rename.
+  assert.equal(learnableSiteName({ ...base, field: "area,name", old: { name: "Holden" }, new: { name: "Horne" } }), false);
+  assert.equal(learnableSiteName({ ...base, field: "bedrooms" }), false);
+});

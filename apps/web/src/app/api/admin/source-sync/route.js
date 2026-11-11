@@ -22,7 +22,8 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const listingId = params.get("listingId");
   const deep = params.get("deep") === "1" ? true : params.get("deep") === "0" ? false : null;
-  const result = await runSourceSync({ listingId, force: !!listingId, email: params.get("email") !== "0", limit: Number(params.get("limit")) || 30, deep });
+  const force = !!listingId && params.get("force") !== "0";
+  const result = await runSourceSync({ listingId, force, email: params.get("email") !== "0", limit: Number(params.get("limit")) || 30, deep });
   return NextResponse.json(result);
 }
 

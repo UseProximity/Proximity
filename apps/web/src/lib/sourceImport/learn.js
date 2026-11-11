@@ -55,7 +55,7 @@ export function writtenRows(changes, { learnings, state }) {
       rows.push({ kind: "synced", source_key: `lease:${l.id}`, lease_id: l.id, value: { ...before, ...syncedLeaseValues(l.values) }, learned_from: c.kind });
     }
     if (w.unit) {
-      rows.push({ kind: "synced", source_key: `unit:${w.unit.id}`, unit_id: w.unit.id, value: { name: w.unit.name ?? null, siteKey: w.unit.siteKey ?? null }, learned_from: c.kind });
+      rows.push({ kind: "synced", source_key: `unit:${w.unit.id}`, unit_id: w.unit.id, value: { name: w.unit.name ?? null, siteKey: w.unit.siteKey ?? null, ...(w.unit.lookalikeOf ? { lookalikeOf: w.unit.lookalikeOf } : {}) }, learned_from: c.kind });
     }
   }
   return rows;

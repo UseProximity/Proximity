@@ -35,7 +35,7 @@ import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { decideSyncChange, DENY } from "./syncPolicy.js";
 import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
-import { applyAliases, convertRentBasis, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
+import { applyAliases, convertRentBasis, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
@@ -253,7 +253,7 @@ async function dropStreetViewCover(listingId) {
   return true;
 }
 
-export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null }) {
+export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null, shadowedBy = new Map() }) {
   const changes = [];
   const push = (c) => changes.push({ auto: true, ...c });
   const p = snapshot.property;
@@ -534,9 +534,16 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
        * as a draft, so students never see the same home twice.
        */
       if (lookalike && !lookalike.detail?.draft) {
-        lookalike.detail = { ...lookalike.detail, draft: true, publish: false };
+        lookalike.detail = { ...lookalike.detail, draft: true, publish: false, lookalikeOf: u.id };
         lookalike.note = `added as a draft: it has the same layout as ${label} and may be that unit renamed`;
       }
+      /*
+       * ...and on the runs after, while that draft is still a draft, the old
+       * unit stays up: the draft now matches the website, so the old unit
+       * looks gone, but which of the two is real is still the landlord's
+       * call. Publishing or deleting the draft settles it.
+       */
+      const shadow = shadowedBy.get(u.id);
       for (const l of live) {
         push({
           kind: "lease_withdrawn",
@@ -546,6 +553,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           old: false,
           new: true,
           ...(lookalike ? { auto: false, judge: false, lookalike: true, note: `the website's new ${lookalike.detail?.label ?? "unit"} has the same layout and may be this unit renamed` } : {}),
+          ...(!lookalike && shadow ? { auto: false, judge: false, lookalike: true, note: `the draft ${shadow} may be this unit renamed; publishing or deleting that draft settles it` } : {}),
           detail: { op: "lease_withdraw", leaseId: l.id, unitId: u.id, label, rent: l.rent, unitGone: true },
         });
       }
@@ -747,7 +755,7 @@ export async function executeChange(change, { state, userId }) {
         leaseRows = inserted ?? [];
       }
       // What the sync wrote, so a landlord's later edit can be told apart (learn.js).
-      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r })) };
+      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r })) };
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
@@ -999,17 +1007,21 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     convertRentBasis(snapshot.units, learnings.rentBasis);
   }
 
-  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover });
-  const label = listingLabel ?? state.title ?? state.address;
-  // The website's own name for a unit the landlord calls something else.
-  for (const c of changes) {
-    if (c.kind !== "spec_mismatch" || !c.new?.name || !c.unitKey || !c.unitId) continue;
-    if (learnings.aliases.get(c.unitKey) === c.unitId) continue;
-    learnings.aliases.set(c.unitKey, c.unitId);
-    learned.push({ kind: "unit_alias", source_key: c.unitKey, unit_id: c.unitId, value: { siteName: c.new.name, unitName: c.old?.name ?? null }, learned_from: "site_name" });
+  // Units a still-unpublished "may be renamed" draft stands in for.
+  const shadowedBy = new Map();
+  for (const u of state.listing_units) {
+    const of = learnings.synced.get(`unit:${u.id}`)?.lookalikeOf;
+    if (of && !u.published_at) shadowedBy.set(of, u.name ?? "unit");
   }
-  const remember = async (applied) => {
-    if (learnings.ok) await saveLearnings(listingId, [...learned, ...writtenRows(applied, { learnings, state })]);
+  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover, shadowedBy });
+  const label = listingLabel ?? state.title ?? state.address;
+  // The website's own name for a unit the landlord calls something else,
+  // learned only from a run that was not skipped (learnableSiteName).
+  const siteNames = changes
+    .filter((c) => learnableSiteName(c) && learnings.aliases.get(c.unitKey) !== c.unitId)
+    .map((c) => ({ kind: "unit_alias", source_key: c.unitKey, unit_id: c.unitId, value: { siteName: c.new.name, unitName: c.old?.name ?? null }, learned_from: "site_name" }));
+  const remember = async (applied, { skipped = false } = {}) => {
+    if (learnings.ok) await saveLearnings(listingId, [...learned, ...(skipped ? [] : siteNames), ...writtenRows(applied, { learnings, state })]);
   };
   if (mode === "sync") await holdUnitsBelongingElsewhere({ state, changes, ownerIds });
 
@@ -1174,7 +1186,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     if (applied.length) {
       await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
     }
-    await remember(applied);
+    await remember(applied, { skipped: !!holdReason });
     return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, churn, summary: summarize(snapshot), takeover: false };
   }
 
@@ -1232,7 +1244,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
-  await remember(applied);
+  await remember(applied, { skipped: !!holdReason });
   if (holdReason && monitorId) {
     await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
   }
