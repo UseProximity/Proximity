@@ -16,8 +16,11 @@
 
 const LAYOUT_WORDS = /\b(studios?|lofts?|bed(room)?s?|br|bd|bath(room)?s?|ba|town ?(house|home)s?|penthouse|duplex|floor ?plan|plan|suite type|type [a-z0-9]+)\b|\d\s*(br|bd|ba|bed|bath)\b/i;
 const PLACEHOLDER = /^(whole|entire)\s+(property|house|home|unit|apartment|building)$|^(apartment|unit|house|home|floor\s*\d+|\d+(st|nd|rd|th)\s*(fl|flr|floor))$/i;
-// "Apt 201", "Apt 1W", "Apt B", "Apartment 4B", "#3", "Suite 210", "No. 12"
-const APT_PREFIX = /^(apt\.?|apartment|suite|ste\.?|no\.?|#)\s*#?\s*(?=[a-z0-9])[a-z]?\d{0,5}[a-z]{0,2}$/i;
+// "Apt 201", "Apt 1W", "Apt B", "Apartment 4B", "#3", "Suite 210", "No. 12".
+// The prefix needs a separator and a door code with a digit, or a single
+// letter, after it: without one, "Nova", "Noble", "Stella", "Suites" and
+// "Aptos" read as apartments (PR #418 review).
+const APT_PREFIX = /^(?:(?:apt|apartment|suite|ste|no)[.\s#]+(?:[a-z]?\d{1,5}[a-z]{0,2}|[a-z])|#\s*[a-z]?\d{1,5}[a-z]{0,2})$/i;
 // "Unit 5548", "Unit 201", "Unit 201A": three or more digits read as a door number.
 const UNIT_NUMBER = /^unit\s*#?\s*\d{3,5}[a-z]?$/i;
 // A bare door number: "201", "5548", "305B".

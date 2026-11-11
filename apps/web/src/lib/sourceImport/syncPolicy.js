@@ -28,6 +28,7 @@ export const DENY = {
   roughPrice: "the website shows a starting-at price, not this lease's price",
   takenDown: "the landlord took this lease down, so the website does not put it back",
   noLettings: "the read showed no units or no prices, so it says nothing about what is let",
+  notFromSite: "not on the website, left as is: the website has never shown this unit",
   churn: "too much changed at once, so the whole run was skipped",
   unknown: "not a change the sync makes on its own",
 };
@@ -75,7 +76,7 @@ export function decideSyncChange(c, { snapshot }) {
     case "property_updated":
       return { apply: false, reason: DENY.property };
     case "missing_unit":
-      return { apply: false, reason: DENY.noLettings };
+      return { apply: false, reason: c.notFromSite || d.notFromSite ? DENY.notFromSite : DENY.noLettings };
     default:
       return { apply: false, reason: DENY.unknown };
   }

@@ -4,13 +4,13 @@ import assert from "node:assert/strict";
 import { unitFormat, listingUnitFormat, formatConflict } from "./unitFormat.js";
 
 test("apartments", () => {
-  for (const n of ["Apt 201", "Apt 1W", "Apt B", "Apt 2s", "Apartment 4B", "#3", "Suite 210", "Unit 5548", "Unit 201A", "305", "5560B"]) {
+  for (const n of ["Apt 201", "Apt 1W", "Apt B", "Apt 2s", "Apt. 4", "Apartment 4B", "#3", "#12", "Suite 210", "Ste 210", "No. 12", "Unit 5548", "Unit 201A", "305", "5560B"]) {
     assert.equal(unitFormat(n), "apartment", n);
   }
 });
 
 test("floor plans", () => {
-  for (const n of ["Studio", "Studio A", "2 Bed 2 Bath", "1 Bedroom Small", "2 Bedroom 1 Bathroom with Balcony", "1BR/1BA – B1 Type A", "FLOOR PLAN B", "2 Bed TH", "The Aspen", "Taylor", "Market Premium", "McPherson II", "CMLH-2Bd"]) {
+  for (const n of ["Studio", "Studio A", "2 Bed 2 Bath", "1 Bedroom Small", "2 Bedroom 1 Bathroom with Balcony", "1BR/1BA – B1 Type A", "FLOOR PLAN B", "2 Bed TH", "The Aspen", "Taylor", "Market Premium", "McPherson II", "CMLH-2Bd", "Nova", "Noble", "Nook", "Stella", "Steel", "Suites", "Aptos"]) {
     assert.equal(unitFormat(n), "plan", n);
   }
 });

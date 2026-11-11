@@ -37,6 +37,8 @@ test("withdrawals need a read of the whole unit list", () => {
   assert.equal(decide({ kind: "lease_withdrawn", detail: { unitPageGone: true } }, partial).apply, true);
   // No units or no prices read at all: says nothing about what is let.
   assert.deepEqual(decide({ kind: "missing_unit" }), { apply: false, reason: DENY.noLettings });
+  // A unit the website never showed (added by hand, another link): left as is.
+  assert.deepEqual(decide({ kind: "missing_unit", notFromSite: true }), { apply: false, reason: DENY.notFromSite });
   // Perhaps the same unit renamed: the old one stays up.
   const renamed = decide({ kind: "lease_withdrawn", lookalike: true, note: "may be this unit renamed" });
   assert.equal(renamed.apply, false);

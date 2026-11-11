@@ -182,7 +182,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force });
       // Skipped for churn: the team hears at once, the first day in a row.
       if (result?.churn && m.last_status !== "suppressed") {
-        await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));
+        await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, newUnits: result.churn.newUnits, units: result.churn.units, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));
       }
     }
     let pages = [];

@@ -1341,7 +1341,11 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
  * A sync skipped a listing because too much changed at once (the churn guard
  * in lib/sourceImport/apply.js). Sent the first time in a row, not every day.
  */
-export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourceUrl, touched, existing, baseUrl }) {
+export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourceUrl, touched, existing, newUnits = 0, units = 0, baseUrl }) {
+  const what =
+    newUnits > 4 || (units >= 1 && newUnits > units)
+      ? `added ${Number(newUnits)} new unit${Number(newUnits) === 1 ? "" : "s"} to a listing of ${Number(units)}`
+      : `changed ${Number(touched)} of the ${Number(existing)} leases`;
   await sendMailSafe(transporter, {
     logAs: { kind: "source_sync_skipped" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
@@ -1350,7 +1354,7 @@ export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourc
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Website sync skipped a listing</h2>
-        <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have changed ${Number(touched)} of the ${Number(existing)} leases on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread than a building re-let overnight, so nothing was applied.</p>
+        <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
         <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
         <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}

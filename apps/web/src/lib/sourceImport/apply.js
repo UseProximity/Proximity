@@ -50,26 +50,30 @@ const MAX_LEASES_PER_UNIT = 120;
 // ---------------------------------------------------------------- state
 
 export async function loadListingState(listingId) {
-  const { data: row, error } = await supabase
-    .from("listings")
-    .select(
-      `id, title, address, description, furnished, home_type_id, lease_type, published_at, deleted_at,
+  const select = (seen) =>
+    `id, title, address, description, furnished, home_type_id, lease_type, published_at, deleted_at,
        contact_name, contact_email, contact_phone, source_url,
        listing_landlords(user_id, is_primary),
-       listing_units(id, name, bedrooms, bathrooms, area, floor_plan_image_url, published_at, deleted_at, sort_order,
+       listing_units(id, name, bedrooms, bathrooms, area, floor_plan_image_url, published_at, deleted_at, sort_order,${seen ? " source_seen_at," : ""}
          unit_leases(id, rent, rent_is_per_person, lease_term_months, available_from, unavailable, is_active, owner_id, description, deleted_at, published_at, contact_email)),
        listing_images(id, url, unit_id, sort_order, source),
        listing_amenities(*), listing_utilities(*),
        listing_custom_amenities(id, label),
-       listing_concessions(id, description, active, last_verified_source)`
-    )
-    .eq("id", listingId)
-    .maybeSingle();
+       listing_concessions(id, description, active, last_verified_source)`;
+  let { data: row, error } = await supabase.from("listings").select(select(true)).eq("id", listingId).maybeSingle();
+  // Before migration 202611110002 there is no source_seen_at: read without
+  // it, and the sync then withdraws no missing unit (none was ever seen).
+  let seenColumn = true;
+  if (error && /source_seen_at/.test(error.message ?? "")) {
+    seenColumn = false;
+    ({ data: row, error } = await supabase.from("listings").select(select(false)).eq("id", listingId).maybeSingle());
+  }
   if (error) throw new Error(`load listing: ${error.message}`);
   if (!row || row.deleted_at) return null;
   // Units a person removed, by name: a sync must not quietly put them back.
   row.removedUnitNames = (row.listing_units ?? []).filter((u) => u.deleted_at && u.name).map((u) => u.name);
   row.listing_units = (row.listing_units ?? []).filter((u) => !u.deleted_at);
+  row.seenColumn = seenColumn;
   for (const u of row.listing_units) u.unit_leases = (u.unit_leases ?? []).filter((l) => !l.deleted_at);
   return row;
 }
@@ -521,6 +525,15 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const live = u.unit_leases.filter((l) => isMine(l, ownerIds) && !l.unavailable);
       if (!live.length) continue;
       const label = u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath`;
+      /*
+       * Only a unit the website has shown can be gone from it (PR #418
+       * review): one the landlord added by hand, one from another import
+       * link or one the team loaded was never there, and stays as it is.
+       */
+      if (!u.source_seen_at) {
+        push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, notFromSite: true, detail: { op: "none", unitId: u.id, label, notFromSite: true } });
+        continue;
+      }
       if (!readsLettings) {
         push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, detail: { op: "none", unitId: u.id, label } });
         continue;
@@ -570,6 +583,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       if (u.unitPageGone && c.kind === "lease_withdrawn") c.note = "the unit's own page is gone, so it is treated as let";
     }
   }
+  // The listing's units the website showed this time (source_seen_at).
+  changes.seenUnitIds = pairs.filter((p) => p.db).map((p) => p.db.id);
   return changes;
 }
 
@@ -739,6 +754,8 @@ export async function executeChange(change, { state, userId }) {
           area: d.unit.area,
           floor_plan_image_url: floorPlan,
           sort_order: await nextUnitSortOrder(state.id),
+          // Created from the website, so the website has shown it.
+          ...(state.seenColumn ? { source_seen_at: new Date().toISOString() } : {}),
           ...(d.draft ? { published_at: null } : {}),
         })
         .select("id")
@@ -1135,25 +1152,46 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   const portalPriced = !!snapshot.portal?.walked && snapshot.confidence === "high";
   // A sync someone asked for by hand (Sync now) is theirs to apply in full.
   let churn = null;
-  if (mode === "sync" && !holdReason && !portalPriced && churnGuard) {
+  if (mode === "sync" && !holdReason && churnGuard) {
+    const happens = (c) => !policyRun || c.verdict?.apply;
+    // A unit's own page speaks for that unit alone, so its changes are not
+    // the building-wide churn this hold exists for.
+    const counted = changes.filter((c) => !c.detail?.fromUnitPage && happens(c));
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
     // Churn is leases appearing, vanishing or repricing. A lease whose blurb
     // or lengths were reworded is the same lease; counting those once held
     // a building because every lease gained the words "Available now".
-    const touched = changes.filter(
-      (c) =>
-        // A unit's own page speaks for that unit alone, so its changes are
-        // not the building-wide churn this hold exists for.
-        !c.detail?.fromUnitPage &&
-        // Only what would actually happen: a denied change is no churn.
-        (!policyRun || c.verdict?.apply) &&
-        (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
-    ).length;
-    if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) {
+    // A new unit counts each lease it brings (PR #418 review).
+    const touched = portalPriced
+      ? 0
+      : counted.reduce((n, c) => {
+          if (c.kind === "unit_new") return n + Math.max(1, (c.detail?.offers ?? []).length);
+          if (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind)) return n + 1;
+          if (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+          return n;
+        }, 0);
+    /*
+     * New units have a cap of their own, whatever the listing's size: the
+     * 11/4 Coronado Place sync added every floor plan of Lindell Tower East,
+     * another building on the same website. More than four in one run, or
+     * more than the listing already has, skips the run.
+     */
+    const newUnits = counted.filter((c) => c.kind === "unit_new").length;
+    const units = state.listing_units.length;
+    const tooManyUnits = newUnits > 4 || (units >= 1 && newUnits > units);
+    if (tooManyUnits || (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION))) {
       holdReason = "churn_hold";
-      churn = { touched, existing };
+      churn = { touched, existing, newUnits, units };
     }
   }
+
+  // The units the website showed this time, stamped unless the read is held.
+  const stampSeen = async () => {
+    const ids = changes.seenUnitIds ?? [];
+    if (!state.seenColumn || holdReason || !ids.length) return;
+    const { error } = await supabase.from("listing_units").update({ source_seen_at: new Date().toISOString() }).in("id", ids).eq("listing_id", listingId);
+    if (error) console.error(`[source-import] source_seen_at for ${listingId}: ${error.message}`);
+  };
 
   if (policyRun) {
     const applied = [];
@@ -1187,6 +1225,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
     }
     await remember(applied, { skipped: !!holdReason });
+    await stampSeen();
     return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, churn, summary: summarize(snapshot), takeover: false };
   }
 
@@ -1245,6 +1284,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
   await remember(applied, { skipped: !!holdReason });
+  await stampSeen();
   if (holdReason && monitorId) {
     await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
   }
