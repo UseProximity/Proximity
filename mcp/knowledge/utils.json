@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T19:30:40.355Z",
-  "count": 333,
+  "_generated": "2026-11-11T19:39:15.584Z",
+  "count": 335,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -126,6 +126,14 @@
     {
       "file": "src/lib/agents/replyEmail.js",
       "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyStream.js",
+      "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyStream.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/replyTokens.js",
@@ -786,6 +794,10 @@
     {
       "file": "src/lib/escapeHtml.js",
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
+    },
+    {
+      "file": "src/lib/firecrawl.js",
+      "description": "Every call to Firecrawl goes through here, so a second account can take over"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",

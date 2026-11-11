@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-10T00:40:30.775Z",
-  "count": 110,
+  "_generated": "2026-11-11T18:54:42.954Z",
+  "count": 112,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -173,6 +173,14 @@
     },
     {
       "name": "FIRECRAWL_API_KEY",
+      "public": false
+    },
+    {
+      "name": "FIRECRAWL_API_KEY_2",
+      "public": false
+    },
+    {
+      "name": "FIRECRAWL_API_KEY_BACKUP",
       "public": false
     },
     {
