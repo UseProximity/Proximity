@@ -33,6 +33,7 @@ import {
 import { trackEvent, getListingSource } from "@/utils/analytics";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
+import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS, decodeHtml } from "./AmenityPill";
 import ReviewEditForm from "./ReviewEditForm";
 import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -129,51 +130,6 @@ function StarRow({ label, value, onChange, readOnly = false }) {
     </div>
   );
 }
-
-function decodeHtml(str) {
-  if (typeof document === "undefined" || !str) return str;
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
-}
-
-function AmenityPill({ label }) {
-  return (
-    <span className="inline-block bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1 rounded-full border border-gray-200">
-      {decodeHtml(label)}
-    </span>
-  );
-}
-
-const AMENITY_LABELS = {
-  air_conditioning: "Air Conditioning",
-  dishwasher: "Dishwasher",
-  gym: "Gym",
-  laundry: "Laundry",
-  mailroom: "Mailroom",
-  microwave: "Microwave",
-  oven: "Oven",
-  parking: "Parking",
-  pets_allowed: "Pets Allowed",
-  pool: "Pool",
-  refrigerator: "Refrigerator",
-  rooftop: "Rooftop",
-  storage: "Storage",
-  stove: "Stove",
-  study_room: "Study Room",
-};
-
-const UTILITY_LABELS = {
-  electric: "Electric",
-  gas: "Gas",
-  heat: "Heat",
-  water: "Water",
-  internet: "Internet",
-  trash: "Trash",
-  cable: "Cable",
-  sewer: "Sewer",
-  cooling: "Cooling",
-};
 
 function toTitleCase(str) {
   return str

@@ -15,6 +15,7 @@ import Image from "next/image";
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { buildUnitTabs } from "@proximity/shared";
 import HeartIcon from "@/components/ui/HeartIcon";
+import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS } from "@/components/listings/AmenityPill";
 import { availabilityLabel } from "@/utils/availability";
 import { durationLabel } from "@/components/listings/LeaseOptions";
 import {
@@ -64,6 +65,7 @@ function compareRows(listing, unit) {
   const campus = getCampusWalkMinutes(listing);
   const shuttle = listing.shuttleWalkMinutes;
   const reviews = Number(listing.numReviews) || 0;
+  const area = Number(unit?.area);
 
   return [
     [
@@ -81,6 +83,7 @@ function compareRows(listing, unit) {
       ),
     ],
     ["Rooms:", `${bedText}\n${bathText}`],
+    ["Area:", area > 0 ? `${area.toLocaleString("en-US")} sq ft` : "N/A"],
     ["Available on:", !from ? "N/A" : from === to ? from : `${from} to ${to}`],
     [
       "Duration:",
@@ -255,6 +258,61 @@ function Slot({ listing, tabs, reserve, empty, onRemove }) {
   );
 }
 
+// A listing's amenities or utilities as the details panel labels them.
+function listLabels(keys, labels) {
+  return [...new Set((keys ?? []).map((k) => labels[k] || labels[k?.toLowerCase()]).filter(Boolean))];
+}
+
+function Pills({ items }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <AmenityPill key={item} label={item} />
+      ))}
+    </div>
+  );
+}
+
+// What the two listings share, shown once, then what only each has. An empty
+// list almost always means "not listed", not "none", so when a listing lists
+// nothing no overlap or difference is claimed: it shows "Not listed" and the
+// other shows its own items.
+function ListSection({ title, a, b }) {
+  const notListed = <p className="text-sm text-gray-500">Not listed</p>;
+  const mixed = a.length > 0 && b.length > 0;
+  const both = mixed ? a.filter((x) => b.includes(x)) : [];
+  const only = mixed ? [a.filter((x) => !b.includes(x)), b.filter((x) => !a.includes(x))] : [a, b];
+  return (
+    <div className="px-6 py-4">
+      <h3 className="text-base font-bold text-black">{title}</h3>
+      {!a.length && !b.length ? (
+        <div className="mt-2">{notListed}</div>
+      ) : (
+        <>
+          {both.length > 0 && (
+            <div className="mt-2">
+              <p className="mb-2 text-xs text-black">Both have</p>
+              <Pills items={both} />
+            </div>
+          )}
+          {(!mixed || only.some((items) => items.length)) && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-black">Only this one</p>
+              <div className="grid grid-cols-2 gap-3.5">
+                {only.map((items, i) => (
+                  <div key={i} className="min-w-0">
+                    {!(i ? b : a).length ? notListed : <Pills items={items} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ComparePanel({ slots, onRemove, onClose }) {
   const tabs = slots.map((l) => l && unitTabs(l));
   const reserve = tabs.some((t) => t?.length > 1);
@@ -277,17 +335,34 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
       {/* The scroller is this outer box. The inner row is at least as tall as it
           (so empty slots fill the panel) and grows past it with the rows. */}
       <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full gap-3.5 px-3.5 pb-3.5">
-          {slots.map((listing, i) => (
-            <Slot
-              key={`${i}-${listing?._id}`}
-              listing={listing}
-              tabs={tabs[i]}
-              reserve={reserve}
-              empty={empty}
-              onRemove={() => onRemove(i)}
-            />
-          ))}
+        <div className="flex min-h-full flex-col gap-3.5 px-3.5 pb-3.5">
+          <div className="flex flex-1 gap-3.5">
+            {slots.map((listing, i) => (
+              <Slot
+                key={`${i}-${listing?._id}`}
+                listing={listing}
+                tabs={tabs[i]}
+                reserve={reserve}
+                empty={empty}
+                onRemove={() => onRemove(i)}
+              />
+            ))}
+          </div>
+          {slots.every(Boolean) && (
+            <div className="shrink-0 overflow-hidden rounded-[20px] border border-[#e6e7eb] bg-white">
+              <ListSection
+                title="Amenities"
+                a={listLabels(slots[0].amenities, AMENITY_LABELS)}
+                b={listLabels(slots[1].amenities, AMENITY_LABELS)}
+              />
+              <div className="border-t border-[#e6e7eb]" />
+              <ListSection
+                title="Utilities included"
+                a={listLabels(slots[0].utilitiesIncluded, UTILITY_LABELS)}
+                b={listLabels(slots[1].utilitiesIncluded, UTILITY_LABELS)}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

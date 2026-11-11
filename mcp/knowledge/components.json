@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-10T22:17:15.931Z",
-  "count": 198,
+  "_generated": "2026-11-11T15:21:21.133Z",
+  "count": 199,
   "components": [
     {
       "name": "ErrorReporter",
@@ -491,6 +491,11 @@
     {
       "name": "AddressSearchInput",
       "file": "src/components/listings/AddressSearchInput.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AmenityPill",
+      "file": "src/components/listings/AmenityPill.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
