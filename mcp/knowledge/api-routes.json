@@ -1433,18 +1433,13 @@
     {
       "path": "/api/billing/payees",
       "methods": [
-        "GET",
-        "POST"
+        "GET"
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "super",
-        "POST": "super"
+        "GET": "super"
       },
-      "tables": [
-        "billing_payers",
-        "users"
-      ],
+      "tables": [],
       "file": "src/app/api/billing/payees/route.js"
     },
     {

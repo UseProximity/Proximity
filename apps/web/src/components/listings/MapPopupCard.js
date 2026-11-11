@@ -163,7 +163,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
               </div>
             )}
             {formatAvailableFrom(listing.availableFrom) && (
-              <div className="bg-white/90 text-gray-900 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+              <div className="bg-white/90 text-gray-900 text-[10px] leading-none font-semibold px-2 py-1 rounded-full shadow-sm">
                 {formatAvailableFrom(listing.availableFrom)}
               </div>
             )}
@@ -171,7 +171,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
         )}
         {imageCount > 1 && !listing.unavailable && (
           // In the compact (matchmaking row) variant, hide on desktop where the card is small.
-          <div className={`absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>
+          <div className={`absolute bottom-1.5 right-2 bg-black/30 text-white text-[10px] leading-none font-medium px-2 py-1 rounded-full ${compact ? "md:hidden" : ""}`}>
             See all {imageCount} photos
           </div>
         )}
@@ -230,8 +230,8 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 z-[2] bg-white/90 backdrop-blur-md rounded-full p-0.5 shadow-xl border border-white/50 hidden md:block">
-          <HeartIcon listingId={listing._id} size="sm" />
+        <div className="absolute top-3 right-3 z-[2] bg-black/30 rounded-full p-px hidden md:block">
+          <HeartIcon listingId={listing._id} size="sm" onPhoto />
         </div>
       )}
     </div>

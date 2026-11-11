@@ -13,18 +13,9 @@ import ListDetailPanel from "@/components/listings/ListDetailPanel";
 import BackToTop from "@/components/ui/BackToTop";
 import SuggestedStrip, {
   SuggestedHeading,
+  WIDE_GRID_CLASS,
 } from "@/components/listings/SuggestedStrip";
-import {
-  SLIDER_CSS,
-  FilterSection,
-  DualRangeSlider,
-  StepSlider,
-  DualStepSlider,
-  BED_STEPS,
-  BATH_STEPS,
-  DIST_STEPS,
-  SHTT_STEPS,
-} from "@/components/listings/FilterComponents";
+import FiltersPanel from "@/components/listings/FiltersPanel";
 
 import { setListingSource } from "@/utils/analytics";
 
@@ -38,7 +29,11 @@ export default function AvailableListings({
   suggestedListings = [],
   suggestedMode = "suggested",
   suggestedLabel = "Suggested for you",
+  // Every listing, before the filters: the price histogram of the filter drawer.
+  rentsFor,
   onFiltersSaved = () => {},
+  // Desktop: the map is hidden and the listings fill the page as a wider grid.
+  mapHidden = false,
   filters,
   setFilters,
   handleReset,
@@ -127,13 +122,36 @@ export default function AvailableListings({
   // there instead of at the top. A card, not a pixel offset: the grid is wider
   // while the column is still narrowing, so a pixel offset points elsewhere.
   const gridScroll = useRef(null);
+  const topCard = () => {
+    const col = panelRef.current;
+    const colTop = col?.getBoundingClientRect().top;
+    const card = [...(col?.querySelectorAll("[data-listing-id]") ?? [])].find(
+      (c) => c.getBoundingClientRect().bottom > colTop
+    );
+    return (
+      card && {
+        id: card.dataset.listingId,
+        offset: card.getBoundingClientRect().top - colTop,
+      }
+    );
+  };
+  // Hiding or showing the map re-flows the cards (three columns <-> two), so the
+  // same scroll offset would show other cards. This render is the one that
+  // flips the layout and the DOM is still the old one, so note the card at the
+  // top of the view now and put it back below. Left alone when the column is at
+  // the top, and when a panel is open, whose saved card must be kept.
+  const shownMapHidden = useRef(mapHidden);
+  if (shownMapHidden.current !== mapHidden) {
+    shownMapHidden.current = mapHidden;
+    if (!expandedListing)
+      gridScroll.current = panelRef.current?.scrollTop ? topCard() : null;
+  }
   // True from a close until the column's width transition ends: the card above
   // is held in place on every resize of the column meanwhile (see below).
   const anchoring = useRef(false);
   // Set by a map pin click. If it closes the panel, that close ends in the
   // smooth scroll to the pin's card (below), so the saved card is only restored,
-  // not held. Not guarded on an open panel: the marker listener keeps the
-  // handler from when the markers were built, so it can't see that.
+  // not held.
   const pinClose = useRef(false);
   // True while a pin-click close waits for the width slide to end before
   // scrolling to the pin's card: scrolled any earlier, the target is worked out
@@ -142,6 +160,29 @@ export default function AvailableListings({
   // Ticks when the column's width transition ends, so MapView can carry out a
   // pending pin-click centring.
   const [slideEnd, setSlideEnd] = useState(0);
+  /*
+   * Hiding or showing the map re-lays the column out (three centred cards <->
+   * two, the wide suggestions box <-> the strip) and resizes it, which would
+   * snap in view. So it is a fade-through for the cards and a glide for the map:
+   * BrowseContent marks <body> with data-map-switching, which fades the column
+   * out, sends the map off to the right and lets the column take its new width
+   * at once, then flips mapHidden; here, once the new layout is in place (still
+   * invisible), the mark is removed: the cards fade back in and the map glides
+   * back in from the right. Only opacity and transform animate, so they keep
+   * running while the page is busy with the heavy re-render. The map is resumed
+   * at its final size at that point. (BrowseContent removes the mark too, after
+   * a timeout, in case two quick toggles leave mapHidden unchanged and this
+   * never runs.)
+   */
+  useEffect(() => {
+    // After a frame has been drawn with the new layout, so the fade starts from it.
+    const frame = requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        document.body.removeAttribute("data-map-switching")
+      )
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [mapHidden]);
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -224,15 +265,9 @@ export default function AvailableListings({
   }, [panelId, isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPanel = (listing) => {
-    const col = panelRef.current;
-    const colTop = col?.getBoundingClientRect().top;
-    const card = [...(col?.querySelectorAll("[data-listing-id]") ?? [])].find(
-      (c) => c.getBoundingClientRect().bottom > colTop
-    );
-    gridScroll.current = card && {
-      id: card.dataset.listingId,
-      offset: card.getBoundingClientRect().top - colTop,
-    };
+    // Replacing an open panel (from a pin's card) keeps the grid position
+    // saved when the first panel opened.
+    if (!expandedListing) gridScroll.current = topCard();
     setExpandedListing(listing); // immediate UI with browse data
     const params = new URLSearchParams(searchParams.toString());
     params.set("panel", listing._id);
@@ -273,8 +308,10 @@ export default function AvailableListings({
     const col = panelRef.current;
     if (!col) return;
     col.scrollTop = 0;
-    anchoring.current = !expandedListing && !pinClose.current;
-    scrollAtSlideEnd.current = !expandedListing && pinClose.current;
+    // With the map hidden the column does not change width, so there is no
+    // slide to wait for.
+    anchoring.current = !mapHidden && !expandedListing && !pinClose.current;
+    scrollAtSlideEnd.current = !mapHidden && !expandedListing && pinClose.current;
     pinClose.current = false;
     if (!expandedListing) anchorGrid();
   }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -289,6 +326,11 @@ export default function AvailableListings({
       col.scrollTop +=
         card.getBoundingClientRect().top - col.getBoundingClientRect().top - offset;
   };
+
+  // The new layout is in place and still invisible (see the fade-through above).
+  useLayoutEffect(() => {
+    if (!expandedListing) anchorGrid();
+  }, [mapHidden]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the column slides narrower the grid reflows and the saved card would
   // drift. A ResizeObserver runs after layout and before paint, so re-pinning
@@ -401,12 +443,6 @@ export default function AvailableListings({
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [mobileDraft, setMobileDraft] = useState(filters);
-
-  // Sync mobileDraft when filter panel opens
-  useEffect(() => {
-    if (mobileFiltersOpen) setMobileDraft(filters);
-  }, [mobileFiltersOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
    * Clear the map overlay card and the expanded panel when the RENTER changes
@@ -455,22 +491,15 @@ export default function AvailableListings({
 
   const handlePinClose = () => {
     setSelectedListing(null);
+    // The card of a pin picked while a panel is open: closing it leaves the
+    // panel as it is.
+    if (expandedListing) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("lat");
     params.delete("lng");
     params.delete("panel");
     const qs = params.toString();
     router.replace("/browse" + (qs ? "?" + qs : ""));
-  };
-
-  const toggleMobileArray = (field, value) => {
-    const arr = mobileDraft[field] || [];
-    setMobileDraft({
-      ...mobileDraft,
-      [field]: arr.includes(value)
-        ? arr.filter((v) => v !== value)
-        : [...arr, value],
-    });
   };
 
   const emptyState = (
@@ -521,9 +550,9 @@ export default function AvailableListings({
       {/* ── Desktop listing panel ── */}
       <div
         ref={panelRef}
-        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-300 ${
-          expandedListing ? "w-[58vw]" : "w-[40vw] px-3 pt-3 pb-4"
-        }`}
+        className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:transition-none ${
+          mapHidden ? "w-full" : expandedListing ? "w-[58vw]" : "w-[40vw]"
+        } ${expandedListing ? "" : "px-3 pt-3 pb-4"}`}
         style={{ height: "100%", minHeight: 0 }}
         onTransitionEnd={(e) => {
           // transitionend fires before the final frame's resize callback, so
@@ -553,9 +582,26 @@ export default function AvailableListings({
          * Only the ENTERING side is animated now, keyed so each listing fades
          * in on open, and there is no exit handshake left to hang on.
          */}
+        <div className="will-change-[opacity] transition-opacity duration-[200ms] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[120ms]">
+        {/* Outside the grid wrapper below: its slide beside the filters panel is a
+            transform, and a transformed element is the containing block of its
+            fixed descendants, which would carry this button away with it. */}
+        {!expandedListing && (
+          <BackToTop
+            scrollRef={panelRef}
+            after={600}
+            position={
+              mapHidden
+                ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[325px]"
+                : "bottom-6 left-[calc(40vw-3.75rem)]"
+            }
+            tone="light"
+          />
+        )}
         {expandedListing ? (
           <motion.div
             key={`detail-${expandedListing._id}`}
+            className={mapHidden ? "mx-auto w-[58vw]" : undefined}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
@@ -573,18 +619,24 @@ export default function AvailableListings({
         ) : (
           <motion.div
             key="grid"
+            // Three columns of the same card width as the two-column grid
+            // ((40vw - 36px) / 2 each, 30px apart), centred.
+            // With the map hidden the grid takes the page's width, capped so it
+            // never passes four columns. While the side filters panel is open
+            // (it sets data-filters-panel on <body>) the grid gives up the
+            // panel's width and re-fits its columns beside it. Done in CSS, so
+            // opening the panel does not re-render the cards.
+            className={
+              mapHidden
+                ? "mx-auto w-full max-w-[1400px] [body[data-filters-panel]_&]:mx-0 [body[data-filters-panel]_&]:w-[calc(100%-313px)]"
+                : undefined
+            }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
           >
-            <BackToTop
-              scrollRef={panelRef}
-              after={600}
-              position="bottom-6 left-[calc(40vw-3.75rem)]"
-              tone="light"
-            />
             <div
-              className={`flex items-center gap-2 px-1 mb-3 ${
+              className={`flex items-center gap-2 mb-3 px-1 ${
                 showSuggested ? "justify-between" : ""
               }`}
             >
@@ -608,6 +660,7 @@ export default function AvailableListings({
                 listings={suggestedListings}
                 session={session}
                 layout="grid"
+                wide={mapHidden}
                 mode={suggestedMode}
                 label={suggestedLabel}
                 selectedId={selectedListing?._id}
@@ -621,7 +674,11 @@ export default function AvailableListings({
             {visibleListings.length === 0 && !showSuggested ? (
               emptyState
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div
+                className={
+                  mapHidden ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
+                }
+              >
                 {visibleListings.map((listing) => (
                   <div key={listing._id} data-listing-id={listing._id}>
                     <ListingCard
@@ -639,11 +696,12 @@ export default function AvailableListings({
             )}
           </motion.div>
         )}
+        </div>
       </div>
 
-      {/* ── Desktop map ── */}
+      {/* ── Desktop map (kept mounted while hidden, so it comes back where it was; paused, it does no pin or camera work meanwhile) ── */}
       <div
-        className="hidden md:flex flex-1 w-full relative"
+        className={`${mapHidden ? "hidden" : "hidden md:flex"} flex-1 w-full relative will-change-[transform,opacity] transition-[transform,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:translate-x-full [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[160ms]`}
         style={{ position: "sticky", top: 0, height: "100%", minHeight: 0 }}
       >
         <MapView
@@ -652,21 +710,32 @@ export default function AvailableListings({
           setFilters={setFilters}
           handleReset={handleReset}
           onListingSelect={(listing) => {
+            setSelectedListing(listing);
+            // With a panel open, the pin only brings up its card on the map.
+            // The panel stays until that card is clicked, which replaces it.
+            if (expandedListing) return;
             pinClose.current = true;
             scrollAtSlideEnd.current = false;
-            setSelectedListing(listing);
             closePanel();
           }}
-          selectedListingId={expandedListing?._id || selectedListing?._id}
+          selectedListingId={selectedListing?._id || expandedListing?._id}
           searchLocation={searchLocation}
           onSearchLocationConsumed={handleSearchLocationConsumed}
           isActive={isDesktop}
+          paused={mapHidden}
           onBrowseArea={handleBrowseArea}
           panelExpanded={!!expandedListing}
           panelSlideEnd={slideEnd}
           suggestedIds={suggestedIdSet}
         />
-        {selectedListing && !expandedListing && (
+        {/* Darkens the map while the side filters panel is open (it sets
+            data-filters-panel on the body, see TopFilterBar). It takes no
+            clicks, so the map can still be moved and its pins picked. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[15] bg-black opacity-0 transition-opacity duration-200 [body[data-filters-panel]_&]:opacity-20"
+        />
+        {selectedListing && selectedListing._id !== expandedListing?._id && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-72 pointer-events-auto">
             <MapPopupCard
               listing={selectedListing}
@@ -739,7 +808,7 @@ export default function AvailableListings({
                   }
                   className={`rounded-full p-3 shadow-lg border active:opacity-80 transition-colors ${
                     filters.savedOnly
-                      ? "bg-red-500 border-red-500"
+                      ? "bg-gray-200 border-gray-300"
                       : "bg-white border-gray-200"
                   }`}
                   aria-label={
@@ -749,9 +818,7 @@ export default function AvailableListings({
                   }
                 >
                   <svg
-                    className={`w-5 h-5 ${
-                      filters.savedOnly ? "text-white" : "text-gray-700"
-                    }`}
+                    className="w-5 h-5 text-gray-700"
                     fill={filters.savedOnly ? "currentColor" : "none"}
                     stroke="currentColor"
                     strokeWidth={2}
@@ -867,16 +934,14 @@ export default function AvailableListings({
                           savedOnly: !filters.savedOnly,
                         })
                       }
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors active:opacity-80 shadow-sm ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-700 border transition-colors active:opacity-80 shadow-sm ${
                         filters.savedOnly
-                          ? "bg-red-500 border-red-500 text-white"
-                          : "bg-white border-gray-200 text-gray-700"
+                          ? "bg-gray-200 border-gray-300"
+                          : "bg-white border-gray-200"
                       }`}
                     >
                       <svg
-                        className={`w-3.5 h-3.5 ${
-                          filters.savedOnly ? "text-white" : "text-gray-700"
-                        }`}
+                        className="w-3.5 h-3.5 text-gray-700"
                         fill={filters.savedOnly ? "currentColor" : "none"}
                         stroke="currentColor"
                         strokeWidth={2}
@@ -1004,8 +1069,6 @@ export default function AvailableListings({
               className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl flex flex-col"
               style={{ maxHeight: "90vh" }}
             >
-              <style>{SLIDER_CSS}</style>
-
               {/* Drag handle */}
               <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
                 <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -1034,375 +1097,18 @@ export default function AvailableListings({
                 </button>
               </div>
 
-              {/* Body */}
-              <div className="overflow-y-auto flex-1 px-4 py-4 space-y-6">
-                {/* Price Range */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Price Range
-                  </p>
-                  <DualRangeSlider
-                    minRent={mobileDraft.minRent}
-                    maxRent={mobileDraft.maxRent}
-                    draft={mobileDraft}
-                    setDraft={setMobileDraft}
-                  />
-                </div>
-
-                {/* Bedrooms */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Bedrooms
-                  </p>
-                  <DualStepSlider
-                    steps={BED_STEPS}
-                    minValue={mobileDraft.bedrooms || "0"}
-                    maxValue={mobileDraft.maxBedrooms || "5"}
-                    onMinChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bedrooms: v === "0" ? "" : v,
-                      })
-                    }
-                    onMaxChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        maxBedrooms: v === "5" ? "" : v,
-                      })
-                    }
-                    onSnapTo={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bedrooms: v === "0" ? "" : v,
-                        maxBedrooms: v === "5" ? "" : v,
-                      })
-                    }
-                  />
-                </div>
-
-                {/* Bathrooms */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Bathrooms
-                  </p>
-                  <DualStepSlider
-                    steps={BATH_STEPS}
-                    minValue={mobileDraft.bathrooms || "1"}
-                    maxValue={mobileDraft.maxBathrooms || "4"}
-                    onMinChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bathrooms: v === "1" ? "" : v,
-                      })
-                    }
-                    onMaxChange={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        maxBathrooms: v === "4" ? "" : v,
-                      })
-                    }
-                    onSnapTo={(v) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        bathrooms: v === "1" ? "" : v,
-                        maxBathrooms: v === "4" ? "" : v,
-                      })
-                    }
-                  />
-                </div>
-
-                {/* Home Type */}
-                <FilterSection title="Home Type">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "House", value: "house" },
-                      { label: "Townhouse", value: "townhouse" },
-                      { label: "Apartment", value: "apartment" },
-                      { label: "Single Bedroom", value: "singleBedroom" },
-                      { label: "Condo", value: "condo" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.homeType?.includes(opt.value) || false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("homeType", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Lease Availability */}
-                <FilterSection title="Lease Availability">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Semester Lease", value: "semester" },
-                      { label: "10-Month Lease", value: "10-month" },
-                      { label: "12-Month Lease", value: "12-month" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.leaseAvailability?.includes(opt.value) ||
-                        false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("leaseAvailability", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Amenities */}
-                <FilterSection title="Amenities">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Dishwasher", value: "dishwasher" },
-                      { label: "Extra Storage", value: "extraStorage" },
-                      { label: "In-Unit Laundry", value: "inUnitLaundry" },
-                      { label: "Fireplace", value: "fireplace" },
-                      { label: "Private Parking", value: "freeParking" },
-                      { label: "Mailroom", value: "mailroom" },
-                      { label: "Pool", value: "pool" },
-                      { label: "Pets Allowed", value: "petsAllowed" },
-                      { label: "Study Rooms", value: "studyRooms" },
-                      { label: "Gym / Fitness", value: "gym" },
-                    ].map((opt) => {
-                      const selected =
-                        mobileDraft.amenities?.includes(opt.value) || false;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() =>
-                            toggleMobileArray("amenities", opt.value)
-                          }
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FilterSection>
-
-                {/* Utilities Included */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-2">
-                    Utilities Included
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { value: "water", label: "Water" },
-                      { value: "electric", label: "Electric" },
-                      { value: "gas", label: "Gas" },
-                      { value: "internet", label: "Internet" },
-                      { value: "trash", label: "Trash" },
-                      { value: "hotWater", label: "Hot Water" },
-                      { value: "sewer", label: "Sewer" },
-                      { value: "yardCare", label: "Yard Care" },
-                    ].map(({ value, label }) => {
-                      const selected = (
-                        mobileDraft.utilitiesIncluded || []
-                      ).includes(value);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            const cur = mobileDraft.utilitiesIncluded || [];
-                            setMobileDraft({
-                              ...mobileDraft,
-                              utilitiesIncluded: selected
-                                ? cur.filter((v) => v !== value)
-                                : [...cur, value],
-                            });
-                          }}
-                          className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                            selected
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Move-in Date */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Move-in Date
-                  </label>
-                  <input
-                    type="date"
-                    value={mobileDraft.moveInDate || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        moveInDate: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  />
-                </div>
-
-                {/* Furnished */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Furnished
-                  </label>
-                  <select
-                    value={mobileDraft.furnished || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        furnished: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
-                  >
-                    <option value="">Any</option>
-                    <option value="furnished">Furnished</option>
-                    <option value="unfurnished">Unfurnished</option>
-                  </select>
-                </div>
-
-                {/* Lease Structure */}
-                <div>
-                  <label className="block font-semibold text-gray-900 text-sm mb-2">
-                    Lease Structure
-                  </label>
-                  <select
-                    value={mobileDraft.leaseStructure || ""}
-                    onChange={(e) =>
-                      setMobileDraft({
-                        ...mobileDraft,
-                        leaseStructure: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
-                  >
-                    <option value="">Any</option>
-                    <option value="individual">Individual Lease</option>
-                    <option value="joint">Joint Lease</option>
-                  </select>
-                </div>
-
-                {/* Toggles */}
-                <div className="space-y-3">
-                  {[
-                    { label: "Sublease Friendly", field: "subleaseFriendly" },
-                  ].map(({ label, field }) => (
-                    <label
-                      key={field}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <span className="text-sm font-medium text-gray-700">
-                        {label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMobileDraft({
-                            ...mobileDraft,
-                            [field]: !mobileDraft[field],
-                          })
-                        }
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          mobileDraft[field] ? "bg-red-500" : "bg-gray-200"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                            mobileDraft[field]
-                              ? "translate-x-6"
-                              : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Walking Distance to Campus */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Walking Distance to Campus
-                  </p>
-                  <StepSlider
-                    steps={DIST_STEPS}
-                    value={mobileDraft.distance || ""}
-                    onChange={(v) =>
-                      setMobileDraft({ ...mobileDraft, distance: v })
-                    }
-                  />
-                </div>
-
-                {/* Walking Distance to Shuttle */}
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm mb-3">
-                    Walking Distance to Shuttle
-                  </p>
-                  <StepSlider
-                    steps={SHTT_STEPS}
-                    value={mobileDraft.distanceToShuttle || ""}
-                    onChange={(v) =>
-                      setMobileDraft({ ...mobileDraft, distanceToShuttle: v })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between px-4 py-4 border-t border-gray-100 flex-shrink-0">
-                <button
-                  onClick={() => {
-                    handleReset();
-                    setMobileFiltersOpen(false);
-                  }}
-                  className="text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
-                >
-                  Reset all
-                </button>
-                <button
-                  onClick={() => {
-                    setFilters(mobileDraft);
-                    onFiltersSaved(mobileDraft);
-                    setMobileFiltersOpen(false);
-                  }}
-                  className="px-8 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full text-sm transition-colors shadow-md"
-                >
-                  Apply Filters
-                </button>
-              </div>
+              {/* Body and footer: the desktop side panel, in the drawer */}
+              <FiltersPanel
+                drawer
+                rentsFor={rentsFor}
+                filters={filters}
+                onReset={handleReset}
+                onApply={(next) => {
+                  setFilters(next);
+                  onFiltersSaved(next);
+                  setMobileFiltersOpen(false);
+                }}
+              />
             </div>
           </div>
         )}
