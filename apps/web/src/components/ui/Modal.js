@@ -1,9 +1,7 @@
 "use client";
 import React, { useEffect } from "react";
 
-// `dismissible={false}` removes both ways of closing it (the backdrop and the
-// close button), for a dialog the user has to answer.
-export default function Modal({ isOpen, onClose, dismissible = true, children }) {
+export default function Modal({ isOpen, onClose, children }) {
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -25,7 +23,7 @@ export default function Modal({ isOpen, onClose, dismissible = true, children })
       {/* Overlay */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={dismissible ? onClose : undefined}
+        onClick={onClose}
       />
 
       {/* Modal. Scrolls inside the screen, so tall content stays reachable. */}
@@ -44,14 +42,12 @@ export default function Modal({ isOpen, onClose, dismissible = true, children })
           e.stopPropagation();
         }}
       >
-        {dismissible && (
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
-          >
-            ×
-          </button>
-        )}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+        >
+          ×
+        </button>
         <div className="w-full">{children}</div>
       </div>
     </div>

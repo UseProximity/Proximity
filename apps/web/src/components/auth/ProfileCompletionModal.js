@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
-import Modal from "@/components/ui/Modal";
 import { submitProfile } from "@/lib/auth/profileSave";
 import {
   ROLES,
@@ -13,6 +13,44 @@ import {
   getClassYear,
   isProfileComplete,
 } from "./profileFields";
+
+const LABEL_CLASS = "mb-1.5 block text-sm font-semibold text-gray-900";
+
+// 16px on phones: anything smaller makes iOS zoom the page when a field is focused.
+const FIELD_CLASS =
+  "rounded-xl border border-gray-300 px-4 py-2.5 text-base sm:text-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200";
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2";
+
+// A short list of answers as tap targets. Real radio inputs, so a screen reader
+// gets the group and the checked state, and the arrow keys move within it.
+function ChoiceGroup({ legend, name, options, value, onChange, layoutClass, chipClass }) {
+  return (
+    <fieldset>
+      <legend className={LABEL_CLASS}>{legend}</legend>
+      <div className={layoutClass}>
+        {options.map((option) => (
+          <label key={option} className="group relative block cursor-pointer [-webkit-tap-highlight-color:transparent]">
+            <input
+              type="radio"
+              name={name}
+              value={option}
+              checked={value === option}
+              onChange={onChange}
+              className="peer sr-only"
+            />
+            <span
+              className={`flex w-full items-center justify-center border border-gray-200 bg-white px-3 text-center text-sm font-medium text-gray-700 transition hover:border-red-300 group-active:scale-[0.97] peer-checked:border-red-500 peer-checked:bg-red-50 peer-checked:text-red-700 peer-focus-visible:ring-2 peer-focus-visible:ring-red-300 peer-focus-visible:ring-offset-2 ${chipClass}`}
+            >
+              {option}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 export default function ProfileCompletionModal({ session }) {
   const { update } = useSession();
@@ -32,6 +70,8 @@ export default function ProfileCompletionModal({ session }) {
   // keeps saying profileComplete: false until the page is rendered again, and
   // must not reopen the popup for a profile that is already saved.
   const savedRef = useRef(false);
+  const overlayRef = useRef(null);
+  const cardRef = useRef(null);
 
   useEffect(() => {
     // Show only for a resolved identity whose Supabase profile_complete is
@@ -42,7 +82,7 @@ export default function ProfileCompletionModal({ session }) {
       setIsOpen(true);
     }
     // Pre-select the role the user already has (e.g. a landlord who chose that
-    // on the signup form) so they don't have to re-pick it — and can't silently
+    // on the signup form) so they don't have to re-pick it, and can't silently
     // overwrite it back to student.
     const sessionRole = session?.user?.role;
     if (sessionRole) {
@@ -50,6 +90,38 @@ export default function ProfileCompletionModal({ session }) {
       if (match) setFormData((prev) => (prev.role ? prev : { ...prev, role: match }));
     }
   }, [session]);
+
+  // While open: lock the page behind and start keyboard focus inside the card.
+  // The overlay always covers the whole screen. Only its bottom edge moves up,
+  // by however much of the screen the on-screen keyboard covers, so the pinned
+  // Save button stays above it. Phone browsers do not resize the page for the
+  // keyboard, but the visual viewport shrinks, and the gap between the two is
+  // the keyboard. When the two viewports differ in width the page is zoomed
+  // (pinch, or shrunk to fit a wide page) and the gap is not the keyboard, so
+  // nothing moves.
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.style.overflow = "hidden";
+    cardRef.current?.focus({ preventScroll: true });
+
+    const overlay = overlayRef.current;
+    const viewport = window.visualViewport;
+    const clearKeyboard = () => {
+      const zoomed = Math.abs(viewport.width - window.innerWidth) > 1;
+      const covered = window.innerHeight - viewport.height - viewport.offsetTop;
+      overlay.style.bottom = zoomed || covered < 0 ? "" : `${covered}px`;
+    };
+    if (viewport) {
+      clearKeyboard();
+      viewport.addEventListener("resize", clearKeyboard);
+      viewport.addEventListener("scroll", clearKeyboard);
+    }
+    return () => {
+      document.body.style.overflow = "";
+      viewport?.removeEventListener("resize", clearKeyboard);
+      viewport?.removeEventListener("scroll", clearKeyboard);
+    };
+  }, [isOpen]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -106,83 +178,94 @@ export default function ProfileCompletionModal({ session }) {
     }
   };
 
+  if (!isOpen) return null;
+
   const graduationYears = graduationYearOptions();
 
+  // Not dismissible: no backdrop click handler, no close button. Log out is the
+  // one way out. The backdrop tone is the bg-white/60 below (the alternative is
+  // bg-gray-900/25).
   return (
-    <Modal isOpen={isOpen} dismissible={false}>
-      <div className="p-6 space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900">Complete Your Profile</h2>
-        <p className="text-gray-600">
-          Please fill out the following information to complete your profile and
-          access all features of Proximity.
-        </p>
-        <form className="space-y-6">
-          {/* First Name */}
-          <div>
-            <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-              First Name
-            </label>
-            <input
-              type="text"
-              id="firstName"
-              name="firstName"
-              value={formData.firstName}
-              onChange={handleInputChange}
-              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-              placeholder="Enter your first name"
-            />
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 p-3 backdrop-blur-md sm:p-4"
+    >
+      <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-completion-title"
+        tabIndex={-1}
+        className="relative flex max-h-full w-full scroll-pb-24 flex-col overflow-y-auto overscroll-contain max-w-lg rounded-3xl bg-white shadow-2xl shadow-red-900/10 outline-none ring-1 ring-gray-200"
+      >
+        <div className="shrink-0 px-5 pt-5 text-center sm:px-8 sm:pt-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 ring-1 ring-red-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-3xl [@media(max-height:32rem)]:h-10 [@media(max-height:32rem)]:w-10">
+            <Image src="/logo.svg" alt="" width={52} height={52} className="h-10 w-10 sm:h-[3.25rem] sm:w-[3.25rem] [@media(max-height:32rem)]:h-7 [@media(max-height:32rem)]:w-7" />
           </div>
+          <h2 id="profile-completion-title" className="mt-3 text-xl font-bold tracking-tight text-gray-900 sm:mt-4 sm:text-2xl">
+            Welcome to <span className="text-red-600">Proximity</span>
+          </h2>
+          <p className="mt-1 text-sm text-gray-600 [@media(max-height:32rem)]:hidden sm:text-base">
+            Just a few quick details and you&apos;re in.
+          </p>
+        </div>
 
-          {/* Last Name */}
-          <div>
-            <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-              Last Name
-            </label>
-            <input
-              type="text"
-              id="lastName"
-              name="lastName"
-              value={formData.lastName}
-              onChange={handleInputChange}
-              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-              placeholder="Enter your last name"
-            />
-          </div>
+        <form className="flex-1 space-y-4 px-5 py-5 sm:px-8">
+          <ChoiceGroup
+            legend="I am a…"
+            name="role"
+            options={ROLES}
+            value={formData.role}
+            onChange={handleInputChange}
+            layoutClass="grid grid-cols-2 gap-2"
+            chipClass="h-11 rounded-xl text-base"
+          />
 
-          {/* Role */}
-          <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-              I am a…
-            </label>
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleInputChange}
-              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-            >
-              <option value="">Select your role</option>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Graduation Month + Year — students only */}
-          {isStudent && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Expected Graduation
+              <label htmlFor="firstName" className={LABEL_CLASS}>
+                First name
               </label>
+              <input
+                type="text"
+                id="firstName"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleInputChange}
+                className={`block w-full ${FIELD_CLASS}`}
+                placeholder="Enter your first name"
+              />
+            </div>
+            <div>
+              <label htmlFor="lastName" className={LABEL_CLASS}>
+                Last name
+              </label>
+              <input
+                type="text"
+                id="lastName"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleInputChange}
+                className={`block w-full ${FIELD_CLASS}`}
+                placeholder="Enter your last name"
+              />
+            </div>
+          </div>
+
+          {/* Graduation Month + Year, students only */}
+          {isStudent && (
+            <fieldset>
+              <legend className={LABEL_CLASS}>Expected graduation</legend>
               {/* Sized by content, and onto two lines when the card is too narrow
                   for both: a select cannot shrink below its longest option
                   without cutting the name off. */}
               <div className="flex flex-wrap gap-2">
                 <select
                   name="graduationMonth"
+                  aria-label="Graduation month"
                   value={formData.graduationMonth}
                   onChange={handleInputChange}
-                  className="min-w-0 flex-auto px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+                  className={`${FIELD_CLASS} min-w-0 flex-auto`}
                 >
                   <option value="">Month</option>
                   {MONTHS.map((m) => (
@@ -191,9 +274,10 @@ export default function ProfileCompletionModal({ session }) {
                 </select>
                 <select
                   name="graduationYear"
+                  aria-label="Graduation year"
                   value={formData.graduationYear}
                   onChange={handleInputChange}
-                  className="min-w-0 flex-auto px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+                  className={`${FIELD_CLASS} min-w-0 flex-auto`}
                 >
                   <option value="">Year</option>
                   {graduationYears.map((y) => (
@@ -202,79 +286,64 @@ export default function ProfileCompletionModal({ session }) {
                 </select>
               </div>
               {classYear && (
-                <p className="mt-1.5 text-xs text-red-600 font-medium">
+                <p className="mt-1.5 text-xs font-medium text-red-600">
                   You are a {classYear}
                 </p>
               )}
-            </div>
+            </fieldset>
           )}
 
-          {/* Gender */}
-          <div>
-            <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
-              Gender
-            </label>
-            <select
-              id="gender"
-              name="gender"
-              value={formData.gender}
-              onChange={handleInputChange}
-              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-            >
-              <option value="">Select your gender</option>
-              {GENDERS.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
+          <ChoiceGroup
+            legend="Gender"
+            name="gender"
+            options={GENDERS}
+            value={formData.gender}
+            onChange={handleInputChange}
+            layoutClass="grid grid-cols-3 gap-2"
+            chipClass="h-10 rounded-xl"
+          />
 
-          {/* How'd you find us */}
-          <div>
-            <label htmlFor="referralSource" className="block text-sm font-medium text-gray-700 mb-1">
-              How&apos;d you find us?
-            </label>
-            <select
-              id="referralSource"
-              name="referralSource"
-              value={formData.referralSource}
-              onChange={handleInputChange}
-              className="block w-full px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-            >
-              <option value="" disabled>Select one…</option>
-              {REFERRAL_SOURCES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
+          <ChoiceGroup
+            legend="How'd you find us?"
+            name="referralSource"
+            options={REFERRAL_SOURCES}
+            value={formData.referralSource}
+            onChange={handleInputChange}
+            layoutClass="flex flex-wrap gap-2"
+            chipClass="h-10 rounded-full px-4"
+          />
         </form>
 
-        {/* Save Button */}
-        <div className="pt-4 space-y-3">
+        {/* Stacked, except on short screens (landscape phones, or a keyboard
+            open), where one row keeps the pinned footer slim. */}
+        <div className="sticky bottom-0 shrink-0 border-t border-gray-100 bg-white px-5 py-3 sm:px-8">
           {error && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="mb-2 text-sm text-red-600">
               {error}
             </p>
           )}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!isFormValid || saving}
-            className={`w-full px-4 py-2 rounded-lg text-white font-medium transition-all ${
-              isFormValid ? "bg-red-600 hover:bg-red-700" : "bg-gray-300 cursor-not-allowed"
-            }`}
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-          <button
-            type="button"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            disabled={saving}
-            className="w-full text-sm text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
-          >
-            Log out
-          </button>
+          <div className="flex flex-col gap-1.5 [@media(max-height:32rem)]:flex-row-reverse [@media(max-height:32rem)]:items-center [@media(max-height:32rem)]:gap-3">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!isFormValid || saving}
+              className={`rounded-xl py-2.5 font-semibold [@media(max-height:32rem)]:flex-1 text-white transition-colors ${FOCUS_RING} ${
+                isFormValid ? "bg-red-600 hover:bg-red-700" : "cursor-not-allowed bg-gray-300"
+              }`}
+            >
+              {saving ? "Saving..." : "Get started"}
+            </button>
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              disabled={saving}
+              className={`shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 underline hover:text-gray-700 disabled:opacity-50 ${FOCUS_RING}`}
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }
