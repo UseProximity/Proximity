@@ -8,7 +8,7 @@ import { PROMPTS, PROMPTS_AT_ONCE, NO_PICK, TEXT_MAX, applyChipToText, promptSen
  *
  * The box is the answer. Picking a chip writes a sentence into it ("I'd like to
  * live in the Delmar Loop or DeMun."), which the student can edit or add to in
- * their own words. Three prompts show at a time, each with all of its ideas.
+ * their own words. Three untouched prompts show at a time, each with all of its ideas.
  *
  * A picked idea leaves its row: its words are in the box now, and the box is
  * where they are changed (Wyatt, 2026-11-10). A prompt whose ideas are
@@ -59,8 +59,22 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
     const done = dismissed || (prompt.single && taken.length > 0);
     const left = done ? [] : prompt.options.filter((o) => !taken.includes(o.id));
     // "No Preference" rides along as the last chip of an exclusive prompt.
-    return { prompt, left: left.length && prompt.single ? [...left, { id: NO_PICK, label: "No Preference" }] : left };
+    return {
+      prompt,
+      // A multi-answer prompt the student has already picked from.
+      started: !prompt.single && taken.length > 0,
+      left: left.length && prompt.single ? [...left, { id: NO_PICK, label: "No Preference" }] : left,
+    };
   }).filter((row) => row.left.length);
+
+  /*
+   * Three untouched prompts show at a time. A multi-answer prompt that has a
+   * pick stays where it is with what it has left, but stops counting toward
+   * the three, so its first pick (and only its first) brings in the next
+   * prompt (Wyatt, 2026-11-10).
+   */
+  let fresh = 0;
+  const visible = open.filter((row) => row.started || fresh++ < PROMPTS_AT_ONCE);
 
   return (
     <div className="flex h-full flex-col">
@@ -84,8 +98,8 @@ export default function StepPreferences({ text, chips, onChange, onSkip }) {
         className="mt-3 block min-h-[72px] w-full flex-1 resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 focus:border-red-300 focus:bg-white"
       />
 
-      <div className="mt-3 divide-y divide-gray-100">
-        {open.slice(0, PROMPTS_AT_ONCE).map(({ prompt, left }) => (
+      <div className="mt-3 min-h-0 flex-shrink overflow-y-auto scrollbar-hidden divide-y divide-gray-100">
+        {visible.map(({ prompt, left }) => (
           <div key={prompt.id} className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:gap-2">
             <span className="flex h-8 flex-shrink-0 items-center text-sm font-medium text-gray-700 sm:w-[104px] [@media(min-height:780px)]:h-9">
               {prompt.label}:
