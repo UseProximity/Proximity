@@ -10,9 +10,9 @@ import { readAgreementFile } from "./agreementFiles.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { agreementState } from "./agreements.js";
 import { displayAddress, loadLandlordProperties } from "./coverage.js";
-import { approvedDrafts, approveWaiting, canSignIn, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod } from "./payers.js";
+import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod } from "./payers.js";
 import { activePayerLink } from "./payerLinks.js";
-import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail } from "./billingEmails.js";
+import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
 
 const BILLING_PATH = "/dashboard/landlord?tab=billing#marketing-agreement";
 
@@ -168,4 +168,33 @@ export async function sendPayerDocumentCancelled({ payerId, otherAccounts = [], 
     { id: payer.id, email: payer.email, name: payer.name },
     { causeName: landlordLabel(cause), accountNames: others.map(landlordLabel), reason, signUrl: `${getBaseUrl()}${BILLING_PATH}` }
   );
+}
+
+/*
+ * Tell a signer the landlord revoked them (Wyatt, 2026-11-10). `ended` is what
+ * endPayerFor answered. When a document they were signing for other accounts too
+ * was cancelled with it, that one email says both.
+ */
+export async function sendPayerRevoked({ landlordId, ended, tookOver = false }) {
+  if (!ended?.link) return false;
+  if (ended.cancelled) return sendPayerDocumentCancelled({ ...ended.cancelled, causeLandlordId: landlordId, reason: "ended" });
+  const [landlord, payer] = await Promise.all([userRow(landlordId), userRow(ended.link.payer_id)]);
+  if (!payer?.email) return false;
+  return sendPayerRevokedEmail(
+    { id: payer.id, email: payer.email, name: ended.link.signer_name || payer.name },
+    { landlordName: landlordLabel(landlord), released: ended.released ?? 0, tookOver, billingUrl: `${getBaseUrl()}${BILLING_PATH}` }
+  );
+}
+
+/*
+ * A landlord with an authorized signer signed their own agreement: the signer is
+ * removed and told. Called after every signature of a landlord's own agreement
+ * and when their Billing page loads, so a follow-up that failed is finished then.
+ * Returns whether the signer was removed.
+ */
+export async function finishTakeover(landlordId, documenso) {
+  const ended = await completeTakeover(supabase, documenso, landlordId);
+  if (!ended) return false;
+  await sendPayerRevoked({ landlordId, ended, tookOver: true }).catch((err) => console.error("billing: revoked email failed", err?.message));
+  return true;
 }

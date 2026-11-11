@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
 import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
@@ -51,6 +52,13 @@ export async function POST(req) {
 
   if (!unitId) {
     return Response.json({ error: "A unit is required." }, { status: 400 });
+  }
+
+  // The note on an offering is read by students like the property description,
+  // so it follows the same rule: no names, links, emails or phone numbers.
+  const descriptionProblem = checkListingDescription(description);
+  if (descriptionProblem) {
+    return Response.json({ error: descriptionProblem }, { status: 400 });
   }
 
   // Adding a live offering needs a payment method and, when required, a signed
