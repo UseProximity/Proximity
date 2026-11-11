@@ -612,6 +612,10 @@
       "description": "The one Stripe client for the app, and the three env vars it reads:"
     },
     {
+      "file": "src/lib/billing/viewer.js",
+      "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
+    },
+    {
       "file": "src/lib/billing/webhookEvents.js",
       "description": "Idempotent processing of a verified Stripe event, backed by"
     },

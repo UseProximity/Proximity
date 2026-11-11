@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { autopayState, disableAutopay, enableAutopay, lazyAutopayNotify } from "@/lib/billing/autopay";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
@@ -17,11 +18,11 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  *
  * @auth landlord (own autopay only)
  */
-export async function GET() {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
-    return NextResponse.json(await autopayState(supabase, session.user.id));
+    return NextResponse.json(await autopayState(supabase, reader.userId));
   } catch (err) {
     return billingErrorResponse(err, "read autopay");
   }

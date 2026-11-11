@@ -15,7 +15,7 @@
  */
 
 /** Roles that may look at somebody else's dashboard. Both are read-only here. */
-const VIEW_AS_ROLES = ["super", "admin"];
+export const VIEW_AS_ROLES = ["super", "admin"];
 
 export const canViewAs = (role) => VIEW_AS_ROLES.includes(role);
 
@@ -30,7 +30,7 @@ export function resolveDashboardUserId(session, searchParams) {
   return viewAsId && canViewAs(session?.user?.role) ? viewAsId : session?.user?.id;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * For the Messages inbox (Wyatt, 2026-11-03): the user an admin is viewing
