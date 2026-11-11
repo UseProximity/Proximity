@@ -282,7 +282,9 @@ function Pills({ items }) {
 
 function Mark({ has }) {
   return has ? (
-    <Check role="img" aria-label="Has it" className="h-4 w-4 text-gray-900" />
+    <span role="img" aria-label="Has it" className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600">
+      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+    </span>
   ) : (
     <Minus role="img" aria-label="Not listed" className="h-4 w-4 text-gray-400" />
   );
@@ -293,12 +295,22 @@ function Mark({ has }) {
 // "none", so when a listing lists nothing no overlap is claimed: the other
 // listing's items each get a check, and this one a dash.
 function ListSection({ title, a, b }) {
-  const both = a.length && b.length ? a.filter((x) => b.includes(x)) : [];
+  const mixed = a.length > 0 && b.length > 0;
+  const both = mixed ? a.filter((x) => b.includes(x)) : [];
   const items = [...new Set([...a, ...b])].filter((x) => !both.includes(x));
+  // A comparison is only claimed when both listings list something.
+  const summary = !mixed
+    ? null
+    : items.length
+    ? `${both.length} shared · ${items.length} ${items.length === 1 ? "difference" : "differences"}`
+    : `All ${both.length} shared`;
   const label = `${ROW} px-4 text-xs text-black`;
   return (
     <>
-      <h3 className={`${ROW} col-span-3 bg-[#f9fafb] px-4 py-3 text-base font-bold text-black`}>{title}</h3>
+      <div className={`${ROW} col-span-3 justify-between gap-3 px-4 py-3`}>
+        <h3 className="text-base font-bold text-black">{title}</h3>
+        {summary && <span className="text-xs font-medium text-red-700">{summary}</span>}
+      </div>
       {!a.length && !b.length ? (
         <p className={`${ROW} col-span-3 px-4 text-sm text-gray-500`}>Not listed</p>
       ) : (
@@ -339,6 +351,18 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
   const labels = first ? compareRows(first).map(([label]) => label) : [];
   const rows = `1 / span ${labels.length + 1}`;
   const both = slots.every(Boolean);
+  // Once the header (photos and titles) has scrolled out of view, a compact bar
+  // pinned to the top keeps each column identifiable. The empty first cell of the
+  // label column is exactly as tall as the header row, so it is what is watched.
+  const scroller = useRef(null);
+  const head = useRef(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (!head.current) return;
+    const observer = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { root: scroller.current });
+    observer.observe(head.current);
+    return () => observer.disconnect();
+  }, [!!first]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex h-full flex-col rounded-[20px] border border-[#e6e7eb] bg-[#f9fafb]">
       <div className="relative flex shrink-0 items-center justify-center py-4">
@@ -353,13 +377,41 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
       </div>
       {/* The scroller is this outer box. The table is at least as tall as it
           (so empty slots fill the panel) and grows past it with the rows. */}
-      <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
+      <div ref={scroller} className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-full flex-col px-3.5 pb-3.5">
-          <div className={`flex flex-col overflow-hidden rounded-[20px] border border-[#e6e7eb] bg-white ${both ? "" : "flex-1"}`}>
+          {/* overflow-clip rounds the corners without making the card a scroll
+              container, which would stop the pinned bar from sticking. */}
+          <div className={`flex flex-col overflow-clip rounded-[20px] border border-[#e6e7eb] bg-white ${both ? "" : "flex-1"}`}>
+            {first && (
+              <div className="sticky top-0 z-10 h-0">
+                <div
+                  aria-hidden={!stuck}
+                  className={`absolute inset-x-0 grid divide-x divide-[#e6e7eb] border-b border-[#e6e7eb] bg-white shadow-sm transition-opacity ${COLUMNS} ${
+                    stuck ? "" : "pointer-events-none opacity-0"
+                  }`}
+                >
+                  <div />
+                  {slots.map((listing, i) => (
+                    <div key={i} className="flex min-w-0 items-center gap-2 px-3 py-2">
+                      {listing && (
+                        <>
+                          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md bg-gray-100">
+                            {listing.images?.[0] && (
+                              <Image src={listing.images[0]} alt="" fill sizes="32px" className="object-cover" />
+                            )}
+                          </div>
+                          <p className="truncate text-xs font-bold text-black">{getListingHeading(listing).title}</p>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className={`grid flex-1 divide-x divide-[#e6e7eb] ${first ? COLUMNS : "grid-cols-2"}`}>
               {first && (
                 <div className="grid grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
-                  <div />
+                  <div ref={head} />
                   {labels.map((label) => (
                     <div key={label} className={`${ROW} px-4 text-xs text-black`}>
                       {label}
