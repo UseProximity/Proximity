@@ -963,7 +963,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -1121,7 +1121,9 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
    * and holding it would leave last week's prices up (Wyatt, 2026-11-10).
    */
   const portalPriced = !!snapshot.portal?.walked && snapshot.confidence === "high";
-  if (mode === "sync" && !holdReason && !portalPriced) {
+  // A sync someone asked for by hand (Sync now) is theirs to apply in full.
+  let churn = null;
+  if (mode === "sync" && !holdReason && !portalPriced && churnGuard) {
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
     // Churn is leases appearing, vanishing or repricing. A lease whose blurb
     // or lengths were reworded is the same lease; counting those once held
@@ -1135,7 +1137,10 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         (!policyRun || c.verdict?.apply) &&
         (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind) || (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")))
     ).length;
-    if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) holdReason = "churn_hold";
+    if (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION)) {
+      holdReason = "churn_hold";
+      churn = { touched, existing };
+    }
   }
 
   if (policyRun) {
@@ -1170,7 +1175,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
     }
     await remember(applied);
-    return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, summary: summarize(snapshot), takeover: false };
+    return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, churn, summary: summarize(snapshot), takeover: false };
   }
 
   // The model's second opinion on the changes the rules would not apply.

@@ -59,44 +59,44 @@ export async function buildDigest({ now = new Date() } = {}) {
   const factsBySync = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "applied"));
   const heldBySync = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "held"));
   const siteApplied = await countOf("listing_source_events", (q) => since(q).eq("status", "applied"));
-  const siteOpen = await countOf("listing_source_events", (q) => since(q).eq("status", "open"));
-  const holds = await countOf("listing_source_events", (q) => since(q).in("kind", ["churn_hold", "low_confidence"]));
+  // Declined by the sync itself (lib/sourceImport/syncPolicy.js), each recorded once.
+  const siteDenied = await countOf("listing_source_events", (q) => since(q).eq("status", "rejected").is("verdict_by", null));
+  const skipped = syncs.filter((j) => j.result?.holdReason === "churn_hold").length;
   const teamReview = syncTeamReview();
   const factsForTeam = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "proposed").contains("detail", { teamReview: true }));
   sections.push({
     title: "Scraping",
-    rows: [["Syncs run", syncs.length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes auto-applied", siteApplied], [teamReview ? "Website changes waiting for the team" : "Website changes held for landlords", siteOpen], ["Low-confidence and churn holds", holds], ["New listings created from URLs", imports.length]],
+    rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], ["Website changes declined (new today)", siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
-    note: teamReview ? "Launch review is on: nothing from a sync reaches students until the team applies it in the admin Agents tab." : "",
+    note: "The sync applies or declines every website change itself; nothing waits for review." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
   });
 
   /*
-   * Website sync, listing by listing (Wyatt, 2026-11-07): during launch the
-   * team sees every run, what it read, what waits for them and why, what
-   * failed, pages the sync was not allowed to open, and own pages attached.
+   * Website sync, listing by listing (Wyatt, 2026-11-07; no queue since
+   * 2026-11-11): what each run read, what it applied, what it declined and
+   * why, what failed, pages it was not allowed to open, own pages attached.
    */
-  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, detail").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
+  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, verdict_by, detail").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
   const siteByListing = new Map();
   for (const e of siteEvents ?? []) {
-    const k = siteByListing.get(e.listing_id) ?? { open: 0, applied: 0, kinds: {} };
-    if (e.status === "open" && e.detail?.op !== "none") { k.open++; k.kinds[e.kind] = (k.kinds[e.kind] ?? 0) + 1; }
-    if (e.status === "applied" && e.kind !== "source_attached") k.applied++;
+    const k = siteByListing.get(e.listing_id) ?? { applied: {}, denied: {} };
+    if (e.status === "applied" && e.kind !== "source_attached") k.applied[e.kind] = (k.applied[e.kind] ?? 0) + 1;
+    if (e.status === "rejected" && !e.verdict_by && e.detail?.autoDenied && e.detail?.op !== "none") k.denied[e.detail.autoDenied] = (k.denied[e.detail.autoDenied] ?? 0) + 1;
     siteByListing.set(e.listing_id, k);
   }
-  const HOLD = { low_confidence: "unsure read", churn_hold: "too much at once" };
-  const RUN_WORD = { suppressed: "held", ok: "read", changed: "changed", unchanged: "unchanged since last read" };
+  const counted = (o, word = (k) => k.replace(/_/g, " ")) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${word(k)}`).join(", ");
+  const RUN_WORD = { suppressed: "skipped, too much at once", ok: "read", changed: "changed", unchanged: "unchanged since last read" };
   const runLines = syncs.filter((j) => !j.target?.knowledge).map((j) => {
     const r = j.result ?? {};
-    const ev = siteByListing.get(j.listing_id) ?? { open: 0, applied: 0, kinds: {} };
+    const ev = siteByListing.get(j.listing_id) ?? { applied: {}, denied: {} };
     if (j.status === "failed") return `${label(j.listings)}: FAILED, ${j.error ?? "unknown error"}`;
-    const kinds = Object.entries(ev.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`).join(", ");
     const pagesRead = Array.isArray(r.pages) ? r.pages.filter((p) => !p.error && !p.skipped).length : 0;
     const unitPages = (r.unitPages ?? []).filter((u) => u.status !== "ok").map((u) => `${u.unit} page ${u.status}`);
     return [
-      `${label(j.listings)}: ${RUN_WORD[r.status] ?? r.status ?? j.status}${r.holdReason ? ` (${HOLD[r.holdReason] ?? r.holdReason})` : ""}`,
+      `${label(j.listings)}: ${RUN_WORD[r.status] ?? r.status ?? j.status}${r.deep ? " (deep read)" : ""}`,
       `${pagesRead} page${pagesRead === 1 ? "" : "s"} read`,
-      ev.open ? `${ev.open} waiting (${kinds})` : "nothing waiting",
-      ev.applied ? `${ev.applied} applied` : null,
+      Object.keys(ev.applied).length ? `applied ${counted(ev.applied)}` : "nothing applied",
+      Object.keys(ev.denied).length ? `declined ${counted(ev.denied, (k) => `(${k})`)}` : null,
       (r.refused ?? []).length ? `${r.refused.length} off-site page${r.refused.length === 1 ? "" : "s"} not opened` : null,
       ...unitPages,
     ].filter(Boolean).join(" · ");
@@ -114,14 +114,31 @@ export async function buildDigest({ now = new Date() } = {}) {
     note: "Only pages a landlord uploaded or gave us, and pages on those same sites, are read.",
   });
 
+  /*
+   * Sources that keep the sync from doing its job: a page with no units on
+   * it (a home page, or one that blocks reading), a read that saw only part
+   * of the unit list (so nothing it missed can be withdrawn), or a website
+   * that failed. Fixing the URL or adding the floor plans page fixes these.
+   */
+  const toFix = [];
+  for (const j of syncs.filter((x) => !x.target?.knowledge)) {
+    const r = j.result ?? {};
+    const where = `${label(j.listings)} (${j.target?.url ?? "no URL"})`;
+    if (j.status === "failed") toFix.push(`${where}: could not be read`);
+    else if (r.summary && r.summary.units === 0) toFix.push(`${where}: no units found on the page; it may be a home page or block reading, so point it at the floor plans or availability page`);
+    else if (r.unitListComplete === false) toFix.push(`${where}: only part of the unit list was readable, so units it missed are not withdrawn`);
+    else if (r.summary && r.summary.units > 0 && r.summary.priced === 0) toFix.push(`${where}: no prices on the page`);
+  }
+  sections.push({ title: "Sources to fix", rows: [["Listings whose website keeps the sync from working fully", toFix.length]], list: toFix.slice(0, 30) });
+
   // Extraction accuracy: a sample to check against the source.
   const { data: pageFacts } = await supabase.from("listing_facts").select("summary, source_ref, listings!listing_id(title, address), listing_sources!source_id(kind, url)").gte("created_at", w.start).lt("created_at", w.end).eq("is_current", true).limit(400);
   const extracted = (pageFacts ?? []).filter((f) => ["page", "document"].includes(f.listing_sources?.kind));
   const sample = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
-  const rejections = await countOf("listing_source_events", (q) => q.eq("status", "rejected").gte("verdict_at", w.start).lt("verdict_at", w.end));
+  const rejections = await countOf("listing_source_events", (q) => q.eq("status", "rejected").not("verdict_by", "is", null).gte("verdict_at", w.start).lt("verdict_at", w.end));
   sections.push({
     title: "Extraction accuracy",
-    rows: [["Facts read from pages and documents", extracted.length], ["Website changes rejected by landlords", rejections]],
+    rows: [["Facts read from pages and documents", extracted.length], ["Website changes rejected by people", rejections]],
     list: sample(extracted, 5).map((f) => `${label(f.listings)}: "${f.summary}" (${f.listing_sources?.url ?? f.source_ref ?? "document"})`),
     note: "Spot-check these five against the source.",
   });
@@ -186,8 +203,11 @@ export async function buildDigest({ now = new Date() } = {}) {
   });
 
   // Gone from a website
-  const { data: gone } = await supabase.from("listing_source_events").select("id, kind, detail, listing_id, listings!listing_id(title, address)").in("kind", ["missing_unit", "listing_gone"]).eq("status", "open").gte("created_at", w.start).lt("created_at", w.end).limit(200);
-  sections.push({ title: "Gone from a website", rows: [["Units or listings no longer on their website", (gone ?? []).length]], list: (gone ?? []).map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), note: (gone ?? []).length ? `Nothing is hidden on its own; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
+  // Units whose website stopped showing them: the sync withdrew their leases
+  // (Wyatt, 2026-11-11), one line per unit.
+  const { data: goneRows } = await supabase.from("listing_source_events").select("id, kind, detail, listing_id, listings!listing_id(title, address)").eq("kind", "lease_withdrawn").eq("status", "applied").contains("detail", { unitGone: true }).gte("created_at", w.start).lt("created_at", w.end).limit(500);
+  const gone = [...new Map((goneRows ?? []).map((e) => [`${e.listing_id}|${e.detail?.unitId ?? e.detail?.label}`, e])).values()];
+  sections.push({ title: "Gone from a website", rows: [["Units withdrawn because their website stopped showing them", gone.length]], list: gone.map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), note: gone.length ? `Their leases are marked unavailable, never deleted, and come back on their own if the website shows them again; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
 
   return { day: w.label, sections, gone: gone ?? [], baseUrl, inquiries: L.length, syncs: syncs.length };
 }
@@ -204,8 +224,8 @@ export async function notifyGone(gone) {
     const listingLabel = e.listings?.title || e.listings?.address || "your listing";
     await sendTourEmail({
       kind: "availability_gone", to: u.email, name: u.name, subject: `Is ${e.detail?.label ? `${e.detail.label} at ` : ""}${listingLabel} still available?`,
-      intro: `Your website no longer shows ${e.detail?.label ? `${e.detail.label} at ${listingLabel}` : listingLabel}. Proximity still lists it; nothing is hidden automatically.`,
-      lines: [], note: "If it has been leased, withdraw it from your dashboard so students stop asking about it. If it is still available, no action is needed.",
+      intro: `Your website no longer shows ${e.detail?.label ? `${e.detail.label} at ${listingLabel}` : listingLabel}, so Proximity marked it unavailable. Nothing was deleted.`,
+      lines: [], note: "If it has been leased, no action is needed. If it is still available, mark it available again from your dashboard; it also comes back on its own when your website shows it again.",
       ctaLabel: "Open your dashboard", ctaUrl: `${getBaseUrl()}/dashboard/landlord?property=${e.listing_id}`, userId: owner,
     });
     await supabase.from("listing_source_events").update({ detail: { ...(e.detail ?? {}), landlordTold: new Date().toISOString() } }).eq("id", e.id);
