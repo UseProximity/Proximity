@@ -15,6 +15,7 @@ import {
   GearButton,
   TrashButton,
 } from "@/components/admin/adminShared";
+import ReviewDuplicatesPanel from "@/components/admin/ReviewDuplicatesPanel";
 
 /*
  * Every property review in one table.
@@ -119,6 +120,7 @@ export default function ReviewsView({
 
   return (
     <div className="space-y-2">
+      <ReviewDuplicatesPanel dbTarget={dbTarget} />
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-gray-500">
           {filtered.length} of {reviews.length} reviews

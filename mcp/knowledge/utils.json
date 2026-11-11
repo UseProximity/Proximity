@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T00:56:00.400Z",
-  "count": 333,
+  "_generated": "2026-11-11T13:18:02.190Z",
+  "count": 334,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -294,10 +294,6 @@
     {
       "file": "src/lib/auth/profileSave.js",
       "description": "Saving the \"Complete Your Profile\" popup. Client-safe, no server imports."
-    },
-    {
-      "file": "src/lib/auth/profileSave.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/auth/roles.js",
@@ -1076,8 +1072,16 @@
       "description": "Batched \"your review is live\" confirmations."
     },
     {
+      "file": "src/lib/reviews/duplicateReport.js",
+      "description": "Review stubs that may be a building already listed under another address."
+    },
+    {
       "file": "src/lib/reviews/invites.js",
       "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/listingMatch.js",
+      "description": "Which listing a review belongs on."
     },
     {
       "file": "src/lib/reviews/onboarding.js",
@@ -1260,10 +1264,6 @@
       "description": "What a request that marks a profile complete has to carry."
     },
     {
-      "file": "src/lib/users/profileCompletion.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/users/viewAs.js",
       "description": "Who a dashboard request is actually ABOUT."
     },
@@ -1310,6 +1310,10 @@
     {
       "file": "src/utils/listingFormatters.js",
       "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
+    },
+    {
+      "file": "src/utils/reviewAddress.js",
+      "description": "Address rules for the review flow, shared by the form and the route so the"
     },
     {
       "file": "src/utils/unitCounts.js",

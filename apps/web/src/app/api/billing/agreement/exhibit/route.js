@@ -14,7 +14,8 @@ import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
  * The signing popup's Exhibit A step: each property that can go on the document
  * the landlord is about to sign, with its units, what is covered already and the
  * default whole-building or units choice. Query: listingIds (comma separated, the
- * properties being published; empty from the Payments tab).
+ * properties being published; empty from the Payments tab). takeover=1: a landlord
+ * with an authorized signer previewing their own agreement (see the sign route).
  * Answers { kind: "master" | "amendment" | "none", properties: [...] }.
  *
  * @auth landlord (own properties only)
@@ -55,7 +56,7 @@ export async function GET(req) {
         properties: any.flatMap((p) => p.properties).filter((p) => !seen.has(p.listingId) && seen.add(p.listingId)),
       });
     }
-    return NextResponse.json(await exhibitPreview(supabase, session.user.id, { listingIds, requiredUnits: cleanRequiredUnits(units) }));
+    return NextResponse.json(await exhibitPreview(supabase, session.user.id, { listingIds, requiredUnits: cleanRequiredUnits(units), takeover: params.get("takeover") === "1" }));
   } catch (err) {
     return billingErrorResponse(err, "load Exhibit A");
   }

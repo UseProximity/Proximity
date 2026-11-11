@@ -17,9 +17,13 @@ import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/acco
  *   PayerCard          the landlord's view once named: Pending, Declined or Signed,
  *                      with Resend and Change signer, what the signer approved
  *                      (the landlord publishes it) and declined (Send again).
- *                      Never the agreement itself.
+ *                      Never the agreement itself. Revoke signer removes them at
+ *                      any time; with covered listings the landlord can sign
+ *                      their own agreement first to keep them covered (Wyatt,
+ *                      2026-11-10).
  *   PaidForAccounts    the payer's view: each account they pay for, its covered
- *                      properties, what waits for their signature (Sign) and Void.
+ *                      properties and what waits for their signature (Sign). A
+ *                      signer cannot void what they signed (Wyatt, 2026-11-10).
  */
 
 const dateOnly = (iso) => new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "America/Chicago" });
@@ -113,6 +117,10 @@ const STATUS = {
 export function PayerCard({ view, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [changing, setChanging] = useState(false);
+  // Revoking the signer: the confirmation is open, or the landlord is signing
+  // their own agreement first (the signer stays until that is signed).
+  const [revoking, setRevoking] = useState(false);
+  const [takingOver, setTakingOver] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const status = STATUS[view.status] ?? STATUS.pending;
@@ -124,6 +132,24 @@ export function PayerCard({ view, onChanged }) {
       const r = await call("/api/billing/payer/requests", { method: "POST", body: { listingIds: [listingId] } });
       toast.success(`Sent to ${view.payer.name} again.`);
       onChanged(r.payer);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    setBusy(true);
+    try {
+      const r = await call("/api/billing/payer", { method: "PATCH", body: { action: "revoke", confirm: true } });
+      toast.success(
+        r.released
+          ? `${view.payer.name} is no longer your authorized signer. Your listings aren't covered until you sign the agreement.`
+          : `${view.payer.name} is no longer your authorized signer.`
+      );
+      setRevoking(false);
+      onChanged(null);
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -261,8 +287,47 @@ export function PayerCard({ view, onChanged }) {
             )}
           </div>
         )}
-        {!view.canChange && (
-          <p className="text-xs text-gray-500">{view.payer.name} has signed for your account, so only they can void it.</p>
+        {!revoking && (
+          <button type="button" className="text-xs text-gray-500 underline hover:text-gray-700" disabled={busy} onClick={() => { setChanging(false); setRevoking(true); }}>
+            Revoke authorized signer
+          </button>
+        )}
+
+        {revoking && (
+          <div className="space-y-3 rounded-md border border-gray-200 px-3 py-3 text-sm text-gray-800">
+            {view.covered.length > 0 ? (
+              <>
+                <p>
+                  {view.payer.name} signed for {view.covered.length === 1 ? "1 listing" : `${view.covered.length} listings`} of yours. If you revoke them,{" "}
+                  {view.covered.length === 1 ? "that listing is" : "those listings are"} no longer covered by a marketing agreement until you sign your own.
+                  Listings already live stay on the site, but you can&apos;t publish anything new until you sign, and new invoices come to you.
+                </p>
+                <p>
+                  To keep {view.covered.length === 1 ? "it" : "all of them"} covered, sign your own agreement now. {view.payer.name} stays your authorized signer
+                  until you finish signing, so nothing changes if you close it.
+                </p>
+              </>
+            ) : (
+              <p>
+                Revoke {view.payer.name} as your authorized signer? The link we sent them stops working
+                {view.waiting.length > 0 ? `, and the ${view.waiting.length === 1 ? "listing" : `${view.waiting.length} listings`} waiting on them ${view.waiting.length === 1 ? "stays a draft" : "stay drafts"}` : ""}. You then
+                sign the agreement yourself or name someone else, and new invoices come to you.
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" className={BUTTON} disabled={busy} onClick={() => setRevoking(false)}>
+                Cancel
+              </button>
+              <button type="button" className={BUTTON} disabled={busy} onClick={revoke}>
+                {view.covered.length > 0 ? "Revoke without signing" : "Revoke signer"}
+              </button>
+              {view.covered.length > 0 && (
+                <button type="button" className={PRIMARY} disabled={busy} onClick={() => setTakingOver(true)}>
+                  Sign my own agreement
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {changing && (
@@ -286,6 +351,22 @@ export function PayerCard({ view, onChanged }) {
           </form>
         )}
       </div>
+
+      {takingOver && (
+        <AgreementSigningFlow
+          takeover
+          intro={`Sign your own agreement to keep your listings covered. ${view.payer.name} is removed as your authorized signer once you have signed.`}
+          onFinished={(result) => {
+            setTakingOver(false);
+            if (result === "closed") return;
+            setRevoking(false);
+            if (result === "signed") toast.success(`Signed. Your listings are covered by your own agreement, and ${view.payer.name} is no longer your authorized signer.`);
+            else if (result === "pending") toast.success("Signed. Your copy is being saved; this page updates in a minute.");
+            else if (result === "nothing") toast("There is nothing to sign right now.");
+            onChanged(null);
+          }}
+        />
+      )}
     </CollapsibleSection>
   );
 }
@@ -325,25 +406,9 @@ export function SignerChecklist({ accounts, hasPaymentMethod }) {
 
 export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }) {
   const [signing, setSigning] = useState(null);
-  const [voiding, setVoiding] = useState(null);
-  const [busy, setBusy] = useState(false);
   // No agreement yet: ONE agreement covers every account they pay for, signed once
   // (Wyatt, 2026-11-09). After that, each account's new properties are an addendum.
   const needingAgreement = accounts.filter((a) => a.needs === "agreement").map((a) => a.landlordId);
-
-  const voidFor = async (account) => {
-    setBusy(true);
-    try {
-      const r = await call("/api/billing/payees", { method: "POST", body: { action: "void", landlordId: account.landlordId, confirm: true } });
-      toast.success(`Voided for ${account.accountName}. ${r.released} ${r.released === 1 ? "property" : "properties"} came off your agreement. They see that you declined.`);
-      setVoiding(null);
-      onChanged();
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   if (!accounts.length) return null;
   return (
@@ -356,7 +421,7 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
             Sign the marketing agreement once to cover {needingAgreement.length === 1 ? "this account's" : `all ${needingAgreement.length} accounts'`} properties
             listed below. It takes about two minutes.
           </p>
-          <button type="button" className={PRIMARY} disabled={busy || !!signing} onClick={() => setSigning({ accountIds: needingAgreement })}>
+          <button type="button" className={PRIMARY} disabled={!!signing} onClick={() => setSigning({ accountIds: needingAgreement })}>
             Review and sign
           </button>
         </div>
@@ -397,7 +462,7 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
                   </ul>
                 )}
                 {a.needs === "addendum" && (
-                  <button type="button" className={PRIMARY} disabled={busy || !!signing} onClick={() => setSigning({ accountId: a.landlordId })}>
+                  <button type="button" className={PRIMARY} disabled={!!signing} onClick={() => setSigning({ accountId: a.landlordId })}>
                     Review and sign
                   </button>
                 )}
@@ -426,35 +491,12 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
                 {a.needs ? (
                   <p className="mt-1 text-xs text-gray-500">They are on the same document when you sign; you can leave any off on the Exhibit A step.</p>
                 ) : (
-                  <button type="button" className={`${BUTTON} mt-1`} disabled={busy || !!signing} onClick={() => setSigning({ accountId: a.landlordId, includeDrafts: true })}>
+                  <button type="button" className={`${BUTTON} mt-1`} disabled={!!signing} onClick={() => setSigning({ accountId: a.landlordId, includeDrafts: true })}>
                     Add drafts to your agreement
                   </button>
                 )}
               </div>
             )}
-            <div className="mt-2">
-              {voiding === a.landlordId ? (
-                <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-800">
-                  <p>
-                    Void your agreement for {a.accountName}? Their properties come off your agreement and can&apos;t be published until
-                    someone signs again. You stay their authorized signer, shown to them as having declined, and you can sign again later.
-                    Your agreement stays in force for everything else.
-                  </p>
-                  <div className="flex gap-2">
-                    <button type="button" className={BUTTON} disabled={busy} onClick={() => setVoiding(null)}>
-                      Keep it
-                    </button>
-                    <button type="button" className={PRIMARY} disabled={busy} onClick={() => voidFor(a)}>
-                      Void for this account
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button type="button" className="text-xs text-gray-500 underline hover:text-gray-700" onClick={() => setVoiding(a.landlordId)}>
-                  Void my agreement for this account
-                </button>
-              )}
-            </div>
           </div>
         );
       })}

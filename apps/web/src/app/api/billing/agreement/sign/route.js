@@ -37,6 +37,9 @@ import { releaseWaitingFor } from "@/lib/billing/payerServices";
  *   accountId   a landlord account the signer pays for (billing_payers): the
  *               document covers that account's properties, what it asked to
  *               publish and anything it has live (Project B). Left out: their own.
+ *   takeover    true: a landlord with an authorized signer signs their OWN
+ *               agreement instead. Everything the signer covers for them is on
+ *               it; the signer is removed only once it is signed (Wyatt, 2026-11-10).
  * Answers { token, host, kind } for Documenso's embedded signing page, or
  * { alreadySigned: true } when everything asked for is covered. A copy already
  * in progress for the same document is reused.
@@ -96,6 +99,7 @@ export async function POST(req) {
       exhibit: Array.isArray(body.exhibit) ? body.exhibit : null,
       fromAgreement,
       prepare,
+      takeover: body.takeover === true && !accountId,
       ...options,
     });
     // Nothing to sign for accounts they sign for: anything already covered that the gate now allows goes live.

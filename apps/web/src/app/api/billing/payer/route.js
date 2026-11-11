@@ -6,9 +6,9 @@ import { requireDbRole } from "@/lib/userRole";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
-import { cancelOwnSigning, changePayer, cleanPayerInput, landlordPayerView, namePayer } from "@/lib/billing/payers";
+import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
-import { sendPayerDocumentCancelled, sendPayerInvite } from "@/lib/billing/payerServices";
+import { finishTakeover, sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
 import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
 
 /*
@@ -24,7 +24,13 @@ import { cleanDisclosure, getDisclosure, saveDisclosure } from "@/lib/users/lice
  *          listings: "Listed by").
  *   PATCH  { action: "resend" } emails the payer again (at most every 30 minutes);
  *          { action: "change", name, email } names someone else (only before
- *          anything was signed for this account).
+ *          anything was signed for this account);
+ *          { action: "revoke", confirm: true } removes the signer, signed or not
+ *          (Wyatt, 2026-11-10): the account's listings are no longer covered
+ *          until the landlord signs their own agreement. Live listings stay up.
+ *          Answers { payer: null, released }. To stay covered instead, the
+ *          landlord signs first (POST /api/billing/agreement/sign, takeover) and
+ *          the signer is removed when that signature lands.
  *
  * @auth landlord (own account only)
  */
@@ -40,6 +46,9 @@ export async function GET() {
   const session = await requireDbRole(["landlord"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
+    // They signed their own agreement to take over from their signer, and the
+    // follow-up has not run yet (or failed): finish it now.
+    await finishTakeover(session.user.id, agreementServices().documenso).catch((err) => console.error("billing: finishing a takeover failed", err?.message));
     return NextResponse.json({ payer: await landlordPayerView(supabase, session.user.id) });
   } catch (err) {
     return billingErrorResponse(err, "load payer");
@@ -96,8 +105,14 @@ export async function PATCH(req) {
         // The old signer's document also covered other accounts: it was cancelled whole, so tell them.
         if (cancelled) await sendPayerDocumentCancelled({ ...cancelled, causeLandlordId: landlord.id, reason: "changed" }).catch(() => {});
       });
+    } else if (body.action === "revoke") {
+      if (body.confirm !== true) throw new BillingError("confirm_required", "Confirm that you want to revoke your authorized signer.");
+      const { documenso } = agreementServices();
+      const ended = await endPayerFor(supabase, documenso, { landlordId: landlord.id, reason: "revoked by the landlord" });
+      after(() => sendPayerRevoked({ landlordId: landlord.id, ended }).catch((err) => console.error("billing: revoked email failed", err?.message)));
+      return NextResponse.json({ payer: null, released: ended.released });
     } else {
-      throw new BillingError("bad_action", "Choose resend or change.");
+      throw new BillingError("bad_action", "Choose resend, change or revoke.");
     }
     return NextResponse.json({ payer: await landlordPayerView(supabase, landlord.id) });
   } catch (err) {
