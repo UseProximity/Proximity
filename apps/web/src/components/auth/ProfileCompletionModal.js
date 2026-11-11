@@ -53,7 +53,7 @@ function ChoiceGroup({ legend, name, options, value, onChange, layoutClass, chip
 }
 
 export default function ProfileCompletionModal({ session }) {
-  const { update } = useSession();
+  const { data: live, update } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
@@ -70,6 +70,9 @@ export default function ProfileCompletionModal({ session }) {
   // keeps saying profileComplete: false until the page is rendered again, and
   // must not reopen the popup for a profile that is already saved.
   const savedRef = useRef(false);
+  // Set when the person picks a role themselves, so a later session change
+  // (e.g. the "Login as Landlord" switch) never overwrites their choice.
+  const rolePickedRef = useRef(false);
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
 
@@ -84,17 +87,20 @@ export default function ProfileCompletionModal({ session }) {
     // Pre-select the role the user already has (e.g. a landlord who chose that
     // on the signup form) so they don't have to re-pick it, and can't silently
     // overwrite it back to student.
-    const sessionRole = session?.user?.role;
-    if (sessionRole) {
+    // `session` is the server-rendered snapshot and goes stale when the client
+    // changes the role after mount (Login as Landlord), so prefer the live one.
+    const sessionRole = live?.user?.role ?? session?.user?.role;
+    if (sessionRole && !rolePickedRef.current) {
       const match = ROLES.find((r) => r.toLowerCase() === sessionRole.toLowerCase());
-      if (match) setFormData((prev) => (prev.role ? prev : { ...prev, role: match }));
+      if (match) setFormData((prev) => (prev.role === match ? prev : { ...prev, role: match }));
     }
-  }, [session]);
+  }, [session, live?.user?.role]);
 
   // While open: lock the page behind and start keyboard focus inside the card.
-  // The overlay always covers the whole screen. Only its bottom edge moves up,
-  // by however much of the screen the on-screen keyboard covers, so the pinned
-  // Save button stays above it. Phone browsers do not resize the page for the
+  // The overlay is exactly the visible area: its bottom edge moves up by however
+  // much of the screen the on-screen keyboard covers, and its top edge follows
+  // the visual viewport when iOS scrolls it down inside the page, so the pinned
+  // Save button stays above the keyboard and the card stays in view. Phone browsers do not resize the page for the
   // keyboard, but the visual viewport shrinks, and the gap between the two is
   // the keyboard. When the two viewports differ in width the page is zoomed
   // (pinch, or shrunk to fit a wide page) and the gap is not the keyboard, so
@@ -109,7 +115,13 @@ export default function ProfileCompletionModal({ session }) {
     const clearKeyboard = () => {
       const zoomed = Math.abs(viewport.width - window.innerWidth) > 1;
       const covered = window.innerHeight - viewport.height - viewport.offsetTop;
-      overlay.style.bottom = zoomed || covered < 0 ? "" : `${covered}px`;
+      if (zoomed || covered < 0) {
+        overlay.style.removeProperty("--vv-top");
+        overlay.style.removeProperty("--vv-bottom");
+      } else {
+        overlay.style.setProperty("--vv-top", `${viewport.offsetTop}px`);
+        overlay.style.setProperty("--vv-bottom", `${covered}px`);
+      }
     };
     if (viewport) {
       clearKeyboard();
@@ -125,6 +137,7 @@ export default function ProfileCompletionModal({ session }) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === "role") rolePickedRef.current = true;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -171,7 +184,8 @@ export default function ProfileCompletionModal({ session }) {
       savedRef.current = true;
       setIsOpen(false);
       // One attempt, result ignored: the popup is already closed, and if this
-      // fails the next server render re-reads the database for itself.
+      // fails the next server render re-reads the database for itself, once the
+      // 60s role refresh window has passed.
       refreshSession();
     } finally {
       setSaving(false);
@@ -187,7 +201,7 @@ export default function ProfileCompletionModal({ session }) {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 p-3 backdrop-blur-md sm:p-4"
+      className="fixed inset-x-0 top-[var(--vv-top,0px)] bottom-[var(--vv-bottom,0px)] z-[1100] flex items-center justify-center bg-white/60 p-3 backdrop-blur-md sm:p-4"
     >
       <div
         ref={cardRef}

@@ -11,9 +11,9 @@
  * the database. Resolves true when the profile is saved, false when it is not.
  * Never throws.
  */
-export async function submitProfile(payload, refreshSession, request = fetch) {
+export async function submitProfile(payload, refreshSession) {
   try {
-    const res = await request("/api/editProfile", {
+    const res = await fetch("/api/editProfile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
