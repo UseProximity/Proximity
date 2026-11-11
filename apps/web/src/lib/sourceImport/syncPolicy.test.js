@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decideSyncChange, DENY } from "./syncPolicy.js";
+import { churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
 
 const full = { snapshot: { unitListComplete: true } };
 const partial = { snapshot: { unitListComplete: false } };
@@ -64,4 +64,26 @@ test("holds set while planning keep their reason", () => {
 
 test("anything else is not the sync's to make", () => {
   assert.deepEqual(decide({ kind: "listing_gone" }), { apply: false, reason: DENY.unknown });
+});
+
+test("the churn guard", () => {
+  const apply = { verdict: { apply: true } };
+  const leases = (n, kind = "lease_withdrawn") => Array.from({ length: n }, () => ({ kind, ...apply }));
+  const unit = (offers = 1, draft = false) => ({ kind: "unit_new", detail: { offers: Array(offers).fill({}), draft }, ...apply });
+  // Two of ten leases is a fifth: fine. Three is too many.
+  assert.equal(churnCheck({ changes: leases(2), existingLeases: 10, existingUnits: 5 }), null);
+  assert.deepEqual(churnCheck({ changes: leases(3), existingLeases: 10, existingUnits: 5 }), { touched: 3, existing: 10, newUnits: 0, units: 5 });
+  // Denied changes are no churn.
+  assert.equal(churnCheck({ changes: leases(9).map((c) => ({ ...c, verdict: { apply: false } })), existingLeases: 10, existingUnits: 5 }), null);
+  // A new unit counts each lease it brings.
+  assert.ok(churnCheck({ changes: [unit(3)], existingLeases: 10, existingUnits: 9 }));
+  // New units have their own cap, even on a listing too small for the lease rule.
+  assert.ok(churnCheck({ changes: [unit(), unit(), unit(), unit(), unit()], existingLeases: 2, existingUnits: 20 }));
+  assert.ok(churnCheck({ changes: [unit(), unit()], existingLeases: 1, existingUnits: 1 }));
+  assert.equal(churnCheck({ changes: [unit()], existingLeases: 1, existingUnits: 1 }), null);
+  // Drafts change nothing students see.
+  assert.equal(churnCheck({ changes: Array.from({ length: 12 }, () => unit(0, true)), existingLeases: 12, existingUnits: 12 }), null);
+  // A leasing portal's weekly repricing is not churn, but new units still are.
+  assert.equal(churnCheck({ changes: leases(40, "rent_change"), existingLeases: 50, existingUnits: 8, portalPriced: true }), null);
+  assert.ok(churnCheck({ changes: [unit(), unit(), unit(), unit(), unit()], existingLeases: 50, existingUnits: 8, portalPriced: true }));
 });

@@ -33,15 +33,13 @@ import { listingUnitFormat, formatConflict } from "@/utils/unitFormat";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
-import { decideSyncChange, DENY } from "./syncPolicy.js";
+import { churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
 import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
 import { applyAliases, convertRentBasis, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
 
-const CHURN_FRACTION = 0.2;
-const CHURN_MIN_LEASES = 5;
 const REJECTED_QUIET_DAYS = 30;
 // A floor plan priced by a leasing portal carries a lease per apartment per
 // lease length: five apartments at ten lengths is fifty.
@@ -1153,36 +1151,9 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   // A sync someone asked for by hand (Sync now) is theirs to apply in full.
   let churn = null;
   if (mode === "sync" && !holdReason && churnGuard) {
-    const happens = (c) => !policyRun || c.verdict?.apply;
-    // A unit's own page speaks for that unit alone, so its changes are not
-    // the building-wide churn this hold exists for.
-    const counted = changes.filter((c) => !c.detail?.fromUnitPage && happens(c));
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
-    // Churn is leases appearing, vanishing or repricing. A lease whose blurb
-    // or lengths were reworded is the same lease; counting those once held
-    // a building because every lease gained the words "Available now".
-    // A new unit counts each lease it brings (PR #418 review).
-    const touched = portalPriced
-      ? 0
-      : counted.reduce((n, c) => {
-          if (c.kind === "unit_new") return n + Math.max(1, (c.detail?.offers ?? []).length);
-          if (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind)) return n + 1;
-          if (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
-          return n;
-        }, 0);
-    /*
-     * New units have a cap of their own, whatever the listing's size: the
-     * 11/4 Coronado Place sync added every floor plan of Lindell Tower East,
-     * another building on the same website. More than four in one run, or
-     * more than the listing already has, skips the run.
-     */
-    const newUnits = counted.filter((c) => c.kind === "unit_new").length;
-    const units = state.listing_units.length;
-    const tooManyUnits = newUnits > 4 || (units >= 1 && newUnits > units);
-    if (tooManyUnits || (existing >= CHURN_MIN_LEASES && touched > Math.ceil(existing * CHURN_FRACTION))) {
-      holdReason = "churn_hold";
-      churn = { touched, existing, newUnits, units };
-    }
+    churn = churnCheck({ changes, existingLeases: existing, existingUnits: state.listing_units.length, policyRun, portalPriced });
+    if (churn) holdReason = "churn_hold";
   }
 
   // The units the website showed this time, stamped unless the read is held.

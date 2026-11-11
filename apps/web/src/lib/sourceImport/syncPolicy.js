@@ -81,3 +81,44 @@ export function decideSyncChange(c, { snapshot }) {
       return { apply: false, reason: DENY.unknown };
   }
 }
+
+const CHURN_FRACTION = 0.2;
+const CHURN_MIN_LEASES = 5;
+const MAX_NEW_UNITS = 4;
+
+/*
+ * The churn guard. More than a fifth of the listing's leases changing at once
+ * is more likely a misread than a building re-let overnight, so the run is
+ * skipped and the team is told. Returns { touched, existing, newUnits, units }
+ * when the run should be skipped, else null.
+ *
+ *   policyRun     count only what the policy would apply (a denied change is no churn)
+ *   portalPriced  a leasing portal read in full (readers/portalWalk.js): its
+ *                 weekly repricing is the landlord's own price list, not churn
+ *
+ * Churn is leases appearing, vanishing or repricing. A lease whose blurb or
+ * lengths were reworded is the same lease (every lease gaining the words
+ * "Available now" once held a building). A unit's own page speaks for that
+ * unit alone. A new unit going live counts each lease it brings, and new
+ * units have a cap of their own whatever the listing's size (PR #418 review:
+ * the 11/4 Coronado Place sync added every floor plan of Lindell Tower East,
+ * another building on the same website). A unit added as a draft changes
+ * nothing students see and is no churn (The Shelby's twelve waitlisted plans
+ * would otherwise skip every run after).
+ */
+export function churnCheck({ changes, existingLeases, existingUnits, policyRun = true, portalPriced = false }) {
+  const counted = changes.filter((c) => !c.detail?.fromUnitPage && (!policyRun || c.verdict?.apply));
+  const goesLive = (c) => c.kind === "unit_new" && !c.detail?.draft;
+  const touched = portalPriced
+    ? 0
+    : counted.reduce((n, c) => {
+        if (goesLive(c)) return n + Math.max(1, (c.detail?.offers ?? []).length);
+        if (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind)) return n + 1;
+        if (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        return n;
+      }, 0);
+  const newUnits = counted.filter(goesLive).length;
+  const tooManyUnits = newUnits > MAX_NEW_UNITS || (existingUnits >= 1 && newUnits > existingUnits);
+  const tooMuchChurn = existingLeases >= CHURN_MIN_LEASES && touched > Math.ceil(existingLeases * CHURN_FRACTION);
+  return tooManyUnits || tooMuchChurn ? { touched, existing: existingLeases, newUnits, units: existingUnits } : null;
+}
