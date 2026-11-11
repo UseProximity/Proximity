@@ -34,6 +34,8 @@ import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { decideSyncChange, DENY } from "./syncPolicy.js";
+import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
+import { applyAliases, convertRentBasis, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
@@ -369,7 +371,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     }
     if (snap.floorPlanImageUrl && !db.floor_plan_image_url) specPatch.floorPlanImageUrl = snap.floorPlanImageUrl;
     // Paired by layout and size, but the site calls it something else: say so.
-    if (snap.name && db.name && norm(snap.name) !== norm(db.name)) {
+    // ...unless the sync already knows the site's name for this unit (learn.js).
+    if (snap.name && db.name && norm(snap.name) !== norm(db.name) && !snap.aliasOf) {
       specDiff.name = { old: db.name, new: snap.name };
     }
     if (Object.keys(specPatch).length) {
@@ -734,10 +737,17 @@ export async function executeChange(change, { state, userId }) {
         .single();
       if (error) throw new Error(`unit: ${error.message}`);
       const offers = (d.offers ?? []).slice(0, MAX_LEASES_PER_UNIT);
+      let leaseRows = [];
       if (offers.length) {
-        const { error: le } = await supabase.from("unit_leases").insert(offers.map((o) => leaseRow({ state, userId, unitId: unit.id, offer: o, available: d.available !== false, draft: d.draft })));
+        const { data: inserted, error: le } = await supabase
+          .from("unit_leases")
+          .insert(offers.map((o) => leaseRow({ state, userId, unitId: unit.id, offer: o, available: d.available !== false, draft: d.draft })))
+          .select("id, rent, rent_is_per_person, lease_term_months, available_from, description");
         if (le) throw new Error(`leases: ${le.message}`);
+        leaseRows = inserted ?? [];
       }
+      // What the sync wrote, so a landlord's later edit can be told apart (learn.js).
+      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r })) };
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
@@ -758,8 +768,9 @@ export async function executeChange(change, { state, userId }) {
       return Object.keys(patch).join(", ") || "nothing";
     }
     case "lease_insert": {
-      const { error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft }));
+      const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
+      change.written = { leases: [{ id: row.id, values: row }] };
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
     case "lease_update": {
@@ -768,6 +779,7 @@ export async function executeChange(change, { state, userId }) {
       // until an admin restores it (202611010003_billing_holds.sql).
       if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
+      change.written = { leases: [{ id: d.leaseId, values: d.patch }] };
       return Object.keys(d.patch).join(", ");
     }
     case "lease_withdraw": {
@@ -959,8 +971,46 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (actor && !ownerIds.includes(actor)) ownerIds.push(actor);
   const withdrawnBySync = mode === "sync" ? await withdrawnBySyncFor(listingId) : new Set();
 
+  /*
+   * What the sync has learned from the landlord's edits (learnRules.js):
+   * units they renamed, and rents they state per person. Read from the
+   * listing as it is now, then laid over a copy of the snapshot.
+   */
+  const learnings = await loadLearnings(listingId);
+  const learned = [];
+  for (const u of state.listing_units) {
+    const key = renamedUnitKey(u, learnings.synced.get(`unit:${u.id}`));
+    if (key && learnings.aliases.get(key) !== u.id) {
+      learnings.aliases.set(key, u.id);
+      learned.push({ kind: "unit_alias", source_key: key, unit_id: u.id, value: { siteName: learnings.synced.get(`unit:${u.id}`)?.name ?? null, unitName: u.name }, learned_from: "landlord_rename" });
+    }
+    if (learnings.rentBasis) continue;
+    for (const l of u.unit_leases) {
+      const basis = rentBasisFrom(l, learnings.synced.get(`lease:${l.id}`), u.bedrooms);
+      if (!basis) continue;
+      learnings.rentBasis = basis;
+      learned.push({ kind: "rent_basis", source_key: "*", value: { basis, unitId: u.id, leaseId: l.id }, learned_from: "landlord_edit" });
+      break;
+    }
+  }
+  if (mode === "sync" && (learnings.aliases.size || learnings.rentBasis)) {
+    snapshot = structuredClone(snapshot);
+    applyAliases(snapshot.units, learnings.aliases, new Set(state.listing_units.map((u) => u.id)));
+    convertRentBasis(snapshot.units, learnings.rentBasis);
+  }
+
   const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover });
   const label = listingLabel ?? state.title ?? state.address;
+  // The website's own name for a unit the landlord calls something else.
+  for (const c of changes) {
+    if (c.kind !== "spec_mismatch" || !c.new?.name || !c.unitKey || !c.unitId) continue;
+    if (learnings.aliases.get(c.unitKey) === c.unitId) continue;
+    learnings.aliases.set(c.unitKey, c.unitId);
+    learned.push({ kind: "unit_alias", source_key: c.unitKey, unit_id: c.unitId, value: { siteName: c.new.name, unitName: c.old?.name ?? null }, learned_from: "site_name" });
+  }
+  const remember = async (applied) => {
+    if (learnings.ok) await saveLearnings(listingId, [...learned, ...writtenRows(applied, { learnings, state })]);
+  };
   if (mode === "sync") await holdUnitsBelongingElsewhere({ state, changes, ownerIds });
 
   /*
@@ -998,6 +1048,31 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
           c.note = "set by the landlord; held for their approval";
         }
       }
+    }
+    /*
+     * A lease field the landlord changed after the sync wrote it stays
+     * theirs while the website still says what the sync wrote; a website
+     * value that has moved since is a real change (learnRules.js).
+     */
+    const leasesById = new Map(state.listing_units.flatMap((u) => u.unit_leases).map((l) => [l.id, l]));
+    for (const c of changes) {
+      if (c.protected || !["lease_updated", "rent_change", "unit_relisted"].includes(c.kind)) continue;
+      const leaseId = c.leaseId ?? c.detail?.leaseId;
+      const synced = learnings.synced.get(`lease:${leaseId}`);
+      if (!synced || !c.detail?.patch) continue;
+      const { patch, dropped } = trimForLandlord(c.detail.patch, leasesById.get(leaseId), synced);
+      if (!dropped.length) continue;
+      const meaningful = Object.keys(patch).filter((f) => !["is_active"].includes(f));
+      if (!meaningful.length) {
+        c.auto = false;
+        c.judge = false;
+        c.protected = true;
+        c.note = `the landlord changed ${dropped.join(", ")} since the sync last wrote it`;
+        continue;
+      }
+      c.detail = { ...c.detail, patch, landlordKept: dropped };
+      c.note = `kept the landlord's ${dropped.join(", ")}`;
+      if (c.kind === "rent_change" && !("rent" in patch)) c.kind = "lease_updated";
     }
   }
 
@@ -1094,6 +1169,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     if (applied.length) {
       await supabase.from("listings").update({ last_verified_at: new Date().toISOString(), last_verified_source: "source-sync" }).eq("id", listingId);
     }
+    await remember(applied);
     return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, summary: summarize(snapshot), takeover: false };
   }
 
@@ -1151,6 +1227,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
   await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
+  await remember(applied);
   if (holdReason && monitorId) {
     await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, detail: { op: "none", label } }], applied: false, status: "open" });
   }
@@ -1176,6 +1253,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
   const wasSorted = addsUnits ? await inLayoutOrder(listingId) : false;
   const results = [];
+  const written = [];
   /*
    * What a change creates (a lease, photos) belongs to the listing's landlord,
    * not to whoever approved it: the team approving a sync change during launch
@@ -1205,6 +1283,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
       const done = await executeChange(change, { state, userId: owner });
+      written.push(change);
       const note = gatedNote ? `${done}; ${gatedNote}` : done;
       await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note } }).eq("id", e.id);
       results.push({ id: e.id, ok: true, note });
@@ -1213,6 +1292,10 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
     }
   }
   if (wasSorted && results.some((r) => r.ok)) await sortUnitsByLayout(listingId);
+  if (written.length) {
+    const learnings = await loadLearnings(listingId);
+    if (learnings.ok) await saveLearnings(listingId, writtenRows(written, { learnings, state }));
+  }
   return results;
 }
 

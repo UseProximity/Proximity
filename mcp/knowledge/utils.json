@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T20:13:11.249Z",
-  "count": 343,
+  "_generated": "2026-11-11T20:17:52.838Z",
+  "count": 346,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1142,6 +1142,18 @@
     {
       "file": "src/lib/sourceImport/jobs.js",
       "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/learn.js",
+      "description": "Loading and saving what the sync learns about a listing"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.js",
+      "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceImport/limits.js",

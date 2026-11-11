@@ -2888,6 +2888,24 @@
         "notes": "pk listing_id -> listings.id (cascade); check status in (off, pilot, on); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
       },
       {
+        "table": "listing_sync_learnings",
+        "status": "active",
+        "description": "What the website sync learns about a listing from the landlord's edits (lib/sourceImport/learn.js, learnRules.js). kind synced: the lease or unit values the sync last wrote from the website (source_key lease:<id> | unit:<id>); a listing that now differs was edited by the landlord and that field stays theirs until the website's value moves. kind unit_alias: the website's unit key mapped to the landlord's unit (renamed units). kind rent_basis (source_key '*'): value {basis:'per_person'} when the landlord states the website's whole-apartment rents per person. Server-side only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "source_key:text",
+          "unit_id:uuid",
+          "lease_id:uuid",
+          "value:jsonb",
+          "learned_from:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (listing_id, kind, source_key); fk listing_id->listings.id (cascade), unit_id->listing_units.id (cascade), lease_id->unit_leases.id (cascade); check kind in (synced,unit_alias,rent_basis); rls: service role only (no policies), anon/authenticated revoked; migration 202611110001 (dev applied 2026-11-11, prod pending)"
+      },
+      {
         "table": "listing_sources",
         "status": "unreleased",
         "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only. Page sources are written by lib/agents/pages.js on every sync (last_fingerprint = hash of the page text, so unchanged pages are not re-synthesized); last_status 'stale' after 3 failures in a row hides the source's facts from Proxy.",
