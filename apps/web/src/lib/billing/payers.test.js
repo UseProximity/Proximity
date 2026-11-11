@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, applyEnvelope, coverageFor, coveringAgreement, documentParts, listAgreementDocuments, startSigning } from "./agreements.js";
-import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, completeTakeover, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments } from "./payers.js";
+import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, completeTakeover, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments, staleTakeoverLandlords } from "./payers.js";
 import { checkListingGate, coverageOnly, gateResponseBody, payerCanFix } from "./listingGate.js";
 import { payeeChargeView, statusMessage } from "./chargeDisplay.js";
 import { exhibitPreview } from "./exhibitUnits.js";
@@ -428,6 +428,36 @@ describe("payer: revoking and changing", () => {
     await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
     assert.equal((await coverageFor(db, "pm1")).covered.size, 0);
     assert.ok((await coverageFor(db, "pm2")).covered.has("L3"), "the other account is still covered by the signer");
+  });
+
+  it("a takeover carries what still waits on the signer, and holds the signer off until it is signed", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1");
+    db.tables.listings.push(listing("L4", "400 New St", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L4" });
+    db.tables.listing_units.push(unit("U4", "L4", "Apt 4", false));
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L4"] });
+    const preview = await exhibitPreview(db, "pm1", { takeover: true });
+    assert.ok(preview.properties.find((p) => p.address === "400 New St")?.locked, "the waiting listing is on the landlord's agreement and can't be left off");
+    await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true, takeover: true });
+    await assert.rejects(() => signFor(db, documenso, "pm1", { listingIds: ["L4"] }), (e) => e.code === "takeover_in_progress");
+    const own = db.tables.landlord_agreements.find((a) => a.user_id === "pm1");
+    documenso.complete(own.provider_envelope_id, "2027-02-01T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope(own.provider_envelope_id), { storeSigned });
+    assert.deepEqual(await staleTakeoverLandlords(db), ["pm1"], "the cron safety net finds it");
+    // The webhook and the popup finish it at the same moment: only one of them does.
+    const runs = await Promise.all([completeTakeover(db, documenso, "pm1"), completeTakeover(db, documenso, "pm1")]);
+    assert.equal(runs.filter(Boolean).length, 1);
+    assert.ok((await coverageFor(db, "pm1")).covered.has("L4"), "nothing fell through");
+    assert.deepEqual(await staleTakeoverLandlords(db), []);
+  });
+
+  it("a takeover left unsigned for a week no longer holds the signer off, and is cancelled", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1");
+    await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true, takeover: true, now: new Date("2027-02-01T00:00:00Z") });
+    const own = db.tables.landlord_agreements.find((a) => a.user_id === "pm1");
+    own.created_at = "2027-02-01T00:00:00Z";
+    await signFor(db, documenso, "pm1", { includeDrafts: true, now: new Date("2027-02-09T00:00:00Z") }).catch((e) => assert.notEqual(e.code, "takeover_in_progress"));
+    assert.equal(own.status, "voided");
   });
 
   it("the landlord signs their own agreement first: the signer stays until it is signed, then everything is covered by it", async () => {
