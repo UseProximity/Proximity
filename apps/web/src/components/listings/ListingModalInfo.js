@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -716,7 +717,7 @@ function ReviewsTab({
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-      {blockTarget && (
+      {blockTarget && overBody(
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
@@ -1341,8 +1342,19 @@ function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+/*
+ * Full-screen layers (gallery, lightbox, floor plan, confirmations) render on
+ * <body>, not where they are written. In the browse side panel this component
+ * sits inside a column that is its own stacking context, and the map column
+ * beside it is a later one, so a fixed layer left in place was painted
+ * underneath the map however high its z-index.
+ */
+function overBody(node) {
+  return createPortal(node, document.body);
+}
+
 function FloorPlanViewer({ url, unitName, onClose }) {
-  return (
+  return overBody(
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
@@ -2631,7 +2643,7 @@ export default function ListingModalInfo({
       )}
 
       {/* ── Full-screen Gallery Modal ── */}
-      {isGalleryOpen && (
+      {isGalleryOpen && overBody(
         <div
           className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm overflow-y-auto"
           onClick={() => setIsGalleryOpen(false)}
@@ -2677,7 +2689,7 @@ export default function ListingModalInfo({
       )}
 
       {/* ── Lightbox (fullscreen single image) ── */}
-      {lightboxIndex !== null && (
+      {lightboxIndex !== null && overBody(
         <div
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
           onClick={() => setLightboxIndex(null)}
