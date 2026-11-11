@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T19:40:28.446Z",
-  "count": 335,
+  "_generated": "2026-11-11T21:15:09.495Z",
+  "count": 338,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
