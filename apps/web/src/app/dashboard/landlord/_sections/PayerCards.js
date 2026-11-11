@@ -5,15 +5,14 @@ import toast from "react-hot-toast";
 import CollapsibleSection from "./CollapsibleSection";
 import { Requirement } from "./AgreementCard";
 import AgreementSigningFlow from "./AgreementSigningFlow";
-import LicenseDisclosureFields, { useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
 
 /*
  * A payer: someone else who signs the marketing agreement and pays for a
  * landlord account (Project B, Wyatt 2026-11-09).
  *
- *   NamePayerForm      the landlord names them (name, email, and the landlord's own
- *                      license answer when they have none: it still shows on
- *                      their listings)
+ *   NamePayerForm      the landlord names them (name and email only: the signer
+ *                      answers the license question when they sign, and their
+ *                      details show on the listings they cover)
  *   PayerCard          the landlord's view once named: Pending, Declined or Signed,
  *                      with Resend and Change signer, what the signer approved
  *                      (the landlord publishes it) and declined (Send again).
@@ -59,16 +58,13 @@ export function NamePayerForm({ onDone, onCancel }) {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const license = useLicenseDisclosure();
-  const needsLicense = !license.loading && !license.saved;
 
   const submit = async (e) => {
     e.preventDefault();
-    if (needsLicense && !license.ready) return setError("Answer the real estate license question first.");
     setBusy(true);
     setError(null);
     try {
-      await call("/api/billing/payer", { method: "POST", body: { name, email, ...(needsLicense && { licenseDisclosure: license.payload() }) } });
+      await call("/api/billing/payer", { method: "POST", body: { name, email } });
       toast.success(`We emailed ${name.trim()} the agreement and a link to sign.`);
       onDone();
     } catch (err) {
@@ -85,21 +81,12 @@ export function NamePayerForm({ onDone, onCancel }) {
         they sign.
       </p>
       <PayerFields name={name} email={email} setName={setName} setEmail={setEmail} idPrefix="payer" />
-      {needsLicense && (
-        <div className="border-t border-gray-100 pt-3">
-          <p className="text-sm font-medium text-gray-900">Your real estate license</p>
-          <p className="text-xs text-gray-500">Missouri requires this on your listings, whoever signs the agreement.</p>
-          <div className="mt-2">
-            <LicenseDisclosureFields state={license} idPrefix="payer-license" />
-          </div>
-        </div>
-      )}
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" className={BUTTON} onClick={onCancel} disabled={busy}>
           Cancel
         </button>
-        <button type="submit" className={PRIMARY} disabled={busy || !name.trim() || !email.trim() || license.loading}>
+        <button type="submit" className={PRIMARY} disabled={busy || !name.trim() || !email.trim()}>
           {busy ? "Sending..." : "Send to sign"}
         </button>
       </div>

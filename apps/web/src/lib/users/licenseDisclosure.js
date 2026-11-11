@@ -173,3 +173,79 @@ export async function listedByFor(db, userIds) {
   for (const r of data ?? []) out.set(r.user_id, toListedBy(r));
   return out;
 }
+
+/*
+ * Whose "Listed by" a landlord's offering on a listing shows (Wyatt, 2026-11-10):
+ * whoever signed the agreement covering it. When the landlord's authorized signer
+ * (Project B) signed for this listing, the signer's details show, falling back to
+ * the landlord's own when the signer is not a licensee. A listing the signer has
+ * not covered yet (still waiting, or the signer was revoked) shows the landlord's.
+ *
+ * `signerOf`: Map landlordId -> the signer's id, only for landlords whose
+ * listing is covered by that signer's agreement. `listed`: Map userId -> listedBy
+ * for the licensees among the landlords and signers.
+ */
+export function pickListedBy(landlordIds, signerOf, listed) {
+  const out = new Map();
+  for (const id of new Set((landlordIds ?? []).filter(Boolean))) {
+    const signer = signerOf.get(id);
+    const pick = (signer && listed.get(signer)) || listed.get(id) || null;
+    if (pick) out.set(id, pick);
+  }
+  return out;
+}
+
+const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
+
+/*
+ * For one listing: the landlords among `landlordIds` whose offering there is
+ * covered by their authorized signer's signed agreement. Map landlordId -> signerId.
+ */
+async function coveringSigners(db, listingId, landlordIds) {
+  const out = new Map();
+  if (!listingId || !landlordIds.length) return out;
+  const { data: links, error } = await db
+    .from("billing_payers")
+    .select("landlord_id, payer_id")
+    .in("landlord_id", landlordIds)
+    .is("listing_id", null)
+    .eq("status", "active");
+  if (missingSchema(error)) return out;
+  if (error) throw error;
+  if (!links?.length) return out;
+  const payerOf = new Map(links.map((l) => [l.landlord_id, l.payer_id]));
+  const { data: rows, error: covErr } = await db
+    .from("agreement_coverage")
+    .select("user_id, agreement_id")
+    .eq("listing_id", listingId)
+    .in("user_id", [...payerOf.keys()])
+    .eq("status", "covered");
+  if (missingSchema(covErr)) return out;
+  if (covErr) throw covErr;
+  if (!rows?.length) return out;
+  // Only coverage under the signer's own signed master counts as theirs.
+  const { data: masters, error: mErr } = await db
+    .from("landlord_agreements")
+    .select("id, user_id")
+    .in("id", [...new Set(rows.map((r) => r.agreement_id).filter(Boolean))])
+    .eq("status", "signed");
+  if (mErr) throw mErr;
+  const holderOf = new Map((masters ?? []).map((m) => [m.id, m.user_id]));
+  for (const r of rows) {
+    const signer = payerOf.get(r.user_id);
+    if (signer && holderOf.get(r.agreement_id) === signer) out.set(r.user_id, signer);
+  }
+  return out;
+}
+
+/**
+ * "Listed by" for each landlord offering on one listing: Map landlordId -> listedBy,
+ * following pickListedBy. Landlords with nothing to show are absent.
+ */
+export async function listedByForListing(db, listingId, landlordIds) {
+  const ids = [...new Set((landlordIds ?? []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const signerOf = await coveringSigners(db, listingId, ids);
+  const listed = await listedByFor(db, [...ids, ...signerOf.values()]);
+  return pickListedBy(ids, signerOf, listed);
+}
