@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateResponseBody, isLeaseHeldForBilling } from "@/lib/billing/listingGate";
 import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
 
@@ -110,6 +111,27 @@ export async function PATCH(req, { params }) {
 
   if (!Object.keys(patch).length) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+
+  /*
+   * Same no-names / no-links / no-contact-details rule as the property
+   * description. The stored text is passed as `previous` because the editor
+   * sends the note on every save, changed or not (see checkListingDescription).
+   */
+  if (typeof body.description === "string" && body.description.trim()) {
+    const { data: stored, error: storedError } = await supabase
+      .from("unit_leases")
+      .select("description")
+      .eq("id", leaseId)
+      .maybeSingle();
+    if (storedError) {
+      console.error("[leases/:id] description lookup failed:", storedError.message);
+      return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
+    }
+    const problem = checkListingDescription(body.description, {
+      previous: stored?.description ?? null,
+    });
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   }
 
   // A lease the overdue-invoice job withdrew stays withdrawn until an admin

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -531,6 +531,50 @@ function SignInPrompt({ message, tab }) {
 
 // ─── Tab: Reviews ─────────────────────────────────────────────────────────────
 
+// Reviews sit two across from the md breakpoint up, one across below it.
+const TWO_COLUMN_REVIEWS_QUERY = "(min-width: 768px)";
+
+function subscribeTwoColumnReviews(onChange) {
+  const query = window.matchMedia(TWO_COLUMN_REVIEWS_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function useTwoColumnReviews() {
+  return useSyncExternalStore(
+    subscribeTwoColumnReviews,
+    () => window.matchMedia(TWO_COLUMN_REVIEWS_QUERY).matches,
+    () => false
+  );
+}
+
+// A rough height for a review card, in pixels, from the length of its text.
+// It only has to rank cards against each other, and it is worked out from the
+// words alone (never measured) so a card does not hop to the other column when
+// a menu, a reply box or the editor opens inside it.
+function estimateReviewHeight(review) {
+  const lines = (text) => Math.ceil(String(text || "").length / 55);
+  const reply = review.landlordReply?.reply;
+  return 110 + lines(review.comment) * 23 + (reply ? 60 + lines(reply) * 20 : 0);
+}
+
+/*
+ * Deal the reviews into two columns, each going to whichever column is shorter
+ * so far (the left one on a tie). Reading order holds as closely as it can:
+ * the first review is top left, the second top right, and the next lands under
+ * whichever of those two is shorter.
+ */
+function packReviewColumns(reviews) {
+  const columns = [[], []];
+  const heights = [0, 0];
+  for (const review of reviews) {
+    const target = heights[1] < heights[0] ? 1 : 0;
+    columns[target].push(review);
+    heights[target] += estimateReviewHeight(review) + 16;
+  }
+  return columns;
+}
+
 function ReviewsTab({
   legitimateReviews,
   reviewsLoaded,
@@ -576,6 +620,8 @@ function ReviewsTab({
   );
   const blockedHiddenCount = legitimateReviews.length - visibleReviews.length;
   const displayed = showAllReviews ? visibleReviews : visibleReviews.slice(0, 4);
+  const twoColumnReviews = useTwoColumnReviews();
+  const reviewColumns = twoColumnReviews ? packReviewColumns(displayed) : [displayed];
 
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
   const [voteOverrides, setVoteOverrides] = useState({});
@@ -838,124 +884,131 @@ function ReviewsTab({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-4 mb-4">
-            {displayed.map((review, i) => {
-              const date = review.createdAt
-                ? new Date(review.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : null;
-              return (
-                <div
-                  key={review._id || i}
-                  className="border border-gray-100 rounded-xl p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={
-                          review.reviewer?.image?.trim()
-                            ? review.reviewer.image
-                            : "/default-icons/default-user.png"
-                        }
-                        alt={review.reviewer?.name || "Anonymous"}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">
-                          {review.reviewer?.name || "Anonymous"}
+          {/* Two independent stacks rather than a grid: a grid row is as
+              tall as its longest review, which left a hole under a short
+              review sitting beside a long one. */}
+          <div className="flex items-start gap-4 mb-4">
+            {reviewColumns.map((column, c) => (
+              <div key={c} className="flex min-w-0 flex-1 flex-col gap-4">
+                {column.map((review, i) => {
+                  const date = review.createdAt
+                    ? new Date(review.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : null;
+                  return (
+                    <div
+                      key={review._id || i}
+                      className="border border-gray-100 rounded-xl p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={
+                              review.reviewer?.image?.trim()
+                                ? review.reviewer.image
+                                : "/default-icons/default-user.png"
+                            }
+                            alt={review.reviewer?.name || "Anonymous"}
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {review.reviewer?.name || "Anonymous"}
+                            </div>
+                            {date && (
+                              <div className="text-xs text-gray-400">
+                                {date}
+                                {review.editedAt && " · Edited"}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        {date && (
-                          <div className="text-xs text-gray-400">
-                            {date}
-                            {review.editedAt && " · Edited"}
+                        {/* While editing, the editor's own stars replace these. */}
+                        {editingReviewId !== review._id && (
+                          <div className="flex items-center gap-1">
+                            <StarRatingInput
+                              value={review.rating}
+                              readOnly
+                              showValue={false}
+                              px={14}
+                              color="red"
+                            />
+                            <CardMenu items={reviewMenuItems(review)} label="Review actions" />
                           </div>
                         )}
                       </div>
-                    </div>
-                    {/* While editing, the editor's own stars replace these. */}
-                    {editingReviewId !== review._id && (
-                      <div className="flex items-center gap-1">
-                        <StarRatingInput
-                          value={review.rating}
-                          readOnly
-                          showValue={false}
-                          px={14}
-                          color="red"
+                      <div className="mb-3">
+                        {editingReviewId === review._id ? (
+                          <ReviewEditForm
+                            initialText={review.comment}
+                            initialRating={review.rating}
+                            minLength={5}
+                            onSave={(values) => handleReviewEdit(review, values)}
+                            onCancel={() => setEditingReviewId(null)}
+                          />
+                        ) : (
+                          <p className="text-gray-700 text-sm leading-relaxed">
+                            {review.comment}
+                          </p>
+                        )}
+                        <ReviewReplySection
+                          review={review}
+                          owner={listing?.owner}
+                          isLandlord={isLandlord}
+                          readOnly={preview}
                         />
-                        <CardMenu items={reviewMenuItems(review)} label="Review actions" />
                       </div>
-                    )}
-                  </div>
-                  <div className="mb-3">
-                    {editingReviewId === review._id ? (
-                      <ReviewEditForm
-                        initialText={review.comment}
-                        initialRating={review.rating}
-                        minLength={5}
-                        onSave={(values) => handleReviewEdit(review, values)}
-                        onCancel={() => setEditingReviewId(null)}
-                      />
-                    ) : (
-                      <p className="text-gray-700 text-sm leading-relaxed">
-                        {review.comment}
-                      </p>
-                    )}
-                    <ReviewReplySection
-                      review={review}
-                      owner={listing?.owner}
-                      isLandlord={isLandlord}
-                      readOnly={preview}
-                    />
-                  </div>
-                  <div className="flex gap-4 text-xs text-gray-400">
-                    {(() => {
-                      const override = voteOverrides[review._id];
-                      const upCount = override
-                        ? override.upvotes
-                        : review.upvotes ?? 0;
-                      const downCount = override
-                        ? override.downvotes
-                        : review.downvotes ?? 0;
-                      const userVote = override
-                        ? override.userVote
-                        : review.userVote ?? null;
-                      return (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleVote(review._id, "up")}
-                            className={`flex items-center gap-1 transition ${
-                              userVote === "up"
-                                ? "text-green-500"
-                                : "hover:text-green-500"
-                            }`}
-                          >
-                            <ThumbsUp size={13} /> <span>{upCount}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleVote(review._id, "down")}
-                            className={`flex items-center gap-1 transition ${
-                              userVote === "down"
-                                ? "text-red-500"
-                                : "hover:text-red-500"
-                            }`}
-                          >
-                            <ThumbsDown size={13} /> <span>{downCount}</span>
-                          </button>
-                        </>
-                      );
-                    })()}
-                  </div>
-                  {reviewActionMsg[review._id] && (
-                    <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
-                  )}
-                </div>
-              );
-            })}
+                      <div className="flex gap-4 text-xs text-gray-400">
+                        {(() => {
+                          const override = voteOverrides[review._id];
+                          const upCount = override
+                            ? override.upvotes
+                            : review.upvotes ?? 0;
+                          const downCount = override
+                            ? override.downvotes
+                            : review.downvotes ?? 0;
+                          const userVote = override
+                            ? override.userVote
+                            : review.userVote ?? null;
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleVote(review._id, "up")}
+                                className={`flex items-center gap-1 transition ${
+                                  userVote === "up"
+                                    ? "text-green-500"
+                                    : "hover:text-green-500"
+                                }`}
+                              >
+                                <ThumbsUp size={13} /> <span>{upCount}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleVote(review._id, "down")}
+                                className={`flex items-center gap-1 transition ${
+                                  userVote === "down"
+                                    ? "text-red-500"
+                                    : "hover:text-red-500"
+                                }`}
+                              >
+                                <ThumbsDown size={13} /> <span>{downCount}</span>
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      {reviewActionMsg[review._id] && (
+                        <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           {blockedHiddenCount > 0 && (
@@ -2355,11 +2408,15 @@ export default function ListingModalInfo({
                     how wide the right-hand action is. In the browse panel they
                     start at the left instead, the first label in line with the
                     title above (Wyatt, 2026-11-01): pl-5 plus the tab's own
-                    px-5 matches the title's px-10. */}
-                <nav className="flex items-stretch max-w-7xl mx-auto">
-                  {!compact && <div className="flex-1" aria-hidden="true" />}
+                    px-5 matches the title's px-10.
+                    On a phone every tab has to be in view at once, so the six
+                    share the full width in a tighter size, and whatever sits
+                    to their right on desktop wraps onto its own line under
+                    them instead of pushing tabs off the edge. */}
+                <nav className="flex flex-wrap items-stretch max-w-7xl mx-auto md:flex-nowrap">
+                  {!compact && <div className="hidden flex-1 md:block" aria-hidden="true" />}
 
-                  <div className="flex overflow-x-auto scrollbar-hidden">
+                  <div className="flex w-full overflow-x-auto scrollbar-hidden md:w-auto">
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
                       (tab) => (
                         <button
@@ -2367,7 +2424,7 @@ export default function ListingModalInfo({
                           type="button"
                           onClick={() => jumpTo(tab.id)}
                           aria-current={activeTab === tab.id ? "true" : undefined}
-                          className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition md:flex-none md:px-5 md:text-sm ${
                             activeTab === tab.id
                               ? "text-red-600 border-red-600"
                               : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
@@ -2388,7 +2445,7 @@ export default function ListingModalInfo({
                   {/* Opaque and padded so that when the tab strip scrolls under it
                       on a narrow screen, the last tab is clipped cleanly instead of
                       appearing to run into the button. */}
-                  <div className="flex flex-1 items-stretch justify-end gap-2 bg-white pl-2 pr-4">
+                  <div className="flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 md:w-auto md:flex-1">
                     {/* Joining this property's waitlist happens on the landlord's
                         own form, so the link hops through our API first: that
                         redirect is the only place a click can still be recorded

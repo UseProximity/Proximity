@@ -84,6 +84,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ReviewDuplicatesPanel",
+      "file": "src/components/admin/ReviewDuplicatesPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ReviewInvitesView",
       "file": "src/components/admin/ReviewInvitesView.js",
       "description": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger"

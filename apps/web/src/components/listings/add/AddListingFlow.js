@@ -46,6 +46,7 @@ import {
 } from "@/lib/listings/pendingDraft";
 import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
 import InfoTip from "@/components/ui/InfoTip";
+import { checkListingDescription } from "@/lib/contentRules";
 
 const emptyNewUnit = { name: "", bedrooms: "", bathrooms: "", area: "" };
 
@@ -268,6 +269,12 @@ export default function AddListingFlow({ user }) {
   if (!lease.leaseTermMonths.length) missing.push({ key: "leaseTermMonths", label: "Lease length" });
   if (lease.sublease && !lease.subleaseRightsConfirmed) {
     missing.push({ key: "subleaseRightsConfirmed", label: "Sublease confirmation" });
+  }
+
+  // Shown under the note itself while they type (LeaseStep), so this only stops
+  // the publish the server would refuse anyway.
+  if (checkListingDescription(lease.description)) {
+    missing.push({ key: "description", label: "A note without names or contact details" });
   }
 
   const missingKeys = new Set(missing.map((m) => m.key));
