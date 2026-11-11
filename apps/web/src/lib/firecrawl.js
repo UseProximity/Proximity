@@ -2,8 +2,9 @@
  * Every call to Firecrawl goes through here, so a second account can take over
  * when the first runs out of credits (Wyatt, 2026-11-11).
  *
- * FIRECRAWL_API_KEY is the main account and FIRECRAWL_API_KEY_2 the backup,
- * named like JINA_READER_KEY_2. A request goes to the main key first. When
+ * FIRECRAWL_API_KEY is the main account and FIRECRAWL_API_KEY_BACKUP the
+ * backup (the name it was set under in Vercel). FIRECRAWL_API_KEY_2, named like
+ * JINA_READER_KEY_2, is accepted too so either spelling works. A request goes to the main key first. When
  * Firecrawl answers 402 (out of credits) or 401 (key not accepted), the same
  * request is sent again on the next key, and the spent key rests for an hour
  * before it is tried again. That way the main account comes back by itself
@@ -34,6 +35,7 @@ export const ALERT_SUBJECTS = {
 function processEnv() {
   return {
     FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY,
+    FIRECRAWL_API_KEY_BACKUP: process.env.FIRECRAWL_API_KEY_BACKUP,
     FIRECRAWL_API_KEY_2: process.env.FIRECRAWL_API_KEY_2,
   };
 }
@@ -44,6 +46,7 @@ const alertedAt = new Map();
 function keyList(env) {
   const keys = [
     { key: env.FIRECRAWL_API_KEY, label: "main (FIRECRAWL_API_KEY)" },
+    { key: env.FIRECRAWL_API_KEY_BACKUP, label: "backup (FIRECRAWL_API_KEY_BACKUP)" },
     { key: env.FIRECRAWL_API_KEY_2, label: "backup (FIRECRAWL_API_KEY_2)" },
   ].filter((k) => k.key);
   // The same key set twice is one account, not a backup.

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { firecrawlRequest, resetFirecrawlState } from "./firecrawl.js";
 
-const env = { FIRECRAWL_API_KEY: "main", FIRECRAWL_API_KEY_2: "backup" };
+const env = { FIRECRAWL_API_KEY: "main", FIRECRAWL_API_KEY_BACKUP: "backup" };
 
 function harness(statusFor) {
   const calls = [];
@@ -74,4 +74,12 @@ test("no backup set: behaves like before", async () => {
   assert.equal(await firecrawlRequest("/v2/scrape", {}, { deps: h.deps }), null);
   assert.equal(await firecrawlRequest("/v2/scrape", {}, { deps: { ...h.deps, env: {} } }), null);
   assert.deepEqual(h.calls, ["main"]);
+});
+
+test("FIRECRAWL_API_KEY_2 also works as the backup name", async () => {
+  resetFirecrawlState();
+  const h = harness((k) => (k === "main" ? 402 : 200));
+  h.deps.env = { FIRECRAWL_API_KEY: "main", FIRECRAWL_API_KEY_2: "backup" };
+  assert.equal((await firecrawlRequest("/v2/scrape", {}, { deps: h.deps })).status, 200);
+  assert.deepEqual(h.calls, ["main", "backup"]);
 });
