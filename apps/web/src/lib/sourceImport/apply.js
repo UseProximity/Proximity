@@ -7,8 +7,10 @@
  * difference is only what is already there:
  *
  *   - A unit matches by name, then by layout and size. A unit the site has
- *     and the listing lacks is added (as a draft on a live listing). A unit the
- *     listing has and the site dropped is flagged, never removed.
+ *     and the listing lacks is added and published (Wyatt, 2026-11-11), or
+ *     added as a draft when its name is in a different shape from the
+ *     listing's units or the landlord cannot publish yet. A unit the listing
+ *     has and the site dropped has its leases withdrawn, never removed.
  *   - A lease is one price on one unit. The same price on the site updates
  *     that lease's details (lengths, date, apartments). A price the site no
  *     longer offers makes its lease unavailable. A new price is a new lease.
@@ -27,6 +29,7 @@
  */
 import supabase from "@/lib/supabase";
 import { unitNameKey, apartmentsLabel, cleanUnitName } from "@/utils/unitName";
+import { listingUnitFormat, formatConflict } from "@/utils/unitFormat";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
@@ -149,6 +152,8 @@ const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y
 export function putsLeaseLive(c) {
   const d = c.detail ?? {};
   if (c.kind === "lease_new") return !d.draft;
+  // A new unit a sync publishes (Wyatt, 2026-11-11) goes live with its leases.
+  if (c.kind === "unit_new") return !!d.publish && !d.draft;
   if (c.kind === "unit_relisted") return true;
   return d.op === "lease_update" && d.patch?.unavailable === false;
 }
@@ -186,8 +191,13 @@ function cachedGate(userId, listingId) {
  * reads the loaded state, writes nothing.
  *
  * mode "import" fills a fresh draft; mode "sync" reconciles a listing that
- * already has data. The difference shows up in a few places: a sync adds new
- * units as drafts and leaves prose alone, an import writes everything.
+ * already has data. The difference shows up in a few places: a sync leaves
+ * prose alone and withdraws what the website stopped showing, an import
+ * writes everything.
+ *
+ * A sync's new unit is published (Wyatt, 2026-11-11), unless its name is in a
+ * different shape from the listing's units ("Apt 201" on a listing of floor
+ * plans, utils/unitFormat.js): then it is added as a draft for a person.
  */
 /*
  * Unit tabs in layout order: studios first, then bedrooms, bathrooms, size,
@@ -317,10 +327,13 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
    */
   const pricesUnknown = mode === "sync" && ordered.length > 0 && !ordered.some((u) => (u.offers ?? []).some((o) => o.rent != null));
   const askForPrice = { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] };
+  const listingFormat = mode === "sync" ? listingUnitFormat(state.listing_units.map((u) => u.name)) : null;
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
+      const misshapen = mode === "sync" && formatConflict(listingFormat, snap.name);
       push({
+        ...(misshapen ? { note: `listed as ${listingFormat === "plan" ? "floor plans" : "apartments"} here, so added as a draft` } : {}),
         kind: "unit_new",
         unitKey: snap.key,
         field: "unit",
@@ -333,7 +346,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           offers: pricesUnknown ? [askForPrice] : snap.offers,
           available: pricesUnknown ? true : snap.available,
           photos: snap.photos,
-          draft: mode === "sync",
+          draft: misshapen,
+          publish: mode === "sync" && !misshapen,
+          ...(misshapen ? { formatConflict: listingFormat } : {}),
         },
       });
       continue;
@@ -477,10 +492,40 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       push({ kind: "lease_withdrawn", unitKey: snap.key, unitId: db.id, leaseId: l.id, field: "unavailable", old: false, new: true, detail: { op: "lease_withdraw", leaseId: l.id, label, rent: l.rent } });
     }
   }
+  /*
+   * A unit the website no longer shows has been let (Wyatt, 2026-11-11: "when
+   * it can't find it, it withdraws"): its live leases are withdrawn, never
+   * deleted, and come back on their own if the website shows the unit again.
+   * Only flagged, as before, when the read says nothing about what is let:
+   * no units at all (a blocked or broken page) or no prices anywhere.
+   * Held for a person when a new unit of the same layout could be this one
+   * under a new name.
+   */
   if (mode === "sync") {
+    const readsLettings = ordered.length > 0 && !pricesUnknown;
     for (const u of unmatched) {
-      if (!u.unit_leases.some((l) => isMine(l, ownerIds) && !l.unavailable)) continue;
-      push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, detail: { op: "none", unitId: u.id, label: u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath` } });
+      const live = u.unit_leases.filter((l) => isMine(l, ownerIds) && !l.unavailable);
+      if (!live.length) continue;
+      const label = u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath`;
+      if (!readsLettings) {
+        push({ kind: "missing_unit", unitId: u.id, field: "unit", old: { name: u.name, bedrooms: u.bedrooms, bathrooms: u.bathrooms }, new: null, auto: false, detail: { op: "none", unitId: u.id, label } });
+        continue;
+      }
+      const lookalike = changes.find(
+        (c) => c.kind === "unit_new" && Number(c.new?.bedrooms) === Number(u.bedrooms) && Number(c.new?.bathrooms) === Number(u.bathrooms)
+      );
+      for (const l of live) {
+        push({
+          kind: "lease_withdrawn",
+          unitId: u.id,
+          leaseId: l.id,
+          field: "unavailable",
+          old: false,
+          new: true,
+          ...(lookalike ? { auto: false, judge: false, note: `the website's new ${lookalike.detail?.label ?? "unit"} has the same layout and may be this unit renamed` } : {}),
+          detail: { op: "lease_withdraw", leaseId: l.id, unitId: u.id, label, rent: l.rent, unitGone: true },
+        });
+      }
     }
   }
   // Which changes came from a unit's own page, and whether that page is gone
@@ -921,6 +966,14 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     for (const c of changes.filter(putsLeaseLive)) {
       const gate = await gateOf(c.unitId ?? c.detail?.unitId ?? null);
       if (gate.allowed) continue;
+      if (c.kind === "unit_new") {
+        // The unit is still worth having: added as a draft the landlord
+        // publishes once the gate lets them.
+        c.detail = { ...c.detail, draft: true, publish: false };
+        c.gated = true;
+        c.note = `goes in as a draft until the landlord can publish: ${gate.message}`;
+        continue;
+      }
       c.auto = false;
       c.judge = false;
       c.gated = true;
@@ -1035,16 +1088,22 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
+    let gatedNote = null;
     if (putsLeaseLive(e)) {
       const gate = await gateOf(e.detail?.unitId ?? null);
-      if (!gate.allowed) {
+      if (!gate.allowed && e.kind === "unit_new") {
+        // Accepted, but the landlord cannot publish yet: added as a draft.
+        e.detail = { ...e.detail, draft: true, publish: false };
+        gatedNote = `added as a draft until the landlord can publish: ${gate.message}`;
+      } else if (!gate.allowed) {
         results.push({ id: e.id, ok: false, error: gate.message });
         continue;
       }
     }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
-      const note = await executeChange(change, { state, userId: owner });
+      const done = await executeChange(change, { state, userId: owner });
+      const note = gatedNote ? `${done}; ${gatedNote}` : done;
       await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note } }).eq("id", e.id);
       results.push({ id: e.id, ok: true, note });
     } catch (err) {
