@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
@@ -26,6 +26,53 @@ function campusWalk(listing) {
     .map(([, v]) => v)
     .filter(Number.isFinite);
   return vals.length ? Math.min(...vals) : null;
+}
+
+/*
+ * The explanation has to fit the card without scrolling (Wyatt, 2026-11-11),
+ * and the card's height follows the window. So the text steps down through
+ * these sizes until it fits the room it has. Only if the smallest still
+ * overflows (a very short window) does the box scroll.
+ */
+const FIT_STEPS = [
+  { reason: "text-xs leading-relaxed", note: "text-xs leading-snug" },
+  { reason: "text-xs leading-snug", note: "text-xs leading-snug" },
+  { reason: "text-[11px] leading-snug", note: "text-[11px] leading-snug" },
+  { reason: "text-[11px] leading-tight", note: "text-[11px] leading-tight" },
+  { reason: "text-[10px] leading-tight", note: "text-[10px] leading-tight" },
+];
+
+function FittedReason({ reason, note }) {
+  const boxRef = useRef(null);
+  const [step, setStep] = useState(0);
+  const [resized, setResized] = useState(0);
+
+  // Start again from the largest size whenever the room or the words change.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      setStep(0);
+      setResized((n) => n + 1);
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => setStep(0), [reason, note]);
+
+  // Before paint: one size down for as long as the words overflow the box.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (box && step < FIT_STEPS.length - 1 && box.scrollHeight > box.clientHeight + 1) setStep(step + 1);
+  }, [step, resized, reason, note]);
+
+  const size = FIT_STEPS[step];
+  return (
+    <div ref={boxRef} className="scrollbar-hidden mt-2.5 min-h-0 flex-1 overflow-y-auto">
+      <p className={`${size.reason} text-gray-700`}>{reason}</p>
+      {note && <p className={`mt-1 ${size.note} text-red-600`}>{note}</p>}
+    </div>
+  );
 }
 
 export function MatchCardSkeleton() {
@@ -137,13 +184,8 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
           </div>
         )}
 
-        {/* The explanation takes whatever height the card has left. On a short
-            window it scrolls inside the card rather than squeezing the facts
-            above it or pushing Contact out of view. */}
-        <div className="scrollbar-hidden mt-2.5 min-h-0 flex-1 overflow-y-auto">
-          <p className="text-xs leading-relaxed text-gray-700">{match.reason}</p>
-          {match.note && <p className="mt-1 text-xs leading-snug text-red-600">{match.note}</p>}
-        </div>
+        {/* The explanation takes whatever height the card has left, sized to fit it. */}
+        <FittedReason reason={match.reason} note={match.note} />
 
         <div className="flex flex-shrink-0 items-end justify-between gap-2 pt-2">
           <button
