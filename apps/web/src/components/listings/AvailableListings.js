@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -303,6 +303,23 @@ export default function AvailableListings({
     const qs = params.toString();
     router.push(`/browse${qs ? `?${qs}` : ""}`);
   };
+
+  // With the map visible the compare panel slides out when the reader closes it,
+  // so it stays mounted (as `leaving`) until the slide ends. Not for a close that
+  // a panel opening or a resize causes (never both, so those cut at once), nor
+  // with the map hidden (that one fades through).
+  const reduceMotion = useReducedMotion();
+  const [prevCompare, setPrevCompare] = useState(compare);
+  const [leaving, setLeaving] = useState(null);
+  if (prevCompare !== compare) {
+    setPrevCompare(compare);
+    setLeaving(
+      prevCompare && !compare && !mapHidden && !expandedListing && isDesktop
+        ? prevCompare
+        : null
+    );
+  }
+  const shownCompare = compare ?? (mapHidden || expandedListing ? null : leaving);
 
   // Compare replaces an open detail panel, which would hide the grid it picks from,
   // and the selected listing, so no map card for it is left behind once it exits.
@@ -801,19 +818,38 @@ export default function AvailableListings({
           </div>
         )}
         {/* Compare Listings lies over the map (scrim), or alone when the map is hidden. */}
-        {compare && (
-          <div
-            className={`absolute inset-0 z-30 p-4 ${mapHidden ? "bg-gray-50" : "bg-black/20"}`}
-          >
-            <ComparePanel
-              slots={compare}
-              onRemove={(i) =>
-                setCompare((c) => c.map((l, j) => (j === i ? null : l)))
-              }
-              onClose={onCloseCompare}
-            />
-          </div>
-        )}
+        {shownCompare && (() => {
+          // With the map visible the scrim eases in and the panel slides in from
+          // the right, and back out on close; with it hidden nothing moves here.
+          const motionProps = (from, to) => ({
+            initial: mapHidden || reduceMotion ? false : from,
+            animate: to,
+            transition: { duration: reduceMotion ? 0 : 0.32, ease: [0.22, 1, 0.36, 1] },
+          });
+          return (
+            <div className={`absolute inset-0 z-30 ${compare ? "" : "pointer-events-none"}`}>
+              <motion.div
+                className={`absolute inset-0 ${mapHidden ? "bg-gray-50" : "bg-black/20"}`}
+                {...motionProps({ opacity: 0 }, { opacity: compare ? 1 : 0 })}
+              />
+              <motion.div
+                className="relative h-full p-4"
+                {...motionProps({ x: "100%" }, { x: compare ? 0 : "100%" })}
+                onAnimationComplete={() => {
+                  if (!compare) setLeaving(null);
+                }}
+              >
+                <ComparePanel
+                  slots={shownCompare}
+                  onRemove={(i) =>
+                    setCompare((c) => c.map((l, j) => (j === i ? null : l)))
+                  }
+                  onClose={onCloseCompare}
+                />
+              </motion.div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Mobile layout ── */}
