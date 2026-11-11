@@ -26,9 +26,9 @@ export default function Modal({ isOpen, onClose, children }) {
         onClick={onClose}
       />
 
-      {/* Modal. Scrolls inside the screen, so tall content stays reachable. */}
+      {/* Modal */}
       <div
-        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto max-h-full overflow-y-auto"
+        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto overflow-hidden"
         onWheel={(e) => {
           // Prevent wheel events from bubbling up to parent elements (like the map)
           e.stopPropagation();

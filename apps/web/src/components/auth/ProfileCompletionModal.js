@@ -183,8 +183,7 @@ export default function ProfileCompletionModal({ session }) {
   const graduationYears = graduationYearOptions();
 
   // Not dismissible: no backdrop click handler, no close button. Log out is the
-  // one way out. The backdrop tone is the bg-white/60 below (the alternative is
-  // bg-gray-900/25).
+  // one way out.
   return (
     <div
       ref={overlayRef}
@@ -196,7 +195,7 @@ export default function ProfileCompletionModal({ session }) {
         aria-modal="true"
         aria-labelledby="profile-completion-title"
         tabIndex={-1}
-        className="relative flex max-h-full w-full scroll-pb-24 flex-col overflow-y-auto overscroll-contain max-w-lg rounded-3xl bg-white shadow-2xl shadow-red-900/10 outline-none ring-1 ring-gray-200"
+        className="flex max-h-full w-full scroll-pb-24 flex-col overflow-y-auto overscroll-contain max-w-lg rounded-3xl bg-white shadow-2xl shadow-red-900/10 outline-none ring-1 ring-gray-200"
       >
         <div className="shrink-0 px-5 pt-5 text-center sm:px-8 sm:pt-8">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 ring-1 ring-red-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-3xl [@media(max-height:32rem)]:h-10 [@media(max-height:32rem)]:w-10">
@@ -336,8 +335,7 @@ export default function ProfileCompletionModal({ session }) {
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/" })}
-              disabled={saving}
-              className={`shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 underline hover:text-gray-700 disabled:opacity-50 ${FOCUS_RING}`}
+              className={`shrink-0 rounded-md px-2 py-1 text-sm text-gray-500 underline hover:text-gray-700 ${FOCUS_RING}`}
             >
               Log out
             </button>
