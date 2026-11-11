@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { listChargesForLandlord, listChargesPaidBy } from "@/lib/billing/charges";
 import { payeeChargeView } from "@/lib/billing/chargeDisplay";
 import { activePayerLink } from "@/lib/billing/payerLinks";
@@ -21,15 +21,15 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth landlord (own charges only)
  */
-export async function GET() {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const [own, paidFor, link] = await Promise.all([
-      listChargesForLandlord(supabase, session.user.id),
-      listChargesPaidBy(supabase, session.user.id),
-      activePayerLink(supabase, session.user.id),
+      listChargesForLandlord(supabase, reader.userId),
+      listChargesPaidBy(supabase, reader.userId),
+      activePayerLink(supabase, reader.userId),
     ]);
     // What this account is invoiced for: its own charges (each one the payer
     // doesn't pay, read per charge, never from whether a payer exists now) and the

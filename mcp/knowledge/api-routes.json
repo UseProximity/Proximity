@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-10T21:19:27.220Z",
+  "_generated": "2026-11-11T19:30:40.281Z",
   "count": 259,
   "routes": [
     {
@@ -1243,9 +1243,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/change-requests/files/[messageId]/route.js"
@@ -1255,9 +1255,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/documents/route.js"
@@ -1279,9 +1279,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/agreement/file/route.js"
@@ -1349,7 +1349,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "super",
+        "GET": "public",
         "POST": "super",
         "DELETE": "super"
       },
@@ -1361,9 +1361,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/charges/route.js"
@@ -1397,9 +1397,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [
         "users"
@@ -1411,9 +1411,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/invoices/route.js"
@@ -1435,9 +1435,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/payees/route.js"
@@ -1451,7 +1451,7 @@
       ],
       "auth": "super",
       "methodAuth": {
-        "GET": "super",
+        "GET": "public",
         "POST": "super",
         "PATCH": "super"
       },
@@ -1480,9 +1480,9 @@
       "methods": [
         "GET"
       ],
-      "auth": "super",
+      "auth": "public",
       "methodAuth": {
-        "GET": "super"
+        "GET": "public"
       },
       "tables": [],
       "file": "src/app/api/billing/payment-methods/route.js"

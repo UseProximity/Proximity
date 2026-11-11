@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { documentParts } from "@/lib/billing/agreements";
 import { combinedSignedPdf, pdfOrLink } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
@@ -18,14 +18,14 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  */
 
 export async function GET(req) {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const params = new URL(req.url).searchParams;
     const kind = params.get("kind") === "amendment" ? "amendment" : "master";
     const id = params.get("id");
     if (id && !isUuid(id)) throw new BillingError("not_found", "That document was not found.", 404);
-    const keys = await documentParts(supabase, { userId: session.user.id, kind, id });
+    const keys = await documentParts(supabase, { userId: reader.userId, kind, id });
     if (!keys.length) throw new BillingError("not_found", "There is no signed copy on file.", 404);
     return pdfOrLink(await combinedSignedPdf(keys), kind === "amendment" ? "exhibit-a-amendment.pdf" : "marketing-agreement.pdf");
   } catch (err) {

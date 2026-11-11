@@ -128,6 +128,14 @@
       "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
     },
     {
+      "file": "src/lib/agents/replyStream.js",
+      "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyStream.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/agents/replyTokens.js",
       "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
     },
@@ -602,6 +610,10 @@
     {
       "file": "src/lib/billing/stripe.js",
       "description": "The one Stripe client for the app, and the three env vars it reads:"
+    },
+    {
+      "file": "src/lib/billing/viewer.js",
+      "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
     },
     {
       "file": "src/lib/billing/webhookEvents.js",
