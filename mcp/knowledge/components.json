@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-11T04:26:06.481Z",
-  "count": 198,
+  "_generated": "2026-11-12T21:44:45.396Z",
+  "count": 202,
   "components": [
     {
       "name": "ErrorReporter",
@@ -16,6 +16,11 @@
     {
       "name": "LicenseDisclosureFields",
       "file": "src/components/account/LicenseDisclosureFields.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AdminSidebar",
+      "file": "src/components/admin/AdminSidebar.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -104,6 +109,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "SystemToolsView",
+      "file": "src/components/admin/SystemToolsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "TestimonialsView",
       "file": "src/components/admin/TestimonialsView.js",
       "description": "No description. Run generate after adding a description above."
@@ -111,6 +121,16 @@
     {
       "name": "UsersView",
       "file": "src/components/admin/UsersView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ViewAsMenu",
+      "file": "src/components/admin/ViewAsMenu.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "adminNav",
+      "file": "src/components/admin/adminNav.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

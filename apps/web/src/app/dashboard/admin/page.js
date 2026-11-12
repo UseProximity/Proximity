@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { adminFetch, patchRow, prodConfirm, valuesEqual, PendingContext } from "@/components/admin/adminShared";
 import GearModal from "@/components/admin/GearModal";
@@ -19,190 +18,23 @@ import MassEmailView from "@/components/admin/MassEmailView";
 import ErrorsView from "@/components/admin/ErrorsView";
 import BillingView from "@/components/admin/BillingView";
 import AgentsView from "@/components/admin/AgentsView";
-
-const VIEWS = [
-  { key: "listings", label: "Listings" },
-  { key: "users", label: "Users" },
-  { key: "reviews", label: "Reviews" },
-  { key: "dorms", label: "Dorms" },
-  { key: "testimonials", label: "Testimonials" },
-  { key: "reference", label: "Reference data" },
-  { key: "invites", label: "Review invites" },
-  { key: "conversations", label: "Conversations" },
-  { key: "emails", label: "Sent emails" },
-  // Super only: the read-only admin role never sees billing or mass email (Wyatt, 2026-11-07).
-  { key: "mass-email", label: "Mass email", superOnly: true },
-  { key: "billing", label: "Billing", superOnly: true },
-  { key: "agents", label: "Agents" },
-  { key: "errors", label: "Errors" },
-];
-
-// Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "mass-email", "billing", "agents", "errors"]);
-
-// ─── Tools popover (walk times, View As, export) ──────────────────────────────
-
-function ToolsMenu({ dbTarget, isProd }) {
-  const [open, setOpen] = useState(false);
-  const [walkStatus, setWalkStatus] = useState(null);
-  const [walkRunning, setWalkRunning] = useState(false);
-  const [driveStatus, setDriveStatus] = useState(null);
-  const [driveRunning, setDriveRunning] = useState(false);
-  const [viewAsQuery, setViewAsQuery] = useState("");
-  const [viewAsResults, setViewAsResults] = useState([]);
-  const timerRef = useRef(null);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  async function runWalkTimes() {
-    if (isProd && !confirm("Update walk times on PRODUCTION?\n\nThis recalculates walk times for all listings in the production database.")) return;
-    setWalkRunning(true);
-    setWalkStatus(null);
-    try {
-      const data = await adminFetch("/api/admin/update-campus-walk-times", dbTarget, { method: "POST" });
-      setWalkStatus(`Updated ${data.updated}/${data.total} listings${data.failed ? ` (${data.failed} failed)` : ""}`);
-    } catch (err) {
-      setWalkStatus(`Error: ${err.message}`);
-    } finally {
-      setWalkRunning(false);
-    }
-  }
-
-  async function runDriveTimes() {
-    if (isProd && !confirm("Update drive times on PRODUCTION?\n\nThis recalculates driving times for all listings in the production database.")) return;
-    setDriveRunning(true);
-    setDriveStatus(null);
-    try {
-      const data = await adminFetch("/api/admin/update-listing-drive-times", dbTarget, { method: "POST" });
-      setDriveStatus(`Updated ${data.updated}/${data.total ?? "?"} listings${data.skipped ? ` (${data.skipped} already complete)` : ""}${data.failed ? ` (${data.failed} failed)` : ""}`);
-    } catch (err) {
-      setDriveStatus(`Error: ${err.message}`);
-    } finally {
-      setDriveRunning(false);
-    }
-  }
-
-  function handleViewAsSearch(q) {
-    setViewAsQuery(q);
-    clearTimeout(timerRef.current);
-    if (!q || q.length < 2) { setViewAsResults([]); return; }
-    timerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/searchUsers?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        setViewAsResults(Array.isArray(data) ? data.slice(0, 6) : []);
-      } catch {
-        setViewAsResults([]);
-      }
-    }, 300);
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`px-3 py-1 text-xs rounded border font-medium transition-colors ${
-          isProd ? "border-red-500 text-red-200 hover:bg-red-800" : "border-gray-600 text-gray-300 hover:bg-gray-700"
-        }`}
-      >
-        Tools ▾
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-4 space-y-4 text-gray-800">
-          <div>
-            <p className="text-xs font-semibold text-gray-700 mb-1">View as user</p>
-            <input
-              type="text"
-              value={viewAsQuery}
-              onChange={(e) => handleViewAsSearch(e.target.value)}
-              placeholder="Search by name or email…"
-              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
-            />
-            {viewAsResults.length > 0 && (
-              <ul className="mt-1 border border-gray-100 rounded divide-y divide-gray-100 max-h-48 overflow-y-auto">
-                {viewAsResults.map((u) => (
-                  <li key={u.id} className="flex items-center justify-between gap-2 px-2 py-1.5">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium truncate">{u.name || "—"}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{u.email}</p>
-                    </div>
-                    <a
-                      href={`/dashboard/view-as/${u.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] px-2 py-0.5 bg-gray-800 text-white rounded hover:bg-gray-700 whitespace-nowrap"
-                    >
-                      View →
-                    </a>
-                    <a
-                      href={`/?messages=1&messagesAs=${u.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Their Messages inbox exactly as they see it, read only"
-                      className="text-[11px] px-2 py-0.5 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 whitespace-nowrap"
-                    >
-                      Inbox →
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-700 mb-1">Walk times</p>
-            <button
-              type="button"
-              onClick={runWalkTimes}
-              disabled={walkRunning}
-              className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40"
-            >
-              {walkRunning ? "Updating…" : "Recalculate campus walk times"}
-            </button>
-            {walkStatus && <p className="mt-1 text-[11px] text-gray-500">{walkStatus}</p>}
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-700 mb-1">Drive times</p>
-            <button
-              type="button"
-              onClick={runDriveTimes}
-              disabled={driveRunning}
-              className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40"
-            >
-              {driveRunning ? "Updating…" : "Backfill listing drive times"}
-            </button>
-            {driveStatus && <p className="mt-1 text-[11px] text-gray-500">{driveStatus}</p>}
-          </div>
-
-          <div className="pt-1 border-t border-gray-100">
-            <Link href="/dashboard/admin/export" className="text-xs text-blue-600 hover:underline">
-              CSV export →
-            </Link>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+import { DEFAULT_PATH, findNavItem, hrefFor, navGroupsFor, navItemTitle, pathFromPathname, resolveLegacy } from "@/components/admin/adminNav";
+import AdminSidebar from "@/components/admin/AdminSidebar";
+import ViewAsMenu from "@/components/admin/ViewAsMenu";
+import SystemToolsView from "@/components/admin/SystemToolsView";
+import ReviewDuplicatesPanel from "@/components/admin/ReviewDuplicatesPanel";
+import UnownedPanel from "@/components/admin/massEmail/UnownedPanel";
 
 export default function AdminDashboard() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const isReadOnly = session?.user?.role === "admin";
   const isSuper = session?.user?.role === "super";
-  const visibleViews = VIEWS.filter((v) => !v.superOnly || isSuper);
+  const navGroups = useMemo(() => navGroupsFor(isSuper), [isSuper]);
 
+  // The open page, as its address after /dashboard/admin/ (see adminNav.js).
   // null until the URL has been read, so a reload never flashes (or fetches) Listings first.
-  const [view, setView] = useState(null);
+  const [path, setPath] = useState(null);
+  const page = path ? findNavItem(path) : null;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -210,6 +42,8 @@ export default function AdminDashboard() {
 
   const [dbTarget, setDbTarget] = useState("dev");
   const isProd = dbTarget === "prod";
+  // The database this site itself runs on. Pages marked "pinned" always use it.
+  const [ownEnv, setOwnEnv] = useState(null);
 
   const [schemas, setSchemas] = useState({});
   const [gear, setGear] = useState(null); // { table, row }
@@ -261,31 +95,55 @@ export default function AdminDashboard() {
     return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
   }
 
-  // The open view lives in ?view= so a reload or a shared link reopens it
-  // (Wyatt, 2026-11-05). Views with inner tabs keep those in ?tab=.
+  // Each page has its own address, so a reload, a shared link and the back
+  // button all land on the same page. Inner tabs stay in ?tab= as before.
   useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get("view");
-    setView(wanted && VIEWS.some((v) => v.key === wanted) ? wanted : "listings");
+    function readAddress() {
+      const current = pathFromPathname(window.location.pathname);
+      let next = findNavItem(current) ? current : DEFAULT_PATH;
+      // Old ?view= links (emails already sent, bookmarks) move to the new page.
+      const legacy = current ? null : resolveLegacy(window.location.search);
+      if (legacy) {
+        next = legacy.path;
+        const qs = legacy.params.toString();
+        window.history.replaceState(null, "", qs ? `${hrefFor(next)}?${qs}` : hrefFor(next));
+      }
+      setPath(next);
+      // Website sync emails link to one listing: open Listings filtered to it.
+      const listing = new URLSearchParams(window.location.search).get("listing");
+      if (next === "listings" && listing) setSearch(listing);
+    }
+    readAddress();
+    window.addEventListener("popstate", readAddress);
+    return () => window.removeEventListener("popstate", readAddress);
   }, []);
 
-  function switchView(next) {
-    setView(next);
-    // A new view starts on its default tab with nothing open, so drop every
-    // other param (tab, thread, error...) and keep only the view.
-    const url = next === "listings" ? window.location.pathname : `${window.location.pathname}?view=${next}`;
-    window.history.replaceState(window.history.state, "", url);
+  function goTo(next) {
+    if (next === path || !findNavItem(next)) return;
+    if (!confirmDiscardForSwitch()) return;
+    setPendingRows({});
+    setSaveStatus(null);
+    // Clear synchronously so the next render never sees the old page's data shape
+    setData(null);
+    setLoading(true);
+    setSearch("");
+    setPath(next);
+    // A new page starts on its default tab with nothing open, so every param
+    // (tab, thread, error...) is dropped.
+    window.history.pushState(null, "", hrefFor(next));
   }
 
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("admin_db_target") : null;
-    if (stored === "prod" || stored === "dev") {
-      setDbTarget(stored);
-      return;
-    }
+    if (stored === "prod" || stored === "dev") setDbTarget(stored);
     fetch("/api/admin/db-env")
       .then((r) => r.json())
-      .then((d) => { if (d.env === "prod" || d.env === "dev") setDbTarget(d.env); })
+      .then((d) => {
+        if (d.env !== "prod" && d.env !== "dev") return;
+        setOwnEnv(d.env);
+        if (stored !== "prod" && stored !== "dev") setDbTarget(d.env);
+      })
       .catch(() => {});
   }, []);
 
@@ -313,7 +171,7 @@ export default function AdminDashboard() {
       const [table, id] = key.split("|");
       try {
         if (table === "listing_amenities" || table === "listing_utilities") {
-          // Keyed by listing_id — upserts just the toggled columns
+          // Keyed by listing_id: upserts just the toggled columns
           await adminFetch(`/api/admin/${table}`, dbTarget, {
             method: "PATCH",
             body: JSON.stringify({ listing_id: id, ...fields }),
@@ -351,17 +209,20 @@ export default function AdminDashboard() {
       .catch(() => setSchemas({}));
   }, [dbTarget]);
 
+  // Table pages load one view from the hierarchy loader; every other page fetches its own data.
+  const hierarchy = page?.hierarchy ?? null;
+
   const load = useCallback(async (silent = false) => {
     // Review invites are outreach, not a table of rows to browse: that view
     // fetches its own data from an endpoint that ignores the dev/prod switch.
     // Conversations are a thread list plus a thread body, two requests the
     // view makes itself (against the dev/prod switch).
-    if (!view) return;
-    if (SELF_LOADING_VIEWS.has(view)) { setLoading(false); setError(null); return; }
+    if (!path) return;
+    if (!hierarchy) { setLoading(false); setError(null); return; }
     if (!silent) { setLoading(true); setData(null); }
     setError(null);
     try {
-      const d = await adminFetch(`/api/admin/hierarchy/${view}`, dbTarget);
+      const d = await adminFetch(`/api/admin/hierarchy/${hierarchy}`, dbTarget);
       setData(d);
     } catch (err) {
       setError(err.message);
@@ -369,7 +230,7 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [view, dbTarget]);
+  }, [path, hierarchy, dbTarget]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -437,32 +298,29 @@ export default function AdminDashboard() {
         )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
+          {/* Small screens have no sidebar: the same pages in a picker */}
           <select
-            value={view ?? ""}
-            onChange={(e) => {
-              if (!confirmDiscardForSwitch()) { e.target.value = view; return; }
-              setPendingRows({});
-              setSaveStatus(null);
-              // Clear synchronously so the next render never sees the old view's data shape
-              setData(null);
-              setLoading(true);
-              switchView(e.target.value);
-              setSearch("");
-            }}
-            className="px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
+            aria-label="Admin page"
+            value={path ?? ""}
+            onChange={(e) => goTo(e.target.value)}
+            className="md:hidden px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
           >
-            {visibleViews.map((v) => (
-              <option key={v.key} value={v.key}>{v.label}</option>
+            {navGroups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.items.filter((i) => !i.external).map((i) => (
+                  <option key={i.path} value={i.path}>{navItemTitle(i)}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search this page…"
             className="w-56 px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-400"
           />
-          <ToolsMenu dbTarget={dbTarget} isProd={isProd} />
+          <ViewAsMenu isProd={isProd} />
         </div>
       </div>
 
@@ -471,45 +329,64 @@ export default function AdminDashboard() {
           <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
           </svg>
-          PRODUCTION DATABASE ACTIVE — all reads and writes affect real user data.
+          PRODUCTION DATABASE ACTIVE: all reads and writes affect real user data.
         </div>
       )}
 
-      <div className="px-6 py-5 max-w-6xl mx-auto">
-        {error && (
-          <div className="mb-4 px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
-            {error} — <button type="button" onClick={() => load()} className="underline">retry</button>
-          </div>
-        )}
+      <div className="flex">
+        <AdminSidebar groups={navGroups} activePath={path} onNavigate={goTo} />
 
-        {!view ? null : view === "invites" ? (
-          <ReviewInvitesView search={search} />
-        ) : view === "conversations" ? (
-          <ConversationsView search={search} dbTarget={dbTarget} />
-        ) : view === "emails" ? (
-          <SentEmailsView search={search} dbTarget={dbTarget} />
-        ) : VIEWS.find((v) => v.key === view)?.superOnly && !isSuper ? (
-          <p className="p-6 text-sm text-gray-500">This view is for super admins only.</p>
-        ) : view === "mass-email" ? (
-          <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
-        ) : view === "billing" ? (
-          <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
-        ) : view === "agents" ? (
-          <AgentsView search={search} />
-        ) : view === "errors" ? (
-          <ErrorsView search={search} dbTarget={dbTarget} />
-        ) : loading ? (
-          <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
-        ) : data ? (
-          <>
-            {view === "listings" && <ListingsView {...viewProps} />}
-            {view === "users" && <UsersView {...viewProps} />}
-            {view === "reviews" && <ReviewsView {...viewProps} />}
-            {view === "dorms" && <DormsView {...viewProps} />}
-            {view === "testimonials" && <TestimonialsView {...viewProps} />}
-            {view === "reference" && <ReferenceView {...viewProps} />}
-          </>
-        ) : null}
+        <main className="flex-1 min-w-0 px-6 py-5">
+          <div className="max-w-6xl mx-auto">
+            {error && (
+              <div className="mb-4 px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
+                {error} <button type="button" onClick={() => load()} className="underline">retry</button>
+              </div>
+            )}
+
+            {page?.pinned && ownEnv && ownEnv !== dbTarget && (
+              <div className="mb-4 px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-900">
+                This page does not follow the dev/prod switch. It always shows this site&apos;s own database, which is{" "}
+                <strong>{ownEnv === "prod" ? "production" : "dev"}</strong>.
+              </div>
+            )}
+
+            {!page || sessionStatus === "loading" ? null : page.superOnly && !isSuper ? (
+              <p className="p-6 text-sm text-gray-500">This page is for super admins only.</p>
+            ) : path === "reviews/invites" ? (
+              <ReviewInvitesView search={search} />
+            ) : path === "conversations" ? (
+              <ConversationsView search={search} dbTarget={dbTarget} />
+            ) : path === "email/sent" ? (
+              <SentEmailsView search={search} dbTarget={dbTarget} />
+            ) : path === "email/mass" ? (
+              <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
+            ) : path === "billing" ? (
+              <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
+            ) : path === "agents" ? (
+              <AgentsView search={search} />
+            ) : path === "system/errors" ? (
+              <ErrorsView search={search} dbTarget={dbTarget} />
+            ) : path === "system/tools" ? (
+              <SystemToolsView dbTarget={dbTarget} isProd={isProd} />
+            ) : path === "listings/unowned" ? (
+              <UnownedPanel key={dbTarget} dbTarget={dbTarget} />
+            ) : path === "listings/duplicates" ? (
+              <ReviewDuplicatesPanel dbTarget={dbTarget} standalone />
+            ) : loading ? (
+              <div className="py-20 text-center text-sm text-gray-400">Loading…</div>
+            ) : data ? (
+              <>
+                {path === "listings" && <ListingsView {...viewProps} />}
+                {path === "people/users" && <UsersView {...viewProps} />}
+                {path === "reviews" && <ReviewsView {...viewProps} />}
+                {path === "listings/dorms" && <DormsView {...viewProps} />}
+                {path === "reviews/testimonials" && <TestimonialsView {...viewProps} />}
+                {path === "system/reference" && <ReferenceView {...viewProps} />}
+              </>
+            ) : null}
+          </div>
+        </main>
       </div>
 
       {gear && (

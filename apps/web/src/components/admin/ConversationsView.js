@@ -628,7 +628,6 @@ function readUrl() {
 
 function writeUrl({ tab, side, thread, chat }) {
   const p = new URLSearchParams(window.location.search);
-  p.set("view", "conversations");
   p.set("tab", tab);
   for (const k of ["side", "thread", "chat"]) p.delete(k);
   if (tab === "agent") p.set("side", side);
