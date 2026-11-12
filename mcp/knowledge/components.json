@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-12T21:44:45.396Z",
-  "count": 202,
+  "_generated": "2026-11-12T22:35:49.617Z",
+  "count": 203,
   "components": [
     {
       "name": "ErrorReporter",
@@ -21,6 +21,11 @@
     {
       "name": "AdminSidebar",
       "file": "src/components/admin/AdminSidebar.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgentChangeCard",
+      "file": "src/components/admin/AgentChangeCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
