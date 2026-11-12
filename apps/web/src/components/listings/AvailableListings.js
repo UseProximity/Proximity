@@ -357,6 +357,21 @@ export default function AvailableListings({
     if (!isDesktop) setCompare(null);
   }, [isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A click on a third listing while both slots are full changes nothing, so the
+  // panel is told to pulse the slots and show a hint. `nudge` counts those clicks
+  // (it also replays the pulse) and clears itself after a few seconds, at once
+  // when a slot frees or the panel closes.
+  const full = !!(compare?.[0] && compare?.[1]);
+  const [nudge, setNudge] = useState(0);
+  useEffect(() => {
+    if (!nudge) return;
+    const timer = setTimeout(() => setNudge(0), 4000);
+    return () => clearTimeout(timer);
+  }, [nudge]);
+  useEffect(() => {
+    if (!full) setNudge(0);
+  }, [full]);
+
   // While compare is open a card click picks the listing instead of opening it.
   // One capture handler covers the grid and the suggested strip; the heart (a
   // button) keeps working, and nothing navigates or reports an opened listing.
@@ -368,6 +383,7 @@ export default function AvailableListings({
     // window), as it is on the card outside Compare: it picks nothing.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
+    if (full && id !== String(compare[0]._id) && id !== String(compare[1]._id)) setNudge((n) => n + 1);
     setCompare((prev) => {
       // Compare can close (a timer, an effect) between this click and its update.
       if (!prev) return prev;
@@ -859,6 +875,7 @@ export default function AvailableListings({
               >
                 <ComparePanel
                   slots={shownCompare}
+                  nudge={full ? nudge : 0}
                   onRemove={(i) =>
                     setCompare((c) => c && c.map((l, j) => (j === i ? null : l)))
                   }

@@ -188,7 +188,7 @@ const ROW = "flex items-center border-t border-[#e6e7eb] py-4";
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
 // so both columns keep the selector's height and their rows line up. `rows` is the
 // grid row span of the table.
-function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, onRemove }) {
+function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, nudge, onRemove }) {
   if (!listing) {
     return (
       <div className="min-w-0 p-3.5" style={{ gridRow: rows }}>
@@ -210,7 +210,7 @@ function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, onRem
   const { title, subtitle } = getListingHeading(listing);
   const image = listing.images?.[0];
   return (
-    <div className="grid min-w-0 grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
+    <div className="relative grid min-w-0 grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
       <div className="min-w-0">
         <div className="relative m-2 aspect-[363/164] overflow-hidden rounded-t-[15px] bg-gray-100">
           {image ? (
@@ -261,6 +261,14 @@ function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, onRem
           {best.has(label) ? <Winner>{value}</Winner> : value}
         </div>
       ))}
+      {/* A click on a third listing pulses the slot. Last child, so the even-row tint above keeps its rows. The key replays it. */}
+      {nudge > 0 && (
+        <div
+          key={nudge}
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[5] !bg-red-100/50 opacity-0 motion-reduce:hidden motion-safe:animate-slot-nudge"
+        />
+      )}
     </div>
   );
 }
@@ -346,7 +354,7 @@ function ListSection({ title, a, b }) {
   );
 }
 
-export default function ComparePanel({ slots, onRemove, onClose }) {
+export default function ComparePanel({ slots, nudge, onRemove, onClose }) {
   const tabs = slots.map((l) => l && unitTabs(l));
   // The unit each card shows is kept here, not in the card, because the winners
   // are found by comparing the two selected units. A slot's pick is dropped when its
@@ -397,6 +405,13 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
         </button>
         <h2 className="text-xl font-bold text-black">Compare listings</h2>
       </div>
+      {nudge > 0 && (
+        <div role="status" className="flex shrink-0 justify-center px-4 pb-3">
+          <p className="rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm">
+            Compare holds two listings. Remove one with the X to add another.
+          </p>
+        </div>
+      )}
       {/* The scroller is this outer box. The table is at least as tall as it
           (so empty slots fill the panel) and grows past it with the rows. */}
       <div ref={scroller} className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
@@ -452,6 +467,7 @@ export default function ComparePanel({ slots, onRemove, onClose }) {
                   reserve={reserve}
                   rows={rows}
                   empty={empty}
+                  nudge={nudge}
                   onRemove={() => onRemove(i)}
                 />
               ))}
