@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-11T19:30:40.281Z",
-  "count": 259,
+  "_generated": "2026-11-12T22:36:51.126Z",
+  "count": 260,
   "routes": [
     {
       "path": "/api/account",
@@ -1735,6 +1735,18 @@
       },
       "tables": [],
       "file": "src/app/api/cron/agent-digest/route.js"
+    },
+    {
+      "path": "/api/cron/agent-knowledge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/agent-knowledge/route.js"
     },
     {
       "path": "/api/cron/agent-questions",

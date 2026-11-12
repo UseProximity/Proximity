@@ -83,6 +83,41 @@ export async function runDailyBatch({ limit = 500 } = {}) {
   return { due: monitors.length, queued, already, batchId, subpages: subpages ? { sites: subpages.sites, attached: subpages.attached.length } : null };
 }
 
+/*
+ * The weekly knowledge read (Wyatt, 2026-11-12), Monday after Sunday's deep
+ * read: every published listing with a website gets a whole-site read into
+ * what Proxy knows (lib/agents/pages.js readWholeSite), each its own job in
+ * the import lanes. The daily sync only checks specials. A listing whose
+ * daily sync is still running is retried by the next cron tick of this run
+ * (the route is called again an hour later the same morning).
+ */
+export async function runWeeklyKnowledge({ limit = 500 } = {}) {
+  if (!agentsEnabled()) return { skipped: "agents off" };
+  const { data, error } = await supabase
+    .from("listing_source_monitors")
+    .select("listing_id, source_url, enabled, listings!listing_id(published_at, deleted_at)")
+    .eq("enabled", true)
+    .limit(limit);
+  if (error) throw new Error(`monitors: ${error.message}`);
+  const due = (data ?? []).filter((m) => m.listings && !m.listings.deleted_at && m.listings.published_at && m.source_url);
+  // Already read this week (an earlier tick, an import, a landlord's sync).
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString();
+  const { data: recent } = await supabase.from("listing_import_jobs").select("listing_id").eq("status", "done")
+    .contains("target", { knowledge: true }).gte("finished_at", weekAgo).in("listing_id", due.map((m) => m.listing_id));
+  const readRecently = new Set((recent ?? []).map((r) => r.listing_id));
+  const batchId = randomUUID();
+  let queued = 0;
+  let busy = 0;
+  let fresh = 0;
+  for (const m of due) {
+    if (readRecently.has(m.listing_id)) { fresh++; continue; }
+    const r = await enqueueSync({ listingId: m.listing_id, batchId, knowledge: true, url: m.source_url });
+    if (r.job && !r.already) queued++;
+    else if (r.already) busy++;
+  }
+  return { listings: due.length, queued, busy, readThisWeek: fresh, batchId };
+}
+
 /* "Sync now" from a landlord's or admin's dashboard. */
 export async function manualSync({ listingId, userId, isAdmin = false }) {
   if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };

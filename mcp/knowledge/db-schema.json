@@ -2959,9 +2959,10 @@
           "is_current:bool",
           "superseded_by:uuid",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "missed_reads:smallint"
         ],
-        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge). missed_reads (202611120001, 2026-11-12): weekly whole-site reads in a row that re-read the fact's page and did not find it; at 2 the fact is retired (lib/agents/pages.js noteMissingFacts); landlord-set and core facts are never counted."
       },
       {
         "table": "listing_fact_events",
