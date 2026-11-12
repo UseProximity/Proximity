@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
@@ -41,14 +42,14 @@ async function landlordOf(userId) {
   return data;
 }
 
-export async function GET() {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     // They signed their own agreement to take over from their signer, and the
     // follow-up has not run yet (or failed): finish it now.
-    await finishTakeover(session.user.id, agreementServices().documenso).catch((err) => console.error("billing: finishing a takeover failed", err?.message));
-    return NextResponse.json({ payer: await landlordPayerView(supabase, session.user.id) });
+    if (!reader.viewingAs) await finishTakeover(reader.userId, agreementServices().documenso).catch((err) => console.error("billing: finishing a takeover failed", err?.message));
+    return NextResponse.json({ payer: await landlordPayerView(supabase, reader.userId) });
   } catch (err) {
     return billingErrorResponse(err, "load payer");
   }

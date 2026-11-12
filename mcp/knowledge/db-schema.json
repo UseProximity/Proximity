@@ -1900,7 +1900,8 @@
           "unit_number:text",
           "name:text",
           "sort_order:int4",
-          "published_at:timestamptz"
+          "published_at:timestamptz",
+          "source_seen_at:timestamptz"
         ],
         "column_notes": {
           "name": "the only unit label the app reads or writes",
@@ -1909,7 +1910,7 @@
           "floor_plan_image_url": "R2 URL of a downloadable floor plan",
           "published_at": "NULL = draft unit on a live property; students see it only once published"
         },
-        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
+        "notes": "source_seen_at (migration 202611110002, dev and prod applied 2026-11-11): when a sync or import last matched this unit to its website or created it from one; null units are never withdrawn by a sync. status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 1083,
           "prod_last_write": "2026-10-12"
@@ -2886,6 +2887,24 @@
           "updated_at:timestamptz"
         ],
         "notes": "pk listing_id -> listings.id (cascade); check status in (off, pilot, on); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_sync_learnings",
+        "status": "active",
+        "description": "What the website sync learns about a listing from the landlord's edits (lib/sourceImport/learn.js, learnRules.js). kind synced: the lease or unit values the sync last wrote from the website (source_key lease:<id> | unit:<id>); a listing that now differs was edited by the landlord and that field stays theirs until the website's value moves. kind unit_alias: the website's unit key mapped to the landlord's unit (renamed units). kind rent_basis (source_key '*'): value {basis:'per_person'} when the landlord states the website's whole-apartment rents per person. Server-side only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "source_key:text",
+          "unit_id:uuid",
+          "lease_id:uuid",
+          "value:jsonb",
+          "learned_from:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (listing_id, kind, source_key); fk listing_id->listings.id (cascade), unit_id->listing_units.id (cascade), lease_id->unit_leases.id (cascade); check kind in (synced,unit_alias,rent_basis); rls: service role only (no policies), anon/authenticated revoked; migration 202611110001 (dev applied 2026-11-11, prod pending)"
       },
       {
         "table": "listing_sources",

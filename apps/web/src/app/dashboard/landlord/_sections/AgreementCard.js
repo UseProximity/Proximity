@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AgreementSigningFlow from "./AgreementSigningFlow";
 import CollapsibleSection from "./CollapsibleSection";
+import { useBillingUrl } from "./billingViewAs";
 import { NamePayerForm } from "./PayerCards";
 
 const STATUS = {
@@ -89,12 +90,13 @@ function PropertyList({ items }) {
 function Documents({ open, busy }) {
   const [docs, setDocs] = useState(null);
   const [error, setError] = useState(null);
+  const billingUrl = useBillingUrl();
   useEffect(() => {
-    fetch("/api/billing/agreement/documents")
+    fetch(billingUrl("/api/billing/agreement/documents"))
       .then((r) => r.json())
       .then((d) => setDocs(d.documents ?? []))
       .catch(() => setError("Could not load your documents."));
-  }, []);
+  }, [billingUrl]);
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!docs) return <p className="text-sm text-gray-400">Loading...</p>;
   // Oldest first: the agreement, then its amendments in the order they were signed.
@@ -119,7 +121,7 @@ function Documents({ open, busy }) {
               </span>
             </span>
             {(d.hasSignedFile || d.hasSignedExhibit) && (
-              <button type="button" disabled={busy} className={BUTTON} onClick={() => open({ kind: d.kind, id: d.id })}>
+              <button type="button" data-readonly-ok disabled={busy} className={BUTTON} onClick={() => open({ kind: d.kind, id: d.id })}>
                 View
               </button>
             )}
@@ -162,12 +164,13 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
   const needsAction = billingOnly ? !!paidFor : !signedOk || !!agreement.amendment || uncoveredLive.length > 0 || updated;
 
   // Opens one signed document as a single PDF in a new tab (opened first, so it is not blocked as a popup).
+  const billingUrl = useBillingUrl();
   const openFile = useCallback(async ({ kind, id }) => {
     setError(null);
     const tab = window.open("", "_blank");
     try {
       const qs = new URLSearchParams({ kind, ...(id ? { id } : {}) });
-      const res = await fetch(`/api/billing/agreement/file?${qs}`);
+      const res = await fetch(billingUrl(`/api/billing/agreement/file?${qs}`));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Could not open that document.");
@@ -180,7 +183,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
       tab?.close();
       setError(e.message);
     }
-  }, []);
+  }, [billingUrl]);
 
   const start = (body) => {
     setError(null);
@@ -233,7 +236,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
               {agreement.signedVersionLabel ? ` (${agreement.signedVersionLabel})` : ""}.
             </p>
             {(agreement.hasSignedFile || agreement.hasSignedExhibit) && (
-              <button type="button" disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master" })}>
+              <button type="button" data-readonly-ok disabled={busy} className={BUTTON} onClick={() => openFile({ kind: "master" })}>
                 View marketing agreement
               </button>
             )}

@@ -109,6 +109,23 @@ async function readIn(ids, build) {
  * values cannot be read, no views at all (logged): the screens then show the
  * change without a comparison, never one built on missing data.
  */
+/*
+ * What happened to a new unit, from the event's own state: "Published" only
+ * once it really went live (PR 422 review). An import adds units to a draft
+ * property, so they are neither published nor drafts of their own.
+ */
+function unitNewNote(e, d) {
+  const addendum = d.needsAddendum ? `${d.needsAddendum} is not on the marketing agreement yet and needs an addendum before it can go live.` : null;
+  if (e.status === "rejected") return "Not added.";
+  if (!e.applied) {
+    if (addendum) return `Waiting for review. Once approved, it is added as a draft: ${addendum}`;
+    return d.publish && !d.draft ? "Waiting for review. Once approved, it goes live with these prices." : "Waiting for review. Once approved, it is added as a draft.";
+  }
+  if (addendum) return `Added as a draft: ${addendum}`;
+  if (d.draft) return "Added as a draft until you publish it.";
+  return d.publish ? "Published with these prices." : "Added with these prices.";
+}
+
 export async function describeChanges(events, db = supabase) {
   try {
     return await buildViews(events, db);
@@ -171,7 +188,7 @@ async function buildViews(events, db) {
         break;
       case "lease_withdrawn":
         view = {
-          title: "Lease no longer on the website",
+          title: d.unitGone ? "Unit no longer on the website" : "Lease no longer on the website",
           rows: [row("This lease", lease ? `${money(lease.rent, lease.rent_is_per_person)}, ${lease.unavailable ? "already unavailable" : "available"}` : money(d.rent), "Not on the website: mark it unavailable")],
         };
         break;
@@ -191,7 +208,7 @@ async function buildViews(events, db) {
             row("Unit type", NOT_ON_PROXIMITY, [cleanLabel(u.name), layout(u), sqft(u.area)].filter(Boolean).join(", ")),
             ...(prices ? [row("Prices", NOT_ON_PROXIMITY, prices)] : []),
           ],
-          note: "Added as a draft until you publish it.",
+          note: unitNewNote(e, d),
         };
         break;
       }
