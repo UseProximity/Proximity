@@ -8,7 +8,8 @@ import "../global.css";
 
 import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import {
   useFonts,
   DMSans_400Regular,
@@ -85,6 +86,10 @@ export default function RootLayout() {
     // expo-splash-screen isn't a dependency today, and Google Fonts load
     // quickly enough that a blank white overlay is enough.
     <View className="flex-1 font-sans">
+      {/* Android draws edge-to-edge, so the status bar sits over the app's light screens
+          and its default light icons vanish on white. Dark icons everywhere, except the
+          photo viewer's black backdrop (see ChatPhotoViewer). iOS is left as it was. */}
+      {Platform.OS === "android" && <StatusBar style="dark" />}
       <Stack screenOptions={{ headerShown: false }}>
         {/* Chat Block and Report: native bottom sheets, dragged down to dismiss. */}
         <Stack.Screen name="chat-sheet/block" options={chatSheetOptions} />

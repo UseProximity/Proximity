@@ -3,6 +3,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -10,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { ImageOff, X } from "lucide-react-native";
 import { useAttachmentImage } from "./ChatAttachmentImages";
 import { ERROR_MESSAGES } from "../../lib/errorMessages";
@@ -65,35 +67,42 @@ export function ChatPhotoViewer({ photos, index, onClose }) {
   const open = !!photos && photos.length > 0;
 
   return (
-    <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View className="flex-1 bg-black">
-        {open ? (
-          <FlatList
-            data={photos}
-            horizontal
-            pagingEnabled
-            initialScrollIndex={Math.min(index, photos.length - 1)}
-            getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-            keyExtractor={(item, i) => item.id ?? item.localUri ?? String(i)}
-            renderItem={({ item }) => <Page attachment={item} width={width} height={height} />}
-            showsHorizontalScrollIndicator={false}
-          />
-        ) : null}
-        <Pressable
-          onPress={onClose}
-          hitSlop={12}
-          accessibilityLabel="Close photo"
-          className="absolute right-4 w-10 h-10 rounded-full bg-black/60 items-center justify-center"
-          style={{ top: insets.top + 8 }}
-        >
-          <X size={22} color="#ffffff" strokeWidth={2.2} />
-        </Pressable>
-        {open && photos.length > 1 ? (
-          <Text className="absolute self-center text-white text-sm" style={{ top: insets.top + 18 }}>
-            {photos.length} photos
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
+    <>
+      {/* The backdrop is black, so the app-wide dark icons would disappear. A mounted
+          StatusBar takes over from the root one and the root one returns on unmount. A
+          Modal copies the icon colour from the activity window, which is why this sits
+          outside the Modal. Android only, as in app/_layout.js. */}
+      {open && Platform.OS === "android" ? <StatusBar style="light" /> : null}
+      <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+        <View className="flex-1 bg-black">
+          {open ? (
+            <FlatList
+              data={photos}
+              horizontal
+              pagingEnabled
+              initialScrollIndex={Math.min(index, photos.length - 1)}
+              getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+              keyExtractor={(item, i) => item.id ?? item.localUri ?? String(i)}
+              renderItem={({ item }) => <Page attachment={item} width={width} height={height} />}
+              showsHorizontalScrollIndicator={false}
+            />
+          ) : null}
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            accessibilityLabel="Close photo"
+            className="absolute right-4 w-10 h-10 rounded-full bg-black/60 items-center justify-center"
+            style={{ top: insets.top + 8 }}
+          >
+            <X size={22} color="#ffffff" strokeWidth={2.2} />
+          </Pressable>
+          {open && photos.length > 1 ? (
+            <Text className="absolute self-center text-white text-sm" style={{ top: insets.top + 18 }}>
+              {photos.length} photos
+            </Text>
+          ) : null}
+        </View>
+      </Modal>
+    </>
   );
 }

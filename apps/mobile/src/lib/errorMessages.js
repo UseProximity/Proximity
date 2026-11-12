@@ -7,6 +7,8 @@
 // Messages are short, plain and say what happened. Nothing here contains a status
 // code, an error code or any other internal detail.
 
+import { Platform } from "react-native";
+
 export const ERROR_MESSAGES = {
   NETWORK: "No internet connection. Check your connection and try again.",
   GENERIC: "Something went wrong. Please try again.",
@@ -35,7 +37,12 @@ export const ERROR_MESSAGES = {
     ACCOUNT_DELETED: "This account has been deleted.",
     VERIFY_SIGN_IN: "Couldn't verify your sign-in. Please try again.",
     EMAIL_EXISTS: "An account with this email already exists.",
-    APPLE_ACCOUNT: "This email is linked to an Apple account. Please sign in with Apple.",
+    // Android has no Sign in with Apple, so "sign in with Apple" would be a dead end there.
+    APPLE_ACCOUNT: Platform.select({
+      android:
+        "This email is linked to an Apple account, which can't be used on Android. If your email also works with Google, tap Continue with Google, or contact info@useproximity.org.",
+      default: "This email is linked to an Apple account. Please sign in with Apple.",
+    }),
     GOOGLE_ACCOUNT: "This email is linked to a Google account. Please sign in with Google.",
     SET_PASSWORD_EMAILED: "This email is already on Proximity but has no password yet. Check your inbox for a link to set one.",
     EMAIL_RECENTLY_DELETED:

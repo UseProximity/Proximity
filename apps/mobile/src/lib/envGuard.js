@@ -11,6 +11,10 @@
 // inlines literal `process.env.EXPO_PUBLIC_NAME` expressions, so the call sites do.
 // Messages name the variable and the rule, never the value.
 
+// The form Google gives OAuth client IDs: a numeric project id, a dash, a hash, then the
+// Google user content domain.
+const GOOGLE_CLIENT_ID_SHAPE = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/;
+
 const PRIVATE_SUFFIXES = [".local", ".lan", ".internal", ".home", ".localdomain", ".localhost"];
 
 // scheme://host[:port] with no credentials. Hand-written because React Native's URL
@@ -76,8 +80,12 @@ function distributableEnvProblems(env) {
     ["EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID", env.googleIosClientId],
     ["EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID", env.googleAndroidClientId],
   ]) {
-    if (typeof value !== "string" || !value.trim() || value.trim() === "not-configured") {
+    const id = typeof value === "string" ? value.trim() : "";
+    if (!id || id === "not-configured") {
       add(name, "is not set");
+    } else if (!GOOGLE_CLIENT_ID_SHAPE.test(id)) {
+      // A placeholder would otherwise pass and only fail when someone taps Continue with Google.
+      add(name, "is not a Google client ID (expected <digits>-<hash>.apps.googleusercontent.com)");
     }
   }
 
