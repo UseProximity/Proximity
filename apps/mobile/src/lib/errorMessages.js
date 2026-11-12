@@ -89,12 +89,6 @@ export const ERROR_MESSAGES = {
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
     MINE_DELETE: "Couldn't delete this listing. Please try again.",
-    PUBLISH: "Couldn't publish your listing. Please try again.",
-    PHOTOS_ADD: "Couldn't add those photos. Please try again.",
-    PHOTOS_PARTIAL_TITLE: "Listing published",
-    photosPartial: (count) =>
-      `${count} photo${count === 1 ? "" : "s"} failed to upload. You can re-add them from the listing later.`,
-    PHOTOS_FAILED: "Photos failed to upload. You can re-add them from the listing later.",
     CREATE_NOT_ALLOWED: "Your account can't create listings.",
     FIELDS_REQUIRED: "Fill in all the required fields.",
     NAME_TAKEN: "That property name is already taken. Choose a different name.",
@@ -110,17 +104,6 @@ export const ERROR_MESSAGES = {
     SUBLET_CONSENT: "Please confirm you have the right to sublet this place.",
     UNITS_NEGATIVE: "Bedrooms and bathrooms can't be negative.",
     ADDRESS_NOT_FOUND: "We couldn't find that address. Check it and try again.",
-    // Add Listing steps.
-    STEP_ADDRESS: "Enter the property address to continue.",
-    STEP_MOVE_IN: "Pick the date it becomes available, or choose Available now.",
-    STEP_UNITS_NONE: "Add at least one unit.",
-    STEP_UNIT_BEDS_BATHS: "Each unit needs bedrooms and bathrooms.",
-    STEP_UNIT_LEASE_TERM: "Pick at least one lease term for each available unit.",
-    STEP_DESCRIPTION: "A short description is required.",
-    REVIEW_ADDRESS: "Address needed",
-    REVIEW_UNIT_BEDS_BATHS: "Bedrooms and bathrooms needed",
-    REVIEW_UNIT_LEASE_TERM: "Pick lease terms for each available unit",
-    REVIEW_DESCRIPTION: "A short description is needed",
   },
 
   CHAT: {

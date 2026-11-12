@@ -43,12 +43,12 @@ module.exports = {
       // Adds the com.apple.developer.applesignin entitlement (iOS only).
       "expo-apple-authentication",
       ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
-      // Library-only picking for Add Listing photos with no live camera capture,
+      // Library-only picking for chat photos with no live camera capture,
       // so camera/microphone permissions are declined rather than requested.
       [
         "expo-image-picker",
         {
-          photosPermission: "Proximity uses your photo library to let landlords add listing photos.",
+          photosPermission: "Proximity uses your photo library so you can send photos in your messages.",
           cameraPermission: false,
           microphonePermission: false,
         },

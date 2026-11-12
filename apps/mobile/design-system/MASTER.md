@@ -3,7 +3,7 @@
 > **Scope:** This document describes the **Proximity mobile app only** (`apps/mobile`, Expo + React Native + Expo Router + NativeWind).
 > It does **not** change, redefine, or apply to the Proximity **web** app (`apps/web`). Web is referenced in a few places below for brand-continuity context (existing colors, terminology): that is a reference, not a target. Nothing in this document authorizes or implies a change to any file under `apps/web`.
 
-> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only overrides are `pages/add-listing.md` and `pages/matchmaking.md`: every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters, the placeholder Chat tab) implements this Master directly with no override file of its own.
+> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only override is `pages/matchmaking.md`: every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters, the placeholder Chat tab) implements this Master directly with no override file of its own.
 
 > **Status:** Implemented (Stages A–H, plus a Stage H revision pass after on-device review). `apps/mobile/src/theme/tokens.js` and `apps/mobile/src/components/ui/*` reflect this system.
 
@@ -71,7 +71,7 @@ No new brand hue. **Red-600 remains the single primary color.** This is a formal
 | `base` | 15 | 400 (body) / 700 (section headers) | Body text. **Section headers use bold weight at this size, not a larger size**; matches the existing Listing Detail convention ("Details", "Reviews") |
 | `lg` | 17 | 500/600 | Emphasized body, list-row titles |
 | `xl` | 20 | 700 | Screen-section headers |
-| `title` | 28 | 700/800 | Screen-level headers (e.g. wizard step titles) |
+| `title` | 28 | 700/800 | Screen-level headers |
 | `display` *(new)* | 40 | 800 | Reserved for one-off brand moments only (the auth screens' wordmark); not for general use |
 
 **Rule:** Prefer weight-driven hierarchy over size-driven hierarchy wherever both would work. This is what keeps the type system feeling restrained rather than "unnecessarily huge."
@@ -101,7 +101,7 @@ Line-height: comfortable (~1.4–1.5×) for body copy; RN's narrow viewport make
 | Token | Value | Applies to |
 |---|---|---|
 | `control` | 12px | Buttons, text inputs, chip-as-rectangle elements; already what `Button.js`/`TextField.js` use |
-| `container` | 16px | Cards, sheets, images; matches web's actual `ListingCard`/`MapPopupCard` (`rounded-2xl`), which mobile's current `Card.js` (12px) currently undershoots |
+| `container` | 16px | Cards, sheets, images; matches web's actual `ListingCard`/`MapPopupCard` (`rounded-2xl`) |
 | `pill` | fully rounded | Chips, badges, avatars, chat composer, Browse's search field + its matched circular Filters button (an intentional exception to `control` for standard text inputs/icon buttons; search bars are conventionally pill-shaped in mobile UI, same reasoning as the chat composer) |
 
 The 8px-radius drift originally noted here (Browse's search bar, the Filters button, Listing Detail's contact form inputs) has been resolved: all three are on their correct tiers now.
@@ -162,7 +162,7 @@ This is a named, intentional exception, not a general-purpose second tier; new f
 
 **Cards**: radius `container` (16px), `border`-outlined, white background, **no default shadow** by default. Tappable cards (e.g. `ListingCard`) get a subtle press state (background or border color shift) rather than a shadow lift. **Exception**: a page built as a stack of a few substantial, non-tappable content sections on a light (`gray-50`) page background, Listing Detail's Quick facts/Description/Amenities & Utilities/Location/Reviews/Contact landlord sections are the first case, uses the lighter `shadows.subtle` tier from §5 on each card, with a soft near-page-color border (`border-gray-50`, blending toward the page background rather than reading as a hard edge), so the cards read as gently lifted surfaces without standing out too heavily against the page. This is deliberately reserved for a handful of major sections per screen, not every piece of content; the goal is a clean hierarchy of a few cards, never a screen full of nested boxes.
 
-**Chips/tags**: `pill` radius. Selected: `primary` background, white text. Unselected: white background, `gray-300` border, `textPrimary`/`gray-700` text. This is already the shape of `wizardShared.js`'s `Chip`; that becomes the canonical pattern going forward (see `pages/add-listing.md`). `ui/Chip.js` (the promoted, canonical version) also supports two additive, opt-in props used by `FilterSheet.js`: `showCheck` (prefixes a small checkmark on the selected state, for contexts like Filters where selection needs to read unambiguously, not just via color) and `icon` (prefixes a small Lucide recognition icon, used for Filters' Amenities/Utilities options that have a clean 1:1 icon, not applied everywhere). The two aren't designed to combine on the same chip.
+**Chips/tags**: `pill` radius. Selected: `primary` background, white text. Unselected: white background, `gray-300` border, `textPrimary`/`gray-700` text. `ui/Chip.js` is the canonical version of this pattern. It also supports two additive, opt-in props used by `FilterSheet.js`: `showCheck` (prefixes a small checkmark on the selected state, for contexts like Filters where selection needs to read unambiguously, not just via color) and `icon` (prefixes a small Lucide recognition icon, used for Filters' Amenities/Utilities options that have a clean 1:1 icon, not applied everywhere). The two aren't designed to combine on the same chip.
 
 **Section headers**: a small icon-badged label (`ui/SectionHeader.js`: 28px `primary`-tinted circle containing a 14px Lucide icon, next to a bold title, optional muted subtitle) marks a distinct group within a longer form or content screen. Used to break `FilterSheet.js`'s options into 4 visually distinct clusters (Budget & Size, Property, Amenities & Utilities, Location & Move-in; each in its own `bg-gray-50 rounded-2xl p-4` container) and to separate Listing Detail's sections (Details, Location, Reviews, Contact landlord). This is the standard pattern for "this is a new section" going forward, in place of a bare bold `Text` title.
 
@@ -219,16 +219,15 @@ Minimal and functional, never decorative, directly matching "avoid overly flashy
 
 ## 10. Mapping to Existing Mobile Components
 
-This system extends the existing foundation; it does not replace its architecture. None of this requires touching Add Listing's functionality or behavior, only shared primitive styling.
+This system extends the existing foundation; it does not replace its architecture. None of this requires changing any screen's functionality or behavior, only shared primitive styling.
 
 | File | Expected change at implementation time |
 |---|---|
 | `src/theme/tokens.js` | Add `primarySoft`; add `display` typography size and `xxxl` spacing; formalize the two-tier radius (`control`/`container`/`pill`) |
 | `src/components/ui/Button.js` | Radius/press-state alignment to §7; eventual icon slot once Lucide lands |
 | `src/components/ui/TextField.js` | Radius alignment; error a11y wiring (§9) |
-| `src/components/ui/Card.js` | Radius bump 12px → 16px (`container`); confirm no default shadow |
 | `src/components/ui/Section.js` | No expected change |
-| `src/components/listings/wizard/wizardShared.js`'s `Chip` | Promote to a shared `ui/Chip.js` per §7 (also see `pages/add-listing.md`) |
+| `src/components/ui/Chip.js` | Canonical chip per §7 |
 
 ---
 
@@ -249,5 +248,4 @@ None of the above implies or requires any change to `apps/web`.
 ## 12. Out of Scope for This Phase
 
 - **Dark mode**: explicitly deferred. Design for light mode only; no dark-mode architecture introduced.
-- **Add Listing's functionality/behavior**: this document governs visual styling only. Add Listing's wizard logic, validation, and API behavior (completed separately) are unchanged.
 - **Any change to `apps/web`**: web is reference-only throughout this document (see scope note at top).

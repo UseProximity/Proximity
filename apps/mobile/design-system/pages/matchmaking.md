@@ -26,7 +26,7 @@ The message input is **pill-shaped** (`pill` radius / fully rounded). This is an
 
 ## Quick-reply / answer chips
 
-`AnswerBar.js`, `ChoiceChips.js`, `MultiChoiceChips.js`, `BudgetInput.js`, `ConfirmOrReplace.js`, `OpenTextInput.js` all reuse the Master's canonical `Chip` (see `pages/add-listing.md` for where that shared component lives). No separate chip styling needed here.
+`AnswerBar.js`, `ChoiceChips.js`, `MultiChoiceChips.js`, `BudgetInput.js`, `ConfirmOrReplace.js`, `OpenTextInput.js` all reuse the Master's canonical `Chip` (`src/components/ui/Chip.js`). No separate chip styling needed here.
 
 ## Recommendation cards
 
