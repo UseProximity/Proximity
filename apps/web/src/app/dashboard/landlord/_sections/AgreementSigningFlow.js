@@ -1,0 +1,576 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Pencil } from "lucide-react";
+import SignAgreementDialog from "./SignAgreementDialog";
+import Spinner from "./Spinner";
+import SignerFields, { useSignerDetails } from "./SignerFields";
+import LicenseDisclosureFields, { MissingHint, useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const FIELD = "rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-red-500";
+const BUTTON = "rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
+const PRIMARY = "rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60";
+
+// A JSON call. While another call for this landlord holds the signing lock (a
+// background build still finishing) the sign route answers 409 "in_progress":
+// wait and ask again rather than show that.
+async function call(url, { method = "GET", body, retries = 0 } = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, {
+      method,
+      ...(body && { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    if (res.status === 409 && data.code === "in_progress" && attempt < retries) {
+      await wait(1500);
+      continue;
+    }
+    throw new Error(data.error || "Something went wrong. Please try again.");
+  }
+}
+
+const STEPS = ["Your details", "Properties covered", "Real estate license"];
+
+// Three bars, no labels (Wyatt, 2026-11-07); the step names are for screen readers.
+function Progress({ step }) {
+  return (
+    <ol className="grid grid-cols-3 gap-2 px-5 pt-4" aria-label="Signing steps">
+      {STEPS.map((label, i) => (
+        <li key={label} className="min-w-0" aria-current={i === step ? "step" : undefined}>
+          <div className={`h-1.5 rounded-full ${i <= step ? "bg-red-600" : "bg-gray-200"}`} />
+          <span className="sr-only">
+            Step {i + 1} of {STEPS.length}: {label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// One unit on the Exhibit A step: tick it, or rename it with the pencil.
+function UnitRow({ unit, checked, disabled, note, onToggle, onRenamed }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(unit.label);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await call("/api/billing/agreement/units", { method: "PATCH", body: { unitId: unit.id, name } });
+      onRenamed(unit.label, r.unit.label);
+      setEditing(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (editing) {
+    return (
+      <li className="flex w-full flex-wrap items-center gap-2">
+        <input className={`${FIELD} w-40`} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label="Unit name" autoFocus />
+        <button type="button" className={BUTTON} disabled={busy || !name.trim()} onClick={save}>
+          {busy ? "Saving..." : "Save"}
+        </button>
+        <button type="button" className={BUTTON} disabled={busy} onClick={() => { setEditing(false); setName(unit.label); }}>
+          Cancel
+        </button>
+        {error && <span className="text-xs text-red-700">{error}</span>}
+      </li>
+    );
+  }
+  return (
+    <li className="inline-flex items-center gap-1" title={note ?? undefined}>
+      <label className="flex min-w-0 items-center gap-1.5 text-sm text-gray-800">
+        <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onToggle(e.target.checked)} />
+        <span className="truncate">{unit.label}</span>
+        {note && <span className="text-xs text-gray-400">({note})</span>}
+      </label>
+      <button type="button" className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" onClick={() => setEditing(true)} aria-label={`Rename ${unit.label}`}>
+        <Pencil className="h-3 w-3" aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
+
+// Add a unit the property is missing: a real unit, unpublished, with no leases.
+function AddUnit({ listingId, onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState({ name: "", bedrooms: "1", bathrooms: "1" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  if (!open) {
+    return (
+      <button type="button" className="text-sm font-medium text-red-700 hover:underline" onClick={() => setOpen(true)}>
+        + Add a unit
+      </button>
+    );
+  }
+  const add = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await call("/api/billing/agreement/units", { method: "POST", body: { listingId, ...v } });
+      onAdded(r.unit);
+      setV({ name: "", bedrooms: "1", bathrooms: "1" });
+      setOpen(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-2 rounded-md bg-gray-50 p-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-gray-600">
+          Unit name
+          <input className={`${FIELD} mt-0.5 block w-36`} value={v.name} maxLength={60} placeholder="1A" onChange={(e) => setV({ ...v, name: e.target.value })} autoFocus />
+        </label>
+        <label className="text-xs text-gray-600">
+          Beds
+          <input className={`${FIELD} mt-0.5 block w-16`} inputMode="numeric" value={v.bedrooms} onChange={(e) => setV({ ...v, bedrooms: e.target.value })} />
+        </label>
+        <label className="text-xs text-gray-600">
+          Baths
+          <input className={`${FIELD} mt-0.5 block w-16`} inputMode="decimal" value={v.bathrooms} onChange={(e) => setV({ ...v, bathrooms: e.target.value })} />
+        </label>
+        <button type="button" className={BUTTON} disabled={busy || !v.name.trim()} onClick={add}>
+          {busy ? "Adding..." : "Add"}
+        </button>
+        <button type="button" className={BUTTON} disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">It is added to the property without any leases, hidden from students until you add a lease to it.</p>
+      {error && <p className="text-xs text-red-700">{error}</p>}
+    </div>
+  );
+}
+
+// Units holding the landlord's leases that this choice leaves uncovered: their
+// leases come off the site when the document is signed (Wyatt, 2026-11-07).
+function droppedUnits(p, c) {
+  if (!c?.include || c.wholeBuilding) return [];
+  const covered = new Set(p.covered && !p.covered.wholeBuilding ? p.covered.units : []);
+  const required = new Set(p.requiredUnits ?? []);
+  return (p.leaseUnits ?? []).filter((u) => !c.units.includes(u) && !covered.has(u) && !required.has(u));
+}
+const hasListings = (p) => p.live || (p.leaseUnits ?? []).length > 0;
+const listWords = (xs) => (xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+// One property on the Exhibit A step: on it or left off (anything not being
+// published or already covered; its listings then come off the site), the whole
+// building or its units. What is covered already shows as covered and stays.
+function PropertyChoice({ p, choice, onChange }) {
+  const covered = p.covered;
+  const coveredUnits = new Set(covered?.wholeBuilding ? [] : covered?.units ?? []);
+  const leaseUnits = new Set(p.leaseUnits ?? []);
+  // Units being published right now stay on (the reason this popup opened).
+  const required = new Set(p.requiredUnits ?? []);
+  const dropped = droppedUnits(p, choice);
+  const toggleUnit = (label, on) => {
+    const set = new Set(choice.units);
+    if (on) set.add(label);
+    else set.delete(label);
+    onChange({ ...choice, units: [...set] });
+  };
+  const status = covered ? "On your agreement" : p.locked ? (p.live ? "Live" : "Being published") : "Draft";
+  return (
+    <li className="space-y-2 rounded-md border border-gray-200 p-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <p className="min-w-0 flex-1 text-sm font-medium text-gray-900">{p.address}</p>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.locked ? "bg-green-50 text-green-800" : "bg-gray-100 text-gray-600"}`}>{status}</span>
+      </div>
+      {p.canExclude && (
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={!choice.include} onChange={(e) => onChange({ ...choice, include: !e.target.checked })} />
+          Exclude this property
+        </label>
+      )}
+      {covered?.wholeBuilding ? (
+        <p className="text-xs text-gray-500">Already covered: the whole building.</p>
+      ) : !choice.include ? (
+        hasListings(p) ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            You have listings here. Excluding this property withdraws them from the site when you sign, so students will no longer see them. You
+            can publish them again later by adding it to your agreement with a short addendum.
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">Not covered. To publish it later, you will add it to your agreement with a short addendum.</p>
+        )
+      ) : (
+        <>
+          {p.canWholeBuilding ? (
+            <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+              <label className="flex items-center gap-2">
+                <input type="radio" name={`whole-${p.listingId}`} checked={choice.wholeBuilding} onChange={() => onChange({ ...choice, wholeBuilding: true })} />
+                Whole building
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name={`whole-${p.listingId}`} checked={!choice.wholeBuilding} onChange={() => onChange({ ...choice, wholeBuilding: false })} />
+                Specific units
+              </label>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">You list units here but do not own the building, so name the units this agreement covers.</p>
+          )}
+          {choice.wholeBuilding ? (
+            <p className="text-xs text-gray-500">Covers every unit in the building, including ones you add later.</p>
+          ) : (
+            <div className="space-y-2">
+              {/* Exhibit A: "Units: ..., and any unit at this address the landlord later lists through Proximity." (Wyatt, 2026-11-07) */}
+              <p className="text-xs text-gray-500">Also covers any unit you list at this address later, so adding one never needs another addendum.</p>
+              {p.units.length ? (
+                // Side by side, wrapping, so a property with many units stays short.
+                <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {p.units.map((u) => (
+                    <UnitRow
+                      key={u.id}
+                      unit={u}
+                      checked={coveredUnits.has(u.label) || required.has(u.label) || choice.units.includes(u.label)}
+                      disabled={coveredUnits.has(u.label) || required.has(u.label)}
+                      note={coveredUnits.has(u.label) ? "already covered" : required.has(u.label) ? "being published" : leaseUnits.has(u.label) ? "has your listings" : null}
+                      onToggle={(on) => toggleUnit(u.label, on)}
+                      onRenamed={(from, to) => onChange({ ...choice, units: choice.units.map((x) => (x === from ? to : x)), renamed: [from, to] })}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-gray-500">No units on this property yet. Add the ones this agreement covers.</p>
+              )}
+              {dropped.length > 0 && (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Your listings on {listWords(dropped)} will be withdrawn from the site when you sign, since {dropped.length === 1 ? "that unit is" : "those units are"} not
+                  covered. You can publish them again later by adding {dropped.length === 1 ? "it" : "them"} with a short addendum.
+                </p>
+              )}
+              <AddUnit listingId={p.listingId} onAdded={(unit) => onChange({ ...choice, units: [...choice.units, unit.label], added: unit })} />
+            </div>
+          )}
+        </>
+      )}
+    </li>
+  );
+}
+
+/*
+ * Signing the marketing agreement, or an Exhibit A amendment, all in one popup
+ * (Payments tab and the publish dialog; Wyatt, 2026-11-07), with a progress bar:
+ *
+ *   1. Your details  name, title, company, email and address, pre-filled from the
+ *                    account and the Stripe billing address, and "authorised to sign"
+ *   2. Exhibit A     each property: on it (drafts can be left off), and the whole
+ *                    building or which units; units can be added or renamed here.
+ *                    Confirming starts building the document in the background.
+ *   3. Real estate license  the license question; meanwhile the document is
+ *                    built and opened in Documenso, so it is ready when they answer
+ *
+ * Then Documenso's signing page opens with everything filled but the signature
+ * and initials. `listingIds` are the properties being published (publish dialog).
+ * onFinished(result): "signed" | "pending" (signed, still saving) | "closed" |
+ * "nothing" (nothing needs signing: never reported as signed).
+ */
+// `accountId`: a payer signing for a landlord account they pay for (Project B); left out, their own.
+// `takeover`: a landlord with an authorized signer signing their own agreement
+// instead; the signer is removed once it is signed (Wyatt, 2026-11-10).
+export default function AgreementSigningFlow({ listingIds = [], requiredUnits = null, intro = null, user = null, accountId = null, accountIds = null, includeDrafts = false, takeover = false, onFinished }) {
+  const signer = useSignerDetails();
+  const license = useLicenseDisclosure();
+  const [step, setStep] = useState(0);
+  const [authorized, setAuthorized] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [choices, setChoices] = useState({});
+  const [phase, setPhase] = useState("form"); // form | opening | signing
+  const [session, setSession] = useState(null);
+  const [error, setError] = useState(null);
+  const [preparing, setPreparing] = useState(false);
+  // An Addendum to Exhibit A with the agreement's saved details: only the properties
+  // are asked, then Documenso, where they only sign (Wyatt, 2026-11-07).
+  const [addendum, setAddendum] = useState(false);
+  // Live properties left off: confirmed before they come off the site.
+  const [confirmingOff, setConfirmingOff] = useState(false);
+  // Signing for another landlord's account (an authorized signer): the wording says "the landlord's".
+  const forAccount = !!(accountId || accountIds?.length);
+  const prepared = useRef(null);
+  const closeRef = useRef(null);
+  const ids = listingIds.join(",");
+
+  // What this document is and which properties go on it, read up front.
+  useEffect(() => {
+    closeRef.current?.focus();
+    let live = true;
+    const units = requiredUnits && Object.keys(requiredUnits).length ? `&units=${encodeURIComponent(JSON.stringify(requiredUnits))}` : "";
+    call(`/api/billing/agreement/exhibit?listingIds=${encodeURIComponent(ids)}${units}${accountId ? `&accountId=${accountId}` : ""}${accountIds?.length ? `&accountIds=${accountIds.join(",")}` : ""}${includeDrafts ? "&includeDrafts=1" : ""}${takeover ? "&takeover=1" : ""}`)
+      .then((r) => {
+        if (!live) return;
+        if (r.kind === "none") return onFinished("nothing");
+        setPreview(r);
+        setChoices(Object.fromEntries(r.properties.map((p) => [p.listingId, p.choice])));
+        if (r.kind === "amendment" && r.signingAs) {
+          setAddendum(true);
+          setStep(1);
+        }
+      })
+      .catch((e) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "form") return undefined;
+    const onKey = (e) => e.key === "Escape" && onFinished("closed");
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, onFinished]);
+
+  const toExhibit = () => {
+    setError(null);
+    if (preview) setStep(1);
+  };
+
+  // An addendum opens straight from the properties step, with the saved details.
+  const openAddendum = async () => {
+    setPhase("opening");
+    setError(null);
+    try {
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { fromAgreement: true, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }), ...(takeover && { takeover: true }) }, retries: 20 });
+      if (r.alreadySigned) return onFinished("signed");
+      setSession(r);
+      setPhase("signing");
+    } catch (err) {
+      // An agreement signed before details were saved: ask for them after all.
+      if (/Confirm your details/.test(err.message)) {
+        setAddendum(false);
+        setStep(0);
+      } else setError(err.message);
+      setPhase("form");
+    }
+  };
+
+  const exhibit = () =>
+    Object.entries(choices).map(([listingId, c]) => ({ listingId, include: c.include, ...(c.include === false && { excluded: true }), wholeBuilding: c.wholeBuilding, units: c.units }));
+  // Properties with the landlord's listings left off, and units with their listings
+  // left uncovered: those listings come off the site once the document is signed.
+  const liveExcluded = (preview?.properties ?? []).filter((p) => hasListings(p) && p.canExclude && choices[p.listingId]?.include === false);
+  const unitsOff = (preview?.properties ?? [])
+    .map((p) => ({ p, units: droppedUnits(p, choices[p.listingId] ?? p.choice) }))
+    .filter((x) => x.units.length);
+  const offCount = liveExcluded.length + unitsOff.length;
+
+  // Continue from Exhibit A: a live property left off is confirmed first. It comes
+  // off the site only when the document is signed, so closing the popup changes nothing.
+  const continueExhibit = ({ confirmed = false } = {}) => {
+    if (offCount && !confirmed) return setConfirmingOff(true);
+    setConfirmingOff(false);
+    setError(null);
+    return addendum ? openAddendum() : confirmExhibit();
+  };
+  const body = () => ({ ...signer.body(), authorized, listingIds, requiredUnits, exhibit: exhibit(), ...(accountId && { accountId }), ...(accountIds?.length && { accountIds }), ...(includeDrafts && { includeDrafts }), ...(takeover && { takeover: true }) });
+
+  // Units the landlord added or renamed show in the next preview; keep the list in step.
+  const updateChoice = (p, next) => {
+    if (next.added) {
+      setPreview((pv) => ({ ...pv, properties: pv.properties.map((x) => (x.listingId === p.listingId ? { ...x, units: [...x.units, next.added] } : x)) }));
+    }
+    if (next.renamed) {
+      const [from, to] = next.renamed;
+      setPreview((pv) => ({
+        ...pv,
+        properties: pv.properties.map((x) => (x.listingId === p.listingId ? { ...x, units: x.units.map((u) => (u.label === from ? { ...u, label: to } : u)), leaseUnits: x.leaseUnits.map((u) => (u === from ? to : u)) } : x)),
+      }));
+    }
+    const { added, renamed, ...clean } = next;
+    setChoices((c) => ({ ...c, [p.listingId]: clean }));
+  };
+
+  // Every property on it has the whole building or at least one unit.
+  const exhibitProblem = (() => {
+    if (!preview) return null;
+    for (const p of preview.properties) {
+      const c = choices[p.listingId];
+      if (!c?.include || c.wholeBuilding) continue;
+      const covered = p.covered && !p.covered.wholeBuilding ? p.covered.units : [];
+      if (!c.units.length && !covered.length) return `Pick at least one unit for ${p.address}, the whole building, or exclude it.`;
+    }
+    return null;
+  })();
+
+  // Confirming Exhibit A starts building the document while the license question shows.
+  const confirmExhibit = () => {
+    setStep(2);
+    setPreparing(true);
+    prepared.current = call("/api/billing/agreement/sign", { method: "POST", body: { ...body(), prepare: true }, retries: 20 })
+      .catch(() => null) // the open call below makes the copy itself if this failed
+      .finally(() => setPreparing(false));
+  };
+
+  const open = async (e) => {
+    e.preventDefault();
+    if (!license.ready) return;
+    setPhase("opening");
+    setError(null);
+    try {
+      const ready = await prepared.current;
+      if (ready?.alreadySigned) return onFinished("signed");
+      const r = await call("/api/billing/agreement/sign", { method: "POST", body: { ...body(), licenseDisclosure: license.payload() }, retries: 20 });
+      if (r.alreadySigned) return onFinished("signed");
+      setSession(r);
+      setPhase("signing");
+    } catch (err) {
+      setError(err.message);
+      setPhase("form");
+      prepared.current = Promise.resolve(null);
+    }
+  };
+
+  if (phase === "signing" && session) {
+    return (
+      <SignAgreementDialog
+        token={session.token}
+        host={session.host}
+        kind={session.kind}
+        name={user?.name}
+        email={user?.email}
+        onClose={() => onFinished("closed")}
+        onFinished={onFinished}
+      />
+    );
+  }
+
+  const isAmendment = preview?.kind === "amendment";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Sign the marketing agreement">
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
+        <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
+          <h2 className="flex-1 text-base font-semibold text-gray-900">{isAmendment ? "Add to your marketing agreement" : "Sign the marketing agreement"}</h2>
+          <button ref={closeRef} type="button" disabled={phase === "opening"} onClick={() => onFinished("closed")} className={BUTTON}>
+            Cancel
+          </button>
+        </div>
+        {!addendum && <Progress step={step} />}
+
+        {phase === "opening" ? (
+          <div className="flex flex-col items-center gap-3 px-5 py-16 text-center">
+            <Spinner label={preparing ? "Preparing your agreement..." : "Opening your agreement..."} />
+            <p className="text-xs text-gray-500">This takes a few seconds.</p>
+          </div>
+        ) : (
+          <div className="space-y-4 overflow-y-auto px-5 py-4 text-sm text-gray-700">
+            {step === 0 && (
+              <>
+                {intro && <p>{intro}</p>}
+                <p className="text-gray-500">We fill these into the agreement for you, so in the document you only sign and initial.</p>
+                <SignerFields state={signer} />
+                <label className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
+                  <span>I am authorised to sign this agreement for the landlord or company that owns these listings.</span>
+                </label>
+                <div className="flex justify-end">
+                  <button type="button" className={PRIMARY} disabled={!signer.ready || !authorized || !preview} onClick={toExhibit}>
+                    Continue
+                  </button>
+                </div>
+              </>
+            )}
+
+            {step === 1 && preview && (
+              <>
+                {addendum && preview.signingAs && (
+                  <p className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                    Signing as {preview.signingAs.name}
+                    {preview.signingAs.title ? `, ${preview.signingAs.title}` : ""}
+                    {preview.signingAs.company ? ` (${preview.signingAs.company})` : ""}, as on your agreement. Everything but your
+                    signature is filled in for you.{" "}
+                    <button type="button" className="font-medium text-red-700 underline" onClick={() => { setAddendum(false); setStep(0); }}>
+                      Not you? Update details
+                    </button>
+                  </p>
+                )}
+                <p>
+                  {isAmendment
+                    ? "These properties are not fully covered by your marketing agreement yet. For each, choose whether it covers the whole building or only certain units. A short addendum adds them to your agreement."
+                    : "Choose the properties this marketing agreement covers. For each, choose whether it covers the whole building or only certain units. These are listed in the agreement (as Exhibit A)."}
+                </p>
+                <ul className="space-y-3">
+                  {preview.properties.map((p) => (
+                    <PropertyChoice key={p.listingId} p={p} choice={choices[p.listingId] ?? p.choice} onChange={(next) => updateChoice(p, next)} />
+                  ))}
+                </ul>
+                {exhibitProblem && <p className="text-xs text-red-700">{exhibitProblem}</p>}
+                {confirmingOff ? (
+                  <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900">
+                    <p className="font-medium">Withdraw these listings from the site?</p>
+                    <ul className="list-disc pl-5 text-xs">
+                      {liveExcluded.map((p) => (
+                        <li key={p.listingId}>{p.address}: {forAccount ? "every listing the landlord has there" : "every listing of yours there"}</li>
+                      ))}
+                      {unitsOff.map(({ p, units }) => (
+                        <li key={`units-${p.listingId}`}>
+                          {p.address}: {listWords(units)}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs">
+                      They are withdrawn when you sign, so students will no longer see them. Until then nothing changes.{" "}
+                      {forAccount
+                        ? "We email the landlord which ones you left off. They can be added later with a short addendum."
+                        : "You can publish them again later by adding them to your agreement with a short addendum."}
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className={BUTTON} onClick={() => setConfirmingOff(false)}>
+                        Go back
+                      </button>
+                      <button type="button" className={PRIMARY} onClick={() => continueExhibit({ confirmed: true })}>
+                        Leave off and continue
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                <div className="flex justify-between">
+                  {addendum ? (
+                    <span />
+                  ) : (
+                    <button type="button" className={BUTTON} onClick={() => setStep(0)}>
+                      Back
+                    </button>
+                  )}
+                  <button type="button" className={PRIMARY} disabled={!!exhibitProblem} onClick={() => continueExhibit()}>
+                    {addendum ? "Open the addendum" : "Continue"}
+                  </button>
+                </div>
+                )}
+              </>
+            )}
+
+            {step === 2 && (
+              <form onSubmit={open} className="space-y-4">
+                <p>Your answer is kept on your account. It is not printed on the agreement.</p>
+                {license.loading ? <Spinner label="Loading..." /> : <LicenseDisclosureFields state={license} idPrefix="sign-license" />}
+                <MissingHint state={license} />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button type="button" className={BUTTON} onClick={() => setStep(1)}>
+                    Back
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {preparing && <Spinner label="Preparing your agreement..." className="text-xs" />}
+                    <button type="submit" disabled={!license.ready} className={PRIMARY}>
+                      Open the agreement
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

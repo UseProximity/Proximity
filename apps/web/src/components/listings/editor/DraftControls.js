@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import { Send } from "lucide-react";
 
 export function DraftBadge({ className = "" }) {
@@ -32,6 +33,8 @@ const WHAT = {
 export function PublishButton({
   kind,
   id,
+  // kind "properties": the property ids to publish together.
+  ids,
   scope,
   label = "Publish",
   disabledReason = null,
@@ -53,15 +56,21 @@ export function PublishButton({
       )
     )
       return;
+    await send();
+  };
+
+  // The publish itself, also run again once the landlord has signed for the
+  // properties their agreement did not cover yet (publishErrorToast's retry).
+  const send = async () => {
     setBusy(true);
     try {
       const res = await fetch("/api/landlord/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, id, scope }),
+        body: JSON.stringify({ kind, id, ids, scope }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return toast.error(data.error || "Couldn't publish that.");
+      if (!res.ok) return publishErrorToast(data, "Couldn't publish that.", { retry: send });
       // A draft building whose address went live under someone else while it
       // waited joins that building instead (see /api/landlord/publish).
       if (data.published?.mergedInto) {

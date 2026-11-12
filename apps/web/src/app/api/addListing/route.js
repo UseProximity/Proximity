@@ -17,6 +17,8 @@ import {
   propertyNameTakenResponse,
 } from "@/lib/listings/propertyName";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
+import { displayAddress } from "@/lib/billing/coverage";
 import { checkListingDescription } from "@/lib/contentRules";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
@@ -118,7 +120,14 @@ export async function POST(req) {
      * that is already live, the new units are the drafts instead, so the
      * building students can see is left exactly as it was.
      */
-    const draft = body.draft === true;
+    let draft = body.draft === true;
+    // Set when the property must be added to the landlord's marketing agreement
+    // before it can go live: it is saved as a draft and the page asks them to sign.
+    let needsCoverage = false;
+    let payerFor = null;
+    // Set when something else on Billing (a payment method, an overdue invoice)
+    // must be fixed first: saved as a draft, and the page says what is missing.
+    let billingBlock = null;
 
     // The add forms hold their state in snake_case and spread it straight into
     // the body, so any field this route read only in camelCase never arrived:
@@ -233,6 +242,46 @@ export async function POST(req) {
       ownerId = requestUser.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Putting a listing in front of students needs a payment method and, when
+       * required, a signed marketing agreement (lib/billing/listingGate.js).
+       * Only landlords are checked, and saving a draft is never blocked, so
+       * nothing a landlord has typed is lost.
+       */
+      if (!draft) {
+        const gate = await checkListingGate(
+          supabase,
+          ownerId,
+          attachToListingId
+            ? {
+                listingIds: [attachToListingId],
+                // The units being added must be on the agreement too, not just the building.
+                newUnits: (Array.isArray(unitTypes) ? unitTypes : []).map((u) => ({ listingId: attachToListingId, name: u?.name })),
+              }
+            : { newProperty: true }
+        );
+        if (!gate.allowed) {
+          // Only the agreement: kept as a draft and the page opens signing for
+          // this property. Anything else (no payment method, an overdue invoice):
+          // kept as a draft too (a landlord who left to add a payment method lost
+          // the whole form, 2026-11-07), but only for a page that says so and
+          // links to Billing. Every other caller (the mobile app, which has no
+          // billing, and the sublease form) is refused as before, since a 2xx
+          // would read to them as published.
+          // The agreement-only draft is for those pages too (review of 2026-11-07).
+          if (body.draftIfBillingBlocked !== true) {
+            return NextResponse.json(gateResponseBody(gate), { status: 403 });
+          } else if (coverageOnly(gate)) {
+            draft = true;
+            needsCoverage = true;
+            // A landlord with a payer: the page sends it to the payer instead of signing.
+            payerFor = gate.payer ?? null;
+          } else {
+            draft = true;
+            billingBlock = gateResponseBody(gate);
+          }
+        }
       }
       /*
        * Someone has to be reachable about the offering. Not asked of the
@@ -979,6 +1028,46 @@ export async function POST(req) {
       const baseUrl = getBaseUrl(req);
       const testEmailTo = stagingEmailHeader(req);
       after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl, testEmailTo }));
+    }
+
+    if (needsCoverage) {
+      // Saved as a draft. The page signs the agreement for this property, then
+      // publishes the draft (api/landlord/publish).
+      return NextResponse.json(
+        {
+          message: payerFor
+            ? `Draft saved. It goes live once ${payerFor.name} signs.`
+            : "Draft saved. Sign your marketing agreement for this property to publish it.",
+          code: "agreement_needed",
+          ...(payerFor && { payer: payerFor }),
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
+          // Units added to an existing property are named, so the addendum lists them.
+          uncovered: [
+            {
+              listingId,
+              address: displayAddress({ address }),
+              ...(attachToListingId && { missingUnits: [...new Set(unitData.map((u) => String(u.name ?? "").trim()).filter(Boolean))] }),
+            },
+          ],
+          // What to publish once signed: the new property, or the new units added to a live one.
+          publish: attachToListingId
+            ? createdUnitIds.filter(Boolean).map((id) => ({ kind: "unit", id }))
+            : [{ kind: "property", id: listingId }],
+        },
+        { status: 202 }
+      );
+    }
+
+    if (billingBlock) {
+      return NextResponse.json(
+        {
+          message: billingBlock.drafted,
+          code: "billing_needed",
+          missing: billingBlock.missing,
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
+        },
+        { status: 202 }
+      );
     }
 
     return NextResponse.json(

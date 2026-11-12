@@ -33,3 +33,29 @@ export const LIVE_STATUSES = new Set(["pilot", "on"]);
 export function agentIsLive(agentRow) {
   return agentsEnabled() && !!agentRow && LIVE_STATUSES.has(agentRow.status);
 }
+
+/*
+ * Launch review for what a sync teaches Proxy (Wyatt, 2026-11-07). While on,
+ * knowledge facts a sync reads off the landlord's pages wait for the Proximity
+ * team in the admin queue before Proxy uses them. On unless
+ * WEBSITE_SYNC_TEAM_REVIEW is set to off, so a missing variable fails safe.
+ *
+ * Listing changes (units, leases, prices) no longer go through it: the sync
+ * applies or denies each one itself (Wyatt, 2026-11-11,
+ * lib/sourceImport/syncPolicy.js).
+ */
+export function syncTeamReview() {
+  const v = String(process.env.WEBSITE_SYNC_TEAM_REVIEW ?? "").trim().toLowerCase();
+  return !OFF.has(v);
+}
+
+/*
+ * Source search (pages about a listing found on Zillow, Apartments.com and the
+ * web) and reading those pages into knowledge. Off for launch (Wyatt,
+ * 2026-11-07): only pages a landlord uploaded or gave us are sources. On only
+ * when FOUND_SOURCES_ENABLED is set to on.
+ */
+export function foundSourcesEnabled() {
+  const v = String(process.env.FOUND_SOURCES_ENABLED ?? "").trim().toLowerCase();
+  return ON.has(v);
+}

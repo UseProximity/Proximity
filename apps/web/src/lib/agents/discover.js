@@ -34,6 +34,7 @@
  */
 import { z } from "zod";
 import supabase from "@/lib/supabase";
+import { firecrawlRequest } from "@/lib/firecrawl";
 import { parseStructured, HAIKU } from "./model";
 import { ensureAgent, recordUsage } from "./store";
 import { compareAddress, parseAddress, buildingName, mentionsName, addressesIn } from "./address";
@@ -89,15 +90,13 @@ async function tavily(query, includeDomains) {
 }
 
 async function firecrawlSearch(query, includeDomains) {
-  const key = process.env.FIRECRAWL_API_KEY;
-  if (!key) return null;
   const sites = includeDomains?.length ? ` (${includeDomains.map((d) => `site:${d}`).join(" OR ")})` : "";
-  const res = await fetch("https://api.firecrawl.dev/v2/search", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: `${query}${sites}`, limit: 8 }),
-    signal: AbortSignal.timeout(45000),
-  });
+  const res = await firecrawlRequest(
+    "/v2/search",
+    { query: `${query}${sites}`, limit: 8 },
+    { signal: AbortSignal.timeout(45000) }
+  );
+  if (!res) return null;
   if (!res.ok) throw new Error(`Firecrawl HTTP ${res.status}`);
   const data = await res.json();
   const web = data?.data?.web ?? data?.data ?? [];
@@ -116,7 +115,7 @@ async function search(query, includeDomains = null) {
   const t = await tavily(query, includeDomains);
   if (t) return { results: t, via: "tavily" };
   if (firecrawlError) throw firecrawlError;
-  throw new Error("no search service available (FIRECRAWL_API_KEY and TAVILY_API_KEY missing or refusing)");
+  throw new Error("no search service available (Firecrawl keys and TAVILY_API_KEY missing or refusing)");
 }
 
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
@@ -139,9 +138,12 @@ export function canonicalUrl(u) {
 const cleanAddress = (a) => String(a ?? "").replace(/,?\s*United States$/i, "").trim();
 const cityOf = (listing) => listing.city || String(listing.address ?? "").split(",")[1]?.trim() || "St. Louis";
 
+// Inboxes that only receive leads for a leasing tool. The domain is the tool's, not the landlord's.
+const LEAD_ROUTING_DOMAINS = new Set(["leads.eliseai.com"]);
+
 function companyDomain(email) {
   const d = String(email ?? "").toLowerCase().split("@")[1]?.trim();
-  if (!d || FREE_EMAIL.has(d) || !d.includes(".")) return null;
+  if (!d || FREE_EMAIL.has(d) || LEAD_ROUTING_DOMAINS.has(d) || !d.includes(".")) return null;
   return d;
 }
 

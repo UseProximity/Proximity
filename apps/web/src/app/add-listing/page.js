@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import Image from "next/image";
 import Link from "next/link";
-import { PencilLine, Globe, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { PencilLine, Globe, Loader2, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import AddListingWizard from "@/components/listings/wizard/AddListingWizard";
 import ImportWorkspace from "@/components/listings/wizard/ImportWorkspace";
 import AddListingFlow from "@/components/listings/add/AddListingFlow";
@@ -41,8 +41,9 @@ export default function AddListingPage() {
    * Which path they picked lives in the URL rather than in state, so Back from
    * the flow lands on the fork instead of leaving the page entirely.
    * "manual" is the new flow, "assisted" the old wizard. `site` carries the
-   * address typed on the fork so the import starts on arrival rather than
-   * making them type it again.
+   * links typed on the fork so the import starts on arrival rather than
+   * making them type them again. Several links are repeated `site` params,
+   * held here as one string with a link per line.
    */
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
@@ -54,7 +55,7 @@ export default function AddListingPage() {
    */
   // Read whenever one arrives, not only on first load: "Find properties" on
   // the start screen navigates within this same page, so it never remounts.
-  const siteParam = searchParams.get("site") ?? "";
+  const siteParam = searchParams.getAll("site").map((s) => s.trim()).filter(Boolean).join("\n");
   const [keptSite, setSite] = useState(siteParam);
   // The URL's copy on the first render (the import mounts then and reads it
   // once), the remembered copy after it has been taken out of the URL.
@@ -166,7 +167,7 @@ export default function AddListingPage() {
     if (mode === "assisted" && !session) {
       router.replace(
         `/login?callbackUrl=${encodeURIComponent(
-          `/add-listing?mode=assisted${site ? `&site=${encodeURIComponent(site)}` : ""}`
+          `/add-listing?mode=assisted${siteQuery(site)}`
         )}`
       );
     }
@@ -228,18 +229,22 @@ export default function AddListingPage() {
         <StartChoice
           signedOut={!session}
           onManual={() => setMode("manual")}
-          onImport={(address) =>
-            router.push(
-              `/add-listing?mode=assisted${
-                address ? `&site=${encodeURIComponent(address)}` : ""
-              }`
-            )
-          }
+          onImport={(links) => router.push(`/add-listing?mode=assisted${siteQuery(links.join("\n"))}`)}
         />
       )}
     </div>
   );
 }
+
+// The links as `&site=` params, one per link.
+const siteQuery = (site) =>
+  String(site ?? "")
+    .split("\n")
+    .filter(Boolean)
+    .map((s) => `&site=${encodeURIComponent(s)}`)
+    .join("");
+
+const MAX_START_LINKS = 10;
 
 const PMS_LOGOS = [
   { label: "Buildium", logo: "/pms-logos/buildium.png" },
@@ -255,16 +260,20 @@ const PMS_LOGOS = [
  * to paste their website address should be able to paste it.
  */
 function StartChoice({ onManual, onImport, signedOut }) {
-  const [address, setAddress] = useState("");
+  // One box per link: their website, or one listing page per apartment.
+  const [links, setLinks] = useState([""]);
+  const filled = links.map((l) => l.trim()).filter(Boolean);
+  const setLink = (i, value) => setLinks((ls) => ls.map((l, j) => (j === i ? value : l)));
+  const removeLink = (i) => setLinks((ls) => (ls.length > 1 ? ls.filter((_, j) => j !== i) : [""]));
+  const canAdd = links.length < MAX_START_LINKS && links[links.length - 1].trim() !== "";
   // The click navigates to the wizard, which has to compile and mount before it
   // can show its own progress. On a cold dev server that gap is seconds of a
   // button that looks like it did nothing.
   const [going, setGoing] = useState(false);
   const go = () => {
-    const a = address.trim();
-    if (!a || going) return;
+    if (!filled.length || going) return;
     setGoing(true);
-    onImport(a);
+    onImport([...new Set(filled)]);
   };
   const card =
     "flex w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left";
@@ -292,29 +301,59 @@ function StartChoice({ onManual, onImport, signedOut }) {
               </span>
             </p>
             <p className="mt-0.5 text-xs text-gray-500">
-              Paste your address below and we pull in your photos, units and details.
+              Paste your website or listing links (like Zillow) below and we pull in your
+              photos, units and details. Got more than one link? Add each in its own box.
               You pick which properties to list.
               {signedOut && " You'll sign in first."}
             </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input
-                type="text"
-                inputMode="url"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    go();
-                  }
-                }}
-                placeholder="yourproperty.com"
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
+            <div className="mt-3 space-y-2">
+              {links.map((link, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    inputMode="url"
+                    aria-label={`Link ${i + 1}`}
+                    autoFocus={i > 0 && i === links.length - 1}
+                    value={link}
+                    onChange={(e) => setLink(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        go();
+                      }
+                    }}
+                    placeholder={i === 0 ? "yourproperty.com or a Zillow listing link" : "Another link"}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  {links.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLink(i)}
+                      aria-label="Remove this link"
+                      className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              {canAdd ? (
+                <button
+                  type="button"
+                  onClick={() => setLinks((ls) => [...ls, ""])}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-red-300 hover:text-red-600"
+                >
+                  <Plus className="h-4 w-4" /> Add another link
+                </button>
+              ) : (
+                <span />
+              )}
               <button
                 type="button"
                 onClick={go}
-                disabled={!address.trim() || going}
+                disabled={!filled.length || going}
                 className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {going ? (

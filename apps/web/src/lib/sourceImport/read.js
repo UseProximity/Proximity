@@ -65,6 +65,8 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
+import { walkPortal, PORTAL_RUN_MS } from "./readers/portalWalk.js";
+import { WALKED_PORTALS, isWalkedPortal } from "./readers/portals.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
 import { readWithModel, sortPhotosByUnit, choosePagesToExplore, reviewNotes, judgeSamePlan } from "./model.js";
@@ -100,7 +102,13 @@ const IMAGE_CAP = 120;
 // ---------------------------------------------------------------- helpers
 
 class Crawl {
-  constructor() {
+  /*
+   * allowUrl: when set, the only pages this read may open (a sync reads the
+   * sites a landlord gave us and nothing else, lib/sourceSync/givenSites.js).
+   */
+  constructor({ allowUrl = null } = {}) {
+    this.allowUrl = allowUrl;
+    this.refused = [];
     this.pages = []; // [{ url, text }] for the model, first = main
     this.fetched = []; // raw fetched pages, same order
     this.imageMap = new Map(); // url -> { alt, pages:Set }
@@ -160,9 +168,12 @@ class Crawl {
     // Already read: hand back the page rather than nothing, so a floor plans
     // link that points at the page we are on still counts as found.
     if (this.has(url)) return this.fetched.find((f) => f.finalUrl === url) ?? null;
+    if (this.allowUrl && !this.allowUrl(url)) return this.refuse(url);
     if (isDocumentUrl(url)) return this.readFile(url);
     try {
       const sub = await fetchPageSmart(url);
+      // A redirect off the given sites counts as leaving them.
+      if (this.allowUrl && !this.allowUrl(sub.finalUrl)) return this.refuse(sub.finalUrl);
       if (this.has(sub.finalUrl)) return sub;
       return this.add(sub);
     } catch (err) {
@@ -170,6 +181,10 @@ class Crawl {
       if (err?.code === "document") return this.readFile(url);
       return null;
     }
+  }
+  refuse(url) {
+    if (this.refused.length < 50 && !this.refused.includes(url)) this.refused.push(url);
+    return null;
   }
   /* A linked file, read into text (readers/document.js); four per read. */
   async readFile(url) {
@@ -385,15 +400,20 @@ function unitsFromModel(listing) {
     const apartments = (u.apartments ?? []).map((a) => String(a).trim()).filter(Boolean);
     const rents = (u.apartmentRents ?? []).length === apartments.length ? u.apartmentRents : null;
     const dates = (u.apartmentDates ?? []).length === apartments.length ? u.apartmentDates : null;
+    // "now" is a stated fact; null is the site saying nothing.
+    const saysNow = (d) => typeof d === "string" && /^(now|immediately|today|available now)$/i.test(d.trim());
+    // A per-apartment rent is that apartment's price; a plan's own figure can be a "starting at".
     const offers = apartments.length
       ? apartments.map((a, i) => ({
           rent: rents ? rents[i] : u.rent,
           rentIsPerPerson: perPerson,
+          rentIsExact: rents ? true : u.rentIsExact !== false,
           leaseTermMonths: u.leaseTermMonths ?? [],
           availableFrom: dates ? dates[i] : u.availableFrom,
+          availableNow: saysNow(dates ? dates[i] : u.availableFrom),
           apartments: [a],
         }))
-      : [{ rent: u.rent, rentIsPerPerson: perPerson, leaseTermMonths: u.leaseTermMonths ?? [], availableFrom: u.availableFrom, apartments: [] }];
+      : [{ rent: u.rent, rentIsPerPerson: perPerson, rentIsExact: u.rentIsExact !== false, leaseTermMonths: u.leaseTermMonths ?? [], availableFrom: u.availableFrom, availableNow: saysNow(u.availableFrom), apartments: [] }];
     return {
       name: u.name,
       bedrooms: u.bedrooms,
@@ -404,6 +424,7 @@ function unitsFromModel(listing) {
       photos: [],
       offers: offers.filter((o) => o.rent != null || o.apartments.length),
       rentUnknown: u.rentBasis === "unknown" && u.rent != null,
+      fromModel: true,
     };
   });
 }
@@ -416,11 +437,16 @@ function unitsFromModel(listing) {
  * One key for a floor plan's name across sources: SightMap says "Unit 04",
  * the portal "04", the website "Plan 04".
  */
+// Word order does not matter: a leasing portal's "Highland - A3" is the
+// website's "A3-Highland" (Mansions on the Plaza, 2026-11-11).
 export const planKey = (s) =>
   String(s ?? "")
     .toLowerCase()
     .replace(/\b(floor\s*plan|floorplan|plan|unit|the|apartment|apt)\b/g, "")
-    .replace(/[^a-z0-9]/g, "");
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .sort()
+    .join("");
 
 /* Same layout: equal beds and baths, sizes within 2 sq ft. */
 const sameLayout = (a, b) =>
@@ -710,17 +736,33 @@ export function readProperty(args) {
   return readCounters.run({ render: {}, cache: {} }, () => readPropertyInner(args));
 }
 
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, _crawl = null, _brandName = null, _modelDraft = null }) {
+/*
+ * allowUrl: the only pages the read may open (the sync passes the sites the
+ * landlord gave us, lib/sourceSync/givenSites.js); refused ones are listed
+ * in trace.refused.
+ *
+ * onlyThisPage: a unit's own page (listing_unit_pages). The landlord told us
+ * where that unit's data lives, so nothing else is opened: no own-site hop,
+ * no floor plan index, no per-apartment pages, no exploring for gaps.
+ */
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
-  const crawl = _crawl ?? new Crawl();
+  // A server function lives five minutes: the read keeps to the time it was
+  // given (deadline, set by the sync), exploring less and walking a portal
+  // on the next run rather than running out of time.
+  const timeLeft = () => (deadline ? deadline - Date.now() : Infinity);
+  const crawl = _crawl ?? new Crawl({ allowUrl });
   let main = crawl.fetched[0] ?? null;
   let modelCost = 0;
 
   if (!main) {
     onStep("Reading your website");
     main = await fetchMain(startUrl); // throws DraftFetchError
+    // The given page now redirects to another site: the team decides whether
+    // that site is the landlord's, the sync does not follow it on its own.
+    if (allowUrl && !allowUrl(main.finalUrl)) throw new DraftFetchError("redirected_off_site");
     crawl.add(main);
   }
   const brandName = _brandName ?? extractSiteBrand(main.html);
@@ -756,7 +798,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (page && targetUrl) propPage = page;
     else if (!page) console.log(`[source-import] ${target.name}: could not open ${targetUrl ?? unverified}`);
   }
-  if (propPage) {
+  if (propPage && !onlyThisPage) {
     const ownSite = findPropertyOwnSite(crawl.structureOf(propPage), propPage.finalUrl, target.name);
     if (ownSite) {
       const ownPage = await crawl.follow(ownSite);
@@ -783,7 +825,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
 
   // A small landlord's page per apartment, only the ones carrying this
   // property's street number when a number is known.
-  if (!targetUrl || targetUrl === main.finalUrl) {
+  if (!onlyThisPage && (!targetUrl || targetUrl === main.finalUrl)) {
     const readable = (l) => {
       try {
         return `${l.text} ${decodeURIComponent(l.url)}`;
@@ -802,6 +844,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let platform = "generic";
   let readerUnits = [];
   let confidence = "low";
+  // A feed or portal lists every plan; a reader that stopped short does not.
+  let readerComplete = true;
 
   // 0. G5 inventory service (Mills and other G5-hosted estates).
   let g5Concessions = [];
@@ -905,6 +949,86 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     }
   }
 
+  // 2c. A leasing portal walked like a renter would (readers/portals.js:
+  // RealPage behind Apartments247 sites so far): every apartment, priced for
+  // each lease length the landlord sells. The marketing site shows one rent
+  // range per apartment; only the portal says which length costs what. Its
+  // link is often added by script, so a page that hints at the portal gets
+  // the pages that state it plainly (RealPage: the site's /application/).
+  //
+  // The portal's link is often only on a page the explorer opens later (the
+  // site's application or FAQ page: Mansions on the Plaza, 2026-11-11), so
+  // this runs again after each round of exploring, until a portal is tried.
+  let portalMissed = false;
+  let portalPending = false;
+  let walkedKind = null;
+  const tryWalkedPortals = async () => {
+    if (learned || walkedKind) return false;
+    for (const def of WALKED_PORTALS) {
+      const known = knownPortal?.kind === def.kind ? knownPortal : null;
+      let portal = crawl.fetched.map((f) => def.find(f.html)).find(Boolean) ?? def.find(crawl.links.map((l) => l.url).join("\n")) ?? null;
+      if (!portal && !known && crawl.fetched.some((f) => def.hintRe.test(f.html))) {
+        for (const url of def.extraPages(main.finalUrl)) {
+          const page = await crawl.follow(url).catch(() => null);
+          portal = page ? def.find(page.html) : null;
+          if (portal) break;
+        }
+      }
+      portal ??= known ? def.fromKnown(known) : null;
+      if (!portal) continue;
+      walkedKind = def.kind;
+      const runMs = Math.min(PORTAL_RUN_MS, timeLeft() - 50000);
+      if (runMs < 60000) {
+        // Found with too little time left to walk it: remembered, and the
+        // next read walks it first. Nothing is applied from this one.
+        const target = await def.resolve(portal, known).catch(() => null);
+        learned = { kind: def.kind, ...(target?.learned ?? {}), progress: null };
+        portalMissed = true;
+        portalPending = true;
+        console.log(`[source-import] ${def.kind} portal found late; walked on the next read`);
+        return true;
+      }
+      const rp = await walkPortal(def, portal, { known, onStep, runMs });
+      if (rp?.pending) {
+        // The walk ran out of time with apartments still to price. What it
+        // has is kept on the monitor and the next read carries on; until
+        // then the listing keeps the prices it has.
+        portalMissed = true;
+        portalPending = true;
+        learned = rp.learned;
+        console.log(`[source-import] ${def.kind} portal: ${rp.quoted} of ${rp.apartments} apartments priced so far, to be continued`);
+      } else if (rp?.units?.length) {
+        const byName = new Map(readerUnits.map((u) => [planKey(u.name), u]));
+        for (const u of rp.units) {
+          const e = byName.get(planKey(u.name));
+          if (!e) continue;
+          u.floorPlanImageUrl ??= e.floorPlanImageUrl;
+          u.area ??= e.area;
+          u.bedrooms ??= e.bedrooms;
+          u.bathrooms ??= e.bathrooms;
+          if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
+        }
+        platform = readerUnits.length ? `${platform}+${def.kind}` : def.kind;
+        readerUnits = await dedupeLayouts([...rp.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
+        notes.push(...rp.notes);
+        // A walk the portal cut short is not the whole building: a sync
+        // must not withdraw the apartments it never reached.
+        confidence = rp.complete ? "high" : "low";
+        portalMissed = !rp.complete;
+        learned = rp.learned;
+        console.log(`[source-import] ${def.kind} portal: ${rp.units.length} plans, ${rp.apartments} apartments, ${rp.quoted} priced by lease length${rp.complete ? "" : " (incomplete)"}`);
+      } else if (known) {
+        // The portal priced this building before and gave nothing today.
+        // The marketing site alone would read as every lease withdrawn.
+        portalMissed = true;
+        notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
+      }
+      return true;
+    }
+    return false;
+  };
+  await tryWalkedPortals();
+
   // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
     const page = crawl.fetched.find((f) => ENTRATA_HINT_RE.test(f.html) && parseEntrataFloorPlans(f.html, f.finalUrl));
@@ -924,7 +1048,9 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     console.log(`[source-import] ${target.name}: ${planUrls.length} floor plan pages under ${floorPlanIndex.finalUrl}`);
     if (planUrls.length) {
       onStep(`Reading ${Math.min(planUrls.length, 16)} floor plan pages`);
-      const result = await fetchFloorPlanUnits(chooseFloorPlansToRead(planUrls));
+      const chosen = chooseFloorPlansToRead(planUrls);
+      if (chosen.length < planUrls.length) readerComplete = false;
+      const result = await fetchFloorPlanUnits(chosen);
       if (result.plans.length) {
         platform = "rentcafe";
         readerUnits = unitsFromFloorPlans(result).map((u) => ({ ...u, source: "the floor plan pages" }));
@@ -941,14 +1067,17 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    * Hunting for what is still missing. The readers (and, the second time,
    * the extraction) have read what they could; factsAbout says exactly
    * what is known and what is not, and the model picks which links to open
-   * to find the rest. Twice at most, eight pages in all.
+   * to find the rest. Twice at most, eight pages in all; a deep read (the
+   * weekly one, or an admin's) goes much further into the site, the way the
+   * portal readers do, before settling for "the site doesn't say".
    */
   const flyers = [];
-  const MAX_EXPLORED = 8;
-  let explored = 0;
+  const MAX_EXPLORED = deep ? 24 : 8;
+  const PER_HUNT = deep ? 12 : 4;
+  let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
-    if (explored >= MAX_EXPLORED) return 0;
+    if (explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
     const facts = factsAbout({ units: unitsNow, flyers, listing: listingNow, readerNotes: notes });
     if (!facts.missing.length) return 0;
     const visited = new Set(crawl.fetched.map((f) => f.finalUrl));
@@ -963,11 +1092,12 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       missing: facts.missing,
       visited: [...visited],
       links: candidates,
-      max: Math.min(4, MAX_EXPLORED - explored),
+      max: Math.min(PER_HUNT, MAX_EXPLORED - explored),
     });
     modelCost += picks.cost;
     let added = 0;
     for (const p of picks.pages) {
+      if (timeLeft() < 60000) break;
       const before = crawl.fetched.length;
       await crawl.follow(p.url);
       const opened = crawl.fetched.length > before;
@@ -981,6 +1111,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     return added;
   };
   await explore(readerUnits, null);
+  // A portal link found on a page the explorer just opened.
+  await tryWalkedPortals();
 
   /*
    * "What's included" and fee-guide flyers: pictures, read by the model's
@@ -1063,7 +1195,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     const flyerTerms = [...new Set(flyers.flatMap((f) => f.leaseTermMonths))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 36).sort((a, b) => a - b);
     if (flyerTerms.length) {
       let applied = 0;
-      for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; applied += 1; }
+      for (const u of units) for (const o of u.offers) if (!(o.leaseTermMonths ?? []).length) { o.leaseTermMonths = flyerTerms; o.termsInferred = true; applied += 1; }
       if (applied) {
         runNotes.push(`Lease lengths (${flyerTerms.join(", ")} months) come from the site's fee guide. Check them against each floor plan.`);
       }
@@ -1073,7 +1205,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (units.length && units.every((u) => u.offers.every((o) => !(o.leaseTermMonths ?? []).length))) {
       const siteTerms = findLeaseTerms(crawl.pages.map((p) => p.text).join("\n"));
       if (siteTerms.length && siteTerms.length <= 6) {
-        for (const u of units) for (const o of u.offers) o.leaseTermMonths = siteTerms;
+        for (const u of units) for (const o of u.offers) { o.leaseTermMonths = siteTerms; o.termsInferred = true; }
         runNotes.push(`Lease lengths (${siteTerms.join(", ")} months) were read from the site's general text, not from each floor plan. Check them.`);
       }
     }
@@ -1090,6 +1222,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // Still missing something after the extraction: one more hunt, and if it
   // opened anything, read again with those pages in hand.
   if (await explore(units, listing)) {
+    await tryWalkedPortals();
     await readFlyers();
     await extractAndFill(true);
   }
@@ -1164,6 +1297,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       concessions: (listing?.concessions ?? []).length + embeddedConcessions.length + g5Concessions.length,
     },
     scrubbed: cleaned.removed,
+    // Pages the read wanted but may not open (off the given sites).
+    refused: crawl.refused,
   };
   /*
    * The notes, checked by the model against what the read finally found:
@@ -1184,11 +1319,15 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
   const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
+  // A portal that was not read in full never applies on its own.
+  if (portalMissed) confidence = "low";
   const snapshot = makeSnapshot({
     sourceUrl,
     indexUrl: sourceUrl === pastedUrl ? null : pastedUrl,
     platform,
     confidence,
+    // Whether a unit missing from this read can be taken as let.
+    unitListComplete: readerUnits.length ? readerComplete && !portalMissed : listing?.unitListComplete === true,
     property: {
       name: listing?.title ?? target.name ?? null,
       address: listing?.address ?? target.address ?? null,
@@ -1210,7 +1349,13 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   snapshot.model = modelUsed;
   snapshot.trace = trace;
   // Where the numbers live, for the sync to go straight there next time.
-  snapshot.portal = learned;
+  // A portal that gave nothing today is still where the numbers live.
+  snapshot.portal = learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null);
+  // A portal walked screen by screen (readers/portalWalk.js) is the
+  // landlord's own price list: its weekly repricing is not churn.
+  if (snapshot.portal && isWalkedPortal(snapshot.portal)) snapshot.portal = { ...snapshot.portal, walked: true };
+  // The portal walk is part way through: nothing in this read is final.
+  snapshot.portalPending = portalPending;
   return snapshot;
 }
 

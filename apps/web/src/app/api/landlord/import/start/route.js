@@ -10,7 +10,9 @@ import { spendImport } from "@/lib/sourceImport/limits";
 
 /*
  * Continue on the picker. Body: { pastedUrl, targets: [{ name, address, url,
- * levelUrl, alreadyListed }] }. Makes one draft listing and one job per
+ * levelUrl, pastedUrl, alreadyListed }] }. A target's own pastedUrl is the link
+ * it was found at, when the landlord pasted several; the top-level one is the
+ * first link. Makes one draft listing and one job per
  * target, starts reading in the background, and returns the batch for the
  * workspace to poll.
  *

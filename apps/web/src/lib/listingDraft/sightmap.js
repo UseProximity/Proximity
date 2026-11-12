@@ -36,8 +36,15 @@ const MAX_TERM_LOOKUPS = 60;
 // directly.
 export const SIGHTMAP_HINT_RE = /sightmap|realpage|onlineleasing|knockrentals/i;
 
+/*
+ * The availability widget's embed id. Not the first sightmap.com/embed/ on the
+ * page: a site can load SightMap's analytics script (sightmap.com/embed/api.js)
+ * before the widget, and "api" sent every read of The Victor to the generic
+ * reader (2026-11-08). Embed ids are 6 to 32 letters and digits; the escaped
+ * form (sightmap.com\/embed\/...) inside a page's settings counts too.
+ */
 export const findSightmapEmbed = (html) =>
-  html?.match(/sightmap\.com\/embed\/([A-Za-z0-9]+)/i)?.[1] ?? null;
+  String(html ?? "").match(/sightmap\.com\\?\/embed\\?\/([A-Za-z0-9]{6,32})(?![A-Za-z0-9.])/i)?.[1] ?? null;
 
 async function getJson(url) {
   try {
@@ -72,6 +79,18 @@ async function getText(url) {
 }
 
 /*
+ * A plan's name as people read it. Some properties' feeds store the name as a
+ * fragment of their provider's record, e.g. {"name":"Osage" "provider_id":"6297921"}
+ * (Terra at the Grove, 2026-11-07): the name is the part inside it.
+ */
+export function planName(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  const inner = s.match(/"name"\s*:\s*"([^"]+)"/);
+  return (inner ? inner[1] : s).trim() || null;
+}
+
+/*
  * Returns { units: [...] } or null. Every field is whatever the API said,
  * nothing is inferred, so a null here means the site genuinely did not publish
  * it rather than that we failed to read it.
@@ -94,7 +113,7 @@ export async function fetchSightmapInventory(embedToken) {
     (data.floor_plans ?? []).map((f) => [
       String(f.id),
       {
-        name: f.name ?? null,
+        name: planName(f.name),
         bedrooms: typeof f.bedroom_count === "number" ? f.bedroom_count : null,
         bathrooms: typeof f.bathroom_count === "number" ? f.bathroom_count : null,
         imageUrl: f.image_url ?? null,

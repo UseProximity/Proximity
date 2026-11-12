@@ -57,10 +57,11 @@ async function staleSourceIds(listingId) {
   return new Set((data ?? []).map((s) => s.id));
 }
 
-export async function studentFacts(listingId) {
-  const [facts, stale] = await Promise.all([currentFacts(listingId), staleSourceIds(listingId)]);
+/* `owners` is ownerLabels(listingId) when the caller already has it (a map or its promise). */
+export async function studentFacts(listingId, owners = null) {
+  const [facts, stale, ownerMap] = await Promise.all([currentFacts(listingId), staleSourceIds(listingId), owners ?? ownerLabels(listingId)]);
   const today = todayChicago();
-  const owners = await ownerLabels(listingId);
+  owners = ownerMap;
   const { units, leases } = await scopeLabels(listingId, facts);
 
   const sections = { fees: [], policies: [], specials: [], misc: [] };

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-04T03:34:13.754Z",
-  "count": 237,
+  "_generated": "2026-11-12T05:42:24.133Z",
+  "count": 349,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -126,6 +126,14 @@
     {
       "file": "src/lib/agents/replyEmail.js",
       "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyStream.js",
+      "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyStream.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/replyTokens.js",
@@ -324,6 +332,302 @@
       "description": "Verify that a message posted to one of our endpoints really came from Amazon SNS."
     },
     {
+      "file": "src/lib/billing/adjustments.js",
+      "description": "Correcting a Paid charge that turns out to be wrong. The original charge is"
+    },
+    {
+      "file": "src/lib/billing/adminDb.js",
+      "description": "Which database an admin billing route reads (Wyatt, 2026-11-06): the admin"
+    },
+    {
+      "file": "src/lib/billing/adminLandlords.js",
+      "description": "Finding a landlord, and their properties and leases, for the admin billing"
+    },
+    {
+      "file": "src/lib/billing/adminReview.js",
+      "description": "The admin side of the charge lifecycle, behind the admin review view:"
+    },
+    {
+      "file": "src/lib/billing/agreementFiles.js",
+      "description": "Storing and fetching a signed agreement PDF in Cloudflare R2."
+    },
+    {
+      "file": "src/lib/billing/agreementPdf.js",
+      "description": "Checks on a signed agreement file before it is stored. Pure, so it can be"
+    },
+    {
+      "file": "src/lib/billing/agreements.js",
+      "description": "Each landlord's marketing agreement: one master agreement (landlord_agreements)"
+    },
+    {
+      "file": "src/lib/billing/agreements.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementServices.js",
+      "description": "The real Documenso client, signed-PDF storage and team email, wired together for"
+    },
+    {
+      "file": "src/lib/billing/agreementSigning.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/agreementVersions.js",
+      "description": "Versions of the marketing agreement document (agreement_versions). An admin"
+    },
+    {
+      "file": "src/lib/billing/autopay.js",
+      "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
+    },
+    {
+      "file": "src/lib/billing/autopay.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/balance.js",
+      "description": "A landlord's outstanding balance: Approved charges not yet on an invoice, which"
+    },
+    {
+      "file": "src/lib/billing/billingAddress.js",
+      "description": "The landlord's own address for the agreement's optional \"Address\" box: the"
+    },
+    {
+      "file": "src/lib/billing/billingEmails.js",
+      "description": "Sends the billing emails. Copy lives in billingEmailTemplates.js; this adds the"
+    },
+    {
+      "file": "src/lib/billing/billingEmailTemplates.js",
+      "description": "The words of every billing email, as pure functions returning { subject, html }."
+    },
+    {
+      "file": "src/lib/billing/billingEmailTemplates.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/billingFakes.testutil.js",
+      "description": "In-memory stand-ins for Supabase and Documenso, shared by the billing tests"
+    },
+    {
+      "file": "src/lib/billing/billingLogic.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/billingNotify.js",
+      "description": "The emails a failed invoice payment sends, wired to the real senders. Passed to"
+    },
+    {
+      "file": "src/lib/billing/billingPeriod.js",
+      "description": "When the monthly billing run happens. It runs on the first Monday of each"
+    },
+    {
+      "file": "src/lib/billing/billingRun.js",
+      "description": "The monthly billing run. For each landlord it collects every Approved charge"
+    },
+    {
+      "file": "src/lib/billing/billingRun.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/businessDays.js",
+      "description": "Business days on the America/Chicago calendar, for autopay: an invoice sent on"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFileRules.js",
+      "description": "Checks on a file a landlord (or an admin) attaches to a change request: their"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFiles.js",
+      "description": "Storing and opening change request attachments in Cloudflare R2, in the same"
+    },
+    {
+      "file": "src/lib/billing/changeRequestHttp.js",
+      "description": "Reading a change request message from a route: JSON, or multipart/form-data"
+    },
+    {
+      "file": "src/lib/billing/changeRequestNotify.js",
+      "description": "The emails a change request sends, wired to the real senders and passed to"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.js",
+      "description": "Landlords asking for changes to the commission agreement (agreement_change_requests"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/chargeDisplay.js",
+      "description": "How a charge row is shown to a landlord. Pure, so the labels can be tested:"
+    },
+    {
+      "file": "src/lib/billing/chargeLifecycle.js",
+      "description": "The charge lifecycle as plain functions, for the dashboard, admin view and"
+    },
+    {
+      "file": "src/lib/billing/charges.js",
+      "description": "Charges: creating them and the landlord's side of their lifecycle."
+    },
+    {
+      "file": "src/lib/billing/charges.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/constants.js",
+      "description": "The billing rules that are numbers, in one place. Each comes from the In-App"
+    },
+    {
+      "file": "src/lib/billing/coverage.js",
+      "description": "Which of a landlord's properties their commission agreement covers, and what"
+    },
+    {
+      "file": "src/lib/billing/coverage.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/customers.js",
+      "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
+    },
+    {
+      "file": "src/lib/billing/declineNote.js",
+      "description": "A landlord who rejects the agreement in Documenso's signing window gets a change"
+    },
+    {
+      "file": "src/lib/billing/documenso.js",
+      "description": "Documenso, the e-signature provider for the marketing agreement (Teams plan)."
+    },
+    {
+      "file": "src/lib/billing/enrollment.js",
+      "description": "Launch enrollment: telling existing landlords that fees are now collected in the"
+    },
+    {
+      "file": "src/lib/billing/enrollment.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/errors.js",
+      "description": "An expected billing failure the caller can act on. Routes turn it into an"
+    },
+    {
+      "file": "src/lib/billing/exhibitPdf.js",
+      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/exhibitUnits.js",
+      "description": "The Exhibit A step of the signing popup (Wyatt, 2026-11-07): what a landlord"
+    },
+    {
+      "file": "src/lib/billing/http.js",
+      "description": "Shared plumbing for the billing API routes: an expected BillingError becomes"
+    },
+    {
+      "file": "src/lib/billing/invoiceAccess.js",
+      "description": "A landlord's invoices, paying one (Pay now, or Retry payment after a failure),"
+    },
+    {
+      "file": "src/lib/billing/invoiceHandlers.js",
+      "description": "Webhook handlers for invoice and payment events, registered in"
+    },
+    {
+      "file": "src/lib/billing/invoicePlan.js",
+      "description": "Turns charges into the invoices the monthly run will create. Pure: it reads"
+    },
+    {
+      "file": "src/lib/billing/invoicing.js",
+      "description": "The Stripe side of a monthly invoice, one step per function. Every step is safe"
+    },
+    {
+      "file": "src/lib/billing/landlordOverview.js",
+      "description": "The admin dashboard's view of every landlord's commission agreement and"
+    },
+    {
+      "file": "src/lib/billing/listingGate.js",
+      "description": "The listing gate: before a landlord puts a new listing, unit or offering in"
+    },
+    {
+      "file": "src/lib/billing/methodAttentionJob.js",
+      "description": "The daily \"update your payment method\" check. A landlord whose default method"
+    },
+    {
+      "file": "src/lib/billing/money.js",
+      "description": "Money is integer cents everywhere in billing (Stripe's unit). Convert only at"
+    },
+    {
+      "file": "src/lib/billing/overdue.js",
+      "description": "When an unpaid invoice is overdue enough to withdraw the landlord's leases."
+    },
+    {
+      "file": "src/lib/billing/overdueJob.js",
+      "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
+    },
+    {
+      "file": "src/lib/billing/payerLinks.js",
+      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+    },
+    {
+      "file": "src/lib/billing/payers.js",
+      "description": "A payer for a landlord account (Project B, Wyatt 2026-11-09). See"
+    },
+    {
+      "file": "src/lib/billing/payers.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/payerServices.js",
+      "description": "The real email, storage and publishing behind payers.js, for the routes and"
+    },
+    {
+      "file": "src/lib/billing/paymentMethodHandlers.js",
+      "description": "Webhook handlers for payment method events, registered in webhookHandlers.js."
+    },
+    {
+      "file": "src/lib/billing/paymentMethods.js",
+      "description": "A landlord's payment methods. Card and bank details are entered only on"
+    },
+    {
+      "file": "src/lib/billing/paymentMethods.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/paymentMethodState.js",
+      "description": "Payment method states and how to show them. Only Stripe ids and display"
+    },
+    {
+      "file": "src/lib/billing/placeholders.js",
+      "description": "Placeholders in an uploaded agreement PDF become Documenso boxes (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/placeholders.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/reviewClock.js",
+      "description": "The review clock. A confirmed charge sits in Pending for 7 days, counted from"
+    },
+    {
+      "file": "src/lib/billing/settings.js",
+      "description": "Billing switches kept in billing_settings (key/value). A missing key reads as"
+    },
+    {
+      "file": "src/lib/billing/stripe.js",
+      "description": "The one Stripe client for the app, and the three env vars it reads:"
+    },
+    {
+      "file": "src/lib/billing/viewer.js",
+      "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
+    },
+    {
+      "file": "src/lib/billing/webhookEvents.js",
+      "description": "Idempotent processing of a verified Stripe event, backed by"
+    },
+    {
+      "file": "src/lib/billing/webhookEvents.test.js",
+      "description": "Run with: npm test (from apps/web)."
+    },
+    {
+      "file": "src/lib/billing/webhookHandlers.js",
+      "description": "What to do for each Stripe event. handleStripeEvent is called once per event"
+    },
+    {
       "file": "src/lib/chat/accessToken.js",
       "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
     },
@@ -460,6 +764,10 @@
       "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
     },
     {
+      "file": "src/lib/emailFooter.js",
+      "description": "Kept apart from lib/email.js (which needs the mail transports) so the admin"
+    },
+    {
       "file": "src/lib/emailKinds.js",
       "description": "The categories and labels for the admin \"Sent emails\" page (Wyatt,"
     },
@@ -472,8 +780,24 @@
       "description": "Run with: npm test (from apps/web)."
     },
     {
+      "file": "src/lib/errors/client.js",
+      "description": "The browser half of the site error alerts (Wyatt, 2026-11-03): send one"
+    },
+    {
+      "file": "src/lib/errors/record.js",
+      "description": "Site error alerts (Wyatt, 2026-11-03): when a page or API call fails on"
+    },
+    {
+      "file": "src/lib/errors/serverHooks.js",
+      "description": "The Node half of instrumentation.js (site error alerts, Wyatt,"
+    },
+    {
       "file": "src/lib/escapeHtml.js",
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
+    },
+    {
+      "file": "src/lib/firecrawl.js",
+      "description": "Every call to Firecrawl goes through here, so a second account can take over"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",
@@ -592,6 +916,10 @@
       "description": "Display-name uniqueness for properties."
     },
     {
+      "file": "src/lib/listings/publish.js",
+      "description": "Publishing drafts: the work behind POST /api/landlord/publish, here so a"
+    },
+    {
       "file": "src/lib/listings/queryListings.js",
       "description": "Server-side listing data for pages that render listings in their initial"
     },
@@ -614,6 +942,38 @@
     {
       "file": "src/lib/listings/unitNames.js",
       "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
+      "file": "src/lib/massEmail/audience.js",
+      "description": "Who a mass email can go to, with what the admin needs to pick them (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/history.js",
+      "description": "What a mass email template has sent so far (Wyatt, 2026-11-07): each batch,"
+    },
+    {
+      "file": "src/lib/massEmail/http.js",
+      "description": "Shared plumbing for the admin mass email routes (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/render.js",
+      "description": "Turning a mass email version into the HTML a person receives (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/send.js",
+      "description": "Sending one version of a mass email to the people an admin picked (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/templates.js",
+      "description": "Mass email templates and their versions (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/unowned.js",
+      "description": "Live listings with no landlord account, and getting them one before a mass"
+    },
+    {
+      "file": "src/lib/massEmail/unsubscribe.js",
+      "description": "Unsubscribing from mass email (Wyatt, 2026-11-08)."
     },
     {
       "file": "src/lib/matchmaking/anonymousSessions.js",
@@ -724,8 +1084,16 @@
       "description": "Batched \"your review is live\" confirmations."
     },
     {
+      "file": "src/lib/reviews/duplicateReport.js",
+      "description": "Review stubs that may be a building already listed under another address."
+    },
+    {
       "file": "src/lib/reviews/invites.js",
       "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/listingMatch.js",
+      "description": "Which listing a review belongs on."
     },
     {
       "file": "src/lib/reviews/onboarding.js",
@@ -780,8 +1148,24 @@
       "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
     },
     {
+      "file": "src/lib/sourceImport/describeChange.js",
+      "description": "A website change, side by side (Wyatt, 2026-11-05): for every change a"
+    },
+    {
       "file": "src/lib/sourceImport/jobs.js",
       "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/learn.js",
+      "description": "Loading and saving what the sync learns about a listing"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.js",
+      "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceImport/limits.js",
@@ -824,6 +1208,30 @@
       "description": "G5 (g5marketingcloud.com) inventory reader."
     },
     {
+      "file": "src/lib/sourceImport/readers/portals.js",
+      "description": "The leasing portals the importer and sync can walk (readers/portalWalk.js)."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalk.js",
+      "description": "Walking a leasing portal the way a renter does."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalkParse.js",
+      "description": "What a portal walk found, as snapshot units. Pure, so it is tested without a"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOll.js",
+      "description": "RealPage Online Leasing portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.js",
+      "description": "RealPage Online Leasing: the parts that need no network."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
       "description": "Floor plans embedded as JSON in a page."
     },
@@ -848,12 +1256,32 @@
       "description": "The recurring source sync."
     },
     {
+      "file": "src/lib/sourceImport/syncPolicy.js",
+      "description": "What the daily website sync does with each change it finds."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceSync/attach.js",
       "description": "Attach (or clear) the source URL a listing is monitored against."
     },
     {
       "file": "src/lib/sourceSync/classify.js",
       "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
+      "file": "src/lib/sourceSync/givenSites.js",
+      "description": "The pages a listing may be synced from (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/sourceSync/subpages.js",
+      "description": "A listing's own page on a company-wide website (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/sourceSync/unitPages.js",
+      "description": "A page per unit (Wyatt, 2026-11-06)."
     },
     {
       "file": "src/lib/streetview.js",
@@ -878,6 +1306,14 @@
     {
       "file": "src/lib/users/dashboardUser.js",
       "description": "The dashboard payload, built once for whoever is being looked at."
+    },
+    {
+      "file": "src/lib/users/licenseDisclosure.js",
+      "description": "Real estate license disclosure (MREC compliance, 2026-11-04)."
+    },
+    {
+      "file": "src/lib/users/mrecForm.js",
+      "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
     },
     {
       "file": "src/lib/users/viewAs.js",
@@ -928,8 +1364,20 @@
       "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
     },
     {
+      "file": "src/utils/reviewAddress.js",
+      "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitFormat.js",
+      "description": "Whether a unit name is an apartment (\"Apt 201\", \"Unit 5548\", \"305\") or a"
+    },
+    {
+      "file": "src/utils/unitFormat.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/unitName.js",

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function ResetPasswordClient({ token }) {
+export default function ResetPasswordClient({ token, next = "" }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -42,7 +42,7 @@ export default function ResetPasswordClient({ token }) {
       if (!res.ok) {
         setError(data.error ?? "Something went wrong. Please try again.");
       } else {
-        router.push("/login?reset=1");
+        router.push(next ? `/login?reset=1&callbackUrl=${encodeURIComponent(next)}` : "/login?reset=1");
       }
     } catch {
       setError("Something went wrong. Please try again.");

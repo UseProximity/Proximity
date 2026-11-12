@@ -1,13 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { redirect } from "next/navigation";
 import supabase from "@/lib/supabase";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { redeemVerificationToken } from "@/lib/auth/verifyEmail";
+import { sendMrecFormOnce } from "@/lib/users/mrecForm";
 
 // @tables users (the queries live in lib/auth/verifyEmail.js)
-async function redeem(token) {
+async function redeem(token, req) {
   try {
-    return await redeemVerificationToken(supabase, token);
+    const result = await redeemVerificationToken(supabase, token);
+    // A landlord's address is confirmed now: send the MREC form, once, after the response.
+    if (result.status === "ok") after(() => sendMrecFormOnce(supabase, result.userId, { req }));
+    return result;
   } catch (err) {
     return { status: "error", error: err };
   }
@@ -21,7 +25,7 @@ export async function GET(req) {
     redirect("/login?error=invalid_token");
   }
 
-  const result = await redeem(token);
+  const result = await redeem(token, req);
 
   if (result.status === "error") {
     console.error("verify-email error:", result.error);
@@ -54,7 +58,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "Verification link is invalid or has expired." }, { status: 400 });
   }
 
-  const result = await redeem(token);
+  const result = await redeem(token, req);
 
   if (result.status === "error") {
     console.error("verify-email error:", result.error);

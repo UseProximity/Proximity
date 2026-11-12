@@ -19,10 +19,13 @@
  * published. Every write goes through the agent routes, which check
  * ownership.
  */
+import ChangeCompare from "@/components/listings/ChangeCompare";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
 import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCircle2, XCircle, Plus, MoreHorizontal, FileText, Globe } from "lucide-react";
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
+import UnitPages from "@/components/landlord/UnitPages";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
@@ -51,7 +54,7 @@ function Panel({ title, icon = null, count = null, children, defaultOpen = true 
 
 /* ---- sources (side) ------------------------------------------------------ */
 
-function SourcesSide({ listingId, owner, sync, sources, onChanged }) {
+function SourcesSide({ listingId, owner, sync, sources, unitPages, teamReview, onChanged }) {
   const [menu, setMenu] = useState(false);
   const [mode, setMode] = useState(null);
   const [url, setUrl] = useState("");
@@ -136,11 +139,14 @@ function SourcesSide({ listingId, owner, sync, sources, onChanged }) {
             ) : (
               <>
                 <p className="text-xs text-gray-500">Last read {when(sync.lastCheckedAt) || "never"}. Checked every day.</p>
+                <p className="text-[11px] text-gray-500">Availability, prices and new units from your website update on their own. Anything you set yourself is never overwritten.</p>
+                {teamReview && <p className="text-[11px] text-gray-500">While we launch, the Proximity team checks what Proxy learns from your website before it tells students.</p>}
                 <button disabled={busy === "sync"} onClick={syncNow} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"><RefreshCw className="h-3 w-3" /> Read the whole site now ({sync.manualLeft} left today)</button>
                 <p className="text-[11px] text-gray-400">Takes {minutes(sync.estimateSeconds ?? 180)}. You can leave while it runs.</p>
               </>
             )}
             {pages.length > 1 && <p className="text-[11px] text-gray-500">{pages.length} pages read</p>}
+            <UnitPages listingId={listingId} unitPages={unitPages} owner={owner} onChanged={onChanged} />
           </div>
         )}
         {docs.map((d) => (
@@ -172,8 +178,12 @@ function HeldChanges({ listingId, held, onDone }) {
       <div className="space-y-2">
         {held.map((h) => (
           <div key={h.id} className="rounded-lg bg-white p-3 text-sm">
-            <p className="text-gray-900">{h.title}</p>
-            {h.current && <p className="text-xs text-gray-500">Currently: {h.current}</p>}
+            {h.view ? <ChangeCompare view={h.view} /> : (
+              <>
+                <p className="text-gray-900">{h.title}</p>
+                {h.current && <p className="text-xs text-gray-500">Currently: {h.current}</p>}
+              </>
+            )}
             {h.forAdmin ? <p className="mt-1 text-xs text-gray-500">Being reviewed by the Proximity team.</p> : (
               <div className="mt-2 flex gap-2">
                 <button disabled={busy === h.id} onClick={() => decide(h, "approve")} className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-3 w-3" /> Apply</button>
@@ -263,7 +273,14 @@ function ChangeHistory({ listingId, history, onDone }) {
   const revert = async (e) => {
     setBusy(e.id);
     try {
-      await post(`/api/landlord/listings/${listingId}/agent/changes`, { revert: e.id });
+      const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revert: e.id }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // Putting a unit back that the agreement does not cover: sign the addendum
+        // here, then it is put back; anything else links to Billing.
+        if (data.blocked) return publishErrorToast(data, data.error, { retry: () => revert(e) });
+        throw new Error(data?.error || "Something went wrong");
+      }
       toast.success("Reverted");
       onDone();
     } catch (err) { toast.error(err.message); } finally { setBusy(null); }
@@ -325,7 +342,7 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <div id="agent-chat-panel" className="flex h-[70dvh] min-h-[420px] min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 md:h-[calc(100dvh-319px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-343px)]">
           <LandlordProxyChat listingId={listingId} viewAsId={viewAsId} fill onChanged={load} />
         </div>
-        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} onChanged={load} />
+        <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} teamReview={data.teamReview} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   BarChart3,
+  CreditCard,
   CalendarDays,
   MapPin,
   MessageCircleQuestion,
@@ -18,6 +19,8 @@ import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
 import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
+import LicenseDisclosureCard from "./_sections/LicenseDisclosureCard";
+import PaymentsSection from "./_sections/PaymentsSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
 import QuestionsSection from "./_sections/QuestionsSection";
@@ -114,6 +117,19 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   // Sections that belong to running a property business, not to holding one lease.
   const LANDLORD_ONLY = new Set(["analytics", "reviews", "integrations"]);
   const isLandlord = role === "landlord" || role === "super";
+  /*
+   * Payments are for landlord-role users only: not a super user, and not a
+   * student subletting a room. An admin viewing as a landlord sees their
+   * Billing read-only (Wyatt, 2026-11-11): reads carry ?viewAs, and every
+   * billing write acts on the signed-in landlord, so it refuses an admin.
+   */
+  const canSeePayments = role === "landlord";
+  /*
+   * A billing account, made for someone who signs and pays for other landlords'
+   * listings (Project B, Wyatt 2026-11-09): a landlord with no properties,
+   * analytics or listing tools, only their profile and Billing.
+   */
+  const billingOnly = user?.billing_only === true;
 
   const renderContent = () => {
     if (selectedProperty)
@@ -134,7 +150,14 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
      * blank panel or an error.
      */
     const view =
-      LANDLORD_ONLY.has(activeView) && !isLandlord ? "properties" : activeView;
+      billingOnly && !["profile", "billing"].includes(activeView)
+        ? canSeePayments
+          ? "billing"
+          : "profile"
+        : (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
+            (activeView === "billing" && !canSeePayments)
+          ? "properties"
+          : activeView;
 
     switch (view) {
       case "properties":
@@ -164,20 +187,27 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
         return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
+      case "billing":
+        return <PaymentsSection viewAsId={isViewingAs ? viewAsId : null} viewAsName={isViewingAs ? user?.name || user?.email : null} />;
       case "profile":
       default:
         return (
-          <ProfileSection
-            user={user}
-            isEditing={isEditing}
-            form={form}
-            onChange={onChange}
-            saving={saving}
-            cancelEdit={cancelEdit}
-            saveProfile={saveProfile}
-            setIsEditing={setIsEditing}
-            canDeleteAccount={!viewAsId}
-          />
+          <>
+            <ProfileSection
+              user={user}
+              isEditing={isEditing}
+              form={form}
+              onChange={onChange}
+              saving={saving}
+              cancelEdit={cancelEdit}
+              saveProfile={saveProfile}
+              setIsEditing={setIsEditing}
+              canDeleteAccount={!viewAsId}
+            />
+            {/* Same audience as Payments: the route acts on the signed-in landlord,
+                so never while an admin is viewing as someone. */}
+            {canSeePayments && <LicenseDisclosureCard />}
+          </>
         );
     }
   };
@@ -319,7 +349,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <User className="h-4 w-4" />
                     My Profile
                   </button>
-                  {isLandlord && (
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("analytics")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -332,6 +362,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Analytics
                   </button>
                   )}
+                  {!billingOnly && (<>
                   <button
                     onClick={() => setPropertiesOpen((o) => !o)}
                     aria-expanded={propertiesOpen}
@@ -374,7 +405,8 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                       ))}
                     </div>
                   )}
-                  {isLandlord && (
+                  </>)}
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("reviews")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -387,7 +419,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     Reviews
                   </button>
                   )}
-                  {agentsOn && (<>
+                  {agentsOn && !billingOnly && (<>
                   <button
                     onClick={() => handleNavigation("questions")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -417,7 +449,20 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     )}
                   </button>
                   </>)}
-                  {isLandlord && (
+                  {canSeePayments && (
+                  <button
+                    onClick={() => handleNavigation("billing")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "billing"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Billing
+                  </button>
+                  )}
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("integrations")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${

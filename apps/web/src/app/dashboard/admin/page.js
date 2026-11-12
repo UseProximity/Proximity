@@ -15,6 +15,9 @@ import ReferenceView from "@/components/admin/ReferenceView";
 import ReviewInvitesView from "@/components/admin/ReviewInvitesView";
 import ConversationsView from "@/components/admin/ConversationsView";
 import SentEmailsView from "@/components/admin/SentEmailsView";
+import MassEmailView from "@/components/admin/MassEmailView";
+import ErrorsView from "@/components/admin/ErrorsView";
+import BillingView from "@/components/admin/BillingView";
 import AgentsView from "@/components/admin/AgentsView";
 
 const VIEWS = [
@@ -27,11 +30,15 @@ const VIEWS = [
   { key: "invites", label: "Review invites" },
   { key: "conversations", label: "Conversations" },
   { key: "emails", label: "Sent emails" },
+  // Super only: the read-only admin role never sees billing or mass email (Wyatt, 2026-11-07).
+  { key: "mass-email", label: "Mass email", superOnly: true },
+  { key: "billing", label: "Billing", superOnly: true },
   { key: "agents", label: "Agents" },
+  { key: "errors", label: "Errors" },
 ];
 
 // Views that fetch their own data instead of one table from the hierarchy loader.
-const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "agents"]);
+const SELF_LOADING_VIEWS = new Set(["invites", "conversations", "emails", "mass-email", "billing", "agents", "errors"]);
 
 // ─── Tools popover (walk times, View As, export) ──────────────────────────────
 
@@ -134,6 +141,15 @@ function ToolsMenu({ dbTarget, isProd }) {
                     >
                       View →
                     </a>
+                    <a
+                      href={`/?messages=1&messagesAs=${u.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Their Messages inbox exactly as they see it, read only"
+                      className="text-[11px] px-2 py-0.5 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      Inbox →
+                    </a>
                   </li>
                 ))}
               </ul>
@@ -182,8 +198,11 @@ function ToolsMenu({ dbTarget, isProd }) {
 export default function AdminDashboard() {
   const { data: session } = useSession();
   const isReadOnly = session?.user?.role === "admin";
+  const isSuper = session?.user?.role === "super";
+  const visibleViews = VIEWS.filter((v) => !v.superOnly || isSuper);
 
-  const [view, setView] = useState("listings");
+  // null until the URL has been read, so a reload never flashes (or fetches) Listings first.
+  const [view, setView] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -242,11 +261,20 @@ export default function AdminDashboard() {
     return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
   }
 
-  // A link can open a view directly (?view=conversations, Wyatt, 2026-11-01).
+  // The open view lives in ?view= so a reload or a shared link reopens it
+  // (Wyatt, 2026-11-05). Views with inner tabs keep those in ?tab=.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("view");
-    if (wanted && VIEWS.some((v) => v.key === wanted)) setView(wanted);
+    setView(wanted && VIEWS.some((v) => v.key === wanted) ? wanted : "listings");
   }, []);
+
+  function switchView(next) {
+    setView(next);
+    // A new view starts on its default tab with nothing open, so drop every
+    // other param (tab, thread, error...) and keep only the view.
+    const url = next === "listings" ? window.location.pathname : `${window.location.pathname}?view=${next}`;
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
@@ -328,6 +356,7 @@ export default function AdminDashboard() {
     // fetches its own data from an endpoint that ignores the dev/prod switch.
     // Conversations are a thread list plus a thread body, two requests the
     // view makes itself (against the dev/prod switch).
+    if (!view) return;
     if (SELF_LOADING_VIEWS.has(view)) { setLoading(false); setError(null); return; }
     if (!silent) { setLoading(true); setData(null); }
     setError(null);
@@ -409,7 +438,7 @@ export default function AdminDashboard() {
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <select
-            value={view}
+            value={view ?? ""}
             onChange={(e) => {
               if (!confirmDiscardForSwitch()) { e.target.value = view; return; }
               setPendingRows({});
@@ -417,15 +446,12 @@ export default function AdminDashboard() {
               // Clear synchronously so the next render never sees the old view's data shape
               setData(null);
               setLoading(true);
-              setView(e.target.value);
+              switchView(e.target.value);
               setSearch("");
-              if (e.target.value !== "conversations" && window.location.search) {
-                window.history.replaceState(window.history.state, "", window.location.pathname);
-              }
             }}
             className="px-3 py-1.5 text-sm rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-400 font-medium"
           >
-            {VIEWS.map((v) => (
+            {visibleViews.map((v) => (
               <option key={v.key} value={v.key}>{v.label}</option>
             ))}
           </select>
@@ -456,14 +482,22 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {view === "invites" ? (
+        {!view ? null : view === "invites" ? (
           <ReviewInvitesView search={search} />
         ) : view === "conversations" ? (
           <ConversationsView search={search} dbTarget={dbTarget} />
         ) : view === "emails" ? (
           <SentEmailsView search={search} dbTarget={dbTarget} />
+        ) : VIEWS.find((v) => v.key === view)?.superOnly && !isSuper ? (
+          <p className="p-6 text-sm text-gray-500">This view is for super admins only.</p>
+        ) : view === "mass-email" ? (
+          <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
+        ) : view === "billing" ? (
+          <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
         ) : view === "agents" ? (
           <AgentsView search={search} />
+        ) : view === "errors" ? (
+          <ErrorsView search={search} dbTarget={dbTarget} />
         ) : loading ? (
           <div className="py-20 text-center text-sm text-gray-400">Loading {view}…</div>
         ) : data ? (

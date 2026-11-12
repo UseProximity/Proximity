@@ -26,6 +26,7 @@ import {
   LANDLORD_CHAT_SELECT,
   formatListingOwner,
 } from "@/lib/chat/landlordCanChat";
+import { listedByForListing } from "@/lib/users/licenseDisclosure";
 import { sortUnits } from "@/utils/unitOrder";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
 import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
@@ -173,6 +174,30 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), be
       if (b.rent == null) return -1;
       return a.rent - b.rent;
     });
+}
+
+/*
+ * Missouri requires a licensed agent's name, company and company phone on every
+ * listing they market (MREC, 2026-11-04). Each landlord who declared a license
+ * (lib/users/licenseDisclosure.js) gets a `listedBy` on their offerings and, for
+ * the property's primary landlord, on `owner`. When an authorized signer's
+ * agreement covers a landlord's offering here, the signer's details show instead,
+ * or the landlord's when the signer is not a licensee (Wyatt, 2026-11-10).
+ * Landlords with no licensee behind them get none. A failed lookup leaves the listing as it is rather than failing it.
+ */
+async function attachListedBy(built) {
+  const leases = (built.unitTypes ?? []).flatMap((u) => u.leases ?? []);
+  const ids = [built.owner?._id, ...leases.map((l) => l.ownerId)].filter(Boolean);
+  if (!ids.length) return;
+  let listed;
+  try {
+    listed = await listedByForListing(supabase, built._id, ids);
+  } catch (err) {
+    console.error("[getListing] license disclosure fetch error:", err);
+    return;
+  }
+  if (built.owner?._id) built.owner.listedBy = listed.get(built.owner._id) ?? null;
+  for (const lease of leases) lease.listedBy = lease.ownerId ? listed.get(lease.ownerId) ?? null : null;
 }
 
 function buildListing(row, owner = null, reviews = []) {
@@ -650,6 +675,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts, preview =
   });
 
   const built = buildListing(row, ownerUser, reviews);
+  await attachListedBy(built);
   /*
    * Whether Proxy answers on this listing (per-listing agents, PRD v3). Both
    * switches must be on: the global one and the listing's own status. The

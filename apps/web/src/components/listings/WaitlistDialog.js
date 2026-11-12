@@ -13,6 +13,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import Modal from "@/components/ui/Modal";
 
 const EMPTY = { firstName: "", lastName: "", email: "", phone: "" };
@@ -90,7 +91,14 @@ export default function WaitlistDialog({ isOpen, onClose, listingId, propertyNam
   const field =
     "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500";
 
-  return (
+  /*
+   * Rendered on <body>, in a layer above the listing modal (z-[60]). Left in
+   * place it sat inside the browse side panel's stacking context, and the map
+   * column beside it was painted over the top.
+   */
+  if (!isOpen) return null;
+  return createPortal(
+    <div className="relative z-[80]">
     <Modal isOpen={isOpen} onClose={close}>
       <div className="p-6">
         {done ? (
@@ -221,5 +229,7 @@ export default function WaitlistDialog({ isOpen, onClose, listingId, propertyNam
         )}
       </div>
     </Modal>
+    </div>,
+    document.body
   );
 }

@@ -14,6 +14,9 @@
  *                        knowledge, own site over Apartments.com over Zillow,
  *                        never over what the landlord said (foundRead.js)
  *
+ * Both source steps are hidden while source search is off (Wyatt,
+ * 2026-11-07, FOUND_SOURCES_ENABLED): only pages a landlord gave us count.
+ *
  * Runs are loops of batch calls (a server call has 300 seconds), shown as
  * progress, stoppable between batches, and safe to start again: finished work
  * is skipped. A batch that makes no progress ends the loop.
@@ -166,6 +169,12 @@ export default function AgentsLaunchPanel({ onChanged }) {
         )}
       </section>
 
+      {!found.enabled ? (
+        <section>
+          <h3 className="mb-1 text-sm font-semibold text-gray-900">Sources of truth</h3>
+          <p className="text-xs text-gray-500">Source search is off. Listings sync only from pages a landlord uploaded or gave us, and pages on those same sites. Turn search back on with FOUND_SOURCES_ENABLED.</p>
+        </section>
+      ) : (<>
       <section>
         <h3 className="mb-1 text-sm font-semibold text-gray-900">Launch: sources of truth</h3>
         <p className="mb-3 text-xs text-gray-500">
@@ -244,6 +253,7 @@ export default function AgentsLaunchPanel({ onChanged }) {
           </div>
         )}
       </section>
+      </>)}
     </div>
   );
 }

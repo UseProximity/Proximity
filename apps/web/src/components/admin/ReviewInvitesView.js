@@ -30,7 +30,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fmtDate } from "@/components/admin/adminShared";
+import { fmtDate, useUrlTab } from "@/components/admin/adminShared";
 import RosterPicker from "@/components/admin/reviewInvites/RosterPicker";
 import InviteComposer, {
   DEFAULT_SUBJECT,
@@ -114,8 +114,10 @@ function downloadCsv(text, filename) {
   URL.revokeObjectURL(url);
 }
 
+const INVITE_TABS = ["send", "history"];
+
 export default function ReviewInvitesView({ search = "" }) {
-  const [tab, setTab] = useState("send");
+  const [tab, setTab] = useUrlTab(INVITE_TABS, "send");
 
   // ── Selection ────────────────────────────────────────────────────────────
   // A Map keyed by roster id so it survives searching, filtering and paging in

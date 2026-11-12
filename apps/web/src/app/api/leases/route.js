@@ -4,7 +4,9 @@ import { auth } from "@/auth";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
 import { shortDescription } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
 import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 // Create a lease on a unit that already exists — step 3 of the
@@ -50,6 +52,35 @@ export async function POST(req) {
 
   if (!unitId) {
     return Response.json({ error: "A unit is required." }, { status: 400 });
+  }
+
+  // The note on an offering is read by students like the property description,
+  // so it follows the same rule: no names, links, emails or phone numbers.
+  const descriptionProblem = checkListingDescription(description);
+  if (descriptionProblem) {
+    return Response.json({ error: descriptionProblem }, { status: 400 });
+  }
+
+  // Adding a live offering needs a payment method and, when required, a signed
+  // agreement (lib/billing/listingGate.js). A draft offering is never blocked.
+  let draft = body.draft === true;
+  // Something else on Billing (a payment method, an overdue invoice) blocks it:
+  // the offering is saved as a draft rather than lost, for a page that asks for
+  // that (draftIfBillingBlocked) and says why. Any other caller is refused as
+  // before, since a 2xx would read to it as published.
+  // Only the agreement: refused as before, and the page opens signing for this
+  // property and submits again (saving a draft here would make that a second copy).
+  let billingBlock = null;
+  if (!draft) {
+    const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [], unitIds: [unitId] });
+    if (!gate.allowed) {
+      if (coverageOnly(gate) || body.draftIfBillingBlocked !== true) {
+        return Response.json(gateResponseBody(gate), { status: 403 });
+      }
+      draft = true;
+      billingBlock = gateResponseBody(gate);
+    }
   }
 
   // Terms Section 5: a subletter confirms their own lease lets them sublet.
@@ -155,7 +186,7 @@ export async function POST(req) {
       ...contact,
       // An offering added to a live unit from the editor starts as a draft, so
       // students never see it half filled in (see 202610100002).
-      ...(body.draft === true ? { published_at: null } : {}),
+      ...(draft ? { published_at: null } : {}),
     })
     .select("id")
     .single();
@@ -183,6 +214,20 @@ export async function POST(req) {
       baseUrl,
     })
   );
+
+  if (billingBlock) {
+    return Response.json(
+      {
+        message: billingBlock.drafted,
+        code: "billing_needed",
+        missing: billingBlock.missing,
+        draft: true,
+        lease: { id: lease.id, listingId: unit.listing_id },
+        claimedProperty: claimed,
+      },
+      { status: 202 }
+    );
+  }
 
   return Response.json(
     {

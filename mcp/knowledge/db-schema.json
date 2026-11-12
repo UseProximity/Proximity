@@ -317,7 +317,7 @@
         "columns": [
           "id:uuid",
           "created_at:timestamptz",
-          "category:text (chat|account|reviews|landlords|team|other)",
+          "category:text (chat|account|reviews|landlords|billing|mass|team|other)",
           "kind:text",
           "to_email:text",
           "cc:text",
@@ -335,7 +335,272 @@
           "thread_id:uuid",
           "user_id:uuid"
         ],
-        "notes": "Migration 202610260001 (dev applied 2026-10-24; prod pending). pk id; no fks (the record outlives threads and users); indexes on created_at, (category, created_at), (status, created_at), provider_message_id; rls: service role only (no policies)"
+        "notes": "Migration 202610260001 (dev applied 2026-10-24; prod pending). Category gains 'billing' with 202610310002 (not yet applied). pk id; no fks (the record outlives threads and users); indexes on created_at, (category, created_at), (status, created_at), provider_message_id; rls: service role only (no policies)"
+      },
+      {
+        "table": "billing_settings",
+        "status": "unreleased",
+        "description": "Key/value switches for in-app payments; a missing key reads as false. Keys: agreement_required (seeded false so a signed agreement is not needed to publish until the agreement is ready), payment_method_required (an active payment method is needed to publish; off until launch), billing_run_enabled (lets the first-Monday cron create real invoices; off until an admin has checked a dry run), enrollment_window (JSON {deadline, includeAgreement}: the launch enrollment window shown to landlords).",
+        "columns": [
+          "key:text",
+          "value:jsonb",
+          "updated_at:timestamptz",
+          "updated_by:uuid"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk key; fk updated_by->users.id (set null); rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_accounts",
+        "status": "unreleased",
+        "description": "One row per landlord user holding their Stripe Customer id. Created lazily the first time a landlord opens payment setup.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "stripe_customer_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (user_id); unique (stripe_customer_id); fk user_id->users.id (restrict). The snapshot script nulls stripe_customer_id on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "payment_methods",
+        "status": "unreleased",
+        "description": "A landlord's Stripe payment methods: Stripe id plus display fields only (brand, last4, expiry, bank name). Never raw card or bank details. Status verifying|active|expired|failed drives the prompts on the payments dashboard.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "stripe_payment_method_id:text",
+          "type:text (us_bank_account|card)",
+          "status:text (verifying|active|expired|failed)",
+          "is_default:bool",
+          "brand:text",
+          "last4:text",
+          "exp_month:int4",
+          "exp_year:int4",
+          "bank_name:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "deleted_at:timestamptz",
+          "attention_emailed_key:text",
+          "attention_emailed_at:timestamptz"
+        ],
+        "notes": "attention_emailed_key/at (202611020002_payment_method_attention) record which expiring/expired/failed email the daily billing-overdue cron sent for the method, as state:month/year, so it is sent once per problem. Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (stripe_payment_method_id); fk user_id->users.id (restrict); partial unique (user_id) where is_default and deleted_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charges",
+        "status": "unreleased",
+        "description": "One chargeable event, owned by a landlord user (never a listing). Lifecycle unconfirmed -> pending (admin confirms, 7 day review) -> approved -> invoiced -> paid, with contested and voided side exits; transitions are enforced by trg_charges_enforce_transition and written through rpc_transition_charge. trigger_type and trigger_ref come from the separate Triggering project; is_test marks charges made by the admin test tool. Money is integer cents. payer_id (202611090001, Project B): who is invoiced when a payer holds the covering agreement; the billing run invoices coalesce(payer_id, landlord_id).",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "amount_cents:int4",
+          "description:text",
+          "trigger_type:text",
+          "trigger_ref:text",
+          "listing_id:uuid",
+          "lease_id:uuid",
+          "student_id:uuid",
+          "created_by_type:text",
+          "created_by_id:uuid",
+          "is_test:bool",
+          "status:text",
+          "pending_at:timestamptz",
+          "approved_at:timestamptz",
+          "contested_at:timestamptz",
+          "contest_reason:text",
+          "resolved_at:timestamptz",
+          "resolved_by_id:uuid",
+          "resolution_note:text",
+          "voided_at:timestamptz",
+          "invoiced_at:timestamptz",
+          "paid_at:timestamptz",
+          "invoice_id:uuid",
+          "stripe_invoice_item_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "signed_rent_cents:int4",
+          "commission_rate_percent:numeric",
+          "covered_by_agreement_id:uuid",
+          "covered_by_amendment_id:uuid",
+          "payer_id:uuid"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk landlord_id->users.id (restrict); listing_id->listings.id, lease_id->unit_leases.id, student_id->users.id, created_by_id->users.id, resolved_by_id->users.id (all set null); invoice_id->billing_invoices.id (set null); unique (stripe_invoice_item_id); check amount_cents > 0; check invoiced/paid rows carry an invoice reference; indexes for the review clock (pending_at where pending), billing run (landlord where approved and not invoiced) and admin queue. Audited by fn_action_log; updated_at by fn_set_updated_at. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charge_status_history",
+        "status": "unreleased",
+        "description": "Append-only record of every charge status change: from, to, actor (landlord|admin|system) and note. Written only by rpc_transition_charge, in the same transaction as the status update.",
+        "columns": [
+          "id:uuid",
+          "charge_id:uuid",
+          "from_status:text",
+          "to_status:text",
+          "actor_type:text (landlord|admin|system)",
+          "actor_user_id:uuid",
+          "note:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); actor_user_id->users.id (set null); check actor_user_id present unless actor_type is system; index (charge_id, created_at). rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_invoices",
+        "status": "unreleased",
+        "description": "One Stripe invoice per landlord per billing month. billing_period is the first day of the month in America/Chicago and, with landlord_id, is the idempotency key of the monthly run. invoice_date (not any charge date) is when Stripe finalized the invoice and starts the 30 day overdue clock; it is NULL while a run has not finished issuing it, and such a row is never overdue (202611010003_billing_holds); processing_started_at lets the overdue cron skip ACH payments still settling; overdue_actioned_at records that leases were withdrawn.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "billing_period:date",
+          "stripe_invoice_id:text",
+          "status:text",
+          "total_cents:int4",
+          "invoice_date:timestamptz",
+          "hosted_invoice_url:text",
+          "invoice_pdf_url:text",
+          "processing_started_at:timestamptz",
+          "paid_at:timestamptz",
+          "failed_at:timestamptz",
+          "last_failure_message:text",
+          "disputed:bool",
+          "overdue_actioned_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "collection_method:text",
+          "due_date:timestamptz",
+          "sent_at:timestamptz",
+          "autopay_payment_method_id:uuid",
+          "autopay_scheduled_for:timestamptz",
+          "autopay_attempted_at:timestamptz",
+          "autopay_skipped_reason:text"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (landlord_id, billing_period); unique (stripe_invoice_id); fk landlord_id->users.id (restrict); partial index on invoice_date where status in (open, processing, failed). The snapshot script nulls the Stripe id and URLs on dev. Audited by fn_action_log. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "charge_adjustments",
+        "status": "unreleased",
+        "description": "A refund or credit that corrects a Paid charge. The original charge is never edited; the correction is recorded here, linked to it.",
+        "columns": [
+          "id:uuid",
+          "charge_id:uuid",
+          "kind:text (refund|credit)",
+          "amount_cents:int4",
+          "reason:text",
+          "stripe_refund_id:text",
+          "created_by_id:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; fk charge_id->charges.id (restrict); created_by_id->users.id (set null); unique (stripe_refund_id). rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_disputes",
+        "status": "unreleased",
+        "description": "Stripe chargebacks received through the dispute webhooks, linked to the invoice they hit. Shown in the admin review view.",
+        "columns": [
+          "id:uuid",
+          "invoice_id:uuid",
+          "stripe_dispute_id:text",
+          "amount_cents:int4",
+          "reason:text",
+          "status:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk id; unique (stripe_dispute_id); fk invoice_id->billing_invoices.id (set null). The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "agreement_versions",
+        "status": "unreleased",
+        "description": "Versions of the commission agreement document. An admin uploads each as a PDF (stored in R2 under billing/agreement-versions/), it is pushed to Documenso as a template, the admin places signature boxes in Documenso's editor, checks them, then makes it live. status draft|ready|live|retired; exactly one live. requires_resign, chosen when made live, invalidates signatures on every earlier version. Since 202611050001: kind (master | amendment, one live standard version each), landlord_id (a version negotiated with one landlord), commission_rate_percent (filled into the document and shown on invoices).",
+        "columns": [
+          "id:uuid",
+          "label:text",
+          "file_key:text",
+          "file_name:text",
+          "file_bytes:int4",
+          "status:text",
+          "requires_resign:bool",
+          "provider:text",
+          "provider_template_id:text",
+          "provider_recipient_id:int4",
+          "provider_title_field_id:int4",
+          "provider_editor_url:text",
+          "provider_error:text",
+          "fields_checked_at:timestamptz",
+          "published_at:timestamptz",
+          "published_by_id:uuid",
+          "created_by_id:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "kind:text",
+          "landlord_id:uuid",
+          "commission_rate_percent:numeric",
+          "provider_rate_field_id:int4",
+          "change_request_id:uuid",
+          "based_on_version_id:uuid",
+          "provider_address_field_id:int4",
+          "provider_brokerage_field_id:text",
+          "provider_license_field_id:text"
+        ],
+        "notes": "Migration 202611030002_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team)."
+      },
+      {
+        "table": "landlord_agreements",
+        "status": "unreleased",
+        "description": "Each landlord's commission agreement record. Landlords sign in the app through Documenso (embedded on the Payments tab); admins can record a paper signature by hand. status not_sent|sent (in progress) | signed (current signature) | superseded (replaced by a newer signature) | voided (ended without one; ended_reason says why: declined, cancelled, voided by an admin). The listing gate asks agreementState(): signed AND on a version published at or after the latest version made live with requires_resign. Since 202611050001 this is the master agreement: one-year term (term_start, term_end), the Exhibit A it was sent with (exhibit), the signed Exhibit A file and the rate signed.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "version:text",
+          "status:text",
+          "signed_at:timestamptz",
+          "signer_name:text",
+          "signed_file_key:text",
+          "provider:text",
+          "provider_envelope_id:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "version_id:uuid",
+          "signer_title:text",
+          "authorized_at:timestamptz",
+          "ended_reason:text",
+          "ended_at:timestamptz",
+          "term_start:timestamptz",
+          "term_end:timestamptz",
+          "exhibit:jsonb",
+          "exhibit_file_key:text",
+          "signed_exhibit_file_key:text",
+          "provider_exhibit_item_id:text",
+          "commission_rate_percent:numeric",
+          "license_prefill:jsonb"
+        ],
+        "notes": "Migrations 202610310003_billing_core and 202611030002_agreement_versions (both applied to dev only; prod with billing). pk id; fk user_id->users.id (restrict), version_id->agreement_versions.id (restrict); partial unique (user_id) where status in (not_sent, sent); partial unique (user_id) where status = signed; partial unique (provider_envelope_id) where not null (the Documenso webhook finds the record by it); check signed rows have signed_at. Audited by fn_action_log. rls: service role only. The prod->dev snapshot voids copies in progress and nulls provider_envelope_id (dev uses its own Documenso team)."
+      },
+      {
+        "table": "stripe_webhook_events",
+        "status": "unreleased",
+        "description": "Stripe event ids already seen, so webhook handling is idempotent. A row is claimed on first sight and stamped processed_at when handled; a row with processed_at null is retried when Stripe redelivers.",
+        "columns": [
+          "stripe_event_id:text",
+          "type:text",
+          "livemode:bool",
+          "received_at:timestamptz",
+          "processed_at:timestamptz",
+          "error:text"
+        ],
+        "notes": "Migration 202610310003_billing_core (not yet applied to dev or prod). pk stripe_event_id; partial index on received_at where processed_at is null. The snapshot script deletes every row on dev. rls: service role only (no policies); written only by billing code using the service role key."
+      },
+      {
+        "table": "billing_lease_withdrawals",
+        "status": "unreleased",
+        "description": "Which leases the overdue-invoice job withdrew (is_active false, unavailable true), one row per (invoice, lease), so an admin can restore exactly those and leave any lease the landlord withdrew themselves alone. restored_at is NULL while a lease is still withdrawn.",
+        "columns": [
+          "id:uuid",
+          "invoice_id:uuid",
+          "lease_id:uuid",
+          "withdrawn_at:timestamptz",
+          "restored_at:timestamptz",
+          "restored_by_id:uuid"
+        ],
+        "notes": "Migration 202611010002_billing_lease_withdrawals (not yet applied to dev or prod). pk id; unique (invoice_id, lease_id); fk invoice_id->billing_invoices.id (restrict); lease_id->unit_leases.id (cascade); restored_by_id->users.id (set null); partial index on invoice_id where restored_at is null; rls: service role only (no policies). Trigger trg_block_relisting_billing_hold on unit_leases (fn_block_relisting_billing_hold, 202611010003_billing_holds) refuses any update that puts a lease with an unrestored row back on the market, so restoring marks restored_at first."
       },
       {
         "table": "landlord_reply_senders",
@@ -554,7 +819,7 @@
       {
         "table": "dorm_review_tags",
         "status": "active",
-        "description": "Join: dorm review ↔ tag.",
+        "description": "Join: dorm review \u2194 tag.",
         "columns": [
           "review_id:uuid",
           "tag_id:uuid",
@@ -693,7 +958,7 @@
       {
         "table": "executed_leases",
         "status": "unused",
-        "description": "Lease documents through draft → signature lifecycle. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
+        "description": "Lease documents through draft \u2192 signature lifecycle. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "template_id:uuid",
@@ -778,7 +1043,7 @@
       {
         "table": "interaction_types",
         "status": "reference",
-        "description": "Reference: kinds of user↔listing interactions.",
+        "description": "Reference: kinds of user\u2194listing interactions.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -1067,7 +1332,7 @@
       {
         "table": "listing_active_conversations",
         "status": "unused",
-        "description": "Active student↔listing leasing conversations. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
+        "description": "Active student\u2194listing leasing conversations. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1297,7 +1562,7 @@
       {
         "table": "listing_landlords",
         "status": "active",
-        "description": "Join: listing ↔ landlord user (is_primary flags the owner). claimed_at (202610270007... see 202610270006_claimed_at): when the owner claimed the listing, default now(); existing rows backfilled to at least 15 days before the migration so everyone at launch counts as verified. An owner claimed within 14 days has agent edits held for admin review (lib/agents/coreWrites.js recentlyClaimed).",
+        "description": "Join: listing \u2194 landlord user (is_primary flags the owner). claimed_at (202610270007... see 202610270006_claimed_at): when the owner claimed the listing, default now(); existing rows backfilled to at least 15 days before the migration so everyone at launch counts as verified. An owner claimed within 14 days has agent edits held for admin review (lib/agents/coreWrites.js recentlyClaimed).",
         "columns": [
           "listing_id:uuid",
           "user_id:uuid",
@@ -1545,7 +1810,7 @@
       {
         "table": "listing_source_monitors",
         "status": "unreleased",
-        "description": "Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
+        "description": "Launch review (2026-11-07, migration 202611070006_sync_launch_review.sql): subpages_checked_at records when the company-wide page was last searched for this listing's own page (lib/sourceSync/subpages.js), and listing_source_events.kind gained source_attached. Listing source monitor (feat/agents-importer, the importer rescue): one row per listing pointing at the landlord page to re-check (source_url, source_kind own_site|portal, check_interval_days, next_check_at, failure backoff, portal jsonb: leasing-portal ids and per-apartment term prices learned by the SecureCafe reader so the sync re-quotes only repriced apartments). Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. The weekly /api/cron/source-sync entry was removed from vercel.json on 2026-10-26: monitors are only read when the route is called by hand, until the per-listing agents replace it with a daily batch. Since 202610270005 check_interval_days defaults to 1: the daily /api/cron/agent-sync batch queues every due monitor as a listing_import_jobs row (target.sync = true) run by the import-jobs lanes (lib/agents/sync.js, lib/sourceImport/sync.js syncMonitor), which applies structural changes (price changes edit the lease in place; landlord-set leases, units and property fields are held; spec changes are never model-approved) and then reads the pages into listing_facts through Proxy's synthesis (lib/agents/pages.js).",
         "columns": [
           "id:uuid",
           "listing_id:uuid",
@@ -1572,6 +1837,29 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "listing_unit_pages",
+        "status": "unreleased",
+        "description": "A page per unit (feat/unit-source-pages, Wyatt 2026-11-06). The listing's monitor keeps the building-level page, where new units appear; a unit with its own page is read from that page alone (readProperty onlyThisPage, no crawling) by lib/sourceSync/unitPages.js mergeUnitPages inside syncMonitor, and that read wins over the building page for the unit (pinned by unit id, so the unit is never renamed). A page that 404s/410s or no longer shows the unit marks it let: the unit goes into the snapshot as not offered and the usual sync rules withdraw its leases (unavailable, never deleted); unit-page changes skip the churn hold and still apply when the rest of the run is held. A priced offer with a future date keeps the unit offered. Set by the property's primary owner or the team from the Agent tab (POST/DELETE /api/landlord/listings/[listingId]/agent/unit-pages); replacing a page soft-deletes the old row. Migration 202611060001_listing_unit_pages.sql.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "unit_id:uuid",
+          "url:text",
+          "source_kind:text",
+          "added_by:uuid",
+          "enabled:bool",
+          "last_status:text",
+          "last_error:text",
+          "last_checked_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "consecutive_failures:int4",
+          "deleted_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk id; fk listing_id->listings.id (cascade); unit_id->listing_units.id (cascade); added_by->users.id (set null); unique (unit_id) where deleted_at is null; check source_kind in (own_site,portal) | last_status in (ok,gone,failed); rls: service role only (no policies)"
       },
       {
         "table": "listing_source_snapshots",
@@ -1612,7 +1900,8 @@
           "unit_number:text",
           "name:text",
           "sort_order:int4",
-          "published_at:timestamptz"
+          "published_at:timestamptz",
+          "source_seen_at:timestamptz"
         ],
         "column_notes": {
           "name": "the only unit label the app reads or writes",
@@ -1621,7 +1910,7 @@
           "floor_plan_image_url": "R2 URL of a downloadable floor plan",
           "published_at": "NULL = draft unit on a live property; students see it only once published"
         },
-        "notes": "status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
+        "notes": "source_seen_at (migration 202611110002, dev and prod applied 2026-11-11): when a sync or import last matched this unit to its website or created it from one; null units are never withdrawn by a sync. status=active; pk id; fk listing_id->listings.id (cascade); check bedrooms >= 0, bathrooms >= 0, area >= 0 or null (NOT VALID) | unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole has no unit_number; any other designator requires one; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
           "prod_rows": 1083,
           "prod_last_write": "2026-10-12"
@@ -1884,7 +2173,7 @@
       {
         "table": "pms_connections",
         "status": "active",
-        "description": "PMS freshness integration (feat/pms-integration): one row per landlord × provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token: the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000): nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
+        "description": "PMS freshness integration (feat/pms-integration): one row per landlord \u00d7 provider (buildium|appfolio|doorloop|rentec|rentmanager|resman|scrape|aggregator). Stores ONLY nango_connection_id (reference token: the raw PMS credential lives in Nango, never in our DB). auto_apply=false runs the daily sync as a DRY RUN (events logged applied=false, nothing written); CHECK chk_pms_scrape_never_auto_apply forces auto_apply=false for scrape at the DB level. credential_mode='nango' (default) + dormant cred_* columns are the credential-portability seam (migration 20260726090000): nothing writes them yet. credential_meta jsonb holds non-secret provider settings: accountLabel, and for AppFolio {\"subdomain\": ...} (validated ^[a-z0-9-]{1,63}$, SSRF guard) plus optional includeAllUnits. Migrations 20260721090000 + 20260721190000 + 20260726090000; exists on BOTH dev and prod. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -1933,7 +2222,7 @@
       {
         "table": "pms_links",
         "status": "active",
-        "description": "Canonical PMS-ID ↔ Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique → listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present → apply; missing → delist. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
+        "description": "Canonical PMS-ID \u2194 Proximity mapping: (connection, external_property_id, external_unit_id, external_bed_id) unique \u2192 listing_id/listing_unit_id. origin: ingested (created from PMS) | linked (deduped to pre-existing listing). include=false excludes from sync. Snapshot semantics: unit present \u2192 apply; missing \u2192 delist. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -1958,7 +2247,7 @@
       {
         "table": "pms_review_queue",
         "status": "active",
-        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>±20% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
+        "description": "Human review queue for PMS sync: scrape_unavailable signals, swing_guard_hold (>\u00b120% portfolio change held, nothing applied), ambiguous_dedupe. Partial unique: one open row per pms_link. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet. PMS sync shipped as Beta (#116); 0 rows in prod because no landlord has connected yet.",
         "columns": [
           "id:uuid",
           "connection_id:uuid",
@@ -2328,7 +2617,7 @@
       {
         "table": "unit_leases",
         "status": "active",
-        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT — the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) — subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle. [2026-10-12: contact_* are ONE BLOCK PER LANDLORD PER PROPERTY for owned leases. PUT /api/landlord/listings/[listingId]/contact writes name/email/phone to every lease the caller owns at the property, POST /api/leases copies that block onto a new lease (body contact only seeds a landlord's first lease there), and the editor no longer edits contact per lease (EditorContact). The columns stay the storage: imported owner_id NULL leases are reached only through them. Browse groups a unit's leases into one card per landlord by contact email (getListing landlordKeyer, an opaque key; the email never reaches the browser). Backfilled by 202610120001: most-used email per landlord per property, name/phone from the newest lease with it.] [2026-10-10: published_at = NULL means a draft offering, visible only to its owner until published; hidden from students even on a live unit. One-way (trg_keep_published). sync_listing_aggregates counts published rows only. Migration 202610100002, applied to dev, NOT YET on prod.]",
+        "description": "Lease offers per unit (rent, term, sublease). is_active gates availability. lease_term_months = ARRAY of lease durations in months the unit is offered for (Semester=5, Summer=4, 10, 12, or custom). listings.lease_availability is derived from the union of these across a listing's units. [2026-08-12: ONE LEASE = ONE OWNERS OFFERING ON ONE UNIT \u2014 the ownership boundary, so several landlords can offer leases at one property. owner_id NULL = unclaimed (imported listing, contact but no account). unavailable is per-offering. [2026-08-24: the sublease guard trigger was DROPPED (202608240003) \u2014 subletting is taking over a lease that exists, so a live lease on the unit is the normal case, not a bar. A unit can now carry a sublease and a standard lease at once. rent_is_per_person (202608240004): true = per person, false = whole unit, NULL = not recorded, in which case lib/listings/rentBasis.js infers it. contact_email/contact_phone/contact_name/description are per-offering and override the property-level columns.] deleted_at: landlord deleted the offering (also is_active=false, unavailable=true); hidden from their dashboard, row kept for enquiries/photo attribution. Withdraw is the reversible is_active/unavailable toggle. [2026-10-12: contact_* are ONE BLOCK PER LANDLORD PER PROPERTY for owned leases. PUT /api/landlord/listings/[listingId]/contact writes name/email/phone to every lease the caller owns at the property, POST /api/leases copies that block onto a new lease (body contact only seeds a landlord's first lease there), and the editor no longer edits contact per lease (EditorContact). The columns stay the storage: imported owner_id NULL leases are reached only through them. Browse groups a unit's leases into one card per landlord by contact email (getListing landlordKeyer, an opaque key; the email never reaches the browser). Backfilled by 202610120001: most-used email per landlord per property, name/phone from the newest lease with it.] [2026-10-10: published_at = NULL means a draft offering, visible only to its owner until published; hidden from students even on a live unit. One-way (trg_keep_published). sync_listing_aggregates counts published rows only. Migration 202610100002, applied to dev, NOT YET on prod.]",
         "columns": [
           "id:uuid",
           "unit_id:uuid",
@@ -2397,7 +2686,7 @@
       {
         "table": "user_listing_interactions",
         "status": "active",
-        "description": "Log of user↔listing interactions (clicks, saves, contacts).",
+        "description": "Log of user\u2194listing interactions (clicks, saves, contacts).",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -2414,7 +2703,7 @@
       {
         "table": "users",
         "status": "active",
-        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews → users → schools (listing_reviews has no school column). role_id → roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.] [2026-10-30: preferred_beds (0 = studio, CHECK 0..20) joins them: a listing opens on \"I want a [beds] for [length] starting [month]\" with all three from the account. Migration 202610300001, applied to dev; prod pending.] Fixed system row 00000000-0000-0000-0000-000000000010 = Proxy (proxy@useproximity.org, role system, is_system), the sender of Proxy's chat messages. [2026-11-01: preferred_beds_list and preferred_lease_months_list (integer[]) hold several sizes and lengths picked at once as toggle pills on a listing; empty or NULL means any. The single columns keep the first pick. Migration 202611010001, dev pending, prod pending.]",
+        "description": "App users. school_id = the campus proven by the account email domain, written when a review is submitted; a review's school is derived by joining listing_reviews \u2192 users \u2192 schools (listing_reviews has no school column). role_id \u2192 roles; profile_complete gates onboarding modal (a QR-review account starts false and is only flipped by the student saving the profile form); profile_setup_token/_expires_at authorize that one action for 7 days on a credential-less account; deleted_at = soft delete. [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [Audit 2026-10-12: apple_sub/apple_account are written by the mobile branch only (0 rows in prod); apple_refresh_token and company_name exist ONLY on dev; payment_method/payment_handle are empty on every prod row; birthday is set on 20 of 537.] [2026-10-27: preferred_move_in_date (first of the month the student wants to move in) and preferred_lease_months (exact lease length, CHECK 1..60) narrow every unit's lease options (lib/listings/leaseFit.js). NULL = not said. Written by PATCH /api/editProfile, read by GET /api/account/lease-preferences. Migration 202610270001, applied to dev and prod 2026-10-27.] [2026-10-30: preferred_beds (0 = studio, CHECK 0..20) joins them: a listing opens on \"I want a [beds] for [length] starting [month]\" with all three from the account. Migration 202610300001, applied to dev; prod pending.] Fixed system row 00000000-0000-0000-0000-000000000010 = Proxy (proxy@useproximity.org, role system, is_system), the sender of Proxy's chat messages. [2026-11-01: preferred_beds_list and preferred_lease_months_list (integer[]) hold several sizes and lengths picked at once as toggle pills on a listing; empty or NULL means any. The single columns keep the first pick. Migration 202611010001, dev pending, prod pending.] billing_only (202611090001): a landlord account made for a payer, with no listings or listing tools.",
         "columns": [
           "id:uuid",
           "name:text",
@@ -2454,7 +2743,8 @@
           "preferred_move_in_date:date",
           "preferred_lease_months:int4",
           "preferred_beds:int4",
-          "review_sandbox:bool"
+          "review_sandbox:bool",
+          "billing_only:bool"
         ],
         "dev_only_columns": [
           "apple_refresh_token",
@@ -2597,6 +2887,24 @@
           "updated_at:timestamptz"
         ],
         "notes": "pk listing_id -> listings.id (cascade); check status in (off, pilot, on); RLS on, no policies. Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+      },
+      {
+        "table": "listing_sync_learnings",
+        "status": "active",
+        "description": "What the website sync learns about a listing from the landlord's edits (lib/sourceImport/learn.js, learnRules.js). kind synced: the lease or unit values the sync last wrote from the website (source_key lease:<id> | unit:<id>); a listing that now differs was edited by the landlord and that field stays theirs until the website's value moves. kind unit_alias: the website's unit key mapped to the landlord's unit (renamed units). kind rent_basis (source_key '*'): value {basis:'per_person'} when the landlord states the website's whole-apartment rents per person. Server-side only.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "kind:text",
+          "source_key:text",
+          "unit_id:uuid",
+          "lease_id:uuid",
+          "value:jsonb",
+          "learned_from:text",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; unique (listing_id, kind, source_key); fk listing_id->listings.id (cascade), unit_id->listing_units.id (cascade), lease_id->unit_leases.id (cascade); check kind in (synced,unit_alias,rent_basis); rls: service role only (no policies), anon/authenticated revoked; migration 202611110001 (dev applied 2026-11-11, prod pending)"
       },
       {
         "table": "listing_sources",
@@ -2872,9 +3180,307 @@
           "updated_at:timestamptz"
         ],
         "notes": "pk id; fk listing_id->listings (cascade), lease_id->unit_leases (set null), student_id->users (cascade), landlord_id/confirmed_by/cancelled_by->users (set null), proxy_thread_id/thread_id->chat_threads (set null); unique (student_id, coalesce(lease_id, listing_id)) where status in (requested, proposed); RLS on, no policies. Migration 202610270004_tours (dev applied 2026-10-27; prod at the tours milestone merge)."
+      },
+      {
+        "table": "app_errors",
+        "status": "unreleased",
+        "description": "Site errors, grouped (lib/errors/record.js, Wyatt 2026-11-03): one row per problem (fingerprint = source + where + message with ids/numbers stripped + top own stack frame), counted on every recurrence via record_app_error. source server (instrumentation.js: onRequestError and console.error lines carrying an Error) or browser (POST /api/errors from components/ErrorReporter.js). The team is emailed from production only: first sighting, reopened after resolved (reopened_at), and at 10/100/1000/10000; at most once an hour per row and 15 an hour per instance. resolved_at/resolved_by set from admin Errors (super only). RLS on, no policies: service role only.",
+        "columns": [
+          "id:uuid",
+          "fingerprint:text unique",
+          "source:text",
+          "where_label:text",
+          "message:text",
+          "stack:text",
+          "sample:jsonb",
+          "app_env:text",
+          "count:int",
+          "first_seen_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "last_alerted_at:timestamptz",
+          "alerted_count:int",
+          "resolved_at:timestamptz",
+          "resolved_by:uuid",
+          "reopened_at:timestamptz"
+        ]
+      },
+      {
+        "table": "agreement_amendments",
+        "status": "unreleased",
+        "description": "Exhibit A amendments: a landlord adds properties to their signed master agreement later. Frozen previous and proposed address lists; Documenso envelope with the generated amendment pages; signed PDFs. signer_id (202611090001): the payer who signed an addendum for this landlord account (user_id); null when the account signed itself.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "agreement_id:uuid",
+          "version_id:uuid",
+          "status:text",
+          "previous_exhibit:jsonb",
+          "proposed_exhibit:jsonb",
+          "exhibit_file_key:text",
+          "provider:text",
+          "provider_envelope_id:text",
+          "provider_exhibit_item_id:text",
+          "signed_file_key:text",
+          "signed_exhibit_file_key:text",
+          "signer_name:text",
+          "signer_title:text",
+          "authorized_at:timestamptz",
+          "signed_at:timestamptz",
+          "ended_reason:text",
+          "ended_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "license_prefill:jsonb",
+          "signer_id:uuid"
+        ],
+        "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per user (uq_agreement_amendments_pending); unique provider_envelope_id; rls on, service role only"
+      },
+      {
+        "table": "agreement_coverage",
+        "status": "unreleased",
+        "description": "Which properties each landlord's agreement covers. proposed while the document adding it is unsigned, covered once signed, released if declined/cancelled/replaced. Counts only while the master is signed, valid and in its one-year term (lib/billing/coverage.js).",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "listing_id:uuid",
+          "address:text",
+          "units:jsonb",
+          "agreement_id:uuid",
+          "amendment_id:uuid",
+          "status:text",
+          "covered_at:timestamptz",
+          "released_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050001); pk id; fk listing_id->listings, agreement_id->landlord_agreements, amendment_id->agreement_amendments (restrict); check status in (proposed,covered,released); unique (agreement_id, listing_id) where status<>released; trigger trg_agreement_coverage_requires_signature refuses covered unless the document is signed; rls on, service role only"
+      },
+      {
+        "table": "autopay_authorizations",
+        "status": "unreleased",
+        "description": "A landlord's consent to autopay: chosen saved method, exact consent wording, user agent. One active (revoked_at null) per landlord; revoked with a reason when turned off, replaced, or the method goes away.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "payment_method_id:uuid",
+          "consent_text:text",
+          "authorized_at:timestamptz",
+          "user_agent:text",
+          "consecutive_failures:int4",
+          "revoked_at:timestamptz",
+          "revoked_reason:text",
+          "revoked_by_id:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050002); pk id; fk payment_method_id->payment_methods (restrict); unique user_id where revoked_at is null; rls on, service role only"
+      },
+      {
+        "table": "agreement_change_requests",
+        "status": "unreleased",
+        "description": "A landlord asking for changes to the commission agreement or an amendment (Documenso has no redlining). One active (open/answered/accepted) per landlord.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "document_kind:text",
+          "agreement_id:uuid",
+          "amendment_id:uuid",
+          "version_id:uuid",
+          "section:text",
+          "status:text",
+          "resolution_version_id:uuid",
+          "closed_at:timestamptz",
+          "closed_by_id:uuid",
+          "last_team_alert_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050003); check status in (open,answered,accepted,resolved,declined,withdrawn); document_kind in (master,amendment); rls on, service role only"
+      },
+      {
+        "table": "agreement_change_messages",
+        "status": "unreleased",
+        "description": "The thread of a change request: landlord and admin messages, proposed wording, one optional private file (PDF/Word) per message, never sent to Documenso.",
+        "columns": [
+          "id:uuid",
+          "request_id:uuid",
+          "author_id:uuid",
+          "author_role:text",
+          "body:text",
+          "proposed_text:text",
+          "file_key:text",
+          "file_name:text",
+          "file_type:text",
+          "file_bytes:int4",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050003); fk request_id->agreement_change_requests (restrict); check author_role in (landlord,admin); rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosures",
+        "status": "unreleased",
+        "description": "A landlord's current real estate license answer, given right before signing the commission agreement (MREC). Licensees' agent_name, company_name and company_phone show on their listings as 'Listed by'; license_number is never public.",
+        "columns": [
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "confirmed_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); pk user_id fk->users (cascade); check: a licensee row has every field and owner_agreement_confirmed; rls on, service role only"
+      },
+      {
+        "table": "landlord_license_disclosure_history",
+        "status": "unreleased",
+        "description": "Append-only history of license answers: every Profile save and every confirmation given right before signing.",
+        "columns": [
+          "id:uuid",
+          "user_id:uuid",
+          "is_licensee:bool",
+          "agent_name:text",
+          "company_name:text",
+          "company_phone:text",
+          "license_number:text",
+          "owner_agreement_confirmed:bool",
+          "source:text",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611050004); source in (signing,profile); fk user_id->users (restrict); rls on, service role only"
+      },
+      {
+        "table": "mass_email_templates",
+        "status": "unreleased",
+        "description": "Admin mass email (Wyatt, 2026-11-07): a named email. Its wording lives in mass_email_versions. Archiving hides it, history stays.",
+        "columns": [
+          "id:uuid",
+          "name:text",
+          "created_by:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "archived_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk created_by->users (set null)"
+      },
+      {
+        "table": "mass_email_versions",
+        "status": "unreleased",
+        "description": "One saved wording of a mass email, never edited (a change is a new version). Body is plain text with light formatting and {{merge_fields}} (lib/massEmail/render.js).",
+        "columns": [
+          "id:uuid",
+          "template_id:uuid",
+          "version:int",
+          "subject:text",
+          "body:text",
+          "button_label:text",
+          "button_target:text (billing|dashboard|custom|none)",
+          "button_url:text",
+          "attachments:jsonb ([{kind:mrec}|{kind:file,key,fileName,size}])",
+          "footer_reason:text",
+          "commercial:bool",
+          "created_by:uuid",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk template_id->mass_email_templates (cascade); unique (template_id, version)"
+      },
+      {
+        "table": "mass_email_batches",
+        "status": "unreleased",
+        "description": "One press of Send: which version, who sent it, whether it also switched Proxy on for the recipients' live listings.",
+        "columns": [
+          "id:uuid",
+          "version_id:uuid",
+          "created_by:uuid",
+          "turn_proxy_on:bool",
+          "recipient_count:int",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk version_id->mass_email_versions (restrict)"
+      },
+      {
+        "table": "mass_email_recipients",
+        "status": "unreleased",
+        "description": "One row per person per batch. provider_message_id joins sent_emails.provider_message_id for SES delivery status. A delivered row for the template means the person is skipped unless the admin sends again on purpose.",
+        "columns": [
+          "id:uuid",
+          "batch_id:uuid",
+          "version_id:uuid",
+          "template_id:uuid",
+          "user_id:uuid",
+          "email:text",
+          "status:text (sent|redirected|suppressed|failed)",
+          "status_detail:text",
+          "provider_message_id:text",
+          "setup_link:bool",
+          "proxy_listings:int",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080001, dev applied 2026-11-07, prod pending); rls on, service role only; action_log trigger; fk batch_id->mass_email_batches (cascade), user_id->users (set null); index (template_id,user_id)"
+      },
+      {
+        "table": "mass_email_unsubscribes",
+        "status": "unreleased",
+        "description": "Addresses that unsubscribed from mass email via the footer link (/unsubscribe page) or the Gmail/Yahoo List-Unsubscribe one-click button (POST /api/unsubscribe). sendBatch skips them. Resubscribe deletes the row. Separate from email_suppressions on purpose: that one also stops chat alerts.",
+        "columns": [
+          "email:text (pk, lower-cased)",
+          "source:text (link|one_click)",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased (202611080003, dev + prod applied 2026-11-08); rls on, service role only"
+      },
+      {
+        "table": "billing_payers",
+        "status": "unreleased",
+        "description": "Project B (202611090001): who signs the marketing agreement and pays for a landlord account. One active row per account (listing_id NULL; per-building payers are Project C). The payer holds one master agreement; the account adds properties by addenda the payer signs. declined_at: the payer declined the last document. RLS on, service role only.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "payer_id:uuid",
+          "listing_id:uuid",
+          "signer_name:text",
+          "signer_email:text",
+          "status:text",
+          "ended_reason:text",
+          "ended_at:timestamptz",
+          "created_by:uuid",
+          "invited_at:timestamptz",
+          "declined_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ]
+      },
+      {
+        "table": "payer_publish_requests",
+        "status": "unreleased",
+        "description": "Project B (202611090001, 202611090002): listings a landlord with a payer asked to publish. status waiting | approved | declined | published (legacy) | cancelled. Waiting rows are locked to the document the signer opened (document_kind + document_id); signing it approves the covered ones and declines the ones left off, rejecting it declines them, cancelling it clears the lock. Approving never publishes: the landlord publishes (lib/billing/payers.js settleSignedDocument, approveWaiting; daily retry settleStaleDocuments in cron billing-review-clock). One waiting row per listing. RLS on, service role only.",
+        "columns": [
+          "id:uuid",
+          "landlord_id:uuid",
+          "listing_id:uuid",
+          "payer_link_id:uuid",
+          "status:text",
+          "created_at:timestamptz",
+          "resolved_at:timestamptz",
+          "document_kind:text",
+          "document_id:uuid"
+        ]
       }
     ],
     "functions": [
+      {
+        "name": "rpc_transition_charge",
+        "kind": "rpc",
+        "args": "p_charge_id uuid, p_expected_from text, p_to text, p_actor_type text, p_actor_user_id uuid, p_note text, p_invoice_id uuid, p_stripe_invoice_item_id text",
+        "touches": "charges, charge_status_history",
+        "called_from": "not yet called (billing library lands in a later phase of feat/in-app-payments)",
+        "defined_in": "supabase/migrations/202610310003_billing_core.sql",
+        "description": "Moves a charge to a new status and records the actor in charge_status_history in one transaction. Locks the row and compares p_expected_from, so a landlord approving while the review cron runs cannot both win. Raises charge_not_found, charge_status_changed, charge_note_required or charge_actor_required; illegal transitions raise a check_violation from trg_charges_enforce_transition. SECURITY INVOKER; execute is service_role only.",
+        "dev_note": "Not yet applied to dev or prod."
+      },
       {
         "name": "rpc_create_listing",
         "kind": "rpc",
@@ -3300,6 +3906,15 @@
         "called_from": "not called",
         "defined_in": "NOT in the repo",
         "description": "Unused lease-pipeline helper. Drop with the suite."
+      },
+      {
+        "name": "record_app_error",
+        "kind": "rpc",
+        "args": "p_fingerprint, p_source, p_where, p_message, p_stack, p_sample, p_env",
+        "touches": "app_errors",
+        "called_from": "lib/errors/record.js",
+        "defined_in": "supabase/migrations/202611030003_app_errors.sql",
+        "description": "Insert or count one occurrence of a site error; reopens a resolved one. SECURITY INVOKER, service_role only."
       }
     ],
     "triggers": {

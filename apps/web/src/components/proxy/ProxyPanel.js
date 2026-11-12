@@ -44,8 +44,12 @@
  * thread read, which is what stops the email Proxy would otherwise send for
  * an answer the student already saw here.
  *
- * The owner's "View as Student" preview and admins get test mode: real
- * answers, nothing logged or sent on.
+ * Proxy's reply shows as it is written (Wyatt, 2026-11-11): the message
+ * request streams the reply's text, which fills a draft bubble in place of
+ * the typing dots, and the saved messages replace it when they arrive.
+ *
+ * The owner's "View as Student" preview gets test mode: real answers, nothing
+ * logged or sent on. Staff get it only on listings that are not live yet.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -154,6 +158,45 @@ function useTypeOut(text, animate) {
   return shown;
 }
 
+/*
+ * Sends one message and reads the streamed answer: onDelta gets each new
+ * piece of reply text; resolves with { ok, data } like a plain JSON request,
+ * data being the "done" (or "error") line.
+ */
+async function postStreamed(threadId, payload, onDelta) {
+  const r = await fetch(`/api/proxy/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok || !(r.headers.get("content-type") ?? "").includes("ndjson") || !r.body) {
+    return { ok: r.ok, data: await r.json().catch(() => ({})) };
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let end = null;
+  while (!end) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while (!end && (nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; }
+      if (ev.type === "delta") onDelta(ev.text ?? "");
+      else if (ev.type === "done" || ev.type === "error") end = ev;
+    }
+  }
+  // The server keeps the stream open while it sends the question on; read the rest quietly.
+  if (end) (async () => { try { while (!(await reader.read()).done); } catch {} })();
+  if (!end) throw new Error("stream ended early");
+  return end.type === "done" ? { ok: true, data: end } : { ok: false, data: end };
+}
+
 // Panels on the same thread hear about each other's new messages at once.
 const SYNC_EVENT = "proxy:thread-updated";
 const announce = (threadId, source) => {
@@ -220,6 +263,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [unavailable, setUnavailable] = useState(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // Proxy's reply as it streams in, until the saved message replaces it.
+  const [draft, setDraft] = useState("");
+  // The answer is in; no typing dots while the panel catches up after it.
+  const [answered, setAnswered] = useState(false);
   const [signInNeeded, setSignInNeeded] = useState(false);
   // Tour times waiting in the input as a chip, and whether the picker is open.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -391,6 +438,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     const text = input.trim();
     if ((!text && !tourSlots) || !thread || sending) return;
     setSending(true);
+    setAnswered(false);
     setInput("");
     const slots = tourSlots;
     setTourSlots(null);
@@ -407,11 +455,13 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         try { await sendTour(slots); } catch (err) { toast.error(err.message); setTourSlots(slots); setMessages((m) => m.filter((x) => x.id !== tempTour.id)); }
       }
       if (text) {
-        const r = await fetch(`/api/proxy/threads/${thread.id}/messages`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: text, leaseId }),
+        let streamed = "";
+        const { ok, data } = await postStreamed(thread.id, { body: text, leaseId }, (piece) => {
+          streamed += piece;
+          setDraft(streamed);
         });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) {
+        if (!ok) {
+          setDraft("");
           setMessages((m) => m.filter((x) => x.id !== temp.id));
           setInput(text);
           if (data?.code === "SIGN_IN") setSignInNeeded(true);
@@ -419,14 +469,21 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
           return;
         }
         const incoming = data.messages ?? [];
-        setFresh((f) => new Set([...f, ...incoming.filter((x) => x.fromProxy).map((x) => x.id)]));
+        // The reply that already streamed in does not type itself out again;
+        // anything after it (a note) does.
+        const proxyMsgs = incoming.filter((x) => x.fromProxy);
+        const typed = streamed ? proxyMsgs.slice(1) : proxyMsgs;
+        setFresh((f) => new Set([...f, ...typed.map((x) => x.id)]));
         setMessages((m) => [...m.filter((x) => !tempIds.has(x.id)), ...incoming]);
+        setDraft("");
+        setAnswered(true);
         if (data.intent === "tour" && signedIn) setPickerOpen(true);
       }
       // Seen on the page: no email for this answer. Other panels catch up too.
       await refresh();
       announce(thread.id, selfId.current);
     } catch {
+      setDraft("");
       if (temps.length) setMessages((m) => m.filter((x) => !tempIds.has(x.id)));
       setInput(text);
       toast.error("Proxy could not answer just now.");
@@ -561,11 +618,60 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
               </div>
             );
           })}
-          {sending && <div className="mt-3"><TypingBubble /></div>}
+          {sending && draft && (
+            <div className="mt-3">
+              <Bubble msg={{ id: "draft", body: draft, fromProxy: true, type: "proxy_note" }} onReport={() => {}} />
+            </div>
+          )}
+          {sending && !draft && !answered && <div className="mt-3"><TypingBubble /></div>}
         </div>
       )}
 
       {inputSlot ? createPortal(inputBar, inputSlot) : <div className="shrink-0">{inputBar}</div>}
+    </div>
+  );
+}
+
+/*
+ * A student's Proxy conversation as they see it, for an admin viewing their
+ * inbox (Wyatt, 2026-11-03). Loaded by thread id from the read-only route
+ * (?viewAs=), never through openThread, which can create, claim and mark
+ * read. Same bubbles; the message box is shown shut and Report does nothing.
+ */
+export function ProxyReadOnlyTranscript({ threadId, viewAsId, fill = false }) {
+  const [messages, setMessages] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!threadId || !viewAsId) return;
+    let cancelled = false;
+    setMessages(null);
+    setFailed(false);
+    fetch(`/api/proxy/threads/${threadId}?viewAs=${encodeURIComponent(viewAsId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) { if (d) setMessages(d.messages ?? []); else setFailed(true); } })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [threadId, viewAsId]);
+  if (failed) return <p className="text-sm text-gray-500">Could not load this conversation.</p>;
+  if (!messages) return <ChatSkeleton rows={3} />;
+  const sideOf = (m) => (m.isMine ? "me" : "proxy");
+  const all = [GREETING_MSG, ...messages];
+  return (
+    <div className={`flex flex-col gap-3 ${fill ? "min-h-0 flex-1" : ""}`}>
+      <div className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
+        {all.map((m, i) => {
+          const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+          const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
+          return (
+            <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+              <Bubble msg={m} onReport={() => {}} first={first} last={last} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="shrink-0 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-400">
+        Their message box. Read only while you view their inbox.
+      </div>
     </div>
   );
 }

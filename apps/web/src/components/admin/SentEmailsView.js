@@ -16,10 +16,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { adminFetch, Badge, shortId } from "@/components/admin/adminShared";
+import { adminFetch, Badge, shortId, useUrlTab } from "@/components/admin/adminShared";
 import { CATEGORIES, kindLabel } from "@/lib/emailKinds";
 
 const TABS = [{ key: "all", label: "All" }, ...CATEGORIES];
+const TAB_KEYS = TABS.map((t) => t.key);
 
 // An SES email with no report after this long is worth a look.
 const NO_REPORT_AFTER_MS = 60 * 60 * 1000;
@@ -137,7 +138,7 @@ function EmailRow({ row, dbTarget }) {
 }
 
 export default function SentEmailsView({ search, dbTarget }) {
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useUrlTab(TAB_KEYS, "all");
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [query, setQuery] = useState(search);
   const [rows, setRows] = useState(null);

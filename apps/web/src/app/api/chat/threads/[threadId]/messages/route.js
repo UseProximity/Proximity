@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
+import { inboxViewAsId } from "@/lib/users/viewAs";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { stagingEmailHeader } from "@/lib/outreach";
@@ -104,13 +105,17 @@ function normalizeAttachments(raw) {
   return { attachments };
 }
 
-// GET /api/chat/threads/[threadId]/messages: paginated history for a participant
+// GET /api/chat/threads/[threadId]/messages: paginated history for a
+// participant, or for the participant an admin is viewing the inbox as
+// (?viewAs=, read only: the history read marks nothing)
 export async function GET(req, { params }) {
   try {
-    const authUser = await getRequestUser(req);
-    if (!authUser?.id) {
+    const caller = await getRequestUser(req);
+    if (!caller?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const viewAsId = inboxViewAsId(caller, new URL(req.url).searchParams);
+    const authUser = viewAsId ? { id: viewAsId } : caller;
 
     const { threadId } = await params;
     if (!UUID_RE.test(threadId ?? "")) {

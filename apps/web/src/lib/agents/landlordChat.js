@@ -23,6 +23,7 @@ import { listLandlordTours, landlordAct } from "./tours";
 import { parseStructured, HAIKU } from "./model";
 import { answerQuestion } from "./questions";
 import { agentChat, confirmProposal } from "./landlordAgent";
+import { applyCoreChange } from "./coreWrites";
 import { screenLandlordText, CONTACT_NOTE } from "./screen";
 import { sandboxViewFor } from "./sandbox";
 
@@ -178,6 +179,8 @@ export async function landlordProxyTimeline(userId, listingId) {
     ...(notes ?? []).filter((m) => !(m.sender === "landlord" && (m.question_id || m.tour_id))).map((m) => ({
       kind: "agent", id: m.id, at: m.created_at, sender: m.sender, body: m.body,
       proposal: m.proposal_status === "open" ? m.proposal : null, proposalStatus: m.proposal_status,
+      // Changes the listing gate blocked, with what fixes them, until they go through.
+      blocked: !m.proposal_status && m.proposal?.blocked?.length && !m.proposal.resolved ? m.proposal.blocked : null,
     })),
   ].sort((a, b) => (a.at < b.at ? -1 : 1));
   return {
@@ -289,6 +292,32 @@ export async function decideAgentProposal({ userId, isAdmin = false, listingId, 
   }
   const r = await confirmProposal({ listingId, userId, isAdmin, proposal: m.proposal });
   const lines = [...(r.applied ?? []).map((a) => (/^(Saved|Already known|Removed):/.test(a) ? a : `Done: ${a}`)), ...(r.held ?? []), ...(r.errors ?? []).map((e) => `Not done: ${e}`)];
-  await note(userId, listingId, { sender: "agent", body: lines.join("\n") || "Nothing to do." });
+  // A change the listing gate blocked rides on the note, so the chat can offer the fix.
+  const blocked = (r.blocked ?? []).map(({ kind, unitName, gate, change }) => ({ kind, unitName, uncovered: gate?.uncovered ?? [], ...(gate?.payer && { payer: gate.payer }), change }));
+  await note(userId, listingId, { sender: "agent", body: lines.join("\n") || "Nothing to do.", proposal: blocked.length ? { blocked } : null });
   return { ok: true, ...r };
+}
+
+/*
+ * The landlord fixed what blocked a change (signed the addendum): try the blocked
+ * changes again and say how it went. Each note is retried once it is fixed; one
+ * that went through is not offered again.
+ */
+export async function retryBlockedChanges({ userId, isAdmin = false, listingId, messageId }) {
+  const { data: m } = await supabase.from("landlord_agent_messages").select("id, proposal, proposal_status")
+    .eq("id", messageId).eq("landlord_id", userId).eq("listing_id", listingId).maybeSingle();
+  const blocked = m?.proposal?.blocked ?? [];
+  if (!m || m.proposal_status || !blocked.length || m.proposal.resolved) return { error: "Nothing to try again." };
+  const lines = [];
+  let stillBlocked = false;
+  for (const b of blocked) {
+    const r = await applyCoreChange({ listingId, userId, isAdmin, change: b.change });
+    if (r.error) {
+      stillBlocked = stillBlocked || !!r.blocked;
+      lines.push(`Not done: ${r.error}`);
+    } else lines.push(`Done: ${r.label}`);
+  }
+  if (!stillBlocked) await supabase.from("landlord_agent_messages").update({ proposal: { ...m.proposal, resolved: true } }).eq("id", m.id);
+  await note(userId, listingId, { sender: "agent", body: lines.join("\n") });
+  return { ok: true, stillBlocked };
 }

@@ -1,0 +1,209 @@
+/*
+ * The overdue job: an invoice unpaid for more than 30 days after its due date
+ * (older invoices: after their invoice date) withdraws the landlord's leases
+ * (hides them from students). The landlord and the team are emailed once.
+ *
+ * The clock (see overdue.js) needs the dates Stripe's finalize sets: a row a
+ * crashed run left before that has no date and is never actioned. So Approved charges
+ * under the $5 minimum, which can wait months without an invoice, never trigger
+ * it. A payment still settling (Processing) does not count as overdue.
+ *
+ * Withdrawing is the same edit a landlord makes by hand (unit_leases is_active
+ * false and unavailable true), applied to leases that are live right now. Each
+ * one is recorded in billing_lease_withdrawals so restoring puts back exactly
+ * what billing took down, and leaves alone any lease the landlord had withdrawn
+ * themselves. An admin restores them once the invoice is paid.
+ *
+ * Safe to run any number of times: the order is withdraw and record, then stamp
+ * the invoice, then email, and only the run that stamps the invoice emails.
+ *
+ * `db` is a service-role Supabase client. `notify` ({ overdue }) sends the emails.
+ */
+import { isInvoiceOverdue, overdueCutoff } from "./overdue.js";
+
+const BATCH = 200;
+
+const CHUNK = 200; // ids per request: a long .in() list overflows the URL
+const PAGE = 1000; // a query returns at most 1,000 rows
+
+// Leases that are on the market right now: published, active, available and not deleted.
+async function liveLeaseIds(db, landlordId) {
+  const ids = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db
+      .from("unit_leases")
+      .select("id")
+      .eq("owner_id", landlordId)
+      .eq("is_active", true)
+      .eq("unavailable", false)
+      .is("deleted_at", null)
+      .not("published_at", "is", null)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    ids.push(...data.map((l) => l.id));
+    if (data.length < PAGE) return ids;
+  }
+}
+
+// Leases another overdue invoice of this landlord still holds (withdrawn, not restored).
+async function leasesHeldByOtherInvoices(db, invoiceId, landlordId) {
+  const { data: others, error } = await db
+    .from("billing_invoices")
+    .select("id")
+    .eq("landlord_id", landlordId)
+    .neq("id", invoiceId)
+    .not("overdue_actioned_at", "is", null);
+  if (error) throw error;
+  const held = new Set();
+  const ids = (others ?? []).map((o) => o.id);
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error: heldError } = await db
+      .from("billing_lease_withdrawals")
+      .select("lease_id")
+      .in("invoice_id", ids.slice(i, i + CHUNK))
+      .is("restored_at", null);
+    if (heldError) throw heldError;
+    for (const w of data ?? []) held.add(w.lease_id);
+  }
+  return held;
+}
+
+/*
+ * Withdraw the landlord's live leases for this invoice. Leases an earlier overdue
+ * invoice already took down are recorded against this one too (review of
+ * 2026-11-07): otherwise restoring the earlier invoice once paid put them back
+ * while this one was still unpaid. Returns how many were withdrawn now.
+ */
+async function withdrawLeases(db, invoiceId, landlordId) {
+  const live = await liveLeaseIds(db, landlordId);
+  const held = await leasesHeldByOtherInvoices(db, invoiceId, landlordId);
+  const all = [...new Set([...live, ...held])];
+  // Record first: if the update then fails, the lease is merely listed as ours, never lost.
+  for (let i = 0; i < all.length; i += CHUNK) {
+    const { error: recordError } = await db
+      .from("billing_lease_withdrawals")
+      .upsert(all.slice(i, i + CHUNK).map((lease_id) => ({ invoice_id: invoiceId, lease_id })), { onConflict: "invoice_id,lease_id", ignoreDuplicates: true });
+    if (recordError) throw recordError;
+  }
+  for (let i = 0; i < live.length; i += CHUNK) {
+    const { error } = await db.from("unit_leases").update({ is_active: false, unavailable: true }).in("id", live.slice(i, i + CHUNK));
+    if (error) throw error;
+  }
+  return live.length;
+}
+
+// The landlord accounts an invoice bills for: its own, and any whose charges a payer pays.
+async function accountsOnInvoice(db, invoice) {
+  const { data, error } = await db.from("charges").select("landlord_id").eq("invoice_id", invoice.id).limit(5000);
+  if (error) throw error;
+  return [...new Set([invoice.landlord_id, ...(data ?? []).map((c) => c.landlord_id)])];
+}
+
+export async function runOverdueJob(db, { now = new Date(), notify = {} } = {}) {
+  const cutoff = overdueCutoff(now).toISOString();
+  const result = { checked: 0, actioned: 0, leasesWithdrawn: 0, failed: [] };
+
+  const { data: invoices, error } = await db
+    .from("billing_invoices")
+    .select("id, landlord_id, status, total_cents, invoice_date, due_date, overdue_actioned_at")
+    .in("status", ["open", "failed"])
+    .is("overdue_actioned_at", null)
+    .not("stripe_invoice_id", "is", null)
+    // Past the cutoff by due date, or by invoice date for invoices without one.
+    .or(`due_date.lt.${cutoff},and(due_date.is.null,invoice_date.lt.${cutoff})`)
+    .order("invoice_date", { ascending: true })
+    .limit(BATCH);
+  if (error) throw error;
+
+  for (const invoice of invoices) {
+    if (!isInvoiceOverdue(invoice, now)) continue;
+    result.checked += 1;
+    try {
+      // A payer's invoice takes down the leases of every account whose charges are on it (Project B).
+      let withdrawn = 0;
+      for (const accountId of await accountsOnInvoice(db, invoice)) withdrawn += await withdrawLeases(db, invoice.id, accountId);
+
+      // Only the run that stamps the invoice announces it.
+      const { data: stamped, error: stampError } = await db
+        .from("billing_invoices")
+        .update({ overdue_actioned_at: now.toISOString() })
+        .eq("id", invoice.id)
+        .is("overdue_actioned_at", null)
+        .select("id")
+        .maybeSingle();
+      if (stampError) throw stampError;
+      if (!stamped) continue;
+
+      result.actioned += 1;
+      result.leasesWithdrawn += withdrawn;
+      if (notify.overdue) {
+        const { data: landlord } = await db.from("users").select("id, name, email").eq("id", invoice.landlord_id).maybeSingle();
+        try {
+          await notify.overdue({ invoice, landlord, withdrawnCount: withdrawn });
+        } catch (err) {
+          console.error("billing: overdue email failed", err?.message);
+        }
+      }
+    } catch (err) {
+      result.failed.push({ invoiceId: invoice.id, error: String(err?.message ?? err).slice(0, 200) });
+    }
+  }
+  return result;
+}
+
+/*
+ * Put back the leases the overdue job withdrew for an invoice. Only a lease still
+ * in the withdrawn state is touched: one the landlord has since republished,
+ * changed or deleted is left exactly as it is. Each is marked restored either way.
+ * A lease another unpaid overdue invoice also holds stays withdrawn until that
+ * one is restored too (`stillHeld`; review of 2026-11-07).
+ */
+export async function restoreWithdrawnLeases(db, { invoiceId, adminId, now = new Date() }) {
+  const { data: rows, error } = await db
+    .from("billing_lease_withdrawals")
+    .select("id, lease_id")
+    .eq("invoice_id", invoiceId)
+    .is("restored_at", null);
+  if (error) throw error;
+
+  let restored = 0;
+  let stillHeld = 0;
+  for (const row of rows) {
+    // Marked restored first: the database refuses to put a lease back on the market
+    // while an unrestored withdrawal points at it (202611010003_billing_holds.sql).
+    const { error: markError } = await db
+      .from("billing_lease_withdrawals")
+      .update({ restored_at: now.toISOString(), restored_by_id: adminId })
+      .eq("id", row.id);
+    if (markError) throw markError;
+    const { data: others, error: othersError } = await db
+      .from("billing_lease_withdrawals")
+      .select("id")
+      .eq("lease_id", row.lease_id)
+      .neq("invoice_id", invoiceId)
+      .is("restored_at", null)
+      .limit(1);
+    if (othersError) throw othersError;
+    if (others?.length) {
+      stillHeld += 1;
+      continue;
+    }
+    const { data: lease, error: updateError } = await db
+      .from("unit_leases")
+      .update({ is_active: true, unavailable: false })
+      .eq("id", row.lease_id)
+      .eq("is_active", false)
+      .eq("unavailable", true)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (updateError) {
+      // Leave it listed as withdrawn so the admin can try again.
+      await db.from("billing_lease_withdrawals").update({ restored_at: null, restored_by_id: null }).eq("id", row.id);
+      throw updateError;
+    }
+    if (lease) restored += 1;
+  }
+  return { restored, total: rows.length, stillHeld };
+}

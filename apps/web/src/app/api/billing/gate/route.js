@@ -1,0 +1,58 @@
+export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import supabase from "@/lib/supabase";
+import { billingReader } from "@/lib/billing/viewer";
+import { agreementView, coverageFor, syncAgreement } from "@/lib/billing/agreements";
+import { agreementServices } from "@/lib/billing/agreementServices";
+import { checkListingGate, gateMessage } from "@/lib/billing/listingGate";
+import { getEnrollmentWindow } from "@/lib/billing/enrollment";
+import { billingErrorResponse } from "@/lib/billing/http";
+
+/*
+ * What the signed-in landlord needs before they can publish a listing, and where
+ * they stand on it: which requirements are switched on, what is missing, and
+ * their commission agreement's status. Drives the checklist on the Payments tab.
+ *
+ * A copy the landlord is part way through signing is checked with Documenso
+ * first, so the page is right even if the webhook has not arrived.
+ *
+ * @auth landlord
+ */
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  try {
+    const { documenso, signingAvailable, options } = agreementServices();
+    // An admin viewing as the landlord only reads: syncing from Documenso writes.
+    if (signingAvailable && !reader.viewingAs) await syncAgreement(supabase, documenso, reader.userId, options);
+    const [gate, coverage, enrollment, account] = await Promise.all([
+      checkListingGate(supabase, reader.userId),
+      coverageFor(supabase, reader.userId),
+      getEnrollmentWindow(supabase),
+      supabase.from("users").select("name, company_name, billing_only").eq("id", reader.userId).maybeSingle(),
+    ]);
+    // A landlord with a payer never sees the agreement (Project B): /api/billing/payer has their status.
+    const delegated = !!coverage.state.payerLink;
+    return NextResponse.json({
+      allowed: gate.allowed,
+      missing: gate.missing,
+      message: gate.allowed ? null : gateMessage(gate.missing),
+      requirePaymentMethod: gate.requirePaymentMethod,
+      requireAgreement: gate.requireAgreement,
+      agreement: delegated ? null : agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
+      delegated,
+      // A billing account (made for a payer): no listings of its own.
+      billingOnly: account.data?.billing_only === true,
+      // The account's name, to start the signing form's "Full name" box with.
+      accountName: account.data?.name?.trim() || null,
+      // And its company, for the "Company" box.
+      accountCompany: account.data?.company_name?.trim() || null,
+      // The enrollment window, shown as a banner until the landlord has set up.
+      enrollment: { deadline: enrollment.deadline, includeAgreement: enrollment.includeAgreement },
+    });
+  } catch (err) {
+    return billingErrorResponse(err, "read listing gate");
+  }
+}

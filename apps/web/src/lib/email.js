@@ -9,10 +9,14 @@
  */
 import nodemailer from "nodemailer";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { sendMailSafe } from "./outreach";
+import { outreachEnabled, sendMailSafe } from "./outreach";
 import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
+import { emailFooter, OPT_OUT_INBOX, POSTAL_ADDRESS } from "./emailFooter";
+
+export { emailFooter };
+import { MREC_FORM_FILENAME, MREC_FORM_KIND, MREC_FORM_SUBJECT } from "./users/mrecForm";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -50,50 +54,6 @@ const sesTransporter =
 const SES_SEND_OPTIONS = {
   ConfigurationSetName: process.env.AWS_SES_CONFIGURATION_SET || "proximity-chat-alerts",
 };
-
-/*
- * The footer every outbound email carries.
- *
- * CAN-SPAM requires commercial email to give a valid physical postal address and
- * a working way to stop receiving it. Transactional mail (a password reset, a
- * verification link, an inquiry we are delivering on someone's behalf) is exempt
- * from the opt-out requirement, but carries the address anyway so that every
- * message we send says plainly who sent it.
- *
- * The opt-out is a reply rather than a one-click link, which the statute allows
- * as an internet-based mechanism. That makes it a promise about a mailbox rather
- * than about code: the commercial senders set replyTo to OPT_OUT_INBOX, and
- * whoever works that inbox has to action an unsubscribe within 10 business days
- * for this to stay true. Swapping in a real link later means a stored opt-out
- * list and a suppression check in sendMailSafe, not a change here.
- *
- * POSTAL_ADDRESS intentionally repeats what the legal documents say in
- * src/content/legal/. If the company address ever changes, both move together.
- */
-const POSTAL_ADDRESS =
-  "Proximity LLC, 117 South Lexington Street, Ste 100, Harrisonville, MO 64701";
-const OPT_OUT_INBOX = "info@useproximity.org";
-
-/*
- * `reason` is the one line telling someone why this landed in their inbox. On a
- * commercial send it is what identifies the message, so it is required there and
- * the call sites all pass one.
- */
-export function emailFooter({ reason, commercial = false } = {}) {
-  const optOut = commercial
-    ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">
-         Don&#39;t want these? Reply to this email with &quot;unsubscribe&quot; and we
-         will stop sending them.
-       </p>`
-    : "";
-
-  return `
-      <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">
-        ${reason ? `<p style="color:#999;font-size:12px;line-height:1.5;margin:0 0 6px">${reason}</p>` : ""}
-        ${optOut}
-        <p style="color:#999;font-size:12px;line-height:1.5;margin:0">${POSTAL_ADDRESS}</p>
-      </div>`;
-}
 
 export function getBaseUrl() {
   if (process.env.NEXTAUTH_URL) {
@@ -162,6 +122,37 @@ export async function sendLandlordNudgeEmail({ email, name }) {
       </div>
     `,
   });
+}
+
+/*
+ * The MREC Broker Disclosure Form, attached, for a new landlord's records
+ * (lib/users/mrecForm.js decides who gets it and when). Nothing to sign or send
+ * back, which the subject says so nobody replies to ask.
+ */
+export async function sendMrecFormEmail({ email, name, userId, pdf, req }) {
+  const firstName = name ? name.split(" ")[0] : "";
+  await sendMailSafe(
+    transporter,
+    {
+      logAs: { kind: MREC_FORM_KIND, userId },
+      from: `"Proximity" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: MREC_FORM_SUBJECT,
+      attachments: [{ filename: MREC_FORM_FILENAME, content: Buffer.from(pdf), contentType: "application/pdf" }],
+      html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111">
+        <p>Hi${firstName ? ` ${escapeHtml(firstName)}` : ""},</p>
+        <p>Attached is the Missouri Real Estate Commission&#39;s Broker Disclosure Form, for your records.</p>
+        <p>There is nothing to sign, fill in or send back, and no need to reply.</p>
+        <p style="color:#999;font-size:12px">The Proximity team</p>
+        ${emailFooter({
+          reason: "You are receiving this because you created a landlord account on Proximity.",
+        })}
+      </div>
+    `,
+    },
+    req
+  );
 }
 
 // Inquiry sent on a student's behalf by the matchmaking chatbot ("Proxy"). Goes to the
@@ -508,6 +499,54 @@ export async function sendTeamEmail({ to, subject, html }) {
     subject,
     html,
   });
+}
+
+/*
+ * One email of an admin mass send (lib/massEmail/send.js). From and Reply-To are
+ * both info@useproximity.org (Wyatt, 2026-11-07), so replies land in the team
+ * inbox. Amazon SES first, for its delivery reports; Gmail if SES is not set up or
+ * refuses it. Throws when both fail, so the caller can record the failure.
+ *
+ * Resolves to { provider, providerMessageId, suppressed, redirected } where
+ * redirected means the outreach gate sent it to the test inbox (off production).
+ */
+export const MASS_EMAIL_ADDRESS = "info@useproximity.org";
+
+export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null }) {
+  const message = {
+    logAs: { kind: "mass_email", userId },
+    to,
+    replyTo: MASS_EMAIL_ADDRESS,
+    subject,
+    html,
+    ...(text && { text }),
+    ...(headers && { headers }),
+    ...(attachments.length && { attachments }),
+  };
+  const outcome = (provider, info) => ({
+    provider,
+    providerMessageId: provider === "ses" ? info?.response ?? null : info?.messageId ?? null,
+    suppressed: !!info?.suppressed,
+    redirected: !info?.suppressed && !outreachEnabled(),
+  });
+  if (sesTransporter) {
+    try {
+      const info = await sendMailSafe(
+        sesTransporter,
+        { ...message, from: `"Proximity" <${MASS_EMAIL_ADDRESS}>`, ses: SES_SEND_OPTIONS },
+        req
+      );
+      return outcome("ses", info);
+    } catch (err) {
+      console.error("sendMassEmail: SES send failed, falling back to Gmail:", err?.message ?? err);
+    }
+  }
+  const info = await sendMailSafe(
+    transporter,
+    { ...message, from: `"Proximity" <${process.env.EMAIL_USER || MASS_EMAIL_ADDRESS}>` },
+    req
+  );
+  return outcome("gmail", info);
 }
 
 // Why an emailed reply did not reach the conversation, in words the sender can
@@ -1255,10 +1294,12 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
     const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
     const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escapeHtml(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    // Denied by the sync itself (lib/sourceImport/syncPolicy.js), with why.
+    const denied = (i.denied ?? []).filter((c) => c.denyReason !== "too much changed at once, so the whole run was skipped").map((c) => `<li>${describeChange(c)} <span style="color:#666">(${escapeHtml(c.denyReason ?? "denied")})</span></li>`).join("");
     const hold = i.holdReason
-      ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
+      ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight" : "Held: the reader was not confident in this read"}. Nothing was applied.</p>`
       : "";
-    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
   const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
   const quiet = items.length - changed.length;
@@ -1272,7 +1313,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
         <h2 style="color:#111">Website sync digest</h2>
         <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
         ${changed.map(block).join("")}
-        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. Held changes can be applied from the import review or the admin console.</p>
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. The sync applies or declines each change itself; nothing waits for review.</p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1290,6 +1331,31 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
         <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
         <p style="color:#b91c1c">${escapeHtml(error)}</p>
         <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
+        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * A sync skipped a listing because too much changed at once (the churn guard
+ * in lib/sourceImport/apply.js). Sent the first time in a row, not every day.
+ */
+export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourceUrl, touched, existing, newUnits = 0, units = 0, baseUrl }) {
+  const what =
+    newUnits > 4 || (units >= 1 && newUnits > units)
+      ? `added ${Number(newUnits)} new unit${Number(newUnits) === 1 ? "" : "s"} to a listing of ${Number(units)}`
+      : `changed ${Number(touched)} of the ${Number(existing)} leases`;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_skipped" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync skipped: ${listing}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync skipped a listing</h2>
+        <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
+        <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
         <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
