@@ -64,7 +64,7 @@ const PIN_BODY_CENTER = 27;
 // is unavailable, and has the suggested badge when any listing in it is
 // suggested. `key` changes whenever the pin's listings or look change.
 function buildPins(listings, zoom, selectedId, suggestedIds) {
-  return clusterListings(listings, zoom, selectedId).map(({ members, lng, lat, dx }) => {
+  const pins = clusterListings(listings, zoom, selectedId).map(({ members, lng, lat, dx }) => {
     const isCluster = members.length > 1;
     const listing = members[0];
     const isSelected = !isCluster && listing._id === selectedId;
@@ -85,11 +85,22 @@ function buildPins(listings, zoom, selectedId, suggestedIds) {
       // Web's count sizes: 20pt, shrinking for longer counts.
       label: isCluster ? String(count) : "",
       textSize: !isCluster ? 1 : count > 99 ? 12 : count > 9 ? 16 : 20,
-      // Southern pins on top of northern ones (web's pinZIndex), single or
-      // grouped alike; only the selected pin sits above them all.
-      sortKey: isSelected ? TOP_SORT_KEY : Math.round((90 - lat) * 100000),
+      // Only the selected pin sits above them all; the rest are ranked below.
+      sortKey: isSelected ? TOP_SORT_KEY : null,
+      // A group's member order follows the feed, so its smallest id is used.
+      stableId: members.map((l) => String(l._id)).sort()[0],
     };
   });
+  // Southern pins on top of northern ones (web's pinZIndex), single or grouped
+  // alike. Equal latitudes fall back to longitude, then id, so the stacking is
+  // stable whatever order the API returns the listings in.
+  pins
+    .filter((pin) => pin.sortKey === null)
+    .sort((a, b) => b.lat - a.lat || a.lng - b.lng || a.stableId.localeCompare(b.stableId))
+    .forEach((pin, i) => {
+      pin.sortKey = i;
+    });
+  return pins;
 }
 
 const sameKeys = (a, b) => a.length === b.length && a.every((pin, i) => pin.key === b[i].key);
@@ -260,7 +271,10 @@ export function BrowseMapView({ listings, suggestedIds }) {
 
       <Pressable
         onPress={() => setHideUnavailable((hidden) => !hidden)}
-        accessibilityRole="button"
+        // A switch with a fixed label, so screen readers announce on or off.
+        accessibilityRole="switch"
+        accessibilityLabel="Hide Unavailable Housing"
+        accessibilityState={{ checked: hideUnavailable }}
         className="absolute top-3 left-3 px-2.5 py-1.5 rounded-full border bg-white border-gray-200"
         style={FLOATING_SHADOW}
       >

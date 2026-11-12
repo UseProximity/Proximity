@@ -4,6 +4,8 @@
 // nothing has to be rasterized on the device.
 // Ratings are bucketed to the nearest RATING_STEP so a fixed, small set of
 // icons covers every continuous rating value.
+import { colors } from "../../theme/tokens";
+
 export { PIN_ICON_IMAGES } from "./pinIconAssets";
 
 // Keep in sync with RATING_STEP, PAD_TOP and the ids in
@@ -76,7 +78,7 @@ export const PIN_LAYER_STYLE = {
   textFont: ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
   textSize: ["get", "textSize"],
   textOffset: ["get", "textOffset"],
-  textColor: "#FFFFFF",
+  textColor: colors.white,
   textOpacity: ["get", "opacity"],
   textAllowOverlap: true,
   textIgnorePlacement: true,

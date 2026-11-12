@@ -70,11 +70,24 @@ export default function BrowseScreen() {
     setSuggestedIds([]);
     if (!userId) return undefined;
     let current = true;
-    apiClient.listings
-      .getSuggestedListings()
-      .then((data) => {
-        if (current) setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []);
-      })
+    const fetchIds = () =>
+      apiClient.listings.getSuggestedListings().then((data) => (Array.isArray(data?.ids) ? data.ids : []));
+    (async () => {
+      let ids = await fetchIds();
+      // The route answers an expired access token as signed out ({ ids: [] },
+      // not a 401), so the client never refreshes it. On an empty answer,
+      // refresh once and ask again. Refresh tokens are stateless, so this is
+      // safe alongside any other refresh, and it never signs the user out.
+      if (ids.length === 0 && current) {
+        const { refreshToken, user } = useAuthStore.getState();
+        const { accessToken } = await apiClient.auth.refresh(refreshToken);
+        if (!current || typeof accessToken !== "string" || !accessToken) return;
+        await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
+        if (!current) return;
+        ids = await fetchIds();
+      }
+      if (current) setSuggestedIds(ids);
+    })()
       // Suggestions are an enhancement: on failure there are none.
       .catch(() => {});
     return () => {
