@@ -13,14 +13,15 @@
  */
 import { getCampusWalkMinutes } from "@/utils/listingFormatters";
 
-// The winning value followed by a small "Better" pill, in the red family of the
-// "shared / differences" summary. The pill is inline, so it flows with the value
-// and wraps with it as one piece instead of squeezing the value.
+// The winning value followed by a small green "Better" pill. Green marks the win
+// without the red of the "shared / differences" summary, which reads as a warning.
+// The pill is inline, so it flows with the value and wraps with it as one piece
+// instead of squeezing the value.
 export function Winner({ children }) {
   return (
     <span>
       {children}
-      <span className="ml-2 inline-block whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 align-middle text-xs font-medium text-red-700">
+      <span className="ml-2 inline-block whitespace-nowrap rounded-full bg-green-100 px-2 py-0.5 align-middle text-xs font-medium text-green-700">
         Better
       </span>
     </span>
