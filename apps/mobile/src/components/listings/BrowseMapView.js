@@ -3,10 +3,10 @@
 // rating), nearby pins grouped into one numbered pin that a tap zooms into,
 // groups merging and splitting with motion as the zoom changes, the selected
 // pin drawn larger and never grouped, listings at the same spot set side by
-// side at high zoom, the more southern pin drawn on top, and the initial fit
-// around campus. Simplified for mobile: no driving-route overlay, no "Browse
-// this area" viewport filter, no address-search fly-to, no "Hide unavailable"
-// control (the list/map toggle covers it).
+// side at high zoom, the more southern pin drawn on top, the initial fit
+// around campus, and the "Hide Unavailable Housing" control. Simplified for
+// mobile: no driving-route overlay, no "Browse this area" viewport filter, no
+// address-search fly-to.
 //
 // Markers render via a ShapeSource + SymbolLayer of pre-rendered pin icons
 // (static PNGs, see pinIcons) rather than one live MarkerView per listing: this
@@ -100,11 +100,19 @@ export function BrowseMapView({ listings, suggestedIds }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
   const [shuttleStopName, setShuttleStopName] = useState(null);
+  const [hideUnavailable, setHideUnavailable] = useState(false);
   const [mapSize, setMapSize] = useState(null);
 
   const pinnable = useMemo(
     () => listings.filter((l) => Number.isFinite(l.latitude) && Number.isFinite(l.longitude)),
     [listings]
+  );
+  // Hidden unavailable listings take no part in the pins or groups (count or
+  // colour), as on web. The selected listing's card and the camera fit still
+  // use every listing, so hiding leaves both where they are.
+  const shown = useMemo(
+    () => (hideUnavailable ? pinnable.filter((l) => !l.unavailable) : pinnable),
+    [pinnable, hideUnavailable]
   );
   const selected = pinnable.find((l) => l._id === selectedId) ?? null;
   // Mapbox's logo and attribution "i" (the telemetry opt-in) sit at the bottom
@@ -144,7 +152,7 @@ export function BrowseMapView({ listings, suggestedIds }) {
   const endTransition = useCallback((done) => setTransition((current) => (current === done ? null : current)), []);
 
   function showPins(zoom) {
-    const next = buildPins(pinnable, zoom, selectedId, suggestedIds);
+    const next = buildPins(shown, zoom, selectedId, suggestedIds);
     const prev = pinsRef.current;
     pinsRef.current = next;
     if (sameKeys(prev, next)) return;
@@ -154,7 +162,7 @@ export function BrowseMapView({ listings, suggestedIds }) {
 
   useEffect(() => {
     showPins(zoomRef.current);
-  }, [pinnable, selectedId, suggestedIds]);
+  }, [shown, selectedId, suggestedIds]);
 
   function handleCameraChanged(state) {
     const zoom = state.properties.zoom;
@@ -249,6 +257,17 @@ export function BrowseMapView({ listings, suggestedIds }) {
         </Mapbox.ShapeSource>
         <PinMotionLayer transition={transition} onDone={endTransition} />
       </Mapbox.MapView>
+
+      <Pressable
+        onPress={() => setHideUnavailable((hidden) => !hidden)}
+        accessibilityRole="button"
+        className="absolute top-3 left-3 px-2.5 py-1.5 rounded-full border bg-white border-gray-200"
+        style={FLOATING_SHADOW}
+      >
+        <Text className="text-[11px] font-medium text-gray-700">
+          {hideUnavailable ? "Show Unavailable Housing" : "Hide Unavailable Housing"}
+        </Text>
+      </Pressable>
 
       <View className="absolute top-3 right-3 flex-col gap-1.5">
         <Pressable
