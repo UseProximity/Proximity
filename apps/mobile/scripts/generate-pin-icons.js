@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 //
-// Pre-renders the Browse map's rating pins to static PNGs (1x/2x/3x) and
-// writes the require() map the app imports. Run after changing the pin
-// artwork or the rating buckets:
+// Pre-renders the Browse map's pins to static PNGs (1x/2x/3x) and writes the
+// require() map the app imports. Run after changing the pin artwork or the
+// rating buckets:
 //
 //   npm run generate:pin-icons -w @proximity/mobile
 //
@@ -13,10 +13,12 @@
 // variants are a small fixed set known at build time, so they ship as assets
 // instead. Mapbox.Images resolves the @2x/@3x files by device density.
 //
-// Artwork is ported from apps/web/src/components/listings/MapView.js's
-// buildPinSVGElement: a white dot for unreviewed listings, or a star clipped
-// to the fractional rating (gold when a perfect 5). Pin red is the design
-// system's `primary` (#DC2626).
+// Artwork is ported from apps/web/src/components/listings/MapView.js
+// (pinMarkup, buildPinSVGElement, buildClusterPinElement): the flat Figma pin,
+// red when available and grey when not, a star filled from the bottom up by
+// rating or a dot when unrated, and the gold "Suggested for you" badge. A
+// group pin is the bare pin: the map layer draws its count as text. The
+// selected pin is the same image drawn larger, so it has no variant here.
 //
 // Needs `sharp`, which npm hoists to the repo root through the web app's Next
 // dependency. It is only used here, at dev time; the PNGs are committed.
@@ -31,86 +33,88 @@ try {
   process.exit(1);
 }
 
+// Keep the colours and shapes in sync with web's MapView.js.
+const AVAILABLE_PIN_COLOR = "#F71C1E";
+const UNAVAILABLE_PIN_COLOR = "#A3A3A3";
+const UNAVAILABLE_STAR_COLOR = "#E6E7EB";
 const PIN_PATH =
-  "M2.10342 24.897C4.01562 32.1187 12.8496 42.2217 17.49 47.001C22.6189 42.2217 30.6445 31.1218 32.8766 24.897C35.6237 17.2363 34.3335 1.67745 17.4901 1.00098C1.36353 1.67745 -0.827361 17.1308 2.10342 24.897Z";
+  "M30 15.191C30 29 15 42 15 42C15 42 0 29.936 0 15.191C0 6.801 6.716 0 15 0C23.284 0 30 6.801 30 15.191Z";
 const STAR_PATH =
-  "M17.0293 8.79004C17.1878 8.34883 17.8122 8.34883 17.9707 8.79004L20.4404 15.668C20.6507 16.2534 21.2013 16.6479 21.8232 16.6602L29.2773 16.8076C29.7553 16.817 29.9486 17.427 29.5635 17.71L23.6768 22.0293C23.1599 22.4086 22.9415 23.0747 23.1328 23.6865L25.2832 30.5664C25.4241 31.0173 24.9192 31.3935 24.5273 31.1299L18.3379 26.9619C17.8315 26.621 17.1685 26.621 16.6621 26.9619L10.4727 31.1299C10.0808 31.3935 9.57593 31.0173 9.7168 30.5664L11.8672 23.6865C12.0585 23.0747 11.8401 22.4086 11.3232 22.0293L5.43652 17.71C5.05135 17.427 5.24468 16.817 5.72266 16.8076L13.1768 16.6602C13.7987 16.6479 14.3493 16.2534 14.5596 15.668L17.0293 8.79004Z";
-const STAR_BOTTOM = 31.4;
-const STAR_HEIGHT = 23.06;
+  "M6.398 13.684C6.009 13.73 5.853 14.21 6.14 14.475L10.209 18.238C10.326 18.347 10.378 18.508 10.347 18.664L9.267 24.1C9.191 24.483 9.6 24.78 9.941 24.589L14.778 21.882C14.917 21.804 15.086 21.804 15.225 21.882L20.06 24.589C20.402 24.78 20.81 24.483 20.734 24.1L19.654 18.664C19.623 18.508 19.675 18.347 19.792 18.238L23.86 14.476C24.148 14.21 23.992 13.73 23.604 13.684L18.1 13.031C17.942 13.012 17.805 12.913 17.738 12.768L15.417 7.736C15.253 7.381 14.748 7.381 14.585 7.736L12.263 12.768C12.197 12.913 12.059 13.012 11.901 13.031L6.398 13.684Z";
+const STAR_TOP = 7.47;
+const STAR_BOTTOM = 24.65;
+const SUGGESTED_BADGE =
+  '<circle cx="25.5" cy="4.5" r="5" fill="#F5B301"/><path d="M25.5 1.8l0.77 1.93 1.93 0.77-1.93 0.77-0.77 1.93-0.77-1.93-1.93-0.77 1.93-0.77z" fill="white"/>';
 
-const WIDTH = 35;
-const HEIGHT = 49;
+// The 30x42 pin sits in a larger canvas so its drop shadow and the badge are
+// not cut off. Nothing is added below the tip and the sides are equal, so the
+// layer's bottom-centre anchor stays on the pin's tip (only the faint shadow
+// just under the tip is cropped). Keep in sync with PIN_CANVAS in pinIcons.js.
+const PAD_X = 4;
+const PAD_TOP = 2;
+const WIDTH = 30 + PAD_X * 2;
+const HEIGHT = 42 + PAD_TOP;
 const SCALES = [1, 2, 3];
 
-// Keep in sync with src/components/listings/pinIcons.js (ratingIconId).
+// Keep in sync with src/components/listings/pinIcons.js.
 const RATING_STEP = 0.25;
-const RATING_BUCKETS = Array.from({ length: Math.round(5 / RATING_STEP) + 1 }, (_, i) => i * RATING_STEP);
+const RATING_BUCKETS = Array.from({ length: Math.round(5 / RATING_STEP) + 1 }, (_, i) => (i * RATING_STEP).toFixed(2));
+const LOOKS = ["available", "suggested", "unavailable"];
+
+// Web's pinMarkup: the pin with its soft shadow (CSS drop-shadow(1px 2px 2px
+// rgba(0,0,0,0.18)), whose 2px blur radius is a 1px standard deviation).
+function pinSvg(color, inner) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+  <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="1" dy="2" stdDeviation="1" flood-color="#000" flood-opacity="0.18"/></filter></defs>
+  <g transform="translate(${PAD_X} ${PAD_TOP})" filter="url(#sh)"><path d="${PIN_PATH}" fill="${color}"/>${inner}</g>
+</svg>`;
+}
+
+// Web's buildPinSVGElement.
+function listingPinSvg(bucket, look) {
+  const unavailable = look === "unavailable";
+  const color = unavailable ? UNAVAILABLE_PIN_COLOR : AVAILABLE_PIN_COLOR;
+  const mark = unavailable ? UNAVAILABLE_STAR_COLOR : "white";
+  const badge = look === "suggested" ? SUGGESTED_BADGE : "";
+  if (bucket === "none") return pinSvg(color, `<circle cx="15" cy="15.2" r="4.5" fill="${mark}"/>${badge}`);
+  const fillHeight = (Number(bucket) / 5) * (STAR_BOTTOM - STAR_TOP);
+  const clipY = (STAR_BOTTOM - fillHeight).toFixed(2);
+  return pinSvg(
+    color,
+    `<defs><clipPath id="sc"><rect x="4" y="${clipY}" width="22" height="${(fillHeight + 1).toFixed(2)}"/></clipPath></defs>
+    <path d="${STAR_PATH}" fill="none" stroke="${mark}" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${STAR_PATH}" fill="${mark}" stroke="${mark}" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#sc)"/>${badge}`
+  );
+}
+
+// Web's buildClusterPinElement, without the count.
+function clusterPinSvg(look) {
+  const unavailable = look === "unavailable";
+  return pinSvg(unavailable ? UNAVAILABLE_PIN_COLOR : AVAILABLE_PIN_COLOR, look === "suggested" ? SUGGESTED_BADGE : "");
+}
+
 const VARIANTS = [
-  { rating: null, isActive: false },
-  { rating: null, isActive: true },
-  ...RATING_BUCKETS.flatMap((rating) => [
-    { rating, isActive: false },
-    { rating, isActive: true },
-  ]),
+  ...["none", ...RATING_BUCKETS].flatMap((bucket) =>
+    LOOKS.map((look) => ({ id: `pin-${bucket}-${look}`, svg: listingPinSvg(bucket, look) }))
+  ),
+  ...LOOKS.map((look) => ({ id: `cluster-${look}`, svg: clusterPinSvg(look) })),
 ];
-
-function iconId(rating, isActive) {
-  const bucket = rating == null ? "none" : (Math.round(rating / RATING_STEP) * RATING_STEP).toFixed(2);
-  return `pin-${bucket}-${isActive ? "active" : "inactive"}`;
-}
-
-function buildPinSvg({ rating, isActive }) {
-  const hasRating = rating != null && rating > 0;
-  const pinBodyStop2 = isActive ? "#FFDFDF" : "#DC2626";
-  const pinBodyStopOpacity = isActive ? 0.9 : 1;
-  const bodyGradient = `<linearGradient id="pg" x1="17.5" y1="1" x2="17.5" y2="47" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="0.18" stop-color="${pinBodyStop2}" stop-opacity="${pinBodyStopOpacity}"/>
-    </linearGradient>`;
-  const body = `<path d="${PIN_PATH}" fill="url(#pg)" stroke="#DC2626" stroke-width="2"/>`;
-  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">`;
-
-  if (!hasRating) {
-    const circleFill = isActive ? "#FFA2A2" : "#FFFFFF";
-    return `${open}<defs>${bodyGradient}</defs>${body}<circle cx="17.5" cy="20" r="5.5" fill="${circleFill}" opacity="0.9"/></svg>`;
-  }
-
-  const fillHeight = (rating / 5) * STAR_HEIGHT;
-  const clipY = STAR_BOTTOM - fillHeight;
-  const isGold = rating >= 5 && !isActive;
-
-  if (isGold) {
-    // Same star as the web pin's gold state (MapView.js buildPinSVGElement): the
-    // gold gradient is pinned to the full star, a cream outline sits under it, and
-    // the gradient fill and stroke are clipped to the star's full height.
-    const goldGradient = `<linearGradient id="sg" x1="17.5" y1="${STAR_BOTTOM - STAR_HEIGHT}" x2="17.5" y2="${STAR_BOTTOM}" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#D69121"/>
-      <stop offset="0.115" stop-color="#F7D14A"/>
-      <stop offset="0.236" stop-color="#F7EF84"/>
-      <stop offset="0.394" stop-color="#FFFDEB"/>
-    </linearGradient>`;
-    return `${open}<defs>${bodyGradient}${goldGradient}<clipPath id="sc"><rect x="4" y="${clipY}" width="27" height="${fillHeight + 0.5}"/></clipPath></defs>${body}<path d="${STAR_PATH}" fill="none" stroke="#FFFFF6" stroke-width="0.75"/><path d="${STAR_PATH}" fill="url(#sg)" stroke="url(#sg)" stroke-width="0.75" clip-path="url(#sc)"/></svg>`;
-  }
-
-  const starPaint = isActive ? "#FFA2A2" : "#FFFFF6";
-  return `${open}<defs>${bodyGradient}<clipPath id="sc"><rect x="4" y="${clipY}" width="27" height="${fillHeight}"/></clipPath></defs>${body}<path d="${STAR_PATH}" fill="${starPaint}" clip-path="url(#sc)"/><path d="${STAR_PATH}" fill="none" stroke="${starPaint}" stroke-width="0.75"/></svg>`;
-}
 
 async function main() {
   const mobileRoot = path.resolve(__dirname, "..");
   const assetsDir = path.join(mobileRoot, "assets/map-pins");
   const mapFile = path.join(mobileRoot, "src/components/listings/pinIconAssets.js");
+  // Start clean so artwork from an older scheme is never left behind.
+  fs.rmSync(assetsDir, { recursive: true, force: true });
   fs.mkdirSync(assetsDir, { recursive: true });
 
   const entries = [];
-  for (const variant of VARIANTS) {
-    const id = iconId(variant.rating, variant.isActive);
-    const svg = Buffer.from(buildPinSvg(variant));
+  for (const { id, svg } of VARIANTS) {
     for (const scale of SCALES) {
       const suffix = scale === 1 ? "" : `@${scale}x`;
       // SVG is rasterized at density 72 * scale so each file is crisp vector
       // output at its own resolution, not an upscaled 1x bitmap.
-      await sharp(svg, { density: 72 * scale })
+      await sharp(Buffer.from(svg), { density: 72 * scale })
         .resize(WIDTH * scale, HEIGHT * scale)
         .png()
         .toFile(path.join(assetsDir, `${id}${suffix}.png`));

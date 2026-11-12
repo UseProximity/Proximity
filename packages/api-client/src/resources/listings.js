@@ -11,6 +11,10 @@ export function createListingsResource(client) {
     getListings: () => client.request("/api/listings"),
     getListing: (listingId) => client.request(`/api/listing/${listingId}`),
     getPopularListings: () => client.request("/api/listings/popular"),
+    // GET /api/listings/suggested (auth optional): the signed-in student's
+    // "Suggested for you" listing ids, best first ({ ids: [] } when signed out
+    // or when there is too little to go on).
+    getSuggestedListings: () => client.request("/api/listings/suggested"),
     // Review safety (both need a bearer token). The server resolves the review's
     // author itself, so anonymous reviews can be reported but never blocked.
     reportReview: (reviewId) =>

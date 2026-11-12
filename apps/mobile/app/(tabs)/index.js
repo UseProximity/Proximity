@@ -10,9 +10,11 @@ import {
   countActiveFilters,
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
+import { useAuthStore } from "../../src/store/authStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
+import { SuggestedSection } from "../../src/components/listings/SuggestedSection";
 import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { ErrorState } from "../../src/components/ui/ErrorMessage";
 import { getErrorMessage } from "../../src/lib/apiError";
@@ -39,6 +41,11 @@ export default function BrowseScreen() {
   const [view, setView] = useState("list");
   const listRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  // "Suggested for you" ids, best first, fetched once per visit while signed
+  // in, as web's Browse does. They feed the list's suggested section and the
+  // map's badged pins.
+  const userId = useAuthStore((state) => state.user?.id);
+  const [suggestedIds, setSuggestedIds] = useState([]);
 
   // The list remounts at the top when returning from the map.
   useEffect(() => {
@@ -59,6 +66,35 @@ export default function BrowseScreen() {
     load().finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setSuggestedIds([]);
+    if (!userId) return undefined;
+    let current = true;
+    const fetchIds = () =>
+      apiClient.listings.getSuggestedListings().then((data) => (Array.isArray(data?.ids) ? data.ids : []));
+    (async () => {
+      let ids = await fetchIds();
+      // The route answers an expired access token as signed out ({ ids: [] },
+      // not a 401), so the client never refreshes it. On an empty answer,
+      // refresh once and ask again. Refresh tokens are stateless, so this is
+      // safe alongside any other refresh, and it never signs the user out.
+      if (ids.length === 0 && current) {
+        const { refreshToken, user } = useAuthStore.getState();
+        const { accessToken } = await apiClient.auth.refresh(refreshToken);
+        if (!current || typeof accessToken !== "string" || !accessToken) return;
+        await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
+        if (!current) return;
+        ids = await fetchIds();
+      }
+      if (current) setSuggestedIds(ids);
+    })()
+      // Suggestions are an enhancement: on failure there are none.
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [userId]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load();
@@ -71,6 +107,27 @@ export default function BrowseScreen() {
   }, [listings, filters, search]);
 
   const activeFilterCount = countActiveFilters(filters);
+
+  // Web's rule (BrowseContent): suggestions show only on the unfiltered view,
+  // once a student narrows the list their own question is the ranking. Only
+  // listings still in the feed count, kept to an even number.
+  const suggestedListings = useMemo(() => {
+    if (search.trim() || activeFilterCount > 0) return [];
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    return found.slice(0, found.length - (found.length % 2));
+  }, [listings, suggestedIds, search, activeFilterCount]);
+  const suggestedIdSet = useMemo(
+    () => new Set(suggestedListings.map((l) => String(l._id))),
+    [suggestedListings]
+  );
+  // As on web, the suggested listings leave the list below while they show,
+  // so no card appears twice, but still count as results.
+  const listData = useMemo(
+    () => visibleListings.filter((l) => !suggestedIdSet.has(String(l._id))),
+    [visibleListings, suggestedIdSet]
+  );
+  const resultCount = listData.length + suggestedIdSet.size;
 
   if (loading) {
     return (
@@ -139,7 +196,7 @@ export default function BrowseScreen() {
             not an arbitrary pairing. */}
         <View className="flex-row items-center justify-between mt-3">
           <Text className="text-xs text-gray-500">
-            {visibleListings.length} listing{visibleListings.length === 1 ? "" : "s"}
+            {resultCount} listing{resultCount === 1 ? "" : "s"}
           </Text>
           <View className="flex-row bg-gray-100 rounded-full p-1">
             {[
@@ -162,25 +219,28 @@ export default function BrowseScreen() {
       </View>
 
       {view === "map" ? (
-        <BrowseMapView listings={visibleListings} />
+        <BrowseMapView listings={visibleListings} suggestedIds={suggestedIdSet} />
       ) : (
         <View className="flex-1">
           <FlatList
             ref={listRef}
-            data={visibleListings}
+            data={listData}
             keyExtractor={(item) => item._id}
             contentContainerStyle={{ padding: 16, paddingTop: 0 }}
             renderItem={({ item }) => <ListingCard listing={item} />}
+            ListHeaderComponent={<SuggestedSection listings={suggestedListings} />}
             onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > BACK_TO_TOP_OFFSET)}
             scrollEventThrottle={100}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             ListEmptyComponent={
-              <View className="items-center justify-center mt-20">
-                <View className="mb-3">
-                  <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+              suggestedListings.length > 0 ? null : (
+                <View className="items-center justify-center mt-20">
+                  <View className="mb-3">
+                    <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+                  </View>
+                  <Text className="text-gray-500">No listings match your search.</Text>
                 </View>
-                <Text className="text-gray-500">No listings match your search.</Text>
-              </View>
+              )
             }
           />
           {showBackToTop ? (
