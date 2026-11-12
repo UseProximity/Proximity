@@ -6,7 +6,8 @@
  * A listing with several units gets a selector, and its unit rows show the
  * selected unit only. Within that unit, a value that differs between its lease
  * offerings is shown as the range across them, never a single pick. The winner of
- * the objective rows gets a small "Better" pill (see compareBest.js).
+ * the objective rows gets a small "Better" pill (see compareBest.js). The Price
+ * row shows the landlord's figure, but its pill compares whole-unit rents.
  */
 "use client";
 
@@ -322,7 +323,7 @@ function ListSection({ title, a, b }) {
   const label = `${ROW} px-4 text-xs text-black`;
   return (
     <>
-      <div className={`${ROW} col-span-3 justify-between gap-3 px-4 py-3`}>
+      <div className={`${ROW} col-span-3 justify-between gap-3 px-4`}>
         <h3 className="text-base font-bold text-black">{title}</h3>
         {summary && <span className="text-xs font-medium text-red-700">{summary}</span>}
       </div>

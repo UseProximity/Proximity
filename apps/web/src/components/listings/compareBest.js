@@ -5,6 +5,11 @@
  *
  * A row has a winner only when both values are usable and not equal. Nothing is
  * filtered out as "failed": a walk time is compared as it is shown.
+ *
+ * The price is the exception: it is compared as the whole unit's monthly rent
+ * (each lease's unitRent, from the shared rent-basis helper), not as the table
+ * shows it. The table shows the landlord's figure, per person or for the unit, so
+ * the pill can sit on the side whose shown number is higher.
  */
 import { getCampusWalkMinutes } from "@/utils/listingFormatters";
 
@@ -22,19 +27,16 @@ export function Winner({ children }) {
   );
 }
 
-// The one rent range a column shows, as the table shows it: leases split by the
-// landlord's flag, with an unset flag read as the whole unit. null when there is
-// no price or when the column shows both bases, which cannot be compared.
+// The range of whole-unit rents across the unit's leases, or null when none is
+// priced. unitRent is worked out on the server (shapeLeases, with leaseRentBasis
+// in lib/listings/rentBasis.js): a stated per-person rent times the bedrooms, a
+// stated whole-unit rent as is, and an unstated one guessed by the helper's
+// split test. So every lease is in the same terms, whatever its flag.
 function rentOf(unit) {
-  const rents = (perPerson) =>
-    (unit?.leases ?? [])
-      .filter((l) => !!l.rentIsPerPerson === perPerson)
-      .map((l) => Number(l.rent))
-      .filter((r) => Number.isFinite(r) && r > 0);
-  const [whole, person] = [rents(false), rents(true)];
-  if (!!whole.length === !!person.length) return null;
-  const list = whole.length ? whole : person;
-  return { perPerson: !!person.length, min: Math.min(...list), max: Math.max(...list) };
+  const rents = (unit?.leases ?? [])
+    .map((l) => Number(l.unitRent))
+    .filter((r) => Number.isFinite(r) && r > 0);
+  return rents.length ? { min: Math.min(...rents), max: Math.max(...rents) } : null;
 }
 
 // Each row: [label, the value a side compares, which direction wins]. A side with
@@ -65,9 +67,9 @@ export function bestRows(listings, units) {
     win(label, value(listings[0], units[0]), value(listings[1], units[1]), dir);
   }
 
-  // Price: the same basis, and one range wholly below the other.
+  // Price: one whole-unit rent range wholly below the other.
   const [a, b] = [rentOf(units[0]), rentOf(units[1])];
-  if (a && b && a.perPerson === b.perPerson) {
+  if (a && b) {
     if (a.max < b.min) best[0].add("Price:");
     else if (b.max < a.min) best[1].add("Price:");
   }
