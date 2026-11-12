@@ -23,7 +23,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { sendAgreementDeclinedTeamEmail } from "./billingEmails.js";
-import { afterPayerSigned } from "./payerServices.js";
+import { afterPayerSigned, finishTakeover } from "./payerServices.js";
 
 export function documensoClient() {
   return createDocumensoClient({
@@ -50,6 +50,9 @@ export function agreementServices() {
         const steps = await Promise.allSettled([
           resolveChangeRequestOnSigned(supabase, { userId: signerId ?? userId, versionId }),
           afterPayerSigned({ signerId: signerId ?? userId, kind, documentId, accounts, withdrawn }),
+          // A landlord who signed their own agreement while they had an authorized
+          // signer: the signer is removed now (Wyatt, 2026-11-10).
+          kind === "master" ? finishTakeover(userId, documensoClient()) : null,
         ]);
         for (const s of steps) if (s.status === "rejected") console.error("billing: an after-signing step failed", s.reason?.message);
       },

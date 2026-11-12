@@ -20,10 +20,18 @@
  *                         never the agreement
  *   payerAccounts         what the payer sees: each account they pay for, its
  *                         covered properties and what waits for their signature
- *   endPayerFor           the payer voids their agreement for one account
+ *   endPayerFor           the arrangement ends for one account: the landlord
+ *                         revoked their signer, or an admin ended it
+ *   completeTakeover      the landlord signed their own agreement while they had
+ *                         a signer: the signer is removed, with no gap in coverage
  *
- * The landlord account never signs once it has a payer, and cannot remove a payer
- * who has signed: only the payer can void (Wyatt, 2026-11-09).
+ * A signer cannot void what they signed for an account. The landlord can revoke
+ * their signer at any time (Wyatt, 2026-11-10, replacing the rule of 2026-11-09
+ * that only the signer could void): the account's listings are then no longer
+ * covered until the landlord signs their own agreement. Live listings stay on the
+ * site; nothing new can be published until they sign. A landlord with covered
+ * listings is offered to sign first instead, which keeps every one covered: the
+ * signer is only removed once that signature lands.
  *
  * `db` is a service-role Supabase client. Sending and publishing are passed in
  * (`deps`) so the rules can be tested without email or listings.
@@ -221,8 +229,8 @@ export async function cancelOwnSigning(db, documenso, landlordId) {
 }
 
 /*
- * Whether anything has been signed under the payer for this account: then only
- * the payer can end it (by voiding), never the landlord.
+ * Whether anything has been signed under the payer for this account: then the
+ * signer can't simply be swapped (Change signer); the landlord revokes them first.
  */
 async function signedForAccount(db, landlordId) {
   const { data, error } = await db.from("agreement_coverage").select("id").eq("user_id", landlordId).eq("status", "covered").limit(1);
@@ -240,7 +248,7 @@ export async function changePayer(db, documenso, { landlord, name, email, now = 
   const link = await activePayerLink(db, landlord.id);
   if (!link) throw new BillingError("no_payer", "You don't have an authorized signer to change.", 404);
   if (await signedForAccount(db, landlord.id)) {
-    throw new BillingError("payer_signed", `${link.signer_name} already signed for your account. Only they can void it.`, 409);
+    throw new BillingError("payer_signed", `${link.signer_name} already signed for your account. Revoke them first, then name someone else.`, 409);
   }
   const input = cleanPayerInput({ name, email });
   if (input.email === link.signer_email) throw new BillingError("same_payer", "That is already your authorized signer. Use Resend instead.");
@@ -608,19 +616,26 @@ export async function payerAccounts(db, payerId, now = new Date()) {
 }
 
 /*
- * The payer voids their agreement for one account they pay for (Wyatt,
- * 2026-11-09: the landlord can't remove them, they void it): that account's
- * properties come off the payer's agreement, anything waiting is cancelled and
- * the link ends. The payer's agreement stays in force for everything else. The
- * landlord then signs for themselves or names someone else. Returns { released }.
+ * The arrangement ends for one landlord account: the landlord revoked their
+ * authorized signer (Wyatt, 2026-11-10), or an admin ended it. Any document the
+ * signer was still signing for the account is cancelled, the account's properties
+ * come off the signer's agreement, listings waiting on the signer go back to
+ * plain drafts, and the link ends. The signer's agreement stays in force for
+ * everything else. Nothing is taken off the site: live listings stay up,
+ * uncovered, and the landlord signs for themselves or names someone else.
+ * Charges already raised under the signer's agreement stay billed to the signer.
+ *
+ * `payerId`: only when the caller must be that signer's link (else any active link).
+ * Returns { released, cancelled, link }: `cancelled` is set when a document also
+ * covering other accounts was cancelled whole (the caller emails the signer).
  */
-// `endLink`: an admin ending the arrangement entirely (the link ends too).
-export async function endPayerFor(db, documenso, { payerId, landlordId, endLink = false, now = new Date() }) {
+export async function endPayerFor(db, documenso, { landlordId, payerId = null, reason = "ended by an admin", now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
-  if (!link || link.payer_id !== payerId) throw new BillingError("not_payer", "You don't pay for that account.", 404);
-  const cancelled = await cancelPayerDocuments(db, documenso, landlordId);
+  if (!link || (payerId && link.payer_id !== payerId)) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
+  const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
   const nowIso = now.toISOString();
-  const { data: masters } = await db.from("landlord_agreements").select("id").eq("user_id", payerId);
+  const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
+  if (masterError) throw masterError;
   const masterIds = (masters ?? []).map((m) => m.id);
   let released = 0;
   if (masterIds.length) {
@@ -634,20 +649,31 @@ export async function endPayerFor(db, documenso, { payerId, landlordId, endLink 
     if (error) throw error;
     released = data?.length ?? 0;
   }
-  if (endLink) {
-    // An admin ending the arrangement: the account signs for itself again.
-    const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
-    if (waitError) throw waitError;
-    const { error } = await db.from("billing_payers").update({ status: "ended", ended_reason: "ended by an admin", ended_at: nowIso }).eq("id", link.id);
-    if (error) throw error;
-  } else {
-    // The signer voided: they stay the account's authorized signer, shown as
-    // having declined (Wyatt, 2026-11-09). The landlord can change signer; the
-    // signer can sign again later. Drafts sent to them stay waiting.
-    const { error } = await db.from("billing_payers").update({ declined_at: nowIso }).eq("id", link.id);
-    if (error) throw error;
-  }
-  return { released, cancelled };
+  const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
+  if (waitError) throw waitError;
+  const { error } = await db.from("billing_payers").update({ status: "ended", ended_reason: String(reason).slice(0, 300), ended_at: nowIso }).eq("id", link.id).eq("status", "active");
+  if (error) throw error;
+  return { released, cancelled, link };
+}
+
+/*
+ * A landlord with an authorized signer signed their OWN agreement (startSigning's
+ * takeover): now that it is signed, the signer is removed (endPayerFor). Their
+ * listings were on the new agreement before the signer's coverage is released, so
+ * they are covered throughout. Returns null when there is nothing to do: no
+ * signer, or no agreement of their own signed since the signer was named. Safe to
+ * run again, so the signing follow-up and the Billing page both call it.
+ */
+export async function completeTakeover(db, documenso, landlordId, now = new Date()) {
+  const link = await activePayerLink(db, landlordId);
+  if (!link) return null;
+  const { data, error } = await db.from("landlord_agreements").select("id, signed_at").eq("user_id", landlordId).eq("status", "signed");
+  if (missingSchema(error)) return null;
+  if (error) throw error;
+  const own = (data ?? []).find((m) => m.signed_at && new Date(m.signed_at) > new Date(link.created_at));
+  if (!own) return null;
+  const result = await endPayerFor(db, documenso, { landlordId, reason: "revoked by the landlord, who signed their own agreement", now });
+  return { ...result, agreementId: own.id };
 }
 
 // The account's drafts not covered yet: what "Add drafts to your agreement" puts on the document.

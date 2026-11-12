@@ -229,44 +229,6 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
   );
 }
 
-export function MobileMapPopup({ listing, onClose, onViewListing }) {
-  const addressBeforeComma = listing.address.split(",")[0].trim();
-  const title = listing.title || addressBeforeComma;
-  return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 px-4 py-3 relative">
-      <button
-        onClick={onClose}
-        className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 p-0.5"
-        aria-label="Close"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-      <p className="font-semibold text-sm text-gray-900 pr-7 truncate">{title}</p>
-      <p className="text-xs text-gray-400 mt-0.5 truncate">{listing.address}</p>
-      <div className="flex items-center justify-between mt-3">
-        <span className="font-bold text-sm text-gray-900">
-          {getRentRangeLabel(listing.unitTypes)}
-          {getRentRangeLabel(listing.unitTypes) !== "Contact for Pricing" && (
-            <span className="text-xs font-normal text-gray-500">/mo</span>
-          )}
-        </span>
-        <a
-          href={`/listings/${listing._id}`}
-          onClick={(e) => {
-            suppressPlainClick(e);
-            if (e.defaultPrevented) onViewListing();
-          }}
-          className="inline-block px-4 py-1.5 bg-[#E8000B] hover:bg-red-700 text-white text-xs font-semibold rounded-full transition-colors"
-        >
-          View listing →
-        </a>
-      </div>
-    </div>
-  );
-}
-
 export default function MapPopupCard({
   listing,
   session,

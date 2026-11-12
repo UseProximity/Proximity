@@ -429,12 +429,13 @@ export async function runJob(jobId) {
       const item = await runSyncJob(job, { onStep });
       await supabase.from("listing_import_jobs").update({
         status: "done",
-        step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : `${item.applied.length} applied, ${item.held.length} held`,
+        step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : item.holdReason === "churn_hold" ? "Skipped: too much changed at once" : `${item.applied.length} applied, ${item.denied?.length ?? 0} denied`,
         progress: 100, finished_at: new Date().toISOString(),
         result: {
           mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds,
           // For the team's daily digest (lib/agents/digest.js).
-          teamReview: !!item.teamReview, refused: (item.refused ?? []).slice(0, 20),
+          denied: item.denied?.length ?? 0, deniedNew: item.deniedNew ?? 0, deep: !!item.deep, unitListComplete: item.unitListComplete ?? null,
+          refused: (item.refused ?? []).slice(0, 20),
           unitPages: (item.unitPages ?? []).map((u) => ({ unit: u.unit, status: u.status })),
         },
       }).eq("id", jobId);

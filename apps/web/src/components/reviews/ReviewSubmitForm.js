@@ -28,6 +28,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import { buildingAddress, NO_STREET_NUMBER_MESSAGE } from "@/utils/reviewAddress";
 import AuthCard from "@/components/auth/AuthCard";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import { UNIT_DESIGNATORS } from "@/components/listings/listingFormOptions";
@@ -188,6 +189,11 @@ export default function ReviewSubmitForm({
   function handleSelectSuggestion(feature) {
     const [lng, lat] = feature.center || [];
     const place = feature.place_name || "";
+    // A bare street names no building. Say so now, not after the review is written.
+    if (!buildingAddress(place)) {
+      setPicked(null);
+      return toast.error(NO_STREET_NUMBER_MESSAGE);
+    }
     setAddressQuery(place);
     setPicked(lat != null && lng != null ? { place_name: place, lat, lng } : null);
   }

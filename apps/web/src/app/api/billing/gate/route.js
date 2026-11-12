@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { agreementView, coverageFor, syncAgreement } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { checkListingGate, gateMessage } from "@/lib/billing/listingGate";
@@ -19,18 +19,19 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth landlord
  */
-export async function GET() {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const { documenso, signingAvailable, options } = agreementServices();
-    if (signingAvailable) await syncAgreement(supabase, documenso, session.user.id, options);
+    // An admin viewing as the landlord only reads: syncing from Documenso writes.
+    if (signingAvailable && !reader.viewingAs) await syncAgreement(supabase, documenso, reader.userId, options);
     const [gate, coverage, enrollment, account] = await Promise.all([
-      checkListingGate(supabase, session.user.id),
-      coverageFor(supabase, session.user.id),
+      checkListingGate(supabase, reader.userId),
+      coverageFor(supabase, reader.userId),
       getEnrollmentWindow(supabase),
-      supabase.from("users").select("name, company_name, billing_only").eq("id", session.user.id).maybeSingle(),
+      supabase.from("users").select("name, company_name, billing_only").eq("id", reader.userId).maybeSingle(),
     ]);
     // A landlord with a payer never sees the agreement (Project B): /api/billing/payer has their status.
     const delegated = !!coverage.state.payerLink;

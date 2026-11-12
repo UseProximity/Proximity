@@ -7,7 +7,6 @@ import dynamic from "next/dynamic";
 
 import MapPopupCard, {
   ListingCard,
-  MobileMapPopup,
 } from "@/components/listings/MapPopupCard";
 import ListDetailPanel from "@/components/listings/ListDetailPanel";
 import BackToTop from "@/components/ui/BackToTop";
@@ -913,13 +912,16 @@ export default function AvailableListings({
                 suggestedIds={suggestedIdSet}
               />
 
-              {/* Minimal pin popup */}
+              {/* Pin popup: the same photo card the desktop map shows, at
+                  the same width, so a tapped pin says what the place looks
+                  like before the listing is opened. */}
               {selectedListing && (
-                <div className="absolute bottom-4 left-4 right-4 z-10 pointer-events-auto">
-                  <MobileMapPopup
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-72 max-w-[calc(100%-2rem)] pointer-events-auto">
+                  <MapPopupCard
                     listing={selectedListing}
+                    session={session}
                     onClose={handlePinClose}
-                    onViewListing={() =>
+                    onCardClick={() =>
                       router.push(`/listings/${selectedListing._id}?from=map`)
                     }
                   />
