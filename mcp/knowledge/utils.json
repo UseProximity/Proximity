@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-11T21:15:09.495Z",
-  "count": 338,
+  "_generated": "2026-11-12T05:42:24.133Z",
+  "count": 349,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1156,6 +1156,18 @@
       "description": "Background import jobs."
     },
     {
+      "file": "src/lib/sourceImport/learn.js",
+      "description": "Loading and saving what the sync learns about a listing"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.js",
+      "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceImport/limits.js",
       "description": "Spending caps for the URL importer."
     },
@@ -1196,6 +1208,30 @@
       "description": "G5 (g5marketingcloud.com) inventory reader."
     },
     {
+      "file": "src/lib/sourceImport/readers/portals.js",
+      "description": "The leasing portals the importer and sync can walk (readers/portalWalk.js)."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalk.js",
+      "description": "Walking a leasing portal the way a renter does."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalkParse.js",
+      "description": "What a portal walk found, as snapshot units. Pure, so it is tested without a"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOll.js",
+      "description": "RealPage Online Leasing portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.js",
+      "description": "RealPage Online Leasing: the parts that need no network."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
       "description": "Floor plans embedded as JSON in a page."
     },
@@ -1218,6 +1254,14 @@
     {
       "file": "src/lib/sourceImport/sync.js",
       "description": "The recurring source sync."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.js",
+      "description": "What the daily website sync does with each change it finds."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceSync/attach.js",

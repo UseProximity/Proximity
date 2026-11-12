@@ -173,11 +173,28 @@ export function putsLeaseLive(c) {
  * the agreement, not just the building; review of 2026-11-07). Fails closed: an
  * error holds the change.
  */
-async function gateFor(userId, listingId, unitIds = []) {
+async function gateFor(userId, listingId, unitIds = [], newUnitName = null) {
   if (!userId) return { allowed: true };
   try {
-    const g = await checkListingGate(supabase, userId, { listingIds: [listingId], unitIds: unitIds.filter(Boolean) });
-    return { allowed: !!g.allowed, message: g.allowed ? null : gateMessage(g.missing ?? [], g.uncovered ?? []) };
+    // A unit the sync is about to add has no row yet: checked by name, so a
+    // property covered by named units (Exhibit A) needs an addendum for it.
+    const newUnits = newUnitName ? [{ listingId, name: newUnitName }] : [];
+    const g = await checkListingGate(supabase, userId, { listingIds: [listingId], unitIds: unitIds.filter(Boolean), newUnits });
+    if (g.allowed) return { allowed: true, message: null };
+    const missing = g.missing ?? [];
+    const uncovered = g.uncovered ?? [];
+    /*
+     * Only the agreement stands in the way: an addendum. A new unit at an
+     * address the agreement covers is covered by its terms (option A,
+     * 2026-11-07), so this is a property not on it yet, or named units that
+     * are not.
+     */
+    const units = uncovered.flatMap((u) => u.missingUnits ?? []);
+    const address = uncovered[0]?.address ?? null;
+    const addendum = missing.length === 1 && missing[0] === "agreement" && uncovered.length
+      ? { what: units.length ? `${units.join(", ")}${address ? ` at ${address}` : ""}` : address ?? "this property" }
+      : null;
+    return { allowed: false, message: gateMessage(missing, uncovered), addendum };
   } catch (err) {
     console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
     return { allowed: false, message: "Could not check the listing gate; held for the landlord." };
@@ -185,13 +202,26 @@ async function gateFor(userId, listingId, unitIds = []) {
 }
 
 // One gate answer per unit for a run (a sync can put several leases on one unit live).
+// A new unit is keyed by its name, since it has no id yet.
 function cachedGate(userId, listingId) {
   const seen = new Map();
-  return (unitId) => {
-    const key = unitId ?? "";
-    if (!seen.has(key)) seen.set(key, gateFor(userId, listingId, unitId ? [unitId] : []));
+  return (unitId, newUnitName = null) => {
+    const key = unitId ?? (newUnitName ? `new:${newUnitName}` : "");
+    if (!seen.has(key)) seen.set(key, gateFor(userId, listingId, unitId ? [unitId] : [], unitId ? null : newUnitName));
     return seen.get(key);
   };
+}
+
+// The name a new unit will be saved under, for the agreement check.
+function newUnitNameOf(c) {
+  if (c.kind !== "unit_new") return null;
+  const name = c.detail?.unit?.name;
+  return name ? cleanUnitName(name) || null : null;
+}
+
+// The note on a new unit the agreement does not cover yet.
+function addendumNote(gate) {
+  return `added as a draft: ${gate.addendum.what} is not on the marketing agreement yet, so the landlord needs to sign an addendum before it can go live`;
 }
 
 // ---------------------------------------------------------------- planning
@@ -532,7 +562,11 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
    */
   if (mode === "sync") {
     const readsLettings = ordered.length > 0 && !pricesUnknown;
+    // Units whose own page could not be read today: no reading, no verdict.
+    // A page that keeps failing shows in the sources report instead.
+    const unread = new Set(snapshot.unreadUnitIds ?? []);
     for (const u of unmatched) {
+      if (unread.has(u.id)) continue;
       const live = u.unit_leases.filter((l) => isMine(l, ownerIds) && !l.unavailable);
       if (!live.length) continue;
       const label = u.name ?? `${u.bedrooms} bed / ${u.bathrooms} bath`;
@@ -1123,14 +1157,15 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (mode === "sync" && changes.some(putsLeaseLive)) {
     const gateOf = cachedGate(primaryOwner(state), listingId);
     for (const c of changes.filter(putsLeaseLive)) {
-      const gate = await gateOf(c.unitId ?? c.detail?.unitId ?? null);
+      const gate = await gateOf(c.unitId ?? c.detail?.unitId ?? null, newUnitNameOf(c));
       if (gate.allowed) continue;
       if (c.kind === "unit_new") {
         // The unit is still worth having: added as a draft the landlord
-        // publishes once the gate lets them.
-        c.detail = { ...c.detail, draft: true, publish: false };
+        // publishes once the gate lets them (Wyatt, 2026-11-11: a unit the
+        // agreement does not cover yet is a draft with an addendum note).
+        c.detail = { ...c.detail, draft: true, publish: false, ...(gate.addendum ? { needsAddendum: gate.addendum.what } : {}) };
         c.gated = true;
-        c.note = `goes in as a draft until the landlord can publish: ${gate.message}`;
+        c.note = gate.addendum ? addendumNote(gate) : `goes in as a draft until the landlord can publish: ${gate.message}`;
         continue;
       }
       c.auto = false;
@@ -1311,11 +1346,11 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
     let gatedNote = null;
     if (putsLeaseLive(e)) {
-      const gate = await gateOf(e.detail?.unitId ?? null);
+      const gate = await gateOf(e.detail?.unitId ?? null, newUnitNameOf(e));
       if (!gate.allowed && e.kind === "unit_new") {
         // Accepted, but the landlord cannot publish yet: added as a draft.
-        e.detail = { ...e.detail, draft: true, publish: false };
-        gatedNote = `added as a draft until the landlord can publish: ${gate.message}`;
+        e.detail = { ...e.detail, draft: true, publish: false, ...(gate.addendum ? { needsAddendum: gate.addendum.what } : {}) };
+        gatedNote = gate.addendum ? addendumNote(gate) : `added as a draft until the landlord can publish: ${gate.message}`;
       } else if (!gate.allowed) {
         results.push({ id: e.id, ok: false, error: gate.message });
         continue;

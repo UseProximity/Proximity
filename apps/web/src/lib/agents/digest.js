@@ -128,6 +128,10 @@ export async function buildDigest({ now = new Date() } = {}) {
     else if (r.summary && r.summary.units === 0) toFix.push(`${where}: no units found on the page; it may be a home page or block reading, so point it at the floor plans or availability page`);
     else if (r.unitListComplete === false) toFix.push(`${where}: only part of the unit list was readable, so units it missed are not withdrawn`);
     else if (r.summary && r.summary.units > 0 && r.summary.priced === 0) toFix.push(`${where}: no prices on the page`);
+    // A unit page that could not be read leaves its unit as it is, never withdrawn.
+    for (const u of (r.unitPages ?? []).filter((x) => x.status === "failed")) {
+      toFix.push(`${label(j.listings)}, ${u.unit} (${u.url}): its own page could not be read, so the unit was left as it is`);
+    }
   }
   sections.push({ title: "Sources to fix", rows: [["Listings whose website keeps the sync from working fully", toFix.length]], list: toFix.slice(0, 30) });
 
