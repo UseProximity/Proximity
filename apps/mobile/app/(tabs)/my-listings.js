@@ -1,6 +1,6 @@
 // Landlord's "My Listings" tab: a focused, mobile-appropriate subset of web's
 // landlord dashboard Properties section: view your listings, toggle
-// availability, delete, and reach the existing Add Listing flow. No
+// availability and delete. Listings are added on the web app only. No
 // analytics/charts, reviews, PMS sync, or co-owner management here by
 // design (see the profile-split plan); those stay web-only.
 //
@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Plus, Trash2 } from "lucide-react-native";
+import { Trash2 } from "lucide-react-native";
 import { isLandlord } from "@proximity/auth-core";
 import { getRentRangeLabel } from "@proximity/shared";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -206,9 +206,6 @@ export default function MyListingsScreen() {
     <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
         <Text className="text-lg font-bold text-gray-900">My Listings</Text>
-        <Pressable onPress={() => router.push("/listings/add")} hitSlop={12}>
-          <Plus size={22} color={colors.primary} strokeWidth={2.5} />
-        </Pressable>
       </View>
 
       <FlatList
@@ -231,12 +228,9 @@ export default function MyListingsScreen() {
           ) : (
             <View className="flex-1 items-center justify-center mt-20 px-6">
               <Text className="text-gray-900 font-semibold text-base mb-1">No listings yet</Text>
-              <Text className="text-sm text-gray-500 text-center mb-6">
-                Add your first property to start reaching students.
+              <Text className="text-sm text-gray-500 text-center">
+                Listings are added on the Proximity web app. Once added, they'll show up here.
               </Text>
-              <Pressable onPress={() => router.push("/listings/add")} className="bg-red-600 rounded-xl px-6 py-3">
-                <Text className="text-white font-semibold text-sm">Add Listing</Text>
-              </Pressable>
             </View>
           )
         }
