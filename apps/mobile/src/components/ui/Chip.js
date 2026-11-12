@@ -1,10 +1,8 @@
 import { Pressable, Text } from "react-native";
 import { Check, X } from "lucide-react-native";
 
-// Canonical pill/chip control, promoted from
-// src/components/listings/wizard/wizardShared.js (design-system/pages/
-// add-listing.md) since FilterSheet.js and 5 matchmaking components each
-// hand-roll a near-duplicate pill Pressable. `tone` covers the 3 states
+// Canonical pill/chip control, shared by FilterSheet.js and the matchmaking
+// question components so none of them hand-rolls its own pill Pressable. `tone` covers the 3 states
 // found in practice: selected/unselected (the original two-state shape,
 // still reachable via the `on` boolean for backward compatibility) and
 // muted (the "No preference"/"I'm all set" escape-hatch style used across

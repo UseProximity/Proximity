@@ -1,4 +1,4 @@
-// Canonical design tokens for new mobile screens (Add Listing onward).
+// Canonical design tokens for new mobile screens.
 // `primary` mirrors web's actual brand color (apps/web/src/components/ui/
 // Button.js's default variant, bg-red-600) and the value already dominant
 // across the app (Badge.js, FilterSheet.js), not the gray-900/#111827
