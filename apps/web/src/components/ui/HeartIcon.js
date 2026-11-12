@@ -6,10 +6,17 @@ import { createPortal } from "react-dom";
 import { useFavorites } from "@/context/FavoritesContext";
 
 function AuthModal({ onClose }) {
+  // The modal is portalled to <body>, but React sends its events up the React
+  // tree, to whatever renders the heart: a grid card would take a backdrop click
+  // as its own and open the listing. Every click in the modal passes through the
+  // backdrop, so it stops there.
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center flex flex-col items-center gap-5"
