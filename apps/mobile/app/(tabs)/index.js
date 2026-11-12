@@ -10,6 +10,7 @@ import {
   countActiveFilters,
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
+import { useAuthStore } from "../../src/store/authStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
@@ -39,6 +40,10 @@ export default function BrowseScreen() {
   const [view, setView] = useState("list");
   const listRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  // "Suggested for you" ids, best first, fetched once per visit while signed
+  // in, as web's Browse does. They only mark pins on the map.
+  const userId = useAuthStore((state) => state.user?.id);
+  const [suggestedIds, setSuggestedIds] = useState([]);
 
   // The list remounts at the top when returning from the map.
   useEffect(() => {
@@ -59,6 +64,22 @@ export default function BrowseScreen() {
     load().finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setSuggestedIds([]);
+    if (!userId) return undefined;
+    let current = true;
+    apiClient.listings
+      .getSuggestedListings()
+      .then((data) => {
+        if (current) setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []);
+      })
+      // Suggestions are an enhancement: on failure there are none.
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [userId]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load();
@@ -71,6 +92,16 @@ export default function BrowseScreen() {
   }, [listings, filters, search]);
 
   const activeFilterCount = countActiveFilters(filters);
+
+  // Web's rule (BrowseContent): suggestions show only on the unfiltered view,
+  // once a student narrows the list their own question is the ranking. Only
+  // ids still in the feed count, kept to an even number.
+  const suggestedIdSet = useMemo(() => {
+    if (search.trim() || activeFilterCount > 0) return new Set();
+    const feedIds = new Set(listings.map((l) => String(l._id)));
+    const found = suggestedIds.map(String).filter((id) => feedIds.has(id));
+    return new Set(found.slice(0, found.length - (found.length % 2)));
+  }, [listings, suggestedIds, search, activeFilterCount]);
 
   if (loading) {
     return (
@@ -162,7 +193,7 @@ export default function BrowseScreen() {
       </View>
 
       {view === "map" ? (
-        <BrowseMapView listings={visibleListings} />
+        <BrowseMapView listings={visibleListings} suggestedIds={suggestedIdSet} />
       ) : (
         <View className="flex-1">
           <FlatList
