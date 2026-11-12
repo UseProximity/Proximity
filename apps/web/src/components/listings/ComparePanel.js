@@ -393,6 +393,12 @@ export default function ComparePanel({ slots, nudge, onRemove, onClose }) {
     observer.observe(head.current);
     return () => observer.disconnect();
   }, [!!first]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A rejected third click brings the photos and their X buttons back into view.
+  useEffect(() => {
+    if (!nudge) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    scroller.current.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+  }, [nudge]);
   return (
     <div className="flex h-full flex-col rounded-[20px] border border-[#e6e7eb] bg-[#f9fafb]">
       <div className="relative flex shrink-0 items-center justify-center py-4">
