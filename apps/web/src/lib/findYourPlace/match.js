@@ -70,11 +70,14 @@ const MIN_REASON_CHARS = 40;
  * CLOSE MATCHES (Wyatt, 2026-11-12). A place that misses exactly one thing the
  * student asked for is a close match, shown only when fewer than four places
  * fit everything, and only when the miss is slight: rent up to 15% over their
- * max, or a trip up to half as long again as their limit.
+ * max, or a trip up to half as long again as their limit. When full fits and
+ * close matches together still leave a card empty, the rest fill in, fewest
+ * misses first: there are always four cards while four places can house them.
  */
 const OVER_BUDGET_CAP = 0.15;
 const OVER_COMMUTE_CAP = 0.5;
 // When several kinds of close match are on offer, one of each, in this order.
+const FLAT_MISS = 0.3;
 const MISS_ORDER = ["budget", "commute", "furnished", "lease_term", "neighborhood"];
 
 /*
@@ -273,7 +276,7 @@ const PICK_SYSTEM = [
   `- Return up to ${PICKS_FROM_MODEL} picks in the order below, using only listing_id values from the candidates. The app shows four of them and uses the rest as explained alternatives. Fewer picks is fine: never pad the list, and never return a pick without a complete reason.`,
   "- Picks 1 and 2 are the two most likely fits: the places this student is most likely to want, all things considered.",
   "- The picks after that are alternatives that also fit what they asked for but differ from picks 1 and 2 in a way the student would notice: another neighborhood, clearly cheaper or clearly nicer for more money, a different kind of building (a house or small building against a large complex), a much shorter trip, or a standout feature the first two lack. Order them best first, and make them differ from each other too where you can. Do not pad with near copies of picks 1 and 2.",
-  "- When candidates with near_miss set are included, there are not enough full fits. Rank every candidate without near_miss first, then the near_miss ones, best first within each kind of miss.",
+  "- When candidates with near_miss set are included, there are not enough full fits. near_miss lists what each one misses (one thing, or several separated by semicolons). Rank every candidate without near_miss first, then the near_miss ones, fewest misses first. In that case return a pick, with a complete reason, for every candidate up to the limit: the app may need any of them to fill its four cards. For a near_miss candidate the reason says what is good about it for this student and leaves the miss to the app.",
   "- must_haves are requirements. Never pick a candidate whose data clearly says the opposite (for example they need a cat allowed and the description or knowledge says no pets). A candidate that is silent on a must-have may be picked, below ones that confirm it.",
   "- Then weigh wishes, the commute, and score (a rule-based fit from 0 to 1; treat it as a strong prior, not a verdict).",
   "- commute.minutes is the trip for the way they said they travel, and commute.limit is the longest they said they would accept. It is a preference, not a rule, but a real one: prefer candidates inside the limit, accept one a little over when it is clearly better on what they wrote, and pick one far over (more than half as long again) only when nothing closer meets a must-have.",
@@ -302,6 +305,8 @@ const oneLine = (s) =>
     .slice(0, 420)
     .trim();
 
+// "an 8 min walk", "an 80 min walk", "an 11 min walk", "a 14 min walk".
+const aOrAn = (n) => (/^(8|11|18)/.test(String(n)) ? "an" : "a");
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -317,11 +322,11 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
 
   // Strict = fits everything asked. Shadow = misses exactly one of rent, lease
   // length, or a stated furnishing/neighborhood requirement.
-  const { strict, shadow } = splitEligible(all, preferences);
+  const { strict, shadow } = splitEligible(all, { ...preferences, _allowMultiMiss: true });
   const totalMatches = strict.length;
   // The one-miss places always ride along: whether any are shown is decided
   // below, once the commute and furnishing wishes have been counted too.
-  const rankPrefs = { ...preferences, _shadowOptIn: shadow.map((s) => s.listing.id) };
+  const rankPrefs = { ...preferences, _allowMultiMiss: true, _shadowOptIn: shadow.map((s) => s.listing.id) };
 
   const ctx = buildRankContext(all, rankPrefs, weights, MATCH_COUNT, { poolSize: 1000 });
   const { pool, fitById, perPersonById, offerById, relaxById, roomShareById } = ctx;
@@ -367,27 +372,37 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
   const perPersonOf = (id) => perPersonById[id] ?? null;
   const missesById = {};
   const closeOk = {};
+  const offById = {};
   for (const l of pool) {
     const misses = [];
     let slight = true;
+    // How far off, summed over the misses: the share over on rent or the
+    // trip, and a flat amount for a miss that is simply yes or no.
+    let offBy = 0;
     const relax = relaxById[l.id];
-    if (relax) {
-      misses.push({ kind: relax.constraint, detail: relax.detail });
+    for (const r of relax ? relax.all ?? [relax] : []) {
+      misses.push({ kind: r.constraint, detail: r.detail });
       const pp = perPersonOf(l.id);
-      if (relax.constraint === "budget" && preferences.budget_max && pp != null) {
-        slight = pp <= preferences.budget_max * (1 + OVER_BUDGET_CAP);
-      }
+      if (r.constraint === "budget" && preferences.budget_max && pp != null) {
+        const over = pp / preferences.budget_max - 1;
+        offBy += over;
+        if (over > OVER_BUDGET_CAP) slight = false;
+      } else offBy += FLAT_MISS;
     }
     const minutes = minutesOf(l.id);
     if (commute?.limit != null && minutes != null && minutes > commute.limit) {
-      misses.push({ kind: "commute", detail: `is about a ${minutes} min ${commute.mode.unit}, past your ${commute.limit} min mark` });
-      if (minutes > commute.limit * (1 + OVER_COMMUTE_CAP)) slight = false;
+      misses.push({ kind: "commute", detail: `is about ${aOrAn(minutes)} ${minutes} min ${commute.mode.unit}, past your ${commute.limit} min mark` });
+      const over = minutes / commute.limit - 1;
+      offBy += over;
+      if (over > OVER_COMMUTE_CAP) slight = false;
     }
     const furnished = offerById[l.id]?.furnished ?? l.furnished ?? null;
-    if (relax?.constraint !== "furnished" && furnishedWish != null && furnished != null && furnished !== furnishedWish) {
+    if (!misses.some((m) => m.kind === "furnished") && furnishedWish != null && furnished != null && furnished !== furnishedWish) {
       misses.push({ kind: "furnished", detail: furnishedWish ? "isn't furnished" : "comes furnished, and you wanted unfurnished" });
+      offBy += FLAT_MISS;
     }
     missesById[l.id] = misses;
+    offById[l.id] = offBy;
     closeOk[l.id] = misses.length === 1 && slight;
   }
   const isFull = (id) => missesById[id].length === 0;
@@ -407,6 +422,17 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
       .sort(byScore)
       .filter((l) => !fullFits.some((f) => sameComplex(f, l)))
   );
+  /*
+   * Everything else, so there are always four cards (Wyatt, 2026-11-12): the
+   * places that miss one thing by more than the caps, then two things, and so
+   * on. Fewest misses first, then the least far off.
+   */
+  const restFits = dedupe(
+    pool
+      .filter((l) => !isFull(l.id) && !closeOk[l.id])
+      .sort((a, b) => missesById[a.id].length - missesById[b.id].length || offById[a.id] - offById[b.id] || byScore(a, b))
+      .filter((l) => ![...fullFits, ...closeFits].some((f) => sameComplex(f, l)))
+  );
   const enoughFull = fullFits.length >= MATCH_COUNT;
 
   // What the model reads: the strongest full fits, and when those run short,
@@ -416,8 +442,11 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     const perKind = {};
     const extras = closeFits.filter((l) => (perKind[missKind(l.id)] = (perKind[missKind(l.id)] ?? 0) + 1) <= 3);
     shortlist = [...shortlist, ...extras].slice(0, CANDIDATES_FOR_MODEL);
+    // Not enough even so: the model also explains the nearest of the rest.
+    const short = MATCH_COUNT + 2 - shortlist.length;
+    if (short > 0) shortlist = [...shortlist, ...restFits.slice(0, short)];
   }
-  const ordered = [...fullFits, ...closeFits];
+  const ordered = [...fullFits, ...closeFits, ...restFits];
   const byId = Object.fromEntries(pool.map((l) => [l.id, l]));
   const { facts, custom, reviews } = await knowledgeFor(shortlist.map((l) => l.id));
 
@@ -439,7 +468,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
       ...slimCandidate(l, offerById[l.id]),
       score: Math.round(scoreById[l.id] * 100) / 100,
       price_listed: perPersonById[l.id] != null,
-      near_miss: missesById[l.id][0]?.detail ?? null,
+      near_miss: missesById[l.id].map((m) => m.detail).join("; ") || null,
       neighborhood: neighborhoodOfListing(l)?.displayName ?? null,
       requires_unit_split: !!splitById[l.id],
       room_share: roomShareById[l.id] === true,
@@ -582,6 +611,8 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
         }
       }
     }
+    // Still short: the nearest of everything else, fewest misses first.
+    for (const l of restFits) take(l, true);
   }
 
   const fallbackReason = (l) => {
@@ -589,7 +620,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     const pp = perPersonById[l.id];
     if (pp != null) parts.push(`${money(pp)} per person`);
     const minutes = minutesOf(l.id);
-    if (minutes != null) parts.push(`a ${minutes} min ${commute.mode.unit}`);
+    if (minutes != null) parts.push(`${aOrAn(minutes)} ${minutes} min ${commute.mode.unit}`);
     const furnished = offerById[l.id]?.furnished ?? l.furnished ?? null;
     if (furnishedWish != null && furnished === furnishedWish) parts.push(furnishedWish ? "furnished" : "unfurnished");
     const hits = amenityHits[l.id].slice(0, 2).map((k) => k.replace(/_/g, " "));
@@ -600,7 +631,9 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
   const matches = chosen.map(({ listing, reason }) => {
     const id = listing.id;
     const notes = [];
-    if (missesById[id].length) notes.push(`Close match: it ${missesById[id][0].detail}.`);
+    const missed = missesById[id].map((m) => m.detail);
+    if (missed.length === 1) notes.push(`Close match: it ${missed[0]}.`);
+    else if (missed.length > 1) notes.push(`Misses ${missed.length === 2 ? "two" : "a few"} things: it ${missed.join(", and it ")}.`);
     if (splitById[id]) notes.push(`Your group would take ${splitById[id].count} units in the same building.`);
     if (roomShareById[id]) notes.push("This is a private room in a place with current tenants.");
     if (perPersonById[id] == null) notes.push("Rent isn't listed, so confirm it with the owner.");

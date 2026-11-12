@@ -1057,6 +1057,10 @@ function splitRelaxable(candidates, relaxInputs) {
       : relaxFailures(x, relaxInputs);
     if (fails.length === 0) strict.push(x);
     else if (fails.length === 1) shadow.push({ ...x, relax: fails[0] });
+    // Find Your Place always fills four cards, so it also wants the places
+    // that miss more than one thing (it ranks them last and says what each
+    // misses). `all` carries every miss; the chat never sets this.
+    else if (relaxInputs.allowMultiMiss) shadow.push({ ...x, relax: { ...fails[0], all: fails } });
   }
   return { strict, shadow };
 }
@@ -1087,6 +1091,7 @@ function relaxInputsOf(preferences) {
     furnishedPref: preferences?._softFurnished ? null : furnishedPrefOf(preferences),
     areas,
     wantsHood: !preferences?._softArea && areas.some((a) => a && a !== "No preference"),
+    allowMultiMiss: preferences?._allowMultiMiss === true,
   };
 }
 
