@@ -92,7 +92,7 @@ npm run lint        # ESLint (apps/web only, mobile has no lint script)
 
 **Never run `npm run build` (or `npm run build:web`) while a dev server is running on the same worktree.** Both write to the same `.next`, so the production build overwrites the dev server's chunks and the running site starts serving pages with no CSS at all. It looks like a broken stylesheet, not a build collision. Stop the dev server, build, then `rm -rf apps/web/.next` and restart dev.
 
-For web changes, run `npm run build:web` and `npm run lint` before opening a PR. Web has a small unit-test suite (`npm test` inside `apps/web`, Node's built-in runner; no CI runs it). Mobile has no lint, typecheck, build or working test script (see `apps/mobile/CLAUDE.md`). Verify changes by running the app and/or querying the DB via the Supabase MCP (read-only, see Security).
+For web changes, run `npm run build:web` and `npm run lint` before opening a PR. Web has a small unit-test suite (`npm test` inside `apps/web`, Node's built-in runner; no CI runs it). Mobile has no lint, typecheck or build script (see `apps/mobile/CLAUDE.md`). Verify changes by running the app and/or querying the DB via the Supabase MCP (read-only, see Security).
 
 ## The Proximity MCP (`mcp/`)
 
