@@ -97,6 +97,8 @@ export default function ProfileCompletionModal({ session }) {
   }, [session, live?.user?.role]);
 
   // While open: lock the page behind and start keyboard focus inside the card.
+  // The lock is on <html>, not <body>, so it never touches the body lock that
+  // pages such as /browse keep for their whole life.
   // The overlay is exactly the visible area: its bottom edge moves up by however
   // much of the screen the on-screen keyboard covers, and its top edge follows
   // the visual viewport when iOS scrolls it down inside the page, so the pinned
@@ -107,7 +109,9 @@ export default function ProfileCompletionModal({ session }) {
   // nothing moves.
   useEffect(() => {
     if (!isOpen) return;
-    document.body.style.overflow = "hidden";
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
     cardRef.current?.focus({ preventScroll: true });
 
     const overlay = overlayRef.current;
@@ -129,7 +133,7 @@ export default function ProfileCompletionModal({ session }) {
       viewport.addEventListener("scroll", clearKeyboard);
     }
     return () => {
-      document.body.style.overflow = "";
+      root.style.overflow = previousOverflow;
       viewport?.removeEventListener("resize", clearKeyboard);
       viewport?.removeEventListener("scroll", clearKeyboard);
     };
