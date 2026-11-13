@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-12T05:42:24.133Z",
-  "count": 349,
+  "_generated": "2026-11-13T20:43:48.672Z",
+  "count": 350,
   "utils": [
     {
       "file": "src/lib/agents/access.js",
@@ -1082,6 +1082,10 @@
     {
       "file": "src/lib/reviews/confirmation.js",
       "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/duplicate.js",
+      "description": "A review this person has already posted on this listing with the same text."
     },
     {
       "file": "src/lib/reviews/duplicateReport.js",
