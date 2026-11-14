@@ -6,10 +6,17 @@ import { createPortal } from "react-dom";
 import { useFavorites } from "@/context/FavoritesContext";
 
 function AuthModal({ onClose }) {
+  // The modal is portalled to <body>, but React sends its events up the React
+  // tree, to whatever renders the heart: a grid card would take a backdrop click
+  // as its own and open the listing. Every click in the modal passes through the
+  // backdrop, so it stops there.
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center flex flex-col items-center gap-5"
@@ -45,14 +52,13 @@ function AuthModal({ onClose }) {
   );
 }
 
-// onPhoto: the heart sits on a dark circle over a listing photo (browse cards),
-// so it is white: an outline when not saved, filled when saved.
-export default function HeartIcon({ listingId, size = "md", onPhoto = false }) {
-  // On a photo the icon is a block (an inline svg leaves a text gap under it,
-  // which lifts the heart off the circle's center) nudged down half a pixel,
-  // where the heart's shape looks centered.
-  const iconClass = `${size === "sm" ? "h-5 w-5" : "h-6 w-6"}${onPhoto ? " block translate-y-[0.5px]" : ""}`;
-  const padClass = size === "sm" ? "p-1" : "p-1.5";
+// The save control, the same everywhere: a white heart on a translucent dark
+// circle, an outline when not saved and filled when saved. Callers only place it.
+// The icon is a block (an inline svg leaves a text gap under it, which lifts the
+// heart off the circle's center) nudged down half a pixel, where the heart's
+// shape looks centered.
+export default function HeartIcon({ listingId }) {
+  const iconClass = "block h-5 w-5 translate-y-[0.5px]";
   const { data: session } = useSession();
   const { savedIds, setFavorite } = useFavorites();
   const isFavorite = savedIds.includes(String(listingId));
@@ -76,12 +82,12 @@ export default function HeartIcon({ listingId, size = "md", onPhoto = false }) {
     <>
       <button
         onClick={handleClick}
-        className={`focus:outline-none ${padClass} ${onPhoto ? "block text-white" : "hover:text-red-500"} transition-colors`}
+        className="block rounded-full bg-black/30 p-[5px] text-white transition-colors focus:outline-none"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={isFavorite}
       >
         {isFavorite ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill={onPhoto ? "white" : "red"} viewBox="0 0 24 24" className={iconClass}>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" className={iconClass}>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
         ) : (

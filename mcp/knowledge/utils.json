@@ -300,6 +300,10 @@
       "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
     },
     {
+      "file": "src/lib/auth/profileSave.js",
+      "description": "Saving the \"Complete Your Profile\" popup. Client-safe, no server imports."
+    },
+    {
       "file": "src/lib/auth/roles.js",
       "description": "No description — add a top-of-file comment."
     },
@@ -1318,6 +1322,10 @@
     {
       "file": "src/lib/users/mrecForm.js",
       "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
+    },
+    {
+      "file": "src/lib/users/profileCompletion.js",
+      "description": "What a request that marks a profile complete has to carry."
     },
     {
       "file": "src/lib/users/viewAs.js",
