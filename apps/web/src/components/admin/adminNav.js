@@ -36,7 +36,7 @@ export const NAV = [
     label: "Reviews",
     items: [
       { path: "reviews", label: "Listing reviews", hierarchy: "reviews" },
-      { path: "reviews/invites", label: "Review invites" },
+      { path: "reviews/invites", label: "Review invites", pinned: true },
       { path: "reviews/testimonials", label: "Testimonials", hierarchy: "testimonials" },
     ],
   },

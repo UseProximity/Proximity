@@ -63,12 +63,20 @@ function ChangeRow({ change }) {
       <span className="px-2 py-1.5 font-medium text-gray-600">{change.label}</span>
       <span className="break-words px-2 py-1.5 text-gray-700">
         {diff ? <Words parts={diff.left} tone="bg-red-100 text-red-800 line-through" /> : before ? before : (
-          <span className="italic text-gray-400">{change.beforeUnknown ? "Not recorded with this request" : "Nothing yet (new)"}</span>
+          <span className="italic text-gray-400">
+            {change.beforeUnknown
+              ? "Not recorded with this request"
+              : change.beforeVaries
+              ? `Differs by unit or owner (${change.beforeVaries} values)`
+              : "Nothing yet (new)"}
+          </span>
         )}
       </span>
       <span className="break-words px-2 py-1.5 text-gray-900">
-        {diff ? <Words parts={diff.right} tone="bg-green-100 text-green-900" /> : after ? <mark className="rounded bg-green-100 px-0.5 text-green-900">{after}</mark> : (
+        {diff ? <Words parts={diff.right} tone="bg-green-100 text-green-900" /> : after ? <mark className="rounded bg-green-100 px-0.5 text-green-900">{after}</mark> : change.removed ? (
           <span className="italic text-red-700">Removed</span>
+        ) : (
+          <span className="italic text-gray-400">Details not recorded</span>
         )}
       </span>
     </div>

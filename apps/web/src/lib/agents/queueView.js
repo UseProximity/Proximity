@@ -20,6 +20,9 @@ export function factLabel(key) {
   return words ? words[0].toUpperCase() + words.slice(1) : "Change";
 }
 
+// The key a proposed fact is saved under (same rule as confirmProposal in landlordAgent.js).
+const savedKey = (key) => String(key ?? "").toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+
 const isProposal = (v) => v && typeof v === "object" && (Array.isArray(v.facts) || Array.isArray(v.coreChanges) || Array.isArray(v.retireKeys));
 
 /* Map of event id -> { actor, message, changes, sourceRef, excerpt, confidence }. */
@@ -29,7 +32,7 @@ export async function describeFactEvents(events) {
 
   const actorIds = [...new Set(events.map((e) => e.actor_id).filter(Boolean))];
   const proposals = events.filter((e) => e.cause === "landlord_chat" && e.actor_id && isProposal(e.new_value));
-  const proposalKeys = [...new Set(proposals.flatMap((e) => [...(e.new_value.facts ?? []).map((f) => f.key), ...(e.new_value.retireKeys ?? [])]).filter(Boolean))];
+  const proposalKeys = [...new Set(proposals.flatMap((e) => [...(e.new_value.facts ?? []).map((f) => savedKey(f.key)), ...(e.new_value.retireKeys ?? [])]).filter(Boolean))];
 
   const [{ data: actors }, { data: chat }, { data: facts }] = await Promise.all([
     actorIds.length
@@ -49,7 +52,18 @@ export async function describeFactEvents(events) {
   ]);
 
   const actorById = new Map((actors ?? []).map((u) => [u.id, u]));
-  const currentFact = new Map((facts ?? []).map((f) => [`${f.listing_id}|${f.field_key}`, f.summary]));
+  /*
+   * Every current value per listing and key. A fact can hold one value per
+   * scope (the property, an owner, a unit, a lease), and which one a proposal
+   * replaces is only settled when it is saved. So one value is shown as is,
+   * and several are summarized rather than picking one that may be wrong.
+   */
+  const currentFact = new Map();
+  for (const f of facts ?? []) {
+    const k = `${f.listing_id}|${f.field_key}`;
+    if (!currentFact.has(k)) currentFact.set(k, new Set());
+    if (f.summary) currentFact.get(k).add(f.summary);
+  }
 
   for (const e of events) {
     const u = e.actor_id ? actorById.get(e.actor_id) : null;
@@ -63,14 +77,18 @@ export async function describeFactEvents(events) {
     } else if (isProposal(e.new_value)) {
       const last = (chat ?? []).find((m) => m.landlord_id === e.actor_id && m.listing_id === e.listing_id && new Date(m.created_at) <= new Date(e.created_at));
       if (last) message = { text: last.body, at: last.created_at, exact: false };
-      const before = (key) => currentFact.get(`${e.listing_id}|${key}`) ?? null;
+      const before = (key) => {
+        const values = [...(currentFact.get(`${e.listing_id}|${key}`) ?? [])];
+        return values.length > 1 ? { before: null, beforeVaries: values.length } : { before: values[0] ?? null };
+      };
       changes = [
-        ...(e.new_value.coreChanges ?? []).map((c) => ({ label: [c.refLabel, c.fieldLabel ?? c.field].filter(Boolean).join(": "), before: null, beforeUnknown: true, after: c.value == null ? null : String(c.value) })),
-        ...(e.new_value.facts ?? []).map((f) => ({ label: factLabel(f.key), before: before(f.key), after: f.summary ?? null })),
-        ...(e.new_value.retireKeys ?? []).map((key) => ({ label: factLabel(key), before: before(key), after: null })),
+        ...(e.new_value.coreChanges ?? []).map((c) => ({ label: [c.refLabel, c.fieldLabel ?? c.field].filter(Boolean).join(": "), before: null, beforeUnknown: true, after: c.value == null ? null : String(c.value), removed: c.value == null })),
+        ...(e.new_value.facts ?? []).map((f) => ({ label: factLabel(f.key), ...before(savedKey(f.key)), after: f.summary ?? null, removed: false })),
+        ...(e.new_value.retireKeys ?? []).map((key) => ({ label: factLabel(key), ...before(key), after: null, removed: true })),
       ];
     } else {
-      changes = [{ label: factLabel(e.field_key), before: d.oldSummary ?? null, after: d.retire ? null : d.summary ?? null }];
+      // Only an explicit retire is a removal; a change with no summary is just undescribed.
+      changes = [{ label: factLabel(e.field_key), before: d.oldSummary ?? null, after: d.retire ? null : d.summary ?? null, removed: !!d.retire }];
     }
 
     out.set(e.id, { actor, message, changes, sourceRef: d.sourceRef ?? null, excerpt: d.excerpt ?? null, confidence: d.confidence ?? null });
