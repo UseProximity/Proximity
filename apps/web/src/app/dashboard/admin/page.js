@@ -149,7 +149,9 @@ export default function AdminDashboard() {
   }
   // Moving to the page already open with new params (another thread, say) remounts it.
   const [navCount, setNavCount] = useState(0);
-  const navCtx = { goTo };
+  // isReadOnly and ownEnv ride along so any view can switch its controls off
+  // for the read-only role, or warn when it works on this site's own database.
+  const navCtx = { goTo, isReadOnly, isSuper, ownEnv, dbTarget };
 
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
@@ -374,7 +376,7 @@ export default function AdminDashboard() {
             )}
 
             {record?.kind === "user" ? (
-              <PersonRecord key={record.id} id={record.id} dbTarget={dbTarget} isSuper={isSuper} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} />
+              <PersonRecord key={record.id} id={record.id} dbTarget={dbTarget} isProd={isProd} isSuper={isSuper} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} />
             ) : record?.kind === "listing" ? (
               <ListingRecord key={record.id} id={record.id} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} onOpenImages={viewProps.onOpenImages} onRefresh={refresh} />
             ) : !page || sessionStatus === "loading" ? null : page.superOnly && !isSuper ? (
@@ -400,7 +402,7 @@ export default function AdminDashboard() {
             ) : path === "system/errors" ? (
               <ErrorsView search={search} dbTarget={dbTarget} />
             ) : path === "system/tools" ? (
-              <SystemToolsView dbTarget={dbTarget} isProd={isProd} />
+              <SystemToolsView dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} />
             ) : path === "listings/unowned" ? (
               <UnownedPanel key={dbTarget} dbTarget={dbTarget} />
             ) : path === "listings/duplicates" ? (

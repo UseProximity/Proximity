@@ -36,7 +36,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { adminFetch, Badge, shortId } from "@/components/admin/adminShared";
+import { adminFetch, Badge, shortId, useAdminNav } from "@/components/admin/adminShared";
 import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import { RefusedReply, ReplySendersList } from "@/components/admin/ReplySenderControls";
 
@@ -243,6 +243,7 @@ function InboxLink({ person, threadId, label }) {
 }
 
 function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
+  const readOnly = !!useAdminNav()?.isReadOnly;
   const { thread, people, messages, blockedAttempts, refusedReplies = [], replySenders = [] } = detail;
   const agent = thread.kind === "agent";
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
@@ -326,7 +327,8 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
           {refusedReplies.length > 0 ? ` · ${refusedReplies.length} emailed repl${refusedReplies.length === 1 ? "y" : "ies"} not posted` : ""}
           {` · started ${fmtWhen(thread.createdAt)}`}
         </p>
-        <ReplySendersList senders={replySenders} landlordId={thread.landlordId} dbTarget={dbTarget} onChanged={onChanged} />
+        {/* Approving or removing a sender is for super admins; the read-only role sees them switched off. */}
+        <fieldset disabled={readOnly} className="min-w-0"><ReplySendersList senders={replySenders} landlordId={thread.landlordId} dbTarget={dbTarget} onChanged={onChanged} /></fieldset>
       </div>
 
       <div className="space-y-2">
@@ -341,7 +343,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
               visitor={thread.visitor}
             />
           ) : item.kind === "refused" ? (
-            <RefusedReply key={item.r.id} r={item.r} dbTarget={dbTarget} onChanged={onChanged} />
+            <fieldset key={item.r.id} disabled={readOnly} className="min-w-0"><RefusedReply r={item.r} dbTarget={dbTarget} onChanged={onChanged} /></fieldset>
           ) : (
             <BlockedAttempt key={item.e.id} e={item.e} sender={byId.get(item.e.userId)} />
           )

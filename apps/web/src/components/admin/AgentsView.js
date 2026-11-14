@@ -14,7 +14,7 @@ import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
 import AgentChangeCard from "@/components/admin/AgentChangeCard";
 import { ListingLink } from "@/components/admin/RecordLink";
-import { useUrlTab } from "@/components/admin/adminShared";
+import { useAdminNav, useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -77,6 +77,7 @@ export default function AgentsView({ search = "" }) {
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
   const [tab, setTab] = useUrlTab(TAB_KEYS, "overview");
+  const readOnly = !!useAdminNav()?.isReadOnly;
 
   const load = useCallback(async () => {
     try {
@@ -138,6 +139,9 @@ export default function AgentsView({ search = "" }) {
   return (
     <div>
       <Tabs tab={tab} setTab={setTab} />
+      {readOnly && <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">You have read-only access, so the controls on this page are switched off.</p>}
+      {/* A disabled fieldset switches off every button and select inside it. */}
+      <fieldset disabled={readOnly} className="min-w-0">
       <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (
@@ -198,6 +202,7 @@ export default function AgentsView({ search = "" }) {
           ))}
         </div>
       </Section>
+      </fieldset>
     </div>
   );
 }

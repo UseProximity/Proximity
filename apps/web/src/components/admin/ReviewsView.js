@@ -6,6 +6,7 @@ import {
   fmtDate,
   shortId,
   prodConfirm,
+  adminFetch,
   deleteRow,
   sortByDate,
   SortToggle,
@@ -112,8 +113,19 @@ export default function ReviewsView({
     });
   }
 
+  // Take a review down (it can be restored) or put it back.
+  async function setRemoved(r, remove) {
+    if (!prodConfirm(isProd, `${remove ? "Remove" : "Restore"} this review.`)) return;
+    try {
+      await adminFetch(`/api/admin/reviews/${r.id}`, dbTarget, { method: "PATCH", body: JSON.stringify({ action: remove ? "remove" : "restore" }) });
+      onRefresh();
+    } catch (err) {
+      alert(`Could not ${remove ? "remove" : "restore"} the review: ${err.message}`);
+    }
+  }
+
   async function handleDelete(r) {
-    if (!confirm("Permanently delete this review? This cannot be undone.\n\nTo take it down reversibly, set deleted_at from the gear menu instead."))
+    if (!confirm("Permanently delete this review? This cannot be undone.\n\nTo take it down reversibly, use Remove instead."))
       return;
     if (!prodConfirm(isProd, "Permanently delete this review.")) return;
     try {
@@ -200,7 +212,12 @@ export default function ReviewsView({
                 {fmtDate(r.created_at)}
               </span>
               <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-                {!isReadOnly && <TrashButton title="Delete review" onClick={() => handleDelete(r)} />}
+                {!isReadOnly && (
+                  <button type="button" onClick={() => setRemoved(r, !r.deleted_at)} className="rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50" title={r.deleted_at ? "Show this review on the listing again" : "Hide this review from the listing. It can be restored."}>
+                    {r.deleted_at ? "Restore" : "Remove"}
+                  </button>
+                )}
+                {!isReadOnly && <TrashButton title="Delete for good (cannot be undone)" onClick={() => handleDelete(r)} />}
                 <GearButton onClick={() => onOpenGear("listing_reviews", r)} />
               </span>
             </div>
@@ -253,7 +270,7 @@ export default function ReviewsView({
                   />
                   {r.deleted_at && (
                     <span className="text-[11px] text-red-600">
-                      Removed {fmtDate(r.deleted_at)}. Clear deleted_at from the gear menu to restore.
+                      Removed {fmtDate(r.deleted_at)}. It is hidden from the listing; use Restore to bring it back.
                     </span>
                   )}
                 </div>

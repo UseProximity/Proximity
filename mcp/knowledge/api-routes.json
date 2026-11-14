@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-14T17:40:30.057Z",
-  "count": 264,
+  "_generated": "2026-11-14T19:07:35.239Z",
+  "count": 268,
   "routes": [
     {
       "path": "/api/account",
@@ -82,10 +82,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "listing_agents"
@@ -133,10 +133,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "listing_fact_events",
@@ -569,10 +569,10 @@
         "POST",
         "DELETE"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
-        "POST": "admin",
-        "DELETE": "admin"
+        "POST": "super",
+        "DELETE": "super"
       },
       "tables": [
         "chat_inbound_emails"
@@ -653,9 +653,9 @@
       "methods": [
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "roles"
@@ -681,6 +681,18 @@
       "file": "src/app/api/admin/hierarchy/[view]/route.js"
     },
     {
+      "path": "/api/admin/home",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/home/route.js"
+    },
+    {
       "path": "/api/admin/listing-images",
       "methods": [
         "PATCH",
@@ -696,6 +708,20 @@
         "listing_images"
       ],
       "file": "src/app/api/admin/listing-images/route.js"
+    },
+    {
+      "path": "/api/admin/lists/[name]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/lists/[name]/route.js"
     },
     {
       "path": "/api/admin/mass-email",
@@ -897,10 +923,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "users",
@@ -908,6 +934,20 @@
         "student_roster"
       ],
       "file": "src/app/api/admin/review-invites/route.js"
+    },
+    {
+      "path": "/api/admin/reviews/[id]",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super"
+      },
+      "tables": [
+        "listing_reviews"
+      ],
+      "file": "src/app/api/admin/reviews/[id]/route.js"
     },
     {
       "path": "/api/admin/roster",
@@ -1033,6 +1073,21 @@
         "listing_drive_times"
       ],
       "file": "src/app/api/admin/update-listing-drive-times/route.js"
+    },
+    {
+      "path": "/api/admin/users/[id]",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super"
+      },
+      "tables": [
+        "roles",
+        "users"
+      ],
+      "file": "src/app/api/admin/users/[id]/route.js"
     },
     {
       "path": "/api/admin/viewUser",

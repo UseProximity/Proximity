@@ -509,11 +509,11 @@ export function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly,
       <Section
         title="Photos"
         count={images.length}
-        action={
+        action={isReadOnly ? null : (
           <button type="button" onClick={() => onOpenImages(listing.id, images.map((i) => i.url))} className="text-xs text-blue-600 hover:underline">
             Manage photos
           </button>
-        }
+        )}
       >
         {images.length === 0 ? (
           <p className="text-xs text-gray-400 italic">No photos</p>

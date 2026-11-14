@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-14T17:40:30.065Z",
-  "count": 212,
+  "_generated": "2026-11-14T19:07:35.247Z",
+  "count": 215,
   "components": [
     {
       "name": "ErrorReporter",
@@ -74,6 +74,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "HomeView",
+      "file": "src/components/admin/HomeView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ImageManagerPanel",
       "file": "src/components/admin/ImageManagerPanel.js",
       "description": "No description. Run generate after adding a description above."
@@ -96,6 +101,11 @@
     {
       "name": "ReferenceView",
       "file": "src/components/admin/ReferenceView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ReferralsView",
+      "file": "src/components/admin/ReferralsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -236,6 +246,11 @@
     {
       "name": "billingFetch",
       "file": "src/components/admin/billing/billingFetch.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListPage",
+      "file": "src/components/admin/lists/ListPage.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

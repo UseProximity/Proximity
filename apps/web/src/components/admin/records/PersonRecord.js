@@ -7,7 +7,7 @@
  * on to its own page. Data comes from /api/admin/records/user/[id].
  */
 import { useEffect, useState } from "react";
-import { adminFetch, Badge, fmtMoney, GearButton, Stars } from "@/components/admin/adminShared";
+import { adminFetch, Badge, fmtMoney, GearButton, prodConfirm, Stars } from "@/components/admin/adminShared";
 import { AdminLink, ListingLink } from "@/components/admin/RecordLink";
 import NotesPanel from "./NotesPanel";
 import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, personName, ThreadList, TourList } from "./shared";
@@ -97,7 +97,71 @@ function OwnedListings({ listings }) {
   );
 }
 
-export default function PersonRecord({ id, dbTarget, isSuper, refreshKey, onOpenGear }) {
+/*
+ * The changes a super admin makes to an account, as buttons with a plain
+ * confirmation. Each used to mean typing a raw value into the gear drawer.
+ */
+const ROLE_CHOICES = ["student", "landlord", "parent", "other", "admin", "super"];
+
+function AccountActions({ user, flags, role, dbTarget, isProd, ownDatabase, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  async function run(body, question, done) {
+    if (!confirm(question)) return;
+    if (!prodConfirm(isProd, "Change this account on the PRODUCTION database.")) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await adminFetch(`/api/admin/users/${user.id}`, dbTarget, { method: "PATCH", body: JSON.stringify(body) });
+      setNotice(done(r));
+      onDone();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const name = personName(user);
+  const BTN = "rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-40";
+  return (
+    <Card title="Account actions">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Role
+          <select
+            value={role}
+            disabled={busy}
+            onChange={(e) => run({ action: "setRole", role: e.target.value }, `Change ${name} from ${role} to ${e.target.value}? They may need to sign in again to see the change.`, () => "Role changed.")}
+            className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+          >
+            {[...new Set([role, ...ROLE_CHOICES])].map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={busy} className={BTN} onClick={() => run({ action: "setEmailAlerts", on: user.email_notifications === false }, user.email_notifications === false ? `Turn email alerts back on for ${name}?` : `Turn email alerts off for ${name}? They will stop getting chat alerts by email.`, () => "Email alerts updated.")}>
+          {user.email_notifications === false ? "Turn email alerts on" : "Turn email alerts off"}
+        </button>
+        <button type="button" disabled={busy} className={BTN} onClick={() => run({ action: "setTest", on: !user.review_sandbox }, user.review_sandbox ? `Stop treating ${name} as a test account? Their activity will reach real people again.` : `Mark ${name} as a test account? Their emails are held back and their listings and chats are hidden from real users.`, () => "Test account setting updated.")}>
+          {user.review_sandbox ? "Unmark as test account" : "Mark as test account"}
+        </button>
+        {flags.deleted && (
+          <button type="button" disabled={busy || !ownDatabase} title={ownDatabase ? undefined : "Restore on the site that owns this database"} className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40" onClick={() => run({ action: "restore" }, `Restore ${name}'s account, along with the listings that were taken down with it?`, (r) => `Account restored${r.listingsRestored ? `, with ${r.listingsRestored} listing${r.listingsRestored === 1 ? "" : "s"}` : ""}.`)}>
+            Restore account
+          </button>
+        )}
+      </div>
+      {notice && <p className="mt-2 text-xs text-green-700">{notice}</p>}
+      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      <p className="mt-2 text-[11px] text-gray-500">Anything else on the account is under the gear at the top. Every change is kept in the activity log.</p>
+    </Card>
+  );
+}
+
+export default function PersonRecord({ id, dbTarget, isProd, isSuper, refreshKey, onOpenGear }) {
+  const [reload, setReload] = useState(0);
   const [record, setRecord] = useState(null);
   const [error, setError] = useState(null);
 
@@ -108,7 +172,7 @@ export default function PersonRecord({ id, dbTarget, isSuper, refreshKey, onOpen
       .then((d) => !cancelled && setRecord(d))
       .catch((e) => { if (!cancelled) { setError(e.message); setRecord(null); } });
     return () => { cancelled = true; };
-  }, [id, dbTarget, refreshKey]);
+  }, [id, dbTarget, refreshKey, reload]);
 
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!record) return <div className="py-20 text-center text-sm text-gray-400">Loading record...</div>;
@@ -183,6 +247,8 @@ export default function PersonRecord({ id, dbTarget, isSuper, refreshKey, onOpen
       </section>
 
       <NotesPanel subjectType="user" subjectId={user.id} dbTarget={dbTarget} />
+
+      {isSuper && <AccountActions user={user} flags={flags} role={role} dbTarget={dbTarget} isProd={isProd} ownDatabase={record.ownDatabase} onDone={() => setReload((n) => n + 1)} />}
 
       {isLandlord && <OwnedListings listings={listings} />}
 

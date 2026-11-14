@@ -142,7 +142,7 @@ export const NAV = [
       { path: "system/activity", label: "Activity log", lists: [{ list: "activity", label: "Activity log" }] },
       { path: "system/reference", label: "Reference data", hierarchy: "reference" },
       { path: "system/tools", label: "Tools" },
-      { path: "export", label: "CSV export", external: true },
+      { path: "export", label: "CSV export", external: true, superOnly: true },
     ],
   },
 ];

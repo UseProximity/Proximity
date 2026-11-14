@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useAdminNav } from "@/components/admin/adminShared";
 
 // ─── Image Manager Panel ───────────────────────────────────────────────────────
 
 export default function ImageManagerPanel({ listingId, initialImages, dbTarget, isProd, onClose, onSaved }) {
+  // New uploads go to this site's own storage whatever the dev/prod switch says.
+  const ownEnv = useAdminNav()?.ownEnv ?? null;
+  const uploadsElsewhere = !!ownEnv && ownEnv !== dbTarget;
   const [images, setImages] = useState(Array.isArray(initialImages) ? initialImages : []);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,6 +169,12 @@ export default function ImageManagerPanel({ listingId, initialImages, dbTarget, 
             </svg>
           </button>
         </div>
+
+        {uploadsElsewhere && (
+          <p className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-900">
+            You are viewing the {dbTarget === "prod" ? "production" : "dev"} database, but new uploads are stored on this site&apos;s own ({ownEnv === "prod" ? "production" : "dev"}) storage. Reorder, rename and delete follow the switch; upload from the matching site.
+          </p>
+        )}
 
         {panelError && (
           <div className="mx-5 mt-3 px-3 py-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded">

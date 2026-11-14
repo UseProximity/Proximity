@@ -1,11 +1,23 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-14T17:40:30.130Z",
-  "count": 356,
+  "_generated": "2026-11-14T19:07:35.322Z",
+  "count": 359,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
       "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/home.js",
+      "description": "The admin Home page (Wyatt, 2026-11-12): what needs someone's attention right"
+    },
+    {
+      "file": "src/lib/admin/jobs.js",
+      "description": "The scheduled jobs, for System > Scheduled jobs (Wyatt, 2026-11-14)."
+    },
+    {
+      "file": "src/lib/admin/lists.js",
+      "description": "The admin dashboard's plain lists (Wyatt, 2026-11-14): state the team could"
     },
     {
       "file": "src/lib/admin/notes.js",

@@ -10,6 +10,21 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
+// PostgREST answers at most 1,000 rows however many match, so the lists that
+// can outgrow that (listings, users, reviews) are read in pages. Each query
+// needs a stable order for the pages not to overlap, hence the id tiebreak.
+const PAGE = 1000;
+async function fetchAll(query) {
+  const rows = [];
+  for (let from = 0; from < 50 * PAGE; from += PAGE) {
+    const { data, error } = await query.range(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return rows;
+}
+
 export async function GET(req, { params }) {
   const session = await requireDbRole(["super", "admin"]);
   if (!session) {
@@ -30,24 +45,23 @@ export async function GET(req, { params }) {
           listing_reviews(*),
           listing_amenities(*),
           listing_utilities(*)`)
-        .order("address");
+        .order("address")
+        .order("id");
       // ?id= narrows to one listing, for its record page.
       const onlyId = new URL(req.url).searchParams.get("id");
-      const { data, error } = await (onlyId ? query.eq("id", onlyId) : query);
-      if (error) throw error;
-      return Response.json(data);
+      return Response.json(await fetchAll(onlyId ? query.eq("id", onlyId) : query));
     }
 
     if (view === "users") {
-      const { data, error } = await supabase
+      const data = await fetchAll(supabase
         .from("users")
         .select(`*,
           roles!role_id(name),
           listing_landlords(listing_id, is_primary, listings(id, title, address)),
           listing_reviews!user_id(id, rating, legitimacy, created_at, deleted_at, listings(id, title, address)),
           matchmaking_preferences(*)`)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+        .order("created_at", { ascending: false })
+        .order("id"));
       return Response.json(data.map(stripSecrets));
     }
 
@@ -65,14 +79,13 @@ export async function GET(req, { params }) {
      * and the view badges them instead of hiding them.
      */
     if (view === "reviews") {
-      const { data, error } = await supabase
+      return Response.json(await fetchAll(supabase
         .from("listing_reviews")
         .select(`*,
           reviewer:users!user_id(id, name, email),
           listings!listing_id(id, title, address)`)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return Response.json(data);
+        .order("created_at", { ascending: false })
+        .order("id")));
     }
 
     if (view === "dorms") {

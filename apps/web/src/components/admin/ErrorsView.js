@@ -10,11 +10,13 @@
  * ?view=errors&error=<id> (the link in the alert email) opens that one.
  */
 import { useEffect, useState } from "react";
-import { adminFetch, Badge } from "@/components/admin/adminShared";
+import { adminFetch, Badge, useAdminNav } from "@/components/admin/adminShared";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
 
 function ErrorRow({ e, open, onToggle, onChange, dbTarget }) {
+  // Resolving is for super admins; the read-only role only reads.
+  const readOnly = !!useAdminNav()?.isReadOnly;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   async function act(action) {
@@ -55,7 +57,7 @@ function ErrorRow({ e, open, onToggle, onChange, dbTarget }) {
           {e.sample?.role && <p><span className="font-semibold">Signed in as:</span> {e.sample.role}</p>}
           {e.sample?.userAgent && <p className="break-words"><span className="font-semibold">Browser:</span> {e.sample.userAgent}</p>}
           {e.stack && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-2 font-mono text-[11px] text-gray-600">{e.stack}</pre>}
-          <div className="flex items-center gap-3">
+          <div className={readOnly ? "hidden" : "flex items-center gap-3"}>
             {e.resolved_at ? (
               <button type="button" disabled={busy} onClick={() => act("reopen")} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 disabled:opacity-50">Reopen</button>
             ) : (
