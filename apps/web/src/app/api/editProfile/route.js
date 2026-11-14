@@ -6,6 +6,7 @@ import { SELF_ASSIGNABLE_ROLES } from "@/lib/auth/roles";
 import { sendMrecFormOnce } from "@/lib/users/mrecForm";
 import { normalizeMoveIn, normalizeMonths, normalizeBeds } from "@/lib/listings/leaseFit";
 import { prefColumns, savedList, touchesListColumns, withoutListColumns } from "@/lib/listings/leasePrefsColumns";
+import { profileCompletionError } from "@/lib/users/profileCompletion";
 
 export async function PATCH(req) {
   try {
@@ -34,10 +35,7 @@ export async function PATCH(req) {
 
     if (!sbUser) {
       console.error("PATCH /api/editProfile: no row for email", authUser.email);
-      return NextResponse.json(
-        { error: `No Supabase user row for email: ${authUser.email}` },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const currentRole = sbUser.roles?.name ?? null;
@@ -45,6 +43,11 @@ export async function PATCH(req) {
 
     const supabaseId = sbUser.id;
     const body = await req.json();
+
+    if (body.profileComplete) {
+      const missing = profileCompletionError(body);
+      if (missing) return NextResponse.json({ error: missing }, { status: 400 });
+    }
 
     // Build allowed fields mapped to snake_case for Supabase
     const allowedFields = {};
@@ -129,10 +132,10 @@ export async function PATCH(req) {
     console.log("PATCH /api/editProfile: updating fields", { fields: Object.keys(allowedFields) });
 
     const update = (data) => updateAsUser(supabase, { userId: supabaseId, table: "users", data, rowId: supabaseId });
-    let { error } = await update(allowedFields);
+    let { data: row, error } = await update(allowedFields);
     // Before migration 202611010001 the list columns don't exist: save the
     // first picks in the single columns rather than failing the whole profile.
-    if (error && touchesListColumns(allowedFields)) ({ error } = await update(withoutListColumns(allowedFields)));
+    if (error && touchesListColumns(allowedFields)) ({ data: row, error } = await update(withoutListColumns(allowedFields)));
 
     if (error) {
       console.error("PATCH /api/editProfile: update failed", {
@@ -143,30 +146,40 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
     }
 
-    const PROFILE = "name, company_name, birthday, gender, phone, description, preferred_move_in_date, preferred_lease_months, preferred_beds, roles!role_id(name)";
-    const readBack = (cols) => supabase.from("users").select(cols).eq("id", supabaseId).single();
-    let { data: updated, error: fetchError } = await readBack(`${PROFILE}, preferred_beds_list, preferred_lease_months_list`);
-    if (fetchError) ({ data: updated, error: fetchError } = await readBack(PROFILE));
-
-    if (fetchError || !updated) {
-      console.error("PATCH /api/editProfile: fetch after update failed", { supabaseId });
+    // The update returns the saved row, so the answer is built from it rather
+    // than from a second read: a read that failed after this point would report
+    // a failure for a write that is already committed. null means no row matched,
+    // so nothing was written.
+    if (!row) {
+      console.error("PATCH /api/editProfile: update matched no row", { supabaseId });
       return NextResponse.json({ error: "Update returned no row" }, { status: 404 });
     }
 
     // Just became a landlord: send the MREC form, once, after the response.
     if (body.role === "landlord" && currentRole !== "landlord") after(() => sendMrecFormOnce(supabase, supabaseId, { req }));
 
+    // `row` is the whole users row, password hash and tokens included: the
+    // answer lists every field it returns, and never spreads the row.
     // Expose role name at the top level so clients can read `updated.role`
     // and feed it to NextAuth session.update({ role }). Prefer camelCase for
     // the email preference so dashboards don't have to dual-read snake_case.
-    const { roles, ...rest } = updated;
     return NextResponse.json({
-      ...rest,
-      role: roles?.name ?? null,
-      emailNotifications: rest.email_notifications !== false,
-      preferredMoveInDate: rest.preferred_move_in_date ?? null,
-      preferredLeaseMonths: savedList(rest.preferred_lease_months_list, rest.preferred_lease_months),
-      preferredBeds: savedList(rest.preferred_beds_list, rest.preferred_beds),
+      name: row.name,
+      company_name: row.company_name,
+      birthday: row.birthday,
+      gender: row.gender,
+      phone: row.phone,
+      description: row.description,
+      preferred_move_in_date: row.preferred_move_in_date,
+      preferred_lease_months: row.preferred_lease_months,
+      preferred_beds: row.preferred_beds,
+      preferred_beds_list: row.preferred_beds_list,
+      preferred_lease_months_list: row.preferred_lease_months_list,
+      role: (allowedFields.role_id ? body.role : currentRole) ?? null,
+      emailNotifications: row.email_notifications !== false,
+      preferredMoveInDate: row.preferred_move_in_date ?? null,
+      preferredLeaseMonths: savedList(row.preferred_lease_months_list, row.preferred_lease_months),
+      preferredBeds: savedList(row.preferred_beds_list, row.preferred_beds),
     });
   } catch (e) {
     console.error("PATCH /api/user/profile failed:", e);

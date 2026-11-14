@@ -1,3 +1,5 @@
+import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
 function computeRentRange(unitTypes) {
@@ -114,6 +116,30 @@ export const getAreaRangeLabel = (unitTypes = []) => {
 
   return `${minArea.toLocaleString()}-${maxArea.toLocaleString()}`;
 };
+
+// Card heading: the listing's title (else the street) and the line under it.
+export function getListingHeading(listing) {
+  const addressBeforeComma = listing.address.split(",")[0].trim();
+  const title = listing.title || addressBeforeComma;
+  const subtitle =
+    listing.title && listing.title !== addressBeforeComma
+      ? listing.address
+      : listing.address.replace(/^[^,]+,\s*/, "");
+  return { title, subtitle };
+}
+
+// Shortest walk to a campus place (grocery and Med Campus excluded), or null.
+export function getCampusWalkMinutes(listing) {
+  const pwm = listing.placeWalkMinutes;
+  if (pwm && typeof pwm === "object") {
+    const vals = Object.entries(pwm)
+      .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
+      .map(([, v]) => v)
+      .filter(Number.isFinite);
+    return vals.length > 0 ? Math.min(...vals) : null;
+  }
+  return typeof pwm === "number" ? pwm : null;
+}
 
 export function calcAge(birthday) {
   if (!birthday) return null;

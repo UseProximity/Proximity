@@ -54,6 +54,8 @@ export default function SuggestedStrip({
   mode = "suggested",
   label = "Suggested for you",
   selectedId = null,
+  // Ids of the listings picked in Compare Listings, ringed like the grid's.
+  compareIds = [],
   onCardClick,
   // The map is hidden: the cards use the page's width-fitting grid, wrapping
   // onto as many rows as they need (never a scrolling row).
@@ -98,6 +100,7 @@ export default function SuggestedStrip({
               listing={listing}
               session={session}
               isSelected={selectedId === listing._id}
+              inCompare={compareIds.includes(listing._id)}
               onCardClick={() => {
                 trackEvent("suggested_click", {
                   surface: "browse",

@@ -70,6 +70,7 @@ import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 import { checkReviewText } from "@/lib/contentRules";
 import { escapeHtml } from "@/lib/escapeHtml";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+import { findDuplicateReview } from "@/lib/reviews/duplicate";
 
 export const dynamic = "force-dynamic";
 
@@ -553,6 +554,56 @@ export async function POST(req) {
       }
     }
 
+    // The one success payload, shared by a fresh review and a repeat of one.
+    const successResponse = async (review) => {
+      /*
+       * How many property reviews this account has now, so the flow knows whether
+       * to offer another one. Asking here rather than letting the form find out
+       * at the cap means a student is never invited to write a review that the
+       * POST above would reject. Dorm reviews are uncapped and not counted.
+       */
+      const reviewCount = await countUserReviews(reviewerUserId);
+      return NextResponse.json({
+        success: true,
+        review,
+        setupToken,
+        existingAccount,
+        setupByEmail,
+        // An invite proved the inbox, so the profile step may offer a password.
+        canSetPassword: !!invite,
+        reviewCount,
+        reviewLimit: REVIEW_LIMIT,
+        // What the profile step should open pre-filled with, so the student never
+        // retypes what they just told us.
+        prefill: setupToken
+          ? {
+              firstName: String(signedOutReviewer.firstName || "").trim(),
+              lastName: String(signedOutReviewer.lastName || "").trim(),
+              email: reviewerEmail,
+              role: "student",
+              graduationYear: normalizeClassYear(signedOutReviewer.classYear),
+              graduationMonth: 5,
+              gender: "",
+              referralSource: "",
+            }
+          : null,
+      });
+    };
+
+    /*
+     * The same person posting the same words on the same listing again is a
+     * resubmission, not a second review. Answer it exactly like the first one
+     * so the student lands on the thank-you step, and stop here: no second
+     * row and no second landlord email. Checked ahead of the cap so a repeat
+     * of someone's last allowed review is not told they have hit the limit.
+     */
+    const duplicate = await findDuplicateReview({
+      userId: reviewerUserId,
+      listingId: matched.listingId,
+      comment,
+    });
+    if (duplicate) return successResponse(duplicate);
+
     // ── Enforce per-account review cap ──────────────────────────────────────
     if ((await countUserReviews(reviewerUserId)) >= REVIEW_LIMIT) {
       return NextResponse.json(
@@ -795,39 +846,7 @@ export async function POST(req) {
       console.error("[reviewReferral] notification failed:", mailErr?.message);
     }
 
-    /*
-     * How many property reviews this account has now, so the flow knows whether
-     * to offer another one. Asking here rather than letting the form find out
-     * at the cap means a student is never invited to write a review that the
-     * POST above would reject. Dorm reviews are uncapped and not counted.
-     */
-    const reviewCount = await countUserReviews(reviewerUserId);
-
-    return NextResponse.json({
-      success: true,
-      review,
-      setupToken,
-      existingAccount,
-      setupByEmail,
-      // An invite proved the inbox, so the profile step may offer a password.
-      canSetPassword: !!invite,
-      reviewCount,
-      reviewLimit: REVIEW_LIMIT,
-      // What the profile step should open pre-filled with, so the student never
-      // retypes what they just told us.
-      prefill: setupToken
-        ? {
-            firstName: String(signedOutReviewer.firstName || "").trim(),
-            lastName: String(signedOutReviewer.lastName || "").trim(),
-            email: reviewerEmail,
-            role: "student",
-            graduationYear: normalizeClassYear(signedOutReviewer.classYear),
-            graduationMonth: 5,
-            gender: "",
-            referralSource: "",
-          }
-        : null,
-    });
+    return successResponse(review);
   } catch (e) {
     console.error("POST /api/reviewReferral failed:", e?.message);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

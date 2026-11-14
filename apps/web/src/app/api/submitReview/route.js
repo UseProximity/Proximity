@@ -4,6 +4,7 @@ import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
+import { findDuplicateReview } from "@/lib/reviews/duplicate";
 
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
 // /api/reviewReferral so both review entry points accept the same values.
@@ -63,6 +64,15 @@ export async function POST(req) {
         );
       }
     }
+
+    // A repeat of a review this person already posted here: hand back the
+    // existing one instead of saving a second copy (lib/reviews/duplicate.js).
+    const duplicate = await findDuplicateReview({
+      userId: session.user.id,
+      listingId,
+      comment,
+    });
+    if (duplicate) return NextResponse.json(duplicate);
 
     const { data: newReview, error } = await insertAsUser(supabase, {
       userId: session.user.id,
