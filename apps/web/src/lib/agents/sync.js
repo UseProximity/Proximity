@@ -31,7 +31,7 @@ async function openSyncJob(listingId) {
   return (data ?? []).find((j) => j) ?? null;
 }
 
-export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false }) {
+export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false, deep = null }) {
   const m = url ? null : await monitorFor(listingId);
   if (!url && !m && !knowledge) return { error: "This listing has no website to sync from.", status: 409 };
   const existing = await openSyncJob(listingId);
@@ -49,7 +49,7 @@ export async function enqueueSync({ listingId, userId = null, batchId = null, pr
     listing_id: listingId,
     target: {
       // knowledge: read the whole site into what Proxy knows, nothing else.
-      sync: true, knowledge, propose, force, name: listing.title, address: listing.address,
+      sync: true, knowledge, propose, force, deep, name: listing.title, address: listing.address,
       url: url ?? m.source_url, levelUrl: url ? null : m.index_url, pastedUrl: url ?? m.index_url ?? m.source_url,
     },
     status: "queued", step: knowledge ? "Queued: reading the whole site" : "Queued for sync", progress: 0,
@@ -96,7 +96,9 @@ export async function manualSync({ listingId, userId, isAdmin = false }) {
     if (used >= MANUAL_SYNCS_PER_DAY) return { error: `You can sync ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
     await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
   }
-  return enqueueSync({ listingId, userId, force: true });
+  // An admin's sync is a deep read, the weekly kind, so the team can try it
+  // on a listing any day (Wyatt, 2026-11-11).
+  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? true : null });
 }
 
 /*
@@ -143,7 +145,7 @@ export async function runSyncJob(job, { onStep = () => {} } = {}) {
   const m = await monitorFor(job.listing_id);
   if (!m) throw new Error("This listing has no website to sync from.");
   const item = await syncMonitor(m, {
-    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId,
+    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId, deep: target.deep ?? null,
     // A landlord's sync reads the whole site next, in its own job.
     knowledge: !target.force,
   });

@@ -1294,10 +1294,12 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
     const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
     const held = (i.held ?? []).map((c) => `<li>${describeChange(c)}${c.detail?.judge?.reason ? ` <span style="color:#666">(${escapeHtml(c.detail.judge.reason)})</span>` : ""}</li>`).join("");
+    // Denied by the sync itself (lib/sourceImport/syncPolicy.js), with why.
+    const denied = (i.denied ?? []).filter((c) => c.denyReason !== "too much changed at once, so the whole run was skipped").map((c) => `<li>${describeChange(c)} <span style="color:#666">(${escapeHtml(c.denyReason ?? "denied")})</span></li>`).join("");
     const hold = i.holdReason
-      ? `<p style="color:#b45309;margin:4px 0">Held for review: ${i.holdReason === "churn_hold" ? "more than a fifth of the leases would change at once" : "the reader was not confident in this read"}. Nothing was applied.</p>`
+      ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight" : "Held: the reader was not confident in this read"}. Nothing was applied.</p>`
       : "";
-    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
   const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
   const quiet = items.length - changed.length;
@@ -1311,7 +1313,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
         <h2 style="color:#111">Website sync digest</h2>
         <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
         ${changed.map(block).join("")}
-        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. Held changes can be applied from the import review or the admin console.</p>
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. The sync applies or declines each change itself; nothing waits for review.</p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1329,6 +1331,31 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
         <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
         <p style="color:#b91c1c">${escapeHtml(error)}</p>
         <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
+        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
+      </div>`,
+  });
+}
+
+/*
+ * A sync skipped a listing because too much changed at once (the churn guard
+ * in lib/sourceImport/apply.js). Sent the first time in a row, not every day.
+ */
+export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourceUrl, touched, existing, newUnits = 0, units = 0, baseUrl }) {
+  const what =
+    newUnits > 4 || (units >= 1 && newUnits > units)
+      ? `added ${Number(newUnits)} new unit${Number(newUnits) === 1 ? "" : "s"} to a listing of ${Number(units)}`
+      : `changed ${Number(touched)} of the ${Number(existing)} leases`;
+  await sendMailSafe(transporter, {
+    logAs: { kind: "source_sync_skipped" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Website sync skipped: ${listing}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">Website sync skipped a listing</h2>
+        <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
+        <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
         <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,

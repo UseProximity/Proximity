@@ -115,6 +115,7 @@ function InvoiceRow({ invoice, busy, paying, result, onPay }) {
         )}
         {invoice.invoicePdfUrl && (
           <a
+            data-readonly-ok
             href={invoice.invoicePdfUrl}
             target="_blank"
             rel="noopener noreferrer"

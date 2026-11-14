@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-11T04:26:06.481Z",
-  "count": 198,
+  "_generated": "2026-11-12T23:30:22.172Z",
+  "count": 201,
   "components": [
     {
       "name": "ErrorReporter",
@@ -499,6 +499,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AmenityPill",
+      "file": "src/components/listings/AmenityPill.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AvailableListings",
       "file": "src/components/listings/AvailableListings.js",
       "description": "No description. Run generate after adding a description above."
@@ -516,6 +521,11 @@
     {
       "name": "ChangeCompare",
       "file": "src/components/listings/ChangeCompare.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ComparePanel",
+      "file": "src/components/listings/ComparePanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -681,6 +691,11 @@
     {
       "name": "lookupPlace",
       "file": "src/components/listings/add/lookupPlace.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "compareBest",
+      "file": "src/components/listings/compareBest.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
