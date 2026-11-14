@@ -4,8 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
-import { formatAvailableFrom, getRentRangeLabel } from "@/utils/listingFormatters";
-import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import {
+  formatAvailableFrom,
+  getCampusWalkMinutes,
+  getListingHeading,
+  getRentRangeLabel,
+} from "@/utils/listingFormatters";
 import { trackEvent, getListingSource } from "@/utils/analytics";
 
 // Modifier/middle clicks fall through to the browser (open in new tab);
@@ -34,7 +38,7 @@ function WalkScale({ minutes, label }) {
   );
 }
 
-export function ListingCard({ listing, session, onCardClick, isSelected = false, compact = false }) {
+export function ListingCard({ listing, session, onCardClick, isSelected = false, inCompare = false, compact = false }) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const imgWrapperRef = useRef(null);
   const imageUrl = listing.images?.[0];
@@ -46,11 +50,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
     if (img?.complete && img.naturalWidth > 0) setImageLoaded(true);
   }, []);
   const imageCount = listing.images?.length || 0;
-  const addressBeforeComma = listing.address.split(",")[0].trim();
-  const title = listing.title || addressBeforeComma;
-  const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
-    ? listing.address
-    : listing.address.replace(/^[^,]+,\s*/, "");
+  const { title, subtitle: cityStateZip } = getListingHeading(listing);
   const bedValues = listing.unitTypes
     .map((u) => u.bedrooms)
     .filter(Number.isFinite);
@@ -94,7 +94,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
 
   return (
     <div
-      className={`relative group bg-white rounded-xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}`}
+      className={`relative group bg-white rounded-xl shadow-lg transition-colors duration-200 overflow-hidden border flex flex-col cursor-pointer ${isSelected ? "border-red-200" : "border-gray-100 hover:border-red-200"}${inCompare ? " ring-2 ring-red-600" : ""}`}
       onClick={() => {
         // Server-rendered grids (the /washu landing pages) render this card
         // without a handler — they can't pass one, being server components.
@@ -204,16 +204,7 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
           {ratingBadge}
         </div>
         {(() => {
-          const pwm = listing.placeWalkMinutes;
-          const campusMin = pwm && typeof pwm === "object"
-            ? (() => {
-                const vals = Object.entries(pwm)
-                  .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
-                  .map(([, v]) => v)
-                  .filter(Number.isFinite);
-                return vals.length > 0 ? Math.min(...vals) : null;
-              })()
-            : typeof pwm === "number" ? pwm : null;
+          const campusMin = getCampusWalkMinutes(listing);
           const shuttleMin = typeof listing.shuttleWalkMinutes === "number" ? listing.shuttleWalkMinutes : null;
           if (campusMin == null && shuttleMin == null) return null;
           return (
@@ -230,8 +221,8 @@ export function ListingCard({ listing, session, onCardClick, isSelected = false,
       </div>
       <div className={`absolute bottom-0 left-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full ${isSelected ? "w-full" : "w-0"}`} />
       {!compact && (
-        <div className="absolute top-3 right-3 z-[2] bg-black/30 rounded-full p-px hidden md:block">
-          <HeartIcon listingId={listing._id} size="sm" onPhoto />
+        <div className="absolute top-3 right-3 z-[2] hidden md:block">
+          <HeartIcon listingId={listing._id} />
         </div>
       )}
     </div>
