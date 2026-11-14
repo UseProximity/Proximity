@@ -7,20 +7,35 @@
  *   path       the address after /dashboard/admin/
  *   hierarchy  the page is one table view loaded from /api/admin/hierarchy/<name>
  *   superOnly  hidden from the read-only admin role
+ *   lists      the page is one or more plain lists from lib/admin/lists.js,
+ *              shown as tabs when there are several
  *   pinned     the page ignores the dev/prod switch and always uses this site's
  *              own database; the shell says so when the switch points elsewhere
  */
 
 export const ADMIN_BASE = "/dashboard/admin";
-export const DEFAULT_PATH = "listings";
+export const DEFAULT_PATH = "home";
 
 export const NAV = [
+  {
+    label: "Home",
+    items: [{ path: "home", label: "Home" }],
+  },
   {
     label: "People",
     items: [
       { path: "people/landlords", label: "Landlords", hierarchy: "users", role: "landlord" },
       { path: "people/students", label: "Students", hierarchy: "users", role: "student" },
       { path: "people/users", label: "All users", hierarchy: "users" },
+      {
+        path: "people/activity",
+        label: "Student activity",
+        lists: [
+          { list: "matchmaking-sessions", label: "Matchmaking chats" },
+          { list: "lease-checks", label: "Lease checks" },
+          { list: "waitlist", label: "Waitlist" },
+        ],
+      },
     ],
   },
   {
@@ -34,35 +49,97 @@ export const NAV = [
   },
   {
     label: "Conversations",
-    items: [{ path: "conversations", label: "Conversations and tours" }],
+    items: [
+      { path: "conversations", label: "Conversations and tours" },
+      { path: "conversations/held", label: "Held email replies", lists: [{ list: "held-replies", label: "Held email replies" }] },
+      {
+        path: "conversations/safety",
+        label: "Flags and reports",
+        lists: [
+          { list: "chat-flags", label: "Flagged messages" },
+          { list: "chat-reports", label: "Reported chats" },
+          { list: "listing-reports", label: "Reported listings" },
+          { list: "review-reports", label: "Reported reviews" },
+          { list: "reply-reports", label: "Reported replies" },
+          { list: "user-blocks", label: "Blocks" },
+        ],
+      },
+    ],
   },
   {
     label: "Reviews",
     items: [
       { path: "reviews", label: "Listing reviews", hierarchy: "reviews" },
       { path: "reviews/invites", label: "Review invites" },
+      { path: "reviews/referrals", label: "Referrals" },
       { path: "reviews/testimonials", label: "Testimonials", hierarchy: "testimonials" },
     ],
   },
   {
     label: "Billing",
-    items: [{ path: "billing", label: "Billing", superOnly: true }],
+    items: [
+      { path: "billing", label: "Billing", superOnly: true },
+      {
+        path: "billing/history",
+        label: "History and events",
+        superOnly: true,
+        lists: [
+          { list: "charge-history", label: "Charge history" },
+          { list: "stripe-events", label: "Stripe events" },
+          { list: "payer-requests", label: "Waiting on a signer" },
+          { list: "autopay-history", label: "Autopay" },
+          { list: "license-history", label: "License disclosures" },
+        ],
+      },
+    ],
   },
   {
     label: "Agents and sync",
-    items: [{ path: "agents", label: "Agents", pinned: true }],
+    items: [
+      { path: "agents", label: "Agents", pinned: true },
+      {
+        path: "agents/health",
+        label: "Imports and sync health",
+        lists: [
+          { list: "import-jobs", label: "Imports and syncs" },
+          { list: "sync-monitors", label: "Websites watched" },
+          { list: "agent-questions", label: "Questions to landlords" },
+          { list: "agent-usage", label: "Agent spend" },
+        ],
+      },
+      {
+        path: "agents/pms",
+        label: "PMS connections",
+        lists: [
+          { list: "pms-connections", label: "Connections" },
+          { list: "pms-queue", label: "Held for review" },
+          { list: "pms-events", label: "Sync events" },
+          { list: "pms-requests", label: "Systems asked for" },
+        ],
+      },
+    ],
   },
   {
     label: "Email",
     items: [
       { path: "email/sent", label: "Sent emails" },
       { path: "email/mass", label: "Mass email", superOnly: true },
+      {
+        path: "email/suppressions",
+        label: "Suppressions",
+        lists: [
+          { list: "email-suppressions", label: "Suppressed addresses" },
+          { list: "email-unsubscribes", label: "Unsubscribed" },
+        ],
+      },
     ],
   },
   {
     label: "System",
     items: [
       { path: "system/errors", label: "Errors" },
+      { path: "system/jobs", label: "Scheduled jobs", lists: [{ list: "scheduled-jobs", label: "Scheduled jobs" }] },
+      { path: "system/activity", label: "Activity log", lists: [{ list: "activity", label: "Activity log" }] },
       { path: "system/reference", label: "Reference data", hierarchy: "reference" },
       { path: "system/tools", label: "Tools" },
       { path: "export", label: "CSV export", external: true },

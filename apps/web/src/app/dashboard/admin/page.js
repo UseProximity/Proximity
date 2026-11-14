@@ -27,6 +27,9 @@ import UnownedPanel from "@/components/admin/massEmail/UnownedPanel";
 import GlobalSearch from "@/components/admin/GlobalSearch";
 import PersonRecord from "@/components/admin/records/PersonRecord";
 import ListingRecord from "@/components/admin/records/ListingRecord";
+import HomeView from "@/components/admin/HomeView";
+import ReferralsView from "@/components/admin/ReferralsView";
+import { ListTabs } from "@/components/admin/lists/ListPage";
 
 export default function AdminDashboard() {
   const { data: session, status: sessionStatus } = useSession();
@@ -376,6 +379,12 @@ export default function AdminDashboard() {
               <ListingRecord key={record.id} id={record.id} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} onOpenImages={viewProps.onOpenImages} onRefresh={refresh} />
             ) : !page || sessionStatus === "loading" ? null : page.superOnly && !isSuper ? (
               <p className="p-6 text-sm text-gray-500">This page is for super admins only.</p>
+            ) : path === "home" ? (
+              <HomeView dbTarget={dbTarget} />
+            ) : page.lists ? (
+              <ListTabs key={`${path}-${navCount}`} tabs={page.lists} dbTarget={dbTarget} isProd={isProd} search={search} />
+            ) : path === "reviews/referrals" ? (
+              <ReferralsView dbTarget={dbTarget} search={search} />
             ) : path === "reviews/invites" ? (
               <ReviewInvitesView search={search} />
             ) : path === "conversations" ? (
