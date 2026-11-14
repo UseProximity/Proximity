@@ -21,7 +21,7 @@ export async function GET(req, { params }) {
 
   try {
     if (view === "listings") {
-      const { data, error } = await supabase
+      const query = supabase
         .from("listings")
         .select(`*,
           listing_units(*, unit_leases(*)),
@@ -31,6 +31,9 @@ export async function GET(req, { params }) {
           listing_amenities(*),
           listing_utilities(*)`)
         .order("address");
+      // ?id= narrows to one listing, for its record page.
+      const onlyId = new URL(req.url).searchParams.get("id");
+      const { data, error } = await (onlyId ? query.eq("id", onlyId) : query);
       if (error) throw error;
       return Response.json(data);
     }

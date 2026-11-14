@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-11T19:30:40.281Z",
-  "count": 259,
+  "_generated": "2026-11-14T17:40:30.057Z",
+  "count": 264,
   "routes": [
     {
       "path": "/api/account",
@@ -788,6 +788,38 @@
       "file": "src/app/api/admin/mass-email/unowned/route.js"
     },
     {
+      "path": "/api/admin/notes",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "admin_notes"
+      ],
+      "file": "src/app/api/admin/notes/route.js"
+    },
+    {
+      "path": "/api/admin/notes/[id]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super",
+        "DELETE": "super"
+      },
+      "tables": [
+        "admin_notes"
+      ],
+      "file": "src/app/api/admin/notes/[id]/route.js"
+    },
+    {
       "path": "/api/admin/pending-reviews",
       "methods": [
         "GET",
@@ -805,6 +837,30 @@
         "listing_reviews"
       ],
       "file": "src/app/api/admin/pending-reviews/route.js"
+    },
+    {
+      "path": "/api/admin/records/listing/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/records/listing/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/records/user/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/records/user/[id]/route.js"
     },
     {
       "path": "/api/admin/referrals",
@@ -878,6 +934,18 @@
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/search",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/search/route.js"
     },
     {
       "path": "/api/admin/sent-emails",

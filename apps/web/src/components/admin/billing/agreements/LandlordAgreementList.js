@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
+import { PersonLink } from "@/components/admin/RecordLink";
 import { formatCents } from "@/lib/billing/money";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
 import AdminAutopayLine from "../AdminAutopayLine";
@@ -428,7 +429,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-gray-900">
-            {row.name || "Unnamed landlord"}
+            <PersonLink id={row.id}>{row.name || "Unnamed landlord"}</PersonLink>
             {row.email && <span className="text-xs text-gray-400"> ({row.email})</span>}
           </p>
           <p className="text-xs text-gray-500">

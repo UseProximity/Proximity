@@ -1,8 +1,20 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-14T17:25:09.494Z",
-  "count": 352,
+  "_generated": "2026-11-14T17:40:30.130Z",
+  "count": 356,
   "utils": [
+    {
+      "file": "src/lib/admin/adminDb.js",
+      "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/notes.js",
+      "description": "Shared by the admin notes routes (app/api/admin/notes): checking what was"
+    },
+    {
+      "file": "src/lib/admin/records.js",
+      "description": "The admin dashboard's record pages (Wyatt, 2026-11-12): everything Proximity"
+    },
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."

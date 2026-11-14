@@ -13,6 +13,7 @@ import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
 import AgentChangeCard from "@/components/admin/AgentChangeCard";
+import { ListingLink } from "@/components/admin/RecordLink";
 import { useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
@@ -51,7 +52,7 @@ function WebsiteList({ rows, busy, decide }) {
       {[...groups.entries()].slice(0, 100).map(([id, g]) => (
         <div key={id} className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-sm">
-            <span className="font-medium text-gray-900">{g.listing}</span>
+            <span className="font-medium text-gray-900"><ListingLink id={id}>{g.listing}</ListingLink></span>
             <span className="text-xs text-gray-500">{g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}</span>
           </div>
           {g.rows.map((e) => (
@@ -189,7 +190,7 @@ export default function AgentsView({ search = "" }) {
         <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
           {agents.slice(0, 300).map((a) => (
             <div key={a.listingId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <div><span className="text-gray-900">{a.listing}</span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
+              <div><span className="text-gray-900"><ListingLink id={a.listingId}>{a.listing}</ListingLink></span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
               <select value={a.status} onChange={(e) => setStatus(a.listingId, e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">
                 <option value="off">off</option><option value="pilot">pilot</option><option value="on">on</option>
               </select>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import { useState, useRef, useEffect } from "react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { clampCount } from "@/utils/unitCounts";
@@ -30,7 +31,7 @@ function sortedImages(listing) {
 // the two cannot drift. Leases now DO gate availability: a unit whose every
 // offering has been withdrawn is not one a student can take (a unit carrying no
 // offering at all still counts as available; see unitAvailability.js).
-function availability(listing) {
+export function availability(listing) {
   if (listing.unavailable) return { label: "Hidden (override)", color: "red" };
   if (listingIsUnavailable(listing)) return { label: "No live offerings", color: "red" };
   return { label: "Available", color: "green" };
@@ -403,7 +404,7 @@ function Section({ title, count, children, action }) {
   );
 }
 
-function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpenGear, onOpenImages, onRefresh }) {
+export function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpenGear, onOpenImages, onRefresh }) {
   const [addingUnit, setAddingUnit] = useState(false);
   const [addingLeaseFor, setAddingLeaseFor] = useState(null);
 
@@ -637,9 +638,9 @@ export default function ListingsView({ data, search, dbTarget, isProd, isReadOnl
                 <div className="w-12 h-9 rounded bg-gray-100 border border-gray-200 flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{l.title || l.address}</p>
+                <p className="text-sm font-medium text-gray-900 truncate"><ListingLink id={l.id}>{l.title || l.address}</ListingLink></p>
                 <p className="text-[11px] text-gray-400 truncate">
-                  {l.title ? `${l.address} · ` : ""}{primary?.users?.name || "no landlord"}
+                  {l.title ? `${l.address} · ` : ""}{primary?.users ? <PersonLink id={primary.user_id} className="underline decoration-gray-300 hover:text-gray-700">{primary.users.name || primary.users.email}</PersonLink> : "no landlord"}
                   {avgRating != null && ` · ${avgRating.toFixed(1)}★ (${reviews.length})`}
                 </p>
               </div>

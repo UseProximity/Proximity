@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-12T22:35:49.617Z",
-  "count": 203,
+  "_generated": "2026-11-14T17:40:30.065Z",
+  "count": 212,
   "components": [
     {
       "name": "ErrorReporter",
@@ -69,6 +69,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "GlobalSearch",
+      "file": "src/components/admin/GlobalSearch.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ImageManagerPanel",
       "file": "src/components/admin/ImageManagerPanel.js",
       "description": "No description. Run generate after adding a description above."
@@ -81,6 +86,11 @@
     {
       "name": "MassEmailView",
       "file": "src/components/admin/MassEmailView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "RecordLink",
+      "file": "src/components/admin/RecordLink.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -251,6 +261,26 @@
     {
       "name": "shared",
       "file": "src/components/admin/massEmail/shared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListingRecord",
+      "file": "src/components/admin/records/ListingRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NotesPanel",
+      "file": "src/components/admin/records/NotesPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PersonRecord",
+      "file": "src/components/admin/records/PersonRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/records/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

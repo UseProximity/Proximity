@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import { adminFetch, patchRow, prodConfirm, valuesEqual, PendingContext } from "@/components/admin/adminShared";
+import { adminFetch, patchRow, prodConfirm, valuesEqual, AdminNavContext, PendingContext } from "@/components/admin/adminShared";
 import GearModal from "@/components/admin/GearModal";
 import ImageManagerPanel from "@/components/admin/ImageManagerPanel";
 import ListingsView from "@/components/admin/ListingsView";
@@ -18,12 +18,15 @@ import MassEmailView from "@/components/admin/MassEmailView";
 import ErrorsView from "@/components/admin/ErrorsView";
 import BillingView from "@/components/admin/BillingView";
 import AgentsView from "@/components/admin/AgentsView";
-import { DEFAULT_PATH, findNavItem, hrefFor, navGroupsFor, navItemTitle, pathFromPathname, resolveLegacy } from "@/components/admin/adminNav";
+import { DEFAULT_PATH, findNavItem, hrefFor, isAdminPath, navGroupsFor, navItemTitle, pathFromPathname, recordFromPath, resolveLegacy } from "@/components/admin/adminNav";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import ViewAsMenu from "@/components/admin/ViewAsMenu";
 import SystemToolsView from "@/components/admin/SystemToolsView";
 import ReviewDuplicatesPanel from "@/components/admin/ReviewDuplicatesPanel";
 import UnownedPanel from "@/components/admin/massEmail/UnownedPanel";
+import GlobalSearch from "@/components/admin/GlobalSearch";
+import PersonRecord from "@/components/admin/records/PersonRecord";
+import ListingRecord from "@/components/admin/records/ListingRecord";
 
 export default function AdminDashboard() {
   const { data: session, status: sessionStatus } = useSession();
@@ -35,6 +38,8 @@ export default function AdminDashboard() {
   // null until the URL has been read, so a reload never flashes (or fetches) Listings first.
   const [path, setPath] = useState(null);
   const page = path ? findNavItem(path) : null;
+  // A person's or a listing's record (people/<id>, listings/<id>); not in the sidebar.
+  const record = path ? recordFromPath(path) : null;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -100,7 +105,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     function readAddress() {
       const current = pathFromPathname(window.location.pathname);
-      let next = findNavItem(current) ? current : DEFAULT_PATH;
+      let next = isAdminPath(current) ? current : DEFAULT_PATH;
       // Old ?view= links (emails already sent, bookmarks) move to the new page.
       const legacy = current ? null : resolveLegacy(window.location.search);
       if (legacy) {
@@ -110,28 +115,38 @@ export default function AdminDashboard() {
       }
       setPath(next);
       // Website sync emails link to one listing: open Listings filtered to it.
-      const listing = new URLSearchParams(window.location.search).get("listing");
+      // A link can also carry ?q= to open a page already searched.
+      const params = new URLSearchParams(window.location.search);
+      const listing = params.get("listing");
       if (next === "listings" && listing) setSearch(listing);
+      else setSearch(params.get("q") ?? "");
     }
     readAddress();
     window.addEventListener("popstate", readAddress);
     return () => window.removeEventListener("popstate", readAddress);
   }, []);
 
-  function goTo(next) {
-    if (next === path || !findNavItem(next)) return;
+  // `params` opens the page on a tab, a thread or a search (?tab=, ?thread=, ?q=).
+  function goTo(next, params) {
+    if (!isAdminPath(next) || (next === path && !params)) return;
     if (!confirmDiscardForSwitch()) return;
     setPendingRows({});
     setSaveStatus(null);
     // Clear synchronously so the next render never sees the old page's data shape
     setData(null);
     setLoading(true);
-    setSearch("");
+    setSearch(params?.q ?? "");
+    // A new page starts on its default tab with nothing open, so only the
+    // params asked for are kept. The address changes before the page mounts,
+    // so a view that reads its tab from the address finds it there.
+    window.history.pushState(null, "", hrefFor(next, params));
     setPath(next);
-    // A new page starts on its default tab with nothing open, so every param
-    // (tab, thread, error...) is dropped.
-    window.history.pushState(null, "", hrefFor(next));
+    setNavCount((n) => n + 1);
+    window.scrollTo(0, 0);
   }
+  // Moving to the page already open with new params (another thread, say) remounts it.
+  const [navCount, setNavCount] = useState(0);
+  const navCtx = { goTo };
 
   // Load persisted db target on mount; fall back to the server's environment
   useEffect(() => {
@@ -235,7 +250,9 @@ export default function AdminDashboard() {
   useEffect(() => { load(); }, [load]);
 
   // Silent refresh keeps expansion state after inline saves / child adds
-  const refresh = useCallback(() => load(true), [load]);
+  // Record pages fetch their own data; bumping refreshKey makes them fetch again.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = useCallback(() => { setRefreshKey((k) => k + 1); return load(true); }, [load]);
 
   const viewProps = {
     data,
@@ -249,6 +266,7 @@ export default function AdminDashboard() {
   };
 
   return (
+    <AdminNavContext.Provider value={navCtx}>
     <PendingContext.Provider value={pendingCtx}>
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -320,6 +338,7 @@ export default function AdminDashboard() {
             placeholder="Search this page…"
             className="w-56 px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-400"
           />
+          <GlobalSearch dbTarget={dbTarget} />
           <ViewAsMenu isProd={isProd} />
         </div>
       </div>
@@ -334,7 +353,7 @@ export default function AdminDashboard() {
       )}
 
       <div className="flex">
-        <AdminSidebar groups={navGroups} activePath={path} onNavigate={goTo} />
+        <AdminSidebar groups={navGroups} activePath={record ? record.listPath : path} onNavigate={(next) => goTo(next)} />
 
         <main className="flex-1 min-w-0 px-6 py-5">
           <div className="max-w-6xl mx-auto">
@@ -351,20 +370,24 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {!page || sessionStatus === "loading" ? null : page.superOnly && !isSuper ? (
+            {record?.kind === "user" ? (
+              <PersonRecord key={record.id} id={record.id} dbTarget={dbTarget} isSuper={isSuper} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} />
+            ) : record?.kind === "listing" ? (
+              <ListingRecord key={record.id} id={record.id} dbTarget={dbTarget} isProd={isProd} isReadOnly={isReadOnly} refreshKey={refreshKey} onOpenGear={viewProps.onOpenGear} onOpenImages={viewProps.onOpenImages} onRefresh={refresh} />
+            ) : !page || sessionStatus === "loading" ? null : page.superOnly && !isSuper ? (
               <p className="p-6 text-sm text-gray-500">This page is for super admins only.</p>
             ) : path === "reviews/invites" ? (
               <ReviewInvitesView search={search} />
             ) : path === "conversations" ? (
-              <ConversationsView search={search} dbTarget={dbTarget} />
+              <ConversationsView key={navCount} search={search} dbTarget={dbTarget} />
             ) : path === "email/sent" ? (
-              <SentEmailsView search={search} dbTarget={dbTarget} />
+              <SentEmailsView key={navCount} search={search} dbTarget={dbTarget} />
             ) : path === "email/mass" ? (
               <MassEmailView key={dbTarget} search={search} dbTarget={dbTarget} />
             ) : path === "billing" ? (
-              <BillingView key={dbTarget} search={search} dbTarget={dbTarget} />
+              <BillingView key={`${dbTarget}-${navCount}`} search={search} dbTarget={dbTarget} />
             ) : path === "agents" ? (
-              <AgentsView search={search} />
+              <AgentsView key={navCount} search={search} />
             ) : path === "system/errors" ? (
               <ErrorsView search={search} dbTarget={dbTarget} />
             ) : path === "system/tools" ? (
@@ -378,7 +401,7 @@ export default function AdminDashboard() {
             ) : data ? (
               <>
                 {path === "listings" && <ListingsView {...viewProps} />}
-                {path === "people/users" && <UsersView {...viewProps} />}
+                {page.hierarchy === "users" && <UsersView key={path} {...viewProps} fixedRole={page.role ?? null} />}
                 {path === "reviews" && <ReviewsView {...viewProps} />}
                 {path === "listings/dorms" && <DormsView {...viewProps} />}
                 {path === "reviews/testimonials" && <TestimonialsView {...viewProps} />}
@@ -414,5 +437,6 @@ export default function AdminDashboard() {
       )}
     </div>
     </PendingContext.Provider>
+    </AdminNavContext.Provider>
   );
 }

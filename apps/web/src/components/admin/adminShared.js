@@ -27,6 +27,16 @@ export function useUrlTab(allowed, fallback) {
   return [tab, setTab];
 }
 
+// ─── Moving around the dashboard ──────────────────────────────────────────────
+// The shell (app/dashboard/admin/page.js) provides goTo(path, params) so any
+// view can open another page, or a person's or listing's record, in place.
+
+export const AdminNavContext = createContext(null);
+
+export function useAdminNav() {
+  return useContext(AdminNavContext);
+}
+
 // ─── Pending-changes store ────────────────────────────────────────────────────
 // Edits made anywhere in the dashboard are staged here (and highlighted) but
 // only hit the database when the user clicks "Save Changes" in the header.

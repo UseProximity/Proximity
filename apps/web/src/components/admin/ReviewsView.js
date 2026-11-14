@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import {
   fmtDate,
   shortId,
@@ -182,7 +183,7 @@ export default function ReviewsView({
               <Stars rating={r.rating} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {listing?.title || listing?.address || (
+                  {listing ? <ListingLink id={listing.id}>{listing.title || listing.address}</ListingLink> : (
                     <span className="italic text-gray-400">(listing missing)</span>
                   )}
                 </p>
@@ -215,7 +216,7 @@ export default function ReviewsView({
                   <p><span className="text-gray-400">Value:</span> {r.value_rating ?? "—"}</p>
                   <p><span className="text-gray-400">Unit:</span> {[r.unit_designator, r.unit_number].filter(Boolean).join(" ") || "—"}</p>
                   <p><span className="text-gray-400">Reviewer email:</span> {r.reviewer?.email || r.reviewer_email || "—"}</p>
-                  <p><span className="text-gray-400">Account:</span> {r.user_id ? shortId(r.user_id) : "not signed in"}</p>
+                  <p><span className="text-gray-400">Account:</span> {r.user_id ? <PersonLink id={r.user_id}>{r.reviewer?.name || shortId(r.user_id)}</PersonLink> : "not signed in"}</p>
                   <p><span className="text-gray-400">Confirmation sent:</span> {r.confirmation_sent_at ? fmtDate(r.confirmation_sent_at) : "—"}</p>
                   <p className="font-mono text-gray-400">{shortId(r.id)}</p>
                 </div>

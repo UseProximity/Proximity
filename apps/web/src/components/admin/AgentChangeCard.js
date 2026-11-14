@@ -7,6 +7,8 @@
  * marked. Shaped by lib/agents/queueView.js.
  */
 
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
+
 const CAUSES = {
   sync: "Website sync",
   landlord_chat: "Landlord told their agent",
@@ -82,7 +84,7 @@ export default function AgentChangeCard({ event, tone = "white", busy, onDecide 
   return (
     <div className={`mb-2 rounded-xl border p-3 text-sm ${tone === "amber" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
-        <span><span className="font-medium text-gray-900">{event.listing}</span> · {causeLabel(event.cause)} · {day(event.createdAt)}</span>
+        <span><span className="font-medium text-gray-900"><ListingLink id={event.listingId}>{event.listing}</ListingLink></span> · {causeLabel(event.cause)} · {day(event.createdAt)}</span>
         <span className="flex flex-wrap gap-1">
           {event.flags?.length > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">fair housing: {event.flags.join(", ")}</span>}
           {event.recentClaim && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px]">new owner</span>}
@@ -97,7 +99,7 @@ export default function AgentChangeCard({ event, tone = "white", busy, onDecide 
           </p>
           {message && <p className="mt-0.5 whitespace-pre-wrap text-gray-900">&ldquo;{message.text}&rdquo;</p>}
           <p className="mt-1 text-xs text-gray-500">
-            {who ?? "Unknown sender"}{actor?.role ? ` (${actor.role})` : ""}{message?.at ? ` · ${dayTime(message.at)}` : ""}
+            {who ? <PersonLink id={actor.id}>{who}</PersonLink> : "Unknown sender"}{actor?.role ? ` (${actor.role})` : ""}{message?.at ? ` · ${dayTime(message.at)}` : ""}
           </p>
           {!message && event.cause === "landlord_chat" && (
             <p className="mt-1 text-[11px] italic text-gray-400">The original message was not saved (sent before agent conversations were stored).</p>

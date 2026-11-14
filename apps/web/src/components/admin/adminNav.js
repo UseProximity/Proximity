@@ -17,7 +17,11 @@ export const DEFAULT_PATH = "listings";
 export const NAV = [
   {
     label: "People",
-    items: [{ path: "people/users", label: "All users", hierarchy: "users" }],
+    items: [
+      { path: "people/landlords", label: "Landlords", hierarchy: "users", role: "landlord" },
+      { path: "people/students", label: "Students", hierarchy: "users", role: "student" },
+      { path: "people/users", label: "All users", hierarchy: "users" },
+    ],
   },
   {
     label: "Listings",
@@ -68,6 +72,22 @@ export const NAV = [
 
 const ALL_ITEMS = NAV.flatMap((g) => g.items.map((item) => ({ ...item, group: g.label })));
 
+/*
+ * Record pages: one person or one listing, at people/<id> and listings/<id>.
+ * They are not in the sidebar; lists, search and links open them.
+ */
+const RECORD = /^(people|listings)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export function recordFromPath(path) {
+  const m = RECORD.exec(path ?? "");
+  if (!m) return null;
+  return m[1] === "people" ? { kind: "user", id: m[2], listPath: "people/users" } : { kind: "listing", id: m[2], listPath: "listings" };
+}
+
+export const personPath = (id) => `people/${id}`;
+export const listingPath = (id) => `listings/${id}`;
+export const isAdminPath = (path) => !!findNavItem(path) || !!recordFromPath(path);
+
 export function findNavItem(path) {
   return ALL_ITEMS.find((i) => !i.external && i.path === path) ?? null;
 }
@@ -89,8 +109,9 @@ export function pathFromPathname(pathname) {
   return pathname.slice(ADMIN_BASE.length).replace(/^\/+|\/+$/g, "");
 }
 
-export function hrefFor(path) {
-  return `${ADMIN_BASE}/${path}`;
+export function hrefFor(path, params) {
+  const qs = params ? new URLSearchParams(params).toString() : "";
+  return `${ADMIN_BASE}/${path}${qs ? `?${qs}` : ""}`;
 }
 
 // Before the sidebar every page was ?view=<name> on one address. Emails already
