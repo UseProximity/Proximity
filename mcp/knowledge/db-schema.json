@@ -1736,16 +1736,18 @@
           "unit_designator:text",
           "source:text",
           "confirmation_sent_at:timestamptz",
-          "edited_at:timestamptz"
+          "edited_at:timestamptz",
+          "comment_hash:text"
         ],
         "column_notes": {
+          "comment_hash": "generated md5(comment); what lib/reviews/duplicate.js matches resubmissions on (202611140001)",
           "legitimacy": "admin approval gate; false rows are hidden",
           "anonymous": "hide the author name",
           "referrer_id": "ambassador who referred the reviewer",
           "source": "?src= campaign tag from a printed QR code",
           "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
         },
-        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; unique listing_reviews_one_copy_idx (user_id, listing_id, comment_hash) where deleted_at is null (one copy of a review per person, listing and text; 202611140001); rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
         "observed_2026_10_12": {
           "prod_rows": 147,
           "prod_last_write": "2026-10-12"

@@ -66,11 +66,11 @@ import {
   normalizeClassYear,
   resolveSchoolId,
 } from "@/lib/reviews/onboarding";
-import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
+import { resolveInvite, resolveRecentlySpentInvite, consumeInvite } from "@/lib/reviews/invites";
 import { checkReviewText } from "@/lib/contentRules";
 import { escapeHtml } from "@/lib/escapeHtml";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
-import { findDuplicateReview } from "@/lib/reviews/duplicate";
+import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
 
 export const dynamic = "force-dynamic";
 
@@ -425,12 +425,23 @@ export async function POST(req) {
      * true. Anyone holding a dead link can still use /review like everyone else.
      */
     const invite = inviteToken ? await resolveInvite(inviteToken) : null;
-    if (inviteToken && !invite) {
-      return NextResponse.json(
+    /*
+     * The one exception: a link spent in the last day may be a retry of the
+     * very review that spent it (a phone that missed the first response). It
+     * proves the same inbox, so it is carried as far as the duplicate check
+     * below, which answers a matching retry with the thank-you step. Any other
+     * use of a spent link is refused there, exactly as a dead link is here.
+     */
+    const spentInvite =
+      inviteToken && !invite ? await resolveRecentlySpentInvite(inviteToken) : null;
+    const deadInviteResponse = () =>
+      NextResponse.json(
         { error: "This invite link has expired or has already been used." },
         { status: 410 }
       );
-    }
+    if (inviteToken && !invite && !spentInvite) return deadInviteResponse();
+    // The inbox this request has proven, whether or not the link is still unspent.
+    const provenInvite = invite || spentInvite;
 
     let reviewerUserId = null;
     let reviewerEmail = null;
@@ -466,8 +477,8 @@ export async function POST(req) {
        * post any email it likes, and on this path it is ignored, so a tampered
        * field cannot put a review under someone else's address.
        */
-      const email = invite
-        ? invite.email
+      const email = provenInvite
+        ? provenInvite.email
         : String(signedOutReviewer.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) {
         return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
@@ -500,7 +511,7 @@ export async function POST(req) {
        * punish a whole dorm behind one campus NAT for opening their invites on
        * the same afternoon, which is exactly the burst we are hoping for.
        */
-      if (!invite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
+      if (!provenInvite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
         return NextResponse.json(
           { error: "That's a lot of reviews at once. Please try again later." },
           { status: 429 }
@@ -520,7 +531,7 @@ export async function POST(req) {
          * claimability check), and the student never gets a second email asking
          * them to confirm an address we already watched them use.
          */
-        inboxProven: !!invite,
+        inboxProven: !!provenInvite,
         priorSetupToken,
         req,
       });
@@ -570,7 +581,7 @@ export async function POST(req) {
         existingAccount,
         setupByEmail,
         // An invite proved the inbox, so the profile step may offer a password.
-        canSetPassword: !!invite,
+        canSetPassword: !!provenInvite,
         reviewCount,
         reviewLimit: REVIEW_LIMIT,
         // What the profile step should open pre-filled with, so the student never
@@ -597,12 +608,20 @@ export async function POST(req) {
      * row and no second landlord email. Checked ahead of the cap so a repeat
      * of someone's last allowed review is not told they have hit the limit.
      */
+    /*
+     * Only the id goes back for a repeat, never the stored row. On the
+     * signed-out path the account is named by an email anyone can type, so the
+     * row would hand a stranger who knows a review's public text its author,
+     * its unit and the landlord contact fields that are never displayed.
+     */
     const duplicate = await findDuplicateReview({
       userId: reviewerUserId,
       listingId: matched.listingId,
       comment,
     });
-    if (duplicate) return successResponse(duplicate);
+    if (duplicate) return successResponse({ id: duplicate.id });
+    // A spent link that is not retrying its own review is a dead link.
+    if (spentInvite) return deadInviteResponse();
 
     // ── Enforce per-account review cap ──────────────────────────────────────
     if ((await countUserReviews(reviewerUserId)) >= REVIEW_LIMIT) {
@@ -751,6 +770,19 @@ export async function POST(req) {
     });
 
     if (error) {
+      /*
+       * An identical submission landed between the duplicate check and this
+       * insert (two in flight at once). That one did the work, including the
+       * landlord email, so this one is answered as the repeat it is.
+       */
+      if (isDuplicateReviewError(error)) {
+        const first = await findDuplicateReview({
+          userId: reviewerUserId,
+          listingId: resolvedListingId,
+          comment,
+        });
+        return successResponse(first ? { id: first.id } : null);
+      }
       console.error("reviewReferral: insert failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }

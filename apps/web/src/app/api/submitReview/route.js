@@ -4,7 +4,7 @@ import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
-import { findDuplicateReview } from "@/lib/reviews/duplicate";
+import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
 
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
 // /api/reviewReferral so both review entry points accept the same values.
@@ -90,6 +90,11 @@ export async function POST(req) {
     });
 
     if (error) {
+      // An identical submission won the race to insert: hand back that one.
+      if (isDuplicateReviewError(error)) {
+        const first = await findDuplicateReview({ userId: session.user.id, listingId, comment });
+        if (first) return NextResponse.json(first);
+      }
       console.error("POST /api/submitReview failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }

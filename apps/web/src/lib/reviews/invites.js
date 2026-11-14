@@ -195,3 +195,34 @@ export async function consumeInvite(inviteId, { reviewId = null, reviewKind = nu
   }
   return !!data?.id;
 }
+
+// How long after an invite is spent a retry of the same submission is still recognized.
+const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * An invite spent in the last day, for recognizing a retry of the submission
+ * that spent it.
+ *
+ * A phone that missed the first response resubmits with the same token, which
+ * resolveInvite now rejects because the review it is retrying used the link
+ * up. The caller may use this ONLY to let that request reach the duplicate
+ * check: when the text matches the review already posted, it is answered as a
+ * success. Anything else must still be refused as a dead link, so a spent
+ * token never posts a second, different review.
+ *
+ * Returns { inviteId, email } or null.
+ */
+export async function resolveRecentlySpentInvite(token) {
+  const clean = String(token || "").trim();
+  if (!clean) return null;
+
+  const { data: invite } = await supabase
+    .from("review_invites")
+    .select("id, invited_email, used_at")
+    .eq("token_hash", hashToken(clean))
+    .maybeSingle();
+
+  if (!invite?.used_at) return null;
+  if (Date.now() - new Date(invite.used_at).getTime() > RETRY_WINDOW_MS) return null;
+  return { inviteId: invite.id, email: invite.invited_email };
+}
