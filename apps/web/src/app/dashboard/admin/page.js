@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { adminFetch, patchRow, prodConfirm, valuesEqual, PendingContext } from "@/components/admin/adminShared";
 import GearModal from "@/components/admin/GearModal";
@@ -95,10 +95,20 @@ export default function AdminDashboard() {
     return pendingCount === 0 || confirm(`You have ${pendingCount} unsaved change${pendingCount > 1 ? "s" : ""}. Discard them and switch?`);
   }
 
+  /*
+   * The back button handler below is attached once, so it reads the open page
+   * and the staged edit count through refs rather than the stale first render.
+   */
+  const pathRef = useRef(null);
+  pathRef.current = path;
+  const pendingCountRef = useRef(0);
+  pendingCountRef.current = pendingCount;
+
   // Each page has its own address, so a reload, a shared link and the back
   // button all land on the same page. Inner tabs stay in ?tab= as before.
   useEffect(() => {
-    function readAddress() {
+    // `event` is set for back/forward, unset for the first read on mount.
+    function readAddress(event) {
       const current = pathFromPathname(window.location.pathname);
       let next = findNavItem(current) ? current : DEFAULT_PATH;
       // Old ?view= links (emails already sent, bookmarks) move to the new page.
@@ -107,6 +117,27 @@ export default function AdminDashboard() {
         next = legacy.path;
         const qs = legacy.params.toString();
         window.history.replaceState(null, "", qs ? `${hrefFor(next)}?${qs}` : hrefFor(next));
+      }
+      /*
+       * Back or forward to a different page is the same move as clicking it in
+       * the sidebar (goTo), so it gets the same reset. Without it the first
+       * render pairs the new page with the old page's data, which crashes when
+       * the shapes differ (Reference data back to Listings) and carries staged
+       * edits and search text across pages with no prompt.
+       */
+      const open = pathRef.current;
+      if (event && open && next !== open) {
+        const count = pendingCountRef.current;
+        if (count > 0 && !confirm(`You have ${count} unsaved change${count > 1 ? "s" : ""}. Discard them and switch?`)) {
+          // Stay put: put the address back on the page that is still showing.
+          window.history.pushState(null, "", hrefFor(open));
+          return;
+        }
+        setPendingRows({});
+        setSaveStatus(null);
+        setData(null);
+        setLoading(true);
+        setSearch("");
       }
       setPath(next);
       // Website sync emails link to one listing: open Listings filtered to it.
