@@ -25,10 +25,11 @@ function readDismissed() {
   }
 }
 
-export default function ReviewDuplicatesPanel({ dbTarget }) {
+// `standalone` is the panel on its own page (Listings > Possible duplicates): it starts open.
+export default function ReviewDuplicatesPanel({ dbTarget, standalone = false }) {
   const [suspects, setSuspects] = useState(null);
   const [error, setError] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(standalone);
   const [dismissed, setDismissed] = useState(new Set());
   const [showDismissed, setShowDismissed] = useState(false);
 

@@ -124,6 +124,10 @@
       "description": "The per-question reply address a landlord can answer from (PRD v3)."
     },
     {
+      "file": "src/lib/agents/queueView.js",
+      "description": "What the admin review queue shows for each held knowledge change (Wyatt,"
+    },
+    {
       "file": "src/lib/agents/replyEmail.js",
       "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
     },

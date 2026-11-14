@@ -7,7 +7,7 @@ import { errorResponse, massEmailContext } from "@/lib/massEmail/http";
 /*
  * Live listings with no landlord account (lib/massEmail/unowned.js).
  *
- * GET   { listings: [{ id, label, contactName, contactEmail, leaseCount,
+ * GET   { writable, listings: [{ id, label, contactName, contactEmail, leaseCount,
  *         suggestion: { action: attach|invite|skip|manual, reason, userId? } }] }
  * POST  { action: "attach", userId, listingIds }   link them to that landlord
  *       { action: "invite", email, name, listingIds } create a landlord account
@@ -19,7 +19,7 @@ export async function GET(req) {
   const ctx = await massEmailContext(req);
   if (ctx.response) return ctx.response;
   try {
-    return NextResponse.json({ listings: await findUnownedListings(ctx.db) });
+    return NextResponse.json({ listings: await findUnownedListings(ctx.db), writable: ctx.writable });
   } catch (err) {
     return errorResponse(err, "list unowned listings");
   }
