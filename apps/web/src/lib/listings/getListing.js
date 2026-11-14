@@ -147,7 +147,9 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), be
       /*
        * The whole apartment's monthly rent, for ranking only: per-person and
        * whole-unit prices can't be compared as stated (Wyatt, 2026-10-31).
-       * Never shown; the renter sees `rent` as the landlord set it.
+       * The renter sees `rent` as the landlord set it. Compare Listings also
+       * shows this figure under a rent with no stated basis, as the number its
+       * "Better" pill was decided on (ComparePanel.js).
        */
       unitRent:
         Number(l.rent) > 0

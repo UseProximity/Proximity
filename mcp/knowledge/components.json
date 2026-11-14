@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-11T04:26:06.481Z",
-  "count": 198,
+  "_generated": "2026-11-14T19:03:11.175Z",
+  "count": 206,
   "components": [
     {
       "name": "ErrorReporter",
@@ -16,6 +16,16 @@
     {
       "name": "LicenseDisclosureFields",
       "file": "src/components/account/LicenseDisclosureFields.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AdminSidebar",
+      "file": "src/components/admin/AdminSidebar.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgentChangeCard",
+      "file": "src/components/admin/AgentChangeCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -104,6 +114,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "SystemToolsView",
+      "file": "src/components/admin/SystemToolsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "TestimonialsView",
       "file": "src/components/admin/TestimonialsView.js",
       "description": "No description. Run generate after adding a description above."
@@ -111,6 +126,16 @@
     {
       "name": "UsersView",
       "file": "src/components/admin/UsersView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ViewAsMenu",
+      "file": "src/components/admin/ViewAsMenu.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "adminNav",
+      "file": "src/components/admin/adminNav.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -499,6 +524,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AmenityPill",
+      "file": "src/components/listings/AmenityPill.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AvailableListings",
       "file": "src/components/listings/AvailableListings.js",
       "description": "No description. Run generate after adding a description above."
@@ -516,6 +546,11 @@
     {
       "name": "ChangeCompare",
       "file": "src/components/listings/ChangeCompare.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ComparePanel",
+      "file": "src/components/listings/ComparePanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -681,6 +716,11 @@
     {
       "name": "lookupPlace",
       "file": "src/components/listings/add/lookupPlace.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "compareBest",
+      "file": "src/components/listings/compareBest.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

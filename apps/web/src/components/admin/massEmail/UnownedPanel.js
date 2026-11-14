@@ -24,7 +24,11 @@ const ACTION = {
 };
 const ORDER = ["attach", "invite", "manual", "skip"];
 
-export default function UnownedPanel({ dbTarget, writable }) {
+// `writable` comes from the caller when it already knows; on its own page
+// (Listings > Without an account) the panel takes it from the server's answer.
+export default function UnownedPanel({ dbTarget, writable: writableProp }) {
+  const [serverWritable, setServerWritable] = useState(false);
+  const writable = writableProp ?? serverWritable;
   const [listings, setListings] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -34,6 +38,7 @@ export default function UnownedPanel({ dbTarget, writable }) {
     try {
       const d = await api("/api/admin/mass-email/unowned", dbTarget);
       setListings(d.listings);
+      setServerWritable(!!d.writable);
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -95,6 +100,7 @@ export default function UnownedPanel({ dbTarget, writable }) {
 
   return (
     <div className="space-y-3">
+      <h2 className="text-lg font-semibold text-gray-900">Listings without an account</h2>
       <p className="text-sm text-gray-600">
         Live listings that no landlord account owns. Nobody on them can sign in, sign the marketing agreement or answer Proxy until one does.
       </p>
