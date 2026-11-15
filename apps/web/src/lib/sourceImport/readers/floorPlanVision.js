@@ -47,8 +47,12 @@ const Answer = z.object({
   // 1-based position of the floor plan drawing among the images sent, or
   // null when none of them is one.
   floorPlanImage: z.number().nullable(),
-  confidence: z.number(),
 });
+
+// One retry when the answer comes back unreadable. Haiku now and then ends
+// its JSON early ("Unterminated string"), and a second ask nearly always
+// lands.
+const ATTEMPTS = 2;
 
 /* Fetch, shrink to 320px JPEG, and score how diagram-like the pixels are. */
 async function prepare(url) {
@@ -98,35 +102,73 @@ async function prepare(url) {
   }
 }
 
-/* The model's pick among the prepared candidates, or null. */
+/*
+ * The model's pick among the prepared candidates, or null. Undefined when
+ * no answer came back, and the unit keeps the floor plan it had.
+ *
+ * Two kinds of miss. An unreadable answer is the model's own hiccup: asked
+ * once more, and logged as a warning if both tries miss. A failed call (a
+ * dead or out-of-credit key, a model that no longer exists, an outage the
+ * SDK's own retries did not ride out) is not retried and is raised as a site
+ * error, so the check never goes quiet night after night with nobody told.
+ * The unit name stays out of the error's label, so every unit hit by one
+ * outage is one site error with a count, not one alert each.
+ */
 async function askModel(unitName, candidates) {
-  try {
-    const response = await getClient().messages.parse({
-      model: HAIKU,
-      max_tokens: 200,
-      output_config: { format: zodOutputFormat(Answer) },
-      system:
-        "You look at images from an apartment listing and say which one, if any, is the floor plan: an architectural drawing of the apartment's layout (walls, rooms, labels, dimensions), usually black lines on white. Photographs of rooms, buildings, furniture or views are not floor plans, even if they show an empty unit. A rendering or 3D cutaway of the layout counts. Answer with the 1-based position of the floor plan image, or null if none is one.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...candidates.flatMap((c, i) => [
-              { type: "text", text: `Image ${i + 1}:` },
-              { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } },
-            ]),
-            { type: "text", text: `These are images filed under the floor plan "${unitName}". Which image is the floor plan drawing?` },
-          ],
-        },
-      ],
-    });
-    const cost = logCost(`floor plan ${unitName}`, HAIKU, response.usage) ?? 0;
-    const i = response.parsed_output?.floorPlanImage;
-    return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
-  } catch (err) {
-    console.error(`[source-import] floor plan check failed for ${unitName}:`, err?.message);
-    return { pick: undefined, cost: 0 };
+  let lastError = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    try {
+      return await askModelOnce(unitName, candidates);
+    } catch (err) {
+      if (!err?.unreadable) {
+        console.error("[source-import] floor plan check failed:", err);
+        return { pick: undefined, cost: 0 };
+      }
+      lastError = err;
+    }
   }
+  console.warn(`[source-import] floor plan not checked for ${unitName}, kept as it was (${ATTEMPTS} tries): ${lastError?.message}`);
+  return { pick: undefined, cost: 0 };
+}
+
+/*
+ * One ask. The reply is parsed here rather than by messages.parse, so an
+ * unreadable answer says why (stop reason, token count, what came back):
+ * the 11/15 failures cut off 9 to 20 characters in, in pairs at the same
+ * moment, and the log should show what ended them.
+ */
+async function askModelOnce(unitName, candidates) {
+  const response = await getClient().messages.create({
+    model: HAIKU,
+    max_tokens: 200,
+    output_config: { format: zodOutputFormat(Answer) },
+    system:
+      "You look at images from an apartment listing and say which one, if any, is the floor plan: an architectural drawing of the apartment's layout (walls, rooms, labels, dimensions), usually black lines on white. Photographs of rooms, buildings, furniture or views are not floor plans, even if they show an empty unit. A rendering or 3D cutaway of the layout counts. Answer with the 1-based position of the floor plan image, or null if none is one.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...candidates.flatMap((c, i) => [
+            { type: "text", text: `Image ${i + 1}:` },
+            { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } },
+          ]),
+          { type: "text", text: `These are images filed under the floor plan "${unitName}". Which image is the floor plan drawing?` },
+        ],
+      },
+    ],
+  });
+  const cost = logCost(`floor plan ${unitName}`, HAIKU, response.usage) ?? 0;
+  const text = (response.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  let parsed = null;
+  try {
+    parsed = Answer.parse(JSON.parse(text));
+  } catch (err) {
+    const unreadable = new Error(`unreadable answer (stop: ${response.stop_reason}, ${response.usage?.output_tokens ?? "?"} tokens, got ${JSON.stringify(text.slice(0, 60))}): ${err?.message}`);
+    unreadable.unreadable = true;
+    throw unreadable;
+  }
+  const i = parsed.floorPlanImage;
+  return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
 }
 
 /*

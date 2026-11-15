@@ -27,6 +27,8 @@
  * length offered at that price and the earliest date anything at that price is
  * free (null = available now). Apartments at the same price on the same floor
  * plan are one offer, which is why the apartment numbers ride along on it.
+ * rentIsPerPerson is true (per person), false (whole unit) or null when the
+ * site does not say; the writer then keeps the lease's own basis.
  */
 
 export const AMENITY_VALUES = [
@@ -127,16 +129,27 @@ export function unitKey(unit) {
  * everything at $1,819 becomes one offer carrying every lease length seen at
  * that price, the apartments it covers, and the soonest date any of them is
  * free. Per-person and whole-unit prices never merge even when the number
- * matches. An offer with no price ("call for pricing") is kept as one
- * unpriced offer so the unit still exists; it sorts last.
+ * matches. A price whose basis the site does not state joins the stated one
+ * at the same number, if there is exactly one, and otherwise stays unknown.
+ * An offer with no price ("call for pricing") is kept as one unpriced offer
+ * so the unit still exists; it sorts last.
  */
 export function consolidateOffers(raw = []) {
   const groups = new Map();
+  const basisOf = (o) => (o.rentIsPerPerson == null ? null : !!o.rentIsPerPerson);
+  const stated = new Map();
+  for (const o of raw) {
+    const rent = o ? money(o.rent) : null;
+    if (rent == null || basisOf(o) === null) continue;
+    if (!stated.has(rent)) stated.set(rent, new Set());
+    stated.get(rent).add(basisOf(o));
+  }
   for (const o of raw) {
     if (!o) continue;
     const rent = money(o.rent);
-    const perPerson = !!o.rentIsPerPerson;
-    const key = rent == null ? "none" : `${rent}:${perPerson ? "pp" : "whole"}`;
+    const known = stated.get(rent);
+    const perPerson = basisOf(o) ?? (known?.size === 1 ? [...known][0] : null);
+    const key = rent == null ? "none" : `${rent}:${perPerson === null ? "unknown" : perPerson ? "pp" : "whole"}`;
     const terms = termList(o.leaseTermMonths);
     // A date already behind us means available now; feeds keep the day an
     // apartment first freed up.

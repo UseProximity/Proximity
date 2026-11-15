@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
+import { churnCheck, decideSyncChange, DENY, smallPriceMove } from "./syncPolicy.js";
 
 const full = { snapshot: { unitListComplete: true } };
 const partial = { snapshot: { unitListComplete: false } };
@@ -94,4 +94,42 @@ test("the churn guard", () => {
   // A leasing portal's weekly repricing is not churn, but new units still are.
   assert.equal(churnCheck({ changes: leases(40, "rent_change"), existingLeases: 50, existingUnits: 8, portalPriced: true }), null);
   assert.ok(churnCheck({ changes: [unit(), unit(), unit(), unit(), unit()], existingLeases: 50, existingUnits: 8, portalPriced: true }));
+});
+
+test("small price moves and the rent basis", () => {
+  const apply = { verdict: { apply: true } };
+  const move = (from, to, extra = {}) => ({ kind: "rent_change", field: "rent", old: { rent: from }, new: { rent: to }, ...apply, ...extra });
+  assert.equal(smallPriceMove(move(1600, 1560)), true);
+  assert.equal(smallPriceMove(move(1600, 1680)), true);
+  assert.equal(smallPriceMove(move(1600, 1700)), false);
+  // An unknown rent on either side is never small.
+  assert.equal(smallPriceMove(move(null, 1600)), false);
+  // Per person against whole unit at the same number is never small.
+  const flip = move(1600, 1600, { field: "rent,rentIsPerPerson", old: { rent: 1600, rentIsPerPerson: false }, new: { rent: 1600, rentIsPerPerson: true } });
+  assert.equal(smallPriceMove(flip), false);
+  // Ten leases each cut by 2% is no churn; three basis flips are.
+  assert.equal(churnCheck({ changes: Array.from({ length: 10 }, () => move(1000, 980)), existingLeases: 10, existingUnits: 5 }), null);
+  assert.ok(churnCheck({ changes: [flip, flip, flip], existingLeases: 10, existingUnits: 5 }));
+  // Lease updates count by their real field names.
+  const dated = { kind: "lease_updated", field: "availableFrom", old: { availableFrom: "2027-06-01" }, new: { availableFrom: "2027-08-01" }, ...apply };
+  assert.ok(churnCheck({ changes: [dated, dated, dated], existingLeases: 10, existingUnits: 5 }));
+  const terms = { kind: "lease_updated", field: "leaseTermMonths", old: { leaseTermMonths: [12] }, new: { leaseTermMonths: [12, 6] }, ...apply };
+  assert.equal(churnCheck({ changes: [terms, terms, terms], existingLeases: 10, existingUnits: 5 }), null);
+});
+
+test("a small move is only small for a repricing, not another building", () => {
+  const apply = { verdict: { apply: true } };
+  const move = (from, to, extra = {}) => ({ kind: "rent_change", field: "rent", old: { rent: from }, new: { rent: to }, ...apply, ...extra });
+  const base = { existingLeases: 10, existingUnits: 5 };
+  // All cuts: a repricing, no churn.
+  assert.equal(churnCheck({ changes: [move(1000, 980), move(1200, 1170), move(1500, 1460)], ...base }), null);
+  // Cuts and raises in one run: each counts.
+  assert.ok(churnCheck({ changes: [move(1000, 980), move(1200, 1230), move(1500, 1460)], ...base }));
+  // The price now covers other apartment numbers: counts.
+  const moved = move(1000, 980, { field: "rent,apartments", old: { rent: 1000, apartments: "Apt 101" }, new: { rent: 980, apartments: "Apt 7B" } });
+  assert.equal(smallPriceMove(moved), false);
+  assert.ok(churnCheck({ changes: [moved, moved, moved], ...base }));
+  // A date or length riding along does not stop a cut being small.
+  const withDate = move(1000, 980, { field: "rent,availableFrom", old: { rent: 1000, availableFrom: null }, new: { rent: 980, availableFrom: "2027-08-01" } });
+  assert.equal(smallPriceMove(withDate), true);
 });

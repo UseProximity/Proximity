@@ -396,7 +396,9 @@ export function factsAbout({ units = [], flyers = [], listing = null, readerNote
 
 function unitsFromModel(listing) {
   return (listing?.units ?? []).map((u) => {
-    const perPerson = u.rentBasis === "per_person";
+    // "unknown" stays unknown (null), so a sync never flips a lease the
+    // landlord states per person to a whole-unit rent at the same number.
+    const perPerson = u.rentBasis === "per_person" ? true : u.rentBasis === "total" ? false : null;
     const apartments = (u.apartments ?? []).map((a) => String(a).trim()).filter(Boolean);
     const rents = (u.apartmentRents ?? []).length === apartments.length ? u.apartmentRents : null;
     const dates = (u.apartmentDates ?? []).length === apartments.length ? u.apartmentDates : null;
