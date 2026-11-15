@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T04:09:12.504Z",
-  "count": 359,
+  "_generated": "2026-11-15T19:26:44.417Z",
+  "count": 365,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -828,6 +828,26 @@
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
     },
     {
+      "file": "src/lib/findYourPlace/browseHandoff.js",
+      "description": "\"Browse All N Matches\": the browse page opened with the student's answers"
+    },
+    {
+      "file": "src/lib/findYourPlace/commute.js",
+      "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
+    },
+    {
+      "file": "src/lib/findYourPlace/match.js",
+      "description": "Find Your Place: answers in, top four places out."
+    },
+    {
+      "file": "src/lib/findYourPlace/options.js",
+      "description": "Find Your Place: the questions, answer options and prompt chips, shared by"
+    },
+    {
+      "file": "src/lib/findYourPlace/parsePreferences.js",
+      "description": "Find Your Place, page 2: turn whatever the student wrote into preferences"
+    },
+    {
       "file": "src/lib/firecrawl.js",
       "description": "Every call to Firecrawl goes through here, so a second account can take over"
     },
@@ -1382,6 +1402,10 @@
     {
       "file": "src/utils/availability.js",
       "description": "How an offering's start date reads to a person."
+    },
+    {
+      "file": "src/utils/bikeTimes.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/chatThreadGrouping.js",

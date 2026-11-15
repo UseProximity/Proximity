@@ -12,9 +12,22 @@ export const maxDuration = 60;
 
 const T = "matchmaking_chat_sessions";
 
-// A signed-out device may re-run its search this many times before it is asked
-// to sign in. Each run is two model calls; a signed-in student has no cap.
+/*
+ * A signed-out device gets this many searches in all before it is asked to sign
+ * in, counted across every search it has started (Start over included), so
+ * clearing the page does not refill it. Each search is two model calls; a
+ * signed-in student has no cap. A device that clears its cookie still meets the
+ * per-IP limit.
+ */
 const VISITOR_RUN_CAP = 10;
+
+// Searches this device has run, over every Find Your Place row it started
+// (claimed ones too: signing up does not refill a later signed-out run).
+async function visitorRuns(visitorId) {
+  if (!visitorId) return 0;
+  const { data } = await supabase.from(T).select("preferences").eq("visitor_id", visitorId).not("preferences->_fyp", "is", null);
+  return (data ?? []).reduce((sum, row) => sum + (Number(row.preferences?._fyp?.runs) || 0), 0);
+}
 
 /*
  * Find Your Place: run the matcher for a set of answers and save the result.
@@ -66,7 +79,7 @@ export async function POST(request) {
     }
 
     const runs = (existing?.preferences?._fyp?.runs ?? 0) + 1;
-    if (!actor && runs > VISITOR_RUN_CAP) {
+    if (!actor && (await visitorRuns(visitor)) >= VISITOR_RUN_CAP) {
       return NextResponse.json({ error: "cap" }, { status: 429 });
     }
 
@@ -131,6 +144,50 @@ export async function POST(request) {
     return response;
   } catch (err) {
     console.error("[find-your-place POST]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/*
+ * Claim: the student signed in (usually from the "save your matches" wall) on
+ * the browser that ran the search signed out. The search on screen moves into
+ * their account, so it shows up in their history and "Suggested for you".
+ *
+ * Only the one search the page names, only if this browser's device cookie
+ * started it, and only while no account owns it. The matches themselves are
+ * not re-ranked: they stay the four the student already saw.
+ *
+ * @auth user
+ */
+export async function PATCH(request) {
+  try {
+    const requestUser = await getRequestUser(request);
+    if (!requestUser?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { data: actor } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", requestUser.email.toLowerCase())
+      .maybeSingle();
+    if (!actor) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    const visitor = readVisitorId(request);
+    const body = await request.json().catch(() => ({}));
+    const sessionId = typeof body.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.sessionId) ? body.sessionId : null;
+    if (!visitor || !sessionId) return NextResponse.json({ claimed: false });
+
+    // `.is("user_id", null)` in the update itself, so two tabs cannot both claim
+    // and a row another account claimed meanwhile is left alone.
+    const { data, error } = await supabase
+      .from(T)
+      .update({ user_id: actor.id })
+      .eq("id", sessionId)
+      .eq("visitor_id", visitor)
+      .is("user_id", null)
+      .select("id");
+    if (error) throw error;
+    return NextResponse.json({ claimed: !!data?.length });
+  } catch (err) {
+    console.error("[find-your-place PATCH]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

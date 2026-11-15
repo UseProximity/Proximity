@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-15T04:09:12.372Z",
-  "count": 216,
+  "_generated": "2026-11-15T19:26:44.351Z",
+  "count": 214,
   "components": [
     {
       "name": "ErrorReporter",
@@ -449,6 +449,36 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "FindYourPlaceClient",
+      "file": "src/components/findYourPlace/FindYourPlaceClient.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MatchCard",
+      "file": "src/components/findYourPlace/MatchCard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepBasics",
+      "file": "src/components/findYourPlace/StepBasics.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepMatches",
+      "file": "src/components/findYourPlace/StepMatches.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepPreferences",
+      "file": "src/components/findYourPlace/StepPreferences.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ui",
+      "file": "src/components/findYourPlace/ui.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "BackNav",
       "file": "src/components/guides/BackNav.js",
       "description": "No description. Run generate after adding a description above."
@@ -876,46 +906,6 @@
     {
       "name": "wizardShared",
       "file": "src/components/listings/wizard/wizardShared.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "AnswerControls",
-      "file": "src/components/matchmaking/AnswerControls.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ChatClient",
-      "file": "src/components/matchmaking/ChatClient.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ChatWindow",
-      "file": "src/components/matchmaking/ChatWindow.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ClaimChatPrompt",
-      "file": "src/components/matchmaking/ClaimChatPrompt.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "LockedMatches",
-      "file": "src/components/matchmaking/LockedMatches.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "MessageBubble",
-      "file": "src/components/matchmaking/MessageBubble.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "PreferencePanel",
-      "file": "src/components/matchmaking/PreferencePanel.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "RecommendationCards",
-      "file": "src/components/matchmaking/RecommendationCards.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

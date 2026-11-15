@@ -8,7 +8,7 @@ import StepPreferences from "./StepPreferences";
 import StepMatches, { MATCH_PANEL } from "./StepMatches";
 import { ProgressBar, FooterButton, ChoiceDialog } from "./ui";
 import { HANDOFF_VERSION } from "@/lib/findYourPlace/browseHandoff";
-import { trackEvent, setListingSource } from "@/utils/analytics";
+import { trackEvent, setListingSource, rememberMatchesShown } from "@/utils/analytics";
 import {
   NO_PREFERENCE,
   QUESTION_COUNT,
@@ -148,6 +148,34 @@ export default function FindYourPlaceClient() {
       .catch(() => {});
   }, [ready, signedIn, prefilled, answers, results]);
 
+  /*
+   * Signed in with matches found while signed out (typically back from the
+   * "save your matches" wall): move that search into the account. Once per
+   * search; the server checks it was this browser's and nobody else's.
+   */
+  const sessionId = results?.sessionId ?? null;
+  const owned = !!results?.owned;
+  useEffect(() => {
+    if (!ready || !signedIn || !sessionId || owned) return;
+    let cancelled = false;
+    fetch("/api/find-your-place", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.claimed) trackEvent("Find Your Place Matches Claimed");
+        // Claimed now, or already someone's: either way, nothing more to do.
+        setResults((r) => (r && r.sessionId === sessionId ? { ...r, owned: true } : r));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, signedIn, sessionId, owned]);
+
   const goTo = (next) => {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -184,9 +212,12 @@ export default function FindYourPlaceClient() {
         matches: data.matches ?? [],
         totalMatches: data.totalMatches ?? 0,
         sessionId: data.sessionId ?? null,
+        // Run signed in: the search already belongs to the account.
+        owned: !!data.signedIn,
         key: keyOf(input),
         browse: data.browse ?? null,
       });
+      rememberMatchesShown((data.matches ?? []).map((m) => m.listing_id));
       trackEvent("Find Your Place Matches Shown", {
         count: data.matches?.length ?? 0,
         fits: data.totalMatches ?? 0,
@@ -306,7 +337,11 @@ export default function FindYourPlaceClient() {
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2.5">
-          {step > 1 ? <FooterButton onClick={() => goTo(step - 1)}>Back</FooterButton> : <span />}
+          {step > 1 ? (
+            <FooterButton onClick={() => goTo(step - 1)}>{step === 3 ? "Edit Preferences" : "Back"}</FooterButton>
+          ) : (
+            <span />
+          )}
           {step === 1 && (
             <FooterButton
               primary
