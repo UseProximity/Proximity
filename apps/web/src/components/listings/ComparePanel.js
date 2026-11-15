@@ -55,6 +55,19 @@ function compareRows(listing, unit) {
     .map((perPerson) => [perPerson, getRentRangeLabel(leases.filter((l) => !!l.rentIsPerPerson === perPerson))])
     .filter(([, rent]) => rent !== "Contact for Pricing");
 
+  /*
+   * The "Better" pill compares whole-unit rent (compareBest.js). Where the
+   * landlord never said what a rent covers and the split test read it as per
+   * person, that whole-unit figure (rent x bedrooms) differs from the "/mo"
+   * shown, so the pill could sit on the side that looks pricier. Showing the
+   * figure it was compared on explains the pill (Wyatt, 2026-11-14).
+   */
+  const guessedUnitRent = getRentRangeLabel(
+    leases
+      .filter((l) => l.rentIsPerPerson == null && Number(l.unitRent) > 0 && Number(l.unitRent) !== Number(l.rent))
+      .map((l) => ({ rent: l.unitRent }))
+  );
+
   const bedText =
     unit?.bedrooms == null
       ? "N/A"
@@ -81,13 +94,20 @@ function compareRows(listing, unit) {
     [
       "Price:",
       rents.length ? (
-        rents.map(([perPerson, rent], i) => (
-          <span key={perPerson}>
-            {i > 0 && " · "}
-            <span className="font-bold">{rent}</span>
-            {perPerson ? "/person" : "/mo"}
-          </span>
-        ))
+        <span>
+          {rents.map(([perPerson, rent], i) => (
+            <span key={perPerson}>
+              {i > 0 && " · "}
+              <span className="font-bold">{rent}</span>
+              {perPerson ? "/person" : "/mo"}
+            </span>
+          ))}
+          {guessedUnitRent !== "Contact for Pricing" && (
+            <span className="mt-0.5 block text-xs text-gray-500">
+              about {guessedUnitRent}/mo for the whole unit
+            </span>
+          )}
+        </span>
       ) : (
         <span className="font-bold">Contact for Pricing</span>
       ),

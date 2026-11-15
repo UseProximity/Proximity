@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: read
 
 jobs:
   review:
@@ -99,6 +100,38 @@ jobs:
         run: |
           git log --no-merges --format='- %s%n%b' origin/main..HEAD > ci-out/commits.md || true
           wc -l < ci-out/commits.md
+
+      - name: Wait for the staging deploy of this commit
+        # The check starts the moment staging is pushed, while Vercel is still
+        # building. Probing then hits the old deploy or a cold switchover and
+        # logs slow answers as bugs. Wait for Vercel's status on this commit;
+        # if none shows up (the build was skipped because no app code changed),
+        # carry on, since staging already serves this code.
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const ref = context.payload.pull_request.head.sha;
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const started = Date.now();
+            let seen = false;
+            while (Date.now() - started < 20 * 60 * 1000) {
+              const { data } = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
+              const vercel = data.statuses.find((s) => s.context === 'Vercel');
+              if (vercel) {
+                seen = true;
+                if (vercel.state !== 'pending') {
+                  core.info(`Vercel: ${vercel.state} (${vercel.description}).`);
+                  if (vercel.state !== 'success') core.warning('Staging deploy did not succeed; testing whatever staging serves now.');
+                  break;
+                }
+              } else if (Date.now() - started > 3 * 60 * 1000) {
+                core.info('No Vercel status after 3 minutes; the build was skipped.');
+                break;
+              }
+              await sleep(15000);
+            }
+            if (seen) await sleep(30000); // let the staging alias settle on the new deploy
 
       - name: Analyze impact + run tests against staging
         env:

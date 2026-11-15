@@ -9,7 +9,8 @@
  * The price is the exception: it is compared as the whole unit's monthly rent
  * (each lease's unitRent, from the shared rent-basis helper), not as the table
  * shows it. The table shows the landlord's figure, per person or for the unit, so
- * the pill can sit on the side whose shown number is higher.
+ * the pill can sit on the side whose shown number is higher. Where that figure
+ * is a guess, ComparePanel shows the whole-unit rent under it so the pill reads.
  */
 import { getCampusWalkMinutes } from "@/utils/listingFormatters";
 
