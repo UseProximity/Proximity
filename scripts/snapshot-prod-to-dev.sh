@@ -187,10 +187,18 @@ cleanup() {
     fi
   fi
   if [[ $code -ne 0 && $RESTORE_STARTED -eq 1 && $PRESERVE_RESTORED -eq 0 ]]; then
+    # restore(false): dev was not verified, so rows can fail here for reasons that say nothing
+    # about the backup. Leaving last_restore_ok false makes the next save() merge into the backup
+    # instead of replacing it, so nothing that failed to come back is lost.
     echo "    putting partner sandbox data and test accounts back…"
-    psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
-      -c "select * from snapshot_preserve.restore();" >/dev/null 2>&1 \
-      || echo "    could not put them all back; the backup is kept and the next run retries"
+    local out=""
+    if out=$(psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
+               -c "select * from snapshot_preserve.restore(false) r where r.failed > 0;" 2>&1); then
+      echo "    put back; the backup is kept in full until a run finishes cleanly"
+    else
+      echo "    could not put them all back; the backup is kept and the next run retries"
+    fi
+    [[ -n "$out" ]] && printf '%s\n' "$out" | head -40 | sed 's/^/      /'
   fi
   if [[ $code -ne 0 && $FKS_DETACHED -eq 1 ]]; then
     echo "    run failed; putting the detached dev-only foreign keys back…"
@@ -291,7 +299,11 @@ psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "truncate snapshot_prese
 psql "$PROD_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "copy ($PROD_KEYS_SQL) to stdout" \
   | psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
       -c "copy snapshot_preserve.prod_keys (table_name, key) from stdin"
-psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.save();"
+# save() is one statement, so like restore() in step 6 it gets more than the database's 2 minute
+# default. It walks the whole FK graph a few times; with the house test landlord's footprint
+# (about 20,000 rows) it took about 20 seconds on dev on 2026-11-15, so 15 minutes only stops a hung run.
+psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
+  -c "select * from snapshot_preserve.save();"
 
 # Dev-only tables (features migrated on dev before prod) are not in the prod dump, so the restore
 # never drops them, but their FKs into prod tables make Postgres refuse the dump's DROP TABLE for
