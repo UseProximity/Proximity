@@ -36,6 +36,15 @@ create table if not exists snapshot_preserve.protected_users (
   added_at timestamptz not null default now()
 );
 
+-- The house test accounts. Each also has a passwordless is_system row in PROD (added 2026-11-15)
+-- so it always arrives with the snapshot; restore() then puts the dev version back over it, which
+-- brings back the dev-only password, role and flags.
+insert into snapshot_preserve.protected_users (email, note) values
+  ('test-landlord@proximity.test',     'house test landlord (dev password login)'),
+  ('claude-admin-test@proximity.test', 'house super admin for Claude testing (dev password login)'),
+  ('guest@proximity.test',             'house test student (dev password login)')
+on conflict (email) do nothing;
+
 -- Saved rows. `ident` is the row's primary key as JSON (the whole row when a table has none).
 create table if not exists snapshot_preserve.saved_rows (
   table_name text  not null,
@@ -263,6 +272,31 @@ begin
       end;
     end loop;
     exit when progress = 0 or pass >= 20;
+  end loop;
+
+  -- A protected account that also exists in prod comes back as prod's row, so the insert above
+  -- skips it as already present. Put the dev version back over it (matched on email, every saved
+  -- column but the id), or its dev-only password and settings are lost every week.
+  for r in
+    select s.row_data from snapshot_preserve.saved_rows s
+     where s.table_name = 'users'
+       and lower(s.row_data->>'email') in (select lower(email) from snapshot_preserve.protected_users)
+  loop
+    begin
+      select string_agg(format('%I = x.%I', a.attname, a.attname), ', ') into cols
+      from pg_attribute a
+      join pg_class t     on t.oid = a.attrelid
+      join pg_namespace s on s.oid = t.relnamespace
+      where s.nspname = 'public' and t.relname = 'users'
+        and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''
+        and a.attname <> 'id' and r.row_data ? a.attname;
+      execute format(
+        'update public.users u set %s from jsonb_populate_record(null::public.users, $1) x
+          where lower(u.email) = lower(x.email)', cols)
+        using r.row_data;
+    exception when others then
+      raise warning 'could not put the dev version of % back: %', r.row_data->>'email', sqlerrm;
+    end;
   end loop;
 
   for r in select x.table_name, x.ident, x.last_error from _restore x where x.status = 'failed' loop
