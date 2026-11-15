@@ -1725,6 +1725,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
+          "removed_by:text (nullable: admin|author|landlord; who soft deleted it, 202611140002; NULL = live or removed before 2026-11-14. Admin one-click Restore only for admin)",
           "referrer_id:uuid",
           "reviewer_email:text",
           "unit_number:text",
@@ -3470,6 +3471,24 @@
           "document_kind:text",
           "document_id:uuid"
         ]
+      },
+      {
+        "table": "admin_notes",
+        "status": "unreleased",
+        "description": "Internal team notes on a person or a listing, shown on the admin dashboard's record pages. Never visible to landlords or students. A note can carry a follow-up date that stays open until follow_up_done_at is set. Only the author edits or deletes (enforced in /api/admin/notes); action_log keeps earlier versions.",
+        "columns": [
+          "id:uuid (pk)",
+          "subject_type:text (user|listing)",
+          "subject_id:uuid (no fk: one table serves both, and a note outlives a purged account)",
+          "body:text (1 to 4000 chars)",
+          "follow_up_on:date (nullable)",
+          "follow_up_done_at:timestamptz (nullable)",
+          "author_id:uuid (fk users, set null)",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "edited_at:timestamptz (nullable; set only when the text changes, drives the 'edited' label)"
+        ],
+        "notes": "status=unreleased (202611140001, applied to dev and prod 2026-11-14; code ships with PR 433); rls on, service role only; action_log trigger; updated_at trigger; index (subject_type,subject_id,created_at desc); partial index on follow_up_on where open"
       }
     ],
     "functions": [

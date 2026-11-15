@@ -13,7 +13,8 @@ import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
 import AgentChangeCard from "@/components/admin/AgentChangeCard";
-import { useUrlTab } from "@/components/admin/adminShared";
+import { ListingLink } from "@/components/admin/RecordLink";
+import { useAdminNav, useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -51,7 +52,7 @@ function WebsiteList({ rows, busy, decide }) {
       {[...groups.entries()].slice(0, 100).map(([id, g]) => (
         <div key={id} className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-sm">
-            <span className="font-medium text-gray-900">{g.listing}</span>
+            <span className="font-medium text-gray-900"><ListingLink id={id}>{g.listing}</ListingLink></span>
             <span className="text-xs text-gray-500">{g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}</span>
           </div>
           {g.rows.map((e) => (
@@ -76,6 +77,7 @@ export default function AgentsView({ search = "" }) {
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
   const [tab, setTab] = useUrlTab(TAB_KEYS, "overview");
+  const readOnly = !!useAdminNav()?.isReadOnly;
 
   const load = useCallback(async () => {
     try {
@@ -137,6 +139,9 @@ export default function AgentsView({ search = "" }) {
   return (
     <div>
       <Tabs tab={tab} setTab={setTab} />
+      {readOnly && <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">You have read-only access, so the controls on this page are switched off.</p>}
+      {/* A disabled fieldset switches off every button and select inside it. */}
+      <fieldset disabled={readOnly} className="min-w-0">
       <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (
@@ -189,7 +194,7 @@ export default function AgentsView({ search = "" }) {
         <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
           {agents.slice(0, 300).map((a) => (
             <div key={a.listingId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <div><span className="text-gray-900">{a.listing}</span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
+              <div><span className="text-gray-900"><ListingLink id={a.listingId}>{a.listing}</ListingLink></span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
               <select value={a.status} onChange={(e) => setStatus(a.listingId, e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">
                 <option value="off">off</option><option value="pilot">pilot</option><option value="on">on</option>
               </select>
@@ -197,6 +202,7 @@ export default function AgentsView({ search = "" }) {
           ))}
         </div>
       </Section>
+      </fieldset>
     </div>
   );
 }

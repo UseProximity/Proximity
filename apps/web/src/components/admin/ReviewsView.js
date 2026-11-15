@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import {
   fmtDate,
   shortId,
   prodConfirm,
+  adminFetch,
   deleteRow,
   sortByDate,
   SortToggle,
@@ -37,6 +39,14 @@ const FILTERS = [
   { key: "verified", label: "verified" },
   { key: "deleted", label: "deleted" },
 ];
+
+// Who took a removed review down. Only the team's own removals get Restore.
+const REMOVED_BY = {
+  admin: { label: "removed by team", hint: "Removed from this dashboard. Restore puts it back on the listing." },
+  author: { label: "removed by author", hint: "The reviewer deleted this review themselves, so it cannot be restored here." },
+  landlord: { label: "dismissed by landlord", hint: "The landlord dismissed this review while it awaited approval." },
+  unknown: { label: "removed", hint: "Removed before the site recorded who removed reviews. Restore it from the gear menu if you are sure." },
+};
 
 function matchesFilter(r, filter) {
   if (filter === "unverified") return !r.legitimacy && !r.deleted_at;
@@ -111,8 +121,19 @@ export default function ReviewsView({
     });
   }
 
+  // Take a review down (it can be restored) or put it back.
+  async function setRemoved(r, remove) {
+    if (!prodConfirm(isProd, `${remove ? "Remove" : "Restore"} this review.`)) return;
+    try {
+      await adminFetch(`/api/admin/reviews/${r.id}`, dbTarget, { method: "PATCH", body: JSON.stringify({ action: remove ? "remove" : "restore" }) });
+      onRefresh();
+    } catch (err) {
+      alert(`Could not ${remove ? "remove" : "restore"} the review: ${err.message}`);
+    }
+  }
+
   async function handleDelete(r) {
-    if (!confirm("Permanently delete this review? This cannot be undone.\n\nTo take it down reversibly, set deleted_at from the gear menu instead."))
+    if (!confirm("Permanently delete this review? This cannot be undone.\n\nTo take it down reversibly, use Remove instead."))
       return;
     if (!prodConfirm(isProd, "Permanently delete this review.")) return;
     try {
@@ -182,7 +203,7 @@ export default function ReviewsView({
               <Stars rating={r.rating} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {listing?.title || listing?.address || (
+                  {listing ? <ListingLink id={listing.id}>{listing.title || listing.address}</ListingLink> : (
                     <span className="italic text-gray-400">(listing missing)</span>
                   )}
                 </p>
@@ -194,12 +215,17 @@ export default function ReviewsView({
               {r.anonymous && <Badge title="Shown to students without a name">anonymous</Badge>}
               {r.source && <Badge color="blue" title="How this review reached us">{r.source}</Badge>}
               {!r.legitimacy && !r.deleted_at && <Badge color="amber">unverified</Badge>}
-              {r.deleted_at && <Badge color="red">deleted</Badge>}
+              {r.deleted_at && <Badge color="red" title={REMOVED_BY[r.removed_by]?.hint ?? REMOVED_BY.unknown.hint}>{REMOVED_BY[r.removed_by]?.label ?? REMOVED_BY.unknown.label}</Badge>}
               <span className="hidden sm:block text-[11px] text-gray-400 whitespace-nowrap">
                 {fmtDate(r.created_at)}
               </span>
               <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-                {!isReadOnly && <TrashButton title="Delete review" onClick={() => handleDelete(r)} />}
+                {!isReadOnly && (!r.deleted_at || r.removed_by === "admin") && (
+                  <button type="button" onClick={() => setRemoved(r, !r.deleted_at)} className="rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50" title={r.deleted_at ? "Show this review on the listing again" : "Hide this review from the listing. It can be restored."}>
+                    {r.deleted_at ? "Restore" : "Remove"}
+                  </button>
+                )}
+                {!isReadOnly && <TrashButton title="Delete for good (cannot be undone)" onClick={() => handleDelete(r)} />}
                 <GearButton onClick={() => onOpenGear("listing_reviews", r)} />
               </span>
             </div>
@@ -215,7 +241,7 @@ export default function ReviewsView({
                   <p><span className="text-gray-400">Value:</span> {r.value_rating ?? "—"}</p>
                   <p><span className="text-gray-400">Unit:</span> {[r.unit_designator, r.unit_number].filter(Boolean).join(" ") || "—"}</p>
                   <p><span className="text-gray-400">Reviewer email:</span> {r.reviewer?.email || r.reviewer_email || "—"}</p>
-                  <p><span className="text-gray-400">Account:</span> {r.user_id ? shortId(r.user_id) : "not signed in"}</p>
+                  <p><span className="text-gray-400">Account:</span> {r.user_id ? <PersonLink id={r.user_id}>{r.reviewer?.name || shortId(r.user_id)}</PersonLink> : "not signed in"}</p>
                   <p><span className="text-gray-400">Confirmation sent:</span> {r.confirmation_sent_at ? fmtDate(r.confirmation_sent_at) : "—"}</p>
                   <p className="font-mono text-gray-400">{shortId(r.id)}</p>
                 </div>
@@ -252,7 +278,7 @@ export default function ReviewsView({
                   />
                   {r.deleted_at && (
                     <span className="text-[11px] text-red-600">
-                      Removed {fmtDate(r.deleted_at)}. Clear deleted_at from the gear menu to restore.
+                      Removed {fmtDate(r.deleted_at)}. {REMOVED_BY[r.removed_by]?.hint ?? REMOVED_BY.unknown.hint}
                     </span>
                   )}
                 </div>

@@ -110,7 +110,14 @@ function ManualRecord({ busy, run }) {
  * the two listing requirements, and every landlord's agreement and payment status,
  * with the signing email to send. A paper signature can still be recorded by hand.
  */
-export default function AgreementsPanel({ search }) {
+/*
+ * `part` shows one piece of the panel, for Billing's sub-tabs (Wyatt, 2026-11-14):
+ *   "landlords"  every landlord's agreement and payment state, and the paper record form
+ *   "versions"   the agreement versions and the MREC form
+ *   "rules"      the switches that decide who may publish
+ * With no part, everything shows together as it used to.
+ */
+export default function AgreementsPanel({ search, part = null }) {
   const [settings, setSettings] = useState(null);
   const [versions, setVersions] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
@@ -177,12 +184,14 @@ export default function AgreementsPanel({ search }) {
         ? `Switched on automatically at the enrollment deadline on ${fmtDate(enrollment.enforcedAt)}.`
         : "Set an enrollment deadline (Launch enrollment) to have them turn on automatically.";
 
+  const show = (piece) => !part || part === piece;
+
   return (
     <div className="space-y-5">
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       {notice && <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</div>}
 
-      {settings && (
+      {settings && show("rules") && (
         <div className="rounded-lg border border-gray-100 bg-white p-4 space-y-4">
           <p className="text-sm text-gray-600">To publish a listing, a landlord must have these. {deadlineNote}</p>
           <GateSwitch
@@ -202,15 +211,13 @@ export default function AgreementsPanel({ search }) {
         </div>
       )}
 
-      {versions && (
+      {versions && show("versions") && (
         <AgreementVersions versions={versions.versions} documensoConnected={versions.documensoConnected} busy={busy} run={run} />
       )}
+      {show("versions") && <MrecFormUpload busy={busy} run={run} />}
 
-      <LandlordAgreementList search={search} busy={busy} run={run} reloadKey={reloadKey} />
-
-      <MrecFormUpload busy={busy} run={run} />
-
-      <ManualRecord busy={busy} run={run} />
+      {show("landlords") && <LandlordAgreementList search={search} busy={busy} run={run} reloadKey={reloadKey} />}
+      {show("landlords") && <ManualRecord busy={busy} run={run} />}
     </div>
   );
 }

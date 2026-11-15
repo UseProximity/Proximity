@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { adminFetch, Badge, shortId, useUrlTab } from "@/components/admin/adminShared";
+import { PersonLink } from "@/components/admin/RecordLink";
 import { CATEGORIES, kindLabel } from "@/lib/emailKinds";
 
 const TABS = [{ key: "all", label: "All" }, ...CATEGORIES];
@@ -102,7 +103,7 @@ function EmailRow({ row, dbTarget }) {
         <span className="w-28 shrink-0 text-xs text-gray-500 pt-0.5">{fmtWhen(row.created_at)}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-gray-900 break-all">{row.to_email ?? "(no recipient)"}</span>
+            <span className="text-sm font-medium text-gray-900 break-all"><PersonLink id={row.user_id}>{row.to_email ?? "(no recipient)"}</PersonLink></span>
             <Badge color={status.color} title={status.title}>{status.label}</Badge>
             {row.redirected_to && <Badge color="blue" title="Off the live site, the email went to a test inbox instead">test copy to {row.redirected_to}</Badge>}
           </div>
