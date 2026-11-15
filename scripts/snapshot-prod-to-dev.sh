@@ -112,37 +112,54 @@ SQL
 grant_roles_and_scrub() {
   scrub_prod_ids && grant_roles
 }
+# Only tables the restore actually replaced (new oid) hold prod rows. A table it could not replace
+# (a blocked run) or a dev-only table still holds dev's own rows, partner sandbox ids and agreements
+# among them, and the scrub must not touch it: restore() only adds missing rows, so it cannot undo
+# a change made in place. pg_temp.scrub_ok(table) says whether a table may be scrubbed.
 scrub_prod_ids() {
-  psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+  {
+    echo "create temp table _before (relname text, old_oid oid);"
+    echo "copy _before from stdin;"
+    cat "$DUMP.oids"
+    echo '\.'
+    cat <<'SQL'
+create function pg_temp.scrub_ok(tbl text) returns boolean language sql stable as $f$
+  select to_regclass(format('public.%I', tbl)) is not null
+     and not exists (select 1 from _before b
+                      where b.relname = tbl and b.old_oid = to_regclass(format('public.%I', tbl))::oid);
+$f$;
+SQL
+    cat <<'SQL'
 -- Prod holds live-mode Stripe ids. Dev and staging use sandbox keys, which reject them, so strip
 -- every one (customer, payment method, invoice, invoice item, dispute, webhook event). Rows whose
 -- Stripe id is the whole point (payment methods, disputes, events) are deleted rather than nulled.
 -- This runs before step 6, so partner sandbox rows put back there keep their own sandbox ids.
--- Guarded per table so a snapshot still works before the billing migration reaches prod.
+-- Guarded per table so a snapshot still works before the billing migration reaches prod, and so
+-- only tables the restore replaced are scrubbed (see scrub_ok above).
 do $$
 begin
-  if to_regclass('public.charges') is not null then
+  if pg_temp.scrub_ok('charges') then
     update public.charges set stripe_invoice_item_id = null where stripe_invoice_item_id is not null;
   end if;
-  if to_regclass('public.billing_invoices') is not null then
+  if pg_temp.scrub_ok('billing_invoices') then
     update public.billing_invoices
        set stripe_invoice_id = null, hosted_invoice_url = null, invoice_pdf_url = null
      where stripe_invoice_id is not null or hosted_invoice_url is not null or invoice_pdf_url is not null;
   end if;
-  if to_regclass('public.billing_accounts') is not null then
+  if pg_temp.scrub_ok('billing_accounts') then
     update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
   end if;
-  if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
+  if pg_temp.scrub_ok('billing_disputes') then delete from public.billing_disputes; end if;
   -- Autopay points at payment methods with ON DELETE RESTRICT (202611050002), so its records go
   -- first, or deleting the methods fails and rolls back this whole scrub (review of 2026-11-07).
-  if to_regclass('public.autopay_authorizations') is not null then delete from public.autopay_authorizations; end if;
-  if to_regclass('public.billing_invoices') is not null
+  if pg_temp.scrub_ok('autopay_authorizations') then delete from public.autopay_authorizations; end if;
+  if pg_temp.scrub_ok('billing_invoices')
      and exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'billing_invoices' and column_name = 'autopay_payment_method_id') then
     update public.billing_invoices set autopay_payment_method_id = null where autopay_payment_method_id is not null;
   end if;
-  if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
-  if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
+  if pg_temp.scrub_ok('payment_methods') then delete from public.payment_methods; end if;
+  if pg_temp.scrub_ok('stripe_webhook_events') then delete from public.stripe_webhook_events; end if;
   -- Documenso: every environment shares ONE Documenso team (Teams plan), only kept
   -- apart by folder and a [TEST] title prefix, and a team API key can act on any
   -- document in it. So no prod envelope id may survive here: dev code holding one
@@ -151,30 +168,35 @@ begin
   -- in progress, master or Exhibit A amendment, is voided. Signed documents keep
   -- their record; their PDFs live in prod's bucket.
   if to_regclass('public.agreement_versions') is not null then
-    update public.landlord_agreements
-       set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
-     where status in ('not_sent', 'sent') and provider_envelope_id is not null;
-    update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
-    if to_regclass('public.agreement_amendments') is not null then
+    if pg_temp.scrub_ok('landlord_agreements') then
+      update public.landlord_agreements
+         set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+       where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+      update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
+    end if;
+    if pg_temp.scrub_ok('agreement_amendments') then
       update public.agreement_amendments
          set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
        where status in ('not_sent', 'sent') and provider_envelope_id is not null;
       update public.agreement_amendments set provider_envelope_id = null where provider_envelope_id is not null;
-      if to_regclass('public.agreement_coverage') is not null then
+      if pg_temp.scrub_ok('agreement_coverage') then
         update public.agreement_coverage set status = 'released'
          where status = 'proposed'
            and amendment_id in (select id from public.agreement_amendments where ended_reason = 'snapshot: prod Documenso copy');
       end if;
     end if;
-    update public.agreement_versions
-       set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
-           provider_editor_url = null, fields_checked_at = null,
-           status = case when status = 'live' then 'retired' else status end
-     where provider_template_id is not null or status = 'live';
-    update public.agreement_versions set status = 'draft' where status = 'ready';
+    if pg_temp.scrub_ok('agreement_versions') then
+      update public.agreement_versions
+         set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
+             provider_editor_url = null, fields_checked_at = null,
+             status = case when status = 'live' then 'retired' else status end
+       where provider_template_id is not null or status = 'live';
+      update public.agreement_versions set status = 'draft' where status = 'ready';
+    end if;
   end if;
 end $$;
 SQL
+  } | psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null
 }
 lock_down_functions() {
   [[ -s "$FNACL" ]] && psql "$DEV_DB_URL" -q --no-psqlrc -f "$FNACL" >/dev/null 2>&1
