@@ -104,8 +104,15 @@ async function prepare(url) {
 
 /*
  * The model's pick among the prepared candidates, or null. Undefined when
- * no readable answer came back: the unit keeps the floor plan it had, so a
- * miss is logged as a warning, not raised as a site error.
+ * no answer came back, and the unit keeps the floor plan it had.
+ *
+ * Two kinds of miss. An unreadable answer is the model's own hiccup: asked
+ * once more, and logged as a warning if both tries miss. A failed call (a
+ * dead or out-of-credit key, a model that no longer exists, an outage the
+ * SDK's own retries did not ride out) is not retried and is raised as a site
+ * error, so the check never goes quiet night after night with nobody told.
+ * The unit name stays out of the error's label, so every unit hit by one
+ * outage is one site error with a count, not one alert each.
  */
 async function askModel(unitName, candidates) {
   let lastError = null;
@@ -113,6 +120,10 @@ async function askModel(unitName, candidates) {
     try {
       return await askModelOnce(unitName, candidates);
     } catch (err) {
+      if (!err?.unreadable) {
+        console.error("[source-import] floor plan check failed:", err);
+        return { pick: undefined, cost: 0 };
+      }
       lastError = err;
     }
   }
@@ -152,7 +163,9 @@ async function askModelOnce(unitName, candidates) {
   try {
     parsed = Answer.parse(JSON.parse(text));
   } catch (err) {
-    throw new Error(`unreadable answer (stop: ${response.stop_reason}, ${response.usage?.output_tokens ?? "?"} tokens, got ${JSON.stringify(text.slice(0, 60))}): ${err?.message}`);
+    const unreadable = new Error(`unreadable answer (stop: ${response.stop_reason}, ${response.usage?.output_tokens ?? "?"} tokens, got ${JSON.stringify(text.slice(0, 60))}): ${err?.message}`);
+    unreadable.unreadable = true;
+    throw unreadable;
   }
   const i = parsed.floorPlanImage;
   return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
