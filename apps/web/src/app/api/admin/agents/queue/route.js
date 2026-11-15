@@ -2,7 +2,9 @@
  * /api/admin/agents/queue: the team's review queue for the per-listing
  * agents (PRD v3, "Review of held changes").
  *
- *   GET            everything waiting: fact changes held for admin (fair
+ *   GET            everything waiting, each fact change with who sent it,
+ *                  their message and a before and after (lib/agents/queueView.js):
+ *                  fact changes held for admin (fair
  *                  housing flags, new owners' edits, owner conflicts),
  *                  fact changes held for landlords, open website changes;
  *                  plus every listing's agent status
@@ -21,6 +23,7 @@ import { decideChange } from "@/lib/agents/landlordAgent";
 import { ensureAgent } from "@/lib/agents/store";
 import { overview } from "@/lib/agents/overview";
 import { describeChanges } from "@/lib/sourceImport/describeChange";
+import { describeFactEvents } from "@/lib/agents/queueView";
 
 async function requireTeam() {
   const session = await auth();
@@ -44,12 +47,12 @@ export async function GET() {
     const label = (e) => e.listings?.title || e.listings?.address || e.listing_id;
     // Each website change as Proximity now vs the website (Wyatt, 2026-11-05),
     // and why it waits when the whole run for its listing was held.
-    const views = await describeChanges(sourceEvents ?? []);
+    const [views, factViews] = await Promise.all([describeChanges(sourceEvents ?? []), describeFactEvents(factEvents ?? [])]);
     const runHold = new Map((sourceEvents ?? []).filter((e) => e.kind === "churn_hold" || e.kind === "low_confidence").map((e) => [e.listing_id, views.get(e.id)?.note ?? null]));
     return NextResponse.json({
       counts,
-      forAdmin: (factEvents ?? []).filter((e) => e.detail?.adminReview).map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), cause: e.cause, summary: e.detail?.summary ?? e.field_key, flags: e.detail?.flags ?? [], recentClaim: !!e.detail?.recentClaim, createdAt: e.created_at, current: e.detail?.teamReview ? e.detail?.oldSummary ?? null : null, sourceRef: e.detail?.teamReview ? e.detail?.sourceRef ?? null : null })),
-      forLandlords: (factEvents ?? []).filter((e) => !e.detail?.adminReview).map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), cause: e.cause, status: e.status, summary: e.detail?.summary ?? e.field_key, current: e.detail?.oldSummary ?? null, createdAt: e.created_at })),
+      forAdmin: (factEvents ?? []).filter((e) => e.detail?.adminReview).map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), cause: e.cause, summary: e.detail?.summary ?? e.field_key, flags: e.detail?.flags ?? [], recentClaim: !!e.detail?.recentClaim, createdAt: e.created_at, current: e.detail?.teamReview ? e.detail?.oldSummary ?? null : null, ...factViews.get(e.id) })),
+      forLandlords: (factEvents ?? []).filter((e) => !e.detail?.adminReview).map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), cause: e.cause, status: e.status, summary: e.detail?.summary ?? e.field_key, current: e.detail?.oldSummary ?? null, createdAt: e.created_at, ...factViews.get(e.id) })),
       website: (sourceEvents ?? []).filter((e) => e.detail?.op !== "none").map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), kind: e.kind, field: e.field, unit: e.detail?.label ?? null, old: e.old_value, new: e.new_value, confidence: e.confidence, createdAt: e.created_at, view: views.get(e.id) ?? null, heldBecause: runHold.get(e.listing_id) ?? null, teamReview: !!e.detail?.teamReview, note: e.detail?.note ?? null })),
       gone: (sourceEvents ?? []).filter((e) => e.kind === "missing_unit" || e.kind === "listing_gone").map((e) => ({ id: e.id, listingId: e.listing_id, listing: label(e), unit: e.detail?.label ?? null, createdAt: e.created_at })),
       agents: (agents ?? []).map((a) => ({ listingId: a.listing_id, listing: a.listings?.title || a.listings?.address || a.listing_id, status: a.status, seededAt: a.seeded_at, lastSyncAt: a.last_sync_at, published: !!a.listings?.published_at })),

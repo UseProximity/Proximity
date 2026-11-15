@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   fmtDate,
   shortId,
@@ -15,7 +15,6 @@ import {
   GearButton,
   TrashButton,
 } from "@/components/admin/adminShared";
-import ReviewDuplicatesPanel from "@/components/admin/ReviewDuplicatesPanel";
 
 /*
  * Every property review in one table.
@@ -74,6 +73,12 @@ export default function ReviewsView({
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState(SORT_NEWEST);
 
+  // A link can open the page on one filter, e.g. ?filter=unverified.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("filter");
+    if (wanted && FILTERS.some((f) => f.key === wanted)) setFilter(wanted);
+  }, []);
+
   const reviews = data || [];
   const q = search.trim().toLowerCase();
 
@@ -120,7 +125,6 @@ export default function ReviewsView({
 
   return (
     <div className="space-y-2">
-      <ReviewDuplicatesPanel dbTarget={dbTarget} />
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-gray-500">
           {filtered.length} of {reviews.length} reviews

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
+import AgentChangeCard from "@/components/admin/AgentChangeCard";
 import { useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
@@ -145,13 +146,7 @@ export default function AgentsView({ search = "" }) {
 
       <Section title="Waiting for the team" count={data.forAdmin.length}>
         {data.forAdmin.length === 0 ? <p className="text-sm text-gray-500">Nothing.</p> : data.forAdmin.map((e) => (
-          <div key={e.id} className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-            <div className="flex items-center justify-between gap-2 text-xs text-gray-600"><span>{e.listing} · {e.cause.replace(/_/g, " ")} · {when(e.createdAt)}</span>{e.flags?.length ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">fair housing: {e.flags.join(", ")}</span> : e.recentClaim ? <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px]">new owner</span> : null}</div>
-            <p className="mt-1 text-gray-900">{e.summary}</p>
-            {e.current && <p className="mt-0.5 text-xs text-gray-500">Now: {e.current}</p>}
-            {e.sourceRef && <p className="mt-0.5 truncate text-[11px] text-gray-500">From {e.sourceRef}</p>}
-            <div className="mt-2 flex gap-2"><button disabled={busy === e.id} onClick={() => decide("fact", e, "approve")} className="rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white">Apply</button><button disabled={busy === e.id} onClick={() => decide("fact", e, "reject")} className="rounded-lg border border-gray-300 px-3 py-1 text-xs">Reject</button></div>
-          </div>
+          <AgentChangeCard key={e.id} event={e} tone="amber" busy={busy === e.id} onDecide={(decision) => decide("fact", e, decision)} />
         ))}
       </Section>
 
@@ -167,20 +162,21 @@ export default function AgentsView({ search = "" }) {
       </Section>
 
       <Section title="Waiting for landlords" count={data.forLandlords.length + landlordWebsite.length}>
-        {[...data.forLandlords.map((e) => ({ ...e, kind: "fact", title: e.summary })), ...landlordWebsite.map((e) => ({ ...e, kind: "source", title: `${e.unit ? `${e.unit}: ` : ""}${e.kind.replace(/_/g, " ")}${e.field ? ` (${e.field})` : ""}` }))].filter((e) => matches(e.listing)).slice(0, 300).map((e) => (
+        {data.forLandlords.filter((e) => matches(e.listing)).map((e) => (
+          <AgentChangeCard key={e.id} event={e} busy={busy === e.id} onDecide={(decision) => decide("fact", e, decision)} />
+        ))}
+        {landlordWebsite.filter((e) => matches(e.listing)).slice(0, 300).map((e) => (
           <div key={e.id} className="mb-1 flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
             <div className="min-w-0 flex-1">
-              <span className="text-xs text-gray-500">{e.listing} · {when(e.createdAt)}{e.kind === "source" ? " · from the website sync" : ""}</span>
+              <span className="text-xs text-gray-500">{e.listing} · {when(e.createdAt)} · from the website sync</span>
               {e.view ? (
                 <div className="mt-0.5"><ChangeCompare view={e.view} /></div>
-              ) : e.kind === "fact" ? (
-                <div className="text-gray-900">{e.title}{e.current ? <div className="mt-0.5 text-xs text-gray-500">Now: {e.current}</div> : null}</div>
               ) : (
-                <div className="text-gray-900">{e.title}</div>
+                <div className="text-gray-900">{e.unit ? `${e.unit}: ` : ""}{e.kind.replace(/_/g, " ")}{e.field ? ` (${e.field})` : ""}</div>
               )}
               {e.heldBecause && <p className="mt-1 text-[11px] text-amber-700">Held: {e.heldBecause}</p>}
             </div>
-            <div className="flex shrink-0 gap-2"><button disabled={busy === e.id} onClick={() => decide(e.kind, e, "approve")} className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-semibold text-white">Apply</button><button disabled={busy === e.id} onClick={() => decide(e.kind, e, "reject")} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">Reject</button></div>
+            <div className="flex shrink-0 gap-2"><button disabled={busy === e.id} onClick={() => decide("source", e, "approve")} className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-semibold text-white">Apply</button><button disabled={busy === e.id} onClick={() => decide("source", e, "reject")} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">Reject</button></div>
           </div>
         ))}
       </Section>

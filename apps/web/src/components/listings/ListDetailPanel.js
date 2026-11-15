@@ -84,7 +84,7 @@ function Pills({ onBack, listingId }) {
         </svg>
         <span className="text-xs font-semibold">Back to listings</span>
       </button>
-      <div className="pointer-events-auto flex items-center rounded-full bg-white/95 p-1 text-gray-700 shadow-md">
+      <div className="pointer-events-auto">
         <HeartIcon listingId={listingId} />
       </div>
     </div>
