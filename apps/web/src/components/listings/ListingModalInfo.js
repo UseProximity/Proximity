@@ -1468,12 +1468,8 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           </div>
 
           {/* Tab strip */}
-          <div
-            className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-              compact ? "pl-5" : "px-4"
-            }`}
-          >
-            <nav className={`flex max-w-7xl mx-auto ${compact ? "justify-start" : "justify-center"}`}>
+          <div className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5">
+            <nav className="flex justify-start">
               {Array.from({ length: tabCount }).map((_, i) => (
                 <div key={i} className="px-5 py-3">
                   <Bar className="h-4 w-16" />
@@ -2337,11 +2333,34 @@ export default function ListingModalInfo({
                         jumpTo("contact");
                         window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
                       }}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-100 font-semibold text-red-600 hover:bg-gray-200 ${
-                        headStuck ? "px-3 py-1.5 text-[13px]" : "px-3.5 py-2 text-sm"
+                      className={`group inline-flex items-center gap-1.5 rounded-lg px-1 font-semibold ${
+                        headStuck ? "py-1.5 text-[13px]" : "py-2 text-sm"
                       }`}
                     >
-                      <Sparkles className="h-4 w-4" /> Ask Proxy
+                      {/* No fill or outline: one red, pink, purple gradient runs from
+                          the sparkle through the label (Wyatt, 2026-11-15). The
+                          sparkle carries the first stretch of it and the text picks
+                          up where it ends, so the two read as one sweep. Measured
+                          across the whole icon (userSpaceOnUse) so the two tiny
+                          sparkles, straight strokes with no width of their own, still
+                          get painted. On hover the sweep slides back to a deeper red (the
+                          text's 200%-wide gradient moves over, the icon's stops fade
+                          to match) and the sparkle gives a small twist. */}
+                      <svg width="0" height="0" className="absolute" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="ask-proxy-shine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="0">
+                            <stop offset="0%" className="transition-[stop-color] duration-500 ease-out [stop-color:#dc2626] group-hover:[stop-color:#991b1b]" />
+                            <stop offset="100%" className="transition-[stop-color] duration-500 ease-out [stop-color:#e33559] group-hover:[stop-color:#b91c1c]" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <Sparkles
+                        className="h-4 w-4 transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-110"
+                        stroke="url(#ask-proxy-shine)"
+                      />
+                      <span className="bg-[linear-gradient(90deg,#b91c1c_0%,#dc2626_25%,#e33559_50%,#ec4899_72%,#c026d3_100%)] bg-[length:200%_100%] bg-right bg-clip-text text-transparent transition-[background-position] duration-500 ease-out group-hover:bg-left">
+                        Ask Proxy
+                      </span>
                     </button>
                   )}
                   {/* Rating moved up from the removed stats bar. Stuck, it is
@@ -2374,21 +2393,17 @@ export default function ListingModalInfo({
               {/* ── Tab Bar ── */}
               <div
                 id="listing-tabs"
-                className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                  compact ? "pl-5" : "px-4"
-                }`}
+                className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5"
               >
-                {/* Three-column row so the tabs stay optically centred no matter
-                    how wide the right-hand action is. In the browse panel they
-                    start at the left instead, the first label in line with the
-                    title above (Wyatt, 2026-11-01): pl-5 plus the tab's own
+                {/* Tabs start at the left, the first label in line with the
+                    title above, in the browse panel (Wyatt, 2026-11-01) and the
+                    popup alike (Wyatt, 2026-11-15): pl-5 plus the tab's own
                     px-5 matches the title's px-10.
                     On a phone every tab has to be in view at once, so the six
                     share the full width in a tighter size, and whatever sits
                     to their right on desktop wraps onto its own line under
                     them instead of pushing tabs off the edge. */}
-                <nav className="flex flex-wrap items-stretch max-w-7xl mx-auto md:flex-nowrap">
-                  {!compact && <div className="hidden flex-1 md:block" aria-hidden="true" />}
+                <nav className="flex flex-wrap items-stretch md:flex-nowrap">
 
                   <div className="flex w-full overflow-x-auto scrollbar-hidden md:w-auto">
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
@@ -2450,12 +2465,13 @@ export default function ListingModalInfo({
                           {waitlist.label}
                         </button>
                       ))}
+                    {/* Same font, weight, colour and hover as "View on map" beside it (Wyatt, 2026-11-15). */}
                     {showFurnishCta && (
                       <a
                         href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
                         rel="noopener noreferrer sponsored nofollow"
-                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
+                        className="inline-flex items-center whitespace-nowrap px-5 py-3 text-sm font-semibold text-red-600 transition-colors hover:text-red-700"
                       >
                         Furnish This Property
                       </a>
