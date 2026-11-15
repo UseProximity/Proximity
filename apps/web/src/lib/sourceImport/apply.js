@@ -864,6 +864,27 @@ export async function executeChange(change, { state, userId }) {
 
 // ---------------------------------------------------------------- events
 
+/*
+ * Changes held for the team by an earlier skipped run that this run no
+ * longer holds: the website moved on, or this run applied them itself. They
+ * are cleared, so the team never applies a price the website has dropped.
+ * One the run still holds stays as the same open event (recordEvents).
+ */
+async function settleHeldForTeam({ listingId, current }) {
+  const { data: open } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, new_value, detail")
+    .eq("listing_id", listingId).eq("status", "open").contains("detail", { churnHeld: true }).limit(500);
+  if (!open?.length) return;
+  const keyOf = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}`;
+  const still = new Set(current.map((c) => keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new)));
+  const now = new Date().toISOString();
+  for (const e of open) {
+    if (still.has(keyOf(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value))) continue;
+    await supabase.from("listing_source_events")
+      .update({ status: "rejected", verdict: "rejected", verdict_at: now, detail: { ...e.detail, clearedBy: "superseded" } })
+      .eq("id", e.id).eq("status", "open");
+  }
+}
+
 async function recordEvents({ monitorId, listingId, changes, applied, status }) {
   if (!monitorId || !changes.length) return [];
   let fresh = changes;
@@ -1215,10 +1236,25 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   if (policyRun) {
     const applied = [];
     const denied = [];
+    const held = [];
     for (const c of changes) {
-      // A skipped run still takes what a unit's own page said: the landlord
-      // pointed at that page for that unit (Wyatt, 2026-11-06).
-      const verdict = holdReason === "churn_hold" && !c.detail?.fromUnitPage ? { apply: false, reason: DENY.churn } : c.verdict;
+      /*
+       * A run skipped for churn holds what the policy would have applied for
+       * the team to review in admin (Agents, "Website changes waiting for
+       * the team"), rather than dropping it (Wyatt, 2026-11-15: The Koken's
+       * real price cuts sat unapplied for two nights with no way to approve
+       * them). What the policy itself denies stays denied. A skipped run still
+       * takes what a unit's own page said: the landlord pointed at that page
+       * for that unit (Wyatt, 2026-11-06).
+       */
+      if (holdReason === "churn_hold" && !c.detail?.fromUnitPage && c.verdict?.apply) {
+        c.auto = false;
+        c.note = `Held: ${DENY.churn}`;
+        c.detail = { ...c.detail, teamReview: true, churnHeld: true };
+        held.push(c);
+        continue;
+      }
+      const verdict = c.verdict;
       if (!verdict.apply) {
         c.auto = false;
         c.denyReason = verdict.reason;
@@ -1237,6 +1273,8 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     }
     await recordEvents({ monitorId, listingId, changes: applied, applied: true, status: "applied" });
     const deniedNew = await recordEvents({ monitorId, listingId, changes: denied, applied: false, status: "rejected" });
+    if (monitorId) await settleHeldForTeam({ listingId, current: held });
+    await recordEvents({ monitorId, listingId, changes: held, applied: false, status: "open" });
     if (holdReason && monitorId) {
       await recordEvents({ monitorId, listingId, changes: [{ kind: holdReason, field: "run", old: null, new: { changes: changes.length }, auto: false, denyReason: DENY.churn, detail: { op: "none", label } }], applied: false, status: "rejected" });
     }
@@ -1245,7 +1283,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     }
     await remember(applied, { skipped: !!holdReason });
     await stampSeen();
-    return { applied, held: [], denied, deniedNew: deniedNew.length, holdReason, churn, summary: summarize(snapshot), takeover: false };
+    return { applied, held, denied, deniedNew: deniedNew.length, holdReason, churn, summary: summarize(snapshot), takeover: false };
   }
 
   // The model's second opinion on the changes the rules would not apply.
@@ -1344,6 +1382,16 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
+    // A change held from a skipped run: if the rent moved since (the landlord
+    // edited it), the team's Apply would overwrite that edit. Refuse it and
+    // let the next read decide.
+    if (e.detail?.churnHeld && e.old_value?.rent != null && e.detail?.leaseId) {
+      const lease = state.listing_units.flatMap((u) => u.unit_leases).find((l) => l.id === e.detail.leaseId);
+      if (lease && Number(lease.rent) !== Number(e.old_value.rent)) {
+        results.push({ id: e.id, ok: false, error: `The rent is now $${Number(lease.rent)}, not the $${Number(e.old_value.rent)} this change was read against. Run Sync now to re-read the website.` });
+        continue;
+      }
+    }
     let gatedNote = null;
     if (putsLeaseLive(e)) {
       const gate = await gateOf(e.detail?.unitId ?? null, newUnitNameOf(e));

@@ -39,8 +39,8 @@ function Section({ title, children, count }) {
   );
 }
 
-/* Website changes grouped by listing, each with Apply and Reject. */
-function WebsiteList({ rows, busy, decide }) {
+/* Website changes grouped by listing, each with Apply and Reject, and Apply all per listing. */
+function WebsiteList({ rows, busy, decide, decideAll }) {
   const groups = new Map();
   for (const e of rows) {
     if (!groups.has(e.listingId)) groups.set(e.listingId, { listing: e.listing, heldBecause: e.heldBecause, rows: [] });
@@ -52,7 +52,10 @@ function WebsiteList({ rows, busy, decide }) {
         <div key={id} className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-sm">
             <span className="font-medium text-gray-900">{g.listing}</span>
-            <span className="text-xs text-gray-500">{g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}</span>
+            <span className="flex items-center gap-2 text-xs text-gray-500">
+              {g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}
+              {g.rows.length > 1 && decideAll && <button disabled={busy === `all:${id}`} onClick={() => decideAll(id, g.rows)} className="rounded-lg bg-gray-900 px-2 py-1 font-semibold text-white">{busy === `all:${id}` ? "Applying..." : "Apply all"}</button>}
+            </span>
           </div>
           {g.rows.map((e) => (
             <div key={e.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
@@ -97,6 +100,27 @@ export default function AgentsView({ search = "" }) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(d?.error || "Could not apply that"); return; }
       toast.success(decision === "approve" ? "Applied" : "Rejected");
+      load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // One listing's held website changes, applied in order; a refused one
+  // (the rent moved since, the publish gate) is reported and the rest go on.
+  const decideAll = async (listingId, rows) => {
+    setBusy(`all:${listingId}`);
+    let ok = 0;
+    const failed = [];
+    try {
+      for (const e of rows) {
+        const r = await fetch("/api/admin/agents/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "source", eventId: e.id, listingId, decision: "approve" }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) ok += 1;
+        else failed.push(`${e.unit ?? e.kind.replace(/_/g, " ")}: ${d?.error || "could not apply"}`);
+      }
+      if (ok) toast.success(`Applied ${ok} change${ok === 1 ? "" : "s"}`);
+      if (failed.length) toast.error(`${failed.length} not applied. ${failed[0]}`);
       load();
     } finally {
       setBusy(null);
@@ -158,7 +182,7 @@ export default function AgentsView({ search = "" }) {
 
       <Section title="Website changes waiting for the team" count={teamWebsite.length}>
         <p className="mb-2 text-xs text-gray-500">Launch review: nothing a sync finds reaches students until it is applied here. Landlords do not see these.</p>
-        {teamWebsite.length === 0 ? <p className="text-sm text-gray-500">Nothing.</p> : <WebsiteList rows={teamWebsite} busy={busy} decide={decide} />}
+        {teamWebsite.length === 0 ? <p className="text-sm text-gray-500">Nothing.</p> : <WebsiteList rows={teamWebsite} busy={busy} decide={decide} decideAll={decideAll} />}
       </Section>
 
       <Section title="Waiting for landlords" count={data.forLandlords.length + landlordWebsite.length}>

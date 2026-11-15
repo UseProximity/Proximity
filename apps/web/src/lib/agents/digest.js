@@ -68,7 +68,7 @@ export async function buildDigest({ now = new Date() } = {}) {
     title: "Scraping",
     rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], ["Website changes declined (new today)", siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
-    note: "The sync applies or declines every website change itself; nothing waits for review." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
+    note: "The sync applies or declines every website change itself. A run skipped for changing too much at once waits for the team in the admin Agents tab." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
   });
 
   /*

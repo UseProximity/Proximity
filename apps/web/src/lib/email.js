@@ -1355,8 +1355,8 @@ export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourc
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Website sync skipped a listing</h2>
         <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
-        <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
-        <p><a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        <p style="color:#444">The changes are waiting for the team in admin, under Agents, "Website changes waiting for the team", each shown as Proximity now against the website. Apply them if the website really did change, or reject them if it was a misread. Until then students see the current listing. Tomorrow's read replaces them if the website changes again.</p>
+        <p><a href="${baseUrl}/dashboard/admin/agents" style="color:#dc2626">Review the changes</a> · <a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#6b7280">Open the listing</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
