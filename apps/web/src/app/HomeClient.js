@@ -37,7 +37,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-const SIDE_MARGIN = "px-12 md:px-20 lg:px-28";
+const SIDE_MARGIN = "px-5 sm:px-12 md:px-20 lg:px-28";
 
 // ─── Hero + Map (combined) ─────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ function HeroMapSection({ initialListings = null }) {
 
   return (
     <section className="relative overflow-hidden" style={{ background: BG }}>
-      <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
+      <div className="flex flex-col xl:flex-row xl:min-h-[680px]">
         {/* ── Left: Hero content ── */}
         <div
           className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}
@@ -153,7 +153,7 @@ function HeroMapSection({ initialListings = null }) {
         </div>
 
         {/* ── Right: Map ── */}
-        <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
+        <div className="relative flex-1 min-h-[400px] xl:min-h-0 overflow-hidden">
           {/* Real Mapbox map, desaturated */}
           <div className="absolute inset-0">
             <MapView
@@ -184,7 +184,7 @@ function HeroMapSection({ initialListings = null }) {
 
           {/* Left gradient — blends map into hero bg (desktop only) */}
           <div
-            className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
+            className="hidden xl:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
             style={{
               background: `linear-gradient(to right, ${BG} 0%, transparent 100%)`,
             }}

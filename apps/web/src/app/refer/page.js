@@ -160,7 +160,7 @@ export default async function ReferHome() {
       </header>
 
       {/* Three columns: details (left) · timer + leaderboard (middle) · link + stats (right) */}
-      <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
         {/* Left — how the game works */}
         <section className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-5">
           <h2 className="text-base font-semibold text-gray-900 mb-3">How the ambassador game works</h2>
