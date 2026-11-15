@@ -39,6 +39,13 @@ The MCP knowledge covers `apps/web/src` only (see the root file for the global r
 - **Prompts**: scaffold/debug routes, components, pages, auth; plus role briefings.
 - **Regenerate knowledge**: `node mcp/scripts/generate-knowledge.mjs` (rescans `apps/web/src` for routes, components, pages, utils, env vars; `db-schema.json` is hand-maintained against the live DB).
 
+## Responsive layout
+
+- **Breakpoint roles** (Tailwind defaults): base is phone, `md` (768) is tablet (stacked content, hamburger nav), `lg` (1024) is where content goes side by side, `xl` (1280) is desktop including the full header nav. A side-by-side layout inside a page that already has a sidebar starts at `lg`, not `md`.
+- **Desktop is frozen.** A responsive fix must not change anything at 1280px and wider: move the breakpoint later, or scope the class with `max-xl:`.
+- **Header height** comes from `--header-h` in `src/app/globals.css`. Use `top-[var(--header-h)]` or `calc(100dvh-var(--header-h))`, not `83px`/`104px`.
+- **Nothing is hover-only.** Controls revealed on hover use `[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100`, so touch devices always see them.
+
 ## Gotchas
 
 - `/washu` landing pages need two edits: structure and filters in `src/lib/washuPages.js`, copy in `src/content/washu/*.json`. Weekly copy refreshes use the `seo-draft` skill.
