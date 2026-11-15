@@ -32,6 +32,9 @@ import {
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
 import { trackEvent, getListingSource } from "@/utils/analytics";
+import ApplyButton from "@/components/listings/ApplyButton";
+import ApplicationCheck from "@/components/listings/ApplicationCheck";
+import { pickApplication } from "@/lib/listings/applicationLink";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
 import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS, decodeHtml } from "./AmenityPill";
@@ -1267,15 +1270,25 @@ function ContactTab({
                 </div>
               </div>
             )}
-            <button
-              type="submit"
-              disabled={!chatBody.trim() || chatSending}
-              className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {chatSending ? "Sending..." : "Send message"}
-            </button>
+            {/* Apply sits beside Send when the landlord added a link. */}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!chatBody.trim() || chatSending}
+                className="flex-1 bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {chatSending ? "Sending..." : "Send message"}
+              </button>
+              <ApplyButton listing={listing} selectedLease={selectedLease} signedIn variant="form" />
+            </div>
           </form>
         </div>
+      )}
+      {/* No message form here (the owner's preview, or a landlord with no
+          account to write to), but the application can still be reached. */}
+      {!canMessage && (
+        <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={!!userId}
+          record={!preview && !isOwnListing} variant="form" className="w-full" />
       )}
     </div>
   );
@@ -2565,6 +2578,7 @@ export default function ListingModalInfo({
               )}
               {show("contact") && (
                 <Section id="contact" label="Contact" sectionRefs={sectionRefs}>
+                  <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} />
                   {/*
                    * Proxy first (per-listing agents, PRD v3): on a listing whose
                    * agent is live, Contact is the Proxy conversation, signed in
@@ -2583,7 +2597,9 @@ export default function ListingModalInfo({
                     />
                   ) : !session ? (
                     <SignInPrompt
-                      message="Sign in to contact the property manager."
+                      message={pickApplication(listing)
+                        ? "Sign in to contact the property manager or apply."
+                        : "Sign in to contact the property manager."}
                       tab="contact"
                     />
                   ) : (

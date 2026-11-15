@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-14T19:03:11.175Z",
-  "count": 206,
+  "_generated": "2026-11-15T05:16:26.216Z",
+  "count": 209,
   "components": [
     {
       "name": "ErrorReporter",
@@ -529,6 +529,16 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ApplicationCheck",
+      "file": "src/components/listings/ApplicationCheck.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ApplyButton",
+      "file": "src/components/listings/ApplyButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AvailableListings",
       "file": "src/components/listings/AvailableListings.js",
       "description": "No description. Run generate after adding a description above."
@@ -734,6 +744,11 @@
       "description": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor"
     },
     {
+      "name": "EditorApplications",
+      "file": "src/components/listings/editor/EditorApplications.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "EditorContact",
       "file": "src/components/listings/editor/EditorContact.js",
       "description": "No description. Run generate after adding a description above."
@@ -889,13 +904,13 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "TourMarker",
-      "file": "src/components/proxy/TourMarker.js",
+      "name": "TourDialog",
+      "file": "src/components/proxy/TourDialog.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "TourPicker",
-      "file": "src/components/proxy/TourPicker.js",
+      "name": "TourMarker",
+      "file": "src/components/proxy/TourMarker.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

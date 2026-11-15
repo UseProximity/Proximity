@@ -29,7 +29,7 @@ const SELECT = `
   home_types!home_type_id(label),
   listing_units!listing_id(id, bedrooms, bathrooms, area, name, sort_order, deleted_at, published_at,
     unit_leases!unit_id(id, rent, is_active, unavailable, sublease, available_from, lease_term_months,
-      furnished, owner_id, rent_is_per_person, description, deleted_at, published_at)),
+      furnished, owner_id, rent_is_per_person, description, application_url, deleted_at, published_at)),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(air_conditioning, dishwasher, gym, laundry, mailroom, microwave, oven, parking, pets_allowed, pool, refrigerator, rooftop, storage, stove, study_room),
   listing_utilities!listing_id(electric, gas, heat, water, internet, trash, cable, sewer, cooling),
@@ -44,6 +44,18 @@ function termLabel(months) {
   if (!t.length) return null;
   if (t.length === 1) return `${t[0]}-month lease`;
   return `${t[0]} to ${t[t.length - 1]} month leases`;
+}
+
+/*
+ * How to apply, when a landlord added an application link (Wyatt,
+ * 2026-11-14). Proxy points the student at the Apply button rather than
+ * quoting the link: the button is what records that they went to apply.
+ */
+function applyLine(units) {
+  const live = units.flatMap((u) => (u.unit_leases ?? []).filter(isLiveLease));
+  if (!live.some((l) => l.application_url)) return null;
+  const all = live.every((l) => l.application_url);
+  return `HOW TO APPLY: the landlord takes applications on their own site${all ? "" : " for some of the leases here"}. When a student asks how to apply, tell them to use the Apply button next to the Tour button under this chat; it opens the landlord's application in a new tab. Do not write out the link.`;
 }
 
 export async function buildProxyContext(listingId) {
@@ -126,6 +138,7 @@ export async function buildProxyContext(listingId) {
     `UTILITIES INCLUDED IN RENT: ${utils.join(", ") || "none listed"}`,
     `UNITS AND LEASES (a lease is one owner's offering; several owners can offer the same building):\n${unitLines.join("\n") || "- no units listed"}`,
     leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
+    applyLine(units),
   ];
   const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
   const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
