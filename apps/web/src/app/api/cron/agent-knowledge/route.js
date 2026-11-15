@@ -1,8 +1,9 @@
 /*
- * Weekly (Monday 5am and 6am St. Louis): queue the whole-site knowledge read
- * for every listing with a website (lib/agents/sync.js runWeeklyKnowledge).
- * The second run picks up listings whose daily sync was still running at the
- * first. The import-jobs cron drains the queue. Does nothing while the
+ * Weekly (Monday, every hour from 5am to 3pm St. Louis): queue the
+ * whole-site knowledge read for every listing with a website
+ * (lib/agents/sync.js runWeeklyKnowledge). The later runs pick up listings
+ * whose daily sync was still running at the earlier ones; a listing already
+ * read this week is skipped. The import-jobs cron drains the queue. Does nothing while the
  * agents' global switch is off.
  *
  * @auth cron

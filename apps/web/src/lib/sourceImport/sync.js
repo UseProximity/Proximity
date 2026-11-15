@@ -140,6 +140,32 @@ async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
 }
 
 /*
+ * Photos or floor plan drawings the website has that the listing is missing:
+ * `any` when there is something to fill, `overdue` when it has waited a week
+ * (the listing, or the unit, is more than seven days old).
+ */
+async function photoGaps(listingId, snapshot) {
+  const sitePhotos = (snapshot.property?.photos?.length ?? 0) > 0;
+  const unitPhotos = (snapshot.units ?? []).some((u) => u.photos?.length);
+  const drawings = (snapshot.units ?? []).some((u) => u.floorPlanImageUrl);
+  if (!sitePhotos && !unitPhotos && !drawings) return { any: false, overdue: false };
+  const [{ data: listing }, { data: units }, { data: images }] = await Promise.all([
+    supabase.from("listings").select("created_at").eq("id", listingId).maybeSingle(),
+    supabase.from("listing_units").select("id, created_at, floor_plan_image_url").eq("listing_id", listingId).is("deleted_at", null),
+    supabase.from("listing_images").select("unit_id, source").eq("listing_id", listingId),
+  ]);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const old = (row) => row?.created_at && new Date(row.created_at).getTime() < weekAgo;
+  const withPhotos = new Set((images ?? []).filter((i) => i.source !== "street_view").map((i) => i.unit_id ?? "property"));
+  const missing = [];
+  if (sitePhotos && !withPhotos.has("property")) missing.push(listing);
+  for (const u of units ?? []) {
+    if ((unitPhotos && !withPhotos.has(u.id)) || (drawings && !u.floor_plan_image_url)) missing.push(u);
+  }
+  return { any: missing.length > 0, overdue: missing.some(old) };
+}
+
+/*
  * Sync one monitor. Returns the digest row for it. Never throws: a failure
  * is recorded on the monitor (with backoff) and returned as status "failed".
  *   force       read even if the fingerprint is unchanged
@@ -192,11 +218,15 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
     await keepSnapshot(m.id, { ok: true, snapshot });
     const fp = fingerprint(snapshot);
-    // Photos weekly (Wyatt, 2026-11-12): only the deep read, or a sync
-    // someone asked for, adds them. The fingerprint leaves photos out, so a
-    // deep read always applies rather than stopping at "unchanged".
-    const images = goDeep || force;
-    const unchanged = !force && !goDeep && m.last_fingerprint === fp;
+    // Photos weekly (Wyatt, 2026-11-12): the deep read, or a sync someone
+    // asked for, adds them. A unit or listing that has waited a week without
+    // any (its Sunday read did not run or was held) gets them on its next
+    // sync. The fingerprint leaves photos out, so a run that could fill a gap
+    // applies rather than stopping at "unchanged"; one with nothing to fill
+    // stops there as usual.
+    const gaps = await photoGaps(listing.id, snapshot).catch(() => ({ any: false, overdue: false }));
+    const images = goDeep || force || gaps.overdue;
+    const unchanged = !force && m.last_fingerprint === fp && !(images && gaps.any);
     let result = null;
     if (!unchanged) {
       onStep("Saving");
