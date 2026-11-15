@@ -1,10 +1,12 @@
 /*
  * What the daily website sync does with each change it finds.
  *
- * There is no review queue (Wyatt, 2026-11-11): nobody can work through a
- * pile of proposed changes every day, so every change a sync finds is either
- * applied or denied on the spot, by its kind and by how sure the read is of
- * that one fact. The landlord's own data always wins. Imports, and the
+ * There is no daily review queue (Wyatt, 2026-11-11): nobody can work
+ * through a pile of proposed changes every day, so every change a sync finds
+ * is either applied or denied on the spot, by its kind and by how sure the
+ * read is of that one fact. The one exception is a run the churn guard skips
+ * (too much at once): what the policy would have applied waits for the team
+ * or the landlord to apply or reject (Wyatt, 2026-11-15). The landlord's own data always wins. Imports, and the
  * "proposed changes" a landlord reviews after adding a website, still queue;
  * this is only the recurring sync.
  *
@@ -118,8 +120,13 @@ const SMALL_PRICE_MOVE = 0.05;
  * repricing, not a misread, and is no churn either; a lease appearing or
  * vanishing always counts.
  */
-/* True when a change only moves a known rent by SMALL_PRICE_MOVE or less. */
+/*
+ * True when a change only moves a known rent by SMALL_PRICE_MOVE or less. A
+ * switch between per person and whole unit is never small, even at the same
+ * number.
+ */
 export function smallPriceMove(c) {
+  if (c.old?.rentIsPerPerson !== undefined || c.new?.rentIsPerPerson !== undefined) return false;
   const before = Number(c.old?.rent);
   const after = Number(c.new?.rent);
   if (!(before > 0) || !(after > 0)) return false;
@@ -135,7 +142,9 @@ export function churnCheck({ changes, existingLeases, existingUnits, policyRun =
         if (goesLive(c)) return n + Math.max(1, (c.detail?.offers ?? []).length);
         if (c.kind === "rent_change") return smallPriceMove(c) ? n : n + 1;
         if (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind)) return n + 1;
-        if (c.kind === "lease_updated" && /\b(available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        // Field names are the change's keys (planLeaseUpdate): rent,
+        // rentIsPerPerson, leaseTermMonths, availableFrom, apartments.
+        if (c.kind === "lease_updated" && /\b(availableFrom|rentIsPerPerson|unavailable)\b/.test(c.field ?? "")) return n + 1;
         if (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? "")) return smallPriceMove(c) ? n : n + 1;
         return n;
       }, 0);

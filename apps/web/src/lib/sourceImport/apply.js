@@ -149,6 +149,14 @@ export function matchUnits(snapUnits, dbUnits) {
 }
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
+// A lease column against its key in a change's old and new values.
+const DIFF_KEY = { rent: "rent", rent_is_per_person: "rentIsPerPerson", lease_term_months: "leaseTermMonths", available_from: "availableFrom", description: "apartments" };
+
+/* The rent basis (per person true, whole unit false) these leases all share, else null. */
+const basisAgreed = (leases) => {
+  const b = new Set((leases ?? []).filter((l) => l.rent != null && l.rent_is_per_person != null).map((l) => !!l.rent_is_per_person));
+  return b.size === 1 ? [...b][0] : null;
+};
 const sameTerms = (a, b) => JSON.stringify([...(a ?? [])].map(Number).sort((x, y) => x - y)) === JSON.stringify([...(b ?? [])].map(Number).sort((x, y) => x - y));
 
 // ---------------------------------------------------------------- the listing gate
@@ -368,6 +376,11 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   const pricesUnknown = mode === "sync" && ordered.length > 0 && !ordered.some((u) => (u.offers ?? []).some((o) => o.rent != null));
   const askForPrice = { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] };
   const listingFormat = mode === "sync" ? listingUnitFormat(state.listing_units.map((u) => u.name)) : null;
+  const listingLeases = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds)));
+  // A new plan's price with no stated basis takes the basis the listing's
+  // leases agree on (sync only; an import says so in its notes instead).
+  const listingBasis = mode === "sync" ? basisAgreed(listingLeases) : null;
+  const withBasis = (offers) => (listingBasis === null ? offers : offers.map((o) => (o.rent != null && o.rentIsPerPerson == null ? { ...o, rentIsPerPerson: listingBasis } : o)));
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
@@ -383,7 +396,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           op: "unit_insert",
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: snap.floorPlanImageUrl },
-          offers: pricesUnknown ? [askForPrice] : snap.offers,
+          offers: pricesUnknown ? [askForPrice] : withBasis(snap.offers),
           available: pricesUnknown ? true : snap.available,
           photos: snap.photos,
           draft: misshapen,
@@ -443,10 +456,25 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       if (!byKey.has(k) || (byKey.get(k).unavailable && !l.unavailable)) byKey.set(k, l);
     }
     const offers = snap.available ? snap.offers : [];
+    /*
+     * A price the website gives no basis for (per person or whole unit) is
+     * the lease at that number, whichever basis the landlord gave it, so an
+     * unsure read never flips a per-person lease to a whole-unit one. A new
+     * lease at such a price takes the basis the unit's (else the listing's)
+     * leases agree on.
+     */
+    const keyFor = (o) => {
+      if (o.rent == null || o.rentIsPerPerson != null) return leaseKey(o.rent, o.rentIsPerPerson);
+      const pp = leaseKey(o.rent, true);
+      const whole = leaseKey(o.rent, false);
+      if (byKey.has(whole) && !byKey.get(whole).unavailable) return whole;
+      if (byKey.has(pp)) return pp;
+      return whole;
+    };
     const seen = new Set();
     const unmatchedOffers = [];
     for (const o of offers) {
-      const k = leaseKey(o.rent, o.rentIsPerPerson);
+      const k = keyFor(o);
       seen.add(k);
       const l = byKey.get(k);
       if (!l) {
@@ -478,7 +506,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         planLeaseUpdate(o, l, { rent: o.rent, rent_is_per_person: o.rentIsPerPerson ?? l.rent_is_per_person });
       }
     }
-    for (const o of unmatchedOffers) {
+    for (const site of unmatchedOffers) {
+      const basis = mode === "sync" && site.rent != null && site.rentIsPerPerson == null ? basisAgreed(mine) ?? listingBasis : null;
+      const o = basis === null ? site : { ...site, rentIsPerPerson: basis };
       push({
         kind: "lease_new",
         unitKey: snap.key,
@@ -495,6 +525,12 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const lp = { ...(repriced ?? {}) };
       const diff = {};
       if (repriced) diff.rent = { old: l.rent, new: o.rent };
+      // Per person against whole unit at the same number is a different
+      // price (4x on a 4 bed), so a basis the website states and the lease
+      // does not share is a change of its own, always counted as churn.
+      if (repriced && o.rentIsPerPerson != null && l.rent_is_per_person != null && !!o.rentIsPerPerson !== !!l.rent_is_per_person) {
+        diff.rentIsPerPerson = { old: !!l.rent_is_per_person, new: !!o.rentIsPerPerson };
+      }
       /*
        * A sync changes only what the site states (Wyatt, 2026-11-11: missing
        * facts never cause a change). Lease lengths read off the site's general
@@ -865,6 +901,22 @@ export async function executeChange(change, { state, userId }) {
 // ---------------------------------------------------------------- events
 
 /*
+ * A value as text with object keys sorted, for matching a change against a
+ * saved event: jsonb hands keys back in its own order ({rent, availableFrom,
+ * leaseTermMonths} for what was written as {rent, leaseTermMonths,
+ * availableFrom}), so a plain JSON.stringify never matched a change with
+ * several fields and the same change was saved again every run.
+ */
+function stableJson(value) {
+  const sort = (v) => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, sort(v[k])]));
+    return v;
+  };
+  return JSON.stringify(sort(value ?? null));
+}
+
+/*
  * Changes held for the team by an earlier skipped run that this run no
  * longer holds: the website moved on, or this run applied them itself. They
  * are cleared, so the team never applies a price the website has dropped.
@@ -874,7 +926,7 @@ async function settleHeldForTeam({ listingId, current }) {
   const { data: open } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, new_value, detail")
     .eq("listing_id", listingId).eq("status", "open").contains("detail", { churnHeld: true }).limit(500);
   if (!open?.length) return;
-  const keyOf = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}`;
+  const keyOf = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${stableJson(value ?? null)}`;
   const still = new Set(current.map((c) => keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new)));
   const now = new Date().toISOString();
   for (const e of open) {
@@ -900,11 +952,11 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     ]);
     // The lease is part of the key: two leases of one floor plan given the
     // same update are two changes, not one (the second used to be dropped).
-    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.detail?.leaseId ?? ""}|${e.field ?? ""}|${JSON.stringify(e.new_value ?? null)}`;
+    const keyOf = (e) => `${e.kind}|${e.unit_key ?? ""}|${e.detail?.leaseId ?? ""}|${e.field ?? ""}|${stableJson(e.new_value ?? null)}`;
     // Nor do the sync's own denials: a landlord reviewing a change is asked even if the sync said no.
     const seen = new Set([...(open ?? []), ...(rejected ?? []).filter((e) => !e.detail?.clearedBy && !e.detail?.autoDenied)].map(keyOf));
     fresh = changes.filter((c) => {
-      const key = `${c.kind}|${c.unitKey ?? ""}|${c.leaseId ?? c.detail?.leaseId ?? ""}|${c.field ?? ""}|${JSON.stringify(c.new ?? null)}`;
+      const key = `${c.kind}|${c.unitKey ?? ""}|${c.leaseId ?? c.detail?.leaseId ?? ""}|${c.field ?? ""}|${stableJson(c.new ?? null)}`;
       if (seen.has(key)) return false;
       // ...and the same change twice in one read is one event too.
       seen.add(key);
@@ -921,7 +973,7 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     const since = new Date(Date.now() - REJECTED_QUIET_DAYS * 86400000).toISOString();
     const { data: before } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail")
       .eq("listing_id", listingId).eq("status", "rejected").is("verdict_by", null).gte("created_at", since).limit(2000);
-    const keyOf = (kind, unitKey, leaseId, field, value, reason) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}|${reason ?? ""}`;
+    const keyOf = (kind, unitKey, leaseId, field, value, reason) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${stableJson(value ?? null)}|${reason ?? ""}`;
     const seen = new Set((before ?? []).filter((e) => e.detail?.autoDenied).map((e) => keyOf(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value, e.detail.autoDenied)));
     fresh = changes.filter((c) => {
       const key = keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new, c.denyReason);
@@ -1167,6 +1219,14 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       }
       c.detail = { ...c.detail, patch, landlordKept: dropped };
       c.note = `kept the landlord's ${dropped.join(", ")}`;
+      // What is kept is not part of the change: the churn guard and the
+      // review card judge only what will be written.
+      const keptKeys = new Set(dropped.map((f) => DIFF_KEY[f]).filter(Boolean));
+      if (keptKeys.size && c.old && typeof c.old === "object" && c.new && typeof c.new === "object") {
+        c.old = Object.fromEntries(Object.entries(c.old).filter(([k]) => !keptKeys.has(k)));
+        c.new = Object.fromEntries(Object.entries(c.new).filter(([k]) => !keptKeys.has(k)));
+        c.field = Object.keys(c.new).join(",");
+      }
       if (c.kind === "rent_change" && !("rent" in patch)) c.kind = "lease_updated";
     }
   }
@@ -1240,17 +1300,19 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     for (const c of changes) {
       /*
        * A run skipped for churn holds what the policy would have applied for
-       * the team to review in admin (Agents, "Website changes waiting for
-       * the team"), rather than dropping it (Wyatt, 2026-11-15: The Koken's
-       * real price cuts sat unapplied for two nights with no way to approve
-       * them). What the policy itself denies stays denied. A skipped run still
-       * takes what a unit's own page said: the landlord pointed at that page
-       * for that unit (Wyatt, 2026-11-06).
+       * a person to apply or reject, rather than dropping it (Wyatt,
+       * 2026-11-15: The Koken's real price cuts sat unapplied for two nights
+       * with no way to approve them). The team sees it in admin (Agents,
+       * "Website changes waiting for the team") and the landlord on the
+       * listing's Agent tab and import tab; either can decide it (Wyatt,
+       * 2026-11-15). What the policy itself denies stays denied. A skipped
+       * run still takes what a unit's own page said: the landlord pointed at
+       * that page for that unit (Wyatt, 2026-11-06).
        */
       if (holdReason === "churn_hold" && !c.detail?.fromUnitPage && c.verdict?.apply) {
         c.auto = false;
         c.note = `Held: ${DENY.churn}`;
-        c.detail = { ...c.detail, teamReview: true, churnHeld: true };
+        c.detail = { ...c.detail, churnHeld: true };
         held.push(c);
         continue;
       }
@@ -1354,6 +1416,32 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 }
 
 /*
+ * Why a saved lease change no longer fits the lease, or null when it still
+ * does: the lease is gone, already in the state the change would put it in,
+ * or a field the change was read against has been edited since.
+ */
+const LEASE_CHANGE_FIELDS = {
+  rent: ["the rent", (o, l) => (o.rent == null ? l.rent == null : Number(o.rent) === Number(l.rent))],
+  rentIsPerPerson: ["per person or whole unit", (o, l) => !!o.rentIsPerPerson === !!l.rent_is_per_person],
+  leaseTermMonths: ["the lease lengths", (o, l) => sameTerms(o.leaseTermMonths, l.lease_term_months)],
+  availableFrom: ["the move-in date", (o, l) => moveInKey(o.availableFrom) === moveInKey(l.available_from)],
+  apartments: ["the apartments", (o, l) => (o.apartments ?? null) === (l.description ?? null)],
+};
+export function changedSinceRead(e, lease) {
+  if (!e.detail?.leaseId || !["lease_update", "lease_withdraw"].includes(e.detail?.op)) return null;
+  if (!lease) return "This lease is no longer on the listing.";
+  if (e.kind === "lease_withdrawn") return lease.unavailable ? "This lease is already marked unavailable." : null;
+  if (e.kind === "unit_relisted") return lease.unavailable ? null : "This lease is already available again.";
+  if (lease.unavailable) return "This lease was taken down since the website was read.";
+  const o = e.old_value;
+  if (!o || typeof o !== "object") return null;
+  const moved = Object.entries(LEASE_CHANGE_FIELDS)
+    .filter(([k, pair]) => k in o && !pair[1](o, lease))
+    .map(([, pair]) => pair[0]);
+  return moved.length ? `Changed on Proximity since the website was read: ${moved.join(", ")}.` : null;
+}
+
+/*
  * Replay held changes a person accepted: the "apply these changes" button on
  * an existing listing's import tab, or a reviewed sync hold. Events already
  * applied are skipped; each success is marked applied with the verdict.
@@ -1379,16 +1467,30 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   // Accepting a change that puts a lease live is a publish: the same gate,
   // checked for the listing's landlord even when the team accepts it.
   const gateOf = cachedGate(primaryOwner(state) ?? userId, listingId);
+  const leasesById = new Map(state.listing_units.flatMap((u) => u.unit_leases).map((l) => [l.id, l]));
+  const ownerDecides = !!userId && ownerIdsOf(state).includes(userId);
+  const protectedIds = !ownerDecides && (events ?? []).some((e) => e.detail?.churnHeld) ? await landlordSetScopes(listingId) : new Set();
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
     if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
-    // A change held from a skipped run: if the rent moved since (the landlord
-    // edited it), the team's Apply would overwrite that edit. Refuse it and
-    // let the next read decide.
-    if (e.detail?.churnHeld && e.old_value?.rent != null && e.detail?.leaseId) {
-      const lease = state.listing_units.flatMap((u) => u.unit_leases).find((l) => l.id === e.detail.leaseId);
-      if (lease && Number(lease.rent) !== Number(e.old_value.rent)) {
-        results.push({ id: e.id, ok: false, error: `The rent is now $${Number(lease.rent)}, not the $${Number(e.old_value.rent)} this change was read against. Run Sync now to re-read the website.` });
+    /*
+     * A change is applied only to the listing it was read against. Anything
+     * edited on Proximity since (a rent, a move-in date, a lease taken down
+     * or put back) means the change is out of date and the Apply would
+     * overwrite that edit, so it is refused and the next read decides. A
+     * skipped run's held change also gives way to anything the landlord has
+     * since set by hand, unless the landlord is the one applying it.
+     */
+    const stale = changedSinceRead(e, e.detail?.leaseId ? leasesById.get(e.detail.leaseId) : null);
+    if (stale) {
+      results.push({ id: e.id, ok: false, error: `${stale} Run Sync now to re-read the website.` });
+      continue;
+    }
+    if (e.detail?.churnHeld && !ownerDecides) {
+      const leaseId = e.detail?.leaseId ?? null;
+      const unitId = e.detail?.unitId ?? null;
+      if ((leaseId && protectedIds.has(leaseId)) || (unitId && protectedIds.has(unitId) && e.kind !== "lease_new")) {
+        results.push({ id: e.id, ok: false, error: "The landlord has set this by hand since the website was read, and the landlord's data wins. They can still apply it from their Agent tab." });
         continue;
       }
     }
