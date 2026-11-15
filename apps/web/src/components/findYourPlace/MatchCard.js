@@ -88,15 +88,21 @@ export function MatchCardSkeleton() {
   );
 }
 
+// Staggered start for the reveal, one step per card (top left first).
+const REVEAL_DELAY = ["delay-0", "delay-75", "delay-150", "delay-200"];
+
 /*
- * One match: photo on the left, the listing's facts and why it matched on the
- * right. It is its own card rather than the browse ListingCard because it has
- * to stretch to whatever cell the 2x2 grid gives it (the browse card's height
- * is fixed by its photo), and because the reason belongs inside it.
+ * The cell: the card, with its skeleton laid over it until the grid reveals
+ * all four together (StepMatches). The card is drawn underneath from the start
+ * so its photo can load and its explanation can size itself; on reveal the
+ * skeleton fades out as the card fades and lifts in. `onReady` reports when
+ * the card has its data and photo, or has failed.
  */
-export default function MatchCard({ match, position, signedIn, onOpen, onContact, onLocked }) {
+export default function MatchCard({ revealed = true, onReady, ...props }) {
+  const { match, position } = props;
   const [listing, setListing] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [photoDone, setPhotoDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,8 +119,38 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
     };
   }, [match.listing_id]);
 
+  const ready = failed || (!!listing && (photoDone || !listing.images?.[0]));
+  useEffect(() => {
+    if (ready) onReady?.(match.listing_id);
+  }, [ready, onReady, match.listing_id]);
+
   if (failed) return null;
-  if (!listing) return <MatchCardSkeleton />;
+  const delay = REVEAL_DELAY[(position - 1) % REVEAL_DELAY.length];
+  const fade = "transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none";
+  return (
+    <div className="relative h-full min-h-[150px]">
+      {listing && (
+        <div className={`h-full ${fade} ${delay} ${revealed ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1.5 opacity-0"}`}>
+          <MatchCardBody {...props} listing={listing} onPhotoDone={() => setPhotoDone(true)} />
+        </div>
+      )}
+      <div
+        aria-hidden={revealed}
+        className={`absolute inset-0 ${fade} ${delay} ${revealed ? "pointer-events-none opacity-0" : "opacity-100"}`}
+      >
+        <MatchCardSkeleton />
+      </div>
+    </div>
+  );
+}
+
+/*
+ * One match: photo on the left, the listing's facts and why it matched on the
+ * right. It is its own card rather than the browse ListingCard because it has
+ * to stretch to whatever cell the 2x2 grid gives it (the browse card's height
+ * is fixed by its photo), and because the reason belongs inside it.
+ */
+function MatchCardBody({ match, position, signedIn, onOpen, onContact, onLocked, listing, onPhotoDone }) {
 
   const street = (listing.address ?? "").split(",")[0].trim();
   const title = listing.title || street;
@@ -161,7 +197,7 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
     >
       <div className="relative aspect-video flex-shrink-0 bg-gray-100 sm:aspect-auto sm:h-full sm:w-[36%]">
         {image ? (
-          <Image src={image} alt={listing.address ?? title} fill sizes="(max-width: 640px) 100vw, 320px" className="object-cover" />
+          <Image src={image} alt={listing.address ?? title} fill sizes="(max-width: 640px) 100vw, 320px" className="object-cover" onLoad={onPhotoDone} onError={onPhotoDone} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No image</div>
         )}

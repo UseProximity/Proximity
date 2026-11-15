@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import MatchCard, { MatchCardSkeleton } from "./MatchCard";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
@@ -141,6 +141,38 @@ export default function StepMatches({ loading, error, matches, browse, signedIn,
 
   const nearOnly = matches.every((m) => m.near_miss);
   return (
+    <MatchGrid
+      matches={matches}
+      nearOnly={nearOnly}
+      browse={browse}
+      signedIn={signedIn}
+      onOpen={onOpen}
+      onContact={onContact}
+      onLocked={onLocked}
+    />
+  );
+}
+
+// The longest the skeletons wait on a slow card (or photo) before the grid is
+// shown anyway: a slow photo should not hold back the other three.
+const REVEAL_WAIT_MS = 2500;
+
+/*
+ * The four matches, revealed together once each has its data and photo, so
+ * they arrive as one set instead of popping in one by one. Each card fades
+ * and lifts in over its skeleton, a beat after the one before it.
+ */
+function MatchGrid({ matches, nearOnly, browse, signedIn, onOpen, onContact, onLocked }) {
+  const [ready, setReady] = useState(() => new Set());
+  const [timedOut, setTimedOut] = useState(false);
+  const onReady = useCallback((id) => setReady((prev) => (prev.has(id) ? prev : new Set(prev).add(id))), []);
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), REVEAL_WAIT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  const revealed = timedOut || matches.every((m) => ready.has(m.listing_id));
+
+  return (
     <div className="flex h-full flex-col">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -163,6 +195,8 @@ export default function StepMatches({ loading, error, matches, browse, signedIn,
             onOpen={onOpen}
             onContact={onContact}
             onLocked={onLocked}
+            revealed={revealed}
+            onReady={onReady}
           />
         ))}
       </div>
