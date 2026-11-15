@@ -47,8 +47,12 @@ const Answer = z.object({
   // 1-based position of the floor plan drawing among the images sent, or
   // null when none of them is one.
   floorPlanImage: z.number().nullable(),
-  confidence: z.number(),
 });
+
+// One retry when the answer comes back unreadable. Haiku now and then ends
+// its JSON early ("Unterminated string"), and a second ask nearly always
+// lands.
+const ATTEMPTS = 2;
 
 /* Fetch, shrink to 320px JPEG, and score how diagram-like the pixels are. */
 async function prepare(url) {
@@ -98,35 +102,47 @@ async function prepare(url) {
   }
 }
 
-/* The model's pick among the prepared candidates, or null. */
+/*
+ * The model's pick among the prepared candidates, or null. Undefined when
+ * no readable answer came back: the unit keeps the floor plan it had, so a
+ * miss is logged as a warning, not raised as a site error.
+ */
 async function askModel(unitName, candidates) {
-  try {
-    const response = await getClient().messages.parse({
-      model: HAIKU,
-      max_tokens: 200,
-      output_config: { format: zodOutputFormat(Answer) },
-      system:
-        "You look at images from an apartment listing and say which one, if any, is the floor plan: an architectural drawing of the apartment's layout (walls, rooms, labels, dimensions), usually black lines on white. Photographs of rooms, buildings, furniture or views are not floor plans, even if they show an empty unit. A rendering or 3D cutaway of the layout counts. Answer with the 1-based position of the floor plan image, or null if none is one.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...candidates.flatMap((c, i) => [
-              { type: "text", text: `Image ${i + 1}:` },
-              { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } },
-            ]),
-            { type: "text", text: `These are images filed under the floor plan "${unitName}". Which image is the floor plan drawing?` },
-          ],
-        },
-      ],
-    });
-    const cost = logCost(`floor plan ${unitName}`, HAIKU, response.usage) ?? 0;
-    const i = response.parsed_output?.floorPlanImage;
-    return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
-  } catch (err) {
-    console.error(`[source-import] floor plan check failed for ${unitName}:`, err?.message);
-    return { pick: undefined, cost: 0 };
+  let lastError = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    try {
+      return await askModelOnce(unitName, candidates);
+    } catch (err) {
+      lastError = err;
+    }
   }
+  console.warn(`[source-import] floor plan not checked for ${unitName}, kept as it was (${ATTEMPTS} tries): ${lastError?.message}`);
+  return { pick: undefined, cost: 0 };
+}
+
+async function askModelOnce(unitName, candidates) {
+  const response = await getClient().messages.parse({
+    model: HAIKU,
+    max_tokens: 200,
+    output_config: { format: zodOutputFormat(Answer) },
+    system:
+      "You look at images from an apartment listing and say which one, if any, is the floor plan: an architectural drawing of the apartment's layout (walls, rooms, labels, dimensions), usually black lines on white. Photographs of rooms, buildings, furniture or views are not floor plans, even if they show an empty unit. A rendering or 3D cutaway of the layout counts. Answer with the 1-based position of the floor plan image, or null if none is one.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...candidates.flatMap((c, i) => [
+            { type: "text", text: `Image ${i + 1}:` },
+            { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } },
+          ]),
+          { type: "text", text: `These are images filed under the floor plan "${unitName}". Which image is the floor plan drawing?` },
+        ],
+      },
+    ],
+  });
+  const cost = logCost(`floor plan ${unitName}`, HAIKU, response.usage) ?? 0;
+  const i = response.parsed_output?.floorPlanImage;
+  return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
 }
 
 /*
