@@ -1587,7 +1587,9 @@ export default function ListingModalInfo({
     const target = root ?? window;
     let stuck = false;
     const onScroll = () => {
-      const top = root ? root.getBoundingClientRect().top : 0;
+      // The header sticks below the "Did you submit?" bar when that shows.
+      const bar = parseFloat(getComputedStyle(el).getPropertyValue("--apply-check-h")) || 0;
+      const top = (root ? root.getBoundingClientRect().top : 0) + bar;
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -2121,6 +2123,8 @@ export default function ListingModalInfo({
   return (
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+        {/* "Did you submit your application?" sits above everything and stays stuck. */}
+        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} />
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
@@ -2285,7 +2289,8 @@ export default function ListingModalInfo({
                 compacts: a smaller title, no address, the rating cut to the
                 title's height. The sentinel just above it says when. */}
             <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
-            <div id="listing-head" ref={headRef} className="sticky top-0 z-30">
+            {/* Under the stuck "Did you submit?" bar when it shows (--apply-check-h, set by ApplicationCheck). */}
+            <div id="listing-head" ref={headRef} className="sticky top-[var(--apply-check-h,0px)] z-30">
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
@@ -2578,7 +2583,6 @@ export default function ListingModalInfo({
               )}
               {show("contact") && (
                 <Section id="contact" label="Contact" sectionRefs={sectionRefs}>
-                  <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} />
                   {/*
                    * Proxy first (per-listing agents, PRD v3): on a listing whose
                    * agent is live, Contact is the Proxy conversation, signed in

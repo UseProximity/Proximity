@@ -2,13 +2,12 @@
 
 /*
  * The landlord's Apply numbers at this property, under their contact block
- * where the application link is set (Wyatt, 2026-11-14).
+ * where the application link is set.
  *
- * "Went to apply" counts students who clicked Apply on their link; "Said they
- * applied" counts those who told us they submitted it. Only the second group
- * is named: a click is not an application, and identities stay screened
- * until a student has actually reached the landlord (see
- * lib/listings/applications.js). Hidden until there is a link or a number.
+ * Two buttons (Wyatt, 2026-11-15): "Clicked apply" (students who opened the
+ * landlord's application from the Apply button) and "Confirmed applied"
+ * (those who then told us they submitted it). Each opens its list of
+ * students. Hidden until there is a link or a click.
  */
 import { useEffect, useState } from "react";
 import { FileSignature } from "lucide-react";
@@ -16,10 +15,16 @@ import { FileSignature } from "lucide-react";
 const dateLabel = (iso) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
 
+const GROUPS = [
+  { key: "clicked", label: "Clicked apply", countKey: "started", empty: "No one has clicked Apply yet.", verb: "Clicked" },
+  { key: "applicants", label: "Confirmed applied", countKey: "applied", empty: "No one has confirmed they applied yet.", verb: "Applied" },
+];
+
 export default function EditorApplications({ listing, viewAsId = null }) {
   const listingId = listing?._id || listing?.id;
   const hasLink = (listing?.myLeases ?? []).some((l) => l.applicationUrl);
   const [data, setData] = useState(null);
+  const [open, setOpen] = useState(null);
 
   useEffect(() => {
     if (!listingId) return;
@@ -33,10 +38,8 @@ export default function EditorApplications({ listing, viewAsId = null }) {
   }, [listingId, viewAsId]);
 
   if (!hasLink && !data?.started) return null;
-  // Until the numbers arrive, a pulse rather than a confident 0.
-  const num = (n) => (data ? n ?? 0 : <span className="inline-block h-7 w-8 animate-pulse rounded bg-gray-200 align-middle" />);
-  const started = num(data?.started);
-  const applied = num(data?.applied);
+  const group = GROUPS.find((g) => g.key === open);
+  const people = group ? data?.[group.key] ?? [] : [];
 
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm">
@@ -45,30 +48,48 @@ export default function EditorApplications({ listing, viewAsId = null }) {
         <h3 className="text-sm font-semibold text-gray-900">Applications</h3>
       </div>
       <p className="mt-0.5 text-xs text-gray-500">
-        From the Apply button on your listing. Students apply on your own site, so &quot;applied&quot; is what they tell us.
+        From the Apply button on your listing. Students apply on your own site, so &quot;confirmed&quot; is what they tell us.
       </p>
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-gray-50 px-3 py-2">
-          <p className="text-2xl font-bold text-gray-900">{started}</p>
-          <p className="text-xs text-gray-500">Went to apply</p>
-        </div>
-        <div className="rounded-lg bg-gray-50 px-3 py-2">
-          <p className="text-2xl font-bold text-gray-900">{applied}</p>
-          <p className="text-xs text-gray-500">Said they applied</p>
-        </div>
+        {GROUPS.map((g) => {
+          const active = open === g.key;
+          return (
+            <button
+              key={g.key}
+              type="button"
+              disabled={!data}
+              aria-expanded={active}
+              onClick={() => setOpen(active ? null : g.key)}
+              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                active ? "border-red-600 bg-red-50 text-red-700" : "border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100"
+              }`}
+            >
+              <span>{g.label}</span>
+              {data ? (
+                <span className="text-base font-bold">{data[g.countKey] ?? 0}</span>
+              ) : (
+                <span className="inline-block h-5 w-6 animate-pulse rounded bg-gray-200" />
+              )}
+            </button>
+          );
+        })}
       </div>
-      {data?.applicants?.length > 0 && (
-        <ul className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
-          {data.applicants.map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-gray-900">{a.name || "A student"}</p>
-                {a.email && <p className="truncate text-xs text-gray-500">{a.email}</p>}
-              </div>
-              <span className="shrink-0 text-xs text-gray-400">Applied {dateLabel(a.appliedAt)}</span>
-            </li>
-          ))}
-        </ul>
+      {group && (
+        people.length ? (
+          <ul className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+            {people.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-gray-900">{a.name || "A student"}</p>
+                  {a.email && <p className="truncate text-xs text-gray-500">{a.email}</p>}
+                </div>
+                <span className="shrink-0 text-xs text-gray-400">{group.verb} {dateLabel(a.at)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-xs text-gray-500">{group.empty}</p>
+        )
       )}
     </div>
   );

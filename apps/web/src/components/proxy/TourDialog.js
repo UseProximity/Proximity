@@ -9,8 +9,9 @@
  * prefilled with the open request's times or the hours the student usually
  * picks, with hours already taken by another booked tour in grey. Around it,
  * taking after a reference design Wyatt shared: a big "When can you tour
- * ...?" headline, a line on what happens next, the listing card, an
- * optional note for Proxy, and who is booking. Sending sends the request at
+ * ...?" headline, the listing card, an optional note for Proxy, and who is
+ * booking. It never scrolls (Wyatt, 2026-11-15): everything fits on one
+ * screen, with shorter hour cells on short screens. Sending sends the request at
  * once; it shows in the chat like before. The note goes into the chat as
  * the student's own message, so Proxy reads and answers it there.
  */
@@ -116,29 +117,26 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
         aria-modal="true"
         aria-labelledby="tour-dialog-title"
         onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
       >
         <button type="button" onClick={onClose} aria-label="Close" className="absolute right-4 top-4 z-10 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
           <X className="h-5 w-5" />
         </button>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-5 sm:px-7 sm:pt-6">
+        <div className="px-5 pb-3 pt-4 sm:px-7 sm:pt-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
             {open ? "Change your tour times" : confirmed ? "Request another time" : "Request a tour"}
           </p>
-          <h2 id="tour-dialog-title" className="mt-2 pr-8 text-2xl font-bold leading-tight text-gray-900 sm:text-[28px]">
+          <h2 id="tour-dialog-title" className="mt-1.5 pr-8 text-xl font-bold leading-tight text-gray-900 sm:text-[26px]">
             When can you tour <span className="text-red-600">{name}</span>?
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-gray-600">
-            We&apos;ll coordinate with the landlord to lock in a real time. Tell us when you&apos;re open and we&apos;ll handle the back-and-forth.
-          </p>
           {line && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{line}</p>}
 
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-gray-200 p-3">
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-gray-200 p-2.5">
             {photo ? (
-              <img src={photo} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+              <img src={photo} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
             ) : (
-              <div className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />
+              <div className="h-10 w-10 shrink-0 rounded-lg bg-gray-100" />
             )}
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-gray-900">{name}</p>
@@ -146,23 +144,23 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="mt-3">
             <Label right={<span className="text-[11px] font-medium text-gray-500">{selected.size} hour{selected.size === 1 ? "" : "s"} selected</span>}>
               Times that work, your time ({zoneAbbrev()})
             </Label>
             {loading ? (
-              <div className="h-64 animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-[260px] animate-pulse rounded-lg bg-gray-100 [@media(min-height:820px)]:h-[320px]" />
             ) : (
               <>
-                <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} booked={booked} />
-                <p className="mt-1.5 text-[11px] text-gray-500">
+                <DateGrid selected={selected} onChange={setSelected} days={GRID_DAYS} booked={booked} cellClass="h-5 [@media(min-height:820px)]:h-6" />
+                <p className="mt-1 text-[11px] text-gray-500">
                   Drag across the hours you can make it.{booked.size > 0 && " Grey hours are tours you already have booked."}
                 </p>
               </>
             )}
           </div>
 
-          <div className="mt-4">
+          <div className="mt-3">
             {noteOpen ? (
               <label className="block">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">Note for Proxy</span>
@@ -183,7 +181,7 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:px-7">
+        <div className="flex items-center gap-3 border-t border-gray-100 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-7 sm:py-4">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-semibold text-red-700">
               {initials(user.name, user.email)}
@@ -194,12 +192,12 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
               {user.name && user.email && <p className="truncate text-xs text-gray-500">{user.email}</p>}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
             <button
               type="button"
               disabled={disabled}
               onClick={submit}
-              className="h-11 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
+              className="h-11 rounded-xl bg-red-600 px-4 text-sm font-semibold sm:px-5 text-white hover:bg-red-700 disabled:opacity-40"
             >
               {sending ? "Sending..." : open ? "Update tour times" : "Send tour request"}
             </button>

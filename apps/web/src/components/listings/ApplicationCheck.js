@@ -4,12 +4,14 @@
  * "Did you submit your application?" (Wyatt, 2026-11-14).
  *
  * We cannot see inside a landlord's portal, so a student who went to apply
- * on an earlier visit is asked here, at the top of Contact, the next time
- * they open the listing. Not in the visit they clicked Apply: they are still
+ * on an earlier visit is asked the next time they open the listing, in a bar
+ * at the very top of it that stays stuck while they scroll (Wyatt,
+ * 2026-11-15). Its height goes into --apply-check-h on the listing so the
+ * listing's own sticky header sits just under it instead of behind it. Not in the visit they clicked Apply: they are still
  * filling it in. "Not yet" hides it for this visit only, so it asks again
  * next time; "Yes" and "I'm not applying" settle it.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { FileSignature } from "lucide-react";
 import { APPLY_CLICKED_EVENT } from "./ApplyButton";
@@ -18,6 +20,7 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
   const [app, setApp] = useState(null);
   const [busy, setBusy] = useState(false);
   const openedAt = useRef(Date.now());
+  const barRef = useRef(null);
 
   useEffect(() => {
     if (!signedIn || preview || !listingId) return;
@@ -42,6 +45,18 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
     return () => window.removeEventListener(APPLY_CLICKED_EVENT, on);
   }, [listingId]);
 
+  // Publish the bar's height to the listing (its parent) for the sticky header.
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    const host = el?.parentElement;
+    if (!el || !host) return;
+    const set = () => host.style.setProperty("--apply-check-h", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => { ro.disconnect(); host.style.removeProperty("--apply-check-h"); };
+  }, [app]);
+
   if (!app) return null;
 
   const answer = async (status) => {
@@ -61,27 +76,29 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
   };
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-1 items-start gap-2.5">
-        <FileSignature className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-900">Did you submit your application?</p>
-          <p className="text-xs text-gray-500">You opened the landlord&apos;s application here earlier.</p>
+    <div ref={barRef} className="sticky top-0 z-40 border-b border-red-100 bg-red-50">
+      <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <FileSignature className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900">Did you submit your application?</p>
+            <p className="text-xs text-gray-600">You opened the landlord&apos;s application here earlier.</p>
+          </div>
         </div>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <button type="button" disabled={busy} onClick={() => answer("applied")}
-          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
-          Yes, I applied
-        </button>
-        <button type="button" disabled={busy} onClick={() => setApp(null)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50">
-          Not yet
-        </button>
-        <button type="button" disabled={busy} onClick={() => answer("not_applying")}
-          className="px-1 text-xs text-gray-500 underline hover:text-gray-800 disabled:opacity-50">
-          I&apos;m not applying
-        </button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button type="button" disabled={busy} onClick={() => answer("applied")}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+            Yes, I applied
+          </button>
+          <button type="button" disabled={busy} onClick={() => setApp(null)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50">
+            Not yet
+          </button>
+          <button type="button" disabled={busy} onClick={() => answer("not_applying")}
+            className="px-1 text-xs text-gray-600 underline hover:text-gray-900 disabled:opacity-50">
+            I&apos;m not applying
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -115,11 +115,11 @@ export async function answerApplication({ studentId, applicationId, status }) {
 }
 
 /*
- * What a landlord sees for one property: how many students went to their
- * application and how many said they submitted it, plus who those submitters
- * are. Students who only clicked stay anonymous, the same way Proxy keeps
- * identities screened until a tour: a click is not an application. Someone
- * who says they applied has already given the landlord their details.
+ * What a landlord sees for one property: every student who clicked Apply on
+ * their link, and those who then told us they submitted it, each with their
+ * name and email (Wyatt, 2026-11-15: one button per group on the landlord
+ * side). A click already means the student went to the landlord's own
+ * application, so they are named in both lists.
  */
 export async function landlordApplications({ landlordId, listingId }) {
   const { data, error } = await supabase
@@ -127,14 +127,17 @@ export async function landlordApplications({ landlordId, listingId }) {
     .select("id, status, first_clicked_at, last_clicked_at, answered_at, users!student_id(name, email)")
     .eq("listing_id", listingId)
     .eq("landlord_id", landlordId)
-    .order("answered_at", { ascending: false, nullsFirst: false });
+    .order("last_clicked_at", { ascending: false });
   if (error) throw new Error(`landlord applications: ${error.message}`);
+  const person = (r) => ({ id: r.id, name: r.users?.name ?? null, email: r.users?.email ?? null });
   const rows = data ?? [];
+  const applied = rows
+    .filter((r) => r.status === "applied")
+    .sort((a, b) => String(b.answered_at).localeCompare(String(a.answered_at)));
   return {
     started: rows.length,
-    applied: rows.filter((r) => r.status === "applied").length,
-    applicants: rows
-      .filter((r) => r.status === "applied")
-      .map((r) => ({ id: r.id, name: r.users?.name ?? null, email: r.users?.email ?? null, appliedAt: r.answered_at })),
+    applied: applied.length,
+    clicked: rows.map((r) => ({ ...person(r), at: r.last_clicked_at, status: r.status })),
+    applicants: applied.map((r) => ({ ...person(r), at: r.answered_at })),
   };
 }
