@@ -10,8 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch, Badge, GearButton, InlineToggle } from "@/components/admin/adminShared";
 import { AdminLink, PersonLink } from "@/components/admin/RecordLink";
 import { availability, ListingDetail } from "@/components/admin/ListingsView";
-import NotesPanel from "./NotesPanel";
-import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, personName, ThreadList, TourList } from "./shared";
+import NotesPanel from "@/components/admin/records/NotesPanel";
+import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, personName, ThreadList, TourList } from "@/components/admin/records/shared";
 
 const AGENT = { on: ["green", "Agent on"], pilot: ["blue", "Agent in pilot"], off: ["gray", "Agent off"] };
 const SYNC_BAD = new Set(["fetch_failed", "parse_failed", "gone", "url_stale"]);
@@ -40,7 +40,7 @@ export default function ListingRecord({ id, dbTarget, isProd, isReadOnly, refres
 
   // Names and emails for the "add landlord" picker, as on the Listings page.
   useEffect(() => {
-    adminFetch("/api/admin/hierarchy/users", dbTarget)
+    adminFetch("/api/admin/hierarchy/users?fields=picker", dbTarget)
       .then((users) => setAllUsers((users || []).map((u) => ({ id: u.id, name: u.name, email: u.email }))))
       .catch(() => setAllUsers([]));
   }, [dbTarget]);

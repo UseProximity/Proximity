@@ -8,6 +8,7 @@
  * prompt to look, not proof the job is down: a job with nothing to do leaves
  * no trace.
  */
+// vercel.json sits outside src/, where the @/ alias cannot reach.
 import vercel from "../../../vercel.json";
 
 const DAY = 86400000;
@@ -60,7 +61,9 @@ export async function loadScheduledJobs(db) {
       const { data } = await q;
       lastAt = data?.[0]?.[column] ?? null;
     }
-    const openErrors = (errors ?? []).filter((e) => `${e.where_label ?? ""} ${e.message ?? ""}`.includes(`cron/${name}`)).length;
+    // Whole name only: "cron/chat-checkin" must not also match "cron/chat-checkin-report".
+    const names = new RegExp(`cron/${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`);
+    const openErrors = (errors ?? []).filter((e) => names.test(`${e.where_label ?? ""} ${e.message ?? ""}`)).length;
     return {
       name,
       schedule: describeSchedule(cron),

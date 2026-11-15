@@ -55,6 +55,16 @@ async function listingsBy(db, ids) {
   return map;
 }
 
+/* Rows of `table` keyed by id, fetched 200 ids at a time so the request URL stays short. */
+async function rowsById(db, table, select, ids) {
+  const wanted = [...new Set(ids.filter(Boolean))];
+  const map = new Map();
+  for (let i = 0; i < wanted.length; i += 200) {
+    for (const row of rowsOf(await db.from(table).select(select).in("id", wanted.slice(i, i + 200)))) map.set(row.id, row);
+  }
+  return map;
+}
+
 const newest = (db, table, select, column = "created_at") => db.from(table).select(select).order(column, { ascending: false }).limit(LIMIT);
 
 // Mark something looked at, or put it back in the queue.
@@ -121,8 +131,7 @@ export const LISTS = {
     columns: [["when", "When"], ["reporter", "Reported by"], ["review", "Review"], ["author", "Written by"], ["listing", "Listing"], ["open", ""]],
     async load(db) {
       const rows = rowsOf(await newest(db, "review_reports", "id, reporter_id, review_id, reported_user_id, created_at"));
-      const ids = [...new Set(rows.map((r) => r.review_id).filter(Boolean))];
-      const reviews = new Map(ids.length ? rowsOf(await db.from("listing_reviews").select("id, rating, comment, deleted_at, listing_id").in("id", ids.slice(0, 500))).map((v) => [v.id, v]) : []);
+      const reviews = await rowsById(db, "listing_reviews", "id, rating, comment, deleted_at, listing_id", rows.map((r) => r.review_id));
       const [people, listings] = await Promise.all([peopleBy(db, rows.flatMap((r) => [r.reporter_id, r.reported_user_id])), listingsBy(db, [...reviews.values()].map((v) => v.listing_id))]);
       return {
         rows: rows.map((r) => {
@@ -138,8 +147,7 @@ export const LISTS = {
     columns: [["when", "When"], ["reporter", "Reported by"], ["reply", "Reply"], ["author", "Written by"]],
     async load(db) {
       const rows = rowsOf(await newest(db, "review_reply_reports", "id, reporter_id, reply_id, reported_user_id, created_at"));
-      const ids = [...new Set(rows.map((r) => r.reply_id).filter(Boolean))];
-      const replies = new Map(ids.length ? rowsOf(await db.from("listing_review_replies").select("id, reply").in("id", ids.slice(0, 500))).map((v) => [v.id, v]) : []);
+      const replies = await rowsById(db, "listing_review_replies", "id, reply", rows.map((r) => r.reply_id));
       const people = await peopleBy(db, rows.flatMap((r) => [r.reporter_id, r.reported_user_id]));
       return { rows: rows.map((r) => ({ id: r.id, cells: { when: date(r.created_at), reporter: person(people.get(r.reporter_id)), reply: replies.get(r.reply_id)?.reply ?? "Reply no longer exists", author: person(people.get(r.reported_user_id)) } })) };
     },
@@ -325,8 +333,7 @@ export const LISTS = {
     columns: [["when", "When"], ["landlord", "Landlord"], ["charge", "Charge"], ["change", "Change"], ["by", "By"], ["note", "Note"]],
     async load(db) {
       const rows = rowsOf(await newest(db, "charge_status_history", "id, charge_id, from_status, to_status, actor_type, actor_user_id, note, created_at"));
-      const ids = [...new Set(rows.map((r) => r.charge_id))];
-      const charges = new Map(ids.length ? rowsOf(await db.from("charges").select("id, landlord_id, amount_cents, description, is_test").in("id", ids.slice(0, 500))).map((c) => [c.id, c]) : []);
+      const charges = await rowsById(db, "charges", "id, landlord_id, amount_cents, description, is_test", rows.map((r) => r.charge_id));
       const people = await peopleBy(db, [...rows.map((r) => r.actor_user_id), ...[...charges.values()].map((c) => c.landlord_id)]);
       return {
         rows: rows.map((r) => {
@@ -395,9 +402,9 @@ export const LISTS = {
     async load(db) {
       const rows = rowsOf(await newest(db, "matchmaking_chat_sessions", "id, user_id, visitor_id, status, created_at, updated_at, expired_at", "updated_at"));
       const people = await peopleBy(db, rows.map((r) => r.user_id));
-      const colors = { recommendations_ready: "green", in_progress: "amber", abandoned: "gray" };
+      const colors = { recommendations_ready: "green", swiping: "blue", in_progress: "amber", abandoned: "gray" };
       return {
-        filters: [{ key: "recommendations_ready", label: "Got recommendations" }, { key: "in_progress", label: "In progress" }, { key: "abandoned", label: "Abandoned" }],
+        filters: [{ key: "recommendations_ready", label: "Got recommendations" }, { key: "swiping", label: "Swiping" }, { key: "in_progress", label: "In progress" }, { key: "abandoned", label: "Abandoned" }],
         rows: rows.map((r) => ({ id: r.id, filter: r.status, cells: { when: date(r.updated_at ?? r.created_at), who: person(people.get(r.user_id), "Signed-out visitor"), status: badge(r.status, colors[r.status]), started: date(r.created_at) } })),
       };
     },

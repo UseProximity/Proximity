@@ -61,9 +61,9 @@ export default function BillingOverview({ queues, onOpen }) {
     let cancelled = false;
     const put = (key) => (value) => !cancelled && setMore((m) => ({ ...m, [key]: value }));
     get("/api/admin/billing/summary").then(put("money")).catch(() => put("money")({ failed: true }));
-    get("/api/admin/billing/landlords?filter=all").then(put("landlords")).catch(() => put("landlords")({ failed: true }));
+    get("/api/admin/billing/landlords?filter=all&view=summary").then(put("landlords")).catch(() => put("landlords")({ failed: true }));
     get("/api/admin/billing/run-settings").then(put("run")).catch(() => put("run")({ failed: true }));
-    get("/api/admin/billing/enrollment").then(put("enrollment")).catch(() => put("enrollment")({ failed: true }));
+    get("/api/admin/billing/enrollment?view=window").then(put("enrollment")).catch(() => put("enrollment")({ failed: true }));
     return () => { cancelled = true; };
   }, []);
 

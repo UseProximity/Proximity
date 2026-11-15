@@ -88,6 +88,9 @@ export default function ImageManagerPanel({ listingId, initialImages, dbTarget, 
 
   async function handleUpload(files) {
     if (!files || files.length === 0) return;
+    // The file would land in this site's bucket while its URL is saved on the
+    // other database's listing, and break when that bucket is cleaned.
+    if (uploadsElsewhere) return;
     if (!confirm(`Upload ${files.length} photo(s)?`)) return;
     setUploading(true);
     setPanelError(null);
@@ -172,7 +175,7 @@ export default function ImageManagerPanel({ listingId, initialImages, dbTarget, 
 
         {uploadsElsewhere && (
           <p className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-900">
-            You are viewing the {dbTarget === "prod" ? "production" : "dev"} database, but new uploads are stored on this site&apos;s own ({ownEnv === "prod" ? "production" : "dev"}) storage. Reorder, rename and delete follow the switch; upload from the matching site.
+            You are viewing the {dbTarget === "prod" ? "production" : "dev"} database, but this site stores photos in its own ({ownEnv === "prod" ? "production" : "dev"}) storage, so uploading is off here. Reorder, rename and delete follow the switch; to add photos, switch back or open the {dbTarget === "prod" ? "production" : "dev"} site.
           </p>
         )}
 
@@ -232,8 +235,10 @@ export default function ImageManagerPanel({ listingId, initialImages, dbTarget, 
         </div>
 
         <div className="px-5 py-3 border-t border-gray-200">
-          <label className={`flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed rounded-lg cursor-pointer text-sm transition-colors ${uploading ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-blue-300 text-blue-600 hover:bg-blue-50"}`}>
-            {uploading ? (
+          <label className={`flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed rounded-lg cursor-pointer text-sm transition-colors ${uploading || uploadsElsewhere ? "border-gray-200 text-gray-400 cursor-not-allowed" : "border-blue-300 text-blue-600 hover:bg-blue-50"}`}>
+            {uploadsElsewhere ? (
+              "Uploading is off while viewing the other database"
+            ) : uploading ? (
               <>
                 <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                 Uploading…
@@ -244,7 +249,7 @@ export default function ImageManagerPanel({ listingId, initialImages, dbTarget, 
                 Add Photos
               </>
             )}
-            <input type="file" accept="image/*" multiple disabled={uploading} className="hidden" onChange={(e) => handleUpload(Array.from(e.target.files || []))} />
+            <input type="file" accept="image/*" multiple disabled={uploading || uploadsElsewhere} className="hidden" onChange={(e) => handleUpload(Array.from(e.target.files || []))} />
           </label>
         </div>
 

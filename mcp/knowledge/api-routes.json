@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-15T03:23:58.259Z",
+  "_generated": "2026-11-15T05:03:25.010Z",
   "count": 269,
   "routes": [
     {
@@ -727,10 +727,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [],
       "file": "src/app/api/admin/lists/[name]/route.js"
@@ -831,10 +831,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "admin_notes"

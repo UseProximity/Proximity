@@ -32,9 +32,11 @@ export default function GlobalSearch({ dbTarget }) {
     setOpen(true);
     setActive(0);
     clearTimeout(timer.current);
+    // Every keystroke retires the request before it, so a slow answer for an
+    // older query can never come back and fill the list.
+    const mine = ++latest.current;
     if (value.trim().length < 2) { setResults(null); return; }
     timer.current = setTimeout(async () => {
-      const mine = ++latest.current;
       try {
         const d = await adminFetch(`/api/admin/search?q=${encodeURIComponent(value.trim())}`, dbTarget);
         // A slower earlier answer must not replace a newer one.
@@ -51,6 +53,8 @@ export default function GlobalSearch({ dbTarget }) {
 
   function pick(item) {
     if (!item) return;
+    clearTimeout(timer.current);
+    latest.current += 1;
     setOpen(false);
     setQuery("");
     setResults(null);

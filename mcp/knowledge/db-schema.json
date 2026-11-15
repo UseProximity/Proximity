@@ -1725,6 +1725,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
+          "removed_by:text (nullable: admin|author|landlord; who soft deleted it, 202611140002; NULL = live or removed before 2026-11-14. Admin one-click Restore only for admin)",
           "referrer_id:uuid",
           "reviewer_email:text",
           "unit_number:text",
@@ -3484,9 +3485,10 @@
           "follow_up_done_at:timestamptz (nullable)",
           "author_id:uuid (fk users, set null)",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "edited_at:timestamptz (nullable; set only when the text changes, drives the 'edited' label)"
         ],
-        "notes": "status=unreleased (202611140001, dev applied 2026-11-14, prod pending); rls on, service role only; action_log trigger; updated_at trigger; index (subject_type,subject_id,created_at desc); partial index on follow_up_on where open"
+        "notes": "status=unreleased (202611140001, applied to dev and prod 2026-11-14; code ships with PR 433); rls on, service role only; action_log trigger; updated_at trigger; index (subject_type,subject_id,created_at desc); partial index on follow_up_on where open"
       }
     ],
     "functions": [

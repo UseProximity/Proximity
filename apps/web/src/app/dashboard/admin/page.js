@@ -166,9 +166,14 @@ export default function AdminDashboard() {
     if (!confirmDiscardForSwitch()) return;
     setPendingRows({});
     setSaveStatus(null);
-    // Clear synchronously so the next render never sees the old page's data shape
-    setData(null);
-    setLoading(true);
+    // Clear synchronously so the next render never sees the old page's data
+    // shape. The page already open keeps its data: nothing reloads it (load
+    // only reruns when the page changes), so clearing it would leave a table
+    // page on "Loading..." for good.
+    if (next !== path) {
+      setData(null);
+      setLoading(true);
+    }
     setSearch(params?.q ?? "");
     // A new page starts on its default tab with nothing open, so only the
     // params asked for are kept. The address changes before the page mounts,
@@ -444,7 +449,7 @@ export default function AdminDashboard() {
               <>
                 {path === "listings" && <ListingsView {...viewProps} />}
                 {page.hierarchy === "users" && <UsersView key={path} {...viewProps} fixedRole={page.role ?? null} />}
-                {path === "reviews" && <ReviewsView {...viewProps} />}
+                {path === "reviews" && <ReviewsView key={navCount} {...viewProps} />}
                 {path === "listings/dorms" && <DormsView {...viewProps} />}
                 {path === "reviews/testimonials" && <TestimonialsView {...viewProps} />}
                 {path === "system/reference" && <ReferenceView {...viewProps} />}

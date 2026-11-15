@@ -53,6 +53,12 @@ export async function GET(req, { params }) {
     }
 
     if (view === "users") {
+      // ?fields=picker: id, name and email only, for the add-landlord picker
+      // on a listing's record page. The full rows (roles, listings, reviews,
+      // preferences) are far heavier and only the Users pages need them.
+      if (new URL(req.url).searchParams.get("fields") === "picker") {
+        return Response.json(await fetchAll(supabase.from("users").select("id, name, email").order("created_at", { ascending: false }).order("id")));
+      }
       const data = await fetchAll(supabase
         .from("users")
         .select(`*,

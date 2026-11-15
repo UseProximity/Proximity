@@ -9,8 +9,8 @@
 import { useEffect, useState } from "react";
 import { adminFetch, Badge, fmtMoney, GearButton, prodConfirm, Stars } from "@/components/admin/adminShared";
 import { AdminLink, ListingLink } from "@/components/admin/RecordLink";
-import NotesPanel from "./NotesPanel";
-import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, personName, ThreadList, TourList } from "./shared";
+import NotesPanel from "@/components/admin/records/NotesPanel";
+import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, personName, ThreadList, TourList } from "@/components/admin/records/shared";
 
 const ROLE_COLORS = { super: "red", admin: "purple", landlord: "blue" };
 const EMAIL_PROBLEMS = new Set(["bounced", "complained", "rejected", "failed"]);

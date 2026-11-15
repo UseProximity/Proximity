@@ -10,6 +10,7 @@
  * are refused for the read-only admin role.
  *
  * @auth admin
+ * @auth POST super
  */
 export const dynamic = "force-dynamic";
 
