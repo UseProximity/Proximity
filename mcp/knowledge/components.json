@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-14T19:07:35.247Z",
-  "count": 215,
+  "_generated": "2026-11-15T03:23:58.273Z",
+  "count": 216,
   "components": [
     {
       "name": "ErrorReporter",
@@ -171,6 +171,11 @@
     {
       "name": "AgreementsPanel",
       "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingOverview",
+      "file": "src/components/admin/billing/BillingOverview.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

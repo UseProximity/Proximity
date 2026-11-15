@@ -43,8 +43,8 @@ export async function loadHome(db, { isSuper = false } = {}) {
       q("contested", "Contested charges", "A landlord disputed a charge and waits for a decision.", "billing", { tab: "contest" }, () => head(db, "charges").eq("status", "contested"), { billing: true }),
       q("invoices", "Failed invoices", "An invoice payment failed.", "billing", { tab: "invoices" }, () => head(db, "billing_invoices").eq("status", "failed"), { billing: true }),
       q("changes", "Agreement change requests", "A landlord asked to change the agreement and waits on us.", "billing", { tab: "changes" }, () => head(db, "agreement_change_requests").eq("status", "open"), { billing: true }),
-      q("payerRequests", "Listings waiting on a signer", "A listing cannot publish until its authorized signer approves.", "billing/history", { tab: "payer-requests" }, () => head(db, "payer_publish_requests").eq("status", "waiting"), { billing: true }),
-      q("stripe", "Stripe events with errors", "A Stripe update failed to process in the last 30 days.", "billing/history", { tab: "stripe-events" }, () => head(db, "stripe_webhook_events").not("error", "is", null).gte("received_at", ago(30)), { billing: true }),
+      q("payerRequests", "Listings waiting on a signer", "A listing cannot publish until its authorized signer approves.", "billing", { tab: "payer-requests" }, () => head(db, "payer_publish_requests").eq("status", "waiting"), { billing: true }),
+      q("stripe", "Stripe events with errors", "A Stripe update failed to process in the last 30 days.", "billing", { tab: "stripe-events" }, () => head(db, "stripe_webhook_events").not("error", "is", null).gte("received_at", ago(30)), { billing: true }),
     ] : []),
   ];
 

@@ -77,21 +77,7 @@ export const NAV = [
   },
   {
     label: "Billing",
-    items: [
-      { path: "billing", label: "Billing", superOnly: true },
-      {
-        path: "billing/history",
-        label: "History and events",
-        superOnly: true,
-        lists: [
-          { list: "charge-history", label: "Charge history" },
-          { list: "stripe-events", label: "Stripe events" },
-          { list: "payer-requests", label: "Waiting on a signer" },
-          { list: "autopay-history", label: "Autopay" },
-          { list: "license-history", label: "License disclosures" },
-        ],
-      },
-    ],
+    items: [{ path: "billing", label: "Billing", superOnly: true }],
   },
   {
     label: "Agents and sync",

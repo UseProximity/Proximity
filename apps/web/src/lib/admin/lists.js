@@ -275,7 +275,49 @@ export const LISTS = {
     },
   },
 
-  // ── Billing history (super only) ──────────────────────────────────────────
+  // ── Billing (super only) ──────────────────────────────────────────────────
+  charges: {
+    title: "All charges",
+    note: "Every charge, whatever state it is in. A charge is confirmed by the team, reviewed by the landlord for 7 days, approved, put on the monthly invoice and then paid.",
+    superOnly: true,
+    columns: [["when", "Created"], ["landlord", "Landlord"], ["what", "For"], ["amount", "Amount"], ["status", "State"], ["listing", "Listing"], ["student", "Student"]],
+    async load(db) {
+      const rows = rowsOf(await newest(db, "charges", "id, landlord_id, amount_cents, description, trigger_type, listing_id, student_id, created_by_type, is_test, status, created_at"));
+      const [people, listings] = await Promise.all([peopleBy(db, rows.flatMap((r) => [r.landlord_id, r.student_id])), listingsBy(db, rows.map((r) => r.listing_id))]);
+      const colors = { unconfirmed: "amber", pending: "blue", approved: "blue", invoiced: "purple", paid: "green", contested: "red", voided: "gray" };
+      const labels = { unconfirmed: "to confirm", pending: "in 7 day review", approved: "approved, not billed yet", invoiced: "on an invoice", paid: "paid", contested: "contested", voided: "voided" };
+      return {
+        filters: [{ key: "unconfirmed", label: "To confirm" }, { key: "pending", label: "In review" }, { key: "approved", label: "Approved" }, { key: "invoiced", label: "Invoiced" }, { key: "paid", label: "Paid" }, { key: "contested", label: "Contested" }, { key: "voided", label: "Voided" }],
+        rows: rows.map((r) => ({
+          id: r.id, filter: r.status,
+          cells: { when: date(r.created_at), landlord: person(people.get(r.landlord_id)), what: lines(String(r.trigger_type ?? "").replace(/_/g, " ") || "Charge", [r.description, r.created_by_type === "admin" ? "created by the team" : null, r.is_test ? "test charge" : null].filter(Boolean).join(" · ") || null), amount: money(r.amount_cents), status: badge(labels[r.status] ?? r.status, colors[r.status]), listing: listing(listings.get(r.listing_id)), student: person(people.get(r.student_id)) },
+        })),
+      };
+    },
+  },
+  invoices: {
+    title: "All invoices",
+    note: "Every monthly invoice. The ones that need attention are also under Failed or overdue.",
+    superOnly: true,
+    columns: [["when", "Invoice date"], ["landlord", "Landlord"], ["period", "Period"], ["total", "Total"], ["status", "State"], ["how", "Collected by"], ["detail", "Detail"]],
+    async load(db) {
+      const rows = rowsOf(await newest(db, "billing_invoices", "id, landlord_id, billing_period, status, total_cents, invoice_date, paid_at, failed_at, last_failure_message, disputed, collection_method, due_date, overdue_actioned_at, created_at"));
+      const people = await peopleBy(db, rows.map((r) => r.landlord_id));
+      const colors = { paid: "green", open: "amber", processing: "blue", failed: "red", void: "gray", uncollectible: "gray" };
+      return {
+        filters: [{ key: "open", label: "Open" }, { key: "processing", label: "Processing" }, { key: "failed", label: "Failed" }, { key: "paid", label: "Paid" }, { key: "void", label: "Void" }],
+        rows: rows.map((r) => ({
+          id: r.id, filter: r.status === "uncollectible" ? "void" : r.status,
+          cells: {
+            when: r.invoice_date ? date(`${r.invoice_date}T12:00:00Z`) : date(r.created_at), landlord: person(people.get(r.landlord_id)), period: r.billing_period, total: money(r.total_cents),
+            status: badge(`${r.status}${r.disputed ? ", disputed" : ""}${r.overdue_actioned_at && r.status !== "paid" ? ", leases withdrawn" : ""}`, r.disputed ? "red" : colors[r.status]),
+            how: r.collection_method === "charge_automatically" ? "Autopay" : "Invoice sent",
+            detail: r.status === "paid" && r.paid_at ? lines("Paid", new Date(r.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })) : r.last_failure_message ?? (r.due_date ? `Due ${r.due_date}` : null),
+          },
+        })),
+      };
+    },
+  },
   "charge-history": {
     title: "Charge history",
     note: "Every step each charge has taken, who moved it and any note left.",
