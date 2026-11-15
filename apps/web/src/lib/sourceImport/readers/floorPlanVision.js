@@ -120,8 +120,14 @@ async function askModel(unitName, candidates) {
   return { pick: undefined, cost: 0 };
 }
 
+/*
+ * One ask. The reply is parsed here rather than by messages.parse, so an
+ * unreadable answer says why (stop reason, token count, what came back):
+ * the 11/15 failures cut off 9 to 20 characters in, in pairs at the same
+ * moment, and the log should show what ended them.
+ */
 async function askModelOnce(unitName, candidates) {
-  const response = await getClient().messages.parse({
+  const response = await getClient().messages.create({
     model: HAIKU,
     max_tokens: 200,
     output_config: { format: zodOutputFormat(Answer) },
@@ -141,7 +147,14 @@ async function askModelOnce(unitName, candidates) {
     ],
   });
   const cost = logCost(`floor plan ${unitName}`, HAIKU, response.usage) ?? 0;
-  const i = response.parsed_output?.floorPlanImage;
+  const text = (response.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  let parsed = null;
+  try {
+    parsed = Answer.parse(JSON.parse(text));
+  } catch (err) {
+    throw new Error(`unreadable answer (stop: ${response.stop_reason}, ${response.usage?.output_tokens ?? "?"} tokens, got ${JSON.stringify(text.slice(0, 60))}): ${err?.message}`);
+  }
+  const i = parsed.floorPlanImage;
   return { pick: Number.isInteger(i) && i >= 1 && i <= candidates.length ? candidates[i - 1].url : null, cost };
 }
 
