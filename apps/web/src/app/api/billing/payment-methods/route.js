@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { listPaymentMethods } from "@/lib/billing/paymentMethods";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -12,12 +12,12 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *
  * @auth landlord
  */
-export async function GET() {
-  const session = await requireDbRole(["landlord"]);
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const methods = await listPaymentMethods(supabase, session.user.id);
+    const methods = await listPaymentMethods(supabase, reader.userId);
     return NextResponse.json({ methods });
   } catch (err) {
     return billingErrorResponse(err, "list payment methods");

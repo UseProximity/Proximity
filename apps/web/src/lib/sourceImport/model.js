@@ -82,6 +82,7 @@ const UnitSchema = z.object({
   area: z.number().nullable(),
   rent: z.number().nullable(),
   rentBasis: z.enum(["total", "per_person", "unknown"]),
+  rentIsExact: z.boolean(),
   available: z.boolean(),
   floorPlanImageUrl: z.string().nullable(),
   availableFrom: z.string().nullable(),
@@ -110,6 +111,7 @@ const ListingSchema = z.object({
   concessions: z.array(z.string()),
   sourceNotes: z.array(z.string()),
   confidence: z.number(),
+  unitListComplete: z.boolean(),
 });
 
 const ReadSchema = z.object({
@@ -123,7 +125,7 @@ const SYSTEM = `You read a landlord's own property website for Proximity, a stud
 
 Rules, in order of importance:
 1. Trust ONLY the page text and the candidate lists you are given. Never infer a fact from a URL or slug.
-2. Every field is nullable. When the pages do not state a fact, return null or an empty array. Never pad, estimate or average. Set "confidence" (0 to 1) to how sure you are that the units and prices you returned are complete and correct for this property; be honest, a low number is useful.
+2. Every field is nullable. When the pages do not state a fact, return null or an empty array. Never pad, estimate or average. Set "confidence" (0 to 1) to how sure you are that the units and prices you returned are complete and correct for this property; be honest, a low number is useful. Set "unitListComplete" true only when the pages show the property's whole current list of floor plans or apartments (a floor plans or availability page you could read in full), false when you saw only some of them, the list was cut off, or the pages only mention units in passing.
 3. ADDRESS: the most complete address the pages state. A street-only address ("723 Interdrive") is worth returning. Never invent a city, state or zip.
 4. RENT: Proximity stores rent per month. If the site says a price is per person, per bed or per room, set rentBasis "per_person" and still return the number. If it is clearly for the whole apartment, "total". If you cannot tell, "unknown" with the number. "$TBD" or "call for pricing" is null.
 5. MULTI-PROPERTY SITES: when the pages cover more than one distinct rental building and no TARGET PROPERTY is given, list every property in "properties" (name, address if stated, URL from CANDIDATE LINKS exactly as written or "" if none clearly matches) and set "listing" to null. Different street numbers are different properties even when marketed together ("6219-6221 Rosebury" is two). A neighborhood, city or "our communities" page is kind "group", never a property; a building with its own name or street address is kind "property". A section link such as "Apartments for Rent" or "Our Properties" is a group only when the buildings themselves are not already on the page. Never list anything for sale, commercial, office, retail, storage or land.
@@ -131,6 +133,7 @@ Rules, in order of importance:
    (a) a building of shared layouts (a floor plans page, plans with names or codes, apartments filed under plans): ONE unit per FLOOR PLAN, named exactly as the site names it ("Pershing", "A1 Penthouse", "100N101A"). The apartment numbers behind it go in "apartments", with their own rents and dates in "apartmentRents" and "apartmentDates" in the same order when the site gives them per apartment (same length or empty, never partial).
    (b) a small building where each apartment is presented on its own: ONE unit per APARTMENT, named as the site does ("6219 S", "2W", "Unit B"), with "apartments" empty.
    (c) a whole house let as one: one unit, name null.
+   "rentIsExact" is false when the price is a "starting at", "from" or a range for the plan, true when it is the price itself. "availableFrom" is a date the site states for the plan, "now" when it says available now or today, and null when it does not say.
    Never invent a name from the bed and bath count. Studios are bedrooms 0. When one bathroom count is listed alongside several bedroom options, apply it to each. "available" is false for a plan the site marks waitlist, sold out or call for details with no price. "leaseTermMonths" holds lease lengths the site states for this plan in months; empty when it does not say. A sentence like "lease terms from 3 to 24 months" is a range they will discuss, not a price per term: leave leaseTermMonths empty and add a sourceNote.
    When a KNOWN UNITS section is given, those units were read exactly from the site's own feed or floor plan pages: do not restate them. In "units", return only floor plans the pages show that are NOT among the known units (a different bed, bath or square-foot combination), such as plans marked "call for details" or waitlisted, with available false when the page says so. Return an empty array when the known units cover every plan.
 7. AMENITIES: map what the site states onto the allowed values; anything real that does not fit goes in customAmenities as short title-case phrases. utilities_included only when the site says the landlord covers them.

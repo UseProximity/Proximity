@@ -528,14 +528,16 @@ export function payerDocumentCancelledEmail({ name, causeName, accountNames = []
   };
 }
 
-// To the landlord: their payer voided the agreement for their account.
-export function payeeVoidedEmail({ name, payerName, billingUrl }) {
+// To an authorized signer a landlord revoked (Wyatt, 2026-11-10). `tookOver`:
+// the landlord signed their own agreement instead.
+export function payerRevokedEmail({ name, landlordName, released = 0, tookOver = false, billingUrl }) {
+  const count = `${released} ${released === 1 ? "property" : "properties"}`;
   return {
-    subject: `${payerName} declined to sign for your Proximity listings`,
+    subject: `You are no longer the authorized signer for ${landlordName}`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(payerName)}, your authorized signer, voided the Proximity marketing agreement for your account, so your properties are no longer covered by it.</p>
-      <p>${e(payerName)} is still listed as your authorized signer and can sign again. If someone else should sign, use Change signer on your Billing page.</p>
+      <p>${e(landlordName)} ${tookOver ? "signed their own Proximity marketing agreement" : "removed you as their authorized signer on Proximity"}, so you no longer sign or pay for their listings.${released ? ` Their ${count} came off your agreement.` : ""}</p>
+      <p>Your agreement stays in force for everything else on it. Charges raised while their listings were on your agreement stay on your invoices; anything new is billed to them.</p>
       ${button(billingUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>
     `),

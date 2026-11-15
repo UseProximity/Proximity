@@ -35,15 +35,13 @@ export function agentIsLive(agentRow) {
 }
 
 /*
- * Launch review for the website sync (Wyatt, 2026-11-07). While on, nothing a
- * student sees changes on its own from a sync: every change is recorded for
- * the Proximity team, who apply or reject it from the admin queue, and the
- * landlord sees none of it. On unless WEBSITE_SYNC_TEAM_REVIEW is set to off,
- * so a missing variable fails safe.
+ * Launch review for what a sync teaches Proxy (Wyatt, 2026-11-07), ended
+ * 2026-11-12: what the weekly knowledge read finds applies at once, the same
+ * as website changes since 2026-11-11. Kept as a function, always off, so the
+ * admin queue and Agent tab still show any review event made before then.
  */
 export function syncTeamReview() {
-  const v = String(process.env.WEBSITE_SYNC_TEAM_REVIEW ?? "").trim().toLowerCase();
-  return !OFF.has(v);
+  return false;
 }
 
 /*

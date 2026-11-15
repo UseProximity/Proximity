@@ -1,8 +1,32 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-10T21:49:19.946Z",
-  "count": 335,
+  "_generated": "2026-11-15T04:09:12.504Z",
+  "count": 359,
   "utils": [
+    {
+      "file": "src/lib/admin/adminDb.js",
+      "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/home.js",
+      "description": "The admin Home page (Wyatt, 2026-11-12): what needs someone's attention right"
+    },
+    {
+      "file": "src/lib/admin/jobs.js",
+      "description": "The scheduled jobs, for System > Scheduled jobs (Wyatt, 2026-11-14)."
+    },
+    {
+      "file": "src/lib/admin/lists.js",
+      "description": "The admin dashboard's plain lists (Wyatt, 2026-11-14): state the team could"
+    },
+    {
+      "file": "src/lib/admin/notes.js",
+      "description": "Shared by the admin notes routes (app/api/admin/notes): checking what was"
+    },
+    {
+      "file": "src/lib/admin/records.js",
+      "description": "The admin dashboard's record pages (Wyatt, 2026-11-12): everything Proximity"
+    },
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
@@ -124,8 +148,20 @@
       "description": "The per-question reply address a landlord can answer from (PRD v3)."
     },
     {
+      "file": "src/lib/agents/queueView.js",
+      "description": "What the admin review queue shows for each held knowledge change (Wyatt,"
+    },
+    {
       "file": "src/lib/agents/replyEmail.js",
       "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyStream.js",
+      "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyStream.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/replyTokens.js",
@@ -290,6 +326,10 @@
     {
       "file": "src/lib/auth/passwordReset.js",
       "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
+    },
+    {
+      "file": "src/lib/auth/profileSave.js",
+      "description": "Saving the \"Complete Your Profile\" popup. Client-safe, no server imports."
     },
     {
       "file": "src/lib/auth/roles.js",
@@ -604,6 +644,10 @@
       "description": "The one Stripe client for the app, and the three env vars it reads:"
     },
     {
+      "file": "src/lib/billing/viewer.js",
+      "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
+    },
+    {
       "file": "src/lib/billing/webhookEvents.js",
       "description": "Idempotent processing of a verified Stripe event, backed by"
     },
@@ -784,24 +828,8 @@
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
     },
     {
-      "file": "src/lib/findYourPlace/browseHandoff.js",
-      "description": "\"Browse All N Matches\": the browse page opened with the student's answers"
-    },
-    {
-      "file": "src/lib/findYourPlace/commute.js",
-      "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
-    },
-    {
-      "file": "src/lib/findYourPlace/match.js",
-      "description": "Find Your Place: answers in, top four places out."
-    },
-    {
-      "file": "src/lib/findYourPlace/options.js",
-      "description": "Find Your Place: the questions, answer options and prompt chips, shared by"
-    },
-    {
-      "file": "src/lib/findYourPlace/parsePreferences.js",
-      "description": "Find Your Place, page 2: turn whatever the student wrote into preferences"
+      "file": "src/lib/firecrawl.js",
+      "description": "Every call to Firecrawl goes through here, so a second account can take over"
     },
     {
       "file": "src/lib/geo/neighborhoods.js",
@@ -1088,8 +1116,20 @@
       "description": "Batched \"your review is live\" confirmations."
     },
     {
+      "file": "src/lib/reviews/duplicate.js",
+      "description": "A review this person has already posted on this listing with the same text."
+    },
+    {
+      "file": "src/lib/reviews/duplicateReport.js",
+      "description": "Review stubs that may be a building already listed under another address."
+    },
+    {
       "file": "src/lib/reviews/invites.js",
       "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/listingMatch.js",
+      "description": "Which listing a review belongs on."
     },
     {
       "file": "src/lib/reviews/onboarding.js",
@@ -1152,6 +1192,18 @@
       "description": "Background import jobs."
     },
     {
+      "file": "src/lib/sourceImport/learn.js",
+      "description": "Loading and saving what the sync learns about a listing"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.js",
+      "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceImport/limits.js",
       "description": "Spending caps for the URL importer."
     },
@@ -1192,6 +1244,30 @@
       "description": "G5 (g5marketingcloud.com) inventory reader."
     },
     {
+      "file": "src/lib/sourceImport/readers/portals.js",
+      "description": "The leasing portals the importer and sync can walk (readers/portalWalk.js)."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalk.js",
+      "description": "Walking a leasing portal the way a renter does."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalkParse.js",
+      "description": "What a portal walk found, as snapshot units. Pure, so it is tested without a"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOll.js",
+      "description": "RealPage Online Leasing portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.js",
+      "description": "RealPage Online Leasing: the parts that need no network."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.test.js",
+      "description": "No description — add a top-of-file comment."
+    },
+    {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
       "description": "Floor plans embedded as JSON in a page."
     },
@@ -1214,6 +1290,14 @@
     {
       "file": "src/lib/sourceImport/sync.js",
       "description": "The recurring source sync."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.js",
+      "description": "What the daily website sync does with each change it finds."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceSync/attach.js",
@@ -1268,6 +1352,10 @@
       "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
     },
     {
+      "file": "src/lib/users/profileCompletion.js",
+      "description": "What a request that marks a profile complete has to carry."
+    },
+    {
       "file": "src/lib/users/viewAs.js",
       "description": "Who a dashboard request is actually ABOUT."
     },
@@ -1296,10 +1384,6 @@
       "description": "How an offering's start date reads to a person."
     },
     {
-      "file": "src/utils/bikeTimes.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/utils/chatThreadGrouping.js",
       "description": "Inbox ordering for chat threads."
     },
@@ -1320,8 +1404,20 @@
       "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
     },
     {
+      "file": "src/utils/reviewAddress.js",
+      "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
       "file": "src/utils/unitCounts.js",
       "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitFormat.js",
+      "description": "Whether a unit name is an apartment (\"Apt 201\", \"Unit 5548\", \"305\") or a"
+    },
+    {
+      "file": "src/utils/unitFormat.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/utils/unitName.js",

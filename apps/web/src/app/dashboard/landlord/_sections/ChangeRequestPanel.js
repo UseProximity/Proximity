@@ -19,6 +19,7 @@
  *   onChange      called after the landlord opens, replies to or withdraws a request
  */
 import { useCallback, useEffect, useState } from "react";
+import { useBillingUrl } from "./billingViewAs";
 
 const FIELD =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500";
@@ -68,8 +69,9 @@ export function FileInput({ inputKey, onFile }) {
 }
 
 function Thread({ request }) {
+  const billingUrl = useBillingUrl();
   const open = async (messageId) => {
-    const { url } = await call(`/api/billing/agreement/change-requests/files/${messageId}`);
+    const { url } = await call(billingUrl(`/api/billing/agreement/change-requests/files/${messageId}`));
     window.open(url, "_blank", "noopener,noreferrer");
   };
   return (
@@ -90,7 +92,7 @@ function Thread({ request }) {
             </div>
           )}
           {m.file && (
-            <button type="button" className="mt-2 text-xs font-medium text-red-700 underline" onClick={() => open(m.id).catch(() => {})}>
+            <button type="button" data-readonly-ok className="mt-2 text-xs font-medium text-red-700 underline" onClick={() => open(m.id).catch(() => {})}>
               Download {m.file.name}
             </button>
           )}
@@ -207,16 +209,17 @@ export default function ChangeRequestPanel({ documentKind = "master", agreementI
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const billingUrl = useBillingUrl();
 
   const load = useCallback(async () => {
     try {
-      const { requests } = await call("/api/billing/agreement/change-requests");
+      const { requests } = await call(billingUrl("/api/billing/agreement/change-requests"));
       setRequests(requests);
     } catch (e) {
       setError(e.message);
       setRequests([]);
     }
-  }, []);
+  }, [billingUrl]);
 
   useEffect(() => {
     load();

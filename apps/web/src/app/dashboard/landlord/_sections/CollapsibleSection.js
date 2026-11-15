@@ -16,6 +16,7 @@ export default function CollapsibleSection({ id, title, badge = null, summary = 
       {banner}
       <button
         type="button"
+        data-readonly-ok
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={() => setOpen((o) => !o)}

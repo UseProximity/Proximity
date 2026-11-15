@@ -33,6 +33,7 @@ import { UnitFloorPlan } from "./EditorImageRows";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
 import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
 import InfoTip from "@/components/ui/InfoTip";
 import { DraftBadge, PublishButton } from "./DraftControls";
@@ -125,6 +126,10 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
   // Switching an offering to a sublease is posting one, so it asks for the same
   // confirmation as the add flows. One that already is a sublease does not.
   const needsRightsConfirmation = draft.sublease && !lease.sublease;
+  // No names, links, emails or phone numbers. Same rule the lease PATCH applies.
+  const descriptionProblem = checkListingDescription(draft.description, {
+    previous: lease.description ?? null,
+  });
 
   const discard = () => {
     setDraft(leaseDraft(lease));
@@ -135,6 +140,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
     if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
       return toast.error("Please confirm you have the right to sublet this place.");
     }
+    if (descriptionProblem) return toast.error(descriptionProblem);
     setSaving(true);
     try {
       const res = await fetch(`/api/leases/${lease.id}`, {
@@ -266,7 +272,7 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
               className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60">
               Discard changes
             </button>
-            <button onClick={save} disabled={saving}
+            <button onClick={save} disabled={saving || !!descriptionProblem}
               className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
               {saving ? "Saving…" : "Save"}
             </button>
@@ -335,8 +341,12 @@ function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, proper
           rows={2} className={`mt-1 w-full ${field}`} value={draft.description}
           maxLength={LEASE_DESCRIPTION_MAX}
           placeholder="Utilities included, on-street parking, cat-friendly…"
+          aria-invalid={descriptionProblem ? true : undefined}
           onChange={(e) => set({ description: e.target.value })}
         />
+        {descriptionProblem && (
+          <span className="mt-1 block text-sm text-red-600">{descriptionProblem}</span>
+        )}
       </label>
 
       <div className="mt-3 flex flex-wrap gap-4 text-sm">

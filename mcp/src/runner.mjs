@@ -25,7 +25,16 @@ function concretePath(path) {
   return path.replace(/\[([^\]]+)\]/g, "test");
 }
 
+// One slow answer (a cold start, or staging switching to a new deploy) is not a
+// bug, so a request that times out or drops is tried once more before it counts.
 async function request(url, method, cookie) {
+  const first = await requestOnce(url, method, cookie);
+  if (!first.error) return first;
+  await new Promise((r) => setTimeout(r, 2000));
+  return requestOnce(url, method, cookie);
+}
+
+async function requestOnce(url, method, cookie) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const opts = { method, redirect: "manual", signal: controller.signal, headers: {} };

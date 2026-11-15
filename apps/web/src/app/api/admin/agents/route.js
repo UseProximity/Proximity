@@ -25,12 +25,14 @@
  * production (prod writes are never done from a developer machine).
  *
  * @auth admin
+ * @auth POST super
  */
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import supabase from "@/lib/supabase";
 import { seedListing, seedAll } from "@/lib/agents/seed";
 import { ensureAgent } from "@/lib/agents/store";
@@ -65,6 +67,8 @@ export async function GET() {
 export async function POST(req) {
   const gate = await requireTeam();
   if (gate.res) return gate.res;
+  // The read-only admin role looks but does not change anything (Wyatt, 2026-11-12).
+  if (!(await requireDbRole(["super"]))) return NextResponse.json({ error: "Only super admins can change agents." }, { status: 403 });
   let body;
   try { body = await req.json(); } catch { body = {}; }
   const action = body?.action;

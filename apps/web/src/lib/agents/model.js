@@ -59,7 +59,7 @@ async function log({ listingId, kind, model, usage, tag }) {
 
 /* No em dash ever reaches a student or the store (repo rule). */
 export function stripEmDashes(value) {
-  if (typeof value === "string") return value.replace(/\u2014/g, ", ").replace(/\s+,/g, ",");
+  if (typeof value === "string") return value.replace(/\s*\u2014\s*/g, ", ");
   if (Array.isArray(value)) return value.map(stripEmDashes);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripEmDashes(v)]));
@@ -86,9 +86,24 @@ export async function parseStructured({ model = SONNET, system, messages, schema
  * has no handler: calling it ends the loop and its input is returned. If the
  * model stops without calling it, its last text is returned as `text`.
  */
+/*
+ * Options for speed (Wyatt, 2026-11-11):
+ *   systemTail      text sent after the cached system prompt and left out of
+ *                   the cache, for what changes every turn (today's date,
+ *                   state), so it does not throw away the cached listing
+ *   effort          output_config.effort; lower thinks less and answers sooner
+ *   onFinalInput    called with the final tool's raw JSON so far as the model
+ *                   writes it, so a caller can show part of it (Proxy's reply)
+ *                   before the call finishes. Turns on streaming.
+ *   eagerFinal      send the final tool with eager_input_streaming. On with
+ *                   onFinalInput; Proxy also sets it on its unstreamed (mobile)
+ *                   calls so both share one cached prompt. The API then does
+ *                   not check the final input, so the caller must (Proxy's
+ *                   normalizeFinal).
+ */
 export async function runTools({
-  model = SONNET, system, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
-  tag, listingId = null, kind = "tools", finalTool = "final",
+  model = SONNET, system, systemTail = null, messages, tools, handlers, maxRounds = 5, maxTokens = 1200,
+  tag, listingId = null, kind = "tools", finalTool = "final", effort = null, onFinalInput = null, eagerFinal = !!onFinalInput,
 }) {
   await checkBudget({ listingId, kind });
   const client = getClient();
@@ -96,19 +111,44 @@ export async function runTools({
   const usage = {};
   const calls = [];
   let text = "";
+  const systemBlocks = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+  if (systemTail) systemBlocks.push({ type: "text", text: systemTail });
+  // Without eager streaming the API holds each tool field back until it is complete.
+  const toolDefs = eagerFinal ? tools.map((t) => (t.name === finalTool ? { ...t, eager_input_streaming: true } : t)) : tools;
   for (let round = 0; round < maxRounds; round++) {
     const last = round === maxRounds - 1;
     // Always "auto": the current models reject a forced tool_choice. A model
     // that answers in prose is asked once more for the final tool (below);
     // after the last round its text is returned instead.
-    const resp = await client.messages.create({
+    const params = {
       model,
       max_tokens: maxTokens,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-      tools,
+      system: systemBlocks,
+      tools: toolDefs,
       tool_choice: { type: "auto" },
       messages: convo,
-    });
+      ...(effort ? { output_config: { effort } } : {}),
+    };
+    let resp;
+    if (onFinalInput) {
+      const stream = client.messages.stream(params);
+      const blocks = new Map();
+      stream.on("streamEvent", (event) => {
+        if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+          blocks.set(event.index, { name: event.content_block.name, json: "" });
+        } else if (event.type === "content_block_delta" && event.delta.type === "input_json_delta") {
+          const b = blocks.get(event.index);
+          if (!b) return;
+          b.json += event.delta.partial_json;
+          if (b.name === finalTool) {
+            try { onFinalInput(b.json); } catch (err) { console.error("[agents] onFinalInput failed:", err?.message ?? err); }
+          }
+        }
+      });
+      resp = await stream.finalMessage();
+    } else {
+      resp = await client.messages.create(params);
+    }
     addUsage(usage, resp.usage);
     const finalBlock = resp.content.find((b) => b.type === "tool_use" && b.name === finalTool);
     // Only a turn that finished is an answer. Text written alongside a tool
@@ -116,6 +156,17 @@ export async function runTools({
     // it when the rounds ran out stopped the question reaching the landlord
     // (PR #365 review).
     const said = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    /*
+     * Cut off by max_tokens is never an answer: the final tool's input stops
+     * part way (a landlord chat reply came back with no text at all), and with
+     * eager streaming part of it may already be on the student's screen. The
+     * caller gets `truncated` and says so instead (Wyatt, 2026-11-11: tell the
+     * person it was too much, do not raise the limit).
+     */
+    if (resp.stop_reason === "max_tokens") {
+      await log({ listingId, kind, model, usage, tag });
+      return { final: null, text: "", usage, calls, truncated: true };
+    }
     if (resp.stop_reason !== "tool_use") text = said || text;
     if (finalBlock) {
       await log({ listingId, kind, model, usage, tag });

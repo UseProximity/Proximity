@@ -15,6 +15,7 @@ import dns from "node:dns/promises";
 import { lookup as lookupCallback } from "node:dns";
 import net from "node:net";
 import { Agent, fetch } from "undici";
+import { firecrawlConfigured, firecrawlRequest } from "@/lib/firecrawl";
 
 export const FETCH_UA = "ProximityListingBot/1.0 (+https://useproximity.org)";
 const MAX_BYTES = 2 * 1024 * 1024; // 2MB per page
@@ -533,7 +534,12 @@ export async function renderPage(rawUrl, opts = {}) {
   return shared(`render:${opts.raw ? 1 : 0}:${opts.waitMs ?? 0}:${rawUrl}`, () => renderPageUncached(rawUrl, opts));
 }
 
-async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null } = {}) {
+// The longest one render may run. A portal walked screen by screen (the
+// RealPage reader) needs minutes; everything else keeps the one minute.
+const MAX_RENDER_MS = 300000;
+
+async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = null, timeoutMs = 60000 } = {}) {
+  const renderMs = Math.min(Math.max(Number(timeoutMs) || 60000, 1000), MAX_RENDER_MS);
   if (!renderAllowed("firecrawl")) return null;
   let url;
   try {
@@ -542,23 +548,22 @@ async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = n
   } catch {
     return null;
   }
-  const key = process.env.FIRECRAWL_API_KEY;
-  if (!key) return null;
+  if (!firecrawlConfigured()) return null;
   bump("render", "firecrawl");
   try {
-    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await firecrawlRequest(
+      "/v2/scrape",
+      {
         url: rawUrl,
         formats: [raw ? "rawHtml" : "html"],
         onlyMainContent: false,
         ...(waitMs ? { waitFor: waitMs } : {}),
         ...(actions ? { actions } : {}),
-        timeout: 60000,
-      }),
-      signal: AbortSignal.timeout(90000),
-    });
+        timeout: renderMs,
+      },
+      { signal: AbortSignal.timeout(renderMs + 30000) }
+    );
+    if (!res) return null;
     if (!res.ok) {
       console.warn(`[render] firecrawl ${res.status} for ${rawUrl.slice(0, 100)}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
       return null;
@@ -582,28 +587,26 @@ async function renderPageUncached(rawUrl, { waitMs = 0, raw = false, actions = n
 
 async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   if (!renderAllowed("firecrawl")) return null;
-  const key = process.env.FIRECRAWL_API_KEY;
-  if (!key) return null;
+  if (!firecrawlConfigured()) return null;
   bump("render", "firecrawl");
   try {
-    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    const res = await firecrawlRequest(
+      "/v2/scrape",
       // onlyMainContent defaults to true, which strips header/nav/footer. That
       // is where a management company keeps the link to its actual inventory
       // ("Search Apartments", the per-city pages), so a corporate site came
       // back as its homepage teaser with no way to reach the other 116
       // properties. We need the whole document, chrome included.
-      body: JSON.stringify({
+      {
         url: rawUrl,
         formats: ["html"],
         onlyMainContent: false,
         ...(waitMs ? { waitFor: waitMs } : {}),
         timeout: waitMs ? 45000 : 30000,
-      }),
-      signal: AbortSignal.timeout(waitMs ? 70000 : 45000),
-    });
-    if (!res.ok) return null;
+      },
+      { signal: AbortSignal.timeout(waitMs ? 70000 : 45000) }
+    );
+    if (!res?.ok) return null;
     const data = await res.json();
     const html = data?.data?.html;
     if (typeof html !== "string" || !html) return null;

@@ -456,8 +456,10 @@ function LeaseRow({ lease }) {
 
   return (
     <li className="py-2">
-      <div className="flex items-center gap-3">
-        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+      {/* On a phone the four facts take the full width and View Details sits
+          under them, so a price is never cut short to make room for it. */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+        <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 sm:flex-1 sm:grid-cols-4">
           <div className="min-w-0">
             <dt className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
               Price
@@ -499,7 +501,7 @@ function LeaseRow({ lease }) {
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg p-2 text-xs font-medium text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            className="-ml-2 flex shrink-0 items-center gap-1 self-start whitespace-nowrap rounded-lg p-2 text-xs font-medium text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:ml-0 sm:self-auto"
           >
             {/*
               * Spelled out because a bare chevron reads as decoration: the

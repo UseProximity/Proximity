@@ -139,7 +139,8 @@ function SourcesSide({ listingId, owner, sync, sources, unitPages, teamReview, o
             ) : (
               <>
                 <p className="text-xs text-gray-500">Last read {when(sync.lastCheckedAt) || "never"}. Checked every day.</p>
-                {teamReview && <p className="text-[11px] text-gray-500">While we launch, the Proximity team checks each change from your website before students see it.</p>}
+                <p className="text-[11px] text-gray-500">Availability, prices and new units from your website update on their own. Anything you set yourself is never overwritten.</p>
+                {teamReview && <p className="text-[11px] text-gray-500">While we launch, the Proximity team checks what Proxy learns from your website before it tells students.</p>}
                 <button disabled={busy === "sync"} onClick={syncNow} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"><RefreshCw className="h-3 w-3" /> Read the whole site now ({sync.manualLeft} left today)</button>
                 <p className="text-[11px] text-gray-400">Takes {minutes(sync.estimateSeconds ?? 180)}. You can leave while it runs.</p>
               </>

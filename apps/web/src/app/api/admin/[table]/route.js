@@ -82,11 +82,25 @@ function getDbTarget(req) {
 const requireSuper = () => requireDbRole(["super"]);
 const requireSuperOrAdmin = () => requireDbRole(["super", "admin"]);
 
+/*
+ * The tables this route serves: the ones the dashboard's inline editors, gear
+ * drawer and export role filter use. It used to pass any name from the URL
+ * straight to the database, so a super admin's session could read or rewrite
+ * billing, tokens or audit rows through it. Everything else has its own route.
+ */
+const ADMIN_TABLES = new Set([
+  "listings", "listing_units", "unit_leases", "listing_amenities", "listing_utilities", "listing_landlords",
+  "listing_reviews", "users", "dorms", "dorm_reviews", "testimonials",
+  "roles", "home_types", "lease_structures", "interaction_types", "metric_types", "tags", "schools", "locations",
+]);
+const unknownTable = () => Response.json({ error: "This table cannot be edited from the dashboard." }, { status: 404 });
+
 export async function GET(req, { params }) {
   const session = await requireSuperOrAdmin();
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
+  if (!ADMIN_TABLES.has(table)) return unknownTable();
 
   const supabase = getSupabaseClient(getDbTarget(req));
   const { data, error } = await supabase.from(table).select("*").limit(1000);
@@ -101,6 +115,7 @@ export async function PATCH(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
+  if (!ADMIN_TABLES.has(table)) return unknownTable();
   const supabase = getSupabaseClient(getDbTarget(req));
   const body = await req.json();
 
@@ -195,6 +210,7 @@ export async function POST(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
+  if (!ADMIN_TABLES.has(table)) return unknownTable();
 
   const supabase = getSupabaseClient(getDbTarget(req));
 
@@ -257,6 +273,7 @@ export async function DELETE(req, { params }) {
   if (!session) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { table } = await params;
+  if (!ADMIN_TABLES.has(table)) return unknownTable();
 
   const supabase = getSupabaseClient(getDbTarget(req));
   let id;

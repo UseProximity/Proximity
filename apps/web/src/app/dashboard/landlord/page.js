@@ -119,11 +119,11 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
   const isLandlord = role === "landlord" || role === "super";
   /*
    * Payments are for landlord-role users only: not a super user, and not a
-   * student subletting a room. Never while an admin is viewing as someone, so an
-   * admin cannot add or remove that landlord's payment methods (the billing
-   * routes act on the signed-in user, not the viewed one).
+   * student subletting a room. An admin viewing as a landlord sees their
+   * Billing read-only (Wyatt, 2026-11-11): reads carry ?viewAs, and every
+   * billing write acts on the signed-in landlord, so it refuses an admin.
    */
-  const canSeePayments = role === "landlord" && !isViewingAs;
+  const canSeePayments = role === "landlord";
   /*
    * A billing account, made for someone who signs and pays for other landlords'
    * listings (Project B, Wyatt 2026-11-09): a landlord with no properties,
@@ -188,7 +188,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
       case "billing":
-        return <PaymentsSection />;
+        return <PaymentsSection viewAsId={isViewingAs ? viewAsId : null} viewAsName={isViewingAs ? user?.name || user?.email : null} />;
       case "profile":
       default:
         return (

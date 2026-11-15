@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useBillingUrl } from "./billingViewAs";
 
 async function call(url, options) {
   const res = await fetch(url, options);
@@ -25,14 +26,15 @@ export default function AutopayCard({ methods }) {
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const billingUrl = useBillingUrl();
 
   const load = useCallback(async () => {
     try {
-      setState(await call("/api/billing/autopay"));
+      setState(await call(billingUrl("/api/billing/autopay")));
     } catch (e) {
       setError(e.message);
     }
-  }, []);
+  }, [billingUrl]);
 
   useEffect(() => {
     load();

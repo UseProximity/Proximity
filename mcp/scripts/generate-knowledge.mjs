@@ -324,7 +324,7 @@ function generateDomain() {
         description: "Platform admins — full access",
         can: [
           "All student + landlord capabilities",
-          "Access /api/admin/* routes (CRUD on any table, view any user)",
+          "Access /api/admin/* routes: every admin page, plus the writes (inline edits to the tables the dashboard manages, agent approvals, review invites, reply sender decisions, notes, export). The read-only `admin` role gets the same pages without billing, mass email or any write.",
           "Toggle dev/prod database target via x-db-target header",
           "Approve/reject reviews (set legitimacy flag)",
           "Run bulk operations (update walk times)",

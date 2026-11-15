@@ -88,6 +88,9 @@ export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
 
   const results = [];
   const pinnedUnits = [];
+  // Units whose own page could not be read today (a timeout or a server
+  // error, not a page that is gone). The sync leaves them as they are.
+  const unreadUnitIds = [];
   for (const p of pages) {
     const db = unitsById.get(p.unit_id);
     if (!db) continue;
@@ -118,6 +121,7 @@ export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
       else {
         status = "failed";
         error = (code ? `fetch failed (${code})` : err?.message ?? "read failed").slice(0, 500);
+        unreadUnitIds.push(db.id);
       }
     }
 
@@ -164,6 +168,7 @@ export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
     console.log(`[unit-pages] ${listing.title ?? listing.address} / ${unitLabel(db)}: ${status}${error ? ` (${error})` : ""}`);
   }
 
+  if (unreadUnitIds.length) snapshot.unreadUnitIds = unreadUnitIds;
   if (pinnedUnits.length) {
     // The building page's version of a pinned unit gives way to its own page.
     const pinnedIds = new Set(pinnedUnits.map((u) => u.pinnedUnitId));

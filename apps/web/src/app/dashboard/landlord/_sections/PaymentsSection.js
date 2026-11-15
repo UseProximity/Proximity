@@ -10,6 +10,7 @@ import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
 import { PaidForAccounts, PayerCard, SignerChecklist } from "./PayerCards";
+import { BillingViewAsProvider, ReadOnlyGuard, withViewAs } from "./billingViewAs";
 
 const NOTICES = {
   success: { tone: "green", text: "Payment method saved." },
@@ -33,8 +34,21 @@ async function call(url, options) {
  * Coming back from Stripe Checkout lands here with ?setup=success&session_id=...
  * (or ?setup=cancelled). The session is synced straight away so the new method
  * is on screen, then the parameters are dropped so a reload does not repeat it.
+ *
+ * With `viewAsId` (an admin viewing as the landlord) every read is the landlord's
+ * and the whole tab is read-only: see billingViewAs.js.
  */
-export default function PaymentsSection() {
+export default function PaymentsSection({ viewAsId = null, viewAsName = null }) {
+  const page = <PaymentsContent viewAsId={viewAsId} />;
+  if (!viewAsId) return page;
+  return (
+    <BillingViewAsProvider value={viewAsId}>
+      <ReadOnlyGuard name={viewAsName}>{page}</ReadOnlyGuard>
+    </BillingViewAsProvider>
+  );
+}
+
+function PaymentsContent({ viewAsId }) {
   const [methods, setMethods] = useState([]);
   const [charges, setCharges] = useState([]);
   const [requestsKey, setRequestsKey] = useState(0);
@@ -58,13 +72,14 @@ export default function PaymentsSection() {
   const handledReturn = useRef(false);
 
   const load = useCallback(async () => {
+    const read = (url) => call(withViewAs(url, viewAsId));
     const [m, c, i, g, p, a] = await Promise.all([
-      call("/api/billing/payment-methods"),
-      call("/api/billing/charges"),
-      call("/api/billing/invoices"),
-      call("/api/billing/gate"),
-      call("/api/billing/payer"),
-      call("/api/billing/payees"),
+      read("/api/billing/payment-methods"),
+      read("/api/billing/charges"),
+      read("/api/billing/invoices"),
+      read("/api/billing/gate"),
+      read("/api/billing/payer"),
+      read("/api/billing/payees"),
     ]);
     setMethods(m.methods);
     setCharges(c.charges);
@@ -74,7 +89,7 @@ export default function PaymentsSection() {
     setGate(g);
     setPayer(p.payer ?? null);
     setPayees(a.accounts ?? []);
-  }, []);
+  }, [viewAsId]);
 
   useEffect(() => {
     if (handledReturn.current) return;
@@ -83,7 +98,8 @@ export default function PaymentsSection() {
     (async () => {
       try {
         const params = new URLSearchParams(window.location.search);
-        const setup = params.get("setup");
+        // Coming back from Stripe is the landlord's own session, never a view-as.
+        const setup = viewAsId ? null : params.get("setup");
         const sessionId = params.get("session_id");
         if (setup) window.history.replaceState(null, "", "?tab=billing");
 
@@ -105,7 +121,7 @@ export default function PaymentsSection() {
         setLoading(false);
       }
     })();
-  }, [load]);
+  }, [load, viewAsId]);
 
   // An action's outcome is a toast, seen wherever the landlord has scrolled to.
   // The banner at the top is kept for what greets them on arrival (back from Stripe, a load failure).

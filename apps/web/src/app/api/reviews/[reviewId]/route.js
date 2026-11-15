@@ -130,7 +130,7 @@ export async function DELETE(req, { params }) {
       userId,
       table: "listing_reviews",
       rowId: review.id,
-      data: { deleted_at: new Date().toISOString() },
+      data: { deleted_at: new Date().toISOString(), removed_by: "author" },
     });
 
     if (error) {

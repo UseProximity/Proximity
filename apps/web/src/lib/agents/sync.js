@@ -15,6 +15,7 @@
 import { randomUUID } from "crypto";
 import supabase from "@/lib/supabase";
 import { ensureMonitors, dueMonitors, monitorFor, syncMonitor } from "@/lib/sourceImport/sync";
+import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { agentsEnabled } from "./flags";
 import { ensureAgent, getAgent } from "./store";
@@ -31,7 +32,7 @@ async function openSyncJob(listingId) {
   return (data ?? []).find((j) => j) ?? null;
 }
 
-export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false }) {
+export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false, deep = null }) {
   const m = url ? null : await monitorFor(listingId);
   if (!url && !m && !knowledge) return { error: "This listing has no website to sync from.", status: 409 };
   const existing = await openSyncJob(listingId);
@@ -49,7 +50,7 @@ export async function enqueueSync({ listingId, userId = null, batchId = null, pr
     listing_id: listingId,
     target: {
       // knowledge: read the whole site into what Proxy knows, nothing else.
-      sync: true, knowledge, propose, force, name: listing.title, address: listing.address,
+      sync: true, knowledge, propose, force, deep, name: listing.title, address: listing.address,
       url: url ?? m.source_url, levelUrl: url ? null : m.index_url, pastedUrl: url ?? m.index_url ?? m.source_url,
     },
     status: "queued", step: knowledge ? "Queued: reading the whole site" : "Queued for sync", progress: 0,
@@ -83,6 +84,52 @@ export async function runDailyBatch({ limit = 500 } = {}) {
   return { due: monitors.length, queued, already, batchId, subpages: subpages ? { sites: subpages.sites, attached: subpages.attached.length } : null };
 }
 
+/*
+ * The weekly knowledge read (Wyatt, 2026-11-12), Monday after Sunday's deep
+ * read: every published listing with a website gets a whole-site read into
+ * what Proxy knows (lib/agents/pages.js readWholeSite), each its own job in
+ * the import lanes. The daily sync only checks specials. A listing whose
+ * daily sync is still running is retried by a later cron tick: the route is
+ * called every hour from 5am to 3pm St. Louis on Monday, and each tick skips
+ * listings already read this week, so the later ticks cost nothing once the
+ * daily syncs have drained. Muted listings, and website kinds whose sync is
+ * switched off, are left out, the same as the daily sync (dueMonitors).
+ */
+export async function runWeeklyKnowledge({ limit = 500 } = {}) {
+  if (!agentsEnabled()) return { skipped: "agents off" };
+  const { data, error } = await supabase
+    .from("listing_source_monitors")
+    .select("listing_id, source_url, source_kind, muted_until, enabled, listings!listing_id(published_at, deleted_at)")
+    .eq("enabled", true)
+    .limit(limit);
+  if (error) throw new Error(`monitors: ${error.message}`);
+  const now = new Date();
+  const due = (data ?? []).filter((m) => m.listings && !m.listings.deleted_at && m.listings.published_at && m.source_url
+    && !(m.muted_until && new Date(m.muted_until) > now) && sourceKindEnabled(m.source_kind));
+  // Already read this week (an earlier tick, an import, a landlord's sync).
+  // In chunks: hundreds of ids in one filter make a URL too long to send.
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString();
+  const readRecently = new Set();
+  const ids = due.map((m) => m.listing_id);
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data: recent, error: e2 } = await supabase.from("listing_import_jobs").select("listing_id").eq("status", "done")
+      .contains("target", { knowledge: true }).gte("finished_at", weekAgo).in("listing_id", ids.slice(i, i + 100));
+    if (e2) throw new Error(`recent reads: ${e2.message}`);
+    for (const r of recent ?? []) readRecently.add(r.listing_id);
+  }
+  const batchId = randomUUID();
+  let queued = 0;
+  let busy = 0;
+  let fresh = 0;
+  for (const m of due) {
+    if (readRecently.has(m.listing_id)) { fresh++; continue; }
+    const r = await enqueueSync({ listingId: m.listing_id, batchId, knowledge: true, url: m.source_url });
+    if (r.job && !r.already) queued++;
+    else if (r.already) busy++;
+  }
+  return { listings: due.length, queued, busy, readThisWeek: fresh, batchId };
+}
+
 /* "Sync now" from a landlord's or admin's dashboard. */
 export async function manualSync({ listingId, userId, isAdmin = false }) {
   if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
@@ -96,7 +143,9 @@ export async function manualSync({ listingId, userId, isAdmin = false }) {
     if (used >= MANUAL_SYNCS_PER_DAY) return { error: `You can sync ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
     await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
   }
-  return enqueueSync({ listingId, userId, force: true });
+  // An admin's sync is a deep read, the weekly kind, so the team can try it
+  // on a listing any day (Wyatt, 2026-11-11).
+  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? true : null });
 }
 
 /*
@@ -143,7 +192,7 @@ export async function runSyncJob(job, { onStep = () => {} } = {}) {
   const m = await monitorFor(job.listing_id);
   if (!m) throw new Error("This listing has no website to sync from.");
   const item = await syncMonitor(m, {
-    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId,
+    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId, deep: target.deep ?? null,
     // A landlord's sync reads the whole site next, in its own job.
     knowledge: !target.force,
   });

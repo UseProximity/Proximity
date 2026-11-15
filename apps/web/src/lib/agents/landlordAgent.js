@@ -253,6 +253,8 @@ function resolveRef({ target, ref }, ctx) {
   return { id: null, label: "the property" };
 }
 
+const TOO_MUCH = "That was too much for me to cover in one reply. Could you ask about one part at a time, like the floor plans, the fees or the pet policy? Nothing was changed.";
+
 export async function agentChat({ listingId, userId, isAdmin = false, message, history = [] }) {
   if (!String(message ?? "").trim()) return { error: "Say something first." };
   const ctx = await buildProxyContext(listingId);
@@ -266,7 +268,10 @@ export async function agentChat({ listingId, userId, isAdmin = false, message, h
   while (convo.length && convo[0].role !== "user") convo.shift();
 
   const result = await runTools({ model: SONNET, system, tools: CHAT_TOOLS, handlers: {}, messages: convo, maxRounds: 2, maxTokens: 1200, tag: "landlord-chat", listingId, kind: "landlord_chat", finalTool: "propose" });
-  const p = result.final ?? { reply: result.text || "Sorry, I didn't catch that.", core_changes: [], facts: [], retire_keys: [] };
+  // An answer cut off at the length limit is dropped, not posted half done or blank.
+  const p = result.truncated
+    ? { reply: TOO_MUCH, core_changes: [], facts: [], retire_keys: [] }
+    : result.final ?? { reply: result.text || "Sorry, I didn't catch that.", core_changes: [], facts: [], retire_keys: [] };
 
   // Resolve and check every proposed change now, so the diff the landlord
   // confirms is exactly what will be written.

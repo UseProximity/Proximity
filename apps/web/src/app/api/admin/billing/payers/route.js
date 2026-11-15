@@ -20,7 +20,7 @@ import { sendPayerAssigned, sendPayerDocumentCancelled, sendPayerInvite } from "
  *          account), then emails the payer once (the agreement, the MREC form and
  *          a link) and each landlord a note. Answers { assigned, failed: [{ landlordId, error }] }.
  *   DELETE { landlordId } ends the account's payer: anything signed for it comes
- *          off the payer's agreement, as when the payer voids it.
+ *          off the payer's agreement, as when the landlord revokes them.
  *
  * @auth super
  */
@@ -80,10 +80,10 @@ export async function DELETE(req) {
     const link = await activePayerLink(db, body.landlordId);
     if (!link) throw new BillingError("no_payer", "This landlord has no authorized signer.", 404);
     const { documenso } = agreementServices();
-    const result = await endPayerFor(db, documenso, { payerId: link.payer_id, landlordId: body.landlordId, endLink: true });
+    const result = await endPayerFor(db, documenso, { landlordId: body.landlordId, reason: "ended by an admin" });
     // A document the payer was signing for other accounts too was cancelled: tell them.
     if (result.cancelled) after(() => sendPayerDocumentCancelled({ ...result.cancelled, causeLandlordId: body.landlordId, reason: "ended" }).catch(() => {}));
-    return NextResponse.json(result);
+    return NextResponse.json({ released: result.released, cancelled: result.cancelled });
   } catch (err) {
     return billingErrorResponse(err, "end payer");
   }

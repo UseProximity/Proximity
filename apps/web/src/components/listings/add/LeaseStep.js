@@ -14,6 +14,7 @@ import { Users } from "lucide-react";
 import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
 import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
 import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
 
 export default function LeaseStep({
   unit,
@@ -33,6 +34,9 @@ export default function LeaseStep({
   const field =
     "w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-red-400 focus:outline-none";
   const live = existingLeases.filter((l) => l.live);
+  // Same rule the publish enforces, shown while they write so the block is
+  // never a surprise: no names, links, emails or phone numbers.
+  const descriptionProblem = checkListingDescription(value.description);
 
   return (
     <div className="space-y-4">
@@ -165,8 +169,13 @@ export default function LeaseStep({
           rows={2} className={field} value={value.description}
           maxLength={LEASE_DESCRIPTION_MAX}
           placeholder="Utilities included, on-street parking, cat-friendly…"
+          aria-invalid={descriptionProblem ? true : undefined}
+          data-invalid={descriptionProblem ? "true" : undefined}
           onChange={(e) => set({ description: e.target.value })}
         />
+        {descriptionProblem && (
+          <span className="mt-1 block text-sm text-red-600">{descriptionProblem}</span>
+        )}
         <span className="mt-1 block text-xs text-gray-400">
           Students see this when they open the details on your listing.
         </span>

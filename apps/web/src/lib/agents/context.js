@@ -36,6 +36,9 @@ const SELECT = `
   listing_custom_amenities!listing_id(label)
 `;
 
+// About 5,000 tokens. The largest knowledge base in Nov 2026 is under 10,000 characters.
+const FULL_FACTS_LIMIT = 20000;
+
 function termLabel(months) {
   const t = [...new Set((months ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0))].sort((a, b) => a - b);
   if (!t.length) return null;
@@ -44,12 +47,16 @@ function termLabel(months) {
 }
 
 export async function buildProxyContext(listingId) {
-  const { data: row, error } = await supabase.from("listings").select(SELECT).eq("id", listingId).maybeSingle();
+  // Read at once rather than one after another: every second counts while a student waits.
+  // The owner labels are read once and shared with studentFacts.
+  const ownersRead = ownerLabels(listingId);
+  const [{ data: row, error }, owners, facts] = await Promise.all([
+    supabase.from("listings").select(SELECT).eq("id", listingId).maybeSingle(),
+    ownersRead,
+    studentFacts(listingId, ownersRead),
+  ]);
   if (error) throw new Error(`proxy context: ${error.message}`);
   if (!row || row.deleted_at) return null;
-
-  const owners = await ownerLabels(listingId);
-  const facts = await studentFacts(listingId);
   const units = publicUnits(row.listing_units ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const leases = [];
@@ -83,7 +90,34 @@ export async function buildProxyContext(listingId) {
     ? `${name}:\n${items.map((f) => `- ${f.summary}${f.scope.level !== "property" ? ` [applies to: ${f.scope.label}]` : ""} (updated ${shortDate(f.updatedAt)})`).join("\n")}`
     : `${name}: nothing on record`;
 
-  const text = [
+  /*
+   * Proxy's copy carries every fact in full (its key, value, conditions and
+   * dates), so a question is answered in one model call instead of a first
+   * call to look the details up (Wyatt, 2026-11-11: answers felt slow).
+   * Past FULL_FACTS_LIMIT characters it falls back to the one-line index and
+   * Proxy pulls details with its tools, as before.
+   */
+  const fullLine = (f) => {
+    const bits = [`- [${f.key}] ${f.summary}`];
+    if (f.value != null && typeof f.value === "object" ? Object.keys(f.value).length : f.value != null) bits.push(`value: ${JSON.stringify(f.value)}`);
+    if (f.scope.level !== "property") bits.push(`applies to: ${f.scope.label}`);
+    if (f.validFrom) bits.push(`valid from ${f.validFrom}`);
+    if (f.validUntil) bits.push(`valid until ${f.validUntil}`);
+    if (f.landlordSet) bits.push("confirmed by the landlord");
+    bits.push(`updated ${shortDate(f.updatedAt)}`);
+    return bits.join("; ");
+  };
+  const fullSection = (name, items) => (items.length ? `${name}:\n${items.map(fullLine).join("\n")}` : `${name}: nothing on record`);
+  const factSections = (fmt) => [
+    fmt("FEES", facts.sections.fees),
+    fmt("POLICIES", facts.sections.policies),
+    fmt("SPECIALS AND PROMOTIONS (current)", facts.sections.specials),
+    fmt("OTHER DETAILS", facts.sections.misc),
+  ];
+  const fullFacts = factSections(fullSection).join("\n\n");
+  const factsInFull = fullFacts.length <= FULL_FACTS_LIMIT;
+
+  const head = [
     `LISTING: ${row.title || row.address}${row.title ? `, ${row.address}` : ""}. Type: ${row.home_types?.label ?? "other"}.`,
     row.twenty_one_plus ? "Residents must be 21 or older." : null,
     row.sublease_friendly ? "Subletting is allowed by the property." : null,
@@ -92,12 +126,10 @@ export async function buildProxyContext(listingId) {
     `UTILITIES INCLUDED IN RENT: ${utils.join(", ") || "none listed"}`,
     `UNITS AND LEASES (a lease is one owner's offering; several owners can offer the same building):\n${unitLines.join("\n") || "- no units listed"}`,
     leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
-    sectionText("FEES", facts.sections.fees),
-    sectionText("POLICIES", facts.sections.policies),
-    sectionText("SPECIALS AND PROMOTIONS (current)", facts.sections.specials),
-    sectionText("OTHER DETAILS", facts.sections.misc),
-    facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null,
-  ].filter(Boolean).join("\n\n");
+  ];
+  const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
+  const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
+  const proxyText = factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text;
 
   const factKeys = new Set();
   for (const items of Object.values(facts.sections)) for (const f of items) factKeys.add(f.key);
@@ -110,6 +142,8 @@ export async function buildProxyContext(listingId) {
     title: row.title || row.address,
     address: row.address,
     text,
+    proxyText,
+    factsInFull,
     leases,
     hasLiveLease: leases.length > 0,
     ownerCount: new Set(leases.map((l) => l.ownerKey)).size,

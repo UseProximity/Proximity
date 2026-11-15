@@ -4,9 +4,15 @@
  * Every published listing with a source URL has a monitor row saying when it
  * is next due. syncMonitor reads one the same way an import reads it
  * (readProperty), keeps the snapshot, and if anything about the units or
- * prices changed applies it under the sync rules in apply.js. Then the pages
- * go through Proxy's synthesis (lib/agents/pages.js) so fees, policies and
- * specials land in the listing's knowledge.
+ * prices changed applies it under the sync rules in apply.js.
+ *
+ * Three rhythms (Wyatt, 2026-11-12):
+ *   daily     units, leases, prices and availability, plus the specials the
+ *             website shows (they come and go fast)
+ *   Sunday    the deep read, which also brings photos and floor plan drawings
+ *   Monday    the knowledge read: the whole site into what Proxy knows
+ *             (lib/agents/pages.js readWholeSite, queued by
+ *             lib/agents/sync.js runWeeklyKnowledge)
  *
  * Since the per-listing agents (PRD v3) the daily batch runs each listing as
  * its own job in the import lanes (lib/agents/sync.js); runSourceSync, which
@@ -17,16 +23,16 @@
  * the agents), so moving a landlord to weekly is a column update.
  */
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail } from "@/lib/email";
+import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
 import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
+import { nextSundayCheckAt } from "./readers/portalWalkParse.js";
 import { applySnapshot } from "./apply.js";
 import { fingerprint, summarize } from "./snapshot.js";
-import { synthesizePages, markStaleSources } from "@/lib/agents/pages";
+import { syncSpecials, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
 import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
 import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
-import { syncTeamReview } from "@/lib/agents/flags";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -44,6 +50,21 @@ const MAX_BACKOFF_DAYS = 14;
  * at every daily run (Wyatt, 2026-11-07).
  */
 export const SCHEDULE_SLACK_MS = 6 * 60 * 60 * 1000;
+
+/*
+ * The weekly deep read (Wyatt, 2026-11-11): on Sunday's run every listing is
+ * read much further into its site (read.js explore), the same day walked
+ * leasing portals refresh. Admins can ask for one any time.
+ */
+export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
+
+/*
+ * The time one sync gives the read, out of a five-minute function: the rest
+ * is for applying and the knowledge pass. Past KNOWLEDGE_CUTOFF_MS the
+ * knowledge pass waits for the next run.
+ */
+const READ_BUDGET_MS = 210000;
+const KNOWLEDGE_CUTOFF_MS = 200000;
 export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
 const plusDays = (days) => nextCheckAt(days);
 
@@ -119,54 +140,109 @@ async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
 }
 
 /*
+ * Photos or floor plan drawings the website has that the listing is missing:
+ * `any` when there is something to fill, `overdue` when it has waited a week
+ * (the listing, or the unit, is more than seven days old).
+ */
+async function photoGaps(listingId, snapshot) {
+  const sitePhotos = (snapshot.property?.photos?.length ?? 0) > 0;
+  const unitPhotos = (snapshot.units ?? []).some((u) => u.photos?.length);
+  const drawings = (snapshot.units ?? []).some((u) => u.floorPlanImageUrl);
+  if (!sitePhotos && !unitPhotos && !drawings) return { any: false, overdue: false };
+  const [{ data: listing }, { data: units }, { data: images }] = await Promise.all([
+    supabase.from("listings").select("created_at").eq("id", listingId).maybeSingle(),
+    supabase.from("listing_units").select("id, created_at, floor_plan_image_url").eq("listing_id", listingId).is("deleted_at", null),
+    supabase.from("listing_images").select("unit_id, source").eq("listing_id", listingId),
+  ]);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const old = (row) => row?.created_at && new Date(row.created_at).getTime() < weekAgo;
+  const withPhotos = new Set((images ?? []).filter((i) => i.source !== "street_view").map((i) => i.unit_id ?? "property"));
+  const missing = [];
+  if (sitePhotos && !withPhotos.has("property")) missing.push(listing);
+  for (const u of units ?? []) {
+    if ((unitPhotos && !withPhotos.has(u.id)) || (drawings && !u.floor_plan_image_url)) missing.push(u);
+  }
+  return { any: missing.length > 0, overdue: missing.some(old) };
+}
+
+/*
  * Sync one monitor. Returns the digest row for it. Never throws: a failure
  * is recorded on the monitor (with backoff) and returned as status "failed".
  *   force       read even if the fingerprint is unchanged
  *   autoApply   false records every structural change as open (the landlord
  *               reviews them) and applies nothing
  *   onStep      progress text, for a job
- *   knowledge   also read the pages into the listing's knowledge (default)
+ *   knowledge   also read the website's specials into the listing's
+ *               knowledge (default); everything else it knows is the
+ *               Monday read's job
  */
-export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null } = {}) {
+export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null, deep = null } = {}) {
   const listing = m.listings;
   const label = listing.title ?? listing.address;
   const interval = m.check_interval_days || DEFAULT_INTERVAL_DAYS;
   const started = Date.now();
   const baseUrl = getBaseUrl();
+  const goDeep = deep ?? isDeepDay();
   try {
     await ensureAgent(listing.id);
     // Only the sites the landlord gave us (Wyatt, 2026-11-07).
     const allowUrl = await givenSiteFilterFor(listing.id);
-    const teamReview = syncTeamReview();
     const snapshot = await readProperty({
       allowUrl,
       pastedUrl: m.index_url ?? m.source_url,
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
+      deep: goDeep,
+      deadline: started + READ_BUDGET_MS,
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    /*
+     * A leasing portal too large to walk in one run: what it has so far is
+     * on the monitor and the listing is due again at once, so the next run
+     * carries on. Nothing is compared or applied from half a price list.
+     */
+    if (snapshot.portalPending) {
+      const p = snapshot.portal?.progress;
+      const note = `Leasing portal part read: ${p?.priced?.length ?? 0} of ${Object.keys(p?.units ?? {}).length} apartments priced, continuing on the next run`;
+      onStep(note);
+      await supabase
+        .from("listing_source_monitors")
+        .update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date().toISOString() })
+        .eq("id", m.id);
+      console.log(`[source-sync] ${label}: ${note}`);
+      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: summarize(snapshot), pages: [], unitPages: [], note };
+    }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
     const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
     await keepSnapshot(m.id, { ok: true, snapshot });
     const fp = fingerprint(snapshot);
-    const unchanged = !force && m.last_fingerprint === fp;
+    // Photos weekly (Wyatt, 2026-11-12): the deep read, or a sync someone
+    // asked for, adds them. A unit or listing that has waited a week without
+    // any (its Sunday read did not run or was held) gets them on its next
+    // sync. The fingerprint leaves photos out, so a run that could fill a gap
+    // applies rather than stopping at "unchanged"; one with nothing to fill
+    // stops there as usual.
+    const gaps = await photoGaps(listing.id, snapshot).catch(() => ({ any: false, overdue: false }));
+    const images = goDeep || force || gaps.overdue;
+    const unchanged = !force && m.last_fingerprint === fp && !(images && gaps.any);
     let result = null;
     if (!unchanged) {
       onStep("Saving");
-      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, teamReview, listingLabel: label, userId: actorId });
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });
+      // Skipped for churn: the team hears at once, the first day in a row.
+      if (result?.churn && m.last_status !== "suppressed") {
+        await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, newUnits: result.churn.newUnits, units: result.churn.units, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));
+      }
     }
     let pages = [];
-    if (knowledge) {
-      onStep("Reading the pages into knowledge");
-      const flyers = snapshot.trace?.found?.flyers ?? [];
-      // Every page this listing already knows (found by earlier whole-site reads), plus the start page and flyers.
-      const { knownPageUrls } = await import("@/lib/agents/pages");
-      const known = await knownPageUrls(listing.id).catch(() => []);
-      const unitUrls = unitPages.filter((p) => p.status === "ok").map((p) => p.url);
-      const urls = [snapshot.sourceUrl ?? m.source_url, ...unitUrls, ...flyers, ...known].filter((u) => u && allowUrl(u));
-      pages = await synthesizePages({ listingId: listing.id, urls, cause: "sync", actorId, force, maxPages: 50 });
+    const late = Date.now() - started > KNOWLEDGE_CUTOFF_MS;
+    if (knowledge && late) console.log(`[source-sync] ${label}: read ran long, specials go into knowledge on the next run`);
+    if (knowledge && !late) {
+      onStep("Checking the website's specials");
+      const specials = await syncSpecials({ listingId: listing.id, concessions: snapshot.property?.concessions ?? [], sourceUrl: snapshot.sourceUrl ?? m.source_url, actorId }).catch((e) => ({ url: m.source_url, error: String(e?.message ?? e).slice(0, 300) }));
+      if (specials) pages = [specials];
     }
     const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
     await supabase
@@ -178,7 +254,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         last_error: null,
         consecutive_failures: 0,
         last_fingerprint: fp,
-        next_check_at: plusDays(interval),
+        // A listing priced by a leasing portal is refreshed weekly, on
+        // Sunday (Wyatt, 2026-11-10): the walk is slow and costs renders.
+        next_check_at: snapshot.portal?.walked ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
       })
       .eq("id", m.id);
     await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);
@@ -186,13 +264,16 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       listingId: listing.id,
       listing: label,
       status,
+      deep: goDeep,
       platform: snapshot.platform,
       confidence: snapshot.confidence,
+      unitListComplete: !!snapshot.unitListComplete,
       seconds: Math.round((Date.now() - started) / 1000),
       applied: result?.applied ?? [],
       held: result?.held ?? [],
+      denied: result?.denied ?? [],
+      deniedNew: result?.deniedNew ?? 0,
       holdReason: result?.holdReason ?? null,
-      teamReview,
       refused: snapshot.trace?.refused ?? [],
       summary: summarize(snapshot),
       pages,
@@ -237,11 +318,11 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
  *   listingId  one listing, on demand
  *   force      run it even if not due, muted, or still a draft
  */
-export async function runSourceSync({ listingId = null, limit = 30, force = false, email = true } = {}) {
+export async function runSourceSync({ listingId = null, limit = 30, force = false, email = true, deep = null } = {}) {
   await ensureMonitors();
   const monitors = await dueMonitors({ listingId, limit, force });
   const items = [];
-  for (const m of monitors) items.push(await syncMonitor(m, { force, email }));
+  for (const m of monitors) items.push(await syncMonitor(m, { force, email, deep }));
 
   // One digest per run, when there is anything to say.
   const worth = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");

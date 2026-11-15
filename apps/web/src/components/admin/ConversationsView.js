@@ -36,7 +36,8 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { adminFetch, Badge, shortId } from "@/components/admin/adminShared";
+import { adminFetch, Badge, shortId, useAdminNav } from "@/components/admin/adminShared";
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import { RefusedReply, ReplySendersList } from "@/components/admin/ReplySenderControls";
 
 // Plain-words labels for the reason keys written by lib/chat/moderation.js,
@@ -242,6 +243,7 @@ function InboxLink({ person, threadId, label }) {
 }
 
 function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
+  const readOnly = !!useAdminNav()?.isReadOnly;
   const { thread, people, messages, blockedAttempts, refusedReplies = [], replySenders = [] } = detail;
   const agent = thread.kind === "agent";
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
@@ -265,7 +267,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
         <div className="flex items-start gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900">{listingLabel(thread.listing)}</p>
+            <p className="text-sm font-semibold text-gray-900"><ListingLink id={thread.listing?.id}>{listingLabel(thread.listing)}</ListingLink></p>
             {thread.listing?.address && thread.listing?.title && (
               <p className="text-[11px] text-gray-500">{thread.listing.address}</p>
             )}
@@ -276,7 +278,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
         <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
           <p>
             <Badge color="gray">{student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
-            <span className="font-medium text-gray-900">{student || !thread.visitor ? personLabel(student) : visitorLabel(thread.visitor)}</span>
+            <span className="font-medium text-gray-900">{student || !thread.visitor ? <PersonLink id={student?.id}>{personLabel(student)}</PersonLink> : visitorLabel(thread.visitor)}</span>
             {student?.email && <span className="text-gray-400"> · {student.email}</span>}
             {student?.emailMode && <span className="text-purple-700"> · replying by email</span>}
           </p>
@@ -286,7 +288,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
             </p>
           ) : (
             <p>
-              <Badge color="blue">landlord</Badge> <span className="font-medium text-gray-900">{personLabel(landlord)}</span>
+              <Badge color="blue">landlord</Badge> <span className="font-medium text-gray-900"><PersonLink id={landlord?.id}>{personLabel(landlord)}</PersonLink></span>
               {landlord?.email && <span className="text-gray-400"> · {landlord.email}</span>}
               {landlord?.emailMode && <span className="text-purple-700"> · replying by email</span>}
               {thread.fromTour && <> <Badge color="green">From a tour</Badge></>}
@@ -325,7 +327,8 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
           {refusedReplies.length > 0 ? ` · ${refusedReplies.length} emailed repl${refusedReplies.length === 1 ? "y" : "ies"} not posted` : ""}
           {` · started ${fmtWhen(thread.createdAt)}`}
         </p>
-        <ReplySendersList senders={replySenders} landlordId={thread.landlordId} dbTarget={dbTarget} onChanged={onChanged} />
+        {/* Approving or removing a sender is for super admins; the read-only role sees them switched off. */}
+        <fieldset disabled={readOnly} className="min-w-0"><ReplySendersList senders={replySenders} landlordId={thread.landlordId} dbTarget={dbTarget} onChanged={onChanged} /></fieldset>
       </div>
 
       <div className="space-y-2">
@@ -340,7 +343,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
               visitor={thread.visitor}
             />
           ) : item.kind === "refused" ? (
-            <RefusedReply key={item.r.id} r={item.r} dbTarget={dbTarget} onChanged={onChanged} />
+            <fieldset key={item.r.id} disabled={readOnly} className="min-w-0"><RefusedReply r={item.r} dbTarget={dbTarget} onChanged={onChanged} /></fieldset>
           ) : (
             <BlockedAttempt key={item.e.id} e={item.e} sender={byId.get(item.e.userId)} />
           )
@@ -404,10 +407,10 @@ function LandlordChatDetail({ chat, onOpenThread }) {
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <p className="text-sm font-semibold text-gray-900">{listingLabel(listing)}</p>
+        <p className="text-sm font-semibold text-gray-900"><ListingLink id={listing?.id}>{listingLabel(listing)}</ListingLink></p>
         {listing?.address && listing?.title && <p className="text-[11px] text-gray-500">{listing.address}</p>}
         <p className="mt-2 text-xs text-gray-600">
-          <Badge color="blue">landlord</Badge> <span className="font-medium text-gray-900">{personLabel(landlord)}</span>
+          <Badge color="blue">landlord</Badge> <span className="font-medium text-gray-900"><PersonLink id={landlord?.id}>{personLabel(landlord)}</PersonLink></span>
           {landlord?.email && <span className="text-gray-400"> · {landlord.email}</span>}
           <span className="text-gray-400"> with the listing&apos;s agent</span>
         </p>
@@ -628,7 +631,6 @@ function readUrl() {
 
 function writeUrl({ tab, side, thread, chat }) {
   const p = new URLSearchParams(window.location.search);
-  p.set("view", "conversations");
   p.set("tab", tab);
   for (const k of ["side", "thread", "chat"]) p.delete(k);
   if (tab === "agent") p.set("side", side);

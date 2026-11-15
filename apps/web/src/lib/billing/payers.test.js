@@ -10,9 +10,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, applyEnvelope, coverageFor, coveringAgreement, documentParts, listAgreementDocuments, startSigning } from "./agreements.js";
-import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments } from "./payers.js";
+import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, completeTakeover, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments } from "./payers.js";
 import { checkListingGate, coverageOnly, gateResponseBody, payerCanFix } from "./listingGate.js";
 import { payeeChargeView, statusMessage } from "./chargeDisplay.js";
+import { exhibitPreview } from "./exhibitUnits.js";
 import { lineDescription, planInvoices } from "./invoicePlan.js";
 
 const MASTER = {
@@ -381,21 +382,81 @@ describe("payer: what each side sees", () => {
   });
 });
 
-describe("payer: voiding and changing", () => {
-  it("the signer voids for one account: its properties come off, they stay assigned and show as declined", async () => {
+describe("payer: revoking and changing", () => {
+  it("the landlord revokes a signer who signed: nothing is covered until they sign, and live listings stay up", async () => {
     const { db, documenso } = await ownerSignedFor("pm1");
-    const r = await endPayerFor(db, documenso, { payerId: "own", landlordId: "pm1" });
+    assert.equal((await landlordPayerView(db, "pm1", new Date("2027-02-01"))).canChange, false, "a signer who signed can't just be swapped");
+    const r = await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
     assert.equal(r.released, 2);
-    assert.equal(db.tables.billing_payers[0].status, "active", "still the account's authorized signer");
-    assert.ok(db.tables.billing_payers[0].declined_at);
-    const view = await landlordPayerView(db, "pm1", new Date("2027-02-01"));
-    assert.equal(view.status, "declined");
-    assert.equal(view.canChange, true, "nothing signed now: the landlord can change signer");
-    assert.equal(db.tables.landlord_agreements[0].status, "signed");
-    // An admin ending it ends the link too.
-    await endPayerFor(db, documenso, { payerId: "own", landlordId: "pm1", endLink: true });
     assert.equal(db.tables.billing_payers[0].status, "ended");
-    await assert.rejects(() => endPayerFor(db, documenso, { payerId: "pm2", landlordId: "pm1" }), (e) => e.code === "not_payer");
+    assert.equal(db.tables.billing_payers[0].ended_reason, "revoked by the landlord");
+    assert.equal(await landlordPayerView(db, "pm1"), null, "no signer any more");
+    assert.equal(db.tables.landlord_agreements[0].status, "signed", "the signer's agreement stands for everything else");
+    const { state, covered } = await coverageFor(db, "pm1");
+    assert.equal(state.valid, false, "the landlord has no agreement of their own yet");
+    assert.equal(covered.size, 0);
+    assert.ok(db.tables.listings.find((l) => l.id === "L1").published_at, "the live listing was not taken off the site");
+    // Nothing new can be published until they sign, and it is theirs to sign now.
+    db.tables.billing_settings = [{ key: "agreement_required", value: true }];
+    const gate = await checkListingGate(db, "pm1", { listingIds: ["L2"] });
+    assert.equal(gate.allowed, false);
+    assert.equal(gate.payer, undefined);
+    const started = await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true });
+    assert.equal(started.kind, "master");
+    await assert.rejects(() => endPayerFor(db, documenso, { landlordId: "pm1" }), (e) => e.code === "no_payer");
+  });
+
+  it("revoking cancels what the signer was still signing and puts waiting listings back to plain drafts", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L2"] });
+    await signFor(db, documenso, "pm1", { listingIds: ["L2"] });
+    const r = await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
+    assert.equal(r.cancelled, null);
+    assert.equal(db.tables.landlord_agreements[0].status, "voided", "the signer's unsigned copy was cancelled");
+    assert.equal(db.tables.payer_publish_requests[0].status, "cancelled");
+    assert.equal(db.tables.billing_payers[0].status, "ended");
+  });
+
+  it("revoking one account leaves the signer's other accounts covered", async () => {
+    const db = world();
+    db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2026-11-09T00:00:00Z", created_at: "2026-11-09T00:01:00Z" });
+    const documenso = fakeDocumenso();
+    await signFor(db, documenso, "pm1", { accountIds: ["pm1", "pm2"] });
+    documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
+    await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
+    assert.equal((await coverageFor(db, "pm1")).covered.size, 0);
+    assert.ok((await coverageFor(db, "pm2")).covered.has("L3"), "the other account is still covered by the signer");
+  });
+
+  it("the landlord signs their own agreement first: the signer stays until it is signed, then everything is covered by it", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1");
+    // The plain signing path is still refused; only a takeover opens it.
+    await assert.rejects(() => startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true }), (e) => e.code === "payer_signs");
+    const preview = await exhibitPreview(db, "pm1", { takeover: true });
+    assert.equal(preview.kind, "master");
+    assert.deepEqual(preview.properties.filter((p) => p.locked).map((p) => p.address).sort(), ["100 Live St", "200 Draft Ave"], "what the signer covers can't be left off");
+    const started = await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true, takeover: true });
+    assert.equal(started.kind, "master");
+    // Not signed yet (they could still close the popup): nothing has changed.
+    assert.equal(await completeTakeover(db, documenso, "pm1"), null);
+    assert.equal(db.tables.billing_payers[0].status, "active");
+    assert.equal((await coverageFor(db, "pm1")).covered.size, 2, "still covered by the signer");
+    // Signed: the signer is removed and the landlord's own agreement covers both.
+    const own = db.tables.landlord_agreements.find((a) => a.user_id === "pm1");
+    documenso.complete(own.provider_envelope_id, "2027-02-01T12:00:00.000Z");
+    assert.equal(await applyEnvelope(db, documenso, await documenso.getEnvelope(own.provider_envelope_id), { storeSigned }), "signed");
+    const done = await completeTakeover(db, documenso, "pm1");
+    assert.equal(done.released, 2);
+    assert.equal(db.tables.billing_payers[0].status, "ended");
+    const after = await coverageFor(db, "pm1");
+    assert.equal(after.state.signed.user_id, "pm1");
+    assert.deepEqual([...after.covered.keys()].sort(), ["L1", "L2"]);
+    assert.equal(db.tables.landlord_agreements.find((a) => a.user_id === "own").status, "signed", "the signer's agreement stands");
+    assert.equal(await completeTakeover(db, documenso, "pm1"), null, "safe to run again");
+    // A new charge is the landlord's own now.
+    assert.equal((await coveringAgreement(db, "pm1", "L1")).holderId, "pm1");
   });
 
   it("naming a payer refuses the landlord's own email and a student", async () => {

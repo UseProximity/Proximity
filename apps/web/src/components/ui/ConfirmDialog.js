@@ -1,8 +1,12 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 /*
  * A small "are you sure?" dialog. Sits at z-[80] so it shows above the listing
- * modal, same as the Block confirmation there.
+ * modal, same as the Block confirmation there. Rendered on <body> so no
+ * stacking context around the caller (the browse map column, for one) can
+ * paint over it.
  */
 export default function ConfirmDialog({
   title,
@@ -12,7 +16,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
@@ -36,6 +40,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

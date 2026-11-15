@@ -131,7 +131,7 @@ export const sendPayerDocumentCancelledEmail = (payer, input) =>
   toLandlord("billing_payer_document_cancelled", payer, t.payerDocumentCancelledEmail({ name: payer.name, ...input }));
 export const sendPayeeSignedEmail = (landlord, input) =>
   toLandlord("billing_payee_signed", landlord, t.payeeSignedEmail({ name: landlord.name, ...input }));
-export const sendPayeeVoidedEmail = (landlord, input) =>
-  toLandlord("billing_payee_voided", landlord, t.payeeVoidedEmail({ name: landlord.name, ...input }));
+export const sendPayerRevokedEmail = (payer, input) =>
+  toLandlord("billing_payer_revoked", payer, t.payerRevokedEmail({ name: payer.name, ...input }));
 export const sendPayeeAssignedEmail = (landlord, input) =>
   toLandlord("billing_payee_assigned", landlord, t.payeeAssignedEmail({ name: landlord.name, ...input }));

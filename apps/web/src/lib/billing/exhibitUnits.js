@@ -22,9 +22,12 @@ const NAME_MAX = 60;
 
 // `forPayee`: an authorized signer previewing a document for an account they sign for (Project B):
 // every property, drafts included, and any not covered yet can be left off.
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false } = {}) {
-  const requested = await resolvePublishedIds(db, listingIds);
-  const loaded = await coverageFor(db, userId, now);
+// `takeover`: a landlord with an authorized signer previewing their OWN agreement
+// (startSigning's takeover): what the signer covers for them is on it and stays on.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false } = {}) {
+  const keep = takeover ? [...(await coverageFor(db, userId, now)).covered.keys()] : [];
+  const requested = await resolvePublishedIds(db, [...listingIds, ...keep]);
+  const loaded = await coverageFor(db, userId, now, { own: takeover });
   const { state, rows, covered } = loaded;
   const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
   // A document already in progress (an addendum started from a publish, then closed)

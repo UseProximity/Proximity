@@ -142,9 +142,14 @@ async function pendingAmendmentOf(db, userId) {
  * master agreement: the master rows read are the payer's (`holderId`), while the
  * amendment in progress is this account's own (an addendum adding its
  * properties, signed by the payer). `payerLink` is that link, or null.
+ *
+ * `own: true` reads the account's OWN agreement even while it has an authorized
+ * signer: a landlord signing for themselves to take their listings back (Wyatt,
+ * 2026-11-10). The signer's addendum in progress for the account is not theirs,
+ * so it is left out.
  */
-export async function agreementState(db, userId, now = new Date()) {
-  const payerLink = await activePayerLink(db, userId);
+export async function agreementState(db, userId, now = new Date(), { own = false } = {}) {
+  const payerLink = own ? null : await activePayerLink(db, userId);
   const holderId = payerLink?.payer_id ?? userId;
   const [rows, liveVersion, cutoff, pendingAmendment] = await Promise.all([
     readRows((cols) =>
@@ -154,16 +159,21 @@ export async function agreementState(db, userId, now = new Date()) {
     resignCutoff(db),
     pendingAmendmentOf(db, userId),
   ]);
-  return { ...summarizeAgreementRows(rows, { liveVersion, cutoff, now }), pendingAmendment, holderId, payerLink };
+  return {
+    ...summarizeAgreementRows(rows, { liveVersion, cutoff, now }),
+    pendingAmendment: own && pendingAmendment?.signer_id && pendingAmendment.signer_id !== userId ? null : pendingAmendment,
+    holderId,
+    payerLink,
+  };
 }
 
 /*
  * Everything coverage decisions need for one landlord: their agreement state,
  * their properties, coverage rows, and the Map of listings covered now.
  */
-export async function coverageFor(db, userId, now = new Date()) {
+export async function coverageFor(db, userId, now = new Date(), { own = false } = {}) {
   const [state, properties, loaded] = await Promise.all([
-    agreementState(db, userId, now),
+    agreementState(db, userId, now, { own }),
     loadLandlordProperties(db, userId),
     loadCoverageRows(db, userId),
   ]);
@@ -513,6 +523,11 @@ export async function startSigning(
     // signature covers several landlords' properties at once (Wyatt, 2026-11-09).
     // Only while the payer has no agreement that counts; after that, an addendum per account.
     accountIds = null,
+    // A landlord with an authorized signer signing their OWN agreement instead
+    // (Wyatt, 2026-11-10): everything the signer covers for them goes on it, and
+    // the signer is only removed once this is signed (payers.completeTakeover),
+    // so closing the popup changes nothing.
+    takeover = false,
     ...options
   }
 ) {
@@ -534,7 +549,9 @@ export async function startSigning(
   // Who may sign for this account: the account itself when it has no payer; its
   // payer when it has one, never the account (Wyatt, 2026-11-09).
   const link = await activePayerLink(db, account);
-  if (link ? link.payer_id !== user.id : account !== user.id) {
+  // Taking over from their signer: the account signs for itself while the link still stands.
+  const own = takeover === true && account === user.id && !!link && !extraAccounts.length;
+  if (own ? false : link ? link.payer_id !== user.id : account !== user.id) {
     throw new BillingError(
       "payer_signs",
       link ? `${link.signer_name} signs the agreement for this account. We emailed them a link.` : "You can only sign for your own account or one you pay for.",
@@ -560,8 +577,11 @@ export async function startSigning(
       busyMessage: "Your agreement is already being prepared. Try again in a moment.",
     },
     async () => {
-      const requested = await resolvePublishedIds(db, listingIds);
-      const loaded = await coverageFor(db, account, now);
+      // Taking over: what the signer covers for this account now is carried onto
+      // the landlord's own agreement, and can't be left off.
+      const keep = own ? [...(await coverageFor(db, account, now)).covered.keys()] : [];
+      const requested = await resolvePublishedIds(db, [...listingIds, ...keep]);
+      const loaded = await coverageFor(db, account, now, { own });
       const { state } = loaded;
       let rows = loaded.rows;
       // Which account each property belongs to, so its coverage row is that account's.

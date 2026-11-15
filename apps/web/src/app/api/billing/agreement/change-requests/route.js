@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { requireDbRole } from "@/lib/userRole";
+import { billingReader } from "@/lib/billing/viewer";
 import { createChangeRequest, listMyRequests } from "@/lib/billing/changeRequests";
 import { storeChangeFile } from "@/lib/billing/changeRequestFiles";
 import { changeRequestNotify } from "@/lib/billing/changeRequestNotify";
@@ -29,11 +30,11 @@ async function currentLandlord() {
   return data;
 }
 
-export async function GET() {
-  const user = await currentLandlord();
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function GET(req) {
+  const reader = await billingReader(req);
+  if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
-    return NextResponse.json({ requests: await listMyRequests(supabase, user.id) });
+    return NextResponse.json({ requests: await listMyRequests(supabase, reader.userId) });
   } catch (err) {
     return billingErrorResponse(err, "list change requests");
   }

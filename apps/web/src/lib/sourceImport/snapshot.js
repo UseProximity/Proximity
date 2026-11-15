@@ -17,7 +17,9 @@
  *     units: [{ key, name, bedrooms, bathrooms, area, floorPlanImageUrl,
  *               available, photos: [url],
  *               offers: [{ rent, rentIsPerPerson, leaseTermMonths, availableFrom,
- *                          apartments }] }],
+ *                          apartments, availableNow, dateStated, rentExact,
+ *                          termsInferred }] }],
+ *     unitListComplete: whether the units are every plan the site offers
  *     notes: [text]
  *   }
  *
@@ -156,6 +158,14 @@ export function consolidateOffers(raw = []) {
         // The site said "available now" (rather than saying nothing).
         availableNow: o.availableNow === true,
         dated: date !== null,
+        // What the site actually said, for a sync deciding whether a change
+        // is a fact or a gap (Wyatt, 2026-11-11: missing facts never cause a
+        // change). A date or "now" was stated; the rent is the price, not a
+        // "starting at"; the lease lengths came from general text, not this
+        // plan.
+        dateStated: raw !== null || o.availableNow === true,
+        rentExact: o.rentIsExact !== false,
+        termsInferred: o.termsInferred === true,
       });
       continue;
     }
@@ -163,6 +173,9 @@ export function consolidateOffers(raw = []) {
     g.apartments = [...new Set([...g.apartments, ...apartments])];
     g.special ??= special;
     g.availableNow = g.availableNow || o.availableNow === true;
+    g.dateStated = g.dateStated || raw !== null || o.availableNow === true;
+    g.rentExact = g.rentExact && o.rentIsExact !== false;
+    g.termsInferred = g.termsInferred || o.termsInferred === true;
     if (date === null) g.availableFrom = null;
     else if (g.availableFrom !== null && date < g.availableFrom) g.availableFrom = date;
   }
@@ -196,6 +209,8 @@ export function cleanUnit(unit) {
     photos: [...new Set((unit.photos ?? []).filter((u) => typeof u === "string" && /^https?:/.test(u)))],
     offers: consolidateOffers(unit.offers ?? []),
   };
+  // Read by the model from page text rather than from a feed or portal.
+  if (unit.fromModel === true) cleaned.fromModel = true;
   cleaned.key = unit.key ?? unitKey(cleaned);
   return cleaned;
 }
@@ -210,6 +225,7 @@ export function makeSnapshot({
   indexUrl = null,
   platform = "generic",
   confidence = "low",
+  unitListComplete = false,
   property = {},
   units = [],
   notes = [],
@@ -228,6 +244,7 @@ export function makeSnapshot({
     existing.floorPlanImageUrl ??= u.floorPlanImageUrl;
     existing.name ??= u.name;
     existing.available = existing.available && u.available;
+    if (!u.fromModel) delete existing.fromModel;
     existing.photos = [...new Set([...existing.photos, ...u.photos])];
     existing.offers = consolidateOffers([...existing.offers, ...u.offers]);
   }
@@ -237,6 +254,7 @@ export function makeSnapshot({
     indexUrl,
     platform,
     confidence,
+    unitListComplete: unitListComplete === true,
     readAt: new Date().toISOString(),
     property: {
       name: p.name?.trim() || null,
