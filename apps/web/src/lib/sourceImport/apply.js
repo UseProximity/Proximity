@@ -288,7 +288,13 @@ async function dropStreetViewCover(listingId) {
   return true;
 }
 
-export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null, shadowedBy = new Map() }) {
+/*
+ *   images   photos and floor plan drawings are part of this run. The daily
+ *            sync leaves them to the weekly deep read (Wyatt, 2026-11-12): a
+ *            new plan goes up without them, and Sunday's read fills them in
+ *            (a unit with no photos or no drawing is always topped up).
+ */
+export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null, shadowedBy = new Map(), images = true }) {
   const changes = [];
   const push = (c) => changes.push({ auto: true, ...c });
   const p = snapshot.property;
@@ -347,7 +353,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
 
   // ---- property photos: only when the listing has none of its own
   const propertyPhotoCount = (state.listing_images ?? []).filter((i) => !i.unit_id && i.source !== "street_view").length;
-  if (p.photos.length && propertyPhotoCount === 0) {
+  if (images && p.photos.length && propertyPhotoCount === 0) {
     push({ kind: "photos_added", field: "property", old: 0, new: p.photos.length, detail: { op: "photos_add", unitId: null, urls: p.photos.map((x) => x.url) } });
   }
 
@@ -382,10 +388,10 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         detail: {
           op: "unit_insert",
           label,
-          unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: snap.floorPlanImageUrl },
+          unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: images ? snap.floorPlanImageUrl : null },
           offers: pricesUnknown ? [askForPrice] : snap.offers,
           available: pricesUnknown ? true : snap.available,
-          photos: snap.photos,
+          photos: images ? snap.photos : [],
           draft: misshapen,
           publish: mode === "sync" && !misshapen,
           ...(misshapen ? { formatConflict: listingFormat } : {}),
@@ -404,7 +410,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       if (dv == null) specPatch[f] = sv;
       else if (Number(sv) !== dv) specDiff[f] = { old: dv, new: sv };
     }
-    if (snap.floorPlanImageUrl && !db.floor_plan_image_url) specPatch.floorPlanImageUrl = snap.floorPlanImageUrl;
+    if (images && snap.floorPlanImageUrl && !db.floor_plan_image_url) specPatch.floorPlanImageUrl = snap.floorPlanImageUrl;
     // Paired by layout and size, but the site calls it something else: say so.
     // ...unless the sync already knows the site's name for this unit (learn.js).
     if (snap.name && db.name && !sameName(snap.name, db.name) && !snap.aliasOf) {
@@ -428,7 +434,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       });
     }
     const unitPhotoCount = (state.listing_images ?? []).filter((i) => i.unit_id === db.id).length;
-    if (snap.photos.length && unitPhotoCount === 0) {
+    if (images && snap.photos.length && unitPhotoCount === 0) {
       push({ kind: "photos_added", unitKey: snap.key, unitId: db.id, field: "unit", old: 0, new: snap.photos.length, detail: { op: "photos_add", unitId: db.id, label, urls: snap.photos } });
     }
     if (pricesUnknown) continue;
@@ -1033,7 +1039,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true, images = true }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -1075,7 +1081,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     const of = learnings.synced.get(`unit:${u.id}`)?.lookalikeOf;
     if (of && !u.published_at) shadowedBy.set(of, u.name ?? "unit");
   }
-  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover, shadowedBy });
+  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover, shadowedBy, images });
   const label = listingLabel ?? state.title ?? state.address;
   // The website's own name for a unit the landlord calls something else,
   // learned only from a run that was not skipped (learnableSiteName).

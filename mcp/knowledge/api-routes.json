@@ -1872,6 +1872,18 @@
       "file": "src/app/api/cron/agent-digest/route.js"
     },
     {
+      "path": "/api/cron/agent-knowledge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/agent-knowledge/route.js"
+    },
+    {
       "path": "/api/cron/agent-questions",
       "methods": [
         "GET"
