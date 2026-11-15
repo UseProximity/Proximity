@@ -235,10 +235,10 @@ export default function TopFilterBar({
       {/* ── Top bar ── */}
       <div
         ref={filterRef}
-        className="w-full bg-white border-b border-gray-200 pl-5 pr-3 py-2.5 flex items-center gap-2 flex-wrap shadow-sm"
+        className="w-full bg-white border-b border-gray-200 pl-5 pr-3 max-lg:px-5 py-2.5 flex items-center gap-2 flex-wrap shadow-sm"
       >
-        {/* Search pill */}
-        <div className="flex items-center flex-1 min-w-[200px] max-w-sm bg-white border border-gray-300 rounded-full px-3 py-2 shadow-sm focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500 transition-all gap-2">
+        {/* Search pill. On a tablet (below 1024px) it takes a row of its own, and the controls below it share the next row evenly. */}
+        <div className="flex items-center flex-1 min-w-[200px] max-w-sm max-lg:basis-full max-lg:max-w-none bg-white border border-gray-300 rounded-full px-3 py-2 shadow-sm focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500 transition-all gap-2">
           <svg
             className="w-3.5 h-3.5 text-red-500 flex-shrink-0"
             fill="none"
@@ -298,7 +298,7 @@ export default function TopFilterBar({
         {/* Price pill */}
         <button
           onClick={(e) => openPill(e, "price")}
-          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap max-lg:grow max-lg:justify-center ${
             priceActive
               ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -311,7 +311,7 @@ export default function TopFilterBar({
         {/* Beds & Baths pill */}
         <button
           onClick={(e) => openPill(e, "bedbath")}
-          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap max-lg:grow max-lg:justify-center ${
             bedsActive || bathsActive
               ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -326,7 +326,7 @@ export default function TopFilterBar({
           onClick={() =>
             setFilters({ ...filters, savedOnly: !filters.savedOnly })
           }
-          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap max-lg:grow max-lg:justify-center ${
             filters.savedOnly
               ? "bg-gray-200 text-gray-700 border-gray-300"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -362,7 +362,7 @@ export default function TopFilterBar({
               showFilters === "more-filters" ? false : "more-filters"
             );
           }}
-          className={`flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium text-gray-700 transition-colors whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium text-gray-700 transition-colors whitespace-nowrap max-lg:grow max-lg:justify-center ${
             showFilters === "more-filters" ? "bg-gray-200" : "bg-white hover:bg-gray-50"
           }`}
         >
@@ -378,7 +378,7 @@ export default function TopFilterBar({
         {/* Clear All */}
         <button
           onClick={onReset}
-          className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
+          className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap max-lg:grow max-lg:justify-center ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
               : "text-gray-400 border border-gray-200"
@@ -404,7 +404,7 @@ export default function TopFilterBar({
         <button
           onClick={onToggleMap}
           // 22px on top of the bar's 12px padding: 34px from the page edge, as in the design.
-          className="ml-auto mr-[22px] flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+          className="ml-auto mr-[22px] max-lg:ml-0 max-lg:mr-0 max-lg:grow max-lg:justify-center flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-full text-[13px] font-medium bg-white text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
         >
           {mapHidden ? "Show Map" : "Hide Map"}
         </button>
