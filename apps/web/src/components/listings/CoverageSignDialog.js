@@ -43,7 +43,7 @@ function SendToPayerDialog({ uncovered, payer, onSent, onClose }) {
   };
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="send-to-payer-title">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
         <h2 id="send-to-payer-title" className="text-base font-semibold text-gray-900">
           Send to {payer.name} to sign
         </h2>
@@ -75,7 +75,7 @@ function CoveredDialog({ names, onPublish, onClose }) {
   const what = names.length === 1 ? names[0] : "these listings";
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="covered-title">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
         <h2 id="covered-title" className="text-base font-semibold text-gray-900">
           Signed. {names.length === 1 ? "It is" : "They are"} covered
         </h2>
