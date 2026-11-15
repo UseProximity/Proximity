@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -15,6 +15,7 @@ import SuggestedStrip, {
   WIDE_GRID_CLASS,
 } from "@/components/listings/SuggestedStrip";
 import FiltersPanel from "@/components/listings/FiltersPanel";
+import ComparePanel from "@/components/listings/ComparePanel";
 
 import { setListingSource } from "@/utils/analytics";
 
@@ -33,6 +34,10 @@ export default function AvailableListings({
   onFiltersSaved = () => {},
   // Desktop: the map is hidden and the listings fill the page as a wider grid.
   mapHidden = false,
+  // Compare Listings: null when closed, else the [left, right] picks (or null).
+  compare = null,
+  setCompare = () => {},
+  onCloseCompare = () => {},
   filters,
   setFilters,
   handleReset,
@@ -42,6 +47,10 @@ export default function AvailableListings({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // The wide, map-less layout (three columns). Compare keeps the two-column
+  // grid in the left column whether or not the map is hidden.
+  const wideLayout = mapHidden && !compare;
+  const compareIds = (compare ?? []).filter(Boolean).map((l) => l._id);
 
   // Track viewport so only the visible map instance is "active"
   // Default to desktop during SSR to avoid hydration mismatch
@@ -139,9 +148,9 @@ export default function AvailableListings({
   // flips the layout and the DOM is still the old one, so note the card at the
   // top of the view now and put it back below. Left alone when the column is at
   // the top, and when a panel is open, whose saved card must be kept.
-  const shownMapHidden = useRef(mapHidden);
-  if (shownMapHidden.current !== mapHidden) {
-    shownMapHidden.current = mapHidden;
+  const shownMapHidden = useRef(wideLayout);
+  if (shownMapHidden.current !== wideLayout) {
+    shownMapHidden.current = wideLayout;
     if (!expandedListing)
       gridScroll.current = panelRef.current?.scrollTop ? topCard() : null;
   }
@@ -181,7 +190,7 @@ export default function AvailableListings({
       )
     );
     return () => cancelAnimationFrame(frame);
-  }, [mapHidden]);
+  }, [mapHidden, wideLayout]); // Compare with the map hidden fades through too
   // The filter question as it stood on the last run of the reset effect below.
   const lastQuery = useRef({ filters, search });
   /*
@@ -285,13 +294,105 @@ export default function AvailableListings({
     loadDetail(String(listing._id));
   };
 
-  const closePanel = () => {
+  // `replace` closes the panel without a new history entry (see Compare below).
+  const closePanel = ({ replace = false } = {}) => {
     clearPanel(); // immediate UI
     const params = new URLSearchParams(searchParams.toString());
     params.delete("panel");
     params.delete("unit");
     const qs = params.toString();
-    router.push(`/browse${qs ? `?${qs}` : ""}`);
+    router[replace ? "replace" : "push"](`/browse${qs ? `?${qs}` : ""}`);
+  };
+
+  // With the map visible the compare panel slides out when the reader closes it,
+  // so it stays mounted (as `leaving`) until the slide ends. Not for a close that
+  // a panel opening or a resize causes (never both, so those cut at once), nor
+  // with the map hidden (that one fades through).
+  const reduceMotion = useReducedMotion();
+  const [prevCompare, setPrevCompare] = useState(compare);
+  const [leaving, setLeaving] = useState(null);
+  if (prevCompare !== compare) {
+    setPrevCompare(compare);
+    setLeaving(
+      prevCompare && !compare && !mapHidden && !expandedListing && isDesktop
+        ? prevCompare
+        : null
+    );
+  }
+  // A slide the map toggle or a panel cut short never reports its end, so the
+  // panel it left behind is dropped here and cannot come back with the map.
+  if (leaving && (mapHidden || expandedListing)) setLeaving(null);
+  const shownCompare = compare ?? (mapHidden || expandedListing ? null : leaving);
+
+  // Compare replaces an open detail panel, which would hide the grid it picks from,
+  // and the selected listing, so no map card for it is left behind once it exits.
+  // Before paint: with the map hidden Compare opens from a timer (the fade), so a
+  // later effect would let one frame show both. The panel's history entry is
+  // replaced, not followed by a new one: Back would otherwise land on the panel's
+  // URL, reopen it and throw the comparison away. The listing that was open goes
+  // into the first slot, taken from the lists a grid click picks from (the main
+  // one first: it alone carries the unit the active filters matched).
+  useLayoutEffect(() => {
+    if (!compare) return;
+    setSelectedListing(null);
+    if (expandedListing) {
+      const id = String(expandedListing._id);
+      const open = listings.find((l) => String(l._id) === id) ?? suggestedListings.find((l) => String(l._id) === id);
+      if (open) setCompare((c) => c && [open, c[1]]);
+      closePanel({ replace: true });
+    }
+  }, [!!compare]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A detail panel and Compare are never open together: a panel that opens while
+  // Compare is open (browser Back or Forward onto a ?panel= URL) closes Compare,
+  // before paint. Keyed on the panel's id only, so Compare opening over a panel
+  // (which closes it, above) does not close itself.
+  useLayoutEffect(() => {
+    if (compare && expandedListing) setCompare(null);
+  }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compare is desktop only: leaving the desktop layout closes it and clears it.
+  useEffect(() => {
+    if (!isDesktop) setCompare(null);
+  }, [isDesktop]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A click on a third listing while both slots are full changes nothing, so the
+  // panel is told to pulse the slots and show a hint. `nudge` counts those clicks
+  // (it also replays the pulse) and clears itself after a few seconds, at once
+  // when a slot frees or the panel closes.
+  const full = !!(compare?.[0] && compare?.[1]);
+  const [nudge, setNudge] = useState(0);
+  useEffect(() => {
+    if (!nudge) return;
+    const timer = setTimeout(() => setNudge(0), 4000);
+    return () => clearTimeout(timer);
+  }, [nudge]);
+  useEffect(() => {
+    if (!full) setNudge(0);
+  }, [full]);
+
+  // While compare is open a card click picks the listing instead of opening it.
+  // One capture handler covers the grid and the suggested strip; the heart (a
+  // button) keeps working, and nothing navigates or reports an opened listing.
+  const handleComparePick = (e) => {
+    const id = e.target.closest("[data-listing-id]")?.dataset.listingId;
+    if (!id || e.target.closest("button")) return;
+    e.stopPropagation();
+    // A Cmd, Ctrl, Shift or Alt click is the browser's (open in a new tab or
+    // window), as it is on the card outside Compare: it picks nothing.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    if (full && id !== String(compare[0]._id) && id !== String(compare[1]._id)) setNudge((n) => n + 1);
+    setCompare((prev) => {
+      // Compare can close (a timer, an effect) between this click and its update.
+      if (!prev) return prev;
+      const [left, right] = prev;
+      if (left && String(left._id) === id) return [null, right];
+      if (right && String(right._id) === id) return [left, null];
+      const listing = [...suggestedListings, ...listings].find((l) => String(l._id) === id);
+      if (!listing || (left && right)) return prev;
+      return left ? [left, listing] : [listing, right];
+    });
   };
 
   /*
@@ -309,8 +410,8 @@ export default function AvailableListings({
     col.scrollTop = 0;
     // With the map hidden the column does not change width, so there is no
     // slide to wait for.
-    anchoring.current = !mapHidden && !expandedListing && !pinClose.current;
-    scrollAtSlideEnd.current = !mapHidden && !expandedListing && pinClose.current;
+    anchoring.current = !wideLayout && !expandedListing && !pinClose.current;
+    scrollAtSlideEnd.current = !wideLayout && !expandedListing && pinClose.current;
     pinClose.current = false;
     if (!expandedListing) anchorGrid();
   }, [expandedListing?._id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -329,7 +430,7 @@ export default function AvailableListings({
   // The new layout is in place and still invisible (see the fade-through above).
   useLayoutEffect(() => {
     if (!expandedListing) anchorGrid();
-  }, [mapHidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wideLayout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the column slides narrower the grid reflows and the saved card would
   // drift. A ResizeObserver runs after layout and before paint, so re-pinning
@@ -550,9 +651,10 @@ export default function AvailableListings({
       <div
         ref={panelRef}
         className={`hidden md:block shrink-0 overflow-y-auto [overflow-anchor:none] scrollbar-hidden transition-[width] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:transition-none ${
-          mapHidden ? "w-full" : expandedListing ? "w-[58vw]" : "w-[40vw]"
+          wideLayout ? "w-full" : expandedListing ? "w-[58vw]" : "w-[40vw]"
         } ${expandedListing ? "" : "px-3 pt-3 pb-4"}`}
         style={{ height: "100%", minHeight: 0 }}
+        onClickCapture={compare ? handleComparePick : undefined}
         onTransitionEnd={(e) => {
           // transitionend fires before the final frame's resize callback, so
           // pin the card once more here before letting go.
@@ -590,7 +692,7 @@ export default function AvailableListings({
             scrollRef={panelRef}
             after={600}
             position={
-              mapHidden
+              wideLayout
                 ? "bottom-6 right-6 [body[data-filters-panel]_&]:right-[325px]"
                 : "bottom-6 left-[calc(40vw-3.75rem)]"
             }
@@ -600,7 +702,7 @@ export default function AvailableListings({
         {expandedListing ? (
           <motion.div
             key={`detail-${expandedListing._id}`}
-            className={mapHidden ? "mx-auto w-[58vw]" : undefined}
+            className={wideLayout ? "mx-auto w-[58vw]" : undefined}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18 }}
@@ -626,7 +728,7 @@ export default function AvailableListings({
             // panel's width and re-fits its columns beside it. Done in CSS, so
             // opening the panel does not re-render the cards.
             className={
-              mapHidden
+              wideLayout
                 ? "mx-auto w-full max-w-[1400px] [body[data-filters-panel]_&]:mx-0 [body[data-filters-panel]_&]:w-[calc(100%-313px)]"
                 : undefined
             }
@@ -659,10 +761,11 @@ export default function AvailableListings({
                 listings={suggestedListings}
                 session={session}
                 layout="grid"
-                wide={mapHidden}
+                wide={wideLayout}
                 mode={suggestedMode}
                 label={suggestedLabel}
                 selectedId={selectedListing?._id}
+                compareIds={compareIds}
                 onCardClick={(listing) => {
                   setSelectedListing(listing);
                   openPanel(listing);
@@ -675,7 +778,7 @@ export default function AvailableListings({
             ) : (
               <div
                 className={
-                  mapHidden ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
+                  wideLayout ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
                 }
               >
                 {visibleListings.map((listing) => (
@@ -684,6 +787,7 @@ export default function AvailableListings({
                       listing={listing}
                       session={session}
                       isSelected={selectedListing?._id === listing._id}
+                      inCompare={compareIds.includes(listing._id)}
                       onCardClick={() => {
                         setSelectedListing(listing);
                         openPanel(listing);
@@ -700,7 +804,7 @@ export default function AvailableListings({
 
       {/* ── Desktop map (kept mounted while hidden, so it comes back where it was; paused, it does no pin or camera work meanwhile) ── */}
       <div
-        className={`${mapHidden ? "hidden" : "hidden md:flex"} flex-1 w-full relative will-change-[transform,opacity] transition-[transform,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:translate-x-full [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[160ms]`}
+        className={`${wideLayout ? "hidden" : "hidden md:flex"} flex-1 w-full relative will-change-[transform,opacity] transition-[transform,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-[1ms] [body[data-map-switching]_&]:translate-x-full [body[data-map-switching]_&]:opacity-0 [body[data-map-switching]_&]:duration-[160ms]`}
         style={{ position: "sticky", top: 0, height: "100%", minHeight: 0 }}
       >
         <MapView
@@ -746,6 +850,40 @@ export default function AvailableListings({
             />
           </div>
         )}
+        {/* Compare Listings lies over the map (scrim), or alone when the map is hidden. */}
+        {shownCompare && (() => {
+          // With the map visible the scrim eases in and the panel slides in from
+          // the right, and back out on close; with it hidden nothing moves here.
+          const motionProps = (from, to) => ({
+            initial: mapHidden || reduceMotion ? false : from,
+            animate: to,
+            transition: { duration: reduceMotion ? 0 : 0.32, ease: [0.22, 1, 0.36, 1] },
+          });
+          return (
+            <div className={`absolute inset-0 z-30 ${compare ? "" : "pointer-events-none"}`}>
+              <motion.div
+                className={`absolute inset-0 ${mapHidden ? "bg-gray-50" : "bg-black/20"}`}
+                {...motionProps({ opacity: 0 }, { opacity: compare ? 1 : 0 })}
+              />
+              <motion.div
+                className="relative h-full p-4"
+                {...motionProps({ x: "100%" }, { x: compare ? 0 : "100%" })}
+                onAnimationComplete={() => {
+                  if (!compare) setLeaving(null);
+                }}
+              >
+                <ComparePanel
+                  slots={shownCompare}
+                  nudge={full ? nudge : 0}
+                  onRemove={(i) =>
+                    setCompare((c) => c && c.map((l, j) => (j === i ? null : l)))
+                  }
+                  onClose={onCloseCompare}
+                />
+              </motion.div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Mobile layout ── */}

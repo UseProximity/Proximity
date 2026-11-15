@@ -29,7 +29,7 @@ import { decideSender, deliverHeld, removeSender, storedRecipients } from "@/lib
  * database, so it only happens when the switch points at that same database;
  * otherwise the decision is saved and the response says to re-run from there.
  *
- * @auth admin
+ * @auth super
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,7 +40,8 @@ function getDbTarget(req) {
 }
 
 // The role is read from the database, not the session, like every admin route.
-const requireAdmin = () => requireDbRole(["super", "admin"]);
+// Approving or declining a sender changes who can post into a chat: super only (Wyatt, 2026-11-12).
+const requireAdmin = () => requireDbRole(["super"]);
 
 // Only refused replies are re-run. 'posted' is done, and 'processing' is in
 // flight unless its claim is stale (see canRerunRow).

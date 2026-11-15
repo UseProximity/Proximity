@@ -1289,7 +1289,7 @@ function describeChange(c) {
 
 export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const block = (i) => {
-    const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
+    const link = `${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(i.listingId)}`;
     const head = `<p style="margin:16px 0 4px"><strong>${escapeHtml(i.listing)}</strong> <span style="color:#666">(${escapeHtml(i.status)}${i.platform ? `, ${escapeHtml(i.platform)}` : ""}${i.confidence ? `, ${escapeHtml(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
     if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
     const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
@@ -1331,7 +1331,7 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
         <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
         <p style="color:#b91c1c">${escapeHtml(error)}</p>
         <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
-        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        <p><a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1356,7 +1356,7 @@ export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourc
         <h2 style="color:#111">Website sync skipped a listing</h2>
         <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
         <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
-        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        <p><a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1549,7 +1549,7 @@ export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
       <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Per-listing agents, ${escapeHtml(day)}</h2>
         ${(sections ?? []).map(block).join("")}
-        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin" style="color:#dc2626">Open the admin Agents tab</a></p>
+        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin/agents" style="color:#dc2626">Open the admin Agents page</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer the per-listing agents on Proximity." })}
       </div>`,
   });

@@ -8,6 +8,7 @@
  *     carries every live offering in the same shape the detail fetch produces
  *   - listing_amenities / listing_utilities: PK is listing_id → Supabase returns single object,
  *     not array; amenitiesRowToArray / utilitiesRowToArray handle the object shape
+ *   - listing_custom_amenities(label): free-text amenities, mapped to customAmenities
  *   - listing_walk_times(minutes, locations(name)): shuttle_nearest handled separately
  *   - listing_landlords(user_id, is_primary): batch-fetch owners from users table
  *   - listing_images(url, sort_order): sorted ascending, mapped to URL strings
@@ -175,6 +176,10 @@ export function buildListing(row, owner = null) {
          */
         rentIsPerPerson: pricedHead?.rentIsPerPerson ?? null,
         area: u.area != null ? Number(u.area) : null,
+        // The landlord's name for the unit and its place in their order, as on
+        // the listing page (Compare Listings labels and orders its unit tabs by them).
+        name: u.name ?? null,
+        sortOrder: u.sort_order ?? null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
         // Derived from the offerings above, not stored — see unitAvailability.js.
@@ -241,6 +246,7 @@ export function buildListing(row, owner = null) {
     verifiedLive: !!row.pms_connection_id,
     verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     amenities: amenitiesRowToArray(row.listing_amenities),
+    customAmenities: (row.listing_custom_amenities ?? []).map((a) => a.label).filter(Boolean),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
     minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
@@ -286,7 +292,7 @@ export async function fetchListings(listingIds = null, { includeSandbox = false 
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, deleted_at, published_at,
+      listing_units(id, bedrooms, bathrooms, area, name, sort_order, deleted_at, published_at,
         unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
                     available_from, lease_term_months, furnished, published_at,
                     contact_name, contact_email, contact_phone)),
@@ -299,6 +305,7 @@ export async function fetchListings(listingIds = null, { includeSandbox = false 
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
+      listing_custom_amenities(label),
       listing_images(url, sort_order, source),
       listing_reviews(rating, legitimacy, deleted_at, user_id),
       listing_walk_times(minutes, locations(name)),

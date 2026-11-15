@@ -30,7 +30,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fmtDate, useUrlTab } from "@/components/admin/adminShared";
+import { fmtDate, useAdminNav, useUrlTab } from "@/components/admin/adminShared";
 import RosterPicker from "@/components/admin/reviewInvites/RosterPicker";
 import InviteComposer, {
   DEFAULT_SUBJECT,
@@ -117,6 +117,7 @@ function downloadCsv(text, filename) {
 const INVITE_TABS = ["send", "history"];
 
 export default function ReviewInvitesView({ search = "" }) {
+  const readOnly = !!useAdminNav()?.isReadOnly;
   const [tab, setTab] = useUrlTab(INVITE_TABS, "send");
 
   // ── Selection ────────────────────────────────────────────────────────────
@@ -346,7 +347,7 @@ export default function ReviewInvitesView({ search = "" }) {
   const loadInvites = useCallback(async () => {
     setLoadingInvites(true);
     try {
-      const res = await fetch("/api/admin/review-invites");
+      const res = await fetch("/api/admin/review-invites?limit=500");
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to load invites");
       setInvites(data.invites || []);
@@ -399,8 +400,9 @@ export default function ReviewInvitesView({ search = "" }) {
         </div>
       )}
 
+      {tab === "send" && readOnly && <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">You have read-only access, so the controls on this page are switched off.</p>}
       {tab === "send" ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <fieldset disabled={readOnly} className="grid min-w-0 grid-cols-1 lg:grid-cols-2 gap-5">
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               1. Choose students
@@ -553,7 +555,7 @@ export default function ReviewInvitesView({ search = "" }) {
               )}
             </div>
           </div>
-        </div>
+        </fieldset>
       ) : (
         <>
           <div className="flex items-center justify-between">
