@@ -16,8 +16,9 @@
 -- What counts as "theirs": the protected user rows, every row that references something of theirs
 -- (their listings' units, leases, photos, ...), and every row of theirs references that does NOT
 -- exist in prod (e.g. a listing they created, reached through listing_landlords). Rows that exist in
--- prod are never saved: the snapshot brings back the prod version, so edits a partner makes to a
--- prod listing are not kept. Other `users` rows are never pulled in, so one partner's data cannot
+-- prod are never saved, and the walk does not continue through them: the snapshot brings back the
+-- prod version, so edits a partner makes to a prod listing are not kept, and a row prod later
+-- deletes is not brought back from the backup. Other `users` rows are never pulled in, so one partner's data cannot
 -- drag in a staging tester's account.
 --
 -- The walk is driven by the live FK catalog, not a table list, so new tables are covered without
@@ -35,6 +36,15 @@ create table if not exists snapshot_preserve.protected_users (
   note     text,
   added_at timestamptz not null default now()
 );
+
+-- The house test accounts. Each also has a passwordless is_system row in PROD (added 2026-11-15)
+-- so it always arrives with the snapshot; restore() then puts the dev version back over it, which
+-- brings back the dev-only password, role and flags.
+insert into snapshot_preserve.protected_users (email, note) values
+  ('test-landlord@proximity.test',     'house test landlord (dev password login)'),
+  ('claude-admin-test@proximity.test', 'house super admin for Claude testing (dev password login)'),
+  ('guest@proximity.test',             'house test student (dev password login)')
+on conflict (email) do nothing;
 
 -- Saved rows. `ident` is the row's primary key as JSON (the whole row when a table has none).
 create table if not exists snapshot_preserve.saved_rows (
@@ -72,8 +82,9 @@ create table if not exists snapshot_preserve.detached_fks (
   primary key (relname, conname)
 );
 
--- last_restore_ok guards the backup: if the previous restore did not finish, the next save() merges
--- into the old backup instead of replacing it, so a failed week never loses partner data.
+-- last_restore_ok guards the backup: if the previous restore did not finish, or ran from a failed
+-- run's cleanup (restore(false)), the next save() merges into the old backup instead of replacing
+-- it, so a failed week never loses partner data.
 create table if not exists snapshot_preserve.state (
   id              int primary key default 1 check (id = 1),
   last_save_at    timestamptz,
@@ -151,13 +162,18 @@ begin
     total := 0;
     for fk in select * from snapshot_preserve.public_fks loop
       -- Down: rows that point at something already found (their listing's units, leases, ...).
+      -- A row prod also has is skipped and not walked through: the snapshot brings it back anyway,
+      -- and walking on from it would save prod rows (a house account exists in prod too).
       if fk.child <> 'users' then
         execute format(
           'insert into _found select %L, %s, to_jsonb(c) from public.%I c
            where exists (select 1 from _found f where f.table_name = %L and %s)
+             and not exists (select 1 from snapshot_preserve.prod_keys k
+                             where k.table_name = %L and k.key = %s)
            on conflict do nothing',
           fk.child, snapshot_preserve.ident_expr(fk.child, 'c'), fk.child, fk.parent,
-          snapshot_preserve.match_expr('c', fk.child_cols, 'f.row_data', fk.parent_cols));
+          snapshot_preserve.match_expr('c', fk.child_cols, 'f.row_data', fk.parent_cols),
+          fk.child, snapshot_preserve.ident_expr(fk.child, 'c'));
         get diagnostics added = row_count;
         total := total + added;
       end if;
@@ -202,7 +218,10 @@ begin
     group by s.table_name order by s.table_name;
 end $$;
 
-create or replace function snapshot_preserve.restore()
+-- p_mark_ok = false is for a failed run's cleanup: dev may be half restored there, so rows can
+-- fail for reasons that say nothing about the backup, and the next save() must keep the old copy.
+drop function if exists snapshot_preserve.restore();
+create or replace function snapshot_preserve.restore(p_mark_ok boolean default true)
 returns table (table_name text, restored bigint, already_present bigint, failed bigint)
 language plpgsql as $$
 #variable_conflict use_column
@@ -265,12 +284,37 @@ begin
     exit when progress = 0 or pass >= 20;
   end loop;
 
+  -- A protected account that also exists in prod comes back as prod's row, so the insert above
+  -- skips it as already present. Put the dev version back over it (matched on email, every saved
+  -- column but the id), or its dev-only password and settings are lost every week.
+  for r in
+    select s.row_data from snapshot_preserve.saved_rows s
+     where s.table_name = 'users'
+       and lower(s.row_data->>'email') in (select lower(email) from snapshot_preserve.protected_users)
+  loop
+    begin
+      select string_agg(format('%I = x.%I', a.attname, a.attname), ', ') into cols
+      from pg_attribute a
+      join pg_class t     on t.oid = a.attrelid
+      join pg_namespace s on s.oid = t.relnamespace
+      where s.nspname = 'public' and t.relname = 'users'
+        and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''
+        and a.attname <> 'id' and r.row_data ? a.attname;
+      execute format(
+        'update public.users u set %s from jsonb_populate_record(null::public.users, $1) x
+          where lower(u.email) = lower(x.email)', cols)
+        using r.row_data;
+    exception when others then
+      raise warning 'could not put the dev version of % back: %', r.row_data->>'email', sqlerrm;
+    end;
+  end loop;
+
   for r in select x.table_name, x.ident, x.last_error from _restore x where x.status = 'failed' loop
     raise warning 'could not restore % %: %', r.table_name, r.ident, r.last_error;
   end loop;
 
   update snapshot_preserve.state
-     set last_restore_at = now(), last_restore_ok = true
+     set last_restore_at = now(), last_restore_ok = p_mark_ok
    where id = 1;
 
   return query
