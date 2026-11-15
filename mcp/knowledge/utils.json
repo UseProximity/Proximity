@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T19:26:44.417Z",
+  "_generated": "2026-11-15T20:19:00.299Z",
   "count": 365,
   "utils": [
     {
@@ -273,7 +273,7 @@
     },
     {
       "file": "src/lib/analytics/tabs/matchmaking.js",
-      "description": "Matchmaking (the Proxy chat). Shared with partners on the sandbox, so everything here is a"
+      "description": "Find Your Place: the three-page flow (basics, then anything else in their own"
     },
     {
       "file": "src/lib/analytics/tabs/overview.js",

@@ -5,6 +5,7 @@ import Link from "next/link";
 import MatchCard, { MatchCardSkeleton } from "./MatchCard";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
 import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
+import { trackEvent } from "@/utils/analytics";
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
 /*
@@ -62,7 +63,13 @@ function BrowseMatchesLink({ browse }) {
 
   if (!browse?.filters || count === 0) {
     return (
-      <Link href="/browse" target="_blank" rel="noopener noreferrer" className={LINK}>
+      <Link
+        href="/browse"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={LINK}
+        onClick={() => trackEvent("Find Your Place Browse Clicked", { filtered: false })}
+      >
         Browse All Listings
       </Link>
     );
@@ -74,6 +81,7 @@ function BrowseMatchesLink({ browse }) {
       rel="noopener noreferrer"
       className={LINK}
       onClick={() => {
+        trackEvent("Find Your Place Browse Clicked", { filtered: true, count });
         try {
           window.localStorage.setItem(BROWSE_HANDOFF_KEY, JSON.stringify(browse));
         } catch {

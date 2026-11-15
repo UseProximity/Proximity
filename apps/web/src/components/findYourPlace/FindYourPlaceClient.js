@@ -8,7 +8,7 @@ import StepPreferences from "./StepPreferences";
 import StepMatches, { MATCH_PANEL } from "./StepMatches";
 import { ProgressBar, FooterButton, ChoiceDialog } from "./ui";
 import { HANDOFF_VERSION } from "@/lib/findYourPlace/browseHandoff";
-import { trackEvent, setListingSource, rememberMatchesShown } from "@/utils/analytics";
+import { trackEvent, setListingSource, rememberMatchesShown, getPreviousPath } from "@/utils/analytics";
 import {
   NO_PREFERENCE,
   QUESTION_COUNT,
@@ -20,6 +20,9 @@ import {
 const STORAGE_KEY = "prx_fyp_v1";
 const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 const SOURCE = "matchmaking";
+
+// Each page by name, as the analytics page reports where people stop.
+const STAGES = { 1: "basics", 2: "preferences", 3: "matches" };
 
 // The five questions fill the bar to here; it completes on "Show My Matches".
 const QUESTIONS_FILL = 0.8;
@@ -115,10 +118,38 @@ export default function FindYourPlaceClient() {
       // searches again.
       const saved = stored.results?.browse?.version === HANDOFF_VERSION ? stored.results : null;
       setResults(saved);
+      // Back to matches already found: leaving now is not dropping out.
+      if (saved) shownRef.current = true;
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }
     setReady(true);
-    trackEvent("Find Your Place Opened", { resumed: !!stored });
+    trackEvent("Find Your Place Opened", { resumed: !!stored, from: getPreviousPath("/find-your-place") });
+  }, []);
+
+  /*
+   * Leaving before any matches were shown on this visit: which page they were
+   * on (the old chat's "Proxy Chat Exited"). Fired once, on the tab closing,
+   * hiding into another app, or navigating away inside the site.
+   */
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const shownRef = useRef(false);
+  const leaveTimer = useRef(null);
+  useEffect(() => {
+    // React's development double mount unmounts and remounts at once: a leave
+    // scheduled by that unmount is cancelled here, so only a real one is sent.
+    clearTimeout(leaveTimer.current);
+    let sent = false;
+    const leave = () => {
+      if (sent || shownRef.current) return;
+      sent = true;
+      trackEvent("Find Your Place Exited", { stage: STAGES[stepRef.current] });
+    };
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leaveTimer.current = setTimeout(leave, 0);
+    };
   }, []);
 
   useEffect(() => {
@@ -217,6 +248,7 @@ export default function FindYourPlaceClient() {
         key: keyOf(input),
         browse: data.browse ?? null,
       });
+      shownRef.current = true;
       rememberMatchesShown((data.matches ?? []).map((m) => m.listing_id));
       trackEvent("Find Your Place Matches Shown", {
         count: data.matches?.length ?? 0,
@@ -233,7 +265,7 @@ export default function FindYourPlaceClient() {
 
   // Wipe every answer and the saved matches, and go back to the first page.
   const startOver = () => {
-    trackEvent("Find Your Place Started Over", { fromStep: step });
+    trackEvent("Find Your Place Started Over", { stage: STAGES[step] });
     setAnswers(EMPTY_ANSWERS);
     setText("");
     setChips({});
@@ -249,7 +281,11 @@ export default function FindYourPlaceClient() {
   const progress = step === 1 ? (answered / QUESTION_COUNT) * QUESTIONS_FILL : step === 2 ? QUESTIONS_FILL : 1;
 
   const openListing = (match, position, tab) => {
-    trackEvent(tab ? "Find Your Place Contact Clicked" : "Find Your Place Listing Clicked", { listingId: match.listing_id, position });
+    trackEvent(tab ? "Find Your Place Contact Clicked" : "Find Your Place Listing Clicked", {
+      listingId: match.listing_id,
+      position,
+      intention: match.near_miss ? "Close match" : "Top match",
+    });
     setListingSource(match.listing_id, SOURCE);
     // The listing's panel on the browse page, in a new tab, so the matches stay
     // open behind it (Wyatt, 2026-11-10). `src=matchmaking` is the value the
