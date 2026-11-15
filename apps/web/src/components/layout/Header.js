@@ -27,6 +27,7 @@ export function Header({ session }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const inputRef = useRef(null);
+  const smallInputRef = useRef(null);
   const moreRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -47,8 +48,15 @@ export function Header({ session }) {
     router.push(pathname + withMessages(current), { scroll: false });
   }
 
+  // Two search forms are mounted while the search is open: the desktop one and
+  // the one used below 1280px. Only one is on screen, and focusing a hidden
+  // field does nothing, so fall back to the small-screen field.
   useEffect(() => {
-    if (searchOpen) inputRef.current?.focus();
+    if (!searchOpen) return;
+    inputRef.current?.focus();
+    if (document.activeElement !== inputRef.current) {
+      smallInputRef.current?.focus();
+    }
   }, [searchOpen]);
 
   useEffect(() => {
@@ -225,7 +233,7 @@ export function Header({ session }) {
             className="xl:hidden absolute left-4 right-4 sm:left-8 sm:right-8 md:left-12 md:right-12 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
           >
             <AddressSearchInput
-              ref={inputRef}
+              ref={smallInputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && closeSearch()}
