@@ -116,7 +116,7 @@ export default function FeedbackWidget() {
           onClick={close}
         >
           <div
-            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6"
+            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-1">

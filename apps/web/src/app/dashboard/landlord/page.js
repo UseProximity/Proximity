@@ -231,7 +231,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
       )}
       {profileUpdatePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
             <h3 className="text-lg font-semibold text-gray-900">
               Update your Proximity profile?
             </h3>

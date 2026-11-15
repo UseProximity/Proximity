@@ -11,7 +11,7 @@ export default function ContestChargeModal({ charge, busy, onCancel, onSubmit })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto" role="dialog" aria-modal="true">
         <h3 className="text-lg font-semibold text-gray-900">Contest this charge?</h3>
         <p className="text-sm text-gray-600">
           You are contesting the full {formatCents(charge.amountCents)} charge for {charge.triggerLabel.toLowerCase()}.
