@@ -7,6 +7,7 @@ import StepBasics from "./StepBasics";
 import StepPreferences from "./StepPreferences";
 import StepMatches, { MATCH_PANEL } from "./StepMatches";
 import { ProgressBar, FooterButton, ChoiceDialog } from "./ui";
+import { HANDOFF_VERSION } from "@/lib/findYourPlace/browseHandoff";
 import { trackEvent, setListingSource } from "@/utils/analytics";
 import {
   NO_PREFERENCE,
@@ -109,10 +110,10 @@ export default function FindYourPlaceClient() {
       setAnswers({ ...EMPTY_ANSWERS, ...(stored.answers ?? {}) });
       setText(stored.text ?? "");
       setChips(stored.chips ?? {});
-      // Matches saved before the browse hand-off existed carry no `browse`,
-      // which left the button reading "Browse All Listings". Drop them so the
-      // next "Show My Matches" searches again.
-      const saved = stored.results?.browse?.notApplied ? stored.results : null;
+      // Matches saved with an older browse hand-off (or none) would open
+      // browse with filters missing. Drop them so the next "Show My Matches"
+      // searches again.
+      const saved = stored.results?.browse?.version === HANDOFF_VERSION ? stored.results : null;
       setResults(saved);
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }

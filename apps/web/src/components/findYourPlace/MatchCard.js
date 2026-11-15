@@ -124,7 +124,15 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
   const units = listing.unitTypes ?? [];
   const beds = range(units.map((u) => u.bedrooms));
   const baths = range(units.map((u) => u.bathrooms));
-  const rent = getRentRangeLabel(units);
+  // The matched lease's price when the search sent one (null = not published);
+  // the listing's range only for matches saved before it did.
+  const rent =
+    match.price === undefined
+      ? getRentRangeLabel(units)
+      : match.price
+      ? `$${match.price.amount.toLocaleString("en-US")}`
+      : "Contact for Pricing";
+  const per = match.price?.per === "person" ? "/person" : "/mo";
   const numReviews = Number(listing.numReviews) || 0;
   const rating = Number(listing.rating);
   const walk = campusWalk(listing);
@@ -167,7 +175,7 @@ export default function MatchCard({ match, position, signedIn, onOpen, onContact
           <h3 className="min-w-0 truncate text-sm font-bold leading-snug text-gray-900">{title}</h3>
           <span className="flex-shrink-0 whitespace-nowrap text-sm font-bold text-[#3C4142]">
             {rent}
-            {rent !== "Contact for Pricing" && <span className="text-xs font-normal">/mo</span>}
+            {rent !== "Contact for Pricing" && <span className="text-xs font-normal">{per}</span>}
           </span>
         </div>
         {/* Same lines, in the same order, as the browse listing card: address,

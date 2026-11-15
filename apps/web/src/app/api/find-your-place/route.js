@@ -122,7 +122,7 @@ export async function POST(request) {
     const response = NextResponse.json({
       sessionId,
       signedIn: !!actor,
-      matches: result.matches.map(({ listing_id, reason, note, near_miss }) => ({ listing_id, reason, note, near_miss })),
+      matches: result.matches.map(({ listing_id, reason, note, near_miss, price }) => ({ listing_id, reason, note, near_miss, price })),
       totalMatches: result.totalMatches,
       // What "Browse All Matches" hands to the browse page.
       browse: result.browse,

@@ -628,6 +628,24 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     return parts.length ? `${cap(parts.join(", "))}.` : "Lines up with what you told us.";
   };
 
+  /*
+   * The price on the card is the price of the lease this student matched, not
+   * the listing's whole range (Wyatt, 2026-11-14): a building's sublease at
+   * $1,099 must not stand for a full-year lease with no published rent. It is
+   * the rent as posted, so it reads like the browse card. A group split
+   * across units is priced per person. No price = "Contact for Pricing".
+   */
+  const priceFor = (id) => {
+    const offer = offerById[id];
+    if (offer) {
+      if (!offer.priced) return null;
+      const posted = offer.basis === "person" ? offer.perPerson : offer.unitRent;
+      return posted == null ? null : { amount: Math.round(posted), per: "month" };
+    }
+    const pp = perPersonById[id];
+    return pp == null ? null : { amount: Math.round(pp), per: "person" };
+  };
+
   const matches = chosen.map(({ listing, reason }) => {
     const id = listing.id;
     const notes = [];
@@ -642,6 +660,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
       score: Math.round(scoreById[id] * 100) / 100,
       reason: reason || fallbackReason(listing),
       note: notes.join(" ") || null,
+      price: priceFor(id),
       near_miss: missesById[id].length > 0,
       unit_split: splitById[id] ?? null,
       card_data: extractCardData(listing),

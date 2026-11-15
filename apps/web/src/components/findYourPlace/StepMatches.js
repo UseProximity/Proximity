@@ -5,6 +5,7 @@ import Link from "next/link";
 import MatchCard, { MatchCardSkeleton } from "./MatchCard";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
 import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
+import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
 /*
  * The four matches as a 2x2 grid that follows the window (Wyatt, 2026-11-10):
@@ -25,6 +26,16 @@ const LINK = "inline-flex h-8 flex-shrink-0 items-center rounded-full border bor
  * with browse's own filter function over browse's own listing feed, so the
  * number on the button is the number of cards the student lands on.
  */
+// Browse's walk-to-campus time (BrowseContent): the quickest walk to any
+// campus place, leaving out grocery and the medical campus.
+const campusMinutes = (listing) => {
+  const pwm = listing.placeWalkMinutes;
+  const mins = WASHU_PLACES.filter((p) => !NON_CAMPUS_WALK_PLACES.includes(p.name))
+    .map((p) => pwm?.[p.name])
+    .filter((m) => m != null);
+  return mins.length ? Math.min(...mins) : null;
+};
+
 function BrowseMatchesLink({ browse }) {
   const [count, setCount] = useState(null);
 
@@ -39,7 +50,7 @@ function BrowseMatchesLink({ browse }) {
           filters: { ...DEFAULT_FILTERS, ...browse.filters },
           search: "",
           savedIds: [],
-          campusMinutes: () => null, // only read by the walk filter, which is never pre-set
+          campusMinutes, // the walk filter, read exactly as browse reads it
         });
         setCount(passing.length);
       })

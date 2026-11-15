@@ -10,7 +10,7 @@
  * Wyatt 2026-11-10), but it is kept so a caller can tell what was left out.
  */
 import { needsPetFriendly } from "@/lib/matchmaking/listingConstraints";
-import { NO_PREFERENCE, moveInCutoff, nextOccurrence } from "./options";
+import { NO_PREFERENCE, moveInCutoff, nextOccurrence, slowestMode, isOpenEnded } from "./options";
 
 // Parsed amenity key (a listing_amenities column) -> browse's amenity filter value.
 const BROWSE_AMENITY = {
@@ -40,7 +40,14 @@ const NEIGHBORHOOD_NAMES = {
   DeBaliviere: "DeBaliviere",
 };
 
-const dollars = (n) => "$" + Math.round(n).toLocaleString("en-US");
+// Browse's walking-time sliders (FiltersPanel). A limit sets the smallest stop
+// that is not stricter than it: looser, never tighter, than the answer.
+const CAMPUS_WALK_STOPS = [10, 15, 20, 30];
+const SHUTTLE_WALK_STOPS = [2, 5, 10];
+// Raised whenever what the hand-off sets changes, so a saved set of matches
+// carrying an older hand-off is searched again rather than reused.
+export const HANDOFF_VERSION = 2;
+const stopFor = (stops, minutes) => stops.find((s) => s >= minutes) ?? null;
 
 export function buildBrowseHandoff({ answers, parsed, preferences }) {
   const filters = {};
@@ -64,9 +71,25 @@ export function buildBrowseHandoff({ answers, parsed, preferences }) {
    * could afford is hidden, at the cost of letting through some per-person
    * listings above their max. The looser side is the right side to err on.
    */
+  // With no headcount, the per-person max itself is the cap (Wyatt,
+  // 2026-11-14: the price is always set when they gave one).
   if (typeof answers.budget === "number") {
-    if (oneUnit) filters.maxRent = String(answers.budget * group);
-    else notApplied.push("up to " + dollars(answers.budget) + " per person");
+    filters.maxRent = String(answers.budget * (Number.isFinite(group) && group >= 1 ? group : 1));
+  }
+
+  /*
+   * Commute. Browse filters on the walk to campus and the walk to a shuttle
+   * stop, so those two answers are set there. A bike or drive limit has no
+   * browse filter. The open-ended last chip sets nothing.
+   */
+  const mode = slowestMode(answers.modes ?? []);
+  if (mode && typeof answers.commuteMax === "number" && !isOpenEnded(mode, answers.commuteMax)) {
+    const stop =
+      mode.id === "walk" ? stopFor(CAMPUS_WALK_STOPS, answers.commuteMax)
+      : mode.id === "shuttle" ? stopFor(SHUTTLE_WALK_STOPS, answers.commuteMax)
+      : null;
+    if (stop != null) filters[mode.id === "walk" ? "distance" : "distanceToShuttle"] = String(stop);
+    else notApplied.push(`${mode.id} within ${answers.commuteMax} min`);
   }
 
   /*
@@ -94,5 +117,5 @@ export function buildBrowseHandoff({ answers, parsed, preferences }) {
 
   if (parsed.areas.length) notApplied.push(parsed.areas.map((a) => NEIGHBORHOOD_NAMES[a] ?? a).join(" or "));
 
-  return { filters, notApplied };
+  return { filters, notApplied, version: HANDOFF_VERSION };
 }
