@@ -242,7 +242,7 @@ function FloorPlanSlot({ unit, canEdit, listingId, onChanged }) {
           {canEdit && (
             <button
               type="button" onClick={() => set(null)} disabled={busy}
-              className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
+              className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
               aria-label="Remove floor plan"
             >
               <Trash2 className="h-3 w-3" />
