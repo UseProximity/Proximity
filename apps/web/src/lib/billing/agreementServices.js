@@ -72,7 +72,7 @@ export function agreementServices() {
             reason,
             kind,
             changeRequest,
-            adminUrl: `${getBaseUrl()}/dashboard/admin`,
+            adminUrl: `${getBaseUrl()}/dashboard/admin/billing?tab=changes`,
           });
         },
       },

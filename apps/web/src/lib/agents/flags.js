@@ -35,18 +35,13 @@ export function agentIsLive(agentRow) {
 }
 
 /*
- * Launch review for what a sync teaches Proxy (Wyatt, 2026-11-07). While on,
- * knowledge facts a sync reads off the landlord's pages wait for the Proximity
- * team in the admin queue before Proxy uses them. On unless
- * WEBSITE_SYNC_TEAM_REVIEW is set to off, so a missing variable fails safe.
- *
- * Listing changes (units, leases, prices) no longer go through it: the sync
- * applies or denies each one itself (Wyatt, 2026-11-11,
- * lib/sourceImport/syncPolicy.js).
+ * Launch review for what a sync teaches Proxy (Wyatt, 2026-11-07), ended
+ * 2026-11-12: what the weekly knowledge read finds applies at once, the same
+ * as website changes since 2026-11-11. Kept as a function, always off, so the
+ * admin queue and Agent tab still show any review event made before then.
  */
 export function syncTeamReview() {
-  const v = String(process.env.WEBSITE_SYNC_TEAM_REVIEW ?? "").trim().toLowerCase();
-  return !OFF.has(v);
+  return false;
 }
 
 /*

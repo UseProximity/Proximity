@@ -1,8 +1,32 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-12T05:42:24.133Z",
-  "count": 349,
+  "_generated": "2026-11-15T04:09:12.504Z",
+  "count": 359,
   "utils": [
+    {
+      "file": "src/lib/admin/adminDb.js",
+      "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/home.js",
+      "description": "The admin Home page (Wyatt, 2026-11-12): what needs someone's attention right"
+    },
+    {
+      "file": "src/lib/admin/jobs.js",
+      "description": "The scheduled jobs, for System > Scheduled jobs (Wyatt, 2026-11-14)."
+    },
+    {
+      "file": "src/lib/admin/lists.js",
+      "description": "The admin dashboard's plain lists (Wyatt, 2026-11-14): state the team could"
+    },
+    {
+      "file": "src/lib/admin/notes.js",
+      "description": "Shared by the admin notes routes (app/api/admin/notes): checking what was"
+    },
+    {
+      "file": "src/lib/admin/records.js",
+      "description": "The admin dashboard's record pages (Wyatt, 2026-11-12): everything Proximity"
+    },
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
@@ -122,6 +146,10 @@
     {
       "file": "src/lib/agents/questionTokens.js",
       "description": "The per-question reply address a landlord can answer from (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/queueView.js",
+      "description": "What the admin review queue shows for each held knowledge change (Wyatt,"
     },
     {
       "file": "src/lib/agents/replyEmail.js",
@@ -298,6 +326,10 @@
     {
       "file": "src/lib/auth/passwordReset.js",
       "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
+    },
+    {
+      "file": "src/lib/auth/profileSave.js",
+      "description": "Saving the \"Complete Your Profile\" popup. Client-safe, no server imports."
     },
     {
       "file": "src/lib/auth/roles.js",
@@ -1084,6 +1116,10 @@
       "description": "Batched \"your review is live\" confirmations."
     },
     {
+      "file": "src/lib/reviews/duplicate.js",
+      "description": "A review this person has already posted on this listing with the same text."
+    },
+    {
       "file": "src/lib/reviews/duplicateReport.js",
       "description": "Review stubs that may be a building already listed under another address."
     },
@@ -1314,6 +1350,10 @@
     {
       "file": "src/lib/users/mrecForm.js",
       "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
+    },
+    {
+      "file": "src/lib/users/profileCompletion.js",
+      "description": "What a request that marks a profile complete has to carry."
     },
     {
       "file": "src/lib/users/viewAs.js",

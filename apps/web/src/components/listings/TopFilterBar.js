@@ -67,6 +67,8 @@ export default function TopFilterBar({
   onFiltersSaved = () => {},
   mapHidden,
   onToggleMap,
+  compareOpen,
+  onToggleCompare,
 }) {
   /*
    * Rebuilding the results (a couple of hundred cards and the map pins) is the
@@ -373,6 +375,18 @@ export default function TopFilterBar({
             style={{ filter: "brightness(0) opacity(0.65)" }}
           />
           <span>Filters</span>
+        </button>
+
+        {/* Compare Listings: not a filter, so it is outside the filter state and Clear All */}
+        <button
+          onClick={onToggleCompare}
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+            compareOpen
+              ? "bg-gray-200 text-gray-700 border-gray-300"
+              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          Compare Listings
         </button>
 
         {/* Clear All */}

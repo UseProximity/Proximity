@@ -194,7 +194,7 @@ export default function EmailEditor({ template, dbTarget, writable, mrecUploaded
             Missouri Broker Disclosure Form (MREC)
           </label>
           {hasMrec && !mrecUploaded && (
-            <Notice kind="warn">No MREC form is uploaded on this site yet (Billing &gt; Landlords and agreements). Sending will be refused until it is.</Notice>
+            <Notice kind="warn">No MREC form is uploaded on this site yet (Billing &gt; Landlords and agreements &gt; Agreement versions). Sending will be refused until it is.</Notice>
           )}
           {form.attachments
             .filter((a) => a.kind === "file")

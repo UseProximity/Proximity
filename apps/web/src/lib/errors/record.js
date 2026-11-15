@@ -103,7 +103,7 @@ async function sendAlert(row, headline) {
   const rows = facts
     .map(([k, v]) => `<tr><td style="padding:4px 10px 4px 0;color:#6b7280;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:4px 0;color:#111">${esc(v)}</td></tr>`)
     .join("");
-  const link = `${getBaseUrl()}/dashboard/admin?view=errors&error=${row.id}`;
+  const link = `${getBaseUrl()}/dashboard/admin/system/errors?error=${row.id}`;
   const html = wrapHtml(`
     <h2 style="color:#E82027;font-size:18px;margin:0 0 6px">${esc(headline)}</h2>
     <p style="color:#111;font-size:14px;margin:0 0 10px">Something failed on useproximity.org. Same problem again won't email for at least an hour.</p>

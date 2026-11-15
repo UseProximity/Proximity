@@ -26,6 +26,9 @@ export async function GET(req) {
   const supabase = billingDb.db;
   try {
     const window = await getEnrollmentWindow(supabase);
+    // ?view=window: the deadline settings alone, for the Billing overview. The
+    // audience below reads every landlord and is only needed on its own tab.
+    if (new URL(req.url).searchParams.get("view") === "window") return NextResponse.json(window);
     const { counts, toSend } = await findEnrollmentAudience(supabase, { includeAgreement: window.includeAgreement });
     return NextResponse.json({ ...window, counts, sample: toSend.slice(0, 10).map((l) => ({ name: l.name, email: l.email })) });
   } catch (err) {

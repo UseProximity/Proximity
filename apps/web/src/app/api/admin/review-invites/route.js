@@ -2,6 +2,7 @@
  * Send and review tokenized review invites.
  *
  * @auth admin
+ * @auth POST super
  *
  * Only the Proximity team can invite. That is the whole reason invited reviews
  * can be trusted more than open ones: if landlords could send these, a landlord
@@ -190,6 +191,8 @@ export async function POST(req) {
   try {
     const user = await requireSuperOrAdmin();
     if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // The read-only admin role sees the history but does not send or mint links (Wyatt, 2026-11-12).
+    if (user.roles?.name !== "super") return NextResponse.json({ error: "Only super admins can send review invites." }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
     const listingId = body.listingId || null;

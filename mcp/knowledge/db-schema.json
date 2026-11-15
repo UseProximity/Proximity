@@ -1725,6 +1725,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz",
           "deleted_at:timestamptz",
+          "removed_by:text (nullable: admin|author|landlord; who soft deleted it, 202611140002; NULL = live or removed before 2026-11-14. Admin one-click Restore only for admin)",
           "referrer_id:uuid",
           "reviewer_email:text",
           "unit_number:text",
@@ -1736,16 +1737,18 @@
           "unit_designator:text",
           "source:text",
           "confirmation_sent_at:timestamptz",
-          "edited_at:timestamptz"
+          "edited_at:timestamptz",
+          "comment_hash:text"
         ],
         "column_notes": {
+          "comment_hash": "generated md5(comment); what lib/reviews/duplicate.js matches resubmissions on (202611140001)",
           "legitimacy": "admin approval gate; false rows are hidden",
           "anonymous": "hide the author name",
           "referrer_id": "ambassador who referred the reviewer",
           "source": "?src= campaign tag from a printed QR code",
           "confirmation_sent_at": "batched confirmation email (cron review-confirmations)"
         },
-        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
+        "notes": "status=active; pk id; fk user_id->users.id (set null); listing_id->listings.id (cascade); referrer_id->users.id (set null); check unit_designator in (Apt,Unit,Suite,Floor,Room,Whole) or null | Whole carries no unit_number; unique listing_reviews_one_copy_idx (user_id, listing_id, comment_hash) where deleted_at is null (one copy of a review per person, listing and text; 202611140001); rls: on, with policies, but anon/authenticated grants revoked (202610230003) since rows carry reviewer_email and the user_id behind anonymous reviews; service role only; edited_at set only by PATCH /api/reviews/:id (drives the \"Edited\" label; updated_at is bumped by other writes)",
         "observed_2026_10_12": {
           "prod_rows": 147,
           "prod_last_write": "2026-10-12"
@@ -2959,9 +2962,10 @@
           "is_current:bool",
           "superseded_by:uuid",
           "created_at:timestamptz",
-          "updated_at:timestamptz"
+          "updated_at:timestamptz",
+          "missed_reads:smallint"
         ],
-        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge)."
+        "notes": "pk id; fk listing_id->listings.id (cascade), source_id->listing_sources.id (set null), set_by->users.id, superseded_by->listing_facts.id; unique (listing_id, section, field_key, scope_level, coalesce(scope_id, nil)) where is_current; check section, scope_level, confidence; RLS on, no policies. Replaces the never-used listing_field_states (dropped). Migration 202610270001_listing_agents (dev applied 2026-10-27; prod at the milestone 1 merge). missed_reads (202611120001, 2026-11-12): weekly whole-site reads in a row that re-read the fact's page and did not find it; at 2 the fact is retired (lib/agents/pages.js noteMissingFacts); landlord-set and core facts are never counted."
       },
       {
         "table": "listing_fact_events",
@@ -3468,6 +3472,24 @@
           "document_kind:text",
           "document_id:uuid"
         ]
+      },
+      {
+        "table": "admin_notes",
+        "status": "unreleased",
+        "description": "Internal team notes on a person or a listing, shown on the admin dashboard's record pages. Never visible to landlords or students. A note can carry a follow-up date that stays open until follow_up_done_at is set. Only the author edits or deletes (enforced in /api/admin/notes); action_log keeps earlier versions.",
+        "columns": [
+          "id:uuid (pk)",
+          "subject_type:text (user|listing)",
+          "subject_id:uuid (no fk: one table serves both, and a note outlives a purged account)",
+          "body:text (1 to 4000 chars)",
+          "follow_up_on:date (nullable)",
+          "follow_up_done_at:timestamptz (nullable)",
+          "author_id:uuid (fk users, set null)",
+          "created_at:timestamptz",
+          "updated_at:timestamptz",
+          "edited_at:timestamptz (nullable; set only when the text changes, drives the 'edited' label)"
+        ],
+        "notes": "status=unreleased (202611140001, applied to dev and prod 2026-11-14; code ships with PR 433); rls on, service role only; action_log trigger; updated_at trigger; index (subject_type,subject_id,created_at desc); partial index on follow_up_on where open"
       }
     ],
     "functions": [
