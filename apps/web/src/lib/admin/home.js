@@ -7,6 +7,8 @@
  * to. One that cannot be read (a table not on this database yet) comes back
  * null and shows as unknown, so one bad query never blanks the page.
  */
+import { teamDate } from "@/lib/admin/notes";
+
 const DAY = 86400000;
 const ago = (days) => new Date(Date.now() - days * DAY).toISOString();
 
@@ -21,7 +23,7 @@ async function count(build) {
 const head = (db, table) => db.from(table).select("*", { count: "exact", head: true });
 
 export async function loadHome(db, { isSuper = false } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = teamDate();
   const q = (key, label, hint, path, params, build, extra = {}) => ({ key, label, hint, path, params: params ?? null, build, ...extra });
 
   const queues = [
@@ -71,7 +73,7 @@ export async function loadHome(db, { isSuper = false } = {}) {
 
 /* Notes whose follow-up date has arrived or is within the next week, soonest first. */
 async function loadFollowUps(db, today) {
-  const soon = new Date(Date.now() + 7 * DAY).toISOString().slice(0, 10);
+  const soon = teamDate(7);
   const { data, error } = await db.from("admin_notes").select("id, subject_type, subject_id, body, follow_up_on, author_id")
     .not("follow_up_on", "is", null).is("follow_up_done_at", null).lte("follow_up_on", soon).order("follow_up_on").limit(50);
   if (error) return { unavailable: true, rows: [] };

@@ -6,6 +6,9 @@
 --                               should outlive a purged account.
 --   follow_up_on                optional "check back on" date; the note counts
 --                               as waiting until follow_up_done_at is set.
+--   edited_at                   when the author last changed the text. Kept
+--                               apart from updated_at, which also moves when
+--                               a follow-up is ticked off.
 --   author_id                   the team member who wrote it. Only the author
 --                               edits or deletes (enforced in the API).
 --
@@ -23,6 +26,9 @@ CREATE TABLE IF NOT EXISTS public.admin_notes (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Added after the table first reached dev (2026-11-14).
+ALTER TABLE public.admin_notes ADD COLUMN IF NOT EXISTS edited_at timestamptz;
 
 CREATE INDEX IF NOT EXISTS admin_notes_subject_idx
   ON public.admin_notes (subject_type, subject_id, created_at DESC);

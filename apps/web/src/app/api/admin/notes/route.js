@@ -9,6 +9,7 @@
  * site's own database, because the author is the signed-in team member.
  *
  * @auth admin
+ * @auth POST super
  */
 export const dynamic = "force-dynamic";
 

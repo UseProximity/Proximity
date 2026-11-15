@@ -2,7 +2,16 @@
  * Shared by the admin notes routes (app/api/admin/notes): checking what was
  * typed and shaping rows for the page.
  */
-export const NOTE_SELECT = "id, subject_type, subject_id, body, follow_up_on, follow_up_done_at, author_id, created_at, updated_at";
+export const NOTE_SELECT = "id, subject_type, subject_id, body, follow_up_on, follow_up_done_at, author_id, created_at, edited_at";
+
+/*
+ * Today (or `offsetDays` from today) as YYYY-MM-DD in St. Louis time. Follow-up
+ * dates are calendar days for the team, so "due" must not flip at UTC midnight
+ * (6pm or 7pm here). Used by the notes panel and by Home, so both agree.
+ */
+export function teamDate(offsetDays = 0) {
+  return new Date(Date.now() + offsetDays * 86400000).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -37,6 +46,7 @@ export async function shapeNotes(db, rows, viewerId) {
     author: n.author_id ? byId.get(n.author_id) ?? "A team member" : "Someone who has left",
     mine: !!viewerId && n.author_id === viewerId,
     createdAt: n.created_at,
-    edited: !!n.updated_at && !!n.created_at && Date.parse(n.updated_at) - Date.parse(n.created_at) > 2000,
+    // Set only when the text changes, so ticking a follow-up off is not an edit.
+    edited: !!n.edited_at,
   }));
 }

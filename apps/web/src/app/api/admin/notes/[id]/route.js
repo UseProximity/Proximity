@@ -24,9 +24,9 @@ async function context(req, params) {
   if (!isUuid(id)) return { res: Response.json({ error: "Not found" }, { status: 404 }) };
   const { db, writable } = adminDb(req);
   if (!writable) return { res: Response.json({ error: "Notes can only be changed on this site's own database." }, { status: 409 }) };
-  const { data: note, error } = await db.from("admin_notes").select("id, author_id").eq("id", id).maybeSingle();
+  const { data: note, error } = await db.from("admin_notes").select("id, author_id, body, follow_up_on").eq("id", id).maybeSingle();
   if (error || !note) return { res: Response.json({ error: "That note is gone." }, { status: 404 }) };
-  return { session, db, id, isAuthor: note.author_id === session.user.id };
+  return { session, db, id, note, isAuthor: note.author_id === session.user.id };
 }
 
 export async function PATCH(req, { params }) {
@@ -39,15 +39,26 @@ export async function PATCH(req, { params }) {
     if (!c.isAuthor) return Response.json({ error: "Only the person who wrote a note can edit it." }, { status: 403 });
     const input = cleanNoteInput(body, { partial: true });
     if (input.error) return Response.json({ error: input.error }, { status: 400 });
-    if (input.body !== undefined) patch.body = input.body;
-    if (input.followUpOn !== undefined) {
+    if (input.body !== undefined && input.body !== c.note.body) {
+      patch.body = input.body;
+      patch.edited_at = new Date().toISOString();
+    }
+    // Only a changed date reopens the follow-up. The edit form always sends the
+    // date back, so fixing a typo must not bring a done follow-up back to Home.
+    if (input.followUpOn !== undefined && input.followUpOn !== c.note.follow_up_on) {
       patch.follow_up_on = input.followUpOn;
-      // A new date reopens the follow-up.
       patch.follow_up_done_at = null;
     }
   }
   if (body.followUpDone !== undefined) patch.follow_up_done_at = body.followUpDone ? new Date().toISOString() : null;
-  if (!Object.keys(patch).length) return Response.json({ error: "Nothing to change" }, { status: 400 });
+  if (!Object.keys(patch).length) {
+    // Saved without changes: hand back the note as it stands.
+    if (body.body !== undefined || body.followUpOn !== undefined) {
+      const { data: same } = await c.db.from("admin_notes").select(NOTE_SELECT).eq("id", c.id).single();
+      return Response.json({ note: (await shapeNotes(c.db, [same], c.session.user.id))[0] });
+    }
+    return Response.json({ error: "Nothing to change" }, { status: 400 });
+  }
 
   const { data, error } = await c.db.from("admin_notes").update(patch).eq("id", c.id).select(NOTE_SELECT).single();
   if (error) {

@@ -8,10 +8,11 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/components/admin/adminShared";
-import { Card, dayTime } from "./shared";
+import { Card, dayTime } from "@/components/admin/records/shared";
+import { teamDate } from "@/lib/admin/notes";
 
 const FIELD = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none";
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => teamDate();
 const dateLabel = (d) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 function NoteForm({ initial, busy, onSave, onCancel, saveLabel }) {
