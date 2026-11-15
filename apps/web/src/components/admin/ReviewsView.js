@@ -40,6 +40,14 @@ const FILTERS = [
   { key: "deleted", label: "deleted" },
 ];
 
+// Who took a removed review down. Only the team's own removals get Restore.
+const REMOVED_BY = {
+  admin: { label: "removed by team", hint: "Removed from this dashboard. Restore puts it back on the listing." },
+  author: { label: "removed by author", hint: "The reviewer deleted this review themselves, so it cannot be restored here." },
+  landlord: { label: "dismissed by landlord", hint: "The landlord dismissed this review while it awaited approval." },
+  unknown: { label: "removed", hint: "Removed before the site recorded who removed reviews. Restore it from the gear menu if you are sure." },
+};
+
 function matchesFilter(r, filter) {
   if (filter === "unverified") return !r.legitimacy && !r.deleted_at;
   if (filter === "verified") return !!r.legitimacy && !r.deleted_at;
@@ -207,12 +215,12 @@ export default function ReviewsView({
               {r.anonymous && <Badge title="Shown to students without a name">anonymous</Badge>}
               {r.source && <Badge color="blue" title="How this review reached us">{r.source}</Badge>}
               {!r.legitimacy && !r.deleted_at && <Badge color="amber">unverified</Badge>}
-              {r.deleted_at && <Badge color="red">deleted</Badge>}
+              {r.deleted_at && <Badge color="red" title={REMOVED_BY[r.removed_by]?.hint ?? REMOVED_BY.unknown.hint}>{REMOVED_BY[r.removed_by]?.label ?? REMOVED_BY.unknown.label}</Badge>}
               <span className="hidden sm:block text-[11px] text-gray-400 whitespace-nowrap">
                 {fmtDate(r.created_at)}
               </span>
               <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-                {!isReadOnly && (
+                {!isReadOnly && (!r.deleted_at || r.removed_by === "admin") && (
                   <button type="button" onClick={() => setRemoved(r, !r.deleted_at)} className="rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50" title={r.deleted_at ? "Show this review on the listing again" : "Hide this review from the listing. It can be restored."}>
                     {r.deleted_at ? "Restore" : "Remove"}
                   </button>
@@ -270,7 +278,7 @@ export default function ReviewsView({
                   />
                   {r.deleted_at && (
                     <span className="text-[11px] text-red-600">
-                      Removed {fmtDate(r.deleted_at)}. It is hidden from the listing; use Restore to bring it back.
+                      Removed {fmtDate(r.deleted_at)}. {REMOVED_BY[r.removed_by]?.hint ?? REMOVED_BY.unknown.hint}
                     </span>
                   )}
                 </div>
