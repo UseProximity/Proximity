@@ -81,3 +81,9 @@ test("pageLooked: any stamp counts, or only one since the run started", () => {
   assert.equal(pageLooked({ last_checked_at: "2026-11-01T00:00:00Z" }, "2026-11-02T00:00:00Z"), false);
   assert.equal(pageLooked({ last_checked_at: "2026-11-03T00:00:00Z" }, "2026-11-02T00:00:00Z"), true);
 });
+
+test("an encyclopedia or news page is never kept as a place's own site", () => {
+  assert.equal(classifyUrl("https://en.wikipedia.org/wiki/The_Hill,_St._Louis"), null);
+  assert.equal(classifyUrl("https://www.stltoday.com/news/local/"), null);
+  assert.deepEqual(classifyUrl("https://3015tamm.weebly.com/"), { site: "own_site", pageType: "home" });
+});

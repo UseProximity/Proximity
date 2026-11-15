@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T04:09:12.504Z",
-  "count": 359,
+  "_generated": "2026-11-15T20:51:58.657Z",
+  "count": 360,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -1306,6 +1306,10 @@
     {
       "file": "src/lib/sourceSync/classify.js",
       "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceSync/givenSites.js",

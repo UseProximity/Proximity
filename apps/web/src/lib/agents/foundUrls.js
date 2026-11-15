@@ -7,6 +7,7 @@
  *
  * Pure on purpose. foundUrls.test.js covers it.
  */
+import { isNeverSourceHost } from "../sourceSync/classify.js";
 
 // Portals and directories that are not one of the three kinds we keep.
 const OTHER_PORTALS = [
@@ -69,6 +70,8 @@ export function classifyUrl(url) {
     return { site: "apartments_com", pageType: /-unit-/.test(parts[0]) ? "unit" : "building" };
   }
   if (OTHER_PORTALS.some((d) => onDomain(host, d))) return null;
+  // An encyclopedia, news or map page is never a place's own site.
+  if (isNeverSourceHost(host)) return null;
   return { site: "own_site", pageType: path.replace(/\/+$/, "") === "" ? "home" : "building" };
 }
 

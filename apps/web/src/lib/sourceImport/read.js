@@ -61,6 +61,7 @@ import { ENTRATA_HINT_RE, parseEntrataFloorPlans } from "./readers/entrata.js";
 import { findLeaseTerms } from "@/lib/listingDraft/floorPlanUnits";
 import { findFlyerCandidates, readInclusionsFlyer } from "./readers/flyer.js";
 import { sanitizeDescription } from "./sanitize.js";
+import { isNeverSourceUrl } from "@/lib/sourceSync/classify";
 import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmbedded.js";
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
@@ -234,7 +235,7 @@ class Crawl {
 // site actually points at: same-site, or linked from the page we read.
 function resolveTargetUrl(rawUrl, pastedUrl, pageUrl, pageLinks) {
   const url = normalizeLinkUrl(rawUrl, pageUrl);
-  if (!url) return null;
+  if (!url || isNeverSourceUrl(url)) return null;
   if (sameSite(url, pastedUrl)) return url;
   return pageLinks.some((l) => l.url === url) ? url : null;
 }
@@ -781,7 +782,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let unverified = null;
   if (!targetUrl && target.url) {
     const url = normalizeLinkUrl(target.url, main.finalUrl);
-    if (url && !isListingPortal(url) && !detectPmsPortal(url)) unverified = url;
+    if (url && !isListingPortal(url) && !detectPmsPortal(url) && !isNeverSourceUrl(url)) unverified = url;
   }
   console.log(`[source-import] ${target.name}: start ${startUrl}, target ${targetUrl ?? unverified ?? "(none)"}${unverified ? " (unlinked, will verify)" : ""}`);
   if ((targetUrl ?? unverified) && (targetUrl ?? unverified) !== main.finalUrl) {
