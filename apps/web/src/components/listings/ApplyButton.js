@@ -12,7 +12,7 @@
  * or the browser would block it as a popup.
  */
 import { signIn } from "next-auth/react";
-import { FileSignature } from "lucide-react";
+import { Pen } from "lucide-react";
 import { pickApplication } from "@/lib/listings/applicationLink";
 import { trackEvent } from "@/utils/analytics";
 
@@ -51,7 +51,7 @@ export default function ApplyButton({ listing, selectedLease = null, signedIn, r
       title={signedIn ? "Opens the landlord's application in a new tab" : "Sign in to apply"}
       className={`inline-flex shrink-0 items-center justify-center gap-1.5 ${STYLES[variant] ?? STYLES.chat} ${className}`}
     >
-      <FileSignature className={variant === "chat" ? "h-5 w-5" : "h-4 w-4"} />
+      <Pen className={variant === "chat" ? "h-5 w-5" : "h-4 w-4"} />
       Apply
     </button>
   );

@@ -2337,7 +2337,7 @@ export default function ListingModalInfo({
                         jumpTo("contact");
                         window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
                       }}
-                      className={`inline-flex items-center gap-1.5 rounded-lg bg-red-600 font-semibold text-white hover:bg-red-700 ${
+                      className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-100 font-semibold text-red-600 hover:bg-gray-200 ${
                         headStuck ? "px-3 py-1.5 text-[13px]" : "px-3.5 py-2 text-sm"
                       }`}
                     >

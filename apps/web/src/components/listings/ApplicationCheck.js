@@ -13,7 +13,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { FileSignature } from "lucide-react";
+import { Pen } from "lucide-react";
 import { APPLY_CLICKED_EVENT } from "./ApplyButton";
 
 export default function ApplicationCheck({ listingId, signedIn, preview = false }) {
@@ -79,7 +79,7 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
     <div ref={barRef} className="sticky top-0 z-40 border-b border-red-100 bg-red-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:px-6">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
-          <FileSignature className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+          <Pen className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900">Did you submit your application?</p>
             <p className="text-xs text-gray-600">You opened the landlord&apos;s application here earlier.</p>

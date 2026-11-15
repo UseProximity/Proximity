@@ -10,7 +10,7 @@
  * students. Hidden until there is a link or a click.
  */
 import { useEffect, useState } from "react";
-import { FileSignature } from "lucide-react";
+import { Pen } from "lucide-react";
 
 const dateLabel = (iso) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
@@ -44,7 +44,7 @@ export default function EditorApplications({ listing, viewAsId = null }) {
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm">
       <div className="flex items-center gap-2">
-        <FileSignature className="h-4 w-4 text-red-600" />
+        <Pen className="h-4 w-4 text-red-600" />
         <h3 className="text-sm font-semibold text-gray-900">Applications</h3>
       </div>
       <p className="mt-0.5 text-xs text-gray-500">
