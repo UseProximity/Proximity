@@ -1479,7 +1479,7 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
             className={`flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
-              compact ? "md:h-[300px]" : "md:h-[520px]"
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
             }`}
           >
             <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
@@ -2160,7 +2160,7 @@ export default function ListingModalInfo({
               the page padding. */}
           <div
             className={`relative flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
-              compact ? "md:h-[300px]" : "md:h-[520px]"
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
             }`}
           >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
