@@ -14,6 +14,7 @@
  *                  changes applied in one pass; per-event results
  *
  * @auth admin
+ * @auth POST super
  */
 export const dynamic = "force-dynamic";
 // Apply all can write a listing's whole held run in one request.
@@ -21,6 +22,7 @@ export const maxDuration = 120;
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import supabase from "@/lib/supabase";
 import { decideChange } from "@/lib/agents/landlordAgent";
 import { ensureAgent } from "@/lib/agents/store";
@@ -70,6 +72,8 @@ export async function GET() {
 export async function POST(req) {
   const g = await requireTeam();
   if (g.res) return g.res;
+  // The read-only admin role looks but does not change anything (Wyatt, 2026-11-12).
+  if (!(await requireDbRole(["super"]))) return NextResponse.json({ error: "Only super admins can change agents." }, { status: 403 });
   let body;
   try { body = await req.json(); } catch { body = {}; }
   try {

@@ -6,8 +6,9 @@
 # ⚠️ DESTRUCTIVE to the DEV database's `public` schema. It NEVER writes to prod.
 #
 # Steps: [1] dump prod (+ capture its FK set and function grants)  [2] save partner sandbox data,
-#        then detach FKs from dev-only tables into prod tables  [3] restore into dev, then verify
-#        every prod table holds exactly the dumped rows or abort  [4] re-grant Supabase roles, then
+#        then detach FKs from dev-only tables into prod tables  [3] shut the app out of dev's public
+#        schema, restore into dev, then verify every prod table holds the dumped rows and every prod
+#        index, constraint, policy and RLS switch, or abort  [4] strip prod ids, re-grant Supabase roles, then
 #        copy prod's function grants and verify no definer function is left public or abort
 #        [5] reconcile FKs against prod, then verify parity or abort
 #        [6] put partner sandbox data back, then reattach the dev-only FKs.
@@ -57,7 +58,8 @@ DUMP="$(mktemp -t prox-prod-snapshot-XXXXXX.sql)"
 FKS="$(mktemp -t prox-prod-fks-XXXXXX.tsv)"
 FKSQL="$(mktemp -t prox-prod-fks-XXXXXX.sql)"
 FNACL="$(mktemp -t prox-prod-fn-grants-XXXXXX.sql)"
-TMPFILES=("$DUMP" "$DUMP.err" "$DUMP.counts" "$FKS" "$FKSQL" "$FNACL")
+OBJS="$(mktemp -t prox-prod-objects-XXXXXX.txt)"
+TMPFILES=("$DUMP" "$DUMP.err" "$DUMP.counts" "$DUMP.oids" "$FKS" "$FKSQL" "$FNACL" "$OBJS")
 
 # If the run dies after step 2 detached the dev-only FKs, put them back on the way out so dev-only
 # features keep their PostgREST embeds until the next run. Best effort: whatever cannot go back
@@ -68,6 +70,134 @@ FKS_DETACHED=0
 # (which staging, previews and the partner sandbox use, with the public staging anon key) is
 # left with SECURITY DEFINER functions anyone can call (review of 2026-11-07).
 GRANTS_OPENED=0
+# Step 3 takes the app's roles (anon, authenticated, service_role) off dev's public schema before
+# the restore and step 4 gives them back, so no app request can read or write a table mid-restore
+# (see step 3). Set while they are off, so cleanup gives them back if the run dies in between.
+API_LOCKED=0
+# Set once step 3 starts replacing dev's tables, and once steps 4 and 6 finish (see cleanup).
+RESTORE_STARTED=0
+STEP4_DONE=0
+PRESERVE_RESTORED=0
+# Give the Supabase roles back their schema and table access. The grants reopen every function,
+# so lock_down_functions must follow.
+grant_roles() {
+  psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables    in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all routines  in schema public to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on tables    to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
+notify pgrst, 'reload schema';
+SQL
+}
+# Undo exactly what step 3's lock did, for a run that dies before the restore touched anything.
+# The table and function grants were never changed, so they are left alone (a blanket routine
+# grant here would reopen the definer functions).
+unlock_api() {
+  psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+grant usage on schema public to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on tables    to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
+notify pgrst, 'reload schema';
+SQL
+}
+# Strip every live Stripe id and prod Documenso envelope id, then give the roles back. Step 4 runs
+# this, and so does cleanup when a run dies after the restore began: by then dev already holds
+# prod's rows, so leaving it unscrubbed would let dev code act on real landlords' payments and
+# documents (failed run of 2026-11-15). The scrub runs while the app is still shut out, so no
+# request ever sees a prod id, and if it fails the roles stay off: dev is down, not exposed.
+grant_roles_and_scrub() {
+  scrub_prod_ids && grant_roles
+}
+# Only tables the restore actually replaced (new oid) hold prod rows. A table it could not replace
+# (a blocked run) or a dev-only table still holds dev's own rows, partner sandbox ids and agreements
+# among them, and the scrub must not touch it: restore() only adds missing rows, so it cannot undo
+# a change made in place. pg_temp.scrub_ok(table) says whether a table may be scrubbed.
+scrub_prod_ids() {
+  {
+    echo "create temp table _before (relname text, old_oid oid);"
+    echo "copy _before from stdin;"
+    cat "$DUMP.oids"
+    echo '\.'
+    cat <<'SQL'
+create function pg_temp.scrub_ok(tbl text) returns boolean language sql stable as $f$
+  select to_regclass(format('public.%I', tbl)) is not null
+     and not exists (select 1 from _before b
+                      where b.relname = tbl and b.old_oid = to_regclass(format('public.%I', tbl))::oid);
+$f$;
+SQL
+    cat <<'SQL'
+-- Prod holds live-mode Stripe ids. Dev and staging use sandbox keys, which reject them, so strip
+-- every one (customer, payment method, invoice, invoice item, dispute, webhook event). Rows whose
+-- Stripe id is the whole point (payment methods, disputes, events) are deleted rather than nulled.
+-- This runs before step 6, so partner sandbox rows put back there keep their own sandbox ids.
+-- Guarded per table so a snapshot still works before the billing migration reaches prod, and so
+-- only tables the restore replaced are scrubbed (see scrub_ok above).
+do $$
+begin
+  if pg_temp.scrub_ok('charges') then
+    update public.charges set stripe_invoice_item_id = null where stripe_invoice_item_id is not null;
+  end if;
+  if pg_temp.scrub_ok('billing_invoices') then
+    update public.billing_invoices
+       set stripe_invoice_id = null, hosted_invoice_url = null, invoice_pdf_url = null
+     where stripe_invoice_id is not null or hosted_invoice_url is not null or invoice_pdf_url is not null;
+  end if;
+  if pg_temp.scrub_ok('billing_accounts') then
+    update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
+  end if;
+  if pg_temp.scrub_ok('billing_disputes') then delete from public.billing_disputes; end if;
+  -- Autopay points at payment methods with ON DELETE RESTRICT (202611050002), so its records go
+  -- first, or deleting the methods fails and rolls back this whole scrub (review of 2026-11-07).
+  if pg_temp.scrub_ok('autopay_authorizations') then delete from public.autopay_authorizations; end if;
+  if pg_temp.scrub_ok('billing_invoices')
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'billing_invoices' and column_name = 'autopay_payment_method_id') then
+    update public.billing_invoices set autopay_payment_method_id = null where autopay_payment_method_id is not null;
+  end if;
+  if pg_temp.scrub_ok('payment_methods') then delete from public.payment_methods; end if;
+  if pg_temp.scrub_ok('stripe_webhook_events') then delete from public.stripe_webhook_events; end if;
+  -- Documenso: every environment shares ONE Documenso team (Teams plan), only kept
+  -- apart by folder and a [TEST] title prefix, and a team API key can act on any
+  -- document in it. So no prod envelope id may survive here: dev code holding one
+  -- could cancel a real landlord's copy. Agreement versions go back to drafts
+  -- without a template (an admin reconnects one in dev to test signing), and a copy
+  -- in progress, master or Exhibit A amendment, is voided. Signed documents keep
+  -- their record; their PDFs live in prod's bucket.
+  if to_regclass('public.agreement_versions') is not null then
+    if pg_temp.scrub_ok('landlord_agreements') then
+      update public.landlord_agreements
+         set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+       where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+      update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
+    end if;
+    if pg_temp.scrub_ok('agreement_amendments') then
+      update public.agreement_amendments
+         set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
+       where status in ('not_sent', 'sent') and provider_envelope_id is not null;
+      update public.agreement_amendments set provider_envelope_id = null where provider_envelope_id is not null;
+      if pg_temp.scrub_ok('agreement_coverage') then
+        update public.agreement_coverage set status = 'released'
+         where status = 'proposed'
+           and amendment_id in (select id from public.agreement_amendments where ended_reason = 'snapshot: prod Documenso copy');
+      end if;
+    end if;
+    if pg_temp.scrub_ok('agreement_versions') then
+      update public.agreement_versions
+         set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
+             provider_editor_url = null, fields_checked_at = null,
+             status = case when status = 'live' then 'retired' else status end
+       where provider_template_id is not null or status = 'live';
+      update public.agreement_versions set status = 'draft' where status = 'ready';
+    end if;
+  end if;
+end $$;
+SQL
+  } | psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null
+}
 lock_down_functions() {
   [[ -s "$FNACL" ]] && psql "$DEV_DB_URL" -q --no-psqlrc -f "$FNACL" >/dev/null 2>&1
   psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
@@ -84,6 +214,21 @@ open_definer_functions() {
 }
 cleanup() {
   local code=$?
+  # From step 3 on, dev already holds prod's data, so a run that stops early must still do the
+  # parts that keep dev safe and usable: grants, the Stripe/Documenso scrub, the function lockdown
+  # and the partner/test account restore. Otherwise one stray row fails the run and leaves dev
+  # exposed with prod ids and no test accounts (failed run of 2026-11-15).
+  if [[ $code -ne 0 && $API_LOCKED -eq 1 && $RESTORE_STARTED -eq 0 ]]; then
+    echo "    run failed before the restore began; giving the app its access to DEV back…"
+    unlock_api \
+      || echo "::error::SNAPSHOT LEFT DEV LOCKED: the app's roles have no access to DEV's public schema. Re-run the snapshot now."
+  fi
+  if [[ $code -ne 0 && $RESTORE_STARTED -eq 1 && $STEP4_DONE -eq 0 ]]; then
+    echo "    run failed after the restore replaced DEV's data; removing prod Stripe/Documenso ids, then re-granting roles…"
+    GRANTS_OPENED=1
+    grant_roles_and_scrub \
+      || echo "::error::SNAPSHOT LEFT DEV LOCKED: the Stripe/Documenso scrub failed, so the app was kept off DEV (it still holds prod ids). Re-run the snapshot now."
+  fi
   if [[ $code -ne 0 && $GRANTS_OPENED -eq 1 ]]; then
     echo "    run failed after function grants were opened; locking definer functions back down…"
     if lock_down_functions && [[ -z "$(open_definer_functions)" ]]; then
@@ -92,6 +237,20 @@ cleanup() {
       # A failed workflow run emails the team; this line makes the reason plain in the log.
       echo "::error::SNAPSHOT LEFT DEV EXPOSED: SECURITY DEFINER functions may be callable with the anon key. Run supabase/migrations/202610220004_lock_down_definer_functions.sql on dev now."
     fi
+  fi
+  if [[ $code -ne 0 && $RESTORE_STARTED -eq 1 && $PRESERVE_RESTORED -eq 0 ]]; then
+    # restore(false): dev was not verified, so rows can fail here for reasons that say nothing
+    # about the backup. Leaving last_restore_ok false makes the next save() merge into the backup
+    # instead of replacing it, so nothing that failed to come back is lost.
+    echo "    putting partner sandbox data and test accounts back…"
+    local out=""
+    if out=$(psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
+               -c "select * from snapshot_preserve.restore(false) r where r.failed > 0;" 2>&1); then
+      echo "    put back; the backup is kept in full until a run finishes cleanly"
+    else
+      echo "    could not put them all back; the backup is kept and the next run retries"
+    fi
+    [[ -n "$out" ]] && printf '%s\n' "$out" | head -40 | sed 's/^/      /'
   fi
   if [[ $code -ne 0 && $FKS_DETACHED -eq 1 ]]; then
     echo "    run failed; putting the detached dev-only foreign keys back…"
@@ -163,6 +322,32 @@ order by sig;
 SQL
 echo "    prod function grants captured: $(grep -c . "$FNACL" 2>/dev/null || echo 0)"
 
+# Name every index, key/unique/check/exclusion constraint, RLS policy and RLS switch prod has, so
+# step 3 can prove the tolerant restore created them all on dev. Foreign keys are left to step 5.
+# Triggers are not checked: prod's Supabase webhook triggers can never be created on dev.
+OBJ_SELECT="
+  select 'index ' || t.relname || '.' || i.relname
+    from pg_index x
+    join pg_class i     on i.oid = x.indexrelid
+    join pg_class t     on t.oid = x.indrelid
+    join pg_namespace n on n.oid = t.relnamespace
+   where n.nspname = 'public' and t.relkind in ('r', 'p')
+  union
+  select 'constraint ' || t.relname || '.' || c.conname
+    from pg_constraint c
+    join pg_class t     on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+   where n.nspname = 'public' and c.contype in ('p', 'u', 'x', 'c')
+  union
+  select 'policy ' || tablename || '.' || policyname from pg_policies where schemaname = 'public'
+  union
+  select 'row level security on ' || c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relrowsecurity"
+psql "$PROD_DB_URL" -t -A --no-psqlrc -v ON_ERROR_STOP=1 -o "$OBJS" -c "$OBJ_SELECT order by 1;"
+echo "    prod indexes, constraints and policies captured: $(grep -c . "$OBJS" 2>/dev/null || echo 0)"
+
 echo "[2/6] Saving partner sandbox data (snapshot_preserve)…"
 # Partner accounts live only in dev, so the restore below would wipe them. Install/refresh the
 # snapshot_preserve schema, tell it which rows prod has (so it only saves rows created on dev), then
@@ -192,7 +377,11 @@ psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 -c "truncate snapshot_prese
 psql "$PROD_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "copy ($PROD_KEYS_SQL) to stdout" \
   | psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 \
       -c "copy snapshot_preserve.prod_keys (table_name, key) from stdin"
-psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "select * from snapshot_preserve.save();"
+# save() is one statement, so like restore() in step 6 it gets more than the database's 2 minute
+# default. It walks the whole FK graph a few times; with the house test landlord's footprint
+# (about 20,000 rows) it took about 20 seconds on dev on 2026-11-15, so 15 minutes only stops a hung run.
+psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
+  -c "select * from snapshot_preserve.save();"
 
 # Dev-only tables (features migrated on dev before prod) are not in the prod dump, so the restore
 # never drops them, but their FKs into prod tables make Postgres refuse the dump's DROP TABLE for
@@ -211,33 +400,72 @@ FKS_DETACHED=1
 echo "    detached $DETACHED foreign key(s) from dev-only tables (reattached in step 6)"
 
 echo "[3/6] Restoring into DEV (destructive)…"
+# Shut the app out first. Earlier runs set default privileges that grant the API roles ALL on every
+# new table, so each table the dump creates used to be readable and writable by staging, previews
+# and local servers the moment it existed, before its rows, keys and RLS were in. That let app
+# writes break the row count check (failed run of 2026-11-15) and let the anon key read tables
+# with RLS still off. With USAGE on the schema revoked, no API request can touch any table or
+# function in public, and with the default privileges revoked, fresh tables carry no grants at all.
+# Step 4 gives both back after the scrub. Dev's API returns permission errors until then.
+API_LOCKED=1
+psql "$DEV_DB_URL" -q --no-psqlrc -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+revoke usage on schema public from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public revoke all on tables    from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated, service_role;
+alter default privileges for role postgres in schema public revoke all on routines  from anon, authenticated, service_role;
+SQL
+echo "    app roles shut out of DEV's public schema until step 4"
+
 # Tolerant restore: prod's public schema references Supabase system schemas the dev project
 # doesn't have (e.g. supabase_functions webhook triggers). We skip those errors rather than abort,
 # because dev doesn't need them, and list them below so a new kind of error is visible in the log.
-# The row count check that follows is what catches a restore that did not really happen.
+# The checks that follow are what catch a restore that did not really happen.
 ERRLOG="$DUMP.err"
+# Each table's identity before the restore, so the check below can tell a table the restore could
+# not replace (same oid) from one that was replaced and then written to (new oid).
+psql "$DEV_DB_URL" -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1 -o "$DUMP.oids" -c "
+  select c.relname, c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r', 'p');"
+RESTORE_STARTED=1
 psql "$DEV_DB_URL" -q -f "$DUMP" >/dev/null 2>"$ERRLOG" || true
 echo "    restore finished, $(grep -c 'ERROR' "$ERRLOG" 2>/dev/null || echo 0) errors skipped:"
 grep 'ERROR' "$ERRLOG" | sed -E 's/^psql:[^:]+:[0-9]+: //' | sort | uniq -c | sort -rn | head -25 \
   | sed 's/^/      /' || true
 
-# Every table the dump carries data for must now hold exactly that many rows. A table the restore
-# could not drop keeps its old rows (and its COPY fails), so its count will not match. Counts come
-# from the dump itself, which is one consistent snapshot of prod, so live prod writes do not matter.
+# Every table the dump carries data for must have been replaced and hold the dumped rows. Counts
+# come from the dump itself, one consistent snapshot of prod, so live prod writes do not matter.
+#   - A table the restore could not drop keeps its old oid and old rows (its COPY fails): abort.
+#   - A COPY is all or nothing, so one that fails into a fresh table leaves it empty: abort.
+#   - A replaced table with MORE rows was written to after it was replaced: kept, reported.
+#   - A replaced table with FEWER rows is kept only when Postgres's own counters prove the COPY
+#     landed in full (at least the dumped number of rows went in) and enough rows were deleted
+#     afterwards to explain the gap. That is a delete after the restore, not a failed restore.
+# The app is shut out above, so the last two should not happen at all; they cover anything that
+# still writes as postgres. The counters come from pg_stat_user_tables, which other sessions
+# report a few seconds late, so a failed check is retried once after a short wait.
 EXPECTED="$DUMP.counts"
 awk '
   /^COPY public\./ { t = $2; sub(/^public\./, "", t); gsub(/"/, "", t); n = 0; inblk = 1; next }
   inblk && /^\\\.$/ { print t "\t" n; inblk = 0; next }
   inblk { n++ }
 ' "$DUMP" > "$EXPECTED"
-MISMATCH=$({
-  echo "create temp table _expected (relname text, n bigint);"
-  echo "copy _expected from stdin;"
-  cat "$EXPECTED"
-  echo '\.'
-  cat <<'SQL'
-select e.relname, e.n, a.n
+check_row_counts() {
+  {
+    echo "create temp table _expected (relname text, n bigint);"
+    echo "copy _expected from stdin;"
+    cat "$EXPECTED"
+    echo '\.'
+    echo "create temp table _before (relname text, old_oid oid);"
+    echo "copy _before from stdin;"
+    cat "$DUMP.oids"
+    echo '\.'
+    cat <<'SQL'
+select e.relname, e.n, a.n,
+       coalesce(to_regclass(format('public.%I', e.relname))::oid is distinct from b.old_oid, false),
+       coalesce(s.n_tup_ins, 0), coalesce(s.n_tup_del, 0)
 from _expected e
+left join _before b using (relname)
+left join pg_stat_user_tables s on s.relid = to_regclass(format('public.%I', e.relname))::oid
 cross join lateral (
   select (xpath('/row/c/text()',
           query_to_xml(format('select count(*) as c from public.%I', e.relname), false, true, '')
@@ -246,16 +474,63 @@ cross join lateral (
 where a.n is distinct from e.n
 order by e.relname;
 SQL
-} | psql "$DEV_DB_URL" -q -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1)
-if [[ -n "$MISMATCH" ]]; then
+  } | psql "$DEV_DB_URL" -q -t -A -F$'\t' --no-psqlrc -v ON_ERROR_STOP=1
+}
+# Columns: table, prod rows, dev rows, replaced, rows inserted, rows deleted.
+classify_row_counts() {
+  WRITTEN=$(printf '%s\n' "$MISMATCH" | awk -F'\t' 'NF && $4 == "t" && $3 != "" && $3 + 0 > $2 + 0')
+  DELETED=$(printf '%s\n' "$MISMATCH" | awk -F'\t' 'NF && $4 == "t" && $3 != "" && $3 + 0 < $2 + 0 \
+    && $5 + 0 >= $2 + 0 && $6 + 0 >= $2 - $3')
+  BLOCKED=$(printf '%s\n' "$MISMATCH" | awk -F'\t' 'NF && !($4 == "t" && $3 != "" && ($3 + 0 > $2 + 0 \
+    || ($5 + 0 >= $2 + 0 && $6 + 0 >= $2 - $3)))')
+}
+MISMATCH=$(check_row_counts)
+classify_row_counts
+if [[ -n "$BLOCKED" ]]; then
+  echo "    some row counts are off; waiting 15s for Postgres's row counters to catch up, then checking again…"
+  sleep 15
+  MISMATCH=$(check_row_counts)
+  classify_row_counts
+fi
+if [[ -n "$BLOCKED" ]]; then
   echo
-  echo "✗ ABORT: these DEV tables do not match the PROD dump after the restore (table, prod rows, dev rows):"
-  echo "$MISMATCH" | sed 's/^/    /'
-  echo "  DEV was not refreshed. The errors above show what blocked it. If someone wrote to DEV"
-  echo "  during the few minutes of the restore, re-running is enough."
+  echo "✗ ABORT: these DEV tables were not replaced by the PROD dump (table, prod rows, dev rows, replaced, rows inserted, rows deleted):"
+  echo "$BLOCKED" | sed 's/^/    /'
+  echo "  The errors above show what blocked them. DEV now holds a mix of prod and old dev data;"
+  echo "  this run still removes prod Stripe/Documenso ids, re-grants roles, locks functions down and"
+  echo "  puts partner data back before exiting. Fix the blocker and re-run."
   exit 1
 fi
-echo "    row counts match the PROD dump on all $(grep -c . "$EXPECTED") tables"
+if [[ -n "$WRITTEN" ]]; then
+  echo "    written to after the restore replaced them (table, prod rows, dev rows), kept:"
+  echo "$WRITTEN" | cut -f1-3 | sed 's/^/      /'
+fi
+if [[ -n "$DELETED" ]]; then
+  echo "    rows deleted after the restore replaced them (table, prod rows, dev rows), kept:"
+  echo "$DELETED" | cut -f1-3 | sed 's/^/      /'
+fi
+echo "    every dumped table replaced; row counts match the PROD dump on $(grep -c . "$EXPECTED") tables"
+
+# A table can be replaced with the right rows and still miss its primary key, a unique index or
+# its RLS policies, because those come after the data in the dump and the restore swallows their
+# errors (for example, an extra row that duplicates a key makes ADD CONSTRAINT fail). App upserts
+# then fail with "no unique or exclusion constraint", or a table is left readable without RLS.
+# So every index, constraint, policy and RLS switch prod has must exist on dev by name.
+MISSING_OBJS=$({
+  echo "create temp table _prod_objs (obj text);"
+  echo "copy _prod_objs from stdin;"
+  cat "$OBJS"
+  echo '\.'
+  echo "select obj from _prod_objs except ($OBJ_SELECT) order by 1;"
+} | psql "$DEV_DB_URL" -q -t -A --no-psqlrc -v ON_ERROR_STOP=1)
+if [[ -n "$MISSING_OBJS" ]]; then
+  echo
+  echo "✗ ABORT: $(printf '%s\n' "$MISSING_OBJS" | grep -c .) PROD index(es), constraint(s) or policy(ies) are missing on DEV after the restore:"
+  printf '%s\n' "$MISSING_OBJS" | head -40 | sed 's/^/    /'
+  echo "  The errors above show why. This run still cleans up before exiting. Fix the cause and re-run."
+  exit 1
+fi
+echo "    every PROD index, constraint, policy and RLS switch present on DEV ($(grep -c . "$OBJS"))"
 
 # Sanity check: a successful clone should have core tables populated.
 USERS=$(psql "$DEV_DB_URL" -t -A -c "select count(*) from users" 2>/dev/null || echo 0)
@@ -265,20 +540,14 @@ fi
 echo "    dev users restored: $USERS"
 
 echo "[4/6] Re-granting Supabase role privileges + stamping snapshot date…"
-# The dump used --no-privileges and --clean dropped the originals, so the PostgREST roles
-# (anon/authenticated/service_role) lose table access after a restore — which makes the app's
-# API return permission errors (500s). Re-grant Supabase's standard privileges, set default
-# privileges for future objects, then reload the API schema cache.
+# The dump used --no-privileges and --clean dropped the originals, and step 3 shut the PostgREST
+# roles (anon/authenticated/service_role) out of the schema, so the app's API returns permission
+# errors (500s) until now. Strip prod's Stripe/Documenso ids, then re-grant Supabase's standard
+# privileges, set default privileges for future objects, and reload the API schema cache.
 GRANTS_OPENED=1
+grant_roles_and_scrub
+API_LOCKED=0
 psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
-grant usage on schema public to anon, authenticated, service_role;
-grant all on all tables    in schema public to anon, authenticated, service_role;
-grant all on all sequences in schema public to anon, authenticated, service_role;
-grant all on all routines  in schema public to anon, authenticated, service_role;
-alter default privileges for role postgres in schema public grant all on tables    to anon, authenticated, service_role;
-alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
-alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
-
 create table if not exists app_metadata (
   key text primary key,
   value text,
@@ -287,69 +556,6 @@ create table if not exists app_metadata (
 insert into app_metadata (key, value, updated_at)
 values ('snapshot_taken_at', now()::text, now())
 on conflict (key) do update set value = excluded.value, updated_at = now();
-
--- Prod holds live-mode Stripe ids. Dev and staging use sandbox keys, which reject them, so strip
--- every one (customer, payment method, invoice, invoice item, dispute, webhook event). Rows whose
--- Stripe id is the whole point (payment methods, disputes, events) are deleted rather than nulled.
--- This runs before step 6, so partner sandbox rows put back there keep their own sandbox ids.
--- Guarded per table so a snapshot still works before the billing migration reaches prod.
-do $$
-begin
-  if to_regclass('public.charges') is not null then
-    update public.charges set stripe_invoice_item_id = null where stripe_invoice_item_id is not null;
-  end if;
-  if to_regclass('public.billing_invoices') is not null then
-    update public.billing_invoices
-       set stripe_invoice_id = null, hosted_invoice_url = null, invoice_pdf_url = null
-     where stripe_invoice_id is not null or hosted_invoice_url is not null or invoice_pdf_url is not null;
-  end if;
-  if to_regclass('public.billing_accounts') is not null then
-    update public.billing_accounts set stripe_customer_id = null where stripe_customer_id is not null;
-  end if;
-  if to_regclass('public.billing_disputes') is not null then delete from public.billing_disputes; end if;
-  -- Autopay points at payment methods with ON DELETE RESTRICT (202611050002), so its records go
-  -- first, or deleting the methods fails and rolls back this whole scrub (review of 2026-11-07).
-  if to_regclass('public.autopay_authorizations') is not null then delete from public.autopay_authorizations; end if;
-  if to_regclass('public.billing_invoices') is not null
-     and exists (select 1 from information_schema.columns
-                  where table_schema = 'public' and table_name = 'billing_invoices' and column_name = 'autopay_payment_method_id') then
-    update public.billing_invoices set autopay_payment_method_id = null where autopay_payment_method_id is not null;
-  end if;
-  if to_regclass('public.payment_methods') is not null then delete from public.payment_methods; end if;
-  if to_regclass('public.stripe_webhook_events') is not null then delete from public.stripe_webhook_events; end if;
-  -- Documenso: every environment shares ONE Documenso team (Teams plan), only kept
-  -- apart by folder and a [TEST] title prefix, and a team API key can act on any
-  -- document in it. So no prod envelope id may survive here: dev code holding one
-  -- could cancel a real landlord's copy. Agreement versions go back to drafts
-  -- without a template (an admin reconnects one in dev to test signing), and a copy
-  -- in progress, master or Exhibit A amendment, is voided. Signed documents keep
-  -- their record; their PDFs live in prod's bucket.
-  if to_regclass('public.agreement_versions') is not null then
-    update public.landlord_agreements
-       set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
-     where status in ('not_sent', 'sent') and provider_envelope_id is not null;
-    update public.landlord_agreements set provider_envelope_id = null where provider_envelope_id is not null;
-    if to_regclass('public.agreement_amendments') is not null then
-      update public.agreement_amendments
-         set status = 'voided', ended_reason = 'snapshot: prod Documenso copy', ended_at = now()
-       where status in ('not_sent', 'sent') and provider_envelope_id is not null;
-      update public.agreement_amendments set provider_envelope_id = null where provider_envelope_id is not null;
-      if to_regclass('public.agreement_coverage') is not null then
-        update public.agreement_coverage set status = 'released'
-         where status = 'proposed'
-           and amendment_id in (select id from public.agreement_amendments where ended_reason = 'snapshot: prod Documenso copy');
-      end if;
-    end if;
-    update public.agreement_versions
-       set provider_template_id = null, provider_recipient_id = null, provider_title_field_id = null,
-           provider_editor_url = null, fields_checked_at = null,
-           status = case when status = 'live' then 'retired' else status end
-     where provider_template_id is not null or status = 'live';
-    update public.agreement_versions set status = 'draft' where status = 'ready';
-  end if;
-end $$;
-
-notify pgrst, 'reload schema';
 SQL
 
 # The blanket routine grant above reopened every function to anon and authenticated. Put back
@@ -367,6 +573,7 @@ if [[ -n "$OPEN_FNS" ]]; then
   exit 1
 fi
 GRANTS_OPENED=0
+STEP4_DONE=1
 echo "    function grants copied from prod; no definer function left public"
 
 echo "[5/6] Reconciling foreign keys against PROD…"
@@ -475,6 +682,7 @@ echo "[6/6] Putting partner sandbox data back…"
 # so it gets a longer timeout than the database's 2 minute default; 15 minutes still fails a hung run.
 psql "$DEV_DB_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "set statement_timeout = '15min'" \
   -c "select * from snapshot_preserve.restore();"
+PRESERVE_RESTORED=1
 
 # Put back the dev-only FKs detached in step 2. Last, so partner rows they point at are back first.
 REATTACH=$(psql "$DEV_DB_URL" -t -A -F' ' --no-psqlrc -v ON_ERROR_STOP=1 \

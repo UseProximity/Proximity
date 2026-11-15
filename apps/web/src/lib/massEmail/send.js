@@ -80,7 +80,7 @@ export async function loadAttachments(db, version, { read = readAgreementFile } 
   for (const a of Array.isArray(version.attachments) ? version.attachments : []) {
     if (a?.kind === "mrec") {
       const form = await getMrecForm(db);
-      if (!form) throw new MassEmailError("no_mrec_form", "Upload the MREC form (Billing > Landlords and agreements) before sending this email.");
+      if (!form) throw new MassEmailError("no_mrec_form", "Upload the MREC form (Billing > Landlords and agreements > Agreement versions) before sending this email.");
       out.push({ filename: MREC_FORM_FILENAME, content: Buffer.from(await read(form.key)), contentType: "application/pdf" });
     } else if (a?.kind === "file" && a.key) {
       out.push({ filename: a.fileName || "attachment.pdf", content: Buffer.from(await read(a.key)), contentType: "application/pdf" });

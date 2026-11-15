@@ -85,7 +85,7 @@ export async function DELETE(request) {
       .single();
     if (fetchErr || !review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
 
-    await updateAsUser(supabase, { userId: user.id, table: "listing_reviews", data: { deleted_at: new Date().toISOString() }, rowId: reviewId });
+    await updateAsUser(supabase, { userId: user.id, table: "listing_reviews", data: { deleted_at: new Date().toISOString(), removed_by: "admin" }, rowId: reviewId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

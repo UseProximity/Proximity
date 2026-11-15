@@ -7,7 +7,18 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 // same tab. The default tab is left out of the URL. Unknown values fall back.
 
 export function useUrlTab(allowed, fallback) {
-  const [tab, setTabState] = useState(fallback);
+  /*
+   * Read ?tab= on the first render, not after it. Starting on the fallback and
+   * switching in an effect mounted the first tab, which fetched its data only
+   * to throw it away (Home's queue cards all link with ?tab=). Admin views only
+   * render in the browser, once the shell has read the address; the effect
+   * below still covers a server render.
+   */
+  const [tab, setTabState] = useState(() => {
+    if (typeof window === "undefined") return fallback;
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    return wanted && allowed.includes(wanted) ? wanted : fallback;
+  });
   const allowedKey = allowed.join("|");
 
   useEffect(() => {
@@ -25,6 +36,16 @@ export function useUrlTab(allowed, fallback) {
   }, [fallback]);
 
   return [tab, setTab];
+}
+
+// ─── Moving around the dashboard ──────────────────────────────────────────────
+// The shell (app/dashboard/admin/page.js) provides goTo(path, params) so any
+// view can open another page, or a person's or listing's record, in place.
+
+export const AdminNavContext = createContext(null);
+
+export function useAdminNav() {
+  return useContext(AdminNavContext);
 }
 
 // ─── Pending-changes store ────────────────────────────────────────────────────

@@ -27,9 +27,10 @@ export default function ViewAsMenu({ isProd }) {
     if (!q || q.length < 2) { setResults([]); return; }
     timerRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/searchUsers?q=${encodeURIComponent(q)}`);
+        // No x-db-target: View as always works on this site's own database.
+        const res = await fetch(`/api/admin/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
-        setResults(Array.isArray(data) ? data.slice(0, 6) : []);
+        setResults(Array.isArray(data?.people) ? data.people.slice(0, 6) : []);
       } catch {
         setResults([]);
       }
