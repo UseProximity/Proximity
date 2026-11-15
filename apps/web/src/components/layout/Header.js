@@ -139,15 +139,16 @@ export function Header({ session }) {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
-      <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
+      <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-4 sm:px-8 md:px-12">
         {/* ── Left: Logo + Nav ── */}
         <div
           className={`flex items-center gap-10 flex-shrink-0 ${
-            searchOpen ? "hidden md:flex" : ""
+            searchOpen ? "hidden xl:flex" : ""
           }`}
         >
-          <Link href="/" className="flex items-center gap-5 flex-shrink-0">
-            <div className="h-[56px] w-auto">
+          {/* Below 360px the brand tightens so logo, wordmark and three icon buttons fit a 320px phone. */}
+          <Link href="/" className="flex items-center gap-5 max-[359px]:gap-2 flex-shrink-0">
+            <div className="h-[56px] max-[359px]:h-11 w-auto">
               <Image
                 src={Logo}
                 alt="Proximity"
@@ -157,11 +158,11 @@ export function Header({ session }) {
                 priority
               />
             </div>
-            <span className="text-[26px] font-bold text-gray-900 tracking-tight">
+            <span className="text-[26px] max-[359px]:text-[22px] font-bold text-gray-900 tracking-tight">
               Proximity
             </span>
           </Link>
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden xl:flex items-center gap-1">
             {primaryLinks.map(({ href, label }) => (
               <Link
                 key={href}
@@ -221,7 +222,7 @@ export function Header({ session }) {
         {searchOpen && (
           <form
             onSubmit={submitSearch}
-            className="md:hidden absolute left-8 right-8 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
+            className="xl:hidden absolute left-4 right-4 sm:left-8 sm:right-8 md:left-12 md:right-12 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
           >
             <AddressSearchInput
               ref={inputRef}
@@ -256,7 +257,7 @@ export function Header({ session }) {
                 />
                 <form
                   onSubmit={submitSearch}
-                  className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
+                  className="hidden xl:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
                 >
                   <AddressSearchInput
                     ref={inputRef}
@@ -289,7 +290,7 @@ export function Header({ session }) {
           </div>
 
           {/* Auth buttons — desktop only */}
-          <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
+          <div className="hidden xl:flex items-center gap-2.5 flex-shrink-0">
             {session?.user?.id ? (
               <>
                 <button
@@ -364,7 +365,7 @@ export function Header({ session }) {
             <button
               type="button"
               onClick={openInbox}
-              className="md:hidden relative flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+              className="xl:hidden relative flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
               aria-label={
                 unreadCount > 0
                   ? `Messages, ${unreadCount} unread`
@@ -384,7 +385,7 @@ export function Header({ session }) {
           {!searchOpen && (
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="md:hidden flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+              className="xl:hidden flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? (
@@ -399,7 +400,7 @@ export function Header({ session }) {
 
       {/* Mobile menu — absolute overlay so it doesn't push content down */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 z-50 border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
+        <div className="xl:hidden absolute top-full left-0 right-0 z-50 max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
           {primaryLinks.map(({ href, label }) => (
             <Link
               key={href}
