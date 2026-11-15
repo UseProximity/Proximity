@@ -90,6 +90,11 @@ export function decideSyncChange(c, { snapshot }) {
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
 const MAX_NEW_UNITS = 4;
+// A price moving this little is a landlord repricing, not a misread
+// (Wyatt, 2026-11-15): The Koken and The Koken on Ohio cut every plan by
+// $20 to $60 the same week and both were skipped, leaving students on the
+// old prices. Small moves still apply; they just do not count as churn.
+const SMALL_PRICE_MOVE = 0.05;
 
 /*
  * The churn guard. More than a fifth of the listing's leases changing at once
@@ -109,8 +114,18 @@ const MAX_NEW_UNITS = 4;
  * the 11/4 Coronado Place sync added every floor plan of Lindell Tower East,
  * another building on the same website). A unit added as a draft changes
  * nothing students see and is no churn (The Shelby's twelve waitlisted plans
- * would otherwise skip every run after).
+ * would otherwise skip every run after). A price that moves 5% or less is a
+ * repricing, not a misread, and is no churn either; a lease appearing or
+ * vanishing always counts.
  */
+/* True when a change only moves a known rent by SMALL_PRICE_MOVE or less. */
+export function smallPriceMove(c) {
+  const before = Number(c.old?.rent);
+  const after = Number(c.new?.rent);
+  if (!(before > 0) || !(after > 0)) return false;
+  return Math.abs(after - before) / before <= SMALL_PRICE_MOVE;
+}
+
 export function churnCheck({ changes, existingLeases, existingUnits, policyRun = true, portalPriced = false }) {
   const counted = changes.filter((c) => !c.detail?.fromUnitPage && (!policyRun || c.verdict?.apply));
   const goesLive = (c) => c.kind === "unit_new" && !c.detail?.draft;
@@ -118,8 +133,10 @@ export function churnCheck({ changes, existingLeases, existingUnits, policyRun =
     ? 0
     : counted.reduce((n, c) => {
         if (goesLive(c)) return n + Math.max(1, (c.detail?.offers ?? []).length);
-        if (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind)) return n + 1;
-        if (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        if (c.kind === "rent_change") return smallPriceMove(c) ? n : n + 1;
+        if (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind)) return n + 1;
+        if (c.kind === "lease_updated" && /\b(available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        if (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? "")) return smallPriceMove(c) ? n : n + 1;
         return n;
       }, 0);
   const newUnits = counted.filter(goesLive).length;
