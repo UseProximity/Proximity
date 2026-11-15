@@ -116,3 +116,20 @@ test("small price moves and the rent basis", () => {
   const terms = { kind: "lease_updated", field: "leaseTermMonths", old: { leaseTermMonths: [12] }, new: { leaseTermMonths: [12, 6] }, ...apply };
   assert.equal(churnCheck({ changes: [terms, terms, terms], existingLeases: 10, existingUnits: 5 }), null);
 });
+
+test("a small move is only small for a repricing, not another building", () => {
+  const apply = { verdict: { apply: true } };
+  const move = (from, to, extra = {}) => ({ kind: "rent_change", field: "rent", old: { rent: from }, new: { rent: to }, ...apply, ...extra });
+  const base = { existingLeases: 10, existingUnits: 5 };
+  // All cuts: a repricing, no churn.
+  assert.equal(churnCheck({ changes: [move(1000, 980), move(1200, 1170), move(1500, 1460)], ...base }), null);
+  // Cuts and raises in one run: each counts.
+  assert.ok(churnCheck({ changes: [move(1000, 980), move(1200, 1230), move(1500, 1460)], ...base }));
+  // The price now covers other apartment numbers: counts.
+  const moved = move(1000, 980, { field: "rent,apartments", old: { rent: 1000, apartments: "Apt 101" }, new: { rent: 980, apartments: "Apt 7B" } });
+  assert.equal(smallPriceMove(moved), false);
+  assert.ok(churnCheck({ changes: [moved, moved, moved], ...base }));
+  // A date or length riding along does not stop a cut being small.
+  const withDate = move(1000, 980, { field: "rent,availableFrom", old: { rent: 1000, availableFrom: null }, new: { rent: 980, availableFrom: "2027-08-01" } });
+  assert.equal(smallPriceMove(withDate), true);
+});

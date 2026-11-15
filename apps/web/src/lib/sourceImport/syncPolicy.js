@@ -119,6 +119,14 @@ const SMALL_PRICE_MOVE = 0.05;
  * would otherwise skip every run after). A price that moves 5% or less is a
  * repricing, not a misread, and is no churn either; a lease appearing or
  * vanishing always counts.
+ *
+ * The small-move pass has two conditions, because another building on the
+ * same website (the Coronado/Lindell mix-up) can land within 5% after the
+ * cheapest-to-cheapest pairing (Wyatt, 2026-11-15):
+ *   same apartments  the change does not also move which apartment numbers
+ *                    the price covers (another building brings its own)
+ *   one direction    every price move in the run goes the same way; a real
+ *                    repricing is all cuts or all raises, a mix-up is both
  */
 /*
  * True when a change only moves a known rent by SMALL_PRICE_MOVE or less. A
@@ -127,25 +135,38 @@ const SMALL_PRICE_MOVE = 0.05;
  */
 export function smallPriceMove(c) {
   if (c.old?.rentIsPerPerson !== undefined || c.new?.rentIsPerPerson !== undefined) return false;
+  // The apartments this price covers changed too: perhaps another building.
+  if (c.new?.apartments !== undefined) return false;
   const before = Number(c.old?.rent);
   const after = Number(c.new?.rent);
   if (!(before > 0) || !(after > 0)) return false;
   return Math.abs(after - before) / before <= SMALL_PRICE_MOVE;
 }
 
+/* -1, 0 or 1: which way a change moves a known rent. */
+const priceDirection = (c) => {
+  const before = Number(c.old?.rent);
+  const after = Number(c.new?.rent);
+  return before > 0 && after > 0 ? Math.sign(after - before) : 0;
+};
+
 export function churnCheck({ changes, existingLeases, existingUnits, policyRun = true, portalPriced = false }) {
   const counted = changes.filter((c) => !c.detail?.fromUnitPage && (!policyRun || c.verdict?.apply));
   const goesLive = (c) => c.kind === "unit_new" && !c.detail?.draft;
+  const movesRent = (c) => c.kind === "rent_change" || (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? ""));
+  // Prices going both up and down in one run: no move is small.
+  const directions = new Set(counted.filter(movesRent).map(priceDirection).filter(Boolean));
+  const small = (c) => directions.size < 2 && smallPriceMove(c);
   const touched = portalPriced
     ? 0
     : counted.reduce((n, c) => {
         if (goesLive(c)) return n + Math.max(1, (c.detail?.offers ?? []).length);
-        if (c.kind === "rent_change") return smallPriceMove(c) ? n : n + 1;
+        if (c.kind === "rent_change") return small(c) ? n : n + 1;
         if (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind)) return n + 1;
         // Field names are the change's keys (planLeaseUpdate): rent,
         // rentIsPerPerson, leaseTermMonths, availableFrom, apartments.
         if (c.kind === "lease_updated" && /\b(availableFrom|rentIsPerPerson|unavailable)\b/.test(c.field ?? "")) return n + 1;
-        if (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? "")) return smallPriceMove(c) ? n : n + 1;
+        if (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? "")) return small(c) ? n : n + 1;
         return n;
       }, 0);
   const newUnits = counted.filter(goesLive).length;
