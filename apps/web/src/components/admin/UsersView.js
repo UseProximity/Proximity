@@ -87,6 +87,7 @@ export default function UsersView({ data, search, onOpenGear, fixedRole = null }
               {u.deleted_at && <Badge color="red">deleted</Badge>}
               {!u.profile_complete && <Badge color="amber" title="Profile completion modal still pending">incomplete</Badge>}
               <span className="hidden sm:block text-[11px] text-gray-400 whitespace-nowrap">joined {fmtDate(u.created_at)}</span>
+              <PersonLink id={u.id} className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50">Open record</PersonLink>
               <span onClick={(e) => e.stopPropagation()}>
                 <GearButton onClick={() => onOpenGear("users", u)} />
               </span>
