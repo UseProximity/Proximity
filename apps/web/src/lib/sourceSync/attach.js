@@ -9,7 +9,7 @@
  * listing_source_monitors can never disagree about what is being monitored.
  */
 import supabase from "@/lib/supabase";
-import { classifySourceUrl } from "./classify.js";
+import { classifySourceUrl, isNeverSourceHost } from "./classify.js";
 
 /*
  * Returns { ok: true, kind, url } or { ok: false, reason }.
@@ -20,6 +20,12 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
 
   const classified = classifySourceUrl(rawUrl);
   if (!classified) return { ok: false, reason: "bad_url" };
+  // A Wikipedia article or a news story is never what a listing is synced
+  // against, whichever path tried to attach it.
+  if (isNeverSourceHost(classified.host)) {
+    console.warn(`[source-sync] refused ${classified.host} as the source of listing ${listingId}`);
+    return { ok: false, reason: "not_a_property_site" };
+  }
 
   /*
    * The page the landlord actually pasted, when it was a company's list of
@@ -32,7 +38,8 @@ export async function attachSourceUrl({ listingId, rawUrl, indexUrl = null, user
    * page says out loud. Nothing wrote index_url until now, so every monitor ran
    * without that check.
    */
-  const classifiedIndex = indexUrl ? classifySourceUrl(indexUrl) : null;
+  const index = indexUrl ? classifySourceUrl(indexUrl) : null;
+  const classifiedIndex = index && !isNeverSourceHost(index.host) ? index : null;
 
   // Refuse subleases outright rather than creating a monitor the cron will skip. The
   // only page that exists for a sublet room is the building's, and it is authoritative

@@ -16,6 +16,7 @@ import { lookup as lookupCallback } from "node:dns";
 import net from "node:net";
 import { Agent, fetch } from "undici";
 import { firecrawlConfigured, firecrawlRequest } from "@/lib/firecrawl";
+import { isNeverSourceHost } from "@/lib/sourceSync/classify";
 
 export const FETCH_UA = "ProximityListingBot/1.0 (+https://useproximity.org)";
 const MAX_BYTES = 2 * 1024 * 1024; // 2MB per page
@@ -1038,11 +1039,17 @@ export function findPropertyOwnSite(html, pageUrl, propertyName) {
       continue;
     }
     if (!host || host === pageHost) continue;
-    // Compare the bare name: no www, no dots, no top-level domain.
-    const bare = host.replace(/^www\./, "").replace(/\.[a-z.]+$/, "").replace(/[^a-z0-9]/g, "");
+    if (isNeverSourceHost(host)) continue;
+    // Compare the bare name: no www, no top-level domain, no dots. Only the
+    // top-level domain is cut: cutting from the first dot left "en" of
+    // en.wikipedia.org, which "rent" contains, so a room listing's link to a
+    // Wikipedia article was taken for the property's own website (2026-11-15).
+    const bare = host.replace(/^www\./, "").replace(/\.[a-z]+$/, "").replace(/[^a-z0-9]/g, "");
     if (!bare) continue;
     if (
-      (condensed.length >= 5 && (bare.includes(condensed) || condensed.includes(bare))) ||
+      // A host that the name merely contains has to be long enough to mean
+      // something; a short one ("go", "en", "apt") is inside half of all names.
+      (condensed.length >= 5 && (bare.includes(condensed) || (bare.length >= 6 && condensed.includes(bare)))) ||
       words.some((w) => bare.includes(w))
     ) {
       return link.url;
