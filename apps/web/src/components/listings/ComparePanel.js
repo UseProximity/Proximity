@@ -345,12 +345,12 @@ function ListSection({ title, a, b }) {
   const label = `${ROW} px-4 max-lg:px-3 text-xs text-black`;
   return (
     <>
-      <div className={`${ROW} col-span-3 justify-between gap-3 px-4`}>
+      <div className={`${ROW} col-span-3 justify-between gap-3 px-4 max-lg:px-3`}>
         <h3 className="text-base font-bold text-black">{title}</h3>
         {summary && <span className="text-xs font-medium text-red-700">{summary}</span>}
       </div>
       {!a.length && !b.length ? (
-        <p className={`${ROW} col-span-3 px-4 text-sm text-gray-500`}>Not listed</p>
+        <p className={`${ROW} col-span-3 px-4 max-lg:px-3 text-sm text-gray-500`}>Not listed</p>
       ) : (
         <>
           {both.length > 0 && (
