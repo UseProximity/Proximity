@@ -10,7 +10,7 @@ import { readAgreementFile } from "./agreementFiles.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { agreementState } from "./agreements.js";
 import { displayAddress, loadLandlordProperties } from "./coverage.js";
-import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod } from "./payers.js";
+import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod, staleTakeoverLandlords } from "./payers.js";
 import { activePayerLink } from "./payerLinks.js";
 import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
 
@@ -189,7 +189,8 @@ export async function sendPayerRevoked({ landlordId, ended, tookOver = false }) 
 /*
  * A landlord with an authorized signer signed their own agreement: the signer is
  * removed and told. Called after every signature of a landlord's own agreement
- * and when their Billing page loads, so a follow-up that failed is finished then.
+ * (the webhook and the popup's sync); a follow-up that failed is finished by the
+ * daily billing-review-clock cron (finishStaleTakeovers).
  * Returns whether the signer was removed.
  */
 export async function finishTakeover(landlordId, documenso) {
@@ -197,4 +198,17 @@ export async function finishTakeover(landlordId, documenso) {
   if (!ended) return false;
   await sendPayerRevoked({ landlordId, ended, tookOver: true }).catch((err) => console.error("billing: revoked email failed", err?.message));
   return true;
+}
+
+// The daily safety net: finish every takeover whose follow-up never ran.
+export async function finishStaleTakeovers(documenso) {
+  let finished = 0;
+  for (const landlordId of await staleTakeoverLandlords(supabase)) {
+    try {
+      if (await finishTakeover(landlordId, documenso)) finished += 1;
+    } catch (err) {
+      console.error("billing: finishing a takeover failed", err?.message);
+    }
+  }
+  return { finished };
 }

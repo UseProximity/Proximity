@@ -58,6 +58,8 @@ export function PriceRangeSlider({
   return (
     <>
       <div className={`flex items-end gap-[2px] ${barsClass}`}>
+        {/* Each bar's height is an inline style: a runtime value from the
+            listing counts, which Tailwind classes cannot express. */}
         {counts.map((count, i) => {
           const start = PRICE_MIN + i * BUCKET;
           const inRange = start < high && start + BUCKET > low;
