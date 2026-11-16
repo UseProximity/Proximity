@@ -96,12 +96,18 @@ export function money(n) {
   return "$" + v.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
 }
 
-/* "Oct 8, 2026" in St. Louis time. */
+/*
+ * "Oct 8, 2026" in St. Louis time. A plain date ("2027-01-01", a move-in date
+ * or a valid-until) is a calendar day, not a moment: read as a moment it is
+ * midnight UTC, which is the evening before in St. Louis, and every such date
+ * came out a day early (a Jan 1 move-in read "Dec 31").
+ */
 export function shortDate(value) {
   if (!value) return null;
+  const dateOnly = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: dateOnly ? "UTC" : "America/Chicago" });
 }
 
 /* Today's date (YYYY-MM-DD) in St. Louis, for validity windows. */
