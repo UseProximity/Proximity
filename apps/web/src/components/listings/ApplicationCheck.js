@@ -77,7 +77,8 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
 
   return (
     <div ref={barRef} className="sticky top-0 z-40 border-b border-red-100 bg-red-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+      {/* pr-16 keeps the text and buttons clear of the popup's round × at top right. */}
+      <div className="mx-auto flex max-w-7xl flex-col gap-2.5 py-3 pl-4 pr-16 sm:flex-row sm:items-center sm:pl-6">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
           <Pen className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
           <div className="min-w-0">
