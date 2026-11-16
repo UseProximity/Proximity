@@ -11,10 +11,12 @@ import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
 import StudentTours from "@/components/proxy/StudentTours";
 import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
+import { listingHref, openListingPageOnPhone } from "@/lib/listings/listingLink";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 
 function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
+  const router = useRouter();
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
   const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
@@ -56,6 +58,7 @@ function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
         <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100 flex-wrap">
           <Link
             href={`/browse?listing=${listingId}`}
+            onClick={(e) => openListingPageOnPhone(e, router, listingId)}
             className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             View
@@ -400,6 +403,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
 
 function ListingCard({ listing, badge }) {
   const pathname = usePathname();
+  const router = useRouter();
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
   const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
@@ -427,7 +431,7 @@ function ListingCard({ listing, badge }) {
   const imageCount = listing.images?.length || 0;
 
   return (
-    <Link href={`${pathname}?listing=${listing._id}`} className="group block">
+    <Link href={`${pathname}?listing=${listing._id}`} onClick={(e) => openListingPageOnPhone(e, router, listing._id)} className="group block">
       <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
         <div className="relative">
           {imageUrl ? (
@@ -923,7 +927,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
                     {/* The same card as the main page and browse grid (Wyatt, 2026-10-27). */}
                     {contactedVisible.map((listing) => (
-                      <BrowseCard key={listing._id} listing={listing} session={session} onCardClick={(id) => router.push(`${window.location.pathname}?listing=${id}`)} />
+                      <BrowseCard key={listing._id} listing={listing} session={session} onCardClick={(id) => router.push(listingHref(id, window.location.pathname))} />
                     ))}
                   </div>
                   {contactedPages > 1 && (

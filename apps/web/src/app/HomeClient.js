@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { listingHref } from "@/lib/listings/listingLink";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -502,7 +503,7 @@ function RentalCard({ listing, index, isInView, onSelect = null }) {
       <div
         onClick={() => {
           onSelect?.();
-          router.push(`/?listing=${listing._id}`);
+          router.push(listingHref(listing._id, "/"));
         }}
         className="group block cursor-pointer relative"
       >

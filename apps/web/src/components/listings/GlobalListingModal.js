@@ -27,6 +27,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Eye, MapPin } from "lucide-react";
 import ModalListing from "@/components/listings/ModalListing";
+import { isPhone } from "@/lib/listings/listingLink";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import { PublishButton } from "@/components/listings/editor/DraftControls";
 
@@ -89,8 +90,6 @@ function PreviewStrip({ listing, onPublished }) {
   );
 }
 
-// True below 768px, the width where browse also opens the full listing page.
-const isPhone = () => window.matchMedia("(max-width: 767px)").matches;
 const noSubscribe = () => () => {};
 
 function GlobalListingModalInner() {
