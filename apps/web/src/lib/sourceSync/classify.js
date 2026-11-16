@@ -52,6 +52,42 @@ export function isPortalHost(host) {
 }
 
 /*
+ * Sites that are never a property's own page: encyclopedias, maps, news,
+ * reviews, social networks, schools and government. A landlord's page often
+ * links to one (a neighbourhood's Wikipedia article, a news story about the
+ * street), and nothing may adopt it as the listing's source, follow it as the
+ * property's website, or sync the listing against it (2026-11-15: a Weebly
+ * room listing linked to Wikipedia's "The Hill" article, which became its
+ * source and its knowledge read).
+ */
+const NEVER_SOURCE_DOMAINS = [
+  "wikipedia.org", "wikimedia.org", "wikidata.org", "wiktionary.org", "wikivoyage.org",
+  "wikitravel.org", "wikihow.com", "fandom.com", "britannica.com",
+  "google.com", "goo.gl", "apple.com", "bing.com", "openstreetmap.org", "mapquest.com",
+  "yelp.com", "nextdoor.com", "tripadvisor.com", "niche.com", "areavibes.com",
+  "walkscore.com", "neighborhoodscout.com", "bestplaces.net", "city-data.com",
+  "instagram.com", "twitter.com", "x.com", "linkedin.com", "youtube.com", "youtu.be",
+  "tiktok.com", "pinterest.com", "reddit.com", "medium.com",
+  "stltoday.com", "ksdk.com", "kmov.com", "fox2now.com", "stlpublicradio.org",
+  "explorestlouis.com",
+];
+
+export function isNeverSourceHost(host) {
+  const h = String(host ?? "").toLowerCase().replace(/^www\./, "");
+  if (!h) return false;
+  if (/\.(gov|edu|mil)$/.test(h)) return true;
+  return NEVER_SOURCE_DOMAINS.includes(registrableDomain(h));
+}
+
+export function isNeverSourceUrl(url) {
+  try {
+    return isNeverSourceHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/*
  * Returns { url, host, kind } or null when the URL is unusable.
  * kind is "portal" or "own_site", the values listings.source_kind accepts.
  */

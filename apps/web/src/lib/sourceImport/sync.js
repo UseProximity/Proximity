@@ -24,7 +24,7 @@
  */
 import supabase from "@/lib/supabase";
 import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
-import { sourceKindEnabled } from "@/lib/sourceSync/classify";
+import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
 import { nextSundayCheckAt } from "./readers/portalWalkParse.js";
 import { applySnapshot } from "./apply.js";
@@ -80,7 +80,7 @@ export async function ensureMonitors() {
     .not("source_url", "is", null)
     .is("deleted_at", null)
     .not("published_at", "is", null);
-  const missing = (rows ?? []).filter((l) => !(l.listing_source_monitors ?? []).length);
+  const missing = (rows ?? []).filter((l) => !(l.listing_source_monitors ?? []).length && !isNeverSourceUrl(l.source_url));
   if (!missing.length) return 0;
   const { error } = await supabase.from("listing_source_monitors").upsert(
     missing.map((l) => ({ listing_id: l.id, source_url: l.source_url, source_kind: l.source_kind ?? "own_site", enabled: true, auto_apply: true })),
