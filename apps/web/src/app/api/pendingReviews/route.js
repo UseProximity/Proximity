@@ -136,7 +136,7 @@ export async function DELETE(request) {
     }
     const { error: deleteError } = await supabase
       .from("listing_reviews")
-      .update({ deleted_at: new Date().toISOString() })
+      .update({ deleted_at: new Date().toISOString(), removed_by: "landlord" })
       .eq("id", reviewId)
       .eq("legitimacy", false);
     if (deleteError) {

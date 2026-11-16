@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-15T05:16:26.216Z",
-  "count": 209,
+  "_generated": "2026-11-16T23:20:50.273Z",
+  "count": 219,
   "components": [
     {
       "name": "ErrorReporter",
@@ -69,6 +69,16 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "GlobalSearch",
+      "file": "src/components/admin/GlobalSearch.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HomeView",
+      "file": "src/components/admin/HomeView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ImageManagerPanel",
       "file": "src/components/admin/ImageManagerPanel.js",
       "description": "No description. Run generate after adding a description above."
@@ -84,8 +94,18 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "RecordLink",
+      "file": "src/components/admin/RecordLink.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ReferenceView",
       "file": "src/components/admin/ReferenceView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ReferralsView",
+      "file": "src/components/admin/ReferralsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -151,6 +171,11 @@
     {
       "name": "AgreementsPanel",
       "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingOverview",
+      "file": "src/components/admin/billing/BillingOverview.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -229,6 +254,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ListPage",
+      "file": "src/components/admin/lists/ListPage.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "EmailEditor",
       "file": "src/components/admin/massEmail/EmailEditor.js",
       "description": "No description. Run generate after adding a description above."
@@ -251,6 +281,26 @@
     {
       "name": "shared",
       "file": "src/components/admin/massEmail/shared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListingRecord",
+      "file": "src/components/admin/records/ListingRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NotesPanel",
+      "file": "src/components/admin/records/NotesPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PersonRecord",
+      "file": "src/components/admin/records/PersonRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/records/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

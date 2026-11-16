@@ -14,7 +14,7 @@
  *
  * Accepted requests show "Upload their version": it posts to the agreement
  * versions route with landlordId and changeRequestId, and the version is then
- * connected, checked and made live on the "Landlords and agreements" tab
+ * connected, checked and made live on the "Agreement versions" tab
  * (`onOpenAgreements` switches to it).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -95,7 +95,7 @@ function LandlordVersionUpload({ request, busy, run, onOpenAgreements }) {
   if (done) {
     return (
       <div className="rounded-lg border border-green-100 bg-green-50/50 px-3 py-2 text-sm text-gray-800">
-        Uploaded. Finish it under Landlords and agreements: connect it to Documenso, place and check the boxes, then make it live for
+        Uploaded. Finish it under Agreement versions: connect it to Documenso, place and check the boxes, then make it live for
         this landlord.{" "}
         {onOpenAgreements && (
           <button type="button" className="font-medium underline" onClick={onOpenAgreements}>

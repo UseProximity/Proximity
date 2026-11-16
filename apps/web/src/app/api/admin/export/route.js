@@ -1,4 +1,4 @@
-// @auth admin
+// @auth super
 export const dynamic = "force-dynamic";
 
 import { requireDbRole } from "@/lib/userRole";
@@ -11,8 +11,9 @@ function getDbTarget(req) {
   return header === "prod" || header === "dev" ? header : undefined;
 }
 
+// A full export carries everyone's contact details, so it is super only (Wyatt, 2026-11-12).
 async function requireSuperOrAdmin() {
-  const session = await requireDbRole(["super", "admin"]);
+  const session = await requireDbRole(["super"]);
   if (!session) return null;
   return session;
 }

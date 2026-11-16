@@ -13,7 +13,8 @@ import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
 import AgentChangeCard from "@/components/admin/AgentChangeCard";
-import { useUrlTab } from "@/components/admin/adminShared";
+import { ListingLink } from "@/components/admin/RecordLink";
+import { useAdminNav, useUrlTab } from "@/components/admin/adminShared";
 
 const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -39,8 +40,8 @@ function Section({ title, children, count }) {
   );
 }
 
-/* Website changes grouped by listing, each with Apply and Reject. */
-function WebsiteList({ rows, busy, decide }) {
+/* Website changes grouped by listing, each with Apply and Reject, and Apply all per listing. */
+function WebsiteList({ rows, busy, decide, decideAll }) {
   const groups = new Map();
   for (const e of rows) {
     if (!groups.has(e.listingId)) groups.set(e.listingId, { listing: e.listing, heldBecause: e.heldBecause, rows: [] });
@@ -51,8 +52,11 @@ function WebsiteList({ rows, busy, decide }) {
       {[...groups.entries()].slice(0, 100).map(([id, g]) => (
         <div key={id} className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-sm">
-            <span className="font-medium text-gray-900">{g.listing}</span>
-            <span className="text-xs text-gray-500">{g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}</span>
+            <span className="font-medium text-gray-900"><ListingLink id={id}>{g.listing}</ListingLink></span>
+            <span className="flex items-center gap-2 text-xs text-gray-500">
+              {g.rows.length} change{g.rows.length === 1 ? "" : "s"}{g.heldBecause ? ` · ${g.heldBecause}` : ""}
+              {g.rows.length > 1 && decideAll && <button disabled={!!busy} onClick={() => decideAll(id, g.rows)} className="rounded-lg bg-gray-900 px-2 py-1 font-semibold text-white">{busy === `all:${id}` ? "Applying..." : "Apply all"}</button>}
+            </span>
           </div>
           {g.rows.map((e) => (
             <div key={e.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
@@ -61,7 +65,7 @@ function WebsiteList({ rows, busy, decide }) {
                 {e.view ? <div className="mt-0.5"><ChangeCompare view={e.view} /></div> : null}
                 {e.note && <p className="mt-1 text-[11px] text-amber-700">{e.note}</p>}
               </div>
-              <div className="flex shrink-0 gap-2"><button disabled={busy === e.id} onClick={() => decide("source", e, "approve")} className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-semibold text-white">Apply</button><button disabled={busy === e.id} onClick={() => decide("source", e, "reject")} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">Reject</button></div>
+              <div className="flex shrink-0 gap-2"><button disabled={busy === e.id || busy === `all:${id}`} onClick={() => decide("source", e, "approve")} className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">Apply</button><button disabled={busy === e.id || busy === `all:${id}`} onClick={() => decide("source", e, "reject")} className="rounded-lg border border-gray-300 px-2 py-1 text-xs disabled:opacity-50">Reject</button></div>
             </div>
           ))}
         </div>
@@ -76,6 +80,7 @@ export default function AgentsView({ search = "" }) {
   const [busy, setBusy] = useState(null);
   const [filter, setFilter] = useState("all");
   const [tab, setTab] = useUrlTab(TAB_KEYS, "overview");
+  const readOnly = !!useAdminNav()?.isReadOnly;
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +102,29 @@ export default function AgentsView({ search = "" }) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { toast.error(d?.error || "Could not apply that"); return; }
       toast.success(decision === "approve" ? "Applied" : "Rejected");
+      load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // One listing's held website changes, applied in one request; a refused
+  // one (changed since the read, the publish gate) is reported and the rest go on.
+  const decideAll = async (listingId, rows) => {
+    setBusy(`all:${listingId}`);
+    try {
+      const r = await fetch("/api/admin/agents/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "applyAll", listingId, eventIds: rows.map((e) => e.id) }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast.error(d?.error || "Could not apply these"); return; }
+      const byId = new Map(rows.map((e) => [e.id, e]));
+      const results = d.results ?? [];
+      const ok = results.filter((x) => x.ok).length;
+      const failed = results.filter((x) => !x.ok).map((x) => {
+        const e = byId.get(x.id);
+        return `${e?.unit ?? e?.kind?.replace(/_/g, " ") ?? "A change"}: ${x.error || "could not apply"}`;
+      });
+      if (ok) toast.success(`Applied ${ok} change${ok === 1 ? "" : "s"}`);
+      if (failed.length) toast.error(`${failed.length} not applied. ${failed[0]}`);
       load();
     } finally {
       setBusy(null);
@@ -130,13 +158,18 @@ export default function AgentsView({ search = "" }) {
   const q = search.trim().toLowerCase();
   const matches = (s) => !q || String(s ?? "").toLowerCase().includes(q);
   const agents = data.agents.filter((a) => matches(a.listing) && (filter === "all" || a.status === filter));
-  const teamWebsite = data.website.filter((e) => e.teamReview && matches(e.listing));
-  const landlordWebsite = data.website.filter((e) => !e.teamReview);
+  // A skipped run's held changes show here for the team and on the
+  // landlord's own tabs too; whoever decides first, decides.
+  const teamWebsite = data.website.filter((e) => (e.teamReview || e.churnHeld) && matches(e.listing));
+  const landlordWebsite = data.website.filter((e) => !e.teamReview && !e.churnHeld);
   const c = data.counts;
 
   return (
     <div>
       <Tabs tab={tab} setTab={setTab} />
+      {readOnly && <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">You have read-only access, so the controls on this page are switched off.</p>}
+      {/* A disabled fieldset switches off every button and select inside it. */}
+      <fieldset disabled={readOnly} className="min-w-0">
       <AgentsLaunchPanel onChanged={load} />
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[["Agents", Object.values(c.agents ?? {}).reduce((n, v) => n + v, 0)], ["Live (pilot + on)", (c.agents?.pilot ?? 0) + (c.agents?.on ?? 0)], ["Facts", Object.values(c.facts ?? {}).reduce((n, v) => n + v, 0)], ["Held changes", (c.open?.held ?? 0) + (c.open?.proposed ?? 0)], ["Global switch", c.enabled ? "on" : "off"]].map(([k, v]) => (
@@ -157,8 +190,8 @@ export default function AgentsView({ search = "" }) {
       </Section>
 
       <Section title="Website changes waiting for the team" count={teamWebsite.length}>
-        <p className="mb-2 text-xs text-gray-500">Launch review: nothing a sync finds reaches students until it is applied here. Landlords do not see these.</p>
-        {teamWebsite.length === 0 ? <p className="text-sm text-gray-500">Nothing.</p> : <WebsiteList rows={teamWebsite} busy={busy} decide={decide} />}
+        <p className="mb-2 text-xs text-gray-500">Changes from a nightly sync that was skipped because too much changed at once. Nothing here reaches students until it is applied. The landlord sees them on the listing&apos;s Agent tab and can apply or reject them too.</p>
+        {teamWebsite.length === 0 ? <p className="text-sm text-gray-500">Nothing.</p> : <WebsiteList rows={teamWebsite} busy={busy} decide={decide} decideAll={decideAll} />}
       </Section>
 
       <Section title="Waiting for landlords" count={data.forLandlords.length + landlordWebsite.length}>
@@ -189,7 +222,7 @@ export default function AgentsView({ search = "" }) {
         <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
           {agents.slice(0, 300).map((a) => (
             <div key={a.listingId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <div><span className="text-gray-900">{a.listing}</span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
+              <div><span className="text-gray-900"><ListingLink id={a.listingId}>{a.listing}</ListingLink></span><span className="ml-2 text-xs text-gray-500">{a.published ? "" : "draft · "}seeded {when(a.seededAt) || "never"}{a.lastSyncAt ? ` · synced ${when(a.lastSyncAt)}` : ""}</span></div>
               <select value={a.status} onChange={(e) => setStatus(a.listingId, e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1 text-xs">
                 <option value="off">off</option><option value="pilot">pilot</option><option value="on">on</option>
               </select>
@@ -197,6 +230,7 @@ export default function AgentsView({ search = "" }) {
           ))}
         </div>
       </Section>
+      </fieldset>
     </div>
   );
 }

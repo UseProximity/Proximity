@@ -1,8 +1,32 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T05:16:26.279Z",
-  "count": 355,
+  "_generated": "2026-11-16T23:20:50.342Z",
+  "count": 362,
   "utils": [
+    {
+      "file": "src/lib/admin/adminDb.js",
+      "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/home.js",
+      "description": "The admin Home page (Wyatt, 2026-11-12): what needs someone's attention right"
+    },
+    {
+      "file": "src/lib/admin/jobs.js",
+      "description": "The scheduled jobs, for System > Scheduled jobs (Wyatt, 2026-11-14)."
+    },
+    {
+      "file": "src/lib/admin/lists.js",
+      "description": "The admin dashboard's plain lists (Wyatt, 2026-11-14): state the team could"
+    },
+    {
+      "file": "src/lib/admin/notes.js",
+      "description": "Shared by the admin notes routes (app/api/admin/notes): checking what was"
+    },
+    {
+      "file": "src/lib/admin/records.js",
+      "description": "The admin dashboard's record pages (Wyatt, 2026-11-12): everything Proximity"
+    },
     {
       "file": "src/lib/agents/access.js",
       "description": "Who is talking to Proxy on this request, and in what capacity."
@@ -1290,6 +1314,10 @@
     {
       "file": "src/lib/sourceSync/classify.js",
       "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceSync/givenSites.js",

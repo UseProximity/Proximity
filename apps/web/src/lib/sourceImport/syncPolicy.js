@@ -1,10 +1,12 @@
 /*
  * What the daily website sync does with each change it finds.
  *
- * There is no review queue (Wyatt, 2026-11-11): nobody can work through a
- * pile of proposed changes every day, so every change a sync finds is either
- * applied or denied on the spot, by its kind and by how sure the read is of
- * that one fact. The landlord's own data always wins. Imports, and the
+ * There is no daily review queue (Wyatt, 2026-11-11): nobody can work
+ * through a pile of proposed changes every day, so every change a sync finds
+ * is either applied or denied on the spot, by its kind and by how sure the
+ * read is of that one fact. The one exception is a run the churn guard skips
+ * (too much at once): what the policy would have applied waits for the team
+ * or the landlord to apply or reject (Wyatt, 2026-11-15). The landlord's own data always wins. Imports, and the
  * "proposed changes" a landlord reviews after adding a website, still queue;
  * this is only the recurring sync.
  *
@@ -90,6 +92,11 @@ export function decideSyncChange(c, { snapshot }) {
 const CHURN_FRACTION = 0.2;
 const CHURN_MIN_LEASES = 5;
 const MAX_NEW_UNITS = 4;
+// A price moving this little is a landlord repricing, not a misread
+// (Wyatt, 2026-11-15): The Koken and The Koken on Ohio cut every plan by
+// $20 to $60 the same week and both were skipped, leaving students on the
+// old prices. Small moves still apply; they just do not count as churn.
+const SMALL_PRICE_MOVE = 0.05;
 
 /*
  * The churn guard. More than a fifth of the listing's leases changing at once
@@ -109,17 +116,57 @@ const MAX_NEW_UNITS = 4;
  * the 11/4 Coronado Place sync added every floor plan of Lindell Tower East,
  * another building on the same website). A unit added as a draft changes
  * nothing students see and is no churn (The Shelby's twelve waitlisted plans
- * would otherwise skip every run after).
+ * would otherwise skip every run after). A price that moves 5% or less is a
+ * repricing, not a misread, and is no churn either; a lease appearing or
+ * vanishing always counts.
+ *
+ * The small-move pass has two conditions, because another building on the
+ * same website (the Coronado/Lindell mix-up) can land within 5% after the
+ * cheapest-to-cheapest pairing (Wyatt, 2026-11-15):
+ *   same apartments  the change does not also move which apartment numbers
+ *                    the price covers (another building brings its own)
+ *   one direction    every price move in the run goes the same way; a real
+ *                    repricing is all cuts or all raises, a mix-up is both
  */
+/*
+ * True when a change only moves a known rent by SMALL_PRICE_MOVE or less. A
+ * switch between per person and whole unit is never small, even at the same
+ * number.
+ */
+export function smallPriceMove(c) {
+  if (c.old?.rentIsPerPerson !== undefined || c.new?.rentIsPerPerson !== undefined) return false;
+  // The apartments this price covers changed too: perhaps another building.
+  if (c.new?.apartments !== undefined) return false;
+  const before = Number(c.old?.rent);
+  const after = Number(c.new?.rent);
+  if (!(before > 0) || !(after > 0)) return false;
+  return Math.abs(after - before) / before <= SMALL_PRICE_MOVE;
+}
+
+/* -1, 0 or 1: which way a change moves a known rent. */
+const priceDirection = (c) => {
+  const before = Number(c.old?.rent);
+  const after = Number(c.new?.rent);
+  return before > 0 && after > 0 ? Math.sign(after - before) : 0;
+};
+
 export function churnCheck({ changes, existingLeases, existingUnits, policyRun = true, portalPriced = false }) {
   const counted = changes.filter((c) => !c.detail?.fromUnitPage && (!policyRun || c.verdict?.apply));
   const goesLive = (c) => c.kind === "unit_new" && !c.detail?.draft;
+  const movesRent = (c) => c.kind === "rent_change" || (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? ""));
+  // Prices going both up and down in one run: no move is small.
+  const directions = new Set(counted.filter(movesRent).map(priceDirection).filter(Boolean));
+  const small = (c) => directions.size < 2 && smallPriceMove(c);
   const touched = portalPriced
     ? 0
     : counted.reduce((n, c) => {
         if (goesLive(c)) return n + Math.max(1, (c.detail?.offers ?? []).length);
-        if (["lease_new", "lease_withdrawn", "unit_relisted", "rent_change"].includes(c.kind)) return n + 1;
-        if (c.kind === "lease_updated" && /\b(rent|available_from|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        if (c.kind === "rent_change") return small(c) ? n : n + 1;
+        if (["lease_new", "lease_withdrawn", "unit_relisted"].includes(c.kind)) return n + 1;
+        // Field names are the change's keys (planLeaseUpdate): rent,
+        // rentIsPerPerson, leaseTermMonths, availableFrom, apartments.
+        if (c.kind === "lease_updated" && /\b(availableFrom|rentIsPerPerson|unavailable)\b/.test(c.field ?? "")) return n + 1;
+        if (c.kind === "lease_updated" && /\brent\b/.test(c.field ?? "")) return small(c) ? n : n + 1;
         return n;
       }, 0);
   const newUnits = counted.filter(goesLive).length;
