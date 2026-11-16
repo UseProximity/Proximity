@@ -56,7 +56,7 @@ import { createPortal } from "react-dom";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 import Link from "next/link";
-import { Send, Sparkles, Flag, CalendarDays } from "lucide-react";
+import { Send, Sparkles, Flag, CalendarDays, Check, Pencil, X } from "lucide-react";
 import { useTour } from "./TourMarker";
 import TourDialog from "./TourDialog";
 import ApplyButton from "@/components/listings/ApplyButton";
@@ -271,6 +271,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [signInNeeded, setSignInNeeded] = useState(false);
   // Whether the tour popup is open.
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Tour's little Edit tour / Cancel tour menu, once a tour is requested.
+  const [tourMenuOpen, setTourMenuOpen] = useState(false);
+  const tourMenuRef = useRef(null);
   const [tourBusy, setTourBusy] = useState(false);
   // Messages that arrived in this session type themselves out.
   const [fresh, setFresh] = useState(() => new Set());
@@ -522,12 +525,23 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       if (!r.ok) { toast.error(data?.error || "Could not cancel."); return; }
       setTour(null);
       setPickerOpen(false);
+      setTourMenuOpen(false);
+      toast.success("Tour request canceled.");
       await refresh();
       announce(thread?.id, selfId.current);
     } finally {
       setTourBusy(false);
     }
   }, [tour, setTour, refresh, thread]);
+
+  useEffect(() => {
+    if (!tourMenuOpen) return;
+    const onDown = (e) => { if (!tourMenuRef.current?.contains(e.target)) setTourMenuOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setTourMenuOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [tourMenuOpen]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;
@@ -544,6 +558,7 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }
 
   const tourAllowed = !testMode && choices.length > 0;
+  const activeTour = tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null;
   const applyShown = !!pickApplication(listing, selectedLease);
   const sideOf = (m) => (m.isMine ? "me" : "proxy");
 
@@ -558,10 +573,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
             <TourDialog
               listing={listing}
               session={session}
-              tour={tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null}
+              tour={activeTour}
               busy={tourBusy}
               onSubmit={submitTour}
-              onCancelTour={cancelTour}
               onClose={() => setPickerOpen(false)}
             />
           )}
@@ -589,17 +603,52 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
               />
             </div>
             <div className={`flex gap-2 ${applyShown ? "order-1 w-full sm:order-2 sm:w-auto" : "order-2"}`}>
+              {/*
+               * Tour (Wyatt, 2026-11-15): before a request it opens the tour
+               * popup. Once there is one, the calendar turns into a check and
+               * a click opens a small menu above it instead: Edit tour (the
+               * popup, with the times filled in) or Cancel tour.
+               */}
               {tourAllowed && (
-                <button
-                  type="button"
-                  onClick={() => (signedIn ? setPickerOpen(true) : signIn())}
-                  aria-label={signedIn ? "Pick tour times" : "Sign in to request a tour"}
-                  title={signedIn ? "Request a tour" : "Sign in to request a tour"}
-                  className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${applyShown ? "flex-1 sm:flex-none" : ""} ${pickerOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
-                >
-                  <CalendarDays className="h-5 w-5" />
-                  Tour
-                </button>
+                <div ref={tourMenuRef} className={`relative ${applyShown ? "flex flex-1 sm:flex-none" : ""}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!signedIn) { signIn(); return; }
+                      if (activeTour) setTourMenuOpen((o) => !o);
+                      else setPickerOpen(true);
+                    }}
+                    aria-label={!signedIn ? "Sign in to request a tour" : activeTour ? "Tour requested: edit or cancel" : "Pick tour times"}
+                    aria-haspopup={activeTour ? "menu" : undefined}
+                    aria-expanded={activeTour ? tourMenuOpen : undefined}
+                    title={!signedIn ? "Sign in to request a tour" : activeTour ? "Tour requested" : "Request a tour"}
+                    className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${applyShown ? "flex-1 sm:flex-none" : ""} ${pickerOpen || tourMenuOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    {activeTour ? <Check className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+                    Tour
+                  </button>
+                  {activeTour && tourMenuOpen && (
+                    <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setTourMenuOpen(false); setPickerOpen(true); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                      >
+                        <Pencil className="h-4 w-4 text-gray-500" /> Edit tour
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={tourBusy}
+                        onClick={cancelTour}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" /> {tourBusy ? "Canceling..." : "Cancel tour"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {/* Only when a landlord here added an application link. */}
               <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={signedIn}

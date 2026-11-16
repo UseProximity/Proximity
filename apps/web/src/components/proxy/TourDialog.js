@@ -14,6 +14,10 @@
  * screen, with shorter hour cells on short screens. Sending sends the request at
  * once; it shows in the chat like before. The note goes into the chat as
  * the student's own message, so Proxy reads and answers it there.
+ *
+ * No status line and no cancel link in here (Wyatt, 2026-11-15): once a
+ * tour is requested, Tour beside the input shows a check and offers
+ * "Edit tour" (this popup) or "Cancel tour" itself.
  */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -36,13 +40,6 @@ function bookedHours(list) {
   return out;
 }
 
-function statusLine(tour) {
-  if (!tour) return null;
-  if (tour.status === "confirmed") return `Your tour is confirmed for ${tour.confirmedText}.`;
-  if (tour.status === "messaging") return "The landlord is talking with you directly about a time.";
-  return "Tour requested: waiting on the landlord to pick a time.";
-}
-
 function initials(name, email) {
   const words = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (words.length) return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -58,7 +55,7 @@ function Label({ children, right = null }) {
   );
 }
 
-export default function TourDialog({ listing, session, tour, onSubmit, onCancelTour, onClose, busy = false }) {
+export default function TourDialog({ listing, session, tour, onSubmit, onClose, busy = false }) {
   const [selected, setSelected] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [booked, setBooked] = useState(() => new Map());
@@ -107,7 +104,6 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
   const name = listing?.title || listing?.address || "this place";
   const photo = Array.isArray(listing?.images) ? listing.images[0] : null;
   const user = session?.user ?? {};
-  const line = statusLine(tour);
   const disabled = busy || sending || loading || !selected.size;
 
   return createPortal(
@@ -130,7 +126,6 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
           <h2 id="tour-dialog-title" className="mt-1.5 pr-8 text-xl font-bold leading-tight text-gray-900 sm:text-[26px]">
             When can you tour <span className="text-red-600">{name}</span>?
           </h2>
-          {line && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{line}</p>}
 
           <div className="mt-3 flex items-center gap-3 rounded-xl border border-gray-200 p-2.5">
             {photo ? (
@@ -192,21 +187,14 @@ export default function TourDialog({ listing, session, tour, onSubmit, onCancelT
               {user.name && user.email && <p className="truncate text-xs text-gray-500">{user.email}</p>}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={submit}
-              className="h-11 rounded-xl bg-red-600 px-4 text-sm font-semibold sm:px-5 text-white hover:bg-red-700 disabled:opacity-40"
-            >
-              {sending ? "Sending..." : open ? "Update tour times" : "Send tour request"}
-            </button>
-            {tour && (
-              <button type="button" disabled={busy || sending} onClick={onCancelTour} className="text-xs text-gray-500 underline hover:text-gray-800 disabled:opacity-50">
-                Cancel my tour request
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={submit}
+            className="h-11 shrink-0 rounded-xl bg-red-600 px-4 text-sm font-semibold sm:px-5 text-white hover:bg-red-700 disabled:opacity-40"
+          >
+            {sending ? "Sending..." : open ? "Update tour times" : "Send tour request"}
+          </button>
         </div>
       </div>
     </div>,
