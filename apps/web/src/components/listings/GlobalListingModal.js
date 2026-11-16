@@ -14,10 +14,15 @@
  * and ListingModalInfo's preview flag turns off Save, Contact and reviewing.
  * The strip can publish a draft; it tells the dashboard through a window event
  * because the modal lives in the root layout, outside the dashboard's tree.
+ *
+ * On a phone (below 768px) the popup is too tight, so ?listing= hands over to
+ * the full listing page instead, the same one browse opens there. Two cases
+ * stay as they are at every width: the preview, which has no page of its own,
+ * and the admin dashboard, where ?listing= also filters the listings table.
  */
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Eye, MapPin } from "lucide-react";
@@ -84,6 +89,10 @@ function PreviewStrip({ listing, onPublished }) {
   );
 }
 
+// True below 768px, the width where browse also opens the full listing page.
+const isPhone = () => window.matchMedia("(max-width: 767px)").matches;
+const noSubscribe = () => () => {};
+
 function GlobalListingModalInner() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -96,9 +105,43 @@ function GlobalListingModalInner() {
   const [modalData, setModalData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  // Not the preview, and not the admin dashboard: there ?listing= filters the
+  // admin listings table (the "Open in admin" email links), so it stays put.
+  const canHandOver = !preview && !pathname.startsWith("/dashboard/admin");
+  // Decided once, when a listing opens: a popup that is already open stays a
+  // popup if the window is resized later (or laid out narrow for printing).
+  const onClient = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const opened = useRef({ id: null, phone: false });
+  if (onClient && opened.current.id !== listingId) {
+    opened.current = { id: listingId, phone: !!listingId && isPhone() };
+  }
+  const toPage = onClient && opened.current.phone && canHandOver;
+
+  // The listing the site was opened on (a ?listing= link from an email, say, or
+  // a browse ?panel= link, which a phone turns into ?listing=).
+  const openedOn = useRef(listingId ?? searchParams.get("panel"));
+
+  // Phone: replace the popup's URL with the listing page, so the page's back
+  // arrow (history back) returns to wherever the card was tapped. A listing the
+  // site was opened on has no history to go back to, so it is told where the
+  // popup would have been (`back`) and the arrow goes there.
+  useEffect(() => {
+    if (!toPage) return;
+    const params = new URLSearchParams(searchParams.toString());
+    const unit = params.get("unit");
+    params.delete("listing");
+    params.delete("unit");
+    const qs = params.toString();
+    const next = new URLSearchParams();
+    if (openedOn.current === listingId) next.set("back", pathname + (qs ? "?" + qs : ""));
+    if (unit) next.set("unit", unit);
+    const query = next.toString();
+    router.replace(`/listings/${listingId}${query ? "?" + query : ""}`);
+  }, [toPage, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!listingId) {
+    // isPhone() as well: on a page load toPage is still false in the first pass.
+    if (!listingId || toPage || (canHandOver && isPhone())) {
       setModalData(null);
       setNotFound(false);
       return;
@@ -122,7 +165,7 @@ function GlobalListingModalInner() {
         setIsLoading(false);
       })
       .catch(() => { setNotFound(true); setIsLoading(false); });
-  }, [listingId, preview, viewAsId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [listingId, preview, viewAsId, toPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = () => {
     const params = new URLSearchParams(searchParams.toString());
@@ -150,7 +193,7 @@ function GlobalListingModalInner() {
   };
   const showViewOnMap = pathname === "/" && !!modalData && !preview;
 
-  if (!listingId) return null;
+  if (!listingId || toPage) return null;
 
   const strip =
     preview && modalData?.preview && !isLoading && !notFound ? (

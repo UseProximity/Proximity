@@ -62,6 +62,10 @@ function defaultListingInquiry(ownerName) {
 // Shared with ListDetailPanel so both find the same container. Stops below
 // <body>: the app's body is overflow:auto, but that passes to the viewport, so
 // on the full listing page it is the window that scrolls, never the body.
+// How far below the top of the window the title and tabs stick: 0, or the site
+// header's height on the full listing page below 1280px.
+const stickTop = (head) => (head ? parseFloat(getComputedStyle(head).top) || 0 : 0);
+
 export function scrollParent(el) {
   let root = el?.parentElement;
   while (
@@ -1528,6 +1532,12 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  /*
+   * The full listing page (/listings/[id]), where the window scrolls under the
+   * site header. Below 1280px the title and tabs stick under that header (and
+   * its 1px border), not behind it, and the heart sits in the photo's corner (no close button there).
+   */
+  page = false,
   // Called with true/false as the title and tabs stick to the top and let go.
   onHeadStuck = null,
   // Called when a tab click starts scrolling the page to its section.
@@ -1574,7 +1584,7 @@ export default function ListingModalInfo({
     const target = root ?? window;
     let stuck = false;
     const onScroll = () => {
-      const top = root ? root.getBoundingClientRect().top : 0;
+      const top = root ? root.getBoundingClientRect().top : stickTop(headRef.current);
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -1612,7 +1622,7 @@ export default function ListingModalInfo({
     spyQuietUntil.current = Date.now() + 1000;
     onSectionJumpRef.current?.();
     const root = scrollParent(section);
-    const rootTop = root ? root.getBoundingClientRect().top : 0;
+    const rootTop = root ? root.getBoundingClientRect().top : stickTop(headRef.current);
     const scrolled = root ? root.scrollTop : window.scrollY;
     /*
      * Less the header's height as it is NOW. If it isn't stuck yet it compacts
@@ -1636,7 +1646,7 @@ export default function ListingModalInfo({
     const ids = visibleKey.split(",");
     const onScroll = () => {
       if (Date.now() < spyQuietUntil.current) return;
-      const rootTop = root ? root.getBoundingClientRect().top : 0;
+      const rootTop = root ? root.getBoundingClientRect().top : stickTop(headRef.current);
       const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
       const scrolled = root ? root.scrollTop : window.scrollY;
       const viewport = root ? root.clientHeight : window.innerHeight;
@@ -2177,7 +2187,7 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />
@@ -2272,7 +2282,7 @@ export default function ListingModalInfo({
                 compacts: a smaller title, no address, the rating cut to the
                 title's height. The sentinel just above it says when. */}
             <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
-            <div id="listing-head" ref={headRef} className="sticky top-0 z-30">
+            <div id="listing-head" ref={headRef} className={`sticky top-0 z-30 ${page ? "max-xl:top-[calc(var(--header-h)+1px)]" : ""}`}>
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
