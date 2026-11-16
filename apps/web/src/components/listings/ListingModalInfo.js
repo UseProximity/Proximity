@@ -58,14 +58,14 @@ function defaultListingInquiry(ownerName) {
     : "Hi, I'm interested in this listing.";
 }
 
-// The nearest ancestor that scrolls vertically, or null when the window does.
-// Shared with ListDetailPanel so both find the same container. Stops below
-// <body>: the app's body is overflow:auto, but that passes to the viewport, so
-// on the full listing page it is the window that scrolls, never the body.
 // How far below the top of the window the title and tabs stick: 0, or the site
 // header's height on the full listing page below 1280px.
 const stickTop = (head) => (head ? parseFloat(getComputedStyle(head).top) || 0 : 0);
 
+// The nearest ancestor that scrolls vertically, or null when the window does.
+// Shared with ListDetailPanel so both find the same container. Stops below
+// <body>: the app's body is overflow:auto, but that passes to the viewport, so
+// on the full listing page it is the window that scrolls, never the body.
 export function scrollParent(el) {
   let root = el?.parentElement;
   while (
@@ -2375,14 +2375,22 @@ export default function ListingModalInfo({
                     start at the left instead, the first label in line with the
                     title above (Wyatt, 2026-11-01): pl-5 plus the tab's own
                     px-5 matches the title's px-10.
-                    On a phone every tab has to be in view at once, so the six
-                    share the full width in a tighter size, and whatever sits
-                    to their right on desktop wraps onto its own line under
-                    them instead of pushing tabs off the edge. */}
-                <nav className="flex flex-wrap items-stretch max-w-7xl mx-auto md:flex-nowrap">
-                  {!compact && <div className="hidden flex-1 md:block" aria-hidden="true" />}
+                    Below 1280px there is no room beside the tabs, so they get
+                    a row to themselves and the actions (the last child here)
+                    get the row above it. On a phone, and in the browse panel
+                    below 1024px, the six tabs share the width in a tighter
+                    size; wider, they keep their desktop size, centred outside
+                    the panel. Tabs that do not fit scroll sideways. */}
+                <nav className="flex flex-wrap items-stretch max-w-7xl mx-auto xl:flex-nowrap">
+                  {!compact && <div className="hidden flex-1 xl:block" aria-hidden="true" />}
 
-                  <div className="flex w-full overflow-x-auto scrollbar-hidden md:w-auto">
+                  {/* Auto margins, not justify-center: they centre the tabs and
+                      still let the first one be reached when the row scrolls. */}
+                  <div
+                    className={`flex w-full overflow-x-auto scrollbar-hidden xl:w-auto ${
+                      compact ? "" : "md:max-xl:[&>:first-child]:ml-auto md:max-xl:[&>:last-child]:mr-auto"
+                    }`}
+                  >
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
                       (tab) => (
                         <button
@@ -2390,7 +2398,9 @@ export default function ListingModalInfo({
                           type="button"
                           onClick={() => jumpTo(tab.id)}
                           aria-current={activeTab === tab.id ? "true" : undefined}
-                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition md:flex-none md:px-5 md:text-sm ${
+                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition ${
+                            compact ? "lg:flex-none lg:px-5 lg:text-sm" : "md:flex-none md:px-5 md:text-sm"
+                          } ${
                             activeTab === tab.id
                               ? "text-red-600 border-red-600"
                               : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
@@ -2402,16 +2412,14 @@ export default function ListingModalInfo({
                     )}
                   </div>
 
-                  {/* Furniture rental, styled as a tab so it reads as part of this
-                      row. It only appears against an UNFURNISHED offering:
-                      furnished belongs to the lease now, not the building, so this
-                      asks whether any live offering on the open unit is
-                      unfurnished, falling back to listings.furnished when none has
-                      loaded. */}
-                  {/* Opaque and padded so that when the tab strip scrolls under it
-                      on a narrow screen, the last tab is clipped cleanly instead of
-                      appearing to run into the button. */}
-                  <div className="flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 md:w-auto md:flex-1">
+                  {/* The actions: beside the tabs from 1280px. Below that, a row
+                      of their own between the title and the tabs, starting in
+                      line with the title; it is not rendered when there is none. */}
+                  <div
+                    className={`flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 xl:w-auto xl:flex-1 max-xl:order-first max-xl:flex-wrap max-xl:items-center max-xl:justify-start max-xl:gap-x-3 max-xl:pb-1 max-xl:empty:hidden ${
+                      compact ? "max-xl:pl-5 max-xl:pr-10" : "max-xl:px-6"
+                    }`}
+                  >
                     {/* Joining this property's waitlist happens on the landlord's
                         own form, so the link hops through our API first: that
                         redirect is the only place a click can still be recorded
@@ -2442,18 +2450,25 @@ export default function ListingModalInfo({
                           {waitlist.label}
                         </button>
                       ))}
+                    {/* Furniture rental, styled as a tab so it reads as part of this
+                        row (below 1280px, on the actions' own row, as a chip). It
+                        only appears against an UNFURNISHED offering:
+                        furnished belongs to the lease now, not the building, so this
+                        asks whether any live offering on the open unit is
+                        unfurnished, falling back to listings.furnished when none has
+                        loaded. */}
                     {showFurnishCta && (
                       <a
                         href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
                         rel="noopener noreferrer sponsored nofollow"
-                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
+                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700 max-xl:my-2 max-xl:rounded-full max-xl:border max-xl:border-red-200 max-xl:bg-red-50 max-xl:px-3.5 max-xl:py-1.5 max-xl:text-[13px] max-xl:hover:bg-red-100"
                       >
                         Furnish This Property
                       </a>
                     )}
                     {tabBarAction && (
-                      <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                      <div className="flex items-center pl-3 pr-8 max-xl:ml-auto max-xl:px-0">{tabBarAction}</div>
                     )}
                   </div>
                 </nav>
