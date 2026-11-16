@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T04:09:12.504Z",
-  "count": 359,
+  "_generated": "2026-11-16T17:55:29.893Z",
+  "count": 360,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -922,6 +922,10 @@
     {
       "file": "src/lib/listings/leasePrefsColumns.js",
       "description": "The account columns behind a student's saved sizes and lease lengths."
+    },
+    {
+      "file": "src/lib/listings/listingLink.js",
+      "description": "Where a tap on a listing card goes. Below 768px the popup is too tight, so a"
     },
     {
       "file": "src/lib/listings/listingSelect.js",
