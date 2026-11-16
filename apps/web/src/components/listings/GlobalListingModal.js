@@ -135,7 +135,7 @@ function GlobalListingModalInner() {
     if (openedOn.current === listingId) next.set("back", pathname + (qs ? "?" + qs : ""));
     if (unit) next.set("unit", unit);
     const query = next.toString();
-    router.replace(`/listings/${listingId}${query ? "?" + query : ""}`);
+    router.replace(`/listings/${encodeURIComponent(listingId)}${query ? "?" + query : ""}`);
   }, [toPage, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -192,7 +192,9 @@ function GlobalListingModalInner() {
   };
   const showViewOnMap = pathname === "/" && !!modalData && !preview;
 
-  if (!listingId || toPage) return null;
+  // Nothing in the server-rendered page: the server cannot tell a phone from a
+  // wider screen, and it has no listing to show yet either way.
+  if (!listingId || toPage || !onClient) return null;
 
   const strip =
     preview && modalData?.preview && !isLoading && !notFound ? (
