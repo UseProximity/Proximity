@@ -51,21 +51,39 @@ const fmt = (field, v) => {
   return String(v);
 };
 
+/* Is the record already stored from a later save than this one? */
+function isNewerRecord(storedAt, at) {
+  const a = Date.parse(storedAt ?? "");
+  const b = Date.parse(at ?? "");
+  return Number.isFinite(a) && Number.isFinite(b) && a > b;
+}
+
 /*
  * Record that a landlord set these core values, so the sync holds changes
  * to them instead of applying them. One row per field, scoped to the lease,
  * unit or property.
+ *
+ * `at` is when the landlord saved. The dashboard records after it has
+ * answered, and that work can run late: an early save's record once landed
+ * minutes after a newer save's and replaced it (the lease said Jan 1, its
+ * record "not set"). A record older than the one already there is dropped.
  */
-export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null }) {
+export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null, at = new Date().toISOString() }) {
   const scopeLevel = target === "property" ? "property" : target;
+  const scopeId = target === "property" ? null : id;
   for (const [field, value] of Object.entries(fields ?? {})) {
     // Revert puts `old` back, so it is recorded per field, and only when it
     // was actually read (an entry without it cannot be reverted).
     const before = old && Object.prototype.hasOwnProperty.call(old, field) ? { old: old[field] } : {};
+    const fieldKey = `core.${target}.${field}`;
     try {
+      const q = supabase.from("listing_facts").select("value").eq("listing_id", listingId).eq("section", "core")
+        .eq("field_key", fieldKey).eq("scope_level", scopeLevel).eq("is_current", true);
+      const { data: current } = await (scopeId ? q.eq("scope_id", scopeId) : q.is("scope_id", null)).maybeSingle();
+      if (isNewerRecord(current?.value?.set_at, at)) continue;
       await setFact({
-        listingId, section: "core", fieldKey: `core.${target}.${field}`, scopeLevel, scopeId: target === "property" ? null : id,
-        value: { value, set_at: new Date().toISOString() }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
+        listingId, section: "core", fieldKey, scopeLevel, scopeId,
+        value: { value, set_at: at }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
         landlordSet: true, setBy: userId, actorId: userId, cause, detail: { core: true, target, id, field, ...detail, ...before },
       });
     } catch (err) {

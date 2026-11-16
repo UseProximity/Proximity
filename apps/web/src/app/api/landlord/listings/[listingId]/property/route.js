@@ -1,5 +1,5 @@
 export const dynamic = "force-dynamic";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
@@ -169,8 +169,10 @@ export async function PATCH(req, { params }) {
     }
     // A dashboard edit after launch is landlord-set: a website sync holds
     // changes to these fields for the landlord instead of applying them.
+    // In after(), so the work is finished before the server rests (see leases/[leaseId]).
     if (Object.keys(protectedFields).length) {
-      markLandlordSet({ listingId, target: "property", fields: protectedFields, old, userId: session.user.id, cause: "dashboard" }).catch(() => {});
+      const at = new Date().toISOString();
+      after(() => markLandlordSet({ listingId, target: "property", fields: protectedFields, old, userId: session.user.id, cause: "dashboard", at }).catch(() => {}));
     }
   }
 

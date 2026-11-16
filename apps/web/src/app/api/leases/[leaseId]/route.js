@@ -170,8 +170,11 @@ export async function PATCH(req, { params }) {
 
   // A dashboard edit after launch is landlord-set: a website sync holds
   // changes to this lease for the landlord instead of applying them.
+  // In after(), so the work is finished before the server rests: left loose it
+  // could be paused part way and land minutes later, over a newer save.
   if (Object.keys(leaseProtected).length && check.listingId) {
-    markLandlordSet({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, cause: "dashboard" }).catch(() => {});
+    const at = new Date().toISOString();
+    after(() => markLandlordSet({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, cause: "dashboard", at }).catch(() => {}));
   }
 
   // A changed contact address only receives message alerts once confirmed.

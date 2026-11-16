@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T20:51:58.657Z",
-  "count": 360,
+  "_generated": "2026-11-16T23:38:27.332Z",
+  "count": 361,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -182,6 +182,10 @@
     {
       "file": "src/lib/agents/sections.js",
       "description": "The vocabulary of the knowledge store: sections, scopes, the fee and policy"
+    },
+    {
+      "file": "src/lib/agents/sections.test.js",
+      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/seed.js",
