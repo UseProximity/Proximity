@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-16T23:38:27.332Z",
-  "count": 361,
+  "_generated": "2026-11-17T04:55:56.450Z",
+  "count": 331,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -34,10 +34,6 @@
     {
       "file": "src/lib/agents/address.js",
       "description": "Street addresses, read loosely enough to compare a listing with a page that"
-    },
-    {
-      "file": "src/lib/agents/address.test.js",
-      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/backfill.js",
@@ -90,10 +86,6 @@
     {
       "file": "src/lib/agents/foundUrls.js",
       "description": "What kind of source a found URL is (lib/agents/discover.js): Zillow,"
-    },
-    {
-      "file": "src/lib/agents/foundUrls.test.js",
-      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/gate.js",
@@ -160,10 +152,6 @@
       "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
     },
     {
-      "file": "src/lib/agents/replyStream.test.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/lib/agents/replyTokens.js",
       "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
     },
@@ -182,10 +170,6 @@
     {
       "file": "src/lib/agents/sections.js",
       "description": "The vocabulary of the knowledge store: sections, scopes, the fee and policy"
-    },
-    {
-      "file": "src/lib/agents/sections.test.js",
-      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/seed.js",
@@ -226,10 +210,6 @@
     {
       "file": "src/lib/agents/tourTime.js",
       "description": "Tour times, shared by the server and the browser (no server imports)."
-    },
-    {
-      "file": "src/lib/agents/tourTime.test.js",
-      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/agents/transfer.js",
@@ -313,7 +293,7 @@
     },
     {
       "file": "src/lib/auth/email.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/auth/landlordRole.js",
@@ -322,10 +302,6 @@
     {
       "file": "src/lib/auth/loginThrottle.js",
       "description": "In-memory brute-force guard for the two password login paths (the NextAuth"
-    },
-    {
-      "file": "src/lib/auth/loginThrottle.test.js",
-      "description": "Run with: npm test (from apps/web). Uses Node's built-in test runner, so there"
     },
     {
       "file": "src/lib/auth/passwordReset.js",
@@ -337,7 +313,7 @@
     },
     {
       "file": "src/lib/auth/roles.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/auth/tokenHash.js",
@@ -396,16 +372,8 @@
       "description": "Each landlord's marketing agreement: one master agreement (landlord_agreements)"
     },
     {
-      "file": "src/lib/billing/agreements.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/agreementServices.js",
       "description": "The real Documenso client, signed-PDF storage and team email, wired together for"
-    },
-    {
-      "file": "src/lib/billing/agreementSigning.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/agreementVersions.js",
@@ -414,10 +382,6 @@
     {
       "file": "src/lib/billing/autopay.js",
       "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
-    },
-    {
-      "file": "src/lib/billing/autopay.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/balance.js",
@@ -436,16 +400,8 @@
       "description": "The words of every billing email, as pure functions returning { subject, html }."
     },
     {
-      "file": "src/lib/billing/billingEmailTemplates.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/billingFakes.testutil.js",
       "description": "In-memory stand-ins for Supabase and Documenso, shared by the billing tests"
-    },
-    {
-      "file": "src/lib/billing/billingLogic.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/billingNotify.js",
@@ -458,10 +414,6 @@
     {
       "file": "src/lib/billing/billingRun.js",
       "description": "The monthly billing run. For each landlord it collects every Approved charge"
-    },
-    {
-      "file": "src/lib/billing/billingRun.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/businessDays.js",
@@ -488,10 +440,6 @@
       "description": "Landlords asking for changes to the commission agreement (agreement_change_requests"
     },
     {
-      "file": "src/lib/billing/changeRequests.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/chargeDisplay.js",
       "description": "How a charge row is shown to a landlord. Pure, so the labels can be tested:"
     },
@@ -504,20 +452,12 @@
       "description": "Charges: creating them and the landlord's side of their lifecycle."
     },
     {
-      "file": "src/lib/billing/charges.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/constants.js",
       "description": "The billing rules that are numbers, in one place. Each comes from the In-App"
     },
     {
       "file": "src/lib/billing/coverage.js",
       "description": "Which of a landlord's properties their commission agreement covers, and what"
-    },
-    {
-      "file": "src/lib/billing/coverage.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/customers.js",
@@ -534,10 +474,6 @@
     {
       "file": "src/lib/billing/enrollment.js",
       "description": "Launch enrollment: telling existing landlords that fees are now collected in the"
-    },
-    {
-      "file": "src/lib/billing/enrollment.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/errors.js",
@@ -604,10 +540,6 @@
       "description": "A payer for a landlord account (Project B, Wyatt 2026-11-09). See"
     },
     {
-      "file": "src/lib/billing/payers.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/payerServices.js",
       "description": "The real email, storage and publishing behind payers.js, for the routes and"
     },
@@ -620,20 +552,12 @@
       "description": "A landlord's payment methods. Card and bank details are entered only on"
     },
     {
-      "file": "src/lib/billing/paymentMethods.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/billing/paymentMethodState.js",
       "description": "Payment method states and how to show them. Only Stripe ids and display"
     },
     {
       "file": "src/lib/billing/placeholders.js",
       "description": "Placeholders in an uploaded agreement PDF become Documenso boxes (Wyatt,"
-    },
-    {
-      "file": "src/lib/billing/placeholders.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/reviewClock.js",
@@ -654,10 +578,6 @@
     {
       "file": "src/lib/billing/webhookEvents.js",
       "description": "Idempotent processing of a verified Stripe event, backed by"
-    },
-    {
-      "file": "src/lib/billing/webhookEvents.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/billing/webhookHandlers.js",
@@ -696,16 +616,8 @@
       "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
     },
     {
-      "file": "src/lib/chat/emailReplyText.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/chat/emailStatus.js",
       "description": "What an Amazon SES event means for a chat_email_log row (Wyatt, 2026-10-23)."
-    },
-    {
-      "file": "src/lib/chat/emailStatus.test.js",
-      "description": "Run with: npm test (from apps/web). Event shapes follow SES event publishing."
     },
     {
       "file": "src/lib/chat/followups.js",
@@ -714,10 +626,6 @@
     {
       "file": "src/lib/chat/inboundAuth.js",
       "description": "Is an emailed reply really from the domain in its From line?"
-    },
-    {
-      "file": "src/lib/chat/inboundAuth.test.js",
-      "description": "Run with: npm test (from apps/web). The headers are copied from real SES"
     },
     {
       "file": "src/lib/chat/inboundEmail.js",
@@ -764,10 +672,6 @@
       "description": "Who else may reply by email on a landlord's behalf (Wyatt, 2026-10-24)."
     },
     {
-      "file": "src/lib/chat/replySenders.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/chat/safety.js",
       "description": "Chat block and report support, kept out of the chat RPCs on purpose."
     },
@@ -812,10 +716,6 @@
       "description": "The record of every email the app sends, for the admin \"Sent emails\" page"
     },
     {
-      "file": "src/lib/emailLog.test.js",
-      "description": "Run with: npm test (from apps/web)."
-    },
-    {
       "file": "src/lib/errors/client.js",
       "description": "The browser half of the site error alerts (Wyatt, 2026-11-03): send one"
     },
@@ -849,7 +749,7 @@
     },
     {
       "file": "src/lib/guides.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/jsonLd.js",
@@ -918,10 +818,6 @@
     {
       "file": "src/lib/listings/leaseFit.js",
       "description": "Does an offering fit the student's move-in month and lease length?"
-    },
-    {
-      "file": "src/lib/listings/leaseFit.test.js",
-      "description": "Run with: npm test (from apps/web)."
     },
     {
       "file": "src/lib/listings/leasePrefsColumns.js",
@@ -1017,15 +913,15 @@
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/contactNote.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/listingConstraints.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/listingFilter.js",
@@ -1033,15 +929,15 @@
     },
     {
       "file": "src/lib/matchmaking/narrowing.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/questionEngine.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/questionScript.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/saturation.js",
@@ -1049,7 +945,7 @@
     },
     {
       "file": "src/lib/matchmaking/tradeoffTriage.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/outreach.js",
@@ -1204,10 +1100,6 @@
       "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
     },
     {
-      "file": "src/lib/sourceImport/learnRules.test.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/lib/sourceImport/limits.js",
       "description": "Spending caps for the URL importer."
     },
@@ -1268,10 +1160,6 @@
       "description": "RealPage Online Leasing: the parts that need no network."
     },
     {
-      "file": "src/lib/sourceImport/readers/realpageOllParse.test.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
       "description": "Floor plans embedded as JSON in a page."
     },
@@ -1300,20 +1188,12 @@
       "description": "What the daily website sync does with each change it finds."
     },
     {
-      "file": "src/lib/sourceImport/syncPolicy.test.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/lib/sourceSync/attach.js",
       "description": "Attach (or clear) the source URL a listing is monitored against."
     },
     {
       "file": "src/lib/sourceSync/classify.js",
       "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
-    },
-    {
-      "file": "src/lib/sourceSync/classify.test.js",
-      "description": "No description — add a top-of-file comment."
     },
     {
       "file": "src/lib/sourceSync/givenSites.js",
@@ -1392,20 +1272,24 @@
       "description": "How an offering's start date reads to a person."
     },
     {
+      "file": "src/utils/calendarDate.js",
+      "description": "Calendar days: a move-in date, a special's valid-until. One rule for all of them."
+    },
+    {
       "file": "src/utils/chatThreadGrouping.js",
       "description": "Inbox ordering for chat threads."
     },
     {
       "file": "src/utils/compressImage.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/drivePlaces.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/driveTimes.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/listingFormatters.js",
@@ -1424,10 +1308,6 @@
       "description": "Whether a unit name is an apartment (\"Apt 201\", \"Unit 5548\", \"305\") or a"
     },
     {
-      "file": "src/utils/unitFormat.test.js",
-      "description": "No description — add a top-of-file comment."
-    },
-    {
       "file": "src/utils/unitName.js",
       "description": "A unit's name: \"Apt 2W\", \"Unit D1\", \"The Loft\", \"Whole property\"."
     },
@@ -1437,15 +1317,15 @@
     },
     {
       "file": "src/utils/uploadImagesToR2.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/walkTimes.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/washuPlaces.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     }
   ]
 }
