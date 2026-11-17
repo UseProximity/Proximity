@@ -33,7 +33,7 @@ import { listingUnitFormat, formatConflict } from "@/utils/unitFormat";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
-import { churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
+import { bareCoveredPlan, churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
 import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
 import { applyAliases, convertRentBasis, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
@@ -390,6 +390,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
+      if (mode === "sync" && bareCoveredPlan(snap, state.listing_units)) continue;
       const misshapen = mode === "sync" && formatConflict(listingFormat, snap.name);
       push({
         ...(misshapen ? { note: `listed as ${listingFormat === "plan" ? "floor plans" : "apartments"} here, so added as a draft` } : {}),

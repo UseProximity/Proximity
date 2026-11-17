@@ -8,7 +8,7 @@ import { DB, GA, block, safeBlock, gaBlock, customDimensionDistribution } from "
  * per-listing daily counters, the same numbers landlords see on their dashboard.
  */
 
-const SOURCE_LABELS = { matchmaking: "Matchmaking recommendations" };
+const SOURCE_LABELS = { matchmaking: "Find Your Place matches" };
 
 export default async function loadEngagement(period) {
   const metricTypes = await lookupIds("metric_types");

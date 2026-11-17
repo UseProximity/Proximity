@@ -6,6 +6,20 @@ export function trackEvent(eventName, props = {}) {
   try { sendGAEvent("event", eventName, props); } catch {}
 }
 
+/* ── Find Your Place, recorded in our own database ──
+ * The moments a search row cannot show (leaving a page, the popup, Start over)
+ * go to /api/find-your-place/events as well as to analytics, so the admin
+ * Analytics tab reads them without Google. sendBeacon so an event sent as the
+ * tab closes still arrives. Names and fields: lib/findYourPlace/events.js. */
+export function recordFyp(name, metadata = {}, page = "/find-your-place") {
+  try {
+    const body = JSON.stringify({ name, metadata, page });
+    const url = "/api/find-your-place/events";
+    if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) return;
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+  } catch {}
+}
+
 /* ── Cross-page navigation source ──
  * Header records each route change so any page can ask "where did the user
  * come from?" (client-side navigations don't update document.referrer). */

@@ -15,6 +15,17 @@ import { ActivityList, Card, day, dayTime, Empty, Fact, ListingStateBadge, perso
 const ROLE_COLORS = { super: "red", admin: "purple", landlord: "blue" };
 const EMAIL_PROBLEMS = new Set(["bounced", "complained", "rejected", "failed"]);
 
+// "3 searches, 1 mobile chat, last Nov 12": Find Your Place searches and the
+// mobile app's Proxy chats, which share one table.
+function sessionsSummary({ total, searches = 0, recent }) {
+  if (!total) return "0";
+  const chats = total - searches;
+  const parts = [];
+  if (searches) parts.push(`${searches} ${searches === 1 ? "search" : "searches"}`);
+  if (chats) parts.push(`${chats} mobile ${chats === 1 ? "chat" : "chats"}`);
+  return `${parts.join(", ")}, last ${day(recent[0]?.updatedAt)}`;
+}
+
 const AGREEMENT = {
   signed: ["green", "Agreement signed"],
   needs_resign: ["amber", "Needs to sign the new version"],
@@ -269,7 +280,7 @@ export default function PersonRecord({ id, dbTarget, isProd, isSuper, refreshKey
             <Fact label="Saved listings">{String(search.interactions.saved)}</Fact>
             <Fact label="Contacted">{String(search.interactions.contacted)}</Fact>
             <Fact label="Listings opened">{String(search.interactions.clicked)}</Fact>
-            <Fact label="Matchmaking chats">{search.sessions.total ? `${search.sessions.total}, last ${day(search.sessions.recent[0]?.updatedAt)}` : "0"}</Fact>
+            <Fact label="Find Your Place">{sessionsSummary(search.sessions)}</Fact>
             <Fact label="Lease checks">{search.leaseChecks.length ? `${search.leaseChecks.length}, last ${day(search.leaseChecks[0].at)}` : "0"}</Fact>
           </dl>
         </Card>

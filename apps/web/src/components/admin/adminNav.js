@@ -31,7 +31,7 @@ export const NAV = [
         path: "people/activity",
         label: "Student activity",
         lists: [
-          { list: "matchmaking-sessions", label: "Matchmaking chats" },
+          { list: "matchmaking-sessions", label: "Find Your Place searches" },
           { list: "lease-checks", label: "Lease checks" },
           { list: "waitlist", label: "Waitlist" },
         ],

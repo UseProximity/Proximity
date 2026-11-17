@@ -10,6 +10,7 @@ const STATUS = {
   signed: { label: "Signed", className: "bg-green-100 text-green-800" },
   needs_resign: { label: "New version to sign", className: "bg-amber-100 text-amber-800" },
   in_progress: { label: "Started, not signed yet", className: "bg-amber-100 text-amber-800" },
+  on_paper: { label: "Out for signature on paper", className: "bg-amber-100 text-amber-800" },
   not_signed: { label: "Not signed", className: "bg-gray-100 text-gray-700" },
 };
 
@@ -318,7 +319,17 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
         {paidFor}
 
-        {!signedOk && !agreement.canSign && !billingOnly && (
+        {agreement.status === "on_paper" && agreement.paper && (
+          <div className="space-y-2 rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <p>
+              We sent you this agreement to sign on paper on {dateOnly(agreement.paper.sentAt)}. Once we receive your signed copy, these properties can
+              go live. Your live listings stay up meanwhile. To change anything, email info@useproximity.org.
+            </p>
+            {agreement.paper.properties.length > 0 && <PropertyList items={agreement.paper.properties} />}
+          </div>
+        )}
+
+        {!signedOk && !agreement.canSign && !billingOnly && agreement.status !== "on_paper" && (
           <p className="text-sm text-gray-600">
             The agreement is not ready to sign here yet. We will email you when it is. Questions? Email info@useproximity.org.
           </p>

@@ -23,7 +23,8 @@ const PLACEHOLDER = /\[([A-Za-z][A-Za-z0-9 ._'/-]{0,39})\]/g;
 
 /*
  * Every placeholder in the PDF: [{ label, page (1-based), x, y (baseline), width,
- * size (font size), pageWidth, pageHeight }], in PDF points from the bottom left.
+ * size (font size), pageWidth, pageHeight, roomRight (free space to its right on
+ * the line, from its left edge) }], in PDF points from the bottom left.
  * Text on one line is joined first, so a placeholder split into pieces by the
  * export ("[Owner" + " Name]") is still found.
  */
@@ -67,12 +68,51 @@ export async function findPlaceholders(bytes) {
           // The nearest text below this line (another placeholder, a paragraph, the page number).
           const below = lineTops.filter((l) => l.y < y - 1).map((l) => l.top);
           const textBelowTop = below.length ? Math.max(...below) : null;
-          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight, textBelowTop });
+          // How far right the line is free: to the next text on it, or the page's right margin.
+          const next = chars.slice(m.index + m[0].length).find((c) => c.ch.trim());
+          const roomRight = (next ? next.x0 - 3 : pageWidth - 54) - first.x0;
+          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight, textBelowTop, roomRight });
         }
       }
     }
   } finally {
     await doc.destroy();
+  }
+  return out;
+}
+
+/*
+ * The lines a PDF draws itself, per page: thin horizontal rules (a signature line
+ * in a Word table is a filled rectangle about half a point tall), as
+ * { [page]: [{ x0, x1, y }] } in PDF points from the bottom left. Read from the
+ * drawing commands' bounding boxes, so a line drawn under a transform is missed;
+ * the printed copy then just adds its own line. Empty when the PDF can't be read.
+ */
+export async function findRules(bytes) {
+  const out = {};
+  try {
+    const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+    try {
+      for (let p = 1; p <= doc.numPages; p += 1) {
+        const page = await doc.getPage(p);
+        const ops = await page.getOperatorList();
+        const rules = [];
+        ops.fnArray.forEach((fn, i) => {
+          if (fn !== OPS.constructPath) return;
+          const box = ops.argsArray[i]?.[2];
+          if (!Array.isArray(box) || box.length < 4) return;
+          const [x0, y0, x1, y1] = box.map(Number);
+          if (Math.abs(y1 - y0) <= 2 && Math.abs(x1 - x0) >= 30) rules.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y: (y0 + y1) / 2 });
+        });
+        if (rules.length) out[p] = rules;
+      }
+    } finally {
+      await doc.destroy();
+    }
+  } catch (err) {
+    console.error("billing: could not read the PDF's lines", err?.message);
   }
   return out;
 }
