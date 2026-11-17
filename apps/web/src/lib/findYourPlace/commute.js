@@ -35,19 +35,39 @@ function walkTimesOf(listing) {
   return { walk: minOrNull(campus), shuttle: minOrNull(shuttle) };
 }
 
+/*
+ * Rows for many listing ids, read in chunks: hundreds of ids in one filter make
+ * a URL too long to send (PR 447 review: 400 ids failed on dev), and a chunk
+ * also stays under the 1,000-row cap on a read. A chunk that fails is logged
+ * and left out, so its listings read as "not on file".
+ */
+const ID_CHUNK = 100;
+async function rowsInChunks(ids, label, read) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) chunks.push(ids.slice(i, i + ID_CHUNK));
+  const results = await Promise.all(chunks.map((chunk) => read(chunk)));
+  const rows = [];
+  let failed = false;
+  for (const { data, error } of results) {
+    if (error) {
+      failed = true;
+      console.error(`[findYourPlace] ${label} read failed:`, error.message);
+    } else rows.push(...(data ?? []));
+  }
+  return { rows, failed };
+}
+
 async function driveTimesFor(ids) {
   const out = {};
   if (!ids.length) return out;
-  const { data, error } = await supabase
-    .from("listing_drive_times")
-    .select("listing_id, minutes, locations!inner(name)")
-    .in("listing_id", ids)
-    .in("locations.name", CAMPUS_GARAGES);
-  if (error) {
-    console.error("[findYourPlace] drive times read failed:", error.message);
-    return out;
-  }
-  for (const row of data ?? []) {
+  const { rows: data } = await rowsInChunks(ids, "drive times", (chunk) =>
+    supabase
+      .from("listing_drive_times")
+      .select("listing_id, minutes, locations!inner(name)")
+      .in("listing_id", chunk)
+      .in("locations.name", CAMPUS_GARAGES)
+  );
+  for (const row of data) {
     if (!Number.isFinite(row.minutes)) continue;
     out[row.listing_id] = Math.min(out[row.listing_id] ?? Infinity, row.minutes);
   }
@@ -108,21 +128,20 @@ async function bikeTimesFor(listings) {
   const out = {};
   const ids = listings.map((l) => l.id);
   if (!ids.length) return out;
-  const { data, error } = await supabase.from("listing_bike_times").select("listing_id, minutes, updated_at").in("listing_id", ids);
-  if (error) {
-    // Before the migration lands on an environment the table is absent: bike
-    // times are simply unknown there.
-    console.error("[findYourPlace] bike times read failed:", error.message);
-    return out;
-  }
+  const { rows: data, failed: readFailed } = await rowsInChunks(ids, "bike times", (chunk) =>
+    supabase.from("listing_bike_times").select("listing_id, minutes, updated_at").in("listing_id", chunk)
+  );
   // Checked = a ride time on file, or a recent "no route". Only the rest are
   // worth a Mapbox call, so the fill budget goes to real gaps.
   const checked = new Set();
   const now = Date.now();
-  for (const row of data ?? []) {
+  for (const row of data) {
     if (row.minutes != null) out[row.listing_id] = row.minutes;
     if (row.minutes != null || now - new Date(row.updated_at).getTime() < NO_ROUTE_RETRY_MS) checked.add(row.listing_id);
   }
+  // A read that failed (or a table not migrated yet on this environment) says
+  // nothing about what is missing, so no Mapbox calls are spent on it.
+  if (readFailed) return out;
   const failed = failedRecently();
   const missing = listings.filter((l) => !checked.has(l.id) && !failed.has(l.id)).slice(0, BIKE_FILL_PER_REQUEST);
   if (missing.length) Object.assign(out, await fillBikeTimes(missing));
