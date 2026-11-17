@@ -17,13 +17,15 @@ import { attachUserToSession, loadLiveSession, readSessionCookie } from "./sessi
 
 const UNIQUE_VIOLATION = "23505";
 
+// The role lives in roles (users.role_id), not on users itself.
 async function accountAttribution(userId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
-    .select("role, signup_source, signup_medium, signup_campaign")
+    .select("signup_source, signup_medium, signup_campaign, roles!role_id(name)")
     .eq("id", userId)
     .maybeSingle();
-  return data || null;
+  if (error) throw error;
+  return data ? { ...data, role: data.roles?.name ?? null } : null;
 }
 
 /**
@@ -91,7 +93,9 @@ export async function recordOutcome(req, { outcome, userId = null, userRole = nu
       throw error;
     }
 
-    if (session && uid && !session.user_id) await attachUserToSession(session.id, uid);
+    // Not for an outcome credited to an older session (application_submitted):
+    // that session is over, and it already has its user.
+    if (session && uid && !session.user_id && !sessionId) await attachUserToSession(session.id, uid);
     return { recorded: true };
   } catch (err) {
     console.error(`marketing: recordOutcome(${outcome}) failed:`, err?.message || err);

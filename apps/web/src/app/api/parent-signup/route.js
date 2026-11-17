@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { sendParentGuideEmail, getBaseUrl } from "@/lib/email";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,7 @@ export async function POST(req) {
         .maybeSingle();
 
       // Column defaults mirror /api/auth/signup so every path produces the same shape.
-      const { error: insertError } = await supabase.from("users").insert({
+      const { data: created, error: insertError } = await supabase.from("users").insert({
         email,
         name: firstName || email.split("@")[0],
         role_id: parentRole?.id ?? null,
@@ -106,7 +107,7 @@ export async function POST(req) {
         phone: "N/A",
         description: "",
         referral_source: "Parent guide",
-      });
+      }).select("id").maybeSingle();
 
       // A concurrent double submit loses the unique-email race. The row exists
       // either way, so that one is not an error.
@@ -114,6 +115,7 @@ export async function POST(req) {
         console.error("[parent-signup] insert failed:", insertError.message);
         return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
       }
+      if (created?.id) await stampSignup(req, { userId: created.id, role: "parent" });
     }
 
     try {

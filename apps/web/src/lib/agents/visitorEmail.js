@@ -30,6 +30,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl, sendProxyConfirmEmail, sendProxyStudentEmail } from "@/lib/email";
 import { proxyReplyAddress } from "./replyTokens";
 import { updateProxyState, PROXY_USER_ID } from "./threads";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 // Confirmation links last two days; a conversation gets three of them.
 const CONFIRM_TTL_MS = 2 * 24 * 60 * 60 * 1000;
@@ -63,6 +64,9 @@ async function startIncompleteAccount(email) {
     if (error.code === "23505") return userByEmail(email);
     throw new Error(`incomplete account: ${error.message}`);
   }
+  // A signed-out visitor giving Proxy their email: an account made in their
+  // own visit, so it takes that visit's source.
+  await stampSignup(null, { userId: data.id, role: "student" });
   return data;
 }
 

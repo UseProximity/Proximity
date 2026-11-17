@@ -31,6 +31,7 @@ import {
   clientIp,
 } from "@/lib/auth/loginThrottle";
 import { isRestorable, signRestoreToken } from "@/lib/auth/accountRestore";
+import { onSignIn, stampSignup } from "@/lib/marketing/accounts";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
@@ -243,6 +244,7 @@ const config = {
           if (fields.name) token.name = fields.name;
           if (fields.email) token.email = fields.email;
           token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: fields.userId, role: fields.role });
         }
         token.viaEmailLink = false;
         return token;
@@ -258,6 +260,7 @@ const config = {
           if (fields.name) token.name = fields.name;
           if (fields.email) token.email = fields.email;
           token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: fields.userId, role: fields.role });
         }
         token.viaEmailLink = true;
         return token;
@@ -308,6 +311,12 @@ const config = {
             .select("id")
             .single();
           if (error) console.error("jwt: failed to insert new user", error);
+          // Marketing attribution: the session cookie survived the Google round
+          // trip, so the account gets the visit's source now (PRD 7.4, edge case 1).
+          if (newUser?.id) {
+            await stampSignup(null, { userId: newUser.id, role: "student" });
+            await onSignIn(null, { userId: newUser.id, role: "student" });
+          }
           token.userId = newUser?.id ?? null;
           token.role = "student";
           token.profileComplete = false;
@@ -324,6 +333,7 @@ const config = {
           token.profileComplete = existing.profile_complete ?? false;
           if (existing.name) token.name = existing.name;
           token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: existing.id, role: token.role });
         }
         token.viaEmailLink = false;
       }

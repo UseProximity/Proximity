@@ -36,3 +36,34 @@ export function cleanTag(raw) {
   const lowered = String(raw ?? "").trim().toLowerCase();
   return { value, changed: Boolean(lowered) && value !== lowered };
 }
+
+/*
+ * The query parameters a visit's campaign is read from (PRD 7.1). A
+ * server-side redirect between our own pages must carry them, or the browser
+ * beacon on the page the visitor ends up on never sees them: /messages, for
+ * one, redirects every chat email link to the inbox overlay.
+ */
+export const CAMPAIGN_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "src", "gclid"];
+
+/**
+ * `path` (a same-site path) with the campaign parameters from `params` (a
+ * Next.js searchParams object) appended. Values already on `path` win, and
+ * the path is returned unchanged when there is nothing to carry.
+ */
+export function withCampaignParams(path, params) {
+  const carried = [];
+  for (const name of CAMPAIGN_PARAMS) {
+    const raw = params?.[name];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof value === "string" && value) carried.push([name, value.slice(0, 200)]);
+  }
+  if (!carried.length || typeof path !== "string") return path;
+  const hashAt = path.indexOf("#");
+  const hash = hashAt >= 0 ? path.slice(hashAt) : "";
+  const base = hashAt >= 0 ? path.slice(0, hashAt) : path;
+  const queryAt = base.indexOf("?");
+  const query = new URLSearchParams(queryAt >= 0 ? base.slice(queryAt + 1) : "");
+  for (const [name, value] of carried) if (!query.has(name)) query.set(name, value);
+  const pathname = queryAt >= 0 ? base.slice(0, queryAt) : base;
+  return `${pathname}?${query.toString()}${hash}`;
+}

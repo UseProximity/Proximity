@@ -2,6 +2,7 @@ import supabase from "@/lib/supabase";
 import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
 import { AUTH_ERRORS } from "@proximity/auth-core";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+import { recordActivation, stampSignup } from "@/lib/marketing/accounts";
 
 export async function POST(req) {
   try {
@@ -89,7 +90,9 @@ export async function POST(req) {
         return Response.json({ error: AUTH_ERRORS.SERVER_ERROR }, { status: 500 });
       }
       userRow = newUser;
+      await stampSignup(req, { userId: newUser.id, role: "student", label: "app" });
     }
+    await recordActivation(req, { userId: userRow.id, role: userRow.roles?.name ?? null, useCookie: false });
 
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken({

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { attachListings, findUnownedListings, inviteContact, UnownedError } from "@/lib/massEmail/unowned";
 import { errorResponse, massEmailContext } from "@/lib/massEmail/http";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 /*
  * Live listings with no landlord account (lib/massEmail/unowned.js).
@@ -34,7 +35,11 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, ...(await attachListings(ctx.db, { userId: body.userId, listingIds: body.listingIds })) });
     }
     if (body.action === "invite") {
-      return NextResponse.json({ ok: true, ...(await inviteContact(ctx.db, { email: body.email, name: body.name, listingIds: body.listingIds })) });
+      const invited = await inviteContact(ctx.db, { email: body.email, name: body.name, listingIds: body.listingIds });
+      // The account is the contact's, made by an admin: labelled "invite". Only on
+      // the site's own database (the attribution tables are there, not on the other one).
+      if (ctx.target === ctx.own) await stampSignup(req, { userId: invited.userId, role: "landlord", label: "invite" });
+      return NextResponse.json({ ok: true, ...invited });
     }
     throw new UnownedError("bad_action", "Choose attach or invite.");
   } catch (err) {

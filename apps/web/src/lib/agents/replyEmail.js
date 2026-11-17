@@ -34,6 +34,7 @@ import { landlordAct } from "./tours";
 import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { getThread, PROXY_USER_ID } from "./threads";
 import { handleStudentMessage } from "./proxy";
+import { recordOutcome } from "@/lib/marketing/record";
 
 export { tourReplyAddress, proxyReplyAddress } from "./replyTokens";
 
@@ -135,6 +136,9 @@ async function proxyReply({ parsed, fromEmail, token, logId, finish }) {
     await finish(logId, { user_id: student?.id ?? null, thread_id: thread.id, status: "rejected", reason: String(result.error).slice(0, 200) });
     return { status: "rejected", reason: result.error };
   }
+  // Asking Proxy by email is still asking Proxy. No browser, so no session:
+  // credited through the account.
+  if (student?.id) await recordOutcome(null, { outcome: "proxy_question", userId: student.id, subjectId: thread.listing_id, useCookie: false });
   // They wrote by email, so Proxy's answer goes back by email.
   const replies = (result.messages ?? []).filter((m) => m.sender_id === PROXY_USER_ID).map((m) => m.body);
   if (replies.length) {

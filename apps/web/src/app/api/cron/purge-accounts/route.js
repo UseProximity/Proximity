@@ -27,6 +27,10 @@
  *                    no account claimed within 30 days are a separate, final
  *                    step of this run: they belong to no one, so their contents are blanked.)
  *   - lease_checks   AI summaries about the person's own lease: deleted.
+ *   - marketing      attribution rows (PRD section 9): the account's marketing
+ *                    sessions (their touchpoints and outcomes go with them by
+ *                    cascade) and any other outcome recorded against the
+ *                    account, deleted; the signup_* columns are cleared.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
  *   - blocks/reports user_blocks (either side) and the review_reports, review_reply_reports, chat_reports and listing_reports this person filed.
@@ -258,6 +262,16 @@ async function purgeUser(user) {
   await must("review_votes", supabase.from("review_votes").delete().eq("user_id", userId));
   // Matchmaking sessions and preferences are kept for three years; see the header.
   await must("lease_checks", supabase.from("lease_checks").delete().eq("user_id", userId));
+  // Outcomes first: one can sit on a session that belongs to nobody (a mobile
+  // outcome has none at all), so deleting the sessions alone would miss it.
+  await must(
+    "marketing_outcomes",
+    supabase.from("marketing_outcomes").delete().eq("user_id", userId)
+  );
+  await must(
+    "marketing_sessions",
+    supabase.from("marketing_sessions").delete().eq("user_id", userId)
+  );
   await must(
     "waitlist_clicks",
     supabase.from("waitlist_clicks").delete().eq("user_id", userId)
@@ -368,6 +382,10 @@ async function purgeUser(user) {
       preferred_beds: null,
       preferred_beds_list: null,
       preferred_lease_months_list: null,
+      signup_session_id: null,
+      signup_source: null,
+      signup_medium: null,
+      signup_campaign: null,
     })
     .eq("id", userId);
 
