@@ -1,4 +1,6 @@
-// Bottom tab navigator. Students: Browse | Saved | Find Your Place | Chat | Profile.
+// Bottom tab navigator. Students: Browse | Saved | Matchmaking | Chat | Profile.
+// The third tab's screen is Find Your Place; its bar label stays the shorter
+// "Matchmaking", which fits five tabs on small phones.
 // Landlords: Browse | Saved | Listings | Chat | Profile.
 // Icons/colors per design-system/MASTER.md §7: active tab uses `primary`,
 // inactive uses `textMuted`, icons from the shared Lucide set (§6). All tabs
@@ -105,7 +107,10 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Browse" }} />
       <Tabs.Screen name="saved" options={{ title: "Saved" }} />
       <Tabs.Screen name="my-listings" options={{ title: "Listings", href: landlord ? undefined : null }} />
-      <Tabs.Screen name="find-your-place" options={{ title: "Find Your Place", href: landlord ? null : undefined }} />
+      <Tabs.Screen
+        name="find-your-place"
+        options={{ title: "Find Your Place", tabBarLabel: "Matchmaking", href: landlord ? null : undefined }}
+      />
       <Tabs.Screen
         name="chat"
         options={{

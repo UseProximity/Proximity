@@ -152,10 +152,14 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
       </Question>
 
       <Question title="What's your max monthly rent per person?">
-        <View className="justify-center mr-2 mb-2">
-          <Text
-            className={`absolute left-4 z-10 text-sm font-medium ${typeof answers.budget === "number" ? "text-red-600" : "text-gray-400"}`}
-          >
+        {/* "$" and the number share one row and one text style with no line
+            height, so they sit on the same line on iOS and Android. */}
+        <View
+          className={`flex-row items-center h-10 w-32 px-4 mr-2 mb-2 rounded-full border bg-white ${
+            typeof answers.budget === "number" ? "border-red-600" : "border-gray-300"
+          }`}
+        >
+          <Text className={`text-[14px] font-medium ${typeof answers.budget === "number" ? "text-red-600" : "text-gray-400"}`}>
             $
           </Text>
           <TextInput
@@ -170,7 +174,10 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
             }}
             onFocus={() => setBudgetFocused(true)}
             onBlur={() => setBudgetFocused(false)}
-            className={`${FIELD(typeof answers.budget === "number")} w-32 pl-7`}
+            textAlignVertical="center"
+            className={`flex-1 h-full p-0 ml-0.5 text-[14px] font-medium ${
+              typeof answers.budget === "number" ? "text-red-600" : "text-gray-700"
+            }`}
           />
         </View>
         <NoPreference

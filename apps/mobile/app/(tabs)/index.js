@@ -59,10 +59,13 @@ export default function BrowseScreen() {
   // Arriving from Find Your Place's "Browse All Matches": its answers become the
   // filters (each one shown, and removable, in the filter sheet), as on web.
   const handoff = useBrowseHandoffStore((state) => state.pending);
+  // `handoff` only wakes this effect. The store is read once, here: a run that
+  // finds it already taken (or empty) does nothing.
   useEffect(() => {
-    if (!handoff) return;
-    const { filters: handed, suggested } = useBrowseHandoffStore.getState().take();
-    setFilters({ ...DEFAULT_FILTERS, ...handed });
+    const next = useBrowseHandoffStore.getState().take();
+    if (!next) return;
+    const { filters: handed, suggested } = next;
+    setFilters({ ...DEFAULT_FILTERS, ...(handed ?? {}) });
     setSearch("");
     setSuggestedFilters(
       suggested
