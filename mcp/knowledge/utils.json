@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T06:14:42.493Z",
-  "count": 342,
+  "_generated": "2026-11-17T22:37:12.760Z",
+  "count": 345,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -532,6 +532,14 @@
       "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
     },
     {
+      "file": "src/lib/billing/paperAgreementPdf.js",
+      "description": "The marketing agreement printed for a landlord to sign on paper (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/paperAgreements.js",
+      "description": "A landlord's marketing agreement signed on paper (Wyatt, 2026-11-17)."
+    },
+    {
       "file": "src/lib/billing/payerLinks.js",
       "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
     },
@@ -742,6 +750,10 @@
     {
       "file": "src/lib/findYourPlace/commute.js",
       "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
+    },
+    {
+      "file": "src/lib/findYourPlace/events.js",
+      "description": "Find Your Place's own record of the moments that leave no search row: which"
     },
     {
       "file": "src/lib/findYourPlace/match.js",
@@ -1305,7 +1317,7 @@
     },
     {
       "file": "src/utils/analytics.js",
-      "description": "── Cross-page navigation source ──"
+      "description": "── Find Your Place, recorded in our own database ──"
     },
     {
       "file": "src/utils/availability.js",

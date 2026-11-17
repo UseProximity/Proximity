@@ -24,7 +24,7 @@ import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import ProxyPanel from "@/components/proxy/ProxyPanel";
-import { calcAge } from "@/utils/listingFormatters";
+import { calcAge, SITE_TIME_ZONE } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
   DRIVE_PLACES,
@@ -855,6 +855,7 @@ function ReviewsTab({
                         month: "short",
                         day: "numeric",
                         year: "numeric",
+                        timeZone: SITE_TIME_ZONE,
                       })
                     : null;
                   return (
@@ -2293,9 +2294,10 @@ export default function ListingModalInfo({
                   {listing.verifiedAt && (
                     <>
                       {", last synced "}
-                      {new Date(listing.verifiedAt).toLocaleDateString(undefined, {
+                      {new Date(listing.verifiedAt).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
+                        timeZone: SITE_TIME_ZONE,
                       })}
                     </>
                   )}

@@ -30,7 +30,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
 import { getClient, SONNET, stripEmDashes } from "@/lib/agents/model";
-import { haversineKm } from "@/utils/walkTimes";
+import { metersBetween } from "@/lib/reviews/listingMatch";
 import { stripAiInstructions } from "@/lib/contentRules";
 import {
   fetchActiveListings,
@@ -110,7 +110,7 @@ const primaryLandlord = (l) => {
 function metresApart(a, b) {
   const [la1, lo1, la2, lo2] = [a.latitude, a.longitude, b.latitude, b.longitude].map(Number);
   if (![la1, lo1, la2, lo2].every(Number.isFinite)) return Infinity;
-  return haversineKm(la1, lo1, la2, lo2) * 1000;
+  return metersBetween(la1, lo1, la2, lo2);
 }
 // One card per complex: the same street address, or the same landlord's
 // listings standing next to each other (units of one site listed separately).
@@ -310,7 +310,10 @@ const aOrAn = (n) => (/^(8|11|18)/.test(String(n)) ? "an" : "a");
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-export async function findMatches({ answers, text, chips, viewerGender = null }) {
+// `onBrowse(browse)`, when given, is called as soon as the browse hand-off is
+// known, so the caller can count it while commute times and the model pick
+// are still running (PR 447 review).
+export async function findMatches({ answers, text, chips, viewerGender = null, onBrowse = null }) {
   const [{ parsed, usage: parseUsage, source: parseSource }, everything] = await Promise.all([
     parsePreferences(text, chips),
     fetchActiveListings(),
@@ -339,6 +342,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
     browse: buildBrowseHandoff({ answers, parsed, preferences }),
     notes: { group: ctx.groupNote ?? null, budget: ctx.budgetNote ?? null, relax: ctx.relaxNote ?? null },
   };
+  onBrowse?.(base.browse);
   if (!pool.length) return { ...base, matches: [], usage: { parse: parseUsage, pick: null } };
 
   const commute = commuteAnswer(answers);

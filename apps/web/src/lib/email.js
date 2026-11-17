@@ -911,7 +911,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
     ? `Your ${list.length} reviews are live`
     : `Your review of ${list[0] || "your place"} is live`;
 
-  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/matchmaking`;
+  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/find-your-place`;
   const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
 
   const tail = setupToken

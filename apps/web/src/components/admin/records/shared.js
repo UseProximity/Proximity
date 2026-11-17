@@ -6,8 +6,12 @@
  */
 import { Badge } from "@/components/admin/adminShared";
 import { AdminLink, ListingLink, PersonLink } from "@/components/admin/RecordLink";
+import { dayText, isCalendarDay } from "@/utils/calendarDate";
 
-export const day = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+// A plain date (a move-in date column) keeps the day it names; read as a
+// moment it showed a day early in US time zones (PR 447 review).
+export const day = (iso) =>
+  !iso ? "" : isCalendarDay(iso) ? dayText(iso) : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 export const dayTime = (iso) => (iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
 export const personName = (p) => (p ? p.name || p.email || "Unnamed account" : "");
 

@@ -50,18 +50,24 @@ export const ANON_IP_LIMIT = 60;
 const ANON_IP_WINDOW_MS = 60 * 60 * 1000;
 const MAX_TRACKED_IPS = 10_000;
 
-function ipHits() {
-  if (!globalThis.__prxAnonChatHits) globalThis.__prxAnonChatHits = new Map();
-  return globalThis.__prxAnonChatHits;
+function ipHits(bucket = "chat") {
+  if (!globalThis.__prxAnonIpHits) globalThis.__prxAnonIpHits = new Map();
+  const all = globalThis.__prxAnonIpHits;
+  if (!all.has(bucket)) all.set(bucket, new Map());
+  return all.get(bucket);
 }
 
-// Records a chat start for this IP and reports whether it was over the limit.
-export function anonIpLimited(ip) {
+/*
+ * Records one use for this IP in `bucket` and reports whether it was over
+ * `limit` for the hour. Each bucket has its own count, so Find Your Place's
+ * searches do not use up the mobile chat's budget (PR 447 review).
+ */
+export function ipLimited(ip, { bucket = "chat", limit = ANON_IP_LIMIT } = {}) {
   if (!ip) return false;
   const now = Date.now();
-  const map = ipHits();
+  const map = ipHits(bucket);
   const recent = (map.get(ip) ?? []).filter((t) => now - t < ANON_IP_WINDOW_MS);
-  if (recent.length >= ANON_IP_LIMIT) {
+  if (recent.length >= limit) {
     map.set(ip, recent);
     return true;
   }
@@ -75,6 +81,9 @@ export function anonIpLimited(ip) {
   }
   return false;
 }
+
+// Records a chat start for this IP and reports whether it was over the limit.
+export const anonIpLimited = (ip) => ipLimited(ip);
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 

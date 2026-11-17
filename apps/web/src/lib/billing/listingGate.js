@@ -44,7 +44,7 @@
  * `db` is a service-role Supabase client, passed in so this stays testable.
  */
 import { getBillingSetting } from "./settings.js";
-import { agreementState, coverageFor } from "./agreements.js";
+import { PAPER_OUT_MESSAGE, agreementState, coverageFor, isPaperOut } from "./agreements.js";
 import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 import { activePayerLink } from "./payerLinks.js";
@@ -66,6 +66,7 @@ const PARTS = {
   overdue_invoice: "pay your overdue invoice",
   payment_method: "add an active payment method",
   agreement: "sign the marketing agreement",
+  paper_agreement: "send us your signed marketing agreement",
 };
 
 // What has to be done, as one phrase: "pay your overdue invoice and add an active payment method".
@@ -85,18 +86,21 @@ function todoList(missing, uncovered) {
 
 // What to tell a landlord who is blocked. Plain words, and where to fix it.
 export function gateMessage(missing, uncovered = []) {
+  if (missing.includes("paper_agreement")) return `${PAPER_OUT_MESSAGE} Your drafts are saved.`;
   return `Before you can publish a listing you need to ${todoList(missing, uncovered)}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
 }
 
 // What to tell a landlord whose publish was kept as a draft instead (code billing_needed).
 export function draftedMessage(missing, uncovered = []) {
+  if (missing.includes("paper_agreement")) return `Saved as a draft. ${PAPER_OUT_MESSAGE}`;
   return `Saved as a draft. To publish it, ${todoList(missing, uncovered)} under Billing.`;
 }
 
 // The body a route returns when the gate says no. `uncovered` lets the page open
 // the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
-  if (gate.payer) {
+  // A paper copy out (the landlord's or their signer's): no popup, no request to the signer.
+  if (gate.payer && !gate.missing.includes("paper_agreement")) {
     const waits = payerCanFix(gate.missing);
     return {
       error: waits
@@ -229,10 +233,14 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
   }
   let agreementSigned = true;
   let uncovered = [];
+  // A paper copy out for signature: nothing to sign in the app, so the publish is
+  // refused with that said instead of opening the signing popup (Wyatt, 2026-11-17).
+  let paperOut = false;
   if (settings.requireAgreement) {
     if (listingIds?.length || newProperty) {
       const ids = await resolvePublishedIds(db, listingIds ?? []);
-      const { properties, covered } = await coverageFor(db, userId, now);
+      const { state, properties, covered } = await coverageFor(db, userId, now);
+      paperOut = isPaperOut(state);
       let extraUnits = null;
       if (unitIds?.length) {
         const { data: units, error: unitError } = await db
@@ -265,12 +273,16 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
       agreementSigned = uncovered.length === 0;
     } else {
       // Signed, in its term, and on a version that still counts.
-      agreementSigned = (await agreementState(db, userId, now)).valid;
+      const state = await agreementState(db, userId, now);
+      agreementSigned = state.valid;
+      paperOut = isPaperOut(state);
     }
   }
 
+  const decision = gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice });
+  if (paperOut) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
   return {
-    ...gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice }),
+    ...decision,
     ...settings,
     uncovered,
     ...(payerLink && {

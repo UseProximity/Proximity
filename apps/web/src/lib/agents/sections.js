@@ -25,7 +25,7 @@
  */
 
 // Relative, not "@/": the node test runner loads this file directly.
-import { dayText, isCalendarDay } from "../../utils/calendarDate.js";
+import { dayText, isCalendarDay, stLouisDay } from "../../utils/calendarDate.js";
 
 export const SECTIONS = ["core", "fees", "policies", "specials", "misc"];
 export const SCOPES = ["property", "owner", "unit", "lease"];
@@ -121,9 +121,7 @@ export function isLaterThan(stored, at) {
 }
 
 /* Today's date (YYYY-MM-DD) in St. Louis, for validity windows. */
-export function todayChicago() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-}
+export const todayChicago = () => stLouisDay();
 
 function basisWords(basis, monthly) {
   const b = String(basis ?? "flat");

@@ -85,7 +85,12 @@ export async function POST(req) {
     // Taking over from their signer: anything the signer was still signing for this
     // account is cancelled first, so it can't cover a listing after this document
     // is built and then be released without it being on here (Wyatt, 2026-11-10).
-    if (takeover) {
+    // Only on the call that opens it for signing, not on `prepare` while the
+    // dialog is just open: a landlord who looks and closes it has cancelled
+    // nothing and the signer gets no email (PR 447 review). startSigning plans
+    // the document again on that call, so a copy prepared before is rebuilt if
+    // what the signer covers changed in between.
+    if (takeover && !prepare) {
       const link = await activePayerLink(supabase, user.id);
       if (link) {
         const cancelled = await cancelPayerDocuments(supabase, documenso, user.id, { payerId: link.payer_id });

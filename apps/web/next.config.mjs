@@ -30,6 +30,12 @@ const nextConfig = {
       ? process.env.PROD_SUPABASE_DEFAULT_KEY
       : process.env.DEV_SUPABASE_DEFAULT_KEY,
   },
+  // The chat-style matchmaking page became Find Your Place (2026-11-10). Old
+  // links, guides and emails still point there. Permanent, and the query
+  // string is carried over (PR 447 review).
+  async redirects() {
+    return [{ source: "/matchmaking", destination: "/find-your-place", permanent: true }];
+  },
   async headers() {
     return [
       {

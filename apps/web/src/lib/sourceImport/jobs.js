@@ -641,7 +641,7 @@ export async function requeueStuck({ batchId = null } = {}) {
   const { data: stuck } = await q;
   for (const j of stuck ?? []) {
     if (j.attempts >= MAX_ATTEMPTS) {
-      await supabase.from("listing_import_jobs").update({ status: "failed", step: "Couldn't read it", error: "The read kept timing out. Try again, or fill it in by hand." }).eq("id", j.id);
+      await supabase.from("listing_import_jobs").update({ status: "failed", step: "Couldn't read it", error: "The read kept timing out. Try again, or fill it in by hand.", finished_at: new Date().toISOString() }).eq("id", j.id);
     } else {
       await supabase.from("listing_import_jobs").update({ status: "queued", step: "Waiting to read", started_at: null, updated_at: new Date().toISOString() }).eq("id", j.id);
     }

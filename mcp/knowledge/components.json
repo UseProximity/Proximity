@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-17T06:14:42.451Z",
-  "count": 218,
+  "_generated": "2026-11-17T22:37:12.718Z",
+  "count": 220,
   "components": [
     {
       "name": "ErrorReporter",
@@ -244,6 +244,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "PaperAgreement",
+      "file": "src/components/admin/billing/agreements/PaperAgreement.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "shared",
       "file": "src/components/admin/billing/agreements/shared.js",
       "description": "No description. Run generate after adding a description above."
@@ -351,6 +356,11 @@
     {
       "name": "profileFields",
       "file": "src/components/auth/profileFields.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ExhibitPropertyChoice",
+      "file": "src/components/billing/ExhibitPropertyChoice.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

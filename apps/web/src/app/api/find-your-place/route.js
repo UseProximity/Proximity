@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { clientIp } from "@/lib/auth/loginThrottle";
-import { readVisitorId, newVisitorId, setVisitorCookie, anonIpLimited } from "@/lib/matchmaking/anonymousSessions";
+import { readVisitorId, newVisitorId, setVisitorCookie, ipLimited } from "@/lib/matchmaking/anonymousSessions";
+import { recordError } from "@/lib/errors/record";
 import { findMatches } from "@/lib/findYourPlace/match";
+import { recordFypEvent } from "@/lib/findYourPlace/events";
 import { getCachedListings } from "@/lib/listings/queryListings";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
 import { campusWalkMinutes } from "@/utils/washuPlaces";
@@ -41,6 +43,8 @@ async function browseCount(browse) {
  * per-IP limit.
  */
 const VISITOR_RUN_CAP = 10;
+// Signed-out searches an hour from one network address (Wyatt, 2026-11-17).
+const FYP_IP_LIMIT = 200;
 
 // Searches this device has run, over every Find Your Place row it started
 // (claimed ones too: signing up does not refill a later signed-out run).
@@ -62,9 +66,14 @@ async function visitorRuns(visitorId) {
  * @auth optional
  */
 export async function POST(request) {
+  // Who and what, for recording a search that fails (lib/findYourPlace/events).
+  let actor = null;
+  let visitor = null;
+  let retry = false;
+  const failed = (reason) =>
+    after(() => recordFypEvent({ name: "search_failed", userId: actor?.id ?? null, visitorId: visitor, metadata: { reason, retry } }));
   try {
     const requestUser = await getRequestUser(request);
-    let actor = null;
     if (requestUser?.email) {
       const { data } = await supabase
         .from("users")
@@ -77,16 +86,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let visitor = readVisitorId(request);
-    if (!actor && anonIpLimited(clientIp(request.headers))) {
-      return NextResponse.json({ error: "busy" }, { status: 429 });
-    }
+    visitor = readVisitorId(request);
 
     const body = await request.json().catch(() => ({}));
+    // "Try again" after an error, so a failure retried until it works is told
+    // apart from one the student gave up on.
+    retry = body.retry === true;
+    // Started from the homepage popup's group-size question.
+    const fromPopup = body.fromPopup === true;
     const answers = sanitizeAnswers(body.answers);
     // The page holds the same rules, so this only trips on an old saved run
     // or a hand-made request. "invalid" sends the student back to page 1.
     if (answeredCount(answers) < QUESTION_COUNT) {
+      failed("invalid");
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
     const text = typeof body.text === "string" ? body.text.slice(0, TEXT_MAX).trim() : "";
@@ -104,17 +116,46 @@ export async function POST(request) {
       // search to your account?" prompt (PATCH below): on a shared computer it
       // may be someone else's (PR 447 review). Here it is left as it is, and
       // the run starts the account's own search.
-      const mine = data && (actor ? data.user_id === actor.id : !data.user_id && data.visitor_id === visitor);
+      // Signed out, the search must carry this browser's own visitor cookie: no
+      // cookie never matches, or an expired search (its visitor id cleared)
+      // could be taken over and kept forever (PR 447 review).
+      const mine = data && (actor ? data.user_id === actor.id : !data.user_id && !!visitor && data.visitor_id === visitor);
       if (mine && data.preferences?._fyp) existing = data;
+    }
+
+    /*
+     * Signed-out searches per network address: FYP_IP_LIMIT an hour, counted
+     * apart from the mobile chat's budget (a dorm shares one address). Only new
+     * searches count: invalid requests are refused above, and re-running the
+     * visitor's own saved search is free. Hitting it is reported as a site
+     * error, so the team is emailed the first time and as it keeps happening
+     * (Wyatt, 2026-11-17).
+     */
+    if (!actor && !existing && ipLimited(clientIp(request.headers), { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
+      after(() =>
+        recordError({
+          source: "server",
+          where: "POST /api/find-your-place",
+          message: `Find Your Place per-network limit reached (${FYP_IP_LIMIT} signed-out searches an hour): students on one network are being turned away`,
+        }).catch(() => {})
+      );
+      failed("busy");
+      return NextResponse.json({ error: "busy" }, { status: 429 });
     }
 
     const runs = (existing?.preferences?._fyp?.runs ?? 0) + 1;
     if (!actor && (await visitorRuns(visitor)) >= VISITOR_RUN_CAP) {
+      failed("cap");
       return NextResponse.json({ error: "cap" }, { status: 429 });
     }
 
-    const result = await findMatches({ answers, text, chips, viewerGender: actor?.gender ?? null });
-    const count = await browseCount(result.browse).catch(() => null);
+    // "Browse All N Matches" is counted alongside the match, not after it.
+    let counting = null;
+    const result = await findMatches({
+      answers, text, chips, viewerGender: actor?.gender ?? null,
+      onBrowse: (browse) => { counting = browseCount(browse).catch(() => null); },
+    });
+    const count = await (counting ?? browseCount(result.browse).catch(() => null));
 
     const now = new Date().toISOString();
     const recommendations = result.matches.map((m) => ({
@@ -127,7 +168,11 @@ export async function POST(request) {
     }));
     const row = {
       status: "recommendations_ready",
-      preferences: { ...result.preferences, _fyp: { answers, chips, text, parsed: result.parsed, runs } },
+      preferences: { ...result.preferences, _fyp: {
+        answers, chips, text, parsed: result.parsed, runs,
+        // Once a search came from the popup it stays counted as one.
+        ...(fromPopup || existing?.preferences?._fyp?.fromPopup ? { fromPopup: true } : {}),
+      } },
       weights: result.weights,
       recommendations,
       // Readable by the chat clients that still list past sessions.
@@ -175,6 +220,7 @@ export async function POST(request) {
     return response;
   } catch (err) {
     console.error("[find-your-place POST]", err);
+    failed("error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

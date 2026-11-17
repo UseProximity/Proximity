@@ -40,6 +40,9 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Find Your Place's nice-to-haves: marked in the filter panel, switched off
+  // (Wyatt, 2026-11-17). { furnished, amenities } or null.
+  const [fypSuggested, setFypSuggested] = useState(null);
   /*
    * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
    * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
@@ -52,6 +55,12 @@ export default function BrowseContent({ session, initialListings = null }) {
     try {
       const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
       if (raw?.filters && typeof raw.filters === "object") setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
+      if (raw?.suggested && typeof raw.suggested === "object") {
+        setFypSuggested({
+          furnished: typeof raw.suggested.furnished === "string" ? raw.suggested.furnished : null,
+          amenities: Array.isArray(raw.suggested.amenities) ? raw.suggested.amenities.filter((a) => typeof a === "string") : [],
+        });
+      }
     } catch {
       // No readable hand-off: plain browse.
     }
@@ -186,6 +195,7 @@ export default function BrowseContent({ session, initialListings = null }) {
   const handleReset = () => {
     setSearch("");
     setFilters(DEFAULT_FILTERS);
+    setFypSuggested(null);
     handleClearSearch();
   };
 
@@ -238,6 +248,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           setFilters={setFilters}
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
+          suggested={fypSuggested}
           mapHidden={mapHidden}
           // A fade-through: fade out now, and switch the layout once that has
           // finished, while it is invisible.
@@ -264,6 +275,7 @@ export default function BrowseContent({ session, initialListings = null }) {
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
+          suggestedFilters={fypSuggested}
           onClearSearch={handleClearSearch}
           search={search}
           setSearch={setSearch}

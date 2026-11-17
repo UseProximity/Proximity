@@ -214,8 +214,13 @@ export async function synthesizeKnowledge({
     if (op.op === "keep") {
       // Still said, nothing changed: counted for the weekly read's
       // missed-reads rule, nothing written.
-      const current = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null))
-        ?? facts.find((f) => f.field_key === key && f.section === op.section);
+      // The exact scope first. Failing that, the same key only when it exists
+      // at a single scope: with several (a property fee and a lease's fee),
+      // guessing could keep a fact alive that its own page no longer says
+      // (PR 447 review).
+      const sameKey = facts.filter((f) => f.field_key === key && f.section === op.section);
+      const current = sameKey.find((f) => f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null))
+        ?? (sameKey.length === 1 ? sameKey[0] : null);
       if (current) { result.unchanged++; result.touched.push(current.id); }
       continue;
     }

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-17T06:14:42.448Z",
-  "count": 275,
+  "_generated": "2026-11-17T22:37:12.714Z",
+  "count": 279,
   "routes": [
     {
       "path": "/api/account",
@@ -432,6 +432,46 @@
       },
       "tables": [],
       "file": "src/app/api/admin/billing/landlords/[id]/license-disclosure/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/paper",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/paper/[agreementId]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/[agreementId]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/paper/[agreementId]/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/[agreementId]/file/route.js"
     },
     {
       "path": "/api/admin/billing/landlords/agreement-email",
@@ -2141,6 +2181,7 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "events",
         "listing_applications",
         "device_push_tokens",
         "user_blocks",
@@ -2463,6 +2504,18 @@
         "users"
       ],
       "file": "src/app/api/find-your-place/route.js"
+    },
+    {
+      "path": "/api/find-your-place/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/find-your-place/events/route.js"
     },
     {
       "path": "/api/getUser",

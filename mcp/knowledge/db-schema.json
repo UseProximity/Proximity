@@ -55,6 +55,11 @@
           "branch": "feat/email-reply-relay"
         },
         {
+          "name": "fn_chat_alert_emails",
+          "touches": "fn_chat_alert_email for many (thread, user) pairs at once (202611170002, dev only until applied to prod)",
+          "branch": "fix/release-447-review"
+        },
+        {
           "name": "fn_chat_contact_confirmed",
           "touches": "contact_email_verifications, users",
           "branch": "feat/email-reply-relay"
@@ -329,7 +334,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk listing_id->listings.id (cascade), student_id->users.id (cascade), landlord_id->users.id (set null), lease_id->unit_leases.id (set null); unique index listing_applications_per_landlord (listing_id, student_id, coalesce(landlord_id::text, application_url)) (202611160001); check status in (started,applied,not_applying); rls: service role only, anon/authenticated revoked (202611150001)"
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade), student_id->users.id (cascade), landlord_id->users.id (cascade, 202611170001), lease_id->unit_leases.id (set null); unique index listing_applications_per_landlord (listing_id, student_id, coalesce(landlord_id::text, application_url)) (202611160001); check status in (started,applied,not_applying); rls: service role only, anon/authenticated revoked (202611150001)"
       },
       {
         "table": "sent_emails",
@@ -934,8 +939,8 @@
       },
       {
         "table": "events",
-        "status": "retired",
-        "description": "First-party analytics events (page_view, listing_click, session_end, contact_submit, matchmaking_submit). 9,530 rows, last written 2026-05-26; no app code reads or writes it since analytics moved to Google Analytics. Retirement pending confirmation.",
+        "status": "active",
+        "description": "First-party analytics events. Revived 2026-11-17 for Find Your Place: rows named fyp_* (opened, exited, started_over, preferences_edited, cap_sign_in, popup_shown, popup_clicked, popup_dismissed, search_failed), written by POST /api/find-your-place/events and the search route (lib/findYourPlace/events.js) and read by the admin Analytics Find Your Place tab. session_id = prx_vid device cookie or null. On account deletion rows are kept but unlinked (user_id and session_id nulled). The 9,530 legacy rows (page_view, listing_click, session_end, contact_submit, matchmaking_submit, last 2026-05-26) are untouched history.",
         "columns": [
           "id:uuid",
           "user_id:uuid",
@@ -945,7 +950,7 @@
           "metadata:jsonb",
           "created_at:timestamptz"
         ],
-        "notes": "status=retired; pk id; fk user_id->users.id (set null); rls: service role only (no policies)",
+        "notes": "pk id; fk user_id->users.id (set null); rls: service role only (no policies); indexes on created_at, event_type, session_id, user_id",
         "observed_2026_10_12": {
           "prod_rows": 9530,
           "prod_last_write": "2026-05-26"
