@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import * as secureStorage from "./secureStorage";
 
-// Explicit consent to share matchmaking data with a third-party AI provider
-// (Anthropic). Stored per signed-in user in SecureStore, so a second account on
+// Explicit consent to share Find Your Place answers with a third-party AI
+// provider (Anthropic). Stored per signed-in user in SecureStore, so a second account on
 // the same phone is asked again. Bump AI_CONSENT_VERSION whenever the wording or
 // the scope of what is shared changes: a stored value for an older version no
 // longer counts, and the gate asks again.
+// One exception, a product decision (2026-11-17): the rewording for Find Your
+// Place kept version 1, because what is shared shrank (no name or gender any
+// more), so consent given to the old chat still covers it.
 export const AI_CONSENT_VERSION = 1;
 
 // SecureStore keys may only contain letters, digits, ".", "-" and "_".

@@ -3,7 +3,7 @@
 > **Scope:** This document describes the **Proximity mobile app only** (`apps/mobile`, Expo + React Native + Expo Router + NativeWind).
 > It does **not** change, redefine, or apply to the Proximity **web** app (`apps/web`). Web is referenced in a few places below for brand-continuity context (existing colors, terminology): that is a reference, not a target. Nothing in this document authorizes or implies a change to any file under `apps/web`.
 
-> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only override is `pages/matchmaking.md`: every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters, the placeholder Chat tab) implements this Master directly with no override file of its own.
+> **Override logic:** When implementing a specific mobile screen or feature, first check `design-system/pages/<name>.md`. If that file exists, its rules extend/override this Master for that area. Otherwise, follow this Master directly. Today the only override is `pages/find-your-place.md`: every other mobile screen (Browse, Listing Detail, Saved, Profile, the 3 auth screens, Profile Completion, Filters, the placeholder Chat tab) implements this Master directly with no override file of its own.
 
 > **Status:** Implemented (Stages A–H, plus a Stage H revision pass after on-device review). `apps/mobile/src/theme/tokens.js` and `apps/mobile/src/components/ui/*` reflect this system.
 
@@ -172,11 +172,11 @@ This is a named, intentional exception, not a general-purpose second tier; new f
 
 **Bottom sheets/modals**: when the sheet visually lifts off the page content, apply the one shadow tier from §5. Top corners get `container` radius (16px) on partial-height sheets. Full-screen modals need no radius/shadow (they fill the viewport).
 
-**Navigation/tab bar** (5 tabs): **Browse | Chat | Matchmaking | Saved | Profile**. All 5 tabs use the same flat treatment. Active: `primary` icon + label, inactive: `textMuted`. Icons from the Lucide set in §6: Browse→`Search`, Chat→`MessageCircle`, Matchmaking→`Sparkles` (reads as "AI-assisted smart matching," distinct from Chat's speech-bubble meaning despite the two tabs sitting next to each other), Saved→`Heart`, Profile→`User`.
+**Navigation/tab bar** (5 tabs): **Browse | Chat | Find Your Place | Saved | Profile**. All 5 tabs use the same flat treatment. Active: `primary` icon + label, inactive: `textMuted`. Icons from the Lucide set in §6: Browse→`Search`, Chat→`MessageCircle`, Find Your Place→`Sparkles` (reads as "AI-assisted smart matching," distinct from Chat's speech-bubble meaning despite the two tabs sitting next to each other), Saved→`Heart`, Profile→`User`.
 
-**Revision note:** Matchmaking briefly had a raised, brand-mark (logo) tab treatment, a 52×52 circle lifted above the bar with `ProximityLogoMark` inside, hidden label, as the true center tab. Reverted after on-device review: it read as too special-cased rather than consistent with the other 4 tabs. `ProximityLogoMark` (`src/components/icons/ProximityLogoMark.js`, ported from `apps/web/public/logo.svg`) still exists in the repo, unused, in case a future screen wants the real brand mark (e.g. a splash/about screen); it is **not** used in the tab bar.
+**Revision note:** The third tab (then Matchmaking) briefly had a raised, brand-mark (logo) tab treatment, a 52×52 circle lifted above the bar with `ProximityLogoMark` inside, hidden label, as the true center tab. Reverted after on-device review: it read as too special-cased rather than consistent with the other 4 tabs. `ProximityLogoMark` (`src/components/icons/ProximityLogoMark.js`, ported from `apps/web/public/logo.svg`) still exists in the repo, unused, in case a future screen wants the real brand mark (e.g. a splash/about screen); it is **not** used in the tab bar.
 
-The Chat tab (`app/(tabs)/chat.js`) is a placeholder only, with no functionality; see §7's empty-state pattern below (it doesn't need its own page-override file). The real matchmaking/Proxy conversation experience lives at `app/(tabs)/matchmaking.js` (renamed from `chat.js`); see `pages/matchmaking.md`.
+The Chat tab (`app/(tabs)/chat.js`) is a placeholder only, with no functionality; see §7's empty-state pattern below (it doesn't need its own page-override file). Find Your Place lives at `app/(tabs)/find-your-place.js`; see `pages/find-your-place.md`.
 
 **List rows**: minimum 44px touch height, consistent 16px horizontal padding, `border-gray-100` row separators rather than a shadow/card per row, consistent with the border-led surface direction.
 

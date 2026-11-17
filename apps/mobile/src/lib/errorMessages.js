@@ -173,14 +173,25 @@ export const ERROR_MESSAGES = {
     IMAGE_TAP_TRY_AGAIN: "Tap to try again",
   },
 
-  MATCHMAKING: {
-    LOAD: "Couldn't reach Proxy. Pull to try again.",
-    START: "Couldn't start a chat with Proxy. Pull to try again.",
-    OFFLINE: "No internet connection. Pull to try again.",
-    LISTING_LOAD: "Couldn't load this listing.",
-    // Said by Proxy in the conversation, in its own voice.
-    CONTACT: "I couldn't reach out just now, please try again in a bit.",
-    TURN: "I couldn't get that through just now, please try again in a bit.",
+  // Find Your Place's matches page. The same wording as the website
+  // (apps/web/src/components/findYourPlace/FindYourPlaceClient.js), plus OFFLINE.
+  FIND_YOUR_PLACE: {
+    BUSY: {
+      title: "We're getting a lot of searches right now",
+      body: "Give it a minute and try again.",
+    },
+    INVALID: {
+      title: "Some of your answers need another look",
+      body: "Go back to the first page and check them, then search again.",
+    },
+    OFFLINE: {
+      title: "No internet connection",
+      body: "Your answers are saved. Check your connection and try again.",
+    },
+    GENERIC: {
+      title: "Something went wrong finding your matches",
+      body: "Your answers are saved. Try again in a moment.",
+    },
   },
 };
 

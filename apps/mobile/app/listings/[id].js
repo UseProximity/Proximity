@@ -156,7 +156,10 @@ function DetailCard({ children }) {
 }
 
 export default function ListingDetailScreen() {
-  const { id } = useLocalSearchParams();
+  // `section=message` (Contact on a Find Your Place match) opens the screen at the
+  // Contact card. Only once, and only when the listing has one.
+  const { id, section } = useLocalSearchParams();
+  const jumpedToSection = useRef(false);
   const router = useRouter();
 
   const [listing, setListing] = useState(null);
@@ -425,6 +428,11 @@ export default function ListingDetailScreen() {
   function measureSection(key) {
     return (e) => {
       sectionY.current[key] = e.nativeEvent.layout.y;
+      if (key === section && !jumpedToSection.current) {
+        jumpedToSection.current = true;
+        // A beat later, so the cards above it (the map, the reviews) have their size.
+        setTimeout(() => scrollToSection(key), 400);
+      }
     };
   }
 

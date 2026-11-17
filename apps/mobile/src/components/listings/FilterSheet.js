@@ -53,6 +53,7 @@ import {
   FILTER_AMENITY_LABELS,
   UTILITY_OPTIONS,
   UTILITY_LABELS,
+  TERM_RANGES,
 } from "@proximity/shared";
 import { Chip } from "../ui/Chip";
 import { Button } from "../ui/Button";
@@ -90,7 +91,10 @@ const UTILITY_ICONS = {
   cooling: Wind,
 };
 
-function ChipGroup({ options, labels, value, onChange, icons }) {
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// `suggested`: options Find Your Place only suggests, marked while switched off.
+function ChipGroup({ options, labels, value, onChange, icons, suggested = [] }) {
   function toggle(option) {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
   }
@@ -100,6 +104,7 @@ function ChipGroup({ options, labels, value, onChange, icons }) {
         <Chip
           key={option}
           on={value.includes(option)}
+          tone={!value.includes(option) && suggested.includes(option) ? "suggested" : undefined}
           onPress={() => toggle(option)}
           icon={icons?.[option]}
           showCheck={!icons}
@@ -111,7 +116,7 @@ function ChipGroup({ options, labels, value, onChange, icons }) {
   );
 }
 
-function SegmentedControl({ options, value, onChange }) {
+function SegmentedControl({ options, value, onChange, suggested = null }) {
   return (
     <View className="flex-row bg-gray-100 rounded-full p-1">
       {options.map((opt) => (
@@ -120,8 +125,12 @@ function SegmentedControl({ options, value, onChange }) {
           onPress={() => onChange(opt.value)}
           className={`flex-1 items-center py-2 rounded-full ${value === opt.value ? "bg-red-600" : ""}`}
         >
-          <Text className={`text-xs font-semibold ${value === opt.value ? "text-white" : "text-gray-500"}`}>
-            {opt.label}
+          <Text
+            className={`text-xs font-semibold ${
+              value === opt.value ? "text-white" : opt.value === suggested ? "text-red-600" : "text-gray-500"
+            }`}
+          >
+            {value !== opt.value && opt.value === suggested ? `+ ${opt.label}` : opt.label}
           </Text>
         </Pressable>
       ))}
@@ -156,7 +165,7 @@ function ToggleRow({ label, value, onValueChange }) {
   );
 }
 
-export function FilterSheet({ visible, filters, onApply, onClose }) {
+export function FilterSheet({ visible, filters, suggested = null, onApply, onClose }) {
   const [draft, setDraft] = useState(filters);
   const insets = useSafeAreaInsets();
 
@@ -167,6 +176,14 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
   function set(key, val) {
     setDraft((d) => ({ ...d, [key]: val }));
   }
+
+  // Lease lengths beyond the four offered (the ranges and month counts Find Your
+  // Place hands over) get a chip of their own, so they can be seen and removed.
+  const extraLeases = draft.leaseAvailability.filter((v) => !LEASE_AVAILABILITY_FILTER_OPTIONS.includes(v));
+  const leaseLabels = {
+    ...LEASE_AVAILABILITY_FILTER_LABELS,
+    ...Object.fromEntries(extraLeases.map((v) => [v, TERM_RANGES[v]?.label ?? `${parseInt(v, 10)}-Month`])),
+  };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -251,13 +268,14 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
                 ]}
                 value={draft.furnished}
                 onChange={(v) => set("furnished", v)}
+                suggested={suggested?.furnished ?? null}
               />
             </View>
             <View className="mb-3">
               <FieldLabel>Lease Availability</FieldLabel>
               <ChipGroup
-                options={LEASE_AVAILABILITY_FILTER_OPTIONS}
-                labels={LEASE_AVAILABILITY_FILTER_LABELS}
+                options={[...LEASE_AVAILABILITY_FILTER_OPTIONS, ...extraLeases]}
+                labels={leaseLabels}
                 value={draft.leaseAvailability}
                 onChange={(v) => set("leaseAvailability", v)}
               />
@@ -296,6 +314,7 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
                 value={draft.amenities}
                 onChange={(v) => set("amenities", v)}
                 icons={AMENITY_ICONS}
+                suggested={suggested?.amenities ?? []}
               />
             </View>
             <View>
@@ -327,6 +346,27 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
                 />
               </View>
             </View>
+            {/* Open by the end of the next such month, as on web. A month and a
+                date would both apply, so setting one clears the other. */}
+            <View className="mb-3">
+              <FieldLabel>Move-in month</FieldLabel>
+              <View className="flex-row flex-wrap">
+                {MONTHS.map((name, i) => {
+                  const month = String(i + 1);
+                  return (
+                    <Chip
+                      key={month}
+                      on={draft.moveInMonth === month}
+                      onPress={() =>
+                        setDraft((d) => ({ ...d, moveInMonth: d.moveInMonth === month ? "" : month, moveInDay: "", moveInDate: "" }))
+                      }
+                    >
+                      {name}
+                    </Chip>
+                  );
+                })}
+              </View>
+            </View>
             <View>
               <FieldLabel>Move-in date</FieldLabel>
               <TextInput
@@ -334,7 +374,7 @@ export function FilterSheet({ visible, filters, onApply, onClose }) {
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor="#9ca3af"
                 value={draft.moveInDate}
-                onChangeText={(v) => set("moveInDate", v)}
+                onChangeText={(v) => setDraft((d) => ({ ...d, moveInDate: v, moveInMonth: "", moveInDay: "" }))}
               />
             </View>
           </View>

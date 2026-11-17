@@ -5,8 +5,8 @@
 // design (see the profile-split plan); those stay web-only.
 //
 // Moved here from app/profile/my-listings.js (Stage: tab nav) to become a
-// primary tab for landlords, shown in place of Matchmaking (see
-// (tabs)/_layout.js's role-based third tab); students see Matchmaking
+// primary tab for landlords, shown in place of Find Your Place (see
+// (tabs)/_layout.js's role-based third tab); students see Find Your Place
 // instead. Landlord/student
 // data/toggle/delete logic is unchanged from the original screen; only the
 // header changed (dropped the "Back" affordance a pushed sub-screen needs,
