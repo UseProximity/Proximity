@@ -12,7 +12,7 @@ import { agreementState, coverageFor, startSigning, voidDocument } from "./agree
 import { exhibitPreview } from "./exhibitUnits.js";
 import { checkListingGate, gateResponseBody } from "./listingGate.js";
 import { paperPreview, printPaperAgreement, publishCovered, recordPaperAgreement, recordPreview } from "./paperAgreements.js";
-import { buildPaperAgreementPdf } from "./paperAgreementPdf.js";
+import { buildPaperAgreementPdf, signatureAndDateLines } from "./paperAgreementPdf.js";
 
 const MASTER = {
   id: "vm",
@@ -181,6 +181,15 @@ describe("the printed paper agreement", () => {
     const blocks = Array.from({ length: 60 }, (_, i) => `${i + 1} Long Street, St. Louis, Missouri 63130\nWhole building`);
     const { pageCount } = await buildPaperAgreementPdf({ versionBytes: await templatePdf(), blocks });
     assert.ok(pageCount > 1);
+  });
+
+  it("draws a line only for a signature or date, and not where the agreement already has one", () => {
+    const at = (type) => ({ type, area: { x: 384, w: 160, top: 552, bottom: 528, h: 24 } });
+    const ownLine = [{ x0: 378, x1: 554, y: 522.5 }];
+    assert.equal(signatureAndDateLines(at("SIGNATURE"), []), true);
+    assert.equal(signatureAndDateLines(at("SIGNATURE"), ownLine), false, "the template's own signature line is enough");
+    assert.equal(signatureAndDateLines(at("DATE"), [{ x0: 70, x1: 200, y: 522.5 }]), true, "a line in another column doesn't count");
+    assert.equal(signatureAndDateLines(at("TEXT"), []), false, "name, title, email and address stay blank space");
   });
 
   it("prints Exhibit A on its own pages when the agreement has no box for it", async () => {

@@ -81,6 +81,42 @@ export async function findPlaceholders(bytes) {
   return out;
 }
 
+/*
+ * The lines a PDF draws itself, per page: thin horizontal rules (a signature line
+ * in a Word table is a filled rectangle about half a point tall), as
+ * { [page]: [{ x0, x1, y }] } in PDF points from the bottom left. Read from the
+ * drawing commands' bounding boxes, so a line drawn under a transform is missed;
+ * the printed copy then just adds its own line. Empty when the PDF can't be read.
+ */
+export async function findRules(bytes) {
+  const out = {};
+  try {
+    const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+    try {
+      for (let p = 1; p <= doc.numPages; p += 1) {
+        const page = await doc.getPage(p);
+        const ops = await page.getOperatorList();
+        const rules = [];
+        ops.fnArray.forEach((fn, i) => {
+          if (fn !== OPS.constructPath) return;
+          const box = ops.argsArray[i]?.[2];
+          if (!Array.isArray(box) || box.length < 4) return;
+          const [x0, y0, x1, y1] = box.map(Number);
+          if (Math.abs(y1 - y0) <= 2 && Math.abs(x1 - x0) >= 30) rules.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y: (y0 + y1) / 2 });
+        });
+        if (rules.length) out[p] = rules;
+      }
+    } finally {
+      await doc.destroy();
+    }
+  } catch (err) {
+    console.error("billing: could not read the PDF's lines", err?.message);
+  }
+  return out;
+}
+
 // A placeholder we turn into a box: Signature, Initials, Date, or a Text box we fill.
 export function isKnownPlaceholder(label) {
   return boxTypeOf(label) !== "TEXT" || filledByUs(label);

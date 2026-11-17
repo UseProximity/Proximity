@@ -2,8 +2,10 @@
  * The marketing agreement printed for a landlord to sign on paper (Wyatt,
  * 2026-11-17). It is the agreement version's own PDF with only two things filled
  * in: Exhibit A (the properties the admin picked) and, when given, the company.
- * Everything else the landlord signs or writes by hand: the signature, initials,
- * date, name, title, email and address boxes are left blank with a line to write on.
+ * Everything else the landlord signs or writes by hand. Only the signature and
+ * date get a line to write on (Wyatt, 2026-11-17), and only where the agreement
+ * does not already draw one there; name, title, email and address are left as
+ * blank space.
  *
  * Where each box goes comes from the [Placeholders] typed in the uploaded PDF
  * (placeholders.js), the same places Documenso puts its boxes; they are painted
@@ -17,7 +19,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BOX_RULES, EXHIBIT_CONTINUED_NOTE } from "./documenso.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
-import { preparePlaceholders } from "./placeholders.js";
+import { findRules, preparePlaceholders } from "./placeholders.js";
 
 const EXHIBIT_SIZE = 9;
 const EXHIBIT_LEADING = 11.5;
@@ -131,7 +133,19 @@ export function layoutExhibit(blocks, boxes, fonts) {
  *   company         printed in the Company / Owner boxes; blank when not given
  *   landlordName    for the heading of any continued pages
  */
-export async function buildPaperAgreementPdf({ versionBytes, templateFields = null, blocks = [], company = "", landlordName = "", preparedAt = new Date() }) {
+// Whether a box already has the agreement's own line under it: a rule on its page
+// that runs under its left part, from just below its baseline to a little above it.
+export function hasOwnLine(box, rules = []) {
+  const left = box.area.x;
+  const right = box.area.x + Math.max(box.area.w, 60);
+  return rules.some((r) => r.x0 < right && r.x1 > left && r.y <= box.area.top && r.y >= box.area.bottom - 14);
+}
+
+// The default for `drawLine`: a signature or a date, without a line of its own.
+export const signatureAndDateLines = (box, rules = []) => (box.type === "SIGNATURE" || box.type === "DATE") && !hasOwnLine(box, rules);
+
+// `drawLine(box, rules)`: whether a blank gets a line to write on (default: signatureAndDateLines).
+export async function buildPaperAgreementPdf({ versionBytes, templateFields = null, blocks = [], company = "", landlordName = "", preparedAt = new Date(), drawLine = signatureAndDateLines }) {
   const prepared = await preparePlaceholders(versionBytes);
   // boxesFor keeps the placeholders' order: each box knows the room to its right.
   let boxes = prepared.boxes.map((b, i) => ({ ...b, roomRight: prepared.found[i]?.roomRight ?? null }));
@@ -143,8 +157,18 @@ export async function buildPaperAgreementPdf({ versionBytes, templateFields = nu
     .filter((b) => pages[b.page - 1])
     .map((b) => ({ ...b, kind: paperBoxKind(b), area: place(pages[b.page - 1], b) }));
 
-  // Blanks get a line to write on along the bottom of the box, long enough to
-  // write a name or an address by hand (but not past the page's right margin).
+  // The placeholders' own paint-out can leave a sliver of the text at its end (the
+  // width is estimated): on paper, clear each one's whole free space on its line.
+  // Exhibit A boxes are skipped: their text goes there and nothing else is near.
+  for (const f of prepared.found ?? []) {
+    const page = pages[f.page - 1];
+    if (!page || paperBoxKind({ type: f.label && /\bexhibit\s*a\b/i.test(f.label) ? "TEXT" : "", label: f.label }) === "exhibit") continue;
+    const width = Math.min(Math.max(f.width, Number(f.roomRight) || 0) + 4, page.getSize().width - f.x);
+    page.drawRectangle({ x: f.x - 2, y: f.y - f.size * 0.35, width, height: f.size * 1.45, color: rgb(1, 1, 1) });
+  }
+
+  // A line to write on along the bottom of the box, long enough to sign or date
+  // by hand (but not past the page's right margin).
   const writeLine = (box) => {
     const page = pages[box.page - 1];
     const right = page.getSize().width - 54;
@@ -156,16 +180,15 @@ export async function buildPaperAgreementPdf({ versionBytes, templateFields = nu
       color: rgb(0.25, 0.25, 0.25),
     });
   };
-  for (const box of located.filter((x) => x.kind === "blank")) writeLine(box);
+  const rules = await findRules(versionBytes);
+  for (const box of located.filter((x) => x.kind === "blank" && drawLine(x, rules[x.page] ?? []))) writeLine(box);
 
   // The company, on the placeholder's own line and size, made smaller to fit its
   // place when the name is longer than the placeholder was.
   const name = pdfSafe(company);
   for (const box of located.filter((x) => x.kind === "company")) {
-    if (!name) {
-      writeLine(box);
-      continue;
-    }
+    // No company given: blank space for them to write it in.
+    if (!name) continue;
     const base = Number(box.fontSize) || Math.min(11, box.area.h * 0.8);
     const room = Math.max(box.area.w, Number(box.roomRight) || 0, 40);
     let size = base;
