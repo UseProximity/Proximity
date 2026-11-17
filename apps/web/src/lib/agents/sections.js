@@ -24,6 +24,9 @@
  * never merge one owner's terms into another's.
  */
 
+// Relative, not "@/": the node test runner loads this file directly.
+import { dayText, isCalendarDay } from "../../utils/calendarDate.js";
+
 export const SECTIONS = ["core", "fees", "policies", "specials", "misc"];
 export const SCOPES = ["property", "owner", "unit", "lease"];
 export const UNCLAIMED_OWNER_ID = "00000000-0000-0000-0000-000000000000";
@@ -96,12 +99,25 @@ export function money(n) {
   return "$" + v.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
 }
 
-/* "Oct 8, 2026" in St. Louis time. */
+/*
+ * "Oct 8, 2026". A calendar day (a move-in date, a valid-until: "2027-01-01",
+ * or the same day stamped midnight UTC) is the day it names; see
+ * utils/calendarDate. Anything with a real time is a moment, shown in
+ * St. Louis time.
+ */
 export function shortDate(value) {
   if (!value) return null;
+  if (isCalendarDay(value)) return dayText(value);
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
+}
+
+/* Was `stored` stamped later than `at`? False when either is not a time. */
+export function isLaterThan(stored, at) {
+  const a = Date.parse(stored ?? "");
+  const b = Date.parse(at ?? "");
+  return Number.isFinite(a) && Number.isFinite(b) && a > b;
 }
 
 /* Today's date (YYYY-MM-DD) in St. Louis, for validity windows. */

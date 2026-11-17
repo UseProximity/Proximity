@@ -14,6 +14,7 @@
  *
  * No scheduled changes: a value changes now or not at all.
  */
+import { after } from "next/server";
 import supabase from "@/lib/supabase";
 import { canManageLease, isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
@@ -55,23 +56,48 @@ const fmt = (field, v) => {
  * Record that a landlord set these core values, so the sync holds changes
  * to them instead of applying them. One row per field, scoped to the lease,
  * unit or property.
+ *
+ * `at` is when the landlord saved. The dashboard records after it has
+ * answered, and that work can run late: an early save's record once landed
+ * minutes after a newer save's and replaced it (the lease said Jan 1, its
+ * record "not set"). A record older than the one already there is dropped
+ * (setFact's skipIfNewer, which also settles two saves landing at once).
  */
-export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null }) {
+export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null, at = new Date().toISOString() }) {
   const scopeLevel = target === "property" ? "property" : target;
+  const scopeId = target === "property" ? null : id;
   for (const [field, value] of Object.entries(fields ?? {})) {
     // Revert puts `old` back, so it is recorded per field, and only when it
     // was actually read (an entry without it cannot be reverted).
     const before = old && Object.prototype.hasOwnProperty.call(old, field) ? { old: old[field] } : {};
+    const fieldKey = `core.${target}.${field}`;
     try {
       await setFact({
-        listingId, section: "core", fieldKey: `core.${target}.${field}`, scopeLevel, scopeId: target === "property" ? null : id,
-        value: { value, set_at: new Date().toISOString() }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
+        listingId, section: "core", fieldKey, scopeLevel, scopeId,
+        value: { value, set_at: at }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
         landlordSet: true, setBy: userId, actorId: userId, cause, detail: { core: true, target, id, field, ...detail, ...before },
+        observedAt: at, skipIfNewer: true,
       });
     } catch (err) {
+      // Reaches the site error alerts (lib/errors/serverHooks), so a record
+      // that could not be written, a lost race included, is seen.
       console.error("[agents] markLandlordSet failed:", err?.message ?? err);
     }
   }
+}
+
+/*
+ * A dashboard route saved these fields: record them as landlord-set once the
+ * page has answered. In after(), so the work is finished before the server
+ * rests: left loose it could be paused part way and land minutes later.
+ *
+ * `savedAt` is the row's updated_at as the save itself returned it, so
+ * records are ordered by the database's clock at the write, not by when each
+ * request happened to resume.
+ */
+export function recordDashboardSave({ savedAt = null, ...save }) {
+  const at = savedAt ?? new Date().toISOString();
+  after(() => markLandlordSet({ ...save, cause: "dashboard", at }).catch(() => {}));
 }
 
 /*
