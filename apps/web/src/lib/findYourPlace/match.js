@@ -453,7 +453,9 @@ export async function findMatches({ answers, text, chips, viewerGender = null })
   const groupRange = parseGroupRange(preferences.group_size);
   const splitById = {};
   if (groupRange.min >= 2) {
-    for (const l of shortlist) {
+    // Every place that can become a card, not just the shortlist: cards 3 and 4
+    // can be full fits the model never read, and they need the note too.
+    for (const l of ordered) {
       const split = splitFor(l, groupRange);
       if (split) splitById[l.id] = split;
     }
