@@ -135,8 +135,13 @@ export async function POST(request) {
       return NextResponse.json({ error: "cap" }, { status: 429 });
     }
 
-    const result = await findMatches({ answers, text, chips, viewerGender: actor?.gender ?? null });
-    const count = await browseCount(result.browse).catch(() => null);
+    // "Browse All N Matches" is counted alongside the match, not after it.
+    let counting = null;
+    const result = await findMatches({
+      answers, text, chips, viewerGender: actor?.gender ?? null,
+      onBrowse: (browse) => { counting = browseCount(browse).catch(() => null); },
+    });
+    const count = await (counting ?? browseCount(result.browse).catch(() => null));
 
     const now = new Date().toISOString();
     const recommendations = result.matches.map((m) => ({
