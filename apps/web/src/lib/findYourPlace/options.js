@@ -331,7 +331,9 @@ export function applyChipToText(text, prompt, beforeIds, afterIds) {
 export function standingChips(text, chips) {
   const out = {};
   for (const prompt of PROMPTS) {
-    const ids = chips?.[prompt.id] ?? [];
+    // Anything but a list of ids (a hand-made request) is ignored, not a crash.
+    const raw = chips && typeof chips === "object" ? chips[prompt.id] : null;
+    const ids = Array.isArray(raw) ? raw.filter((id) => typeof id === "string") : [];
     if (ids.includes(NO_PICK)) {
       out[prompt.id] = [NO_PICK];
       continue;
