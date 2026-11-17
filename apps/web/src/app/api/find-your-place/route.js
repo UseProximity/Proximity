@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { clientIp } from "@/lib/auth/loginThrottle";
-import { readVisitorId, newVisitorId, setVisitorCookie, anonIpLimited } from "@/lib/matchmaking/anonymousSessions";
+import { readVisitorId, newVisitorId, setVisitorCookie, ipLimited } from "@/lib/matchmaking/anonymousSessions";
+import { recordError } from "@/lib/errors/record";
 import { findMatches } from "@/lib/findYourPlace/match";
 import { getCachedListings } from "@/lib/listings/queryListings";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
@@ -41,6 +42,8 @@ async function browseCount(browse) {
  * per-IP limit.
  */
 const VISITOR_RUN_CAP = 10;
+// Signed-out searches an hour from one network address (Wyatt, 2026-11-17).
+const FYP_IP_LIMIT = 200;
 
 // Searches this device has run, over every Find Your Place row it started
 // (claimed ones too: signing up does not refill a later signed-out run).
@@ -78,9 +81,6 @@ export async function POST(request) {
     }
 
     let visitor = readVisitorId(request);
-    if (!actor && anonIpLimited(clientIp(request.headers))) {
-      return NextResponse.json({ error: "busy" }, { status: 429 });
-    }
 
     const body = await request.json().catch(() => ({}));
     const answers = sanitizeAnswers(body.answers);
@@ -104,8 +104,30 @@ export async function POST(request) {
       // search to your account?" prompt (PATCH below): on a shared computer it
       // may be someone else's (PR 447 review). Here it is left as it is, and
       // the run starts the account's own search.
-      const mine = data && (actor ? data.user_id === actor.id : !data.user_id && data.visitor_id === visitor);
+      // Signed out, the search must carry this browser's own visitor cookie: no
+      // cookie never matches, or an expired search (its visitor id cleared)
+      // could be taken over and kept forever (PR 447 review).
+      const mine = data && (actor ? data.user_id === actor.id : !data.user_id && !!visitor && data.visitor_id === visitor);
       if (mine && data.preferences?._fyp) existing = data;
+    }
+
+    /*
+     * Signed-out searches per network address: FYP_IP_LIMIT an hour, counted
+     * apart from the mobile chat's budget (a dorm shares one address). Only new
+     * searches count: invalid requests are refused above, and re-running the
+     * visitor's own saved search is free. Hitting it is reported as a site
+     * error, so the team is emailed the first time and as it keeps happening
+     * (Wyatt, 2026-11-17).
+     */
+    if (!actor && !existing && ipLimited(clientIp(request.headers), { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
+      after(() =>
+        recordError({
+          source: "server",
+          where: "POST /api/find-your-place",
+          message: `Find Your Place per-network limit reached (${FYP_IP_LIMIT} signed-out searches an hour): students on one network are being turned away`,
+        }).catch(() => {})
+      );
+      return NextResponse.json({ error: "busy" }, { status: 429 });
     }
 
     const runs = (existing?.preferences?._fyp?.runs ?? 0) + 1;
