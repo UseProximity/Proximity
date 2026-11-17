@@ -9,6 +9,7 @@
  */
 
 const BATCH = 20;
+const PAGE = 200;
 
 /**
  * @param {object} supabase  a service client for the chosen database
@@ -19,6 +20,30 @@ const BATCH = 20;
  */
 export async function alertEmailsFor(supabase, pairs) {
   const out = new Map();
+  if (!pairs.length) return out;
+  // One call for the whole list (fn_chat_alert_emails, 202611170002, PR 447
+  // review), in pages so the request stays a sensible size.
+  let batched = true;
+  for (let i = 0; i < pairs.length && batched; i += PAGE) {
+    const chunk = pairs.slice(i, i + PAGE);
+    const { data, error } = await supabase.rpc("fn_chat_alert_emails", {
+      p_thread_ids: chunk.map((p) => p.threadId),
+      p_user_ids: chunk.map((p) => p.userId),
+    });
+    if (error) {
+      // Not on this database yet (the migration is applied by hand): the
+      // per-thread lookups below still give the right answer.
+      if (error.code === "PGRST202" || /fn_chat_alert_emails/.test(error.message ?? "")) { batched = false; break; }
+      console.error("fn_chat_alert_emails failed:", error);
+      continue;
+    }
+    for (const row of data ?? []) {
+      const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+      if (email) out.set(row.thread_id, email);
+    }
+  }
+  if (batched) return out;
+  out.clear();
   for (let i = 0; i < pairs.length; i += BATCH) {
     const chunk = pairs.slice(i, i + BATCH);
     const results = await Promise.all(

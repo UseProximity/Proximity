@@ -55,6 +55,11 @@
           "branch": "feat/email-reply-relay"
         },
         {
+          "name": "fn_chat_alert_emails",
+          "touches": "fn_chat_alert_email for many (thread, user) pairs at once (202611170002, dev only until applied to prod)",
+          "branch": "fix/release-447-review"
+        },
+        {
           "name": "fn_chat_contact_confirmed",
           "touches": "contact_email_verifications, users",
           "branch": "feat/email-reply-relay"
