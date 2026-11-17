@@ -82,6 +82,9 @@ export const accentClasses = (accent) => ACCENTS[accent] ?? ACCENTS.card;
 // Handle size in px. A handle's centre sits at handleX(pct), which keeps the
 // first and last handle inside the track (half a handle in from each end).
 const HANDLE_PX = 17;
+// The slider's handles, labels and fill are placed with inline left/width
+// styles: runtime values from the dragged position, which Tailwind classes
+// cannot express.
 const handleX = (pct) => `calc(${pct}% + ${(0.5 - pct / 100) * HANDLE_PX}px)`;
 // Labels whose handles are closer than this (% of the track) merge into one.
 const LABEL_MERGE_PCT = 16;

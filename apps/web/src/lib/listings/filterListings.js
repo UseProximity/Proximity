@@ -308,6 +308,9 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
         case "studio":
           return unitPool(listing).some((u) => u.bedrooms === 0);
         case "single_room":
+        // The older name for a single room, kept so filters saved before the
+        // change (and the mobile app's filter sheet) still work.
+        case "singleBedroom":
           return unitPool(listing).some((u) => u.bedrooms === 1);
         // A building type: the listing's home type label, which has to be the
         // whole word ("townhouse" contains "house").

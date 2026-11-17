@@ -182,6 +182,53 @@ export async function coverageFor(db, userId, now = new Date(), { own = false } 
   return { state, properties, rows, covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }) };
 }
 
+/*
+ * A landlord taking over from their authorized signer (startSigning's takeover):
+ * the coverage their OWN agreement is planned with, plus `keep`, what must go on
+ * it so nothing falls through when the signer is removed: everything the signer
+ * covers for them now and every listing still waiting on the signer (Wyatt,
+ * 2026-11-10). One load of the properties and rows serves both views.
+ */
+export async function takeoverCoverage(db, userId, now = new Date()) {
+  const [signerState, state, properties, loaded, waiting] = await Promise.all([
+    agreementState(db, userId, now),
+    agreementState(db, userId, now, { own: true }),
+    loadLandlordProperties(db, userId),
+    loadCoverageRows(db, userId),
+    db.from("payer_publish_requests").select("listing_id").eq("landlord_id", userId).eq("status", "waiting"),
+  ]);
+  if (waiting.error && !missingSchema(waiting.error)) throw waiting.error;
+  const rows = refreshCoverageNames(loaded, properties);
+  const signerCovered = coveredMap(rows, { master: signerState.signed, masterValid: signerState.valid });
+  return {
+    state,
+    properties,
+    rows,
+    covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }),
+    keep: [...new Set([...signerCovered.keys(), ...(waiting.data ?? []).map((r) => r.listing_id)])],
+  };
+}
+
+// How long a landlord's unsigned takeover document holds off their signer.
+const TAKEOVER_HOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+/*
+ * The landlord's own agreement still being signed while they have a signer: a
+ * takeover in progress (naming a signer cancels anything they had started, so a
+ * pending own master can only be a takeover). While it is open the signer can't
+ * sign for the account, or a listing they covered meanwhile would be released
+ * without being on the landlord's agreement. Older than TAKEOVER_HOLD_MS it no
+ * longer holds the signer off: `stale` tells the caller to cancel it instead.
+ */
+export async function openTakeover(db, landlordId, now = new Date()) {
+  const { data, error } = await db.from("landlord_agreements").select("id, status, created_at").eq("user_id", landlordId).in("status", PENDING).order("created_at", { ascending: false }).limit(1);
+  if (missingSchema(error)) return null;
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return { id: row.id, stale: now.getTime() - new Date(row.created_at).getTime() >= TAKEOVER_HOLD_MS };
+}
+
 // The landlord's current signature, for downloading their signed copy.
 export async function getSignedAgreement(db, userId) {
   const rows = await readRows((cols) =>
@@ -562,6 +609,19 @@ export async function startSigning(
     const l = await activePayerLink(db, extra);
     if (!l || l.payer_id !== user.id) throw new BillingError("payer_signs", "You can only sign for accounts you pay for.", 403);
   }
+  // A signer can't sign for an account whose landlord is signing their own
+  // agreement to take over (Wyatt, 2026-11-10). One left unsigned for a week no
+  // longer holds them off: it is cancelled, so it can't later release what they cover.
+  if (account !== user.id) {
+    for (const acct of [account, ...extraAccounts]) {
+      const open = await openTakeover(db, acct, now);
+      if (!open) continue;
+      if (!open.stale) {
+        throw new BillingError("takeover_in_progress", "This landlord is signing their own agreement right now, so you can't sign for their account. Once they sign, you will no longer be their authorized signer.", 409);
+      }
+      await voidDocument(db, documenso, { userId: acct, kind: "master", id: open.id, now });
+    }
+  }
 
   // An authorized signer opening a document locks in the listings it was opened
   // for (Wyatt, 2026-11-09): a listing sent later waits for the next document.
@@ -577,11 +637,10 @@ export async function startSigning(
       busyMessage: "Your agreement is already being prepared. Try again in a moment.",
     },
     async () => {
-      // Taking over: what the signer covers for this account now is carried onto
-      // the landlord's own agreement, and can't be left off.
-      const keep = own ? [...(await coverageFor(db, account, now)).covered.keys()] : [];
-      const requested = await resolvePublishedIds(db, [...listingIds, ...keep]);
-      const loaded = await coverageFor(db, account, now, { own });
+      // Taking over: what the signer covers for this account now, and what still
+      // waits on them, is carried onto the landlord's own agreement and can't be left off.
+      const loaded = own ? await takeoverCoverage(db, account, now) : await coverageFor(db, account, now);
+      const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
       const { state } = loaded;
       let rows = loaded.rows;
       // Which account each property belongs to, so its coverage row is that account's.

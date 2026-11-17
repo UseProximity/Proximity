@@ -153,12 +153,6 @@ export function clashesWith(startIso, bookedIsos, blockMs = TOUR_BLOCK_MS) {
   return (bookedIsos ?? []).some((b) => Math.abs(Date.parse(b) - a) < blockMs);
 }
 
-/* "2 day availability" for the chip in the chat input. */
-export function availabilitySummary(slots) {
-  const n = availabilityDays(slots).length;
-  return n ? `${n} day availability` : "";
-}
-
 /* "Sunday 10/28 at 2:30pm" for one instant. */
 export function fmtTourTime(iso) {
   const date = new Date(iso);
