@@ -267,7 +267,10 @@ export async function agentChat({ listingId, userId, isAdmin = false, message, h
   const convo = [...history.slice(-12).map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content ?? "").slice(0, 4000) })), { role: "user", content: String(message ?? "").slice(0, 4000) }];
   while (convo.length && convo[0].role !== "user") convo.shift();
 
-  const result = await runTools({ model: SONNET, system, tools: CHAT_TOOLS, handlers: {}, messages: convo, maxRounds: 2, maxTokens: 1200, tag: "landlord-chat", listingId, kind: "landlord_chat", finalTool: "propose" });
+  // 3000, not the 1200 default: a landlord listing several things at once (utilities,
+  // laundry, furnishings, fees) is one reply plus a fact for each, and at 1200 that was
+  // cut off before the facts (Wyatt, 2026-11-16). Longer than this still gets TOO_MUCH.
+  const result = await runTools({ model: SONNET, system, tools: CHAT_TOOLS, handlers: {}, messages: convo, maxRounds: 2, maxTokens: 3000, tag: "landlord-chat", listingId, kind: "landlord_chat", finalTool: "propose" });
   // An answer cut off at the length limit is dropped, not posted half done or blank.
   const p = result.truncated
     ? { reply: TOO_MUCH, core_changes: [], facts: [], retire_keys: [] }

@@ -1,5 +1,7 @@
 import defaultClient from "@/lib/supabase";
 import { PROXIMITY_PLACEHOLDER_EMAIL } from "@/lib/listings/placeholderOwner";
+import { haversineKm } from "@/utils/walkTimes";
+import { buildingAddress } from "@/utils/reviewAddress";
 
 /*
  * Which listing a review belongs on.
@@ -57,10 +59,24 @@ export function canonStreet(street) {
     .join(" ");
 }
 
-export function metersBetween(aLat, aLng, bLat, bLng) {
-  const dLat = (aLat - bLat) * 111320;
-  const dLng = (aLng - bLng) * 111320 * Math.cos((aLat * Math.PI) / 180);
-  return Math.sqrt(dLat * dLat + dLng * dLng);
+export const metersBetween = (aLat, aLng, bLat, bLng) => haversineKm(aLat, aLng, bLat, bLng) * 1000;
+
+/*
+ * The key a row's address is compared by. Review stubs made from a named place
+ * before buildingAddress existed kept the name as the first part of their
+ * address ("Local on Delmar, 6650 Delmar Blvd, ..."), so their stored key is
+ * built from the name ("local on delmar|63130") and never equals the street's.
+ * Such a row is keyed again from the street address that follows the name.
+ * Returns { key } or { error }.
+ */
+export async function effectiveKey(row, supabase = defaultClient) {
+  const key = row?.property_key ?? null;
+  if (/^\d/.test(streetOf(key))) return { key };
+  const street = buildingAddress(row?.address);
+  if (!street || street === String(row?.address || "").trim()) return { key };
+  const { data, error } = await supabase.rpc("normalize_property_key", { p_address: street });
+  if (error) return { error: error.message };
+  return { key: data || key };
 }
 
 /*
@@ -74,7 +90,7 @@ const SAME_SPOT_METERS = 300;
 const LAT_PAD = 0.003;
 const LNG_PAD = 0.004;
 
-const COLUMNS = "id, property_key, latitude, longitude, lease_type, created_at, published_at";
+const COLUMNS = "id, address, property_key, latitude, longitude, lease_type, created_at, published_at";
 
 /*
  * Returns { listingId } (null when nothing matches) or { error } when the
@@ -118,8 +134,17 @@ export async function findListingForReviewAddress({ address, lat, lng, supabase 
 
   const seen = new Map();
   for (const row of [...(byKey.data ?? []), ...(nearby.data ?? [])]) seen.set(row.id, row);
+  // Name-keyed stubs (see effectiveKey) are compared by their street's key.
+  const rows = await Promise.all(
+    [...seen.values()].map(async (row) => {
+      const { key: rowKey, error } = await effectiveKey(row, supabase);
+      return error ? { row, error } : { ...row, property_key: rowKey };
+    })
+  );
+  const failed = rows.find((r) => r.error);
+  if (failed) return { error: failed.error };
 
-  const matches = [...seen.values()].filter((row) => {
+  const matches = rows.filter((row) => {
     if (canonStreet(streetOf(row.property_key)) !== target) return false;
     const rowZip = zipOf(row.property_key);
     if (zip && zip === rowZip) return true;

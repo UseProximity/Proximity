@@ -15,6 +15,7 @@
 import { randomUUID } from "crypto";
 import supabase from "@/lib/supabase";
 import { ensureMonitors, dueMonitors, monitorFor, syncMonitor } from "@/lib/sourceImport/sync";
+import { sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import { agentsEnabled } from "./flags";
 import { ensureAgent, getAgent } from "./store";
@@ -81,6 +82,55 @@ export async function runDailyBatch({ limit = 500 } = {}) {
     else if (r.already) already++;
   }
   return { due: monitors.length, queued, already, batchId, subpages: subpages ? { sites: subpages.sites, attached: subpages.attached.length } : null };
+}
+
+/*
+ * The weekly knowledge read (Wyatt, 2026-11-12), Monday after Sunday's deep
+ * read: every published listing with a website gets a whole-site read into
+ * what Proxy knows (lib/agents/pages.js readWholeSite), each its own job in
+ * the import lanes. The daily sync only checks specials. A listing whose
+ * daily sync is still running is retried by a later cron tick: the route is
+ * called every hour from 5am to 3pm St. Louis on Monday, and each tick skips
+ * listings already read this week, so the later ticks cost nothing once the
+ * daily syncs have drained. Muted listings, and website kinds whose sync is
+ * switched off, are left out, the same as the daily sync (dueMonitors).
+ */
+export async function runWeeklyKnowledge({ limit = 500 } = {}) {
+  if (!agentsEnabled()) return { skipped: "agents off" };
+  const { data, error } = await supabase
+    .from("listing_source_monitors")
+    .select("listing_id, source_url, source_kind, muted_until, enabled, listings!listing_id(published_at, deleted_at)")
+    .eq("enabled", true)
+    .limit(limit);
+  if (error) throw new Error(`monitors: ${error.message}`);
+  const now = new Date();
+  const due = (data ?? []).filter((m) => m.listings && !m.listings.deleted_at && m.listings.published_at && m.source_url
+    && !(m.muted_until && new Date(m.muted_until) > now) && sourceKindEnabled(m.source_kind));
+  // Already read this week (an earlier tick, an import, a landlord's sync),
+  // or tried and failed: a failed read already used its own retries, so it is
+  // not queued again every hour of the Monday (PR 447 review). It is read
+  // again next week.
+  // In chunks: hundreds of ids in one filter make a URL too long to send.
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString();
+  const readRecently = new Set();
+  const ids = due.map((m) => m.listing_id);
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data: recent, error: e2 } = await supabase.from("listing_import_jobs").select("listing_id").in("status", ["done", "failed"])
+      .contains("target", { knowledge: true }).gte("finished_at", weekAgo).in("listing_id", ids.slice(i, i + 100));
+    if (e2) throw new Error(`recent reads: ${e2.message}`);
+    for (const r of recent ?? []) readRecently.add(r.listing_id);
+  }
+  const batchId = randomUUID();
+  let queued = 0;
+  let busy = 0;
+  let fresh = 0;
+  for (const m of due) {
+    if (readRecently.has(m.listing_id)) { fresh++; continue; }
+    const r = await enqueueSync({ listingId: m.listing_id, batchId, knowledge: true, url: m.source_url });
+    if (r.job && !r.already) queued++;
+    else if (r.already) busy++;
+  }
+  return { listings: due.length, queued, busy, readThisWeek: fresh, batchId };
 }
 
 /* "Sync now" from a landlord's or admin's dashboard. */

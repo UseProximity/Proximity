@@ -324,7 +324,7 @@ function generateDomain() {
         description: "Platform admins — full access",
         can: [
           "All student + landlord capabilities",
-          "Access /api/admin/* routes (CRUD on any table, view any user)",
+          "Access /api/admin/* routes: every admin page, plus the writes (inline edits to the tables the dashboard manages, agent approvals, review invites, reply sender decisions, notes, export). The read-only `admin` role gets the same pages without billing, mass email or any write.",
           "Toggle dev/prod database target via x-db-target header",
           "Approve/reject reviews (set legitimacy flag)",
           "Run bulk operations (update walk times)",
@@ -472,7 +472,8 @@ function generatePages() {
 
 function generateUtils() {
   const dirs = [join(ROOT, "src", "lib"), join(ROOT, "src", "utils")];
-  const files = dirs.flatMap((d) => (existsSync(d) ? walk(d, ".js") : []));
+  // Tests sit beside the code they cover; they are not utils.
+  const files = dirs.flatMap((d) => (existsSync(d) ? walk(d, ".js") : [])).filter((f) => !/\.test\.js$/.test(f));
 
   const utils = files.map((filepath) => {
     const rel = relative(ROOT, filepath);
@@ -481,7 +482,7 @@ function generateUtils() {
     const block = content.match(/\/\*+([\s\S]*?)\*\//);
     const description = block
       ? block[1].replace(/^\s*\*?/gm, "").trim().split("\n")[0].trim()
-      : "No description — add a top-of-file comment.";
+      : "No description. Add a top-of-file comment.";
     return { file: rel, description };
   });
   utils.sort((a, b) => a.file.localeCompare(b.file));

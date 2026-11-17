@@ -42,7 +42,8 @@
  */
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
-import { DEFAULT_FILTERS, matchListing } from "@/lib/listings/filterListings";
+import { stLouisDay } from "@/utils/calendarDate";
+import { DEFAULT_FILTERS, matchListing, moveInDeadline } from "@/lib/listings/filterListings";
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import {
   isListingExcludedForViewer,
@@ -223,6 +224,17 @@ const FILTER_GROUPS = [
 ];
 const PRICE_GROUP = FILTER_GROUPS[0];
 
+/*
+ * Today's date in St. Louis, as a Date whose local fields hold it. A saved
+ * "move in in November, day 30" is scored here on the server, which runs on
+ * UTC: on the evening of Nov 30 in St. Louis it is already Dec 1 there, which
+ * would push the deadline a whole year out.
+ */
+function stLouisToday() {
+  const [y, m, d] = stLouisDay().split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 const isSet = (v) => (Array.isArray(v) ? v.length > 0 : v !== "" && v != null && v !== false);
 
 // Only the keys browse knows about, and only the ones actually set. Per-visit
@@ -258,6 +270,12 @@ function scoreFilters(listing, summary, campusMinutes) {
   for (const group of active) {
     const filters = { ...DEFAULT_FILTERS };
     for (const k of group) if (summary[k] !== undefined) filters[k] = summary[k];
+    // The month (and day) become the date they mean in St. Louis, not in UTC.
+    if (filters.moveInMonth) {
+      filters.moveInDate = moveInDeadline(filters.moveInMonth, filters.moveInDay, stLouisToday()) ?? "";
+      filters.moveInMonth = "";
+      filters.moveInDay = "";
+    }
     const m = matchListing(listing, { filters, search: "", savedIds: [], campusMinutes });
     if (!m) continue;
     total += group === PRICE_GROUP && m.priceUnknown ? NEUTRAL : 1;

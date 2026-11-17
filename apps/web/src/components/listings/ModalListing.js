@@ -5,6 +5,8 @@ import React, { useEffect } from "react";
  * `header` renders above the scrolling body, under the close button: a strip
  * that must stay visible and must never cover the ×. A sticky strip inside
  * the scroll area did exactly that (the owner's preview had no way to close).
+ * The × sits at z-50 so the listing's own sticky "Did you submit your
+ * application?" bar (z-40) can never paint over it.
  */
 export default function ModalListing({ isOpen, onClose, header = null, children }) {
   // Prevent body scroll when modal is open, restoring exact scroll position on close
@@ -43,7 +45,7 @@ export default function ModalListing({ isOpen, onClose, header = null, children 
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-40 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 z-50 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>

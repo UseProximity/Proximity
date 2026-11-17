@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-11T19:30:40.281Z",
-  "count": 259,
+  "_generated": "2026-11-17T05:15:46.319Z",
+  "count": 274,
   "routes": [
     {
       "path": "/api/account",
@@ -82,10 +82,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "listing_agents"
@@ -133,10 +133,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "listing_fact_events",
@@ -550,6 +550,18 @@
       "file": "src/app/api/admin/billing/run-settings/route.js"
     },
     {
+      "path": "/api/admin/billing/summary",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/summary/route.js"
+    },
+    {
       "path": "/api/admin/billing/test-charges",
       "methods": [
         "POST"
@@ -569,10 +581,10 @@
         "POST",
         "DELETE"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
-        "POST": "admin",
-        "DELETE": "admin"
+        "POST": "super",
+        "DELETE": "super"
       },
       "tables": [
         "chat_inbound_emails"
@@ -616,6 +628,7 @@
         "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
+        "chat_email_log",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
@@ -653,9 +666,9 @@
       "methods": [
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "roles"
@@ -681,6 +694,18 @@
       "file": "src/app/api/admin/hierarchy/[view]/route.js"
     },
     {
+      "path": "/api/admin/home",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/home/route.js"
+    },
+    {
       "path": "/api/admin/listing-images",
       "methods": [
         "PATCH",
@@ -696,6 +721,20 @@
         "listing_images"
       ],
       "file": "src/app/api/admin/listing-images/route.js"
+    },
+    {
+      "path": "/api/admin/lists/[name]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/lists/[name]/route.js"
     },
     {
       "path": "/api/admin/mass-email",
@@ -788,6 +827,38 @@
       "file": "src/app/api/admin/mass-email/unowned/route.js"
     },
     {
+      "path": "/api/admin/notes",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "super"
+      },
+      "tables": [
+        "admin_notes"
+      ],
+      "file": "src/app/api/admin/notes/route.js"
+    },
+    {
+      "path": "/api/admin/notes/[id]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super",
+        "DELETE": "super"
+      },
+      "tables": [
+        "admin_notes"
+      ],
+      "file": "src/app/api/admin/notes/[id]/route.js"
+    },
+    {
       "path": "/api/admin/pending-reviews",
       "methods": [
         "GET",
@@ -805,6 +876,30 @@
         "listing_reviews"
       ],
       "file": "src/app/api/admin/pending-reviews/route.js"
+    },
+    {
+      "path": "/api/admin/records/listing/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/records/listing/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/records/user/[id]",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/records/user/[id]/route.js"
     },
     {
       "path": "/api/admin/referrals",
@@ -841,10 +936,10 @@
         "GET",
         "POST"
       ],
-      "auth": "admin",
+      "auth": "super",
       "methodAuth": {
         "GET": "admin",
-        "POST": "admin"
+        "POST": "super"
       },
       "tables": [
         "users",
@@ -852,6 +947,20 @@
         "student_roster"
       ],
       "file": "src/app/api/admin/review-invites/route.js"
+    },
+    {
+      "path": "/api/admin/reviews/[id]",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super"
+      },
+      "tables": [
+        "listing_reviews"
+      ],
+      "file": "src/app/api/admin/reviews/[id]/route.js"
     },
     {
       "path": "/api/admin/roster",
@@ -878,6 +987,18 @@
       },
       "tables": [],
       "file": "src/app/api/admin/schema/route.js"
+    },
+    {
+      "path": "/api/admin/search",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/search/route.js"
     },
     {
       "path": "/api/admin/sent-emails",
@@ -951,6 +1072,21 @@
       "file": "src/app/api/admin/update-campus-walk-times/route.js"
     },
     {
+      "path": "/api/admin/update-listing-bike-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_bike_times"
+      ],
+      "file": "src/app/api/admin/update-listing-bike-times/route.js"
+    },
+    {
       "path": "/api/admin/update-listing-drive-times",
       "methods": [
         "POST"
@@ -965,6 +1101,21 @@
         "listing_drive_times"
       ],
       "file": "src/app/api/admin/update-listing-drive-times/route.js"
+    },
+    {
+      "path": "/api/admin/users/[id]",
+      "methods": [
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "PATCH": "super"
+      },
+      "tables": [
+        "roles",
+        "users"
+      ],
+      "file": "src/app/api/admin/users/[id]/route.js"
     },
     {
       "path": "/api/admin/viewUser",
@@ -991,6 +1142,22 @@
       },
       "tables": [],
       "file": "src/app/api/agents/enabled/route.js"
+    },
+    {
+      "path": "/api/applications",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any",
+        "PATCH": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/applications/route.js"
     },
     {
       "path": "/api/auth/[...nextauth]",
@@ -1737,6 +1904,18 @@
       "file": "src/app/api/cron/agent-digest/route.js"
     },
     {
+      "path": "/api/cron/agent-knowledge",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/cron/agent-knowledge/route.js"
+    },
+    {
       "path": "/api/cron/agent-questions",
       "methods": [
         "GET"
@@ -1950,6 +2129,7 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "listing_applications",
         "device_push_tokens",
         "user_blocks",
         "review_reports",
@@ -2257,6 +2437,22 @@
       "file": "src/app/api/filter-summary/route.js"
     },
     {
+      "path": "/api/find-your-place",
+      "methods": [
+        "POST",
+        "PATCH"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "POST": "optional",
+        "PATCH": "optional"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/find-your-place/route.js"
+    },
+    {
       "path": "/api/getUser",
       "methods": [
         "GET"
@@ -2561,6 +2757,18 @@
       },
       "tables": [],
       "file": "src/app/api/landlord/listings/[listingId]/agent/url/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/applications",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/applications/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/contact",

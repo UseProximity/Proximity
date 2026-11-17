@@ -14,7 +14,7 @@ const NAV_COLS = [
     links: [
       { label: "Browse Listings", href: "/browse" },
       { label: "On Campus Hub", href: "/CampusHub" },
-      { label: "Matchmaking", href: "/matchmaking" },
+      { label: "Find Your Place", href: "/find-your-place" },
       { label: "Add Sublease", href: "/add-sublease" },
     ],
   },

@@ -42,14 +42,15 @@ function ToolCard({ title, body, button, runningLabel, confirmText, isProd, run 
   );
 }
 
-export default function SystemToolsView({ dbTarget, isProd }) {
+export default function SystemToolsView({ dbTarget, isProd, isReadOnly = false }) {
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Tools</h2>
         <p className="text-sm text-gray-500">Maintenance jobs. Each runs on the {isProd ? "production" : "dev"} database.</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      {isReadOnly && <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">You have read-only access, so these jobs are switched off.</p>}
+      <fieldset disabled={isReadOnly} className="grid min-w-0 gap-3 md:grid-cols-2">
         <ToolCard
           title="Walk times"
           body="Recalculates the walk from every listing to each campus place and shuttle stop."
@@ -74,7 +75,7 @@ export default function SystemToolsView({ dbTarget, isProd }) {
             return `Updated ${data.updated}/${data.total ?? "?"} listings${data.skipped ? ` (${data.skipped} already complete)` : ""}${data.failed ? ` (${data.failed} failed)` : ""}`;
           }}
         />
-      </div>
+      </fieldset>
     </div>
   );
 }

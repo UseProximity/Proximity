@@ -18,7 +18,7 @@ export default function WashuListingGrid({ listings, emptyLabel }) {
           surface the fits as they open up.
         </p>
         <Link
-          href="/matchmaking"
+          href="/find-your-place"
           className="inline-flex items-center justify-center rounded-xl bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700 transition"
         >
           Get matched free

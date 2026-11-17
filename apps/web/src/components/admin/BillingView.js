@@ -24,6 +24,13 @@
  *                its 7 day review starts and the landlord is emailed.
  *   Test charge  makes a flagged test charge (never on production).
  *
+ * The page is grouped into four sections, each with its own sub-tabs (Wyatt,
+ * 2026-11-14): Charges, Invoices and payments, Landlords and agreements, Setup.
+ * The history lists (charge history, Stripe events, autopay, signer requests,
+ * license disclosures) come from lib/admin/lists.js and sit in the section
+ * they belong to. The open sub-tab lives in ?tab=, with the same keys as
+ * before, so links in team emails still land in the right place.
+ *
  * Every action is recorded in the charge's history with the admin who took it.
  * Follows the dashboard's dev/prod switch (Wyatt, 2026-11-06): agreement versions,
  * coverage, charges and invoices are that database's. Billing goes with this
@@ -44,8 +51,14 @@ import ChangeRequestsPanel from "@/components/admin/billing/ChangeRequestsPanel"
 import EnrollmentPanel from "@/components/admin/billing/EnrollmentPanel";
 import { ChargebackList, InvoiceList } from "@/components/admin/billing/ProblemLists";
 import { billingFetch, setBillingTarget } from "@/components/admin/billing/billingFetch";
+import ListPage from "@/components/admin/lists/ListPage";
+import BillingOverview from "@/components/admin/billing/BillingOverview";
 
-const TAB_KEYS = ["confirm", "create", "contest", "chargebacks", "invoices", "corrections", "agreements", "changes", "enrollment", "run", "test"];
+// Sub-tabs that are a plain list from lib/admin/lists.js (the key is the list's name).
+// "charges" and "all-invoices" are the full lists; the rest are history.
+const LIST_TABS = new Set(["charges", "all-invoices", "charge-history", "stripe-events", "payer-requests", "autopay-history", "license-history"]);
+const LIST_NAMES = { "all-invoices": "invoices" };
+const TAB_KEYS = ["overview", "confirm", "create", "contest", "chargebacks", "invoices", "corrections", "agreements", "versions", "rules", "changes", "enrollment", "run", "test", ...LIST_TABS];
 
 async function call(url, options) {
   const res = await billingFetch(url, options);
@@ -89,7 +102,7 @@ export default function BillingView({ search, dbTarget = null }) {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [urlTab, setTab] = useUrlTab(TAB_KEYS, "confirm");
+  const [urlTab, setTab] = useUrlTab(TAB_KEYS, "overview");
   const [dialog, setDialog] = useState(null); // { key, charge, outcome? }
   const [changeCounts, setChangeCounts] = useState(null);
 
@@ -173,22 +186,63 @@ export default function BillingView({ search, dbTarget = null }) {
   if (!data && !error) return <div className="py-20 text-center text-sm text-gray-400">Loading billing...</div>;
   if (!data) return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
 
-  const tabs = [
-    { key: "confirm", label: "To confirm", count: data.unconfirmed.length },
-    ...(data.env?.writable === false ? [] : [{ key: "create", label: "Create charge" }]),
-    { key: "contest", label: "Contested", count: data.contested.length },
-    { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
-    { key: "invoices", label: "Failed or overdue invoices", count: data.invoices.length },
-    { key: "corrections", label: "Corrections" },
-    { key: "agreements", label: "Landlords and agreements" },
-    { key: "changes", label: "Change requests", count: changeCounts?.open ?? 0 },
-    { key: "enrollment", label: "Launch enrollment" },
-    { key: "run", label: "Billing run" },
-    ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
+  const writable = data.env?.writable !== false;
+  const sections = [
+    { key: "overview", label: "Overview", note: null, tabs: [{ key: "overview", label: "Overview" }] },
+    {
+      key: "charges",
+      label: "Charges",
+      note: "Commission charges, from the moment one is created to the day it is paid.",
+      tabs: [
+        { key: "confirm", label: "To confirm", count: data.unconfirmed.length },
+        { key: "contest", label: "Contested", count: data.contested.length },
+        { key: "charges", label: "All charges" },
+        ...(writable ? [{ key: "create", label: "Create a charge" }] : []),
+        { key: "corrections", label: "Refunds and credits" },
+        { key: "charge-history", label: "Step by step history" },
+        ...(data.testToolEnabled ? [{ key: "test", label: "Test charge" }] : []),
+      ],
+    },
+    {
+      key: "invoices",
+      label: "Invoices and payments",
+      note: "The monthly billing run and what happened to the money afterwards.",
+      tabs: [
+        { key: "invoices", label: "Failed or overdue", count: data.invoices.length },
+        { key: "chargebacks", label: "Chargebacks", count: data.chargebacks.length },
+        { key: "all-invoices", label: "All invoices" },
+        { key: "run", label: "Billing run" },
+        { key: "autopay-history", label: "Autopay" },
+        { key: "stripe-events", label: "Stripe events" },
+      ],
+    },
+    {
+      key: "landlords",
+      label: "Landlords and agreements",
+      note: "Who has signed, who can publish, and the agreement itself.",
+      tabs: [
+        { key: "agreements", label: "Landlords" },
+        { key: "changes", label: "Change requests", count: changeCounts?.open ?? 0 },
+        { key: "versions", label: "Agreement versions" },
+        { key: "payer-requests", label: "Waiting on a signer" },
+        { key: "license-history", label: "License disclosures" },
+      ],
+    },
+    {
+      key: "setup",
+      label: "Setup",
+      note: "The rules for publishing and the launch email to existing landlords.",
+      tabs: [
+        { key: "rules", label: "Publishing rules" },
+        { key: "enrollment", label: "Launch enrollment" },
+      ],
+    },
   ];
 
-  // The test tool can be switched off, so a saved ?tab=test falls back.
-  const tab = tabs.some((t) => t.key === urlTab) ? urlTab : "confirm";
+  // The test tool and Create can be switched off, so a saved ?tab= falls back.
+  const tab = sections.some((sec) => sec.tabs.some((t) => t.key === urlTab)) ? urlTab : "overview";
+  const section = sections.find((sec) => sec.tabs.some((t) => t.key === tab));
+  const waiting = (sec) => sec.tabs.reduce((n, t) => n + (t.count > 0 ? t.count : 0), 0);
 
   const dialogKey = dialog ? (dialog.key === "resolve" ? `resolve:${dialog.outcome}` : "void") : null;
 
@@ -202,24 +256,43 @@ export default function BillingView({ search, dbTarget = null }) {
           are made on {env.target === "prod" ? "useproximity.org" : "staging or a local copy"}.
         </div>
       )}
+      {/* Sections */}
       <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
+        {sections.map((sec) => (
           <button
-            key={t.key}
+            key={sec.key}
             type="button"
-            onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-              tab === t.key ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            onClick={() => setTab(sec.tabs[0].key)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border ${
+              section.key === sec.key ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
             }`}
           >
-            {t.label}
-            {t.count > 0 && (
-              <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tab === t.key ? "bg-white/20" : "bg-amber-100 text-amber-800"}`}>
-                {t.count}
+            {sec.label}
+            {waiting(sec) > 0 && (
+              <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${section.key === sec.key ? "bg-white/20" : "bg-amber-100 text-amber-800"}`}>
+                {waiting(sec)}
               </span>
             )}
           </button>
         ))}
+      </div>
+
+      {/* The open section's sub-tabs */}
+      <div className={section.tabs.length > 1 ? "" : "hidden"}>
+        <p className="mb-2 text-sm text-gray-500">{section.note}</p>
+        <div className="flex flex-wrap gap-1 border-b border-gray-200">
+          {section.tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t.key ? "border-gray-900 font-semibold text-gray-900" : "border-transparent text-gray-500 hover:text-gray-800"}`}
+            >
+              {t.label}
+              {t.count > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{t.count}</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
@@ -249,9 +322,18 @@ export default function BillingView({ search, dbTarget = null }) {
         <InvoiceList invoices={filtered.invoices} busy={busy} onResend={resendInvoice} onRestore={restoreLeases} />
       )}
       {tab === "corrections" && <CorrectionsPanel search={search} />}
-      {tab === "agreements" && <AgreementsPanel search={search} />}
+      {tab === "agreements" && <AgreementsPanel search={search} part="landlords" />}
+      {tab === "versions" && <AgreementsPanel search={search} part="versions" />}
+      {tab === "rules" && <AgreementsPanel search={search} part="rules" />}
+      {tab === "overview" && (
+        <BillingOverview
+          queues={{ confirm: data.unconfirmed.length, contest: data.contested.length, invoices: data.invoices.length, chargebacks: data.chargebacks.length, changes: changeCounts?.open ?? 0 }}
+          onOpen={setTab}
+        />
+      )}
+      {LIST_TABS.has(tab) && <ListPage key={tab} name={LIST_NAMES[tab] ?? tab} dbTarget={dbTarget ?? "dev"} isProd={dbTarget === "prod"} search={search} />}
       {tab === "changes" && (
-        <ChangeRequestsPanel search={search} onOpenAgreements={() => setTab("agreements")} onCountsChange={setChangeCounts} />
+        <ChangeRequestsPanel search={search} onOpenAgreements={() => setTab("versions")} onCountsChange={setChangeCounts} />
       )}
       {tab === "enrollment" && <EnrollmentPanel />}
       {tab === "run" && <BillingRunPanel />}
