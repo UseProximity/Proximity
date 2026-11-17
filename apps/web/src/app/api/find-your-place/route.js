@@ -99,7 +99,12 @@ export async function POST(request) {
     let existing = null;
     if (typeof body.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(body.sessionId)) {
       const { data } = await supabase.from(T).select("id, user_id, visitor_id, preferences").eq("id", body.sessionId).maybeSingle();
-      const mine = data && (actor ? data.user_id === actor.id || (!data.user_id && data.visitor_id === visitor) : !data.user_id && data.visitor_id === visitor);
+      // A signed-in run only updates that account's own search. A signed-out
+      // search from this browser joins an account only through the "Add this
+      // search to your account?" prompt (PATCH below): on a shared computer it
+      // may be someone else's (PR 447 review). Here it is left as it is, and
+      // the run starts the account's own search.
+      const mine = data && (actor ? data.user_id === actor.id : !data.user_id && data.visitor_id === visitor);
       if (mine && data.preferences?._fyp) existing = data;
     }
 
@@ -140,7 +145,7 @@ export async function POST(request) {
 
     let sessionId = existing?.id ?? null;
     if (existing) {
-      const { error } = await supabase.from(T).update({ ...row, ...(actor ? { user_id: actor.id } : {}) }).eq("id", existing.id);
+      const { error } = await supabase.from(T).update(row).eq("id", existing.id);
       if (error) console.error("[find-your-place] session update failed:", error.message);
     } else {
       if (!actor && !visitor) visitor = newVisitorId();
