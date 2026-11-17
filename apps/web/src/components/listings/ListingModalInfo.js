@@ -31,7 +31,7 @@ import {
   NEAREST_DRIVE_POOLS,
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
-import { trackEvent, getListingSource } from "@/utils/analytics";
+import { trackEvent, getListingSource, noteMatchRevisit } from "@/utils/analytics";
 import ApplyButton from "@/components/listings/ApplyButton";
 import ApplicationCheck from "@/components/listings/ApplicationCheck";
 import { pickApplication } from "@/lib/listings/applicationLink";
@@ -1187,6 +1187,7 @@ function ContactTab({
         address: listing.address,
         ...(source ? { source } : {}),
       });
+      noteMatchRevisit(listing._id, "contacted");
       /*
        * Open the conversation rather than leaving a "sent" receipt behind. The
        * thread id lands in the URL, so the step from enquiry to conversation is
@@ -1565,6 +1566,16 @@ export default function ListingModalInfo({
     return () => { delete document.body.dataset.listingContact; };
   }, [activeTab]);
 
+  // A Find Your Place match opened some other way than from the matches page.
+  // Deferred a moment: a ?src=matchmaking deep link marks its source in the
+  // browse page's own effect, which runs after this panel's.
+  useEffect(() => {
+    if (preview || !listing?._id) return;
+    const id = listing._id;
+    const t = setTimeout(() => noteMatchRevisit(id, "opened"), 300);
+    return () => clearTimeout(t);
+  }, [listing?._id, preview]);
+
   /*
    * True once the header has stuck to the top: the sentinel just above it has
    * scrolled up out of the panel or modal it scrolls in. Compacting takes about
@@ -1874,12 +1885,14 @@ export default function ListingModalInfo({
   const waitlistName = listing.title || "this property";
   const waitlistButtonClass =
     "my-2 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
-  const trackWaitlistClick = () =>
+  const trackWaitlistClick = () => {
     trackEvent("Waitlist Clicked", {
       listingId: listing._id,
       source: getListingSource(listing._id) ?? "direct",
       signedIn: !!session,
     });
+    noteMatchRevisit(listing._id, "waitlist");
+  };
 
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);

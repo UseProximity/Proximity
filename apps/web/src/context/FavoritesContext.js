@@ -14,7 +14,7 @@
 
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { trackEvent, getListingSource } from "@/utils/analytics";
+import { trackEvent, getListingSource, noteMatchRevisit } from "@/utils/analytics";
 
 const FavoritesContext = createContext({
   savedIds: [],
@@ -67,6 +67,7 @@ export function FavoritesProvider({ children }) {
           listingId: id,
           ...(source ? { source } : {}),
         });
+        if (confirmed) noteMatchRevisit(id, "saved");
       }
     } catch {
       // Back to what the server last confirmed.
