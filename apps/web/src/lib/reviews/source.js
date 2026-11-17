@@ -9,17 +9,17 @@
  * Shared by client and server; keep it free of server-only imports.
  */
 
-export const MAX_SOURCE_LENGTH = 40;
+import { MAX_TAG_LENGTH, normalizeTag } from "../marketing/tags.js";
 
-/** A safe campaign tag, or null when there's nothing usable in `raw`. */
+export const MAX_SOURCE_LENGTH = MAX_TAG_LENGTH;
+
+/**
+ * A safe campaign tag, or null when there's nothing usable in `raw`. The
+ * cleaner itself lives in lib/marketing/tags.js so marketing attribution and
+ * the review flow normalize tags identically.
+ */
 export function normalizeReviewSource(raw) {
-  const lowered = String(raw ?? "").trim().toLowerCase();
-  if (!lowered) return null;
-  const cleaned = lowered
-    .replace(/[^a-z0-9_-]+/g, "-") // spaces, punctuation, anything exotic
-    .replace(/-{2,}/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "");
-  return cleaned ? cleaned.slice(0, MAX_SOURCE_LENGTH) : null;
+  return normalizeTag(raw);
 }
 
 /*
