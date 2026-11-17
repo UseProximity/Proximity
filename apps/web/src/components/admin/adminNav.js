@@ -80,6 +80,10 @@ export const NAV = [
     items: [{ path: "billing", label: "Billing", superOnly: true }],
   },
   {
+    label: "Marketing",
+    items: [{ path: "marketing/links", label: "Campaign links", pinned: true }],
+  },
+  {
     label: "Agents and sync",
     items: [
       { path: "agents", label: "Agents", pinned: true },

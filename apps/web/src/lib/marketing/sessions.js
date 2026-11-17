@@ -51,6 +51,14 @@ export async function findLinkBySlug(slug) {
   return data || null;
 }
 
+/** A link's destination for /go/<slug>, or null when the slug is not registered. */
+export async function findLinkDestination(slug) {
+  if (!slug) return null;
+  const { data, error } = await supabase.from("marketing_links").select("destination_path").eq("slug", slug).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
 const sessionColumns = (c) => ({
   source: c.source,
   medium: c.medium,
