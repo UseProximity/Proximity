@@ -7,7 +7,9 @@
  * on an earlier visit is asked the next time they open the listing, in a bar
  * at the very top of it that stays stuck while they scroll (Wyatt,
  * 2026-11-15). Its height goes into --apply-check-h on the listing so the
- * listing's own sticky header sits just under it instead of behind it. Not in the visit they clicked Apply: they are still
+ * listing's own sticky header sits just under it instead of behind it, and to
+ * `onHeight` for the scroll math (tab jumps, the browse panel's pills). Not in
+ * the visit they clicked Apply: they are still
  * filling it in. "Not yet" hides it for this visit only, so it asks again
  * next time; "Yes" and "I'm not applying" settle it.
  */
@@ -16,11 +18,15 @@ import toast from "react-hot-toast";
 import { Pen } from "lucide-react";
 import { APPLY_CLICKED_EVENT } from "./ApplyButton";
 
-export default function ApplicationCheck({ listingId, signedIn, preview = false }) {
+export default function ApplicationCheck({ listingId, signedIn, preview = false, onHeight = null }) {
   const [app, setApp] = useState(null);
   const [busy, setBusy] = useState(false);
   const openedAt = useRef(Date.now());
   const barRef = useRef(null);
+  // Apply clicked in this visit, even before the check below has loaded.
+  const appliedNow = useRef(false);
+  const onHeightRef = useRef(onHeight);
+  onHeightRef.current = onHeight;
 
   useEffect(() => {
     if (!signedIn || preview || !listingId) return;
@@ -28,7 +34,7 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
     fetch(`/api/applications?listingId=${listingId}`)
       .then((r) => (r.ok ? r.json() : {}))
       .then((d) => {
-        if (cancelled) return;
+        if (cancelled || appliedNow.current) return;
         const pending = (d.applications ?? []).find(
           (a) => a.status === "started" && Date.parse(a.lastClickedAt) < openedAt.current
         );
@@ -40,7 +46,11 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
 
   // Apply clicked in this visit: they are mid-application, so no question now.
   useEffect(() => {
-    const on = (e) => { if (e.detail?.listingId === listingId) setApp(null); };
+    const on = (e) => {
+      if (e.detail?.listingId !== listingId) return;
+      appliedNow.current = true;
+      setApp(null);
+    };
     window.addEventListener(APPLY_CLICKED_EVENT, on);
     return () => window.removeEventListener(APPLY_CLICKED_EVENT, on);
   }, [listingId]);
@@ -50,11 +60,18 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false 
     const el = barRef.current;
     const host = el?.parentElement;
     if (!el || !host) return;
-    const set = () => host.style.setProperty("--apply-check-h", `${el.offsetHeight}px`);
+    const set = () => {
+      host.style.setProperty("--apply-check-h", `${el.offsetHeight}px`);
+      onHeightRef.current?.(el.offsetHeight);
+    };
     set();
     const ro = new ResizeObserver(set);
     ro.observe(el);
-    return () => { ro.disconnect(); host.style.removeProperty("--apply-check-h"); };
+    return () => {
+      ro.disconnect();
+      host.style.removeProperty("--apply-check-h");
+      onHeightRef.current?.(0);
+    };
   }, [app]);
 
   if (!app) return null;

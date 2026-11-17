@@ -19,7 +19,9 @@ export const APPLICATION_URL_MAX = 2000;
 export function normalizeApplicationUrl(value) {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return { url: null };
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  // "portal.example.com:8443/apply" is a host and port, not a scheme.
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^[^/:]+:\d+(?:[/?#]|$)/.test(raw);
+  const withScheme = hasScheme ? raw : `https://${raw}`;
   let parsed;
   try {
     parsed = new URL(withScheme);
@@ -41,21 +43,26 @@ export function normalizeApplicationUrl(value) {
  * Which application the Apply button opens on a listing, as { url, leaseId },
  * or null for no button.
  *
- * The lease the student picked comes first, since that is whose application
- * they mean. Otherwise the primary landlord's link, then any link at all, so
- * a listing where only one of several landlords added one still gets a
- * button. `listing` is the getListing shape (unitTypes[].leases[]).
+ * Once the student has picked a lease, only that lease's landlord counts: their
+ * link (off that lease, or another of theirs here), or no button when they
+ * have none (Wyatt, 2026-11-16). Another landlord's application would send the
+ * student to the wrong person for the unit they meant. With nothing picked,
+ * the primary landlord's link, then any link at all, so a listing where only
+ * one of several landlords added one still gets a button. `listing` is the
+ * getListing shape (unitTypes[].leases[]).
  */
 export function pickApplication(listing, selectedLease = null) {
   const leases = (listing?.unitTypes ?? []).flatMap((u) => u.leases ?? []);
   const withLink = leases.filter((l) => l.applicationUrl);
   if (!withLink.length) return null;
-  const chosen = selectedLease?.id ? withLink.find((l) => l.id === selectedLease.id) : null;
-  const primaryId = listing?.owner?._id ?? null;
-  const pick =
-    chosen ??
-    (selectedLease?.ownerId ? withLink.find((l) => l.ownerId === selectedLease.ownerId) : null) ??
-    (primaryId ? withLink.find((l) => l.ownerId === primaryId) : null) ??
-    withLink[0];
-  return { url: pick.applicationUrl, leaseId: pick.id };
+  let pick;
+  if (selectedLease?.id) {
+    pick =
+      withLink.find((l) => l.id === selectedLease.id) ??
+      (selectedLease.ownerId ? withLink.find((l) => l.ownerId === selectedLease.ownerId) : null);
+  } else {
+    const primaryId = listing?.owner?._id ?? null;
+    pick = (primaryId ? withLink.find((l) => l.ownerId === primaryId) : null) ?? withLink[0];
+  }
+  return pick ? { url: pick.applicationUrl, leaseId: pick.id } : null;
 }

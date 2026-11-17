@@ -15,8 +15,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { studentApplications, recordApplyClick, answerApplication } from "@/lib/listings/applications";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE as UUID } from "@/lib/users/viewAs";
 
 async function body(req) {
   try { return await req.json(); } catch { return {}; }

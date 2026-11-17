@@ -138,11 +138,13 @@ export async function buildProxyContext(listingId) {
     `UTILITIES INCLUDED IN RENT: ${utils.join(", ") || "none listed"}`,
     `UNITS AND LEASES (a lease is one owner's offering; several owners can offer the same building):\n${unitLines.join("\n") || "- no units listed"}`,
     leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
-    applyLine(units),
   ];
   const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
   const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
-  const proxyText = factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text;
+  // How to apply is an instruction to Proxy alone, not listing data for the
+  // landlord agent or the knowledge synthesis that also read `text`.
+  const proxyText = [factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text, applyLine(units)]
+    .filter(Boolean).join("\n\n");
 
   const factKeys = new Set();
   for (const items of Object.values(facts.sections)) for (const f of items) factKeys.add(f.key);

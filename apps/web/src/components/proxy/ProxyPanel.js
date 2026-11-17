@@ -264,6 +264,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [unavailable, setUnavailable] = useState(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // Read after an await (the tour popup), where `sending` would be stale.
+  const sendingRef = useRef(false);
+  sendingRef.current = sending;
   // Proxy's reply as it streams in, until the saved message replaces it.
   const [draft, setDraft] = useState("");
   // The answer is in; no typing dots while the panel catches up after it.
@@ -285,6 +288,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const started = messages.length > 0 || sending;
   const greet = !loading && !!thread && !started;
   const { tour, setTour } = useTour(listingId, signedIn);
+  const tourRef = useRef(tour);
+  tourRef.current = tour;
 
   useEffect(() => {
     if (!listingId) return;
@@ -358,7 +363,12 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [listingId]);
 
   // A tour question opens the picker (from Proxy's reply, or the Messages header).
-  useEffect(() => { if (tourIntentSignal && signedIn) setPickerOpen(true); }, [tourIntentSignal, signedIn]);
+  // A confirmed tour opens the Tour menu instead (Cancel only, see below).
+  useEffect(() => {
+    if (!tourIntentSignal || !signedIn) return;
+    if (tourRef.current?.status === "confirmed") setTourMenuOpen(true);
+    else setPickerOpen(true);
+  }, [tourIntentSignal, signedIn]);
 
   // The chat to its newest message, and whatever scrolls around it (the
   // listing modal, or the page) all the way to the bottom.
@@ -428,6 +438,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [active, loading, glideOnOpen, scrollToEnd]);
 
   const sendTour = useCallback(async (slots) => {
+    // A confirmed tour is not edited from here: new times would create a
+    // second request beside the booked one (Wyatt, 2026-11-16).
+    if (tour?.status === "confirmed") throw new Error("Your tour is already confirmed. Cancel it first to pick new times.");
     const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
     const r = open
       ? await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", slots }) })
@@ -508,9 +521,15 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     }
     setPickerOpen(false);
     toast.success("Tour request sent.");
-    if (note) await send(note);
-    else {
-      await refresh();
+    // The request's own messages first, so the note lands after them.
+    await refresh();
+    if (note && sendingRef.current) {
+      // Proxy is still answering: keep the note in the box rather than drop it.
+      setInput((cur) => (cur.trim() ? cur : note));
+      toast("Your note is in the message box. Send it once Proxy finishes.");
+    } else if (note) {
+      await send(note);
+    } else {
       announce(thread?.id, selfId.current);
       requestAnimationFrame(() => scrollToEnd(true));
     }
@@ -618,10 +637,10 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
                       if (activeTour) setTourMenuOpen((o) => !o);
                       else setPickerOpen(true);
                     }}
-                    aria-label={!signedIn ? "Sign in to request a tour" : activeTour ? "Tour requested: edit or cancel" : "Pick tour times"}
+                    aria-label={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed: cancel" : activeTour ? "Tour requested: edit or cancel" : "Pick tour times"}
                     aria-haspopup={activeTour ? "menu" : undefined}
                     aria-expanded={activeTour ? tourMenuOpen : undefined}
-                    title={!signedIn ? "Sign in to request a tour" : activeTour ? "Tour requested" : "Request a tour"}
+                    title={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed" : activeTour ? "Tour requested" : "Request a tour"}
                     className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${applyShown ? "flex-1 sm:flex-none" : ""} ${pickerOpen || tourMenuOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
                   >
                     {activeTour ? <Check className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
@@ -629,14 +648,15 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
                   </button>
                   {activeTour && tourMenuOpen && (
                     <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                      <button
+                      {/* A confirmed tour is booked: cancel it, but changing the time is a talk with the landlord. */}
+                      {activeTour.status !== "confirmed" && <button
                         type="button"
                         role="menuitem"
                         onClick={() => { setTourMenuOpen(false); setPickerOpen(true); }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
                       >
                         <Pencil className="h-4 w-4 text-gray-500" /> Edit tour
-                      </button>
+                      </button>}
                       <button
                         type="button"
                         role="menuitem"

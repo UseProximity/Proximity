@@ -3,18 +3,20 @@
  *
  * We cannot see inside a landlord's portal, so tracking is two steps:
  *   1. Apply clicked: the student is recorded as "started" (repeats bump
- *      click_count and last_clicked_at on the same row).
+ *      click_count and last_clicked_at on the same row, and a repeat after
+ *      "I'm not applying" makes it "started" again).
  *   2. On their next visit to the listing they are asked "Did you submit
  *      your application?" and their answer moves the row to "applied" or
  *      "not_applying".
- * One row per student per application link on a listing, so a listing whose
- * landlords use different portals keeps them apart.
+ * One row per student per landlord on a listing, so co-landlords keep their
+ * own students even when they share one portal link.
  *
  * The link recorded is always read from the lease, never taken from the
  * browser, so nobody can log an arbitrary URL against a listing.
  */
 import supabase from "@/lib/supabase";
 import { isLiveLease } from "@/lib/listings/unitAvailability";
+import { sandboxViewFor } from "@/lib/agents/sandbox";
 
 export const APPLICATION_STATUSES = ["started", "applied", "not_applying"];
 
@@ -67,36 +69,20 @@ export async function recordApplyClick({ studentId, listingId, leaseId }) {
   // An owner opening their own link is checking it, not applying.
   if (owns?.length) return { skipped: true };
 
-  const now = new Date().toISOString();
-  const find = () => supabase.from("listing_applications").select(ROW)
-    .eq("listing_id", listingId).eq("student_id", studentId).eq("application_url", lease.application_url)
-    .maybeSingle();
-
-  const bump = async (row) => {
-    const { data, error } = await supabase.from("listing_applications")
-      .update({ click_count: (row.click_count ?? 0) + 1, last_clicked_at: now, lease_id: lease.id, landlord_id: lease.owner_id ?? null, updated_at: now })
-      .eq("id", row.id).select(ROW).single();
-    if (error) throw new Error(`application bump: ${error.message}`);
-    return { application: shape(data) };
-  };
-
-  const { data: existing, error: findErr } = await find();
-  if (findErr) throw new Error(`application find: ${findErr.message}`);
-  if (existing) return bump(existing);
-
-  const { data, error } = await supabase.from("listing_applications").insert({
-    listing_id: listingId, student_id: studentId, landlord_id: lease.owner_id ?? null,
-    lease_id: lease.id, application_url: lease.application_url,
-  }).select(ROW).single();
-  if (error) {
-    // A double click raced the insert: count it on the row that won.
-    if (error.code === "23505") {
-      const { data: again } = await find();
-      if (again) return bump(again);
-    }
-    throw new Error(`application insert: ${error.message}`);
-  }
-  return { application: shape(data) };
+  // One statement: insert, or count the repeat (and put "I'm not applying"
+  // back to "started"). See record_application_click in
+  // 202611160001_application_per_landlord.sql.
+  const { data, error } = await supabase.rpc("record_application_click", {
+    p_listing_id: listingId,
+    p_student_id: studentId,
+    p_landlord_id: lease.owner_id ?? null,
+    p_lease_id: lease.id,
+    p_application_url: lease.application_url,
+  });
+  if (error) throw new Error(`application click: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error("application click: no row returned");
+  return { application: shape(row) };
 }
 
 /* The student's answer to "Did you submit your application?". */
@@ -115,29 +101,31 @@ export async function answerApplication({ studentId, applicationId, status }) {
 }
 
 /*
- * What a landlord sees for one property: every student who clicked Apply on
- * their link, and those who then told us they submitted it, each with their
- * name and email (Wyatt, 2026-11-15: one button per group on the landlord
- * side). A click already means the student went to the landlord's own
- * application, so they are named in both lists.
+ * What a landlord sees for one property (Wyatt, 2026-11-16): how many
+ * students clicked Apply on their link, and by name only those who told us
+ * they submitted it. A click alone stays anonymous, since the student may
+ * only have been looking at the portal.
+ *
+ * Hidden from a real landlord: review sandbox students (App Store reviewers,
+ * lib/agents/sandbox.js) and accounts deleted or pending deletion.
  */
 export async function landlordApplications({ landlordId, listingId }) {
-  const { data, error } = await supabase
-    .from("listing_applications")
-    .select("id, status, first_clicked_at, last_clicked_at, answered_at, users!student_id(name, email)")
-    .eq("listing_id", listingId)
-    .eq("landlord_id", landlordId)
-    .order("last_clicked_at", { ascending: false });
+  const [{ data, error }, view] = await Promise.all([
+    supabase
+      .from("listing_applications")
+      .select("id, student_id, status, answered_at, users!student_id(name, email, deleted_at)")
+      .eq("listing_id", listingId)
+      .eq("landlord_id", landlordId),
+    sandboxViewFor(landlordId),
+  ]);
   if (error) throw new Error(`landlord applications: ${error.message}`);
-  const person = (r) => ({ id: r.id, name: r.users?.name ?? null, email: r.users?.email ?? null });
-  const rows = data ?? [];
+  const rows = view.tours(data ?? [], (r) => r.student_id).filter((r) => !r.users?.deleted_at);
   const applied = rows
     .filter((r) => r.status === "applied")
     .sort((a, b) => String(b.answered_at).localeCompare(String(a.answered_at)));
   return {
     started: rows.length,
     applied: applied.length,
-    clicked: rows.map((r) => ({ ...person(r), at: r.last_clicked_at, status: r.status })),
-    applicants: applied.map((r) => ({ ...person(r), at: r.answered_at })),
+    applicants: applied.map((r) => ({ id: r.id, name: r.users?.name ?? null, email: r.users?.email ?? null, at: r.answered_at })),
   };
 }

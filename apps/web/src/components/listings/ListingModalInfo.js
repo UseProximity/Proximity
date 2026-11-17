@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useSyncExternalStore } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -1541,6 +1541,8 @@ export default function ListingModalInfo({
   onHeadStuck = null,
   // Called when a tab click starts scrolling the page to its section.
   onSectionJump = null,
+  // Called with the "Did you submit?" bar's height (0 when it is gone).
+  onApplyBar = null,
   /*
    * The owner looking at their own listing through the dashboard's "View as
    * Student" (GlobalListingModal with ?preview=1). Everything renders as a
@@ -1572,6 +1574,15 @@ export default function ListingModalInfo({
    * header twitched at the line (Wyatt, 2026-10-31).
    */
   const headSentinelRef = useRef(null);
+  // The stuck "Did you submit?" bar's height, for the scroll math below. Kept
+  // in a ref (set by ApplicationCheck) so no scroll event reads the style.
+  const applyBarH = useRef(0);
+  const onApplyBarCb = useRef(onApplyBar);
+  onApplyBarCb.current = onApplyBar;
+  const onApplyBarHeight = useCallback((h) => {
+    applyBarH.current = h;
+    onApplyBarCb.current?.(h);
+  }, []);
   const [headStuck, setHeadStuck] = useState(false);
   // The browse panel's sliding pills follow the same stuck state (one listener).
   const onHeadStuckRef = useRef(onHeadStuck);
@@ -1584,8 +1595,7 @@ export default function ListingModalInfo({
     let stuck = false;
     const onScroll = () => {
       // The header sticks below the "Did you submit?" bar when that shows.
-      const bar = parseFloat(getComputedStyle(el).getPropertyValue("--apply-check-h")) || 0;
-      const top = (root ? root.getBoundingClientRect().top : 0) + bar;
+      const top = (root ? root.getBoundingClientRect().top : 0) + applyBarH.current;
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -1631,7 +1641,7 @@ export default function ListingModalInfo({
      * it loses, so the full height is the right offset in both cases.
      */
     const top =
-      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
+      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0) - applyBarH.current;
     // Contact goes all the way down, to the chat's newest message and its box
     // (Wyatt, 2026-11-01): it is the last section, so that is the page's bottom.
     const end = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -1648,7 +1658,7 @@ export default function ListingModalInfo({
     const onScroll = () => {
       if (Date.now() < spyQuietUntil.current) return;
       const rootTop = root ? root.getBoundingClientRect().top : 0;
-      const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
+      const line = rootTop + applyBarH.current + (headRef.current?.offsetHeight ?? 0) + 24;
       const scrolled = root ? root.scrollTop : window.scrollY;
       const viewport = root ? root.clientHeight : window.innerHeight;
       const height = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -2120,7 +2130,7 @@ export default function ListingModalInfo({
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
         {/* "Did you submit your application?" sits above everything and stays stuck. */}
-        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} />
+        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} onHeight={onApplyBarHeight} />
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
