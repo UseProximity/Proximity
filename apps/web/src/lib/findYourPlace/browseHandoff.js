@@ -47,7 +47,7 @@ const CAMPUS_WALK_STOPS = [10, 15, 20, 30];
 const SHUTTLE_WALK_STOPS = [2, 5, 10];
 // Raised whenever what the hand-off sets changes, so a saved set of matches
 // carrying an older hand-off is searched again rather than reused.
-export const HANDOFF_VERSION = 3;
+export const HANDOFF_VERSION = 4;
 const stopFor = (stops, minutes) => stops.find((s) => s >= minutes) ?? null;
 
 export function buildBrowseHandoff({ answers, parsed, preferences }) {
@@ -108,15 +108,25 @@ export function buildBrowseHandoff({ answers, parsed, preferences }) {
   if (BROWSE_LEASE[answers.lease]) filters.leaseAvailability = BROWSE_LEASE[answers.lease];
   else if (/^\d+$/.test(answers.lease ?? "")) filters.leaseAvailability = [answers.lease + "-month"];
 
-  if (parsed.furnished === "yes") filters.furnished = "furnished";
-  else if (parsed.furnished === "no") filters.furnished = "unfurnished";
+  /*
+   * Nice-to-haves are handed over switched off (Wyatt, 2026-11-17, PR 447
+   * review): `suggested` marks them in browse's filter panel, one tap from
+   * on, without narrowing the grid. Only what the student made a requirement
+   * filters: furnishing they said they need, and pets.
+   */
+  const suggested = { furnished: null, amenities: [] };
+  const furnishing = parsed.furnished === "yes" ? "furnished" : parsed.furnished === "no" ? "unfurnished" : null;
+  if (furnishing && parsed.furnished_required) filters.furnished = furnishing;
+  else if (furnishing) suggested.furnished = furnishing;
 
-  const amenities = parsed.amenities.map((k) => BROWSE_AMENITY[k]).filter(Boolean);
-  // Browse's own "Pets Allowed" filter (the listing's flag).
-  if (needsPetFriendly(preferences)) amenities.push("pets_allowed");
-  if (amenities.length) filters.amenities = [...new Set(amenities)];
+  suggested.amenities = [...new Set(parsed.amenities.map((k) => BROWSE_AMENITY[k]).filter(Boolean))];
+  // Browse's own "Pets Allowed" filter (the listing's flag): a pet is a requirement.
+  if (needsPetFriendly(preferences)) {
+    filters.amenities = ["pets_allowed"];
+    suggested.amenities = suggested.amenities.filter((a) => a !== "pets_allowed");
+  }
 
   if (parsed.areas.length) notApplied.push(parsed.areas.map((a) => NEIGHBORHOOD_NAMES[a] ?? a).join(" or "));
 
-  return { filters, notApplied, version: HANDOFF_VERSION };
+  return { filters, suggested, notApplied, version: HANDOFF_VERSION };
 }

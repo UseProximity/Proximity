@@ -133,6 +133,9 @@ export default function FiltersPanel({
   onApply,
   onReset,
   drawer = false,
+  // Nice-to-haves from Find Your Place ({ furnished, amenities }): their chips
+  // are marked, switched off, one tap from on (Wyatt, 2026-11-17).
+  suggested = null,
 }) {
   const [edits, setEdits] = useState(NO_EDITS);
   const draft = { ...filters, ...edits };
@@ -290,6 +293,8 @@ export default function FiltersPanel({
       />
     );
   // Chips: several can be on (field holds an array), or with single exactly one.
+  const isSuggested = (field, value) =>
+    field === "amenities" ? !!suggested?.amenities?.includes(value) : field === "furnished" ? suggested?.furnished === value : false;
   const chips = (title, className, field, options, { inset, single, after } = {}) => (
     <Section title={title} className={className} inset={inset} large={drawer} onClear={clearer(field)}>
       <div className={`mt-2 flex flex-wrap gap-x-1.5 gap-y-2 pr-4 ${inset || "pl-5"}`}>
@@ -297,17 +302,22 @@ export default function FiltersPanel({
           const selected = single
             ? (draft[field] || "") === value
             : (draft[field] || []).includes(value);
+          const hint = !selected && isSuggested(field, value);
           return (
             <button
               key={value}
               type="button"
+              title={hint ? "You mentioned this in Find Your Place" : undefined}
               onClick={() => (single ? set({ [field]: value }) : toggle(field, value))}
               className={`${chipSize} rounded-full border font-medium shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-colors ${
                 selected
                   ? "border-[#FF2B3A] bg-[#FF2B3A] text-white"
-                  : "border-gray-200 bg-white text-[#495564] hover:border-gray-300"
+                  : hint
+                    ? "border-dashed border-[#FF2B3A] bg-white text-[#FF2B3A] hover:bg-red-50"
+                    : "border-gray-200 bg-white text-[#495564] hover:border-gray-300"
               }`}
             >
+              {hint && <span aria-hidden="true">+ </span>}
               {label}
             </button>
           );
