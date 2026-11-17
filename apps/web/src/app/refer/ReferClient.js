@@ -10,7 +10,8 @@
  * their username, persisted to users.payment_method / users.payment_handle.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { copyText } from "@/utils/copyText";
 
 // ─── Countdown to July 1 ───────────────────────────────────────────────────────
 // Counts down to 00:00 on the upcoming July 1 (this year, or next year once it has
@@ -91,16 +92,24 @@ export function Countdown() {
 export function CopyLinkBox({ userId }) {
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const inputRef = useRef(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
   const link = origin ? `${origin}/refer/${userId}` : "";
 
-  function copy() {
+  // On a blocked copy, select the link in the box so it can be copied by hand.
+  async function copy() {
     if (!link) return;
-    navigator.clipboard?.writeText(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (await copyText(link)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } else {
+      setCopyFailed(true);
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
   }
 
   return (
@@ -110,6 +119,7 @@ export function CopyLinkBox({ userId }) {
       </label>
       <div className="flex gap-2">
         <input
+          ref={inputRef}
           readOnly
           value={link}
           placeholder="Loading…"
@@ -124,6 +134,11 @@ export function CopyLinkBox({ userId }) {
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
+      {copyFailed && (
+        <p className="text-xs text-gray-600 mt-2">
+          Your browser blocked copying. The link is selected, so press Ctrl+C (⌘C on Mac).
+        </p>
+      )}
       <p className="text-xs text-gray-400 mt-2">
         Share this with students who’ve lived somewhere — every review they submit through
         it is credited to you.

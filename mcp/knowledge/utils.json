@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T05:15:46.398Z",
-  "count": 340,
+  "_generated": "2026-11-17T16:17:45.292Z",
+  "count": 341,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -1318,6 +1318,10 @@
     {
       "file": "src/utils/compressImage.js",
       "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/copyText.js",
+      "description": "Copies text to the clipboard and resolves to true/false. Never throws."
     },
     {
       "file": "src/utils/drivePlaces.js",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Instagram } from "lucide-react";
+import { copyText } from "@/utils/copyText";
 const Logo = "/logo.svg";
 
 const CONTACT_EMAIL = "info@useproximity.org";
@@ -61,14 +62,45 @@ const SocialIcons = () => (
   </div>
 );
 
-export default function Footer() {
-  const [copied, setCopied] = useState(false);
+function ContactButton({ copyState, onClick }) {
+  return (
+    <>
+      <button
+        onClick={onClick}
+        className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
+      >
+        {copyState === "copied" ? "Copied!" : "Contact Us"}
+      </button>
+      {copyState === "copied" && (
+        <p className="text-xs text-green-400 mt-1">{CONTACT_EMAIL} copied</p>
+      )}
+      {copyState === "failed" && (
+        <p className="text-xs text-gray-400 mt-1">
+          Email us at{" "}
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="text-white underline select-all"
+          >
+            {CONTACT_EMAIL}
+          </a>
+        </p>
+      )}
+    </>
+  );
+}
 
-  function handleCopyEmail() {
-    navigator.clipboard.writeText(CONTACT_EMAIL).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    });
+export default function Footer() {
+  // "idle" | "copied" | "failed". A failed copy (browser denied clipboard
+  // access) leaves the address on screen as a mailto link so nobody is stuck.
+  const [copyState, setCopyState] = useState("idle");
+
+  async function handleCopyEmail() {
+    if (await copyText(CONTACT_EMAIL)) {
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 2500);
+    } else {
+      setCopyState("failed");
+    }
   }
 
   // Opens the site-wide FeedbackWidget modal (mounted in the root layout).
@@ -118,17 +150,7 @@ export default function Footer() {
                   ))}
                   {col.contactButton && (
                     <li>
-                      <button
-                        onClick={handleCopyEmail}
-                        className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
-                      >
-                        {copied ? "Copied!" : "Contact Us"}
-                      </button>
-                      {copied && (
-                        <p className="text-xs text-green-400 mt-1">
-                          {CONTACT_EMAIL} copied
-                        </p>
-                      )}
+                      <ContactButton copyState={copyState} onClick={handleCopyEmail} />
                     </li>
                   )}
                 </ul>
@@ -182,17 +204,7 @@ export default function Footer() {
                 ))}
                 {col.contactButton && (
                   <li>
-                    <button
-                      onClick={handleCopyEmail}
-                      className="text-sm text-gray-400 hover:text-white transition-colors duration-200"
-                    >
-                      {copied ? "Copied!" : "Contact Us"}
-                    </button>
-                    {copied && (
-                      <p className="text-xs text-green-400 mt-1">
-                        {CONTACT_EMAIL} copied
-                      </p>
-                    )}
+                    <ContactButton copyState={copyState} onClick={handleCopyEmail} />
                   </li>
                 )}
               </ul>

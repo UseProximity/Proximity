@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Upload, FileText, X, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import { trackEvent } from "@/utils/analytics";
+import { copyText } from "@/utils/copyText";
 import FlagCard from "@/components/lease-check/FlagCard";
 import PropertyContext from "@/components/lease-check/PropertyContext";
 import LeaseDisclaimer from "@/components/lease-check/LeaseDisclaimer";
@@ -295,15 +296,14 @@ export default function LeaseCheckClient() {
     setResumed(false);
   };
 
-  const copyQuestions = () => {
+  const copyQuestions = async () => {
     const questions = (result?.flags || []).map((f) => `- ${f.question}`).join("\n");
-    navigator.clipboard
-      .writeText(questions)
-      .then(() => {
-        toast.success("Copied. Go ask.");
-        trackEvent("Lease Check Questions Copied", { questionCount: result.flags.length });
-      })
-      .catch(() => toast.error("Couldn't copy. Select and copy manually."));
+    if (await copyText(questions)) {
+      toast.success("Copied. Go ask.");
+      trackEvent("Lease Check Questions Copied", { questionCount: result.flags.length });
+    } else {
+      toast.error("Couldn't copy. Select and copy manually.");
+    }
   };
 
   const active = viewingPast
