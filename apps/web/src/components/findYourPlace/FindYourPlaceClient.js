@@ -14,10 +14,18 @@ import {
   QUESTION_COUNT,
   LEASE_OPTIONS,
   answeredCount,
-  nextOccurrence,
+  sanitizeAnswers,
+  standingChips,
+  rollForward,
 } from "@/lib/findYourPlace/options";
 
 const STORAGE_KEY = "prx_fyp_v1";
+// Set when the student heads to sign-in from this page (the "save your
+// matches" wall, or the search cap), naming the search on screen. Coming back
+// signed in with it set claims that search straight away; any other sign-in on
+// this browser is asked first.
+const CLAIM_KEY = "prx_fyp_claim";
+const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 const SOURCE = "matchmaking";
 
@@ -38,6 +46,11 @@ const ERRORS = {
     body: "Give it a minute and try again.",
     retry: true,
   },
+  invalid: {
+    title: "Some of your answers need another look",
+    body: "Go back to the first page and check them, then search again.",
+    fixAnswers: true,
+  },
   generic: {
     title: "Something went wrong finding your matches",
     body: "Your answers are saved. Try again in a moment.",
@@ -54,6 +67,40 @@ function readStored() {
   }
 }
 
+/*
+ * Who a stored run belongs to: a short hash of the signed-in account's email,
+ * or null for a run made signed out. Only compared, never sent anywhere, and
+ * hashed so the browser's storage does not hold the address.
+ */
+function ownerTag(email) {
+  if (!email) return null;
+  let h = 5381;
+  for (const c of email.toLowerCase()) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0;
+  return h.toString(36);
+}
+
+function readClaimIntent() {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(CLAIM_KEY) ?? "null");
+    window.localStorage.removeItem(CLAIM_KEY);
+    return raw && Date.now() - raw.at < CLAIM_WINDOW_MS ? { sessionId: raw.sessionId ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeClaimIntent(sessionId) {
+  try {
+    window.localStorage.setItem(CLAIM_KEY, JSON.stringify({ sessionId: sessionId ?? null, at: Date.now() }));
+  } catch {
+    // Without storage the student is simply asked on the way back.
+  }
+}
+
+// Anything worth keeping or asking about in a run.
+const hasContent = (a, text, results) =>
+  answeredCount(a) > 0 || (a.modes ?? []).length > 0 || !!text?.trim() || !!results;
+
 // Saved profile preferences (move-in month, lease length, beds) as page 1 answers.
 function answersFromProfile(saved) {
   const out = {};
@@ -67,14 +114,17 @@ function answersFromProfile(saved) {
   if (moveIn) {
     const value = `${moveIn[1]}-${moveIn[2]}`;
     // A saved month that has already gone by means the next one.
-    out.moveIn = value >= new Date().toISOString().slice(0, 7) ? value : nextOccurrence(Number(moveIn[2]));
+    out.moveIn = rollForward(value);
   }
-  return out;
+  // Only what the search would accept: a 30 month lease or a 14 bedroom
+  // profile is left for the student to answer instead.
+  const clean = sanitizeAnswers({ ...EMPTY_ANSWERS, ...out });
+  return Object.fromEntries(Object.entries(out).filter(([k]) => clean[k] != null));
 }
 
 export default function FindYourPlaceClient() {
   const router = useRouter();
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   const signedIn = status === "authenticated";
 
   const [ready, setReady] = useState(false);
@@ -87,18 +137,29 @@ export default function FindYourPlaceClient() {
   const [error, setError] = useState(null);
   const [wall, setWall] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
+  // Who the run on screen belongs to (ownerTag), and whether that has been
+  // settled for this visit: a run left by someone else is never shown as yours.
+  const [owner, setOwner] = useState(null);
+  const [settled, setSettled] = useState(false);
+  // A signed-out run found on sign-in that did not come from this page's own
+  // sign-in link: asked about before it joins the account.
+  const [askClaim, setAskClaim] = useState(false);
+  // Each search gets a number; a reply for any but the latest is dropped, so a
+  // slow older search cannot land over a newer one or over Start over.
+  const runIdRef = useRef(0);
+  const abortRef = useRef(null);
   // Bumped by Start over so page 1 remounts with its "Other" fields closed.
   const [round, setRound] = useState(0);
   const mainRef = useRef(null);
-  // Where the page starts under the site header (and any environment banner),
-  // so the panel can be sized to exactly the rest of the screen.
-  const [topOffset, setTopOffset] = useState(104);
 
+  // Where the page starts under the site header (and any environment banner),
+  // so the panel can be sized to exactly the rest of the screen. The measured
+  // value goes into a CSS variable that the main area's Tailwind height reads.
   useEffect(() => {
     if (!ready) return;
     const measure = () => {
       const el = mainRef.current;
-      if (el) setTopOffset(Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY)));
+      if (el) el.style.setProperty("--fyp-top", `${Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY))}px`);
     };
     measure();
     window.addEventListener("resize", measure);
@@ -110,13 +171,19 @@ export default function FindYourPlaceClient() {
   useEffect(() => {
     const stored = readStored();
     if (stored) {
-      setAnswers({ ...EMPTY_ANSWERS, ...(stored.answers ?? {}) });
+      const storedAnswers = { ...EMPTY_ANSWERS, ...(stored.answers ?? {}) };
+      // A move-in month that has gone by since (August picked last summer)
+      // becomes the next one, and matches found for the old month are dropped.
+      const moveIn = storedAnswers.moveIn && storedAnswers.moveIn !== NO_PREFERENCE ? rollForward(storedAnswers.moveIn) : storedAnswers.moveIn;
+      const rolled = moveIn !== storedAnswers.moveIn;
+      setAnswers({ ...storedAnswers, moveIn });
       setText(stored.text ?? "");
       setChips(stored.chips ?? {});
+      setOwner(stored.owner ?? null);
       // Matches saved with an older browse hand-off (or none) would open
       // browse with filters missing. Drop them so the next "Show My Matches"
       // searches again.
-      const saved = stored.results?.browse?.version === HANDOFF_VERSION ? stored.results : null;
+      const saved = !rolled && stored.results?.browse?.version === HANDOFF_VERSION ? stored.results : null;
       setResults(saved);
       // Back to matches already found: leaving now is not dropping out.
       if (saved) shownRef.current = true;
@@ -155,16 +222,82 @@ export default function FindYourPlaceClient() {
   useEffect(() => {
     if (!ready) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, answers, text, chips, results }));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, answers, text, chips, results, owner }));
     } catch {
       // Private mode or a full store: the run just won't survive a reload.
     }
-  }, [ready, step, answers, text, chips, results]);
+  }, [ready, step, answers, text, chips, results, owner]);
+
+  // Clear the page without counting it as the student starting over.
+  const wipe = () => {
+    runIdRef.current += 1;
+    abortRef.current?.abort();
+    setAnswers(EMPTY_ANSWERS);
+    setText("");
+    setChips({});
+    setResults(null);
+    setError(null);
+    setLoading(false);
+    setRound((n) => n + 1);
+    setStep(1);
+  };
+
+  /*
+   * Whose run is this? Settled once per visit, as soon as the sign-in state is
+   * known (Wyatt's shared-computer rule, the same one the old chat had):
+   *   - a run saved by an account, now signed out or signed in as someone
+   *     else, is not theirs: the page starts clean;
+   *   - a run made signed out, now signed in: claimed straight away only when
+   *     they came back from this page's own sign-in link, otherwise asked;
+   *   - anything else carries on as it is.
+   */
+  const viewer = signedIn ? ownerTag(session?.user?.email) : null;
+  useEffect(() => {
+    if (!ready || settled || status === "loading") return;
+    setSettled(true);
+    const intent = readClaimIntent();
+    if (owner && owner !== viewer) {
+      wipe();
+      setOwner(viewer);
+      return;
+    }
+    if (!owner && viewer) {
+      if (!hasContent(answers, text, results)) {
+        setOwner(viewer);
+      } else if (intent && intent.sessionId === (results?.sessionId ?? null)) {
+        claimRun();
+      } else {
+        setAskClaim(true);
+      }
+    }
+  }, [ready, settled, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Take the signed-out run into the account: the page's copy now, the stored
+  // search (if any) on the server, where it checks the run was this browser's.
+  function claimRun() {
+    setAskClaim(false);
+    setOwner(viewer);
+    const sessionId = results?.sessionId;
+    if (!sessionId || results?.owned) return;
+    fetch("/api/find-your-place", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.claimed) trackEvent("Find Your Place Matches Claimed");
+        // Claimed now, or already someone's: either way, nothing more to do.
+        setResults((r) => (r && r.sessionId === sessionId ? { ...r, owned: true } : r));
+      })
+      .catch(() => {});
+  }
 
   // A signed-in student starts from what their profile already says. Only on
   // an untouched form, and every answer stays one tap to change.
   useEffect(() => {
-    if (!ready || !signedIn || prefilled) return;
+    if (!ready || !settled || askClaim || !signedIn || prefilled) return;
     setPrefilled(true);
     if (answeredCount(answers) > 0 || results) return;
     fetch("/api/account/lease-preferences")
@@ -177,35 +310,7 @@ export default function FindYourPlaceClient() {
         }
       })
       .catch(() => {});
-  }, [ready, signedIn, prefilled, answers, results]);
-
-  /*
-   * Signed in with matches found while signed out (typically back from the
-   * "save your matches" wall): move that search into the account. Once per
-   * search; the server checks it was this browser's and nobody else's.
-   */
-  const sessionId = results?.sessionId ?? null;
-  const owned = !!results?.owned;
-  useEffect(() => {
-    if (!ready || !signedIn || !sessionId || owned) return;
-    let cancelled = false;
-    fetch("/api/find-your-place", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (data.claimed) trackEvent("Find Your Place Matches Claimed");
-        // Claimed now, or already someone's: either way, nothing more to do.
-        setResults((r) => (r && r.sessionId === sessionId ? { ...r, owned: true } : r));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, signedIn, sessionId, owned]);
+  }, [ready, settled, askClaim, signedIn, prefilled, answers, results]);
 
   const goTo = (next) => {
     setStep(next);
@@ -218,13 +323,21 @@ export default function FindYourPlaceClient() {
   const keyOf = (input) => JSON.stringify([input.answers, input.text.trim(), input.chips]);
 
   const run = async (override = {}, { force = false } = {}) => {
-    const input = { answers, text, chips, ...override };
+    const merged = { answers, text, chips, ...override };
+    // Only the ideas whose sentence still stands in the box: one the student
+    // deleted is not a preference any more.
+    const input = { ...merged, chips: standingChips(merged.text, merged.chips) };
     const payload = { ...input, sessionId: results?.sessionId ?? null };
     if (!force && results?.matches && results.key === keyOf(input)) {
       setError(null);
       goTo(3);
       return;
     }
+    const runId = ++runIdRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const current = () => runId === runIdRef.current;
     setError(null);
     setLoading(true);
     goTo(3);
@@ -233,8 +346,10 @@ export default function FindYourPlaceClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
+      if (!current()) return;
       if (!res.ok) {
         setError(ERRORS[data.error] ?? ERRORS.generic);
         return;
@@ -257,21 +372,16 @@ export default function FindYourPlaceClient() {
         wroteText: !!payload.text,
       });
     } catch {
-      setError(ERRORS.generic);
+      if (current()) setError(ERRORS.generic);
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   };
 
   // Wipe every answer and the saved matches, and go back to the first page.
   const startOver = () => {
     trackEvent("Find Your Place Started Over", { stage: STAGES[step] });
-    setAnswers(EMPTY_ANSWERS);
-    setText("");
-    setChips({});
-    setResults(null);
-    setError(null);
-    setRound((n) => n + 1);
+    wipe();
     goTo(1);
   };
 
@@ -304,13 +414,12 @@ export default function FindYourPlaceClient() {
     /*
      * The panel fills the screen under the header and never makes the page
      * scroll (Wyatt, 2026-11-10): the main area is exactly the leftover height
-     * and, on a screen too short for a step, the panel's own body scrolls. The
-     * height is a measured value, so it is the one inline style here.
+     * and, on a screen too short for a step, the panel's own body scrolls.
+     * --fyp-top is the measured top of this area (see the effect above).
      */
     <main
       ref={mainRef}
-      className={`min-h-[480px] px-3 py-2 sm:px-6 sm:py-3 [@media(min-height:780px)]:sm:py-6 ${BACKDROP}`}
-      style={{ height: `calc(100dvh - ${topOffset}px)` }}
+      className={`h-[calc(100dvh-var(--fyp-top,104px))] min-h-[480px] px-3 py-2 sm:px-6 sm:py-3 [@media(min-height:780px)]:sm:py-6 ${BACKDROP}`}
     >
       <div
         className={`mx-auto flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white transition-[max-width] duration-300 ${
@@ -368,6 +477,11 @@ export default function FindYourPlaceClient() {
                 setWall(true);
               }}
               onRetry={() => run({}, { force: true })}
+              onFixAnswers={() => {
+                setError(null);
+                goTo(1);
+              }}
+              onSignIn={() => writeClaimIntent(results?.sessionId)}
             />
           )}
         </div>
@@ -412,8 +526,24 @@ export default function FindYourPlaceClient() {
           primaryLabel="Save My Matches"
           onPrimary={() => {
             trackEvent("Find Your Place Wall Clicked");
+            writeClaimIntent(results?.sessionId);
             router.push("/login?tab=signup&callbackUrl=/find-your-place");
           }}
+        />
+      )}
+      {askClaim && (
+        <ChoiceDialog
+          title="Add this search to your account?"
+          body="A search was started on this browser before you signed in. If it was yours, we'll keep it with your account."
+          quietLabel="Not mine"
+          onQuiet={() => {
+            trackEvent("Find Your Place Claim Declined");
+            setAskClaim(false);
+            wipe();
+            setOwner(viewer);
+          }}
+          primaryLabel="Add to My Account"
+          onPrimary={claimRun}
         />
       )}
     </main>

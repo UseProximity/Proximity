@@ -23,6 +23,8 @@ export const LEASE_OPTIONS = [
   { id: "academic", label: "Academic Year (~10 mo)", term: "Academic year (~10 months)" },
   { id: "full", label: "Full Year", term: "Full year only" },
 ];
+export const BUDGET_MIN = 100;
+export const BUDGET_MAX = 20000;
 export const LEASE_OTHER_MIN = 1;
 export const LEASE_OTHER_MAX = 24;
 
@@ -55,6 +57,24 @@ export function moveInMonthOptions(today = new Date()) {
   }
   return out;
 }
+
+/*
+ * A move-in month that has already gone by. Answers saved on an earlier visit
+ * can hold one ("2026-08" picked in the summer), and searching on it would
+ * drop nearly every lease. A day and a half of slack keeps a browser just
+ * before midnight on the last of the month from being turned away by a
+ * server that is already in the next one.
+ */
+export function isPastMonth(value, today = new Date()) {
+  const m = /^(\d{4})-(\d{2})$/.exec(value ?? "");
+  if (!m) return false;
+  const grace = new Date(today.getTime() - 36 * 60 * 60 * 1000);
+  const now = `${grace.getFullYear()}-${String(grace.getMonth() + 1).padStart(2, "0")}`;
+  return value < now;
+}
+
+// The same month next time it comes round, for an answer that has gone by.
+export const rollForward = (value) => (isPastMonth(value) ? nextOccurrence(Number(value.slice(5, 7))) : value);
 
 export function moveInLabel(value) {
   const m = /^(\d{4})-(\d{2})$/.exec(value ?? "");
@@ -122,16 +142,12 @@ export const isOpenEnded = (mode, minutes) =>
 export const timeLabel = (mode, minutes) => (isOpenEnded(mode, minutes) ? `${minutes}+` : String(minutes));
 
 // How many of the five questions are answered (the follow-up counts with its
-// parent). Drives the progress bar and the Next button.
+// parent). Drives the progress bar and the Next button. Counted on the cleaned
+// answers, so an answer the search would turn away (a $75 budget, a lease of
+// 30 months, a move-in month gone by) never counts as answered.
 export function answeredCount(a) {
-  let n = 0;
-  if (a.group) n++;
-  if (a.budget === NO_PREFERENCE || Number(a.budget) > 0) n++;
-  if (a.lease) n++;
-  if (a.moveIn) n++;
-  const mode = slowestMode(a.modes);
-  if (mode && mode.times.includes(a.commuteMax)) n++;
-  return n;
+  const clean = sanitizeAnswers(a);
+  return ["group", "budget", "lease", "moveIn", "commuteMax"].filter((k) => clean[k] != null).length;
 }
 export const QUESTION_COUNT = 5;
 
@@ -150,7 +166,7 @@ export function sanitizeAnswers(raw) {
   if (a.budget === NO_PREFERENCE) out.budget = NO_PREFERENCE;
   else {
     const n = Math.round(Number(a.budget));
-    if (Number.isFinite(n) && n >= 100 && n <= 20000) out.budget = n;
+    if (Number.isFinite(n) && n >= BUDGET_MIN && n <= BUDGET_MAX) out.budget = n;
   }
 
   if (a.lease === NO_PREFERENCE) out.lease = NO_PREFERENCE;
@@ -161,7 +177,7 @@ export function sanitizeAnswers(raw) {
   }
 
   if (a.moveIn === NO_PREFERENCE) out.moveIn = NO_PREFERENCE;
-  else if (/^\d{4}-(0[1-9]|1[0-2])$/.test(a.moveIn ?? "")) out.moveIn = a.moveIn;
+  else if (/^\d{4}-(0[1-9]|1[0-2])$/.test(a.moveIn ?? "") && !isPastMonth(a.moveIn)) out.moveIn = a.moveIn;
 
   out.modes = MODE_IDS.filter((id) => Array.isArray(a.modes) && a.modes.includes(id));
   const mode = slowestMode(out.modes);
@@ -305,6 +321,25 @@ export function applyChipToText(text, prompt, beforeIds, afterIds) {
   if (before && next.includes(before)) next = next.replace(before, after);
   else if (after) next = `${next.trimEnd()} ${after}`;
   return next.replace(/[ \t]{2,}/g, " ").replace(/^ +/, "").slice(0, TEXT_MAX);
+}
+
+/*
+ * The picks that still count: a prompt's picks only stand while its sentence
+ * is still in the text box (a deleted or reworded sentence takes them back).
+ * The page, the search and the dashboard all read picks through this.
+ */
+export function standingChips(text, chips) {
+  const out = {};
+  for (const prompt of PROMPTS) {
+    const ids = chips?.[prompt.id] ?? [];
+    if (ids.includes(NO_PICK)) {
+      out[prompt.id] = [NO_PICK];
+      continue;
+    }
+    const sentence = promptSentence(prompt, ids);
+    if (sentence && (text ?? "").includes(sentence)) out[prompt.id] = ids;
+  }
+  return out;
 }
 
 // Keep a chips object from the client down to known prompt and option ids.

@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
@@ -189,20 +189,9 @@ export default function BrowseContent({ session, initialListings = null }) {
     handleClearSearch();
   };
 
-  /*
-   * Minimum walk time to campus — the same place set the /washu pages use
-   * (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES). Injected into
-   * the filter module so it stays free of WashU-specific geography.
-   */
-  const campusMinutes = (listing) => {
-    const pwm = listing.placeWalkMinutes;
-    const mins = WASHU_PLACES.filter(
-      (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-    )
-      .map((p) => pwm?.[p.name])
-      .filter((m) => m != null);
-    return mins.length ? Math.min(...mins) : null;
-  };
+  // Minimum walk time to campus (utils/washuPlaces), injected into the filter
+  // module so it stays free of WashU-specific geography.
+  const campusMinutes = campusWalkMinutes;
 
   const filteredListings = useMemo(
     () => filterListings(listings, { filters, search, savedIds, campusMinutes }),

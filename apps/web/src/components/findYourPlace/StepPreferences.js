@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip, QuietChip } from "./ui";
-import { PROMPTS, PROMPTS_AT_ONCE, NO_PICK, TEXT_MAX, applyChipToText, promptSentence } from "@/lib/findYourPlace/options";
+import { PROMPTS, PROMPTS_AT_ONCE, NO_PICK, TEXT_MAX, applyChipToText, standingChips } from "@/lib/findYourPlace/options";
 
 /*
  * Page 2: one open text box, with prompts underneath for ideas.
@@ -37,11 +37,8 @@ function linesOf(options, perLine = 5) {
 }
 export default function StepPreferences({ text, chips, onChange, onSkip }) {
   // A prompt's picks only count while its sentence still stands in the box.
-  const picked = (prompt) => {
-    const ids = chips[prompt.id] ?? [];
-    const sentence = promptSentence(prompt, ids);
-    return sentence && text.includes(sentence) ? ids : [];
-  };
+  const standing = standingChips(text, chips);
+  const picked = (prompt) => (standing[prompt.id] ?? []).filter((id) => id !== NO_PICK);
 
   const pick = (prompt, optionId) => {
     const before = picked(prompt);

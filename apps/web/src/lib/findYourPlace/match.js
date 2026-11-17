@@ -29,7 +29,8 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
-import { getClient, SONNET } from "@/lib/agents/model";
+import { getClient, SONNET, stripEmDashes } from "@/lib/agents/model";
+import { haversineKm } from "@/utils/walkTimes";
 import { stripAiInstructions } from "@/lib/contentRules";
 import {
   fetchActiveListings,
@@ -96,7 +97,9 @@ const streetOf = (l) =>
   String(l.address ?? "")
     .toLowerCase()
     .split(",")[0]
-    .replace(/\b(apt|apartment|unit|suite|ste|#)\s*[\w-]+/g, "")
+    // A unit designator and its number: "Apt 2B", "Unit 3", "Ste. 4", "#3".
+    // Whole words only, so University, Stewart or Stephens are left alone.
+    .replace(/(?:\b(?:apt|apartment|unit|suite|ste)\b\.?|#)\s*[\w-]+/g, "")
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -107,10 +110,7 @@ const primaryLandlord = (l) => {
 function metresApart(a, b) {
   const [la1, lo1, la2, lo2] = [a.latitude, a.longitude, b.latitude, b.longitude].map(Number);
   if (![la1, lo1, la2, lo2].every(Number.isFinite)) return Infinity;
-  const rad = Math.PI / 180;
-  const x = (lo2 - lo1) * rad * Math.cos(((la1 + la2) / 2) * rad);
-  const y = (la2 - la1) * rad;
-  return Math.sqrt(x * x + y * y) * 6371000;
+  return haversineKm(la1, lo1, la2, lo2) * 1000;
 }
 // One card per complex: the same street address, or the same landlord's
 // listings standing next to each other (units of one site listed separately).
@@ -298,8 +298,8 @@ const PICK_SYSTEM = [
 ].join("\n");
 
 const oneLine = (s) =>
-  String(s ?? "")
-    .replace(/[\u2014\u2013]/g, ",")
+  stripEmDashes(String(s ?? ""))
+    .replace(/\s*\u2013\s*/g, ", ")
     .replace(/\s+/g, " ")
     .replace(/^["'\s]+|["'\s]+$/g, "")
     .slice(0, 420)

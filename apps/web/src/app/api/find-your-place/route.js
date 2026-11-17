@@ -4,13 +4,34 @@ import supabase from "@/lib/supabase";
 import { clientIp } from "@/lib/auth/loginThrottle";
 import { readVisitorId, newVisitorId, setVisitorCookie, anonIpLimited } from "@/lib/matchmaking/anonymousSessions";
 import { findMatches } from "@/lib/findYourPlace/match";
-import { sanitizeAnswers, sanitizeChips, answeredCount, QUESTION_COUNT, TEXT_MAX, chipSentences } from "@/lib/findYourPlace/options";
+import { getCachedListings } from "@/lib/listings/queryListings";
+import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
+import { sanitizeAnswers, sanitizeChips, standingChips, answeredCount, QUESTION_COUNT, TEXT_MAX, chipSentences } from "@/lib/findYourPlace/options";
 
 export const dynamic = "force-dynamic";
 // Two model calls and a read of every live listing.
 export const maxDuration = 60;
 
 const T = "matchmaking_chat_sessions";
+
+/*
+ * N on "Browse All N Matches": browse's own filter function over browse's own
+ * (cached) listing feed, so the number is the number of cards the student
+ * lands on. Worked out here so the page does not download the whole feed
+ * just to count it. null when the feed could not be read.
+ */
+async function browseCount(browse) {
+  if (!browse?.filters) return null;
+  const listings = await getCachedListings();
+  if (!listings.length) return null;
+  return filterListings(listings, {
+    filters: { ...DEFAULT_FILTERS, ...browse.filters },
+    search: "",
+    savedIds: [],
+    campusMinutes: campusWalkMinutes,
+  }).length;
+}
 
 /*
  * A signed-out device gets this many searches in all before it is asked to sign
@@ -63,11 +84,15 @@ export async function POST(request) {
 
     const body = await request.json().catch(() => ({}));
     const answers = sanitizeAnswers(body.answers);
+    // The page holds the same rules, so this only trips on an old saved run
+    // or a hand-made request. "invalid" sends the student back to page 1.
     if (answeredCount(answers) < QUESTION_COUNT) {
-      return NextResponse.json({ error: "Answer every question first" }, { status: 400 });
+      return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
-    const chips = sanitizeChips(body.chips);
     const text = typeof body.text === "string" ? body.text.slice(0, TEXT_MAX).trim() : "";
+    // Only the picks whose sentence is still in the box: one the student
+    // deleted must not come back through the chips fallback.
+    const chips = sanitizeChips(standingChips(text, body.chips));
 
     // Re-running updates the same row, so going Back and changing an answer
     // does not pile up sessions (or inflate how often a listing was "shown").
@@ -84,6 +109,7 @@ export async function POST(request) {
     }
 
     const result = await findMatches({ answers, text, chips, viewerGender: actor?.gender ?? null });
+    const count = await browseCount(result.browse).catch(() => null);
 
     const now = new Date().toISOString();
     const recommendations = result.matches.map((m) => ({
@@ -138,7 +164,7 @@ export async function POST(request) {
       matches: result.matches.map(({ listing_id, reason, note, near_miss, price }) => ({ listing_id, reason, note, near_miss, price })),
       totalMatches: result.totalMatches,
       // What "Browse All Matches" hands to the browse page.
-      browse: result.browse,
+      browse: result.browse ? { ...result.browse, count } : null,
     });
     if (!actor && visitor) setVisitorCookie(response, visitor);
     return response;

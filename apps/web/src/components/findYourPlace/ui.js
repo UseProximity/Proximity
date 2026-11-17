@@ -64,14 +64,27 @@ export const FIELD = (active) =>
 
 /*
  * One continuous bar, no number (Wyatt, 2026-11-10). `value` is 0 to 1. The
- * width is the one inline style here: it is a live value, which Tailwind
- * classes cannot express (the chat's bar did the same).
+ * bar only ever stands at a fifth of 80% per answered question, at 80% on page
+ * 2 and full on page 3, so each stop is a Tailwind width class (written out in
+ * full so Tailwind keeps them) rather than an inline style.
  */
+const BAR_WIDTHS = [
+  [0, "w-0"],
+  [16, "w-[16%]"],
+  [32, "w-[32%]"],
+  [48, "w-[48%]"],
+  [64, "w-[64%]"],
+  [80, "w-[80%]"],
+  [100, "w-full"],
+];
+
 export function ProgressBar({ value }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
+  // The nearest stop, in case a value ever falls between them.
+  const width = BAR_WIDTHS.reduce((best, stop) => (Math.abs(stop[0] - pct) < Math.abs(best[0] - pct) ? stop : best))[1];
   return (
     <div className="h-1 rounded-full bg-gray-100 overflow-hidden" role="presentation">
-      <div className="h-full rounded-full bg-red-600 transition-all duration-500 ease-out" style={{ width: `${pct}%` }} />
+      <div className={`h-full rounded-full bg-red-600 transition-all duration-500 ease-out ${width}`} />
     </div>
   );
 }

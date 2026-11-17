@@ -9,6 +9,7 @@ import {
   slowestMode,
   isOpenEnded,
   promptSentence,
+  standingChips,
 } from "@/lib/findYourPlace/options";
 import {
   DB,
@@ -100,10 +101,9 @@ function commuteLimit(a) {
 // deleted sentence no longer counts, the same rule the page itself uses).
 function ideasPicked(s) {
   const { chips = {}, text = "" } = fyp(s);
+  const standing = standingChips(text, chips);
   return PROMPTS.flatMap((prompt) => {
-    const ids = chips[prompt.id] ?? [];
-    const sentence = promptSentence(prompt, ids);
-    if (!sentence || !text.includes(sentence)) return [];
+    const ids = standing[prompt.id] ?? [];
     return prompt.options.filter((o) => ids.includes(o.id)).map((o) => `${prompt.label}: ${o.label}`);
   });
 }

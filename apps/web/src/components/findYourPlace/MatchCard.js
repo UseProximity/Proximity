@@ -6,7 +6,7 @@ import { Star } from "lucide-react";
 import HeartIcon from "@/components/ui/HeartIcon";
 import { WalkScale } from "@/components/listings/MapPopupCard";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
-import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 
 const range = (values) => {
   const nums = values.filter(Number.isFinite);
@@ -15,18 +15,6 @@ const range = (values) => {
   const hi = Math.max(...nums);
   return lo === hi ? String(lo) : `${lo}-${hi}`;
 };
-
-// Shortest walk to a main-campus building, as the browse card works it out.
-function campusWalk(listing) {
-  const pwm = listing.placeWalkMinutes;
-  if (typeof pwm === "number") return pwm;
-  if (!pwm || typeof pwm !== "object") return null;
-  const vals = Object.entries(pwm)
-    .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
-    .map(([, v]) => v)
-    .filter(Number.isFinite);
-  return vals.length ? Math.min(...vals) : null;
-}
 
 /*
  * The explanation has to fit the card without scrolling (Wyatt, 2026-11-11),
@@ -171,7 +159,7 @@ function MatchCardBody({ match, position, signedIn, onOpen, onContact, onLocked,
   const per = match.price?.per === "person" ? "/person" : "/mo";
   const numReviews = Number(listing.numReviews) || 0;
   const rating = Number(listing.rating);
-  const walk = campusWalk(listing);
+  const walk = campusWalkMinutes(listing);
   const shuttle = typeof listing.shuttleWalkMinutes === "number" ? listing.shuttleWalkMinutes : null;
   const image = listing.images?.[0];
 
@@ -181,7 +169,14 @@ function MatchCardBody({ match, position, signedIn, onOpen, onContact, onLocked,
       tabIndex={0}
       aria-label={title}
       onClick={() => onOpen(match, position)}
-      onKeyDown={(e) => e.key === "Enter" && onOpen(match, position)}
+      onKeyDown={(e) => {
+        // Only Enter on the card itself: Enter on Contact or the heart is
+        // theirs, and bubbling up here would open the listing as well.
+        if (e.key !== "Enter" || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        if (signedIn) onOpen(match, position);
+        else onLocked(match, position);
+      }}
       // Signed out: the matches are shown, but opening, saving or contacting
       // one asks for an account first (Wyatt, 2026-11-10).
       onClickCapture={

@@ -7,6 +7,8 @@ import {
   GROUP_OPTIONS,
   BIG_GROUP_MIN,
   BIG_GROUP_MAX,
+  BUDGET_MIN,
+  BUDGET_MAX,
   LEASE_OPTIONS,
   LEASE_OTHER_MIN,
   LEASE_OTHER_MAX,
@@ -27,6 +29,19 @@ export default function StepBasics({ answers, onChange }) {
   // ── People ────────────────────────────────────────────────────────────────
   const groupNum = parseInt(answers.group, 10);
   const bigGroup = Number.isFinite(groupNum) && groupNum >= BIG_GROUP_MIN;
+  // What is in the "How many of you?" box while it is being typed. Clamping
+  // every keystroke would turn the "1" of "10" into 5, so the box holds the
+  // raw text, the answer takes it whenever it is in range, and leaving the box
+  // snaps it back into range.
+  const [groupDraft, setGroupDraft] = useState(bigGroup ? String(groupNum) : "");
+  useEffect(() => {
+    if (bigGroup) setGroupDraft((d) => (parseInt(d, 10) === groupNum ? d : String(groupNum)));
+  }, [bigGroup, groupNum]);
+
+  // ── Budget ────────────────────────────────────────────────────────────────
+  const budgetOutOfRange = typeof answers.budget === "number" && (answers.budget < BUDGET_MIN || answers.budget > BUDGET_MAX);
+  // Said once they leave the box, not on the "1" of "1200".
+  const [budgetFocused, setBudgetFocused] = useState(false);
 
   // ── Lease ─────────────────────────────────────────────────────────────────
   const leaseIsOther = /^\d+$/.test(answers.lease ?? "");
@@ -84,10 +99,17 @@ export default function StepBasics({ answers, onChange }) {
               inputMode="numeric"
               min={BIG_GROUP_MIN}
               max={BIG_GROUP_MAX}
-              value={groupNum}
+              value={groupDraft}
               onChange={(e) => {
+                setGroupDraft(e.target.value);
                 const n = parseInt(e.target.value, 10);
-                if (Number.isFinite(n)) set({ group: String(clamp(n, BIG_GROUP_MIN, BIG_GROUP_MAX)) });
+                if (Number.isFinite(n) && n >= BIG_GROUP_MIN && n <= BIG_GROUP_MAX) set({ group: String(n) });
+              }}
+              onBlur={() => {
+                const n = parseInt(groupDraft, 10);
+                const fixed = clamp(Number.isFinite(n) ? n : groupNum, BIG_GROUP_MIN, BIG_GROUP_MAX);
+                setGroupDraft(String(fixed));
+                set({ group: String(fixed) });
               }}
               className={`${FIELD(true)} w-20 text-center`}
             />
@@ -108,7 +130,8 @@ export default function StepBasics({ answers, onChange }) {
           <input
             type="number"
             inputMode="numeric"
-            min={0}
+            min={BUDGET_MIN}
+            max={BUDGET_MAX}
             step={50}
             placeholder="max / mo"
             aria-label="Max monthly rent per person, in dollars"
@@ -117,6 +140,9 @@ export default function StepBasics({ answers, onChange }) {
               const n = parseInt(e.target.value, 10);
               set({ budget: Number.isFinite(n) && n > 0 ? n : null });
             }}
+            aria-invalid={budgetOutOfRange}
+            onFocus={() => setBudgetFocused(true)}
+            onBlur={() => setBudgetFocused(false)}
             className={`${FIELD(typeof answers.budget === "number")} w-32 pl-7`}
           />
         </div>
@@ -126,6 +152,11 @@ export default function StepBasics({ answers, onChange }) {
         >
           No Preference
         </QuietChip>
+        {budgetOutOfRange && !budgetFocused && (
+          <p className="w-full text-xs text-red-600">
+            Enter a monthly amount per person between ${BUDGET_MIN.toLocaleString("en-US")} and ${BUDGET_MAX.toLocaleString("en-US")}.
+          </p>
+        )}
       </Question>
 
       <Question title="What lease length are you looking for?">

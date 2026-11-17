@@ -1429,14 +1429,14 @@
       {
         "table": "listing_bike_times",
         "status": "active",
-        "description": "Bike minutes from a listing to campus (Danforth University Center), from the Mapbox cycling profile. One row per listing. Read by Find Your Place for the 'longest bike ride' answer; filled on demand by lib/findYourPlace/commute.js and by POST /api/admin/update-listing-bike-times. Migration 202611100001. Applied to DEV only 2026-11-10; prod pending.",
+        "description": "Bike minutes from a listing to campus (Danforth University Center), from the Mapbox cycling profile. One row per listing. Read by Find Your Place for the 'longest bike ride' answer; filled on demand by lib/findYourPlace/commute.js and by POST /api/admin/update-listing-bike-times. Migrations 202611100001 + 202611160001 (minutes nullable: NULL = Mapbox has no cycling route, checked again after 30 days). Applied to DEV only (2026-11-10, 2026-11-16); prod pending.",
         "columns": [
           "listing_id:uuid",
           "minutes:int4",
           "created_at:timestamptz",
           "updated_at:timestamptz"
         ],
-        "notes": "status=active; pk listing_id; fk listing_id->listings.id (cascade); check minutes >= 0; rls: on, public select policy only (writes are service role)"
+        "notes": "status=active; pk listing_id; fk listing_id->listings.id (cascade); minutes nullable, check minutes >= 0; rls: on, public select policy only (writes are service role)"
       },
       {
         "table": "listing_drive_times",

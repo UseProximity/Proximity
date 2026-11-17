@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import MatchCard, { MatchCardSkeleton } from "./MatchCard";
-import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
 import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 import { trackEvent } from "@/utils/analytics";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
 
 /*
  * The four matches as a 2x2 grid that follows the window (Wyatt, 2026-11-10):
@@ -23,43 +21,13 @@ const LINK = "inline-flex h-8 flex-shrink-0 items-center rounded-full border bor
 
 /*
  * "Browse All N Matches". Opens browse in a new tab with the answers pre-set in
- * its filter bar (lib/findYourPlace/browseHandoff.js). N is worked out here
- * with browse's own filter function over browse's own listing feed, so the
- * number on the button is the number of cards the student lands on.
+ * its filter bar (lib/findYourPlace/browseHandoff.js). N comes with the search:
+ * the server counts it with browse's own filter function over browse's own
+ * listing feed, so the number on the button is the number of cards the
+ * student lands on.
  */
-// Browse's walk-to-campus time (BrowseContent): the quickest walk to any
-// campus place, leaving out grocery and the medical campus.
-const campusMinutes = (listing) => {
-  const pwm = listing.placeWalkMinutes;
-  const mins = WASHU_PLACES.filter((p) => !NON_CAMPUS_WALK_PLACES.includes(p.name))
-    .map((p) => pwm?.[p.name])
-    .filter((m) => m != null);
-  return mins.length ? Math.min(...mins) : null;
-};
-
 function BrowseMatchesLink({ browse }) {
-  const [count, setCount] = useState(null);
-
-  useEffect(() => {
-    if (!browse?.filters) return;
-    let cancelled = false;
-    fetch("/api/listings")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((listings) => {
-        if (cancelled || !Array.isArray(listings)) return;
-        const passing = filterListings(listings, {
-          filters: { ...DEFAULT_FILTERS, ...browse.filters },
-          search: "",
-          savedIds: [],
-          campusMinutes, // the walk filter, read exactly as browse reads it
-        });
-        setCount(passing.length);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [browse]);
+  const count = Number.isFinite(browse?.count) ? browse.count : null;
 
   if (!browse?.filters || count === 0) {
     return (
@@ -95,7 +63,7 @@ function BrowseMatchesLink({ browse }) {
 }
 
 // Page 3: the top matches, or an honest empty state.
-export default function StepMatches({ loading, error, matches, browse, signedIn, onOpen, onContact, onLocked, onRetry }) {
+export default function StepMatches({ loading, error, matches, browse, signedIn, onOpen, onContact, onLocked, onRetry, onFixAnswers, onSignIn }) {
   if (loading) {
     return (
       <div className="flex h-full flex-col">
@@ -120,9 +88,15 @@ export default function StepMatches({ loading, error, matches, browse, signedIn,
             Try again
           </button>
         )}
+        {error.fixAnswers && (
+          <button type="button" onClick={onFixAnswers} className="mt-5 h-9 rounded-full bg-red-600 px-5 text-sm font-medium text-white hover:bg-red-700">
+            Check my answers
+          </button>
+        )}
         {error.signIn && (
           <Link
             href="/login?callbackUrl=/find-your-place"
+            onClick={onSignIn}
             className="mt-5 inline-flex h-9 items-center rounded-full bg-red-600 px-5 text-sm font-medium text-white hover:bg-red-700"
           >
             Sign in to keep going

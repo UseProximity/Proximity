@@ -1,7 +1,7 @@
 // @auth super
 import { NextResponse } from "next/server";
 import { requireDbRole } from "@/lib/userRole";
-import supabase from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import { fillBikeTimes } from "@/lib/findYourPlace/commute";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,13 +9,18 @@ const BATCH = 10;
 
 // Backfill bike-to-campus times (listing_bike_times) for every listing that has
 // coordinates. Resumable: only listings with no row are computed, unless
-// ?force=true. Mirrors update-listing-drive-times. Runs against the
-// environment's own database (dev locally and on staging, prod in production).
+// ?force=true. Mirrors update-listing-drive-times, including the x-db-target
+// header ("prod" or "dev"), so it can fill prod from staging or locally before
+// a release. Without the header it runs against the environment's own database.
+// A listing Mapbox has no route for is stored as checked (minutes NULL), so a
+// re-run does not ask again.
 export async function POST(req) {
   try {
     const session = await requireDbRole(["super"]);
     if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const force = new URL(req.url).searchParams.get("force") === "true";
+    const dbTarget = req.headers.get("x-db-target");
+    const supabase = getSupabaseClient(dbTarget === "prod" || dbTarget === "dev" ? dbTarget : undefined);
 
     const [{ data: listings, error: listErr }, { data: existing, error: existErr }] = await Promise.all([
       supabase.from("listings").select("id, latitude, longitude").is("deleted_at", null).not("latitude", "is", null).not("longitude", "is", null),
@@ -28,7 +33,7 @@ export async function POST(req) {
     const todo = (listings ?? []).filter((l) => force || !have.has(l.id));
     let updated = 0;
     for (let i = 0; i < todo.length; i += BATCH) {
-      updated += Object.keys(await fillBikeTimes(todo.slice(i, i + BATCH))).length;
+      updated += Object.keys(await fillBikeTimes(todo.slice(i, i + BATCH), { db: supabase })).length;
       await sleep(250);
     }
     return NextResponse.json({ total: listings?.length ?? 0, attempted: todo.length, updated, failed: todo.length - updated });

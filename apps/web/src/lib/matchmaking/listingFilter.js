@@ -959,38 +959,31 @@ function computeFitScores(pool, weights, preferences, vettingById = null) {
   return { scores, dims };
 }
 
-// Fetch the active, available listing rows with everything the ranker/narrowing
-// needs (units, leases, reviews, amenities, images, walk times). Shared by
-// rankListings and the narrowing phase so both see the same universe.
-export async function fetchActiveListings() {
-  const active = (sandbox) =>
-    supabase
-      .from("listings")
-      .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
-      .is("deleted_at", null)
-      .eq("unavailable", false)
-      .not("published_at", "is", null)
-      .eq("review_sandbox", sandbox);
-  // Never recommend a listing made by an App Store review sandbox account to a real
-  // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
-  // the sandbox listings, fetched on their own.
-  //
-  // Every live listing is ranked (Wyatt, 2026-11-10). This used to stop at 80
-  // rows in no particular order, so with a few hundred live listings most of
-  // the market was never considered. 1000 is PostgREST's own page ceiling.
-  const { data, error } = await active(false).limit(1000);
-  if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
-  let rows = data ?? [];
-  if (sandboxViewerInScope()) {
-    const { data: sandboxRows, error: sandboxErr } = await active(true).limit(20);
-    if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
-    rows = [...rows, ...(sandboxRows ?? [])];
-  }
-  // Review sandbox accounts' reviews never move a listing's rating here.
-  await stripSandboxReviews(rows);
-  // Retired units (collapsed by a property merge) are not rentable options, and
-  // neither are drafts. Draft offerings are dropped here too, so every check
-  // below sees only what students can.
+/*
+ * The whole live market, read once and shared for a short while. One mobile
+ * chat turn reads it in up to five places and every Find Your Place search
+ * reads it again, so without this each of those is a full join over every
+ * live listing. Ten seconds covers a chat turn and back-to-back searches; a
+ * listing published in that window shows up on the next read. On globalThis so
+ * every route bundle on an instance shares it. Each caller gets its own copy,
+ * so nothing one caller changes leaks into another's rows.
+ */
+const ACTIVE_LISTINGS_TTL_MS = 10_000;
+
+function activeListingsQuery(sandbox) {
+  return supabase
+    .from("listings")
+    .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
+    .is("deleted_at", null)
+    .eq("unavailable", false)
+    .not("published_at", "is", null)
+    .eq("review_sandbox", sandbox);
+}
+
+// Retired units (collapsed by a property merge) are not rentable options, and
+// neither are drafts. Draft offerings are dropped here too, so every check
+// downstream sees only what students can.
+function studentVisible(rows) {
   return rows.map((row) => ({
     ...row,
     listing_units: publicUnits(row.listing_units).map((u) => ({
@@ -998,6 +991,46 @@ export async function fetchActiveListings() {
       unit_leases: (u.unit_leases ?? []).filter(isPublished),
     })),
   }));
+}
+
+async function readActiveListings() {
+  // Every live listing is ranked (Wyatt, 2026-11-10). This used to stop at 80
+  // rows in no particular order, so with a few hundred live listings most of
+  // the market was never considered. 1000 is PostgREST's own page ceiling.
+  const { data, error } = await activeListingsQuery(false).limit(1000);
+  if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
+  const rows = data ?? [];
+  // Review sandbox accounts' reviews never move a listing's rating here.
+  await stripSandboxReviews(rows);
+  return studentVisible(rows);
+}
+
+// Fetch the active, available listing rows with everything the ranker/narrowing
+// needs (units, leases, reviews, amenities, images, walk times). Shared by
+// rankListings and the narrowing phase so both see the same universe.
+export async function fetchActiveListings() {
+  const cache = (globalThis.__prxActiveListings ??= { at: 0, promise: null });
+  if (!cache.promise || Date.now() - cache.at > ACTIVE_LISTINGS_TTL_MS) {
+    const read = readActiveListings();
+    cache.at = Date.now();
+    cache.promise = read;
+    // A failed read is not kept: the next caller tries again.
+    read.catch(() => {
+      if (cache.promise === read) cache.promise = null;
+    });
+  }
+  let rows = structuredClone(await cache.promise);
+  // Never recommend a listing made by an App Store review sandbox account to a real
+  // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
+  // the sandbox listings, fetched on their own and never cached.
+  if (sandboxViewerInScope()) {
+    const { data: sandboxRows, error: sandboxErr } = await activeListingsQuery(true).limit(20);
+    if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
+    const extra = sandboxRows ?? [];
+    await stripSandboxReviews(extra);
+    rows = [...rows, ...studentVisible(extra)];
+  }
+  return rows;
 }
 
 // ---- Relaxable-constraint machinery (v2) -----------------------------------
