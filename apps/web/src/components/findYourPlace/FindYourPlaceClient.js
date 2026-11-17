@@ -422,8 +422,10 @@ export default function FindYourPlaceClient() {
       className={`h-[calc(100dvh-var(--fyp-top,104px))] min-h-[480px] px-3 py-2 sm:px-6 sm:py-3 [@media(min-height:780px)]:sm:py-6 ${BACKDROP}`}
     >
       <div
-        className={`mx-auto flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white transition-[max-width] duration-300 ${
-          step === 3 ? MATCH_PANEL : "max-w-[760px]"
+        className={`mx-auto flex w-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white transition-[max-width] duration-300 ${
+          // Pages 1 and 2 end where their questions end (Wyatt, 2026-11-16);
+          // only the matches fill the screen. All stay within it.
+          step === 3 ? `h-full ${MATCH_PANEL}` : "max-h-full max-w-[760px]"
         }`}
       >
         <div className="flex items-center gap-4 border-b border-gray-100 px-5 py-2.5 sm:px-8">
@@ -441,7 +443,7 @@ export default function FindYourPlaceClient() {
           </button>
         </div>
 
-        <div data-fyp-body className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-12 [@media(min-height:780px)]:sm:py-7">
+        <div data-fyp-body className={`min-h-0 overflow-y-auto ${step === 3 ? "flex-1" : "flex-initial"} px-5 py-3 sm:px-12 [@media(min-height:780px)]:sm:py-7`}>
           {step === 1 && (
             <StepBasics
               key={round}

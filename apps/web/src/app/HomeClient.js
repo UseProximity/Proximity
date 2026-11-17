@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Search,
   Star,
@@ -811,6 +811,74 @@ function CTABand() {
   );
 }
 
+// ─── Find Your Place Popup ─────────────────────────────────────────────────────
+
+/*
+ * Proxy's nudge toward Find Your Place, in the spot the old matchmaking popup
+ * had (Wyatt, 2026-11-16). Hidden for anyone who already has a search on this
+ * browser: "prx_fyp_v1" is where FindYourPlaceClient keeps it.
+ */
+function FindYourPlacePopup() {
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("prx_fyp_v1") ?? "null");
+      if (saved?.results) return;
+    } catch {
+      // Unreadable storage: show it.
+    }
+    const t = setTimeout(() => setVisible(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <AnimatePresence>
+      {visible && !dismissed && (
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.97 }}
+          transition={{ type: "spring", stiffness: 260, damping: 22 }}
+          className="fixed bottom-6 right-6 z-50 w-72 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.14)] border border-gray-100 p-4"
+        >
+          <button
+            onClick={() => setDismissed(true)}
+            className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-start gap-2.5 mb-3">
+            <div className="flex-shrink-0 w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center">
+              P
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="block text-xs font-bold text-gray-900 mb-1">
+                Proxy
+              </span>
+              <p className="text-xs text-gray-600 leading-relaxed bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2">
+                Hey, I&apos;m Proxy! Answer a few quick questions and I&apos;ll
+                find the places that fit you best. 🏡
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href="/find-your-place"
+            onClick={() => trackEvent("Find Your Place Popup Clicked")}
+            className="flex items-center justify-center gap-1.5 w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-150"
+          >
+            Find Your Place <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function HomeClient({
@@ -863,6 +931,7 @@ export default function HomeClient({
         <CTABand />
       </main>
       <Footer />
+      <FindYourPlacePopup />
     </div>
   );
 }
