@@ -1,3 +1,5 @@
+import { NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
 function computeRentRange(unitTypes) {
@@ -16,6 +18,12 @@ function formatRentRange(min, max) {
 
 // ─── Availability dates ──────────────────────────────────────────────────────
 
+// Timestamps print in St. Louis time on both the server and the browser. Left
+// to each side's own timezone and locale, a review posted late in the evening
+// reads one day on the server render and the next day on a visitor's phone,
+// and React throws a hydration error (#418) over the mismatch.
+export const SITE_TIME_ZONE = "America/Chicago";
+
 // "Available Aug 1" label for a future move-in date (listing.availableFrom /
 // unitType.availableFrom). Returns null for past/today/absent dates — those
 // mean "available now" and get no label. Adds the year when it isn't this year.
@@ -24,11 +32,12 @@ export function formatAvailableFrom(dateStr) {
   const iso = String(dateStr).slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   if (iso <= today) return null;
-  const d = new Date(`${iso}T00:00:00`);
+  // A plain calendar day: read and printed in UTC so it never shifts a day.
+  const d = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return null;
-  const opts = { month: "short", day: "numeric" };
-  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return `Available ${d.toLocaleDateString(undefined, opts)}`;
+  const opts = { month: "short", day: "numeric", timeZone: "UTC" };
+  if (d.getUTCFullYear() !== new Date().getUTCFullYear()) opts.year = "numeric";
+  return `Available ${d.toLocaleDateString("en-US", opts)}`;
 }
 
 // ─── Lease terms ──────────────────────────────────────────────────────────────
@@ -114,6 +123,30 @@ export const getAreaRangeLabel = (unitTypes = []) => {
 
   return `${minArea.toLocaleString()}-${maxArea.toLocaleString()}`;
 };
+
+// Card heading: the listing's title (else the street) and the line under it.
+export function getListingHeading(listing) {
+  const addressBeforeComma = listing.address.split(",")[0].trim();
+  const title = listing.title || addressBeforeComma;
+  const subtitle =
+    listing.title && listing.title !== addressBeforeComma
+      ? listing.address
+      : listing.address.replace(/^[^,]+,\s*/, "");
+  return { title, subtitle };
+}
+
+// Shortest walk to a campus place (grocery and Med Campus excluded), or null.
+export function getCampusWalkMinutes(listing) {
+  const pwm = listing.placeWalkMinutes;
+  if (pwm && typeof pwm === "object") {
+    const vals = Object.entries(pwm)
+      .filter(([k]) => !NON_CAMPUS_WALK_PLACES.includes(k))
+      .map(([, v]) => v)
+      .filter(Number.isFinite);
+    return vals.length > 0 ? Math.min(...vals) : null;
+  }
+  return typeof pwm === "number" ? pwm : null;
+}
 
 export function calcAge(birthday) {
   if (!birthday) return null;

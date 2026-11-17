@@ -349,7 +349,7 @@ function staleCard(item, baseUrl) {
     <div style="color:#4b5563;font-size:13px;margin-top:2px">${person(item.landlord, "Landlord")}</div>
     <div style="color:#6b7280;font-size:12px;margin-top:2px">${item.messageCount} message${item.messageCount === 1 ? "" : "s"} in the thread &middot; thread ${esc(item.threadId.slice(0, 8))}</div>
     ${bubbles}
-    <a href="${esc(baseUrl)}/dashboard/admin" style="display:inline-block;margin-top:8px;font-size:13px;color:#0A0A0A">Open the admin dashboard, Conversations view</a>
+    <a href="${esc(baseUrl)}/dashboard/admin/conversations" style="display:inline-block;margin-top:8px;font-size:13px;color:#0A0A0A">Open the admin dashboard, Conversations page</a>
   </div>`;
 }
 

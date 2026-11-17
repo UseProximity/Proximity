@@ -21,6 +21,7 @@ import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
 import { becomeLandlord } from "@/lib/auth/landlordRole";
 import { trackEvent, setListingSource } from "@/utils/analytics";
+import { GROUP_OPTIONS as FYP_GROUPS } from "@/lib/findYourPlace/options";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
   ssr: false,
@@ -811,81 +812,89 @@ function CTABand() {
   );
 }
 
-// ─── Matchmaking Prompt Popup ──────────────────────────────────────────────────
+// ─── Find Your Place Popup ─────────────────────────────────────────────────────
 
-function MatchmakingPopup() {
-  const { status } = useSession();
+/*
+ * A nudge into Find Your Place that is its first question (Wyatt, 2026-11-16):
+ * picking a group size opens the flow with that answer already in, so the
+ * visitor has started before deciding to. Hidden for anyone who already has
+ * matches on this browser: "prx_fyp_v1" is where FindYourPlaceClient keeps
+ * its run.
+ */
+function FindYourPlacePopup() {
+  const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (status === "loading") return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("prx_fyp_v1") ?? "null");
+      if (saved?.results) return;
+    } catch {
+      // Unreadable storage: show it.
+    }
+    const t = setTimeout(() => {
+      setVisible(true);
+      trackEvent("Find Your Place Popup Shown");
+    }, 3000);
+    return () => clearTimeout(t);
+  }, []);
 
-    const check = async () => {
-      try {
-        // Don't nag someone who has already started the Proxy chat. The chat
-        // GET returns their latest non-abandoned session (null if none), so a
-        // session here means they're already in the flow. Signed-out visitors
-        // can chat too now, so this is asked for everyone: for them it answers
-        // from the device cookie (and sets none when there is no chat yet).
-        const res = await fetch("/api/matchmaking/chat");
-        const { session: chatSession } = await res.json();
-        if (chatSession) return;
-      } catch {
-        // show popup on error to be safe
-      }
-      // Delay before showing
-      const t = setTimeout(() => setVisible(true), 3000);
-      return () => clearTimeout(t);
-    };
-
-    const cleanup = check();
-    return () => {
-      cleanup?.then?.((fn) => fn?.());
-    };
-  }, [status]);
-
-  if (dismissed || !visible) return null;
+  const start = (group) => {
+    trackEvent("Find Your Place Popup Clicked", { group });
+    router.push(`/find-your-place?group=${encodeURIComponent(group)}`);
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 16, scale: 0.97 }}
-        transition={{ type: "spring", stiffness: 260, damping: 22 }}
-        className="fixed bottom-6 right-6 z-50 w-72 bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.14)] border border-gray-100 p-4"
-      >
-        <button
-          onClick={() => setDismissed(true)}
-          className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 transition-colors"
-          aria-label="Dismiss"
+      {visible && !dismissed && (
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.97 }}
+          transition={{ type: "spring", stiffness: 260, damping: 22 }}
+          className="fixed bottom-6 right-4 z-50 w-[calc(100vw-2rem)] max-w-[320px] rounded-3xl border border-gray-200 bg-white p-5 shadow-[0_8px_32px_rgba(0,0,0,0.14)] sm:right-6"
+          role="dialog"
+          aria-label="Find Your Place"
         >
-          <X className="h-4 w-4" />
-        </button>
-
-        <div className="flex items-start gap-2.5 mb-3">
-          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-red-100 text-red-600 text-xs font-bold flex items-center justify-center">
-            P
+          <div className="flex items-center gap-3">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-gray-100" role="presentation">
+              <div className="h-full w-[12%] rounded-full bg-red-600" />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDismissed(true);
+                trackEvent("Find Your Place Popup Dismissed");
+              }}
+              className="text-gray-300 transition-colors hover:text-gray-500"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <span className="block text-xs font-bold text-gray-900 mb-1">
-              Proxy
-            </span>
-            <p className="text-xs text-gray-600 leading-relaxed bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2">
-              Hey, I&apos;m Proxy! Answer a few quick questions and I&apos;ll
-              match you with your dream home. 🏡
-            </p>
-          </div>
-        </div>
 
-        <Link
-          href="/matchmaking"
-          className="flex items-center justify-center gap-1.5 w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-150"
-        >
-          Find my match <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </motion.div>
+          <h3 className="mt-3 text-xl font-bold text-gray-900">Find Your Place</h3>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">
+            Answer a few quick questions and find your perfect fit.
+          </p>
+
+          <p className="mt-4 text-[13px] font-medium text-gray-900">Group Size</p>
+          <div className="mt-2 flex gap-2">
+            {FYP_GROUPS.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => start(g)}
+                className="h-9 min-w-9 flex-1 rounded-full border border-red-300 bg-white text-sm font-medium text-red-600 transition-colors hover:bg-red-50 active:bg-red-100"
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }
@@ -942,7 +951,7 @@ export default function HomeClient({
         <CTABand />
       </main>
       <Footer />
-      <MatchmakingPopup />
+      <FindYourPlacePopup />
     </div>
   );
 }

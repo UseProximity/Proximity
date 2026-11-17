@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { requestContactVerification } from "@/lib/chat/contactVerification";
+import { normalizeApplicationUrl } from "@/lib/listings/applicationLink";
 
 /*
  * One contact per landlord per property.
@@ -53,6 +54,14 @@ export async function PUT(req, { params }) {
   // key (mobile still does) can set or clear it. Otherwise every save from the
   // web would silently wipe the phones the 202610120001 backfill put there.
   if (body.contactPhone !== undefined) contact.contact_phone = text(body.contactPhone);
+  // The landlord's application link, same rule as the phone: only a client
+  // that sends the key sets or clears it, so an older client's save never
+  // wipes a link. Students get an Apply button only where one is set.
+  if (body.applicationUrl !== undefined) {
+    const link = normalizeApplicationUrl(body.applicationUrl);
+    if (link.error) return NextResponse.json({ error: link.error }, { status: 400 });
+    contact.application_url = link.url;
+  }
   // A renter has to be able to reach someone, so this is the one field that
   // cannot be cleared. Same rule the per-lease routes apply.
   if (!contact.contact_email || !contact.contact_email.includes("@")) {

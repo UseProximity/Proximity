@@ -68,8 +68,36 @@ export async function buildDigest({ now = new Date() } = {}) {
     title: "Scraping",
     rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], ["Website changes declined (new today)", siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
-    note: "The sync applies or declines every website change itself; nothing waits for review." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
+    note: "The sync applies or declines every website change itself. A run skipped for changing too much at once waits for the team in the admin Agents tab." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
   });
+
+  /*
+   * What the agents learned (Wyatt, 2026-11-12): the Monday knowledge read,
+   * listing by listing. Shown on the digest that covers it, and on any day a
+   * sync added, changed or took out facts (specials, a landlord's sync).
+   */
+  const { data: learnedRows } = await supabase.from("listing_fact_events")
+    .select("listing_id, previous_fact_id, new_value, status, listings!listing_id(title, address)")
+    .eq("cause", "sync").eq("status", "applied").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
+  const learned = new Map();
+  for (const e of learnedRows ?? []) {
+    const k = learned.get(e.listing_id) ?? { name: label(e.listings), added: 0, changed: 0, removed: 0 };
+    if (e.new_value == null) k.removed++;
+    else if (e.previous_fact_id) k.changed++;
+    else k.added++;
+    learned.set(e.listing_id, k);
+  }
+  const knowledgeJobs = syncs.filter((j) => j.target?.knowledge);
+  if (learned.size || knowledgeJobs.length) {
+    const rows = [...learned.values()].sort((a, b) => (b.added + b.changed + b.removed) - (a.added + a.changed + a.removed));
+    const sum = (f) => rows.reduce((n, r) => n + r[f], 0);
+    sections.push({
+      title: "What the agents learned",
+      rows: [["Whole-site reads", knowledgeJobs.length], ["Facts added", sum("added")], ["Facts updated", sum("changed")], ["Facts taken out", sum("removed")]],
+      list: rows.slice(0, 40).map((r) => `${r.name}: ${[r.added && `${r.added} new`, r.changed && `${r.changed} updated`, r.removed && `${r.removed} taken out`].filter(Boolean).join(", ")}`),
+      note: "Whole-site reads run every Monday; specials are checked daily. A fact is taken out when its page has not said it for two weekly reads in a row. What a landlord set is never changed by a read.",
+    });
+  }
 
   /*
    * Website sync, listing by listing (Wyatt, 2026-11-07; no queue since

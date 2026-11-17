@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-11T04:26:06.481Z",
-  "count": 198,
+  "_generated": "2026-11-17T05:15:46.327Z",
+  "count": 217,
   "components": [
     {
       "name": "ErrorReporter",
@@ -16,6 +16,16 @@
     {
       "name": "LicenseDisclosureFields",
       "file": "src/components/account/LicenseDisclosureFields.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AdminSidebar",
+      "file": "src/components/admin/AdminSidebar.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "AgentChangeCard",
+      "file": "src/components/admin/AgentChangeCard.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -59,6 +69,16 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "GlobalSearch",
+      "file": "src/components/admin/GlobalSearch.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HomeView",
+      "file": "src/components/admin/HomeView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ImageManagerPanel",
       "file": "src/components/admin/ImageManagerPanel.js",
       "description": "No description. Run generate after adding a description above."
@@ -74,8 +94,18 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "RecordLink",
+      "file": "src/components/admin/RecordLink.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ReferenceView",
       "file": "src/components/admin/ReferenceView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ReferralsView",
+      "file": "src/components/admin/ReferralsView.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -104,6 +134,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "SystemToolsView",
+      "file": "src/components/admin/SystemToolsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "TestimonialsView",
       "file": "src/components/admin/TestimonialsView.js",
       "description": "No description. Run generate after adding a description above."
@@ -111,6 +146,16 @@
     {
       "name": "UsersView",
       "file": "src/components/admin/UsersView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ViewAsMenu",
+      "file": "src/components/admin/ViewAsMenu.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "adminNav",
+      "file": "src/components/admin/adminNav.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -126,6 +171,11 @@
     {
       "name": "AgreementsPanel",
       "file": "src/components/admin/billing/AgreementsPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BillingOverview",
+      "file": "src/components/admin/billing/BillingOverview.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -204,6 +254,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "ListPage",
+      "file": "src/components/admin/lists/ListPage.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "EmailEditor",
       "file": "src/components/admin/massEmail/EmailEditor.js",
       "description": "No description. Run generate after adding a description above."
@@ -226,6 +281,26 @@
     {
       "name": "shared",
       "file": "src/components/admin/massEmail/shared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListingRecord",
+      "file": "src/components/admin/records/ListingRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "NotesPanel",
+      "file": "src/components/admin/records/NotesPanel.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PersonRecord",
+      "file": "src/components/admin/records/PersonRecord.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "shared",
+      "file": "src/components/admin/records/shared.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -374,6 +449,36 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "FindYourPlaceClient",
+      "file": "src/components/findYourPlace/FindYourPlaceClient.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MatchCard",
+      "file": "src/components/findYourPlace/MatchCard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepBasics",
+      "file": "src/components/findYourPlace/StepBasics.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepMatches",
+      "file": "src/components/findYourPlace/StepMatches.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "StepPreferences",
+      "file": "src/components/findYourPlace/StepPreferences.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ui",
+      "file": "src/components/findYourPlace/ui.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "BackNav",
       "file": "src/components/guides/BackNav.js",
       "description": "No description. Run generate after adding a description above."
@@ -499,6 +604,21 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AmenityPill",
+      "file": "src/components/listings/AmenityPill.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ApplicationCheck",
+      "file": "src/components/listings/ApplicationCheck.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ApplyButton",
+      "file": "src/components/listings/ApplyButton.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AvailableListings",
       "file": "src/components/listings/AvailableListings.js",
       "description": "No description. Run generate after adding a description above."
@@ -516,6 +636,11 @@
     {
       "name": "ChangeCompare",
       "file": "src/components/listings/ChangeCompare.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ComparePanel",
+      "file": "src/components/listings/ComparePanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -684,6 +809,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "compareBest",
+      "file": "src/components/listings/compareBest.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "ContactEmailStatus",
       "file": "src/components/listings/editor/ContactEmailStatus.js",
       "description": "No description. Run generate after adding a description above."
@@ -692,6 +822,11 @@
       "name": "DraftControls",
       "file": "src/components/listings/editor/DraftControls.js",
       "description": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor"
+    },
+    {
+      "name": "EditorApplications",
+      "file": "src/components/listings/editor/EditorApplications.js",
+      "description": "No description. Run generate after adding a description above."
     },
     {
       "name": "EditorContact",
@@ -789,46 +924,6 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "AnswerControls",
-      "file": "src/components/matchmaking/AnswerControls.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ChatClient",
-      "file": "src/components/matchmaking/ChatClient.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ChatWindow",
-      "file": "src/components/matchmaking/ChatWindow.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "ClaimChatPrompt",
-      "file": "src/components/matchmaking/ClaimChatPrompt.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "LockedMatches",
-      "file": "src/components/matchmaking/LockedMatches.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "MessageBubble",
-      "file": "src/components/matchmaking/MessageBubble.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "PreferencePanel",
-      "file": "src/components/matchmaking/PreferencePanel.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
-      "name": "RecommendationCards",
-      "file": "src/components/matchmaking/RecommendationCards.js",
-      "description": "No description. Run generate after adding a description above."
-    },
-    {
       "name": "AvailabilityGrid",
       "file": "src/components/proxy/AvailabilityGrid.js",
       "description": "No description. Run generate after adding a description above."
@@ -849,13 +944,13 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "TourMarker",
-      "file": "src/components/proxy/TourMarker.js",
+      "name": "TourDialog",
+      "file": "src/components/proxy/TourDialog.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
-      "name": "TourPicker",
-      "file": "src/components/proxy/TourPicker.js",
+      "name": "TourMarker",
+      "file": "src/components/proxy/TourMarker.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

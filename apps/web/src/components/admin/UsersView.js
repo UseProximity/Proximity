@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { fmtDate, fmtMoney, shortId, sortByDate, SortToggle, SORT_NEWEST, Stars, Badge, GearButton } from "@/components/admin/adminShared";
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 
 function roleColor(role) {
   if (role === "super") return "red";
@@ -10,14 +11,16 @@ function roleColor(role) {
   return "gray";
 }
 
-export default function UsersView({ data, search, onOpenGear }) {
+// `fixedRole` is the Landlords or Students page: one role, no role filter.
+export default function UsersView({ data, search, onOpenGear, fixedRole = null }) {
   const [expanded, setExpanded] = useState(new Set());
   const [roleFilter, setRoleFilter] = useState("all");
   // The route already returns newest first; this makes that visible and
   // reversible rather than an invisible property of the query.
   const [sort, setSort] = useState(SORT_NEWEST);
 
-  const users = data || [];
+  const everyone = data || [];
+  const users = fixedRole ? everyone.filter((u) => (u.roles?.name || "student") === fixedRole) : everyone;
   const q = search.trim().toLowerCase();
   const filtered = sortByDate(
     users.filter((u) => {
@@ -42,10 +45,10 @@ export default function UsersView({ data, search, onOpenGear }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <p className="text-xs text-gray-500">{filtered.length} of {users.length} users</p>
+        <p className="text-xs text-gray-500">{filtered.length} of {users.length} {fixedRole ? `${fixedRole}s` : "users"}</p>
         <div className="ml-auto flex items-center gap-3 flex-wrap">
           <SortToggle value={sort} onChange={setSort} label="Joined" />
-          <div className="flex items-center gap-1">
+          <div className={fixedRole ? "hidden" : "flex items-center gap-1"}>
           {roles.map((r) => (
             <button
               key={r}
@@ -76,7 +79,7 @@ export default function UsersView({ data, search, onOpenGear }) {
                 <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
               </svg>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{u.name || <span className="italic text-gray-400">(no name)</span>}</p>
+                <p className="text-sm font-medium text-gray-900 truncate"><PersonLink id={u.id}>{u.name || <span className="italic text-gray-400">(no name)</span>}</PersonLink></p>
                 <p className="text-[11px] text-gray-400 truncate">{u.email}</p>
               </div>
               <Badge color={roleColor(role)}>{role}</Badge>
@@ -84,6 +87,7 @@ export default function UsersView({ data, search, onOpenGear }) {
               {u.deleted_at && <Badge color="red">deleted</Badge>}
               {!u.profile_complete && <Badge color="amber" title="Profile completion modal still pending">incomplete</Badge>}
               <span className="hidden sm:block text-[11px] text-gray-400 whitespace-nowrap">joined {fmtDate(u.created_at)}</span>
+              <PersonLink id={u.id} className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50">Open record</PersonLink>
               <span onClick={(e) => e.stopPropagation()}>
                 <GearButton onClick={() => onOpenGear("users", u)} />
               </span>
@@ -104,9 +108,9 @@ export default function UsersView({ data, search, onOpenGear }) {
                     <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Listings ({listings.length})</h4>
                     <div className="flex flex-wrap gap-1.5">
                       {listings.map((l) => (
-                        <span key={l.id} className="px-2 py-0.5 text-xs bg-white border border-gray-200 rounded-full text-gray-700">
+                        <ListingLink key={l.id} id={l.id} className="px-2 py-0.5 text-xs bg-white border border-gray-200 rounded-full text-gray-700 hover:border-gray-400">
                           {l.title || l.address}
-                        </span>
+                        </ListingLink>
                       ))}
                     </div>
                   </div>
@@ -119,7 +123,7 @@ export default function UsersView({ data, search, onOpenGear }) {
                       {reviews.map((r) => (
                         <div key={r.id} className="flex items-center gap-2 text-xs">
                           <Stars rating={r.rating} />
-                          <span className="text-gray-600 truncate">{r.listings?.title || r.listings?.address || "unknown listing"}</span>
+                          <span className="text-gray-600 truncate"><ListingLink id={r.listings?.id}>{r.listings?.title || r.listings?.address || "unknown listing"}</ListingLink></span>
                           {!r.legitimacy && <Badge color="amber">unverified</Badge>}
                           <span className="text-gray-400">{fmtDate(r.created_at)}</span>
                         </div>

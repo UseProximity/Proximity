@@ -10,8 +10,9 @@ import { documensoHost } from "@/lib/billing/documenso";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cleanDisclosure, saveDisclosure } from "@/lib/users/licenseDisclosure";
-import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
-import { releaseWaitingFor } from "@/lib/billing/payerServices";
+import { cancelPayerDocuments, uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
+import { activePayerLink } from "@/lib/billing/payerLinks";
+import { releaseWaitingFor, sendPayerDocumentCancelled } from "@/lib/billing/payerServices";
 
 /*
  * Start signing inside the app: the master agreement with Exhibit A, or an
@@ -80,6 +81,22 @@ export async function POST(req) {
       for (const id of new Set([accountId, ...many])) listingIds = [...listingIds, ...(await uncoveredDraftIds(supabase, id))];
     }
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
+    const takeover = body.takeover === true && !accountId;
+    // Taking over from their signer: anything the signer was still signing for this
+    // account is cancelled first, so it can't cover a listing after this document
+    // is built and then be released without it being on here (Wyatt, 2026-11-10).
+    // Only on the call that opens it for signing, not on `prepare` while the
+    // dialog is just open: a landlord who looks and closes it has cancelled
+    // nothing and the signer gets no email (PR 447 review). startSigning plans
+    // the document again on that call, so a copy prepared before is rebuilt if
+    // what the signer covers changed in between.
+    if (takeover && !prepare) {
+      const link = await activePayerLink(supabase, user.id);
+      if (link) {
+        const cancelled = await cancelPayerDocuments(supabase, documenso, user.id, { payerId: link.payer_id });
+        if (cancelled) after(() => sendPayerDocumentCancelled({ ...cancelled, causeLandlordId: user.id, reason: "takeover" }).catch(() => {}));
+      }
+    }
     const result = await startSigning(supabase, documenso, {
       user,
       signerTitle: body.signerTitle,
@@ -99,7 +116,7 @@ export async function POST(req) {
       exhibit: Array.isArray(body.exhibit) ? body.exhibit : null,
       fromAgreement,
       prepare,
-      takeover: body.takeover === true && !accountId,
+      takeover,
       ...options,
     });
     // Nothing to sign for accounts they sign for: anything already covered that the gate now allows goes live.

@@ -13,7 +13,7 @@
  * on it, so a given portal page only allows pages under its own path.
  */
 import supabase from "@/lib/supabase";
-import { registrableDomain, isPortalHost } from "./classify.js";
+import { registrableDomain, isPortalHost, isSharedSiteHost, sharedSiteRoot } from "./classify.js";
 
 function parse(url) {
   try {
@@ -39,6 +39,13 @@ export function onGivenSite(url, given) {
       const base = trimPath(gu.pathname);
       const path = trimPath(u.pathname);
       if (path === base || path.startsWith(`${base}/`)) return true;
+      continue;
+    }
+    // A site on a shared host (Google Sites): only its own pages.
+    if (isSharedSiteHost(gu.hostname) || isSharedSiteHost(u.hostname)) {
+      if (u.hostname.replace(/^www\./, "") !== gu.hostname.replace(/^www\./, "")) continue;
+      const root = sharedSiteRoot(gu.pathname);
+      if (root && (u.pathname.toLowerCase() === root || u.pathname.toLowerCase().startsWith(`${root}/`))) return true;
       continue;
     }
     if (registrableDomain(u.hostname) === registrableDomain(gu.hostname)) return true;

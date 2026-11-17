@@ -366,10 +366,10 @@ export default function Page() {
                 <p className="text-base leading-7 sm:text-lg sm:leading-8">
                   Get a free housing match at{" "}
                   <Link
-                    href="/matchmaking"
+                    href="/find-your-place"
                     className="font-medium text-rose-600 hover:underline"
                   >
-                    useproximity.org/matchmaking
+                    useproximity.org/find-your-place
                   </Link>
                   . Once you know your type, the companion guide breaks down
                   realistic budgets by neighborhood and group size:{" "}
@@ -394,10 +394,10 @@ export default function Page() {
                 <p className="text-base leading-7 sm:text-lg sm:leading-8">
                   Get a free housing match:{" "}
                   <Link
-                    href="/matchmaking"
+                    href="/find-your-place"
                     className="font-medium text-rose-600 hover:underline"
                   >
-                    useproximity.org/matchmaking
+                    useproximity.org/find-your-place
                   </Link>
                 </p>
                 <p className="text-base leading-7 sm:text-lg sm:leading-8">

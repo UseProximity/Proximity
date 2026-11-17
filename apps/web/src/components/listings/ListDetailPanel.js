@@ -26,10 +26,12 @@ export default function ListDetailPanel({
         * one set ever shows: once the copy has come in, the page's own pills
         * stay hidden until the panel is back at the very top. When the title
         * and tabs are stuck to the top the copy comes in just under them
-        * (--listing-head is their height) so it never covers them.
+        * (--listing-head is their height) so it never covers them. The
+        * "Did you submit your application?" bar, when it shows, sits above
+        * both, so both sets of pills start below it (--apply-check-h).
         */}
       <div
-        className={`sticky z-40 h-0 ${pills.stuck ? "top-[var(--listing-head)]" : "top-0"} ${
+        className={`sticky z-40 h-0 ${pills.stuck ? "top-[calc(var(--listing-head)_+_var(--apply-check-h,0px))]" : "top-[var(--apply-check-h,0px)]"} ${
           pills.mode === "off" ? "hidden" : ""
         }`}
       >
@@ -48,7 +50,7 @@ export default function ListDetailPanel({
           <Pills onBack={onBack} listingId={listing._id} />
         </div>
       </div>
-      <div className={`absolute inset-x-0 top-0 z-30 ${pills.original ? "" : "invisible"}`}>
+      <div className={`absolute inset-x-0 top-[var(--apply-check-h,0px)] z-30 ${pills.original ? "" : "invisible"}`}>
         <Pills onBack={onBack} listingId={listing._id} />
       </div>
       <ListingModalInfo
@@ -60,6 +62,7 @@ export default function ListDetailPanel({
         detailLoading={detailLoading}
         onHeadStuck={pills.setStuck}
         onSectionJump={pills.suppress}
+        onApplyBar={(h) => pills.ref.current?.style.setProperty("--apply-check-h", `${h}px`)}
       />
     </div>
   );
@@ -84,7 +87,7 @@ function Pills({ onBack, listingId }) {
         </svg>
         <span className="text-xs font-semibold">Back to listings</span>
       </button>
-      <div className="pointer-events-auto flex items-center rounded-full bg-white/95 p-1 text-gray-700 shadow-md">
+      <div className="pointer-events-auto">
         <HeartIcon listingId={listingId} />
       </div>
     </div>

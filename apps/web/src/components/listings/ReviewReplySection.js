@@ -7,6 +7,7 @@ import { checkReviewText } from "@/lib/contentRules";
 import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReviewEditForm from "@/components/listings/ReviewEditForm";
+import { SITE_TIME_ZONE } from "@/utils/listingFormatters";
 
 // The API answers in table columns; the card reads the shape getListing sends.
 function toCardReply(row) {
@@ -184,6 +185,7 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
                     year: "numeric",
                     month: "long",
                     day: "numeric",
+                    timeZone: SITE_TIME_ZONE,
                   })}
                   {landlordReply.editedAt && " · Edited"}
                 </div>

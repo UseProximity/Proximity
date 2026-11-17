@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
@@ -25,6 +25,7 @@ import {
   filtersActive,
   fittingRents,
 } from "@/lib/listings/filterListings";
+import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -39,8 +40,36 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Find Your Place's nice-to-haves: marked in the filter panel, switched off
+  // (Wyatt, 2026-11-17). { furnished, amenities } or null.
+  const [fypSuggested, setFypSuggested] = useState(null);
+  /*
+   * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
+   * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
+   * The answers browse has a filter for are pre-set in the filter bar, where
+   * they can be changed or cleared like any other.
+   */
+  const fromFindYourPlace = searchParams.get("fyp");
+  useEffect(() => {
+    if (!fromFindYourPlace) return;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
+      if (raw?.filters && typeof raw.filters === "object") setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
+      if (raw?.suggested && typeof raw.suggested === "object") {
+        setFypSuggested({
+          furnished: typeof raw.suggested.furnished === "string" ? raw.suggested.furnished : null,
+          amenities: Array.isArray(raw.suggested.amenities) ? raw.suggested.amenities.filter((a) => typeof a === "string") : [],
+        });
+      }
+    } catch {
+      // No readable hand-off: plain browse.
+    }
+  }, [fromFindYourPlace]);
   // Desktop only: hide the map and show the listings as a wider grid.
   const [mapHidden, setMapHidden] = useState(false);
+  // Compare Listings (desktop): null when closed, else the [left, right] listings
+  // picked so far (each null while empty). Separate from the filters on purpose.
+  const [compare, setCompare] = useState(null);
   /*
    * The fade-through of a toggle (see AvailableListings) marks <body> with
    * data-map-switching, and AvailableListings removes it once the new layout is
@@ -53,12 +82,12 @@ export default function BrowseContent({ session, initialListings = null }) {
   const switchTimers = useRef({});
   const endMapSwitch = () =>
     document.body.removeAttribute("data-map-switching");
-  const toggleMap = () => {
+  const fadeThrough = (flip) => {
     const timers = switchTimers.current;
     clearTimeout(timers.safety);
     cancelAnimationFrame(timers.frame);
     document.body.setAttribute("data-map-switching", "");
-    timers.flip = setTimeout(() => setMapHidden((hidden) => !hidden), 120);
+    timers.flip = setTimeout(flip, 120);
     // Two frames, like AvailableListings: the new layout has been drawn, still
     // invisible, before the mark goes and its width change can animate.
     timers.safety = setTimeout(() => {
@@ -67,6 +96,12 @@ export default function BrowseContent({ session, initialListings = null }) {
       );
     }, 700);
   };
+  const toggleMap = () => fadeThrough(() => setMapHidden((hidden) => !hidden));
+  // With the map hidden, Compare also swaps the wide grid for the two-column one
+  // and the compare panel, so it fades through like the map toggle. With the map
+  // visible the columns do not change and it switches at once.
+  const changeCompare = (next) =>
+    mapHidden ? fadeThrough(() => setCompare(next)) : setCompare(next);
   useEffect(() => {
     const timers = switchTimers.current;
     return () => {
@@ -160,23 +195,13 @@ export default function BrowseContent({ session, initialListings = null }) {
   const handleReset = () => {
     setSearch("");
     setFilters(DEFAULT_FILTERS);
+    setFypSuggested(null);
     handleClearSearch();
   };
 
-  /*
-   * Minimum walk time to campus — the same place set the /washu pages use
-   * (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES). Injected into
-   * the filter module so it stays free of WashU-specific geography.
-   */
-  const campusMinutes = (listing) => {
-    const pwm = listing.placeWalkMinutes;
-    const mins = WASHU_PLACES.filter(
-      (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-    )
-      .map((p) => pwm?.[p.name])
-      .filter((m) => m != null);
-    return mins.length ? Math.min(...mins) : null;
-  };
+  // Minimum walk time to campus (utils/washuPlaces), injected into the filter
+  // module so it stays free of WashU-specific geography.
+  const campusMinutes = campusWalkMinutes;
 
   const filteredListings = useMemo(
     () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
@@ -223,10 +248,13 @@ export default function BrowseContent({ session, initialListings = null }) {
           setFilters={setFilters}
           onReset={handleReset}
           onFiltersSaved={handleFiltersSaved}
+          suggested={fypSuggested}
           mapHidden={mapHidden}
           // A fade-through: fade out now, and switch the layout once that has
           // finished, while it is invisible.
           onToggleMap={toggleMap}
+          compareOpen={!!compare}
+          onToggleCompare={() => changeCompare((c) => (c ? null : [null, null]))}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
@@ -241,9 +269,13 @@ export default function BrowseContent({ session, initialListings = null }) {
           rentsFor={rentsFor}
           onFiltersSaved={handleFiltersSaved}
           mapHidden={mapHidden}
+          compare={compare}
+          setCompare={setCompare}
+          onCloseCompare={() => changeCompare(null)}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
+          suggestedFilters={fypSuggested}
           onClearSearch={handleClearSearch}
           search={search}
           setSearch={setSearch}

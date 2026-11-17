@@ -911,7 +911,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
     ? `Your ${list.length} reviews are live`
     : `Your review of ${list[0] || "your place"} is live`;
 
-  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/matchmaking`;
+  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/find-your-place`;
   const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
 
   const tail = setupToken
@@ -1289,7 +1289,7 @@ function describeChange(c) {
 
 export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const block = (i) => {
-    const link = `${baseUrl}/dashboard/admin?listing=${encodeURIComponent(i.listingId)}`;
+    const link = `${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(i.listingId)}`;
     const head = `<p style="margin:16px 0 4px"><strong>${escapeHtml(i.listing)}</strong> <span style="color:#666">(${escapeHtml(i.status)}${i.platform ? `, ${escapeHtml(i.platform)}` : ""}${i.confidence ? `, ${escapeHtml(i.confidence)} confidence` : ""})</span><br><a href="${link}" style="color:#dc2626;font-size:12px">open in admin</a></p>`;
     if (i.status === "failed") return `${head}<p style="color:#b91c1c;margin:0">Failed: ${escapeHtml(i.error)}</p>`;
     const applied = (i.applied ?? []).map((c) => `<li>${describeChange(c)}</li>`).join("");
@@ -1297,7 +1297,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     // Denied by the sync itself (lib/sourceImport/syncPolicy.js), with why.
     const denied = (i.denied ?? []).filter((c) => c.denyReason !== "too much changed at once, so the whole run was skipped").map((c) => `<li>${describeChange(c)} <span style="color:#666">(${escapeHtml(c.denyReason ?? "denied")})</span></li>`).join("");
     const hold = i.holdReason
-      ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight" : "Held: the reader was not confident in this read"}. Nothing was applied.</p>`
+      ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight. Nothing was applied: the changes below wait in admin, under Agents, for the team or the landlord to apply or reject" : "Held: the reader was not confident in this read. Nothing was applied"}.</p>`
       : "";
     return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
@@ -1313,7 +1313,7 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
         <h2 style="color:#111">Website sync digest</h2>
         <p style="color:#444">${items.length} listing${items.length === 1 ? "" : "s"} checked against ${items.length === 1 ? "its" : "their"} landlord${items.length === 1 ? "'s" : "s'"} website${items.length === 1 ? "" : "s"}. ${quiet} unchanged.</p>
         ${changed.map(block).join("")}
-        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. The sync applies or declines each change itself; nothing waits for review.</p>
+        <p style="color:#666;font-size:12px;margin-top:16px">Every change above is in listing_source_events. The sync applies or declines each change itself, except a skipped run: its changes, under "Needs a look", wait in <a href="${baseUrl}/dashboard/admin/agents" style="color:#666">admin Agents</a> until the team or the landlord applies or rejects them.</p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1331,7 +1331,7 @@ export async function sendSourceSyncFailureEmail({ to, listing, listingId, sourc
         <p><strong>${escapeHtml(listing)}</strong> could not be read from <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a>.</p>
         <p style="color:#b91c1c">${escapeHtml(error)}</p>
         <p style="color:#444">Failure ${failures} in a row. The listing was left as it was; the next check is pushed back accordingly.</p>
-        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        <p><a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1355,8 +1355,8 @@ export async function sendSourceSyncSkippedEmail({ to, listing, listingId, sourc
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Website sync skipped a listing</h2>
         <p>Reading <a href="${escapeHtml(sourceUrl)}">${escapeHtml(sourceUrl)}</a> would have ${what} on <strong>${escapeHtml(listing)}</strong> at once. That is more likely a misread (or another building on the same website) than a real overnight change, so nothing was applied.</p>
-        <p style="color:#444">It is read again tomorrow and skipped again while it would change this much. If the website really did change, a Sync now from the listing's Agent tab applies it in full, or edit the listing by hand.</p>
-        <p><a href="${baseUrl}/dashboard/admin?listing=${encodeURIComponent(listingId)}" style="color:#dc2626">Open in admin</a></p>
+        <p style="color:#444">The changes are waiting for the team in admin, under Agents, "Website changes waiting for the team", each shown as Proximity now against the website. Apply them if the website really did change, or reject them if it was a misread. The landlord sees them on the listing's Agent tab and can apply or reject them too. Until then students see the current listing. Tomorrow's read replaces them if the website changes again.</p>
+        <p><a href="${baseUrl}/dashboard/admin/agents" style="color:#dc2626">Review the changes</a> · <a href="${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(listingId)}" style="color:#6b7280">Open the listing</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer listing sources on Proximity." })}
       </div>`,
   });
@@ -1549,7 +1549,7 @@ export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
       <div style="font-family:sans-serif;max-width:640px;margin:0 auto;color:#111;font-size:14px">
         <h2 style="color:#111">Per-listing agents, ${escapeHtml(day)}</h2>
         ${(sections ?? []).map(block).join("")}
-        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin" style="color:#dc2626">Open the admin Agents tab</a></p>
+        <p style="margin-top:18px"><a href="${baseUrl}/dashboard/admin/agents" style="color:#dc2626">Open the admin Agents page</a></p>
         ${emailFooter({ reason: "You are receiving this because you administer the per-listing agents on Proximity." })}
       </div>`,
   });

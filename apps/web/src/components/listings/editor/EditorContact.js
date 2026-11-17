@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ContactEmailStatus from "@/components/listings/editor/ContactEmailStatus";
+import { normalizeApplicationUrl } from "@/lib/listings/applicationLink";
 
 const field =
   "mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-red-400 focus:outline-none";
@@ -31,6 +32,8 @@ function savedContact(listing) {
   return {
     contactName: src?.contactName ?? "",
     contactEmail: src?.contactEmail ?? "",
+    // Their own application (portal or form). Optional: no link, no Apply button.
+    applicationUrl: mine.find((l) => l.applicationUrl)?.applicationUrl ?? "",
   };
 }
 
@@ -61,12 +64,14 @@ export default function EditorContact({ listing, onChanged }) {
     if (!draft.contactEmail.trim()) {
       return toast.error("Add a contact email so students can reach you.");
     }
+    const link = normalizeApplicationUrl(draft.applicationUrl);
+    if (link.error) return toast.error(link.error);
     setSaving(true);
     try {
       const res = await fetch(`/api/landlord/listings/${listingId}/contact`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...draft, applicationUrl: link.url ?? "" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Couldn't save your contact.");
@@ -122,6 +127,18 @@ export default function EditorContact({ listing, onChanged }) {
           <input type="email" required className={field} value={draft.contactEmail} data-gap="contact"
             onChange={(e) => set({ contactEmail: e.target.value })} />
           <ContactEmailStatus savedEmail={savedContact(listing).contactEmail} draftEmail={draft.contactEmail} />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Application link <span className="normal-case tracking-normal text-gray-400">(optional)</span>
+          </span>
+          <input type="url" inputMode="url" className={field} value={draft.applicationUrl}
+            placeholder="https://yourportal.com/apply"
+            onChange={(e) => set({ applicationUrl: e.target.value })} />
+          <span className="mt-1 block text-[11px] leading-4 text-gray-500">
+            Where students apply for your listings here, like your leasing portal or an online form.
+            Students see an Apply button that opens it. Leave it blank for no Apply button.
+          </span>
         </label>
       </div>
 

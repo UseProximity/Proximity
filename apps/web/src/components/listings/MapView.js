@@ -45,9 +45,10 @@ const HOVER_PIN_GROWTH = 1.1;
 // (it writes the lng/lat translate there each frame), so the merge and split
 // motion runs on the first wrapper and the selected size and the shadow sit on
 // the second. Both scale from the bottom center, which keeps the pin's tip on
-// its coordinate.
+// its coordinate. The scale is the one inline style: a runtime value (it
+// changes per pin and on hover), which a Tailwind class cannot hold.
 function pinMarkup(color, inner, scale = 1) {
-  return `<div style="width:30px;height:42px;transform-origin:bottom center"><div style="width:30px;height:42px;transform-origin:bottom center;transform:scale(${scale});transition:transform 150ms ease-out;filter:drop-shadow(1px 2px 2px rgba(0,0,0,0.18))"><svg width="30" height="42" viewBox="0 0 30 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible">
+  return `<div class="w-[30px] h-[42px] origin-bottom"><div class="w-[30px] h-[42px] origin-bottom transition-transform duration-150 ease-[cubic-bezier(0,0,0.58,1)] drop-shadow-[1px_2px_2px_rgba(0,0,0,0.18)]" style="transform:scale(${scale})"><svg width="30" height="42" viewBox="0 0 30 42" fill="none" xmlns="http://www.w3.org/2000/svg" class="block overflow-visible">
     <path d="${PIN_PATH}" fill="${color}"/>
     ${inner}
   </svg></div></div>`;
@@ -171,7 +172,7 @@ function buildClusterPinElement(count, isUnavailable, hasSuggested) {
   const fontSize = count > 99 ? 12 : count > 9 ? 16 : 20;
   const baseline = (17.75 + fontSize * 0.3636).toFixed(2);
   const el = document.createElement("div");
-  el.style.cssText = "width:30px;height:42px;user-select:none;";
+  el.className = "w-[30px] h-[42px] select-none";
   el.innerHTML = pinMarkup(
     color,
     `<text x="15" y="${baseline}" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="700">${count}</text>${badge}`
@@ -400,7 +401,7 @@ function MapViewInner({
 
       // Pins carry a z-index (south on top). Keep that stacking inside the
       // marker layer so pins never cover the map controls or the buttons.
-      mapRef.current.getCanvasContainer().style.isolation = "isolate";
+      mapRef.current.getCanvasContainer().classList.add("isolate");
     }
 
     if (!heroMode) {
@@ -473,7 +474,7 @@ function MapViewInner({
     isUnavailable = false
   ) {
     const el = document.createElement("div");
-    el.style.cssText = "width:30px;height:42px;";
+    el.className = "w-[30px] h-[42px]";
 
     const bodyColor = isUnavailable
       ? UNAVAILABLE_PIN_COLOR

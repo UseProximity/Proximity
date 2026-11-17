@@ -32,7 +32,7 @@ export async function getCachedListings() {
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
 import { neighborhoodOfListing, NEIGHBORHOODS } from "@/lib/geo/neighborhoods";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 
 // Pages with fewer than this many qualifying listings render but are
 // noindexed AND excluded from the sitemap + related-links (one function, both
@@ -102,19 +102,9 @@ export async function getWashuPageListings(pageDef) {
   };
 }
 
-// Minimum walk-minutes to campus for a built listing, using the same
-// campus-place set as the /browse distance filter (grocery + Med Campus
-// excluded via NON_CAMPUS_WALK_PLACES).
-export function campusWalkMinutes(listing) {
-  const pwm = listing?.placeWalkMinutes;
-  if (!pwm || typeof pwm !== "object") return null;
-  const campusMins = WASHU_PLACES.filter(
-    (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-  )
-    .map((p) => pwm[p.name])
-    .filter((m) => m != null);
-  return campusMins.length ? Math.min(...campusMins) : null;
-}
+// Lives in utils/washuPlaces.js (shared with the client); re-exported for the
+// server callers that already import it from here.
+export { campusWalkMinutes };
 
 export function walkMinutesRange(listings) {
   const vals = listings

@@ -65,8 +65,11 @@ export default function TopFilterBar({
   setFilters: commitFilters,
   onReset,
   onFiltersSaved = () => {},
+  suggested = null,
   mapHidden,
   onToggleMap,
+  compareOpen,
+  onToggleCompare,
 }) {
   /*
    * Rebuilding the results (a couple of hundred cards and the map pins) is the
@@ -85,9 +88,12 @@ export default function TopFilterBar({
   const [showFilters, setShowFilters] = useState(false);
   // Rents for the Price card's histogram: the listings that fit the filters.
   const priceOpen = showFilters === "price";
+  // The price range does not change it (as in FiltersPanel), so a drag of the
+  // price slider does not work it out again.
+  const histogramKey = priceOpen ? JSON.stringify({ ...filters, minRent: "", maxRent: "" }) : null;
   const rents = useMemo(
-    () => (priceOpen ? rentsFor(filters) : []),
-    [priceOpen, rentsFor, filters]
+    () => (histogramKey ? rentsFor(JSON.parse(histogramKey)) : []),
+    [rentsFor, histogramKey]
   );
   // For the document listeners below, which are set up once.
   const showFiltersRef = useRef(showFilters);
@@ -223,6 +229,12 @@ export default function TopFilterBar({
       setLiveFilters(next);
       commitFilters(next);
     });
+  };
+  // Clear All: what was picked before it is not saved when the control closes.
+  // (An empty set is never saved: the filter-summary route skips it.)
+  const reset = () => {
+    unsaved.current = null;
+    onReset();
   };
   useEffect(() => {
     if (showFilters || !unsaved.current) return;
@@ -375,9 +387,21 @@ export default function TopFilterBar({
           <span>Filters</span>
         </button>
 
+        {/* Compare Listings: not a filter, so it is outside the filter state and Clear All */}
+        <button
+          onClick={onToggleCompare}
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+            compareOpen
+              ? "bg-gray-200 text-gray-700 border-gray-300"
+              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          Compare Listings
+        </button>
+
         {/* Clear All */}
         <button
-          onClick={onReset}
+          onClick={reset}
           className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
@@ -445,8 +469,9 @@ export default function TopFilterBar({
         <FiltersPanel
           rentsFor={rentsFor}
           filters={filters}
+          suggested={suggested}
           onChange={applyLive}
-          onReset={onReset}
+          onReset={reset}
         />
       </CardDropdown>
     </>

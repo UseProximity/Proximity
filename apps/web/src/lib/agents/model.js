@@ -161,7 +161,9 @@ export async function runTools({
      * part way (a landlord chat reply came back with no text at all), and with
      * eager streaming part of it may already be on the student's screen. The
      * caller gets `truncated` and says so instead (Wyatt, 2026-11-11: tell the
-     * person it was too much, do not raise the limit).
+     * person it was too much, do not raise the limit). The one exception is the
+     * landlord chat, which asks for 3000 so a reply with several notes fits
+     * (Wyatt, 2026-11-16, lib/agents/landlordAgent.js); past that it is told too.
      */
     if (resp.stop_reason === "max_tokens") {
       await log({ listingId, kind, model, usage, tag });

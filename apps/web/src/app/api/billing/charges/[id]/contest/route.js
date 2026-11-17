@@ -43,7 +43,7 @@ export async function POST(req, { params }) {
           studentName: view.studentName,
         },
         reason: saved,
-        adminUrl: `${getBaseUrl()}/dashboard/admin`,
+        adminUrl: `${getBaseUrl()}/dashboard/admin/billing?tab=contest`,
       });
     } catch (emailErr) {
       console.error("billing: contest email failed", emailErr);

@@ -47,7 +47,7 @@ export async function GET() {
 ## Find housing
 
 - [Browse listings](${SITE_URL}/browse): Every off-campus listing near WashU with rent, bedrooms, amenities, student reviews, and walk times to campus.
-- [Free matchmaking](${SITE_URL}/matchmaking): Tell Proximity your budget, move-in date, and preferences and get matched to apartments that fit.
+- [Free matchmaking](${SITE_URL}/find-your-place): Tell Proximity your budget, move-in date, and preferences and get matched to apartments that fit.
 - [Lease check](${SITE_URL}/lease-check): Upload a lease before signing and get a plain-English breakdown of what it actually says.
 - [Campus Hub](${SITE_URL}/CampusHub): On-campus dorm reviews and housing information for WashU students.
 

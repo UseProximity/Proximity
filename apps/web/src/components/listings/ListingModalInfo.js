@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useSyncExternalStore } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -24,16 +24,20 @@ import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
 import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
 import ProxyPanel from "@/components/proxy/ProxyPanel";
-import { calcAge } from "@/utils/listingFormatters";
+import { calcAge, SITE_TIME_ZONE } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
   DRIVE_PLACES,
   NEAREST_DRIVE_POOLS,
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
-import { trackEvent, getListingSource } from "@/utils/analytics";
+import { trackEvent, getListingSource, noteMatchRevisit } from "@/utils/analytics";
+import ApplyButton from "@/components/listings/ApplyButton";
+import ApplicationCheck from "@/components/listings/ApplicationCheck";
+import { pickApplication } from "@/lib/listings/applicationLink";
 import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
+import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS, decodeHtml } from "./AmenityPill";
 import ReviewEditForm from "./ReviewEditForm";
 import CardMenu from "@/components/ui/CardMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -130,51 +134,6 @@ function StarRow({ label, value, onChange, readOnly = false }) {
     </div>
   );
 }
-
-function decodeHtml(str) {
-  if (typeof document === "undefined" || !str) return str;
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
-}
-
-function AmenityPill({ label }) {
-  return (
-    <span className="inline-block bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1 rounded-full border border-gray-200">
-      {decodeHtml(label)}
-    </span>
-  );
-}
-
-const AMENITY_LABELS = {
-  air_conditioning: "Air Conditioning",
-  dishwasher: "Dishwasher",
-  gym: "Gym",
-  laundry: "Laundry",
-  mailroom: "Mailroom",
-  microwave: "Microwave",
-  oven: "Oven",
-  parking: "Parking",
-  pets_allowed: "Pets Allowed",
-  pool: "Pool",
-  refrigerator: "Refrigerator",
-  rooftop: "Rooftop",
-  storage: "Storage",
-  stove: "Stove",
-  study_room: "Study Room",
-};
-
-const UTILITY_LABELS = {
-  electric: "Electric",
-  gas: "Gas",
-  heat: "Heat",
-  water: "Water",
-  internet: "Internet",
-  trash: "Trash",
-  cable: "Cable",
-  sewer: "Sewer",
-  cooling: "Cooling",
-};
 
 function toTitleCase(str) {
   return str
@@ -896,6 +855,7 @@ function ReviewsTab({
                         month: "short",
                         day: "numeric",
                         year: "numeric",
+                        timeZone: SITE_TIME_ZONE,
                       })
                     : null;
                   return (
@@ -1228,6 +1188,7 @@ function ContactTab({
         address: listing.address,
         ...(source ? { source } : {}),
       });
+      noteMatchRevisit(listing._id, "contacted");
       /*
        * Open the conversation rather than leaving a "sent" receipt behind. The
        * thread id lands in the URL, so the step from enquiry to conversation is
@@ -1311,15 +1272,25 @@ function ContactTab({
                 </div>
               </div>
             )}
-            <button
-              type="submit"
-              disabled={!chatBody.trim() || chatSending}
-              className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {chatSending ? "Sending..." : "Send message"}
-            </button>
+            {/* Apply sits beside Send when the landlord added a link. */}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!chatBody.trim() || chatSending}
+                className="flex-1 bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {chatSending ? "Sending..." : "Send message"}
+              </button>
+              <ApplyButton listing={listing} selectedLease={selectedLease} signedIn variant="form" />
+            </div>
           </form>
         </div>
+      )}
+      {/* No message form here (the owner's preview, or a landlord with no
+          account to write to), but the application can still be reached. */}
+      {!canMessage && (
+        <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={!!userId}
+          record={!preview && !isOwnListing} variant="form" className="w-full" />
       )}
     </div>
   );
@@ -1499,12 +1470,8 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           </div>
 
           {/* Tab strip */}
-          <div
-            className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-              compact ? "pl-5" : "px-4"
-            }`}
-          >
-            <nav className={`flex max-w-7xl mx-auto ${compact ? "justify-start" : "justify-center"}`}>
+          <div className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5">
+            <nav className="flex justify-start">
               {Array.from({ length: tabCount }).map((_, i) => (
                 <div key={i} className="px-5 py-3">
                   <Bar className="h-4 w-16" />
@@ -1576,6 +1543,8 @@ export default function ListingModalInfo({
   onHeadStuck = null,
   // Called when a tab click starts scrolling the page to its section.
   onSectionJump = null,
+  // Called with the "Did you submit?" bar's height (0 when it is gone).
+  onApplyBar = null,
   /*
    * The owner looking at their own listing through the dashboard's "View as
    * Student" (GlobalListingModal with ?preview=1). Everything renders as a
@@ -1598,6 +1567,16 @@ export default function ListingModalInfo({
     return () => { delete document.body.dataset.listingContact; };
   }, [activeTab]);
 
+  // A Find Your Place match opened some other way than from the matches page.
+  // Deferred a moment: a ?src=matchmaking deep link marks its source in the
+  // browse page's own effect, which runs after this panel's.
+  useEffect(() => {
+    if (preview || !listing?._id) return;
+    const id = listing._id;
+    const t = setTimeout(() => noteMatchRevisit(id, "opened"), 300);
+    return () => clearTimeout(t);
+  }, [listing?._id, preview]);
+
   /*
    * True once the header has stuck to the top: the sentinel just above it has
    * scrolled up out of the panel or modal it scrolls in. Compacting takes about
@@ -1607,6 +1586,15 @@ export default function ListingModalInfo({
    * header twitched at the line (Wyatt, 2026-10-31).
    */
   const headSentinelRef = useRef(null);
+  // The stuck "Did you submit?" bar's height, for the scroll math below. Kept
+  // in a ref (set by ApplicationCheck) so no scroll event reads the style.
+  const applyBarH = useRef(0);
+  const onApplyBarCb = useRef(onApplyBar);
+  onApplyBarCb.current = onApplyBar;
+  const onApplyBarHeight = useCallback((h) => {
+    applyBarH.current = h;
+    onApplyBarCb.current?.(h);
+  }, []);
   const [headStuck, setHeadStuck] = useState(false);
   // The browse panel's sliding pills follow the same stuck state (one listener).
   const onHeadStuckRef = useRef(onHeadStuck);
@@ -1618,7 +1606,8 @@ export default function ListingModalInfo({
     const target = root ?? window;
     let stuck = false;
     const onScroll = () => {
-      const top = root ? root.getBoundingClientRect().top : 0;
+      // The header sticks below the "Did you submit?" bar when that shows.
+      const top = (root ? root.getBoundingClientRect().top : 0) + applyBarH.current;
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -1664,7 +1653,7 @@ export default function ListingModalInfo({
      * it loses, so the full height is the right offset in both cases.
      */
     const top =
-      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
+      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0) - applyBarH.current;
     // Contact goes all the way down, to the chat's newest message and its box
     // (Wyatt, 2026-11-01): it is the last section, so that is the page's bottom.
     const end = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -1681,7 +1670,7 @@ export default function ListingModalInfo({
     const onScroll = () => {
       if (Date.now() < spyQuietUntil.current) return;
       const rootTop = root ? root.getBoundingClientRect().top : 0;
-      const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
+      const line = rootTop + applyBarH.current + (headRef.current?.offsetHeight ?? 0) + 24;
       const scrolled = root ? root.scrollTop : window.scrollY;
       const viewport = root ? root.clientHeight : window.innerHeight;
       const height = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -1897,12 +1886,14 @@ export default function ListingModalInfo({
   const waitlistName = listing.title || "this property";
   const waitlistButtonClass =
     "my-2 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
-  const trackWaitlistClick = () =>
+  const trackWaitlistClick = () => {
     trackEvent("Waitlist Clicked", {
       listingId: listing._id,
       source: getListingSource(listing._id) ?? "direct",
       signedIn: !!session,
     });
+    noteMatchRevisit(listing._id, "waitlist");
+  };
 
   const handleContactLease = (lease) => {
     setSelectedLeaseId(lease.id);
@@ -2152,6 +2143,8 @@ export default function ListingModalInfo({
   return (
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+        {/* "Did you submit your application?" sits above everything and stays stuck. */}
+        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} onHeight={onApplyBarHeight} />
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
@@ -2221,7 +2214,7 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />
@@ -2301,9 +2294,10 @@ export default function ListingModalInfo({
                   {listing.verifiedAt && (
                     <>
                       {", last synced "}
-                      {new Date(listing.verifiedAt).toLocaleDateString(undefined, {
+                      {new Date(listing.verifiedAt).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
+                        timeZone: SITE_TIME_ZONE,
                       })}
                     </>
                   )}
@@ -2316,7 +2310,8 @@ export default function ListingModalInfo({
                 compacts: a smaller title, no address, the rating cut to the
                 title's height. The sentinel just above it says when. */}
             <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
-            <div id="listing-head" ref={headRef} className="sticky top-0 z-30">
+            {/* Under the stuck "Did you submit?" bar when it shows (--apply-check-h, set by ApplicationCheck). */}
+            <div id="listing-head" ref={headRef} className="sticky top-[var(--apply-check-h,0px)] z-30">
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
@@ -2363,11 +2358,34 @@ export default function ListingModalInfo({
                         jumpTo("contact");
                         window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
                       }}
-                      className={`inline-flex items-center gap-1.5 rounded-lg bg-red-600 font-semibold text-white hover:bg-red-700 ${
-                        headStuck ? "px-3 py-1.5 text-[13px]" : "px-3.5 py-2 text-sm"
+                      className={`group inline-flex items-center gap-1.5 rounded-lg px-1 font-semibold ${
+                        headStuck ? "py-1.5 text-[13px]" : "py-2 text-sm"
                       }`}
                     >
-                      <Sparkles className="h-4 w-4" /> Ask Proxy
+                      {/* No fill or outline: one red, pink, purple gradient runs from
+                          the sparkle through the label (Wyatt, 2026-11-15). The
+                          sparkle carries the first stretch of it and the text picks
+                          up where it ends, so the two read as one sweep. Measured
+                          across the whole icon (userSpaceOnUse) so the two tiny
+                          sparkles, straight strokes with no width of their own, still
+                          get painted. On hover the sweep slides back to a deeper red (the
+                          text's 200%-wide gradient moves over, the icon's stops fade
+                          to match) and the sparkle gives a small twist. */}
+                      <svg width="0" height="0" className="absolute" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="ask-proxy-shine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="0">
+                            <stop offset="0%" className="transition-[stop-color] duration-500 ease-out [stop-color:#dc2626] group-hover:[stop-color:#991b1b]" />
+                            <stop offset="100%" className="transition-[stop-color] duration-500 ease-out [stop-color:#e33559] group-hover:[stop-color:#b91c1c]" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <Sparkles
+                        className="h-4 w-4 transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-110"
+                        stroke="url(#ask-proxy-shine)"
+                      />
+                      <span className="bg-[linear-gradient(90deg,#b91c1c_0%,#dc2626_25%,#e33559_50%,#ec4899_72%,#c026d3_100%)] bg-[length:200%_100%] bg-right bg-clip-text text-transparent transition-[background-position] duration-500 ease-out group-hover:bg-left">
+                        Ask Proxy
+                      </span>
                     </button>
                   )}
                   {/* Rating moved up from the removed stats bar. Stuck, it is
@@ -2400,21 +2418,17 @@ export default function ListingModalInfo({
               {/* ── Tab Bar ── */}
               <div
                 id="listing-tabs"
-                className={`bg-white border-b border-gray-100 shadow-sm -mx-4 ${
-                  compact ? "pl-5" : "px-4"
-                }`}
+                className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5"
               >
-                {/* Three-column row so the tabs stay optically centred no matter
-                    how wide the right-hand action is. In the browse panel they
-                    start at the left instead, the first label in line with the
-                    title above (Wyatt, 2026-11-01): pl-5 plus the tab's own
+                {/* Tabs start at the left, the first label in line with the
+                    title above, in the browse panel (Wyatt, 2026-11-01) and the
+                    popup alike (Wyatt, 2026-11-15): pl-5 plus the tab's own
                     px-5 matches the title's px-10.
                     On a phone every tab has to be in view at once, so the six
                     share the full width in a tighter size, and whatever sits
                     to their right on desktop wraps onto its own line under
                     them instead of pushing tabs off the edge. */}
-                <nav className="flex flex-wrap items-stretch max-w-7xl mx-auto md:flex-nowrap">
-                  {!compact && <div className="hidden flex-1 md:block" aria-hidden="true" />}
+                <nav className="flex flex-wrap items-stretch md:flex-nowrap">
 
                   <div className="flex w-full overflow-x-auto scrollbar-hidden md:w-auto">
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
@@ -2476,12 +2490,13 @@ export default function ListingModalInfo({
                           {waitlist.label}
                         </button>
                       ))}
+                    {/* Same font, weight, colour and hover as "View on map" beside it (Wyatt, 2026-11-15). */}
                     {showFurnishCta && (
                       <a
                         href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
                         rel="noopener noreferrer sponsored nofollow"
-                        className="inline-flex items-center whitespace-nowrap border-b-2 border-transparent px-5 py-3 text-sm font-medium text-red-600 transition hover:border-red-300 hover:text-red-700"
+                        className="inline-flex items-center whitespace-nowrap px-5 py-3 text-sm font-semibold text-red-600 transition-colors hover:text-red-700"
                       >
                         Furnish This Property
                       </a>
@@ -2627,7 +2642,9 @@ export default function ListingModalInfo({
                     />
                   ) : !session ? (
                     <SignInPrompt
-                      message="Sign in to contact the property manager."
+                      message={pickApplication(listing)
+                        ? "Sign in to contact the property manager or apply."
+                        : "Sign in to contact the property manager."}
                       tab="contact"
                     />
                   ) : (

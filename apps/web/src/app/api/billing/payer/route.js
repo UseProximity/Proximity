@@ -9,7 +9,7 @@ import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
-import { finishTakeover, sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
+import { sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
 
 /*
  * The signed-in landlord's payer: the person who signs the marketing agreement
@@ -46,9 +46,6 @@ export async function GET(req) {
   const reader = await billingReader(req);
   if (!reader) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
-    // They signed their own agreement to take over from their signer, and the
-    // follow-up has not run yet (or failed): finish it now.
-    if (!reader.viewingAs) await finishTakeover(reader.userId, agreementServices().documenso).catch((err) => console.error("billing: finishing a takeover failed", err?.message));
     return NextResponse.json({ payer: await landlordPayerView(supabase, reader.userId) });
   } catch (err) {
     return billingErrorResponse(err, "load payer");
