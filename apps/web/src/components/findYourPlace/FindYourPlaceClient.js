@@ -155,6 +155,9 @@ export default function FindYourPlaceClient() {
   const mainRef = useRef(null);
   // Arrived with the group already picked in the homepage popup.
   const fromPopupRef = useRef(false);
+  // Whether this browser held a run before the popup's answer went in: the
+  // popup answer alone was just given by whoever is here now (PR 447 review).
+  const storedContentRef = useRef(false);
 
   // Where the page starts under the site header (and any environment banner),
   // so the panel can be sized to exactly the rest of the screen. The measured
@@ -181,6 +184,7 @@ export default function FindYourPlaceClient() {
       const moveIn = storedAnswers.moveIn && storedAnswers.moveIn !== NO_PREFERENCE ? rollForward(storedAnswers.moveIn) : storedAnswers.moveIn;
       const rolled = moveIn !== storedAnswers.moveIn;
       setAnswers({ ...storedAnswers, moveIn });
+      storedContentRef.current = hasContent(storedAnswers, stored.text ?? "", stored.results ?? null);
       setText(stored.text ?? "");
       setChips(stored.chips ?? {});
       setOwner(stored.owner ?? null);
@@ -280,7 +284,10 @@ export default function FindYourPlaceClient() {
       return;
     }
     if (!owner && viewer) {
-      if (!hasContent(answers, text, results)) {
+      // A signed-in student's own tap in the homepage popup is not a run
+      // someone else left: only what was stored before it can be.
+      const leftBefore = fromPopupRef.current ? storedContentRef.current : hasContent(answers, text, results);
+      if (!leftBefore) {
         setOwner(viewer);
       } else if (intent && intent.sessionId === (results?.sessionId ?? null)) {
         claimRun();
@@ -563,7 +570,11 @@ export default function FindYourPlaceClient() {
           onQuiet={() => {
             trackEvent("Find Your Place Claim Declined");
             setAskClaim(false);
+            // The group size they just tapped in the homepage popup is theirs:
+            // it stays when someone else's run is cleared away.
+            const popupGroup = fromPopupRef.current ? answers.group : null;
             wipe();
+            if (popupGroup) setAnswers({ ...EMPTY_ANSWERS, group: popupGroup });
             setOwner(viewer);
           }}
           primaryLabel="Add to My Account"
