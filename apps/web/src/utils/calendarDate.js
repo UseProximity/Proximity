@@ -41,3 +41,12 @@ export function dayText(value, { year = true } = {}) {
     month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC",
   });
 }
+
+/*
+ * Today in St. Louis as "YYYY-MM-DD", or `offsetDays` from now. The one copy
+ * of this rule: the team's notes, Proxy's knowledge and browse's taste scoring
+ * all read it, so they agree at the day boundary (PR 447 review).
+ */
+export function stLouisDay(offsetDays = 0, now = Date.now()) {
+  return new Date(now + offsetDays * 86400000).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}

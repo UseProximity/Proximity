@@ -30,7 +30,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
 import { getClient, SONNET, stripEmDashes } from "@/lib/agents/model";
-import { haversineKm } from "@/utils/walkTimes";
+import { metersBetween } from "@/lib/reviews/listingMatch";
 import { stripAiInstructions } from "@/lib/contentRules";
 import {
   fetchActiveListings,
@@ -110,7 +110,7 @@ const primaryLandlord = (l) => {
 function metresApart(a, b) {
   const [la1, lo1, la2, lo2] = [a.latitude, a.longitude, b.latitude, b.longitude].map(Number);
   if (![la1, lo1, la2, lo2].every(Number.isFinite)) return Infinity;
-  return haversineKm(la1, lo1, la2, lo2) * 1000;
+  return metersBetween(la1, lo1, la2, lo2);
 }
 // One card per complex: the same street address, or the same landlord's
 // listings standing next to each other (units of one site listed separately).

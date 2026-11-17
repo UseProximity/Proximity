@@ -42,6 +42,7 @@
  */
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
+import { stLouisDay } from "@/utils/calendarDate";
 import { DEFAULT_FILTERS, matchListing, moveInDeadline } from "@/lib/listings/filterListings";
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import {
@@ -229,13 +230,9 @@ const PRICE_GROUP = FILTER_GROUPS[0];
  * UTC: on the evening of Nov 30 in St. Louis it is already Dec 1 there, which
  * would push the deadline a whole year out.
  */
-function stLouisToday(now = new Date()) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "numeric", day: "numeric" })
-      .formatToParts(now)
-      .map((p) => [p.type, p.value])
-  );
-  return new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+function stLouisToday() {
+  const [y, m, d] = stLouisDay().split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 const isSet = (v) => (Array.isArray(v) ? v.length > 0 : v !== "" && v != null && v !== false);
