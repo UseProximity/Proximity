@@ -72,9 +72,24 @@ const NEVER_SOURCE_DOMAINS = [
   "explorestlouis.com",
 ];
 
+/*
+ * Hosts where many unrelated sites live side by side under their own path:
+ * a small landlord's own site on Google Sites is sites.google.com/view/<name>.
+ * One is allowed as a source even though the rest of google.com is not, and
+ * a sync stays inside that one site's path (givenSites.js, PR 447 review).
+ */
+export const SHARED_SITE_HOSTS = ["sites.google.com"];
+export const isSharedSiteHost = (host) => SHARED_SITE_HOSTS.includes(String(host ?? "").toLowerCase().replace(/^www\./, ""));
+// The site's own root on a shared host: "/view/<name>" or "/site/<name>".
+export function sharedSiteRoot(pathname) {
+  const [first, second] = String(pathname ?? "").split("/").filter(Boolean);
+  return first && second ? `/${first}/${second}`.toLowerCase() : null;
+}
+
 export function isNeverSourceHost(host) {
   const h = String(host ?? "").toLowerCase().replace(/^www\./, "");
   if (!h) return false;
+  if (isSharedSiteHost(h)) return false;
   if (/\.(gov|edu|mil)$/.test(h)) return true;
   return NEVER_SOURCE_DOMAINS.includes(registrableDomain(h));
 }
