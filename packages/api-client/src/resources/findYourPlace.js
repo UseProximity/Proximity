@@ -4,11 +4,12 @@
 export function createFindYourPlaceResource(client) {
   return {
     // One search. Passing the previous `sessionId` updates that search instead of
-    // starting another. Answers { sessionId, signedIn, matches, totalMatches, browse }.
-    run: ({ answers, text, chips, sessionId }, { signal } = {}) =>
+    // starting another; `retry` is true only for a search the student asked to try
+    // again. Answers { sessionId, signedIn, matches, totalMatches, browse }.
+    run: ({ answers, text, chips, sessionId, retry = false }, { signal } = {}) =>
       client.request("/api/find-your-place", {
         method: "POST",
-        body: JSON.stringify({ answers, text, chips, sessionId }),
+        body: JSON.stringify({ answers, text, chips, sessionId, retry }),
         signal,
       }),
   };

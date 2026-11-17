@@ -18,6 +18,11 @@ import { isNetworkError } from "../lib/apiError";
 import { ERROR_MESSAGES } from "../lib/errorMessages";
 import { useAuthStore } from "./authStore";
 
+// The version of the "Browse All Matches" hand-off the server sends as
+// `browse.version`. A copy of HANDOFF_VERSION in the web code's
+// apps/web/src/lib/findYourPlace/browseHandoff.js: the two must change together.
+const HANDOFF_VERSION = 4;
+
 export const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 
 const E = ERROR_MESSAGES.FIND_YOUR_PLACE;
@@ -111,7 +116,13 @@ export const useFindYourPlaceStore = create((set, get) => ({
       // A move-in month that has gone by since becomes the next one, and matches
       // found for the old month are dropped.
       const moveIn = answers.moveIn && answers.moveIn !== NO_PREFERENCE ? rollForward(answers.moveIn) : answers.moveIn;
-      const results = moveIn === answers.moveIn ? stored.results ?? null : null;
+      // So are matches saved with no Browse hand-off or an older one, so the next
+      // "Show My Matches" searches again rather than opening Browse with outdated
+      // filters. A newer one is kept: an installed app cannot know versions
+      // released after it, and must not lose every saved run when web raises it.
+      const version = stored.results?.browse?.version;
+      const current = typeof version === "number" && version >= HANDOFF_VERSION;
+      const results = moveIn === answers.moveIn && current ? stored.results : null;
       const step = [1, 2, 3].includes(stored.step) ? stored.step : 1;
       set({
         answers: { ...answers, moveIn },
@@ -145,6 +156,8 @@ export const useFindYourPlaceStore = create((set, get) => ({
     set((s) => ({ ...blank, round: s.round + 1 }));
   },
 
+  // `force` is "Try again": it searches even when nothing changed, and the
+  // request says it is a retry (the server records it on failed searches).
   run: async (override = {}, { force = false } = {}) => {
     const s = get();
     const merged = { answers: s.answers, text: s.text, chips: s.chips, ...override };
@@ -161,7 +174,7 @@ export const useFindYourPlaceStore = create((set, get) => ({
     set({ error: null, loading: true, step: 3 });
     try {
       const data = await apiClient.findYourPlace.run(
-        { ...input, sessionId: s.results?.sessionId ?? null },
+        { ...input, sessionId: s.results?.sessionId ?? null, retry: force },
         { signal }
       );
       if (runId !== runCounter) return;

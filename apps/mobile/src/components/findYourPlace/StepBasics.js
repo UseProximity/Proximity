@@ -92,7 +92,17 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
 
   // ── Lease ───────────────────────────────────────────────────────────────
   const leaseIsOther = /^\d+$/.test(answers.lease ?? "");
-  const [leaseOtherOpen, setLeaseOtherOpen] = useState(leaseIsOther);
+  // The box shows when the student tapped "Other", and whenever the answer is a
+  // month count, however it arrived (a restored run or the profile, both of
+  // which land after this page first draws).
+  const [leaseOtherOpen, setLeaseOtherOpen] = useState(false);
+  const showLeaseOther = leaseOtherOpen || leaseIsOther;
+  // Like the group box: the raw text while typing, the answer only while it is
+  // in range, and leaving the box snaps it into range.
+  const [leaseDraft, setLeaseDraft] = useState(leaseIsOther ? answers.lease : "");
+  useEffect(() => {
+    if (leaseIsOther) setLeaseDraft((d) => (parseInt(d, 10) === Number(answers.lease) ? d : answers.lease));
+  }, [leaseIsOther, answers.lease]);
 
   // ── Move-in ─────────────────────────────────────────────────────────────
   const chipMonths = MOVE_IN_CHIPS.map((c) => nextOccurrence(c.month));
@@ -205,18 +215,29 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
             {o.label}
           </Chip>
         ))}
-        {leaseOtherOpen ? (
+        {showLeaseOther ? (
           <View className="flex-row items-center">
             <TextInput
               keyboardType="number-pad"
-              autoFocus
+              autoFocus={leaseOtherOpen}
               placeholder="#"
               placeholderTextColor={colors.textMuted}
               accessibilityLabel="Lease length in months"
-              value={leaseIsOther ? answers.lease : ""}
+              value={leaseDraft}
               onChangeText={(v) => {
+                // Stays open while the box is emptied to type a new number.
+                setLeaseOtherOpen(true);
+                setLeaseDraft(v);
                 const n = parseInt(v, 10);
-                set({ lease: Number.isFinite(n) ? String(clamp(n, LEASE_OTHER_MIN, LEASE_OTHER_MAX)) : null });
+                if (!Number.isFinite(n)) set({ lease: null });
+                else if (n >= LEASE_OTHER_MIN && n <= LEASE_OTHER_MAX) set({ lease: String(n) });
+              }}
+              onBlur={() => {
+                const n = parseInt(leaseDraft, 10);
+                if (!Number.isFinite(n)) return;
+                const fixed = String(clamp(n, LEASE_OTHER_MIN, LEASE_OTHER_MAX));
+                setLeaseDraft(fixed);
+                set({ lease: fixed });
               }}
               className={`${FIELD(leaseIsOther)} w-16 text-center mr-2 mb-2`}
             />
@@ -226,6 +247,7 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
           <Chip
             onPress={() => {
               setLeaseOtherOpen(true);
+              setLeaseDraft("");
               set({ lease: null });
             }}
           >
