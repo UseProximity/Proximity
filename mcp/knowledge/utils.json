@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T04:36:35.557Z",
-  "count": 361,
+  "_generated": "2026-11-16T23:20:50.342Z",
+  "count": 362,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -898,6 +898,14 @@
     {
       "file": "src/lib/listingDraft/sightmap.js",
       "description": "SightMap inventory reader."
+    },
+    {
+      "file": "src/lib/listings/applicationLink.js",
+      "description": "The landlord's application link (unit_leases.application_url), shared by"
+    },
+    {
+      "file": "src/lib/listings/applications.js",
+      "description": "Who went to apply (listing_applications), server side."
     },
     {
       "file": "src/lib/listings/filterListings.js",

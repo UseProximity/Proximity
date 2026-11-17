@@ -16,6 +16,7 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 import EditorOverview from "@/components/listings/editor/EditorOverview";
 import { PropertyPhotoRow } from "@/components/listings/editor/EditorImageRows";
 import EditorContact from "@/components/listings/editor/EditorContact";
+import EditorApplications from "@/components/listings/editor/EditorApplications";
 import EditorUnits from "@/components/listings/editor/EditorUnits";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
 import BackToTop from "@/components/ui/BackToTop";
@@ -308,6 +309,9 @@ export default function PropertyAnalyticsSection({
       {/* Who students reach: one block for every lease this landlord owns
           here, so it sits above the units rather than inside each offering. */}
       <EditorContact listing={p} onChanged={onPhotosChanged} />
+
+      {/* Who went to apply through the link set just above. */}
+      <EditorApplications listing={p} viewAsId={viewAsId} />
 
       <EditorUnits
         listing={p}
