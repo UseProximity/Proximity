@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "expo-router";
 import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
@@ -59,9 +60,12 @@ export default function BrowseScreen() {
   // Arriving from Find Your Place's "Browse All Matches": its answers become the
   // filters (each one shown, and removable, in the filter sheet), as on web.
   const handoff = useBrowseHandoffStore((state) => state.pending);
-  // `handoff` only wakes this effect. The store is read once, here: a run that
-  // finds it already taken (or empty) does nothing.
+  // Only the Browse on screen takes it: a hidden one (for example under the
+  // stack after a sign-in) must not use it up. `handoff` and focus only wake
+  // this effect; the store is read once, here, and an empty read does nothing.
+  const isFocused = useIsFocused();
   useEffect(() => {
+    if (!isFocused) return;
     const next = useBrowseHandoffStore.getState().take();
     if (!next) return;
     const { filters: handed, suggested } = next;
@@ -75,7 +79,7 @@ export default function BrowseScreen() {
           }
         : null
     );
-  }, [handoff]);
+  }, [handoff, isFocused]);
 
   async function load() {
     try {
