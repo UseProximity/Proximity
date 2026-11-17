@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T05:15:46.398Z",
-  "count": 340,
+  "_generated": "2026-11-17T17:12:36.424Z",
+  "count": 341,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -744,6 +744,10 @@
       "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
     },
     {
+      "file": "src/lib/findYourPlace/events.js",
+      "description": "Find Your Place's own record of the moments that leave no search row: which"
+    },
+    {
       "file": "src/lib/findYourPlace/match.js",
       "description": "Find Your Place: answers in, top four places out."
     },
@@ -1297,7 +1301,7 @@
     },
     {
       "file": "src/utils/analytics.js",
-      "description": "── Cross-page navigation source ──"
+      "description": "── Find Your Place, recorded in our own database ──"
     },
     {
       "file": "src/utils/availability.js",
