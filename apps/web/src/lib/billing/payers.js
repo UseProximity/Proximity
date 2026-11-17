@@ -632,28 +632,52 @@ export async function payerAccounts(db, payerId, now = new Date()) {
 export async function endPayerFor(db, documenso, { landlordId, payerId = null, reason = "ended by an admin", now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
   if (!link || (payerId && link.payer_id !== payerId)) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
-  const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
   const nowIso = now.toISOString();
-  const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
-  if (masterError) throw masterError;
-  const masterIds = (masters ?? []).map((m) => m.id);
-  let released = 0;
-  if (masterIds.length) {
-    const { data, error } = await db
-      .from("agreement_coverage")
-      .update({ status: "released", released_at: nowIso })
-      .eq("user_id", landlordId)
-      .in("agreement_id", masterIds)
-      .in("status", ["proposed", "covered"])
-      .select("id");
-    if (error) throw error;
-    released = data?.length ?? 0;
-  }
-  const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
-  if (waitError) throw waitError;
-  const { error } = await db.from("billing_payers").update({ status: "ended", ended_reason: String(reason).slice(0, 300), ended_at: nowIso }).eq("id", link.id).eq("status", "active");
+  // The link is ended first, and only by the run whose update changed it: two
+  // runs at once (the signing webhook and the landlord's popup) can't both
+  // cancel documents and email the signer.
+  const { data: claimed, error } = await db
+    .from("billing_payers")
+    .update({ status: "ended", ended_reason: String(reason).slice(0, 300), ended_at: nowIso })
+    .eq("id", link.id)
+    .eq("status", "active")
+    .select("id");
   if (error) throw error;
-  return { released, cancelled, link };
+  if (!claimed?.length) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
+  try {
+    const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
+    const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
+    if (masterError) throw masterError;
+    const masterIds = (masters ?? []).map((m) => m.id);
+    let released = 0;
+    if (masterIds.length) {
+      const { data, error } = await db
+        .from("agreement_coverage")
+        .update({ status: "released", released_at: nowIso })
+        .eq("user_id", landlordId)
+        .in("agreement_id", masterIds)
+        .in("status", ["proposed", "covered"])
+        .select("id");
+      if (error) throw error;
+      released = data?.length ?? 0;
+    }
+    const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
+    if (waitError) throw waitError;
+    return { released, cancelled, link };
+  } catch (err) {
+    // A step after the claim failed (Documenso timing out, a database error).
+    // The link goes back to active so the next run (the webhook, the popup's
+    // sync, the daily cron) can finish the job: every step above is safe to
+    // repeat. Only our own claim is undone, matched on the time it was stamped.
+    const { error: undoError } = await db
+      .from("billing_payers")
+      .update({ status: "active", ended_reason: null, ended_at: null })
+      .eq("id", link.id)
+      .eq("status", "ended")
+      .eq("ended_at", nowIso);
+    if (undoError) console.error("[billing] could not reopen the signer link after a failed end:", undoError.message);
+    throw err;
+  }
 }
 
 /*
@@ -661,8 +685,8 @@ export async function endPayerFor(db, documenso, { landlordId, payerId = null, r
  * takeover): now that it is signed, the signer is removed (endPayerFor). Their
  * listings were on the new agreement before the signer's coverage is released, so
  * they are covered throughout. Returns null when there is nothing to do: no
- * signer, or no agreement of their own signed since the signer was named. Safe to
- * run again, so the signing follow-up and the Billing page both call it.
+ * signer, no agreement of their own signed since the signer was named, or another
+ * run (the signing webhook, the popup's sync, the daily cron) finished it first.
  */
 export async function completeTakeover(db, documenso, landlordId, now = new Date()) {
   const link = await activePayerLink(db, landlordId);
@@ -672,8 +696,33 @@ export async function completeTakeover(db, documenso, landlordId, now = new Date
   if (error) throw error;
   const own = (data ?? []).find((m) => m.signed_at && new Date(m.signed_at) > new Date(link.created_at));
   if (!own) return null;
-  const result = await endPayerFor(db, documenso, { landlordId, reason: "revoked by the landlord, who signed their own agreement", now });
-  return { ...result, agreementId: own.id };
+  try {
+    const result = await endPayerFor(db, documenso, { landlordId, reason: "revoked by the landlord, who signed their own agreement", now });
+    return { ...result, agreementId: own.id };
+  } catch (err) {
+    if (err?.code === "no_payer") return null;
+    throw err;
+  }
+}
+
+/*
+ * The safety net for takeovers (daily billing-review-clock cron): every landlord
+ * who signed their own agreement while a signer link still stands, in case the
+ * follow-up after their signature failed. Answers their landlord ids.
+ */
+export async function staleTakeoverLandlords(db) {
+  const { data: links, error } = await db.from("billing_payers").select("landlord_id, created_at").eq("status", "active").limit(500);
+  if (missingSchema(error)) return [];
+  if (error) throw error;
+  if (!links?.length) return [];
+  const { data: signed, error: signedError } = await db
+    .from("landlord_agreements")
+    .select("user_id, signed_at")
+    .in("user_id", links.map((l) => l.landlord_id))
+    .eq("status", "signed");
+  if (signedError) throw signedError;
+  const since = new Map(links.map((l) => [l.landlord_id, new Date(l.created_at)]));
+  return [...new Set((signed ?? []).filter((m) => m.signed_at && new Date(m.signed_at) > since.get(m.user_id)).map((m) => m.user_id))];
 }
 
 // The account's drafts not covered yet: what "Add drafts to your agreement" puts on the document.

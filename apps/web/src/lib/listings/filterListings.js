@@ -104,10 +104,21 @@ const LEGACY_TERM_BUCKETS = {
   summer: (m) => m <= 3,
   semester: (m) => m >= 4 && m <= 6,
 };
+/*
+ * Ranges, set by Find Your Place's "Browse All Matches" so browse keeps the
+ * same lease buckets the matcher used (leaseBucketTest in
+ * lib/matchmaking/listingFilter.js): semester up to 7 months, academic year 8
+ * to 10, full year 11 or more (PR 447 review).
+ */
+export const TERM_RANGES = {
+  "semester-term": { label: "Semester (up to 7 months)", order: 7, test: (m) => m <= 7 },
+  "academic-year": { label: "Academic Year (8 to 10 months)", order: 9, test: (m) => m >= 8 && m <= 10 },
+  "full-year": { label: "Full Year (11+ months)", order: 11, test: (m) => m >= 11 },
+};
 const termBucket = (key) => {
   const months = /^(\d+)-month$/.exec(key);
   if (months) return (m) => m === Number(months[1]);
-  return LEGACY_TERM_BUCKETS[key];
+  return TERM_RANGES[key]?.test ?? LEGACY_TERM_BUCKETS[key];
 };
 
 // ---------------------------------------------------------------------------
@@ -308,6 +319,9 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
         case "studio":
           return unitPool(listing).some((u) => u.bedrooms === 0);
         case "single_room":
+        // The older name for a single room, kept so filters saved before the
+        // change (and the mobile app's filter sheet) still work.
+        case "singleBedroom":
           return unitPool(listing).some((u) => u.bedrooms === 1);
         // A building type: the listing's home type label, which has to be the
         // whole word ("townhouse" contains "house").

@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-16T19:41:11.883Z",
-  "count": 271,
+  "_generated": "2026-11-17T06:14:42.448Z",
+  "count": 275,
   "routes": [
     {
       "path": "/api/account",
@@ -628,6 +628,7 @@
         "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
+        "chat_email_log",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
@@ -1083,6 +1084,21 @@
       "file": "src/app/api/admin/update-campus-walk-times/route.js"
     },
     {
+      "path": "/api/admin/update-listing-bike-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_bike_times"
+      ],
+      "file": "src/app/api/admin/update-listing-bike-times/route.js"
+    },
+    {
       "path": "/api/admin/update-listing-drive-times",
       "methods": [
         "POST"
@@ -1138,6 +1154,22 @@
       },
       "tables": [],
       "file": "src/app/api/agents/enabled/route.js"
+    },
+    {
+      "path": "/api/applications",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any",
+        "PATCH": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/applications/route.js"
     },
     {
       "path": "/api/auth/[...nextauth]",
@@ -2109,6 +2141,7 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "listing_applications",
         "device_push_tokens",
         "user_blocks",
         "review_reports",
@@ -2416,6 +2449,22 @@
       "file": "src/app/api/filter-summary/route.js"
     },
     {
+      "path": "/api/find-your-place",
+      "methods": [
+        "POST",
+        "PATCH"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "POST": "optional",
+        "PATCH": "optional"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/find-your-place/route.js"
+    },
+    {
       "path": "/api/getUser",
       "methods": [
         "GET"
@@ -2720,6 +2769,18 @@
       },
       "tables": [],
       "file": "src/app/api/landlord/listings/[listingId]/agent/url/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/applications",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/applications/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/contact",

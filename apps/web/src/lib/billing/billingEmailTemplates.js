@@ -513,14 +513,21 @@ export function payeeSignedEmail({ name, payerName, approved = [], declined = []
   };
 }
 
-// To a payer: a document they were signing was cancelled because one account changed signer or ended.
+// To a payer: a document they were signing was cancelled because one account changed
+// signer, ended it, or started signing their own agreement ("takeover").
+const CANCEL_CAUSE = {
+  ended: "no longer has you as their authorized signer",
+  takeover: "is signing their own agreement",
+  changed: "changed who signs for their account",
+};
+
 export function payerDocumentCancelledEmail({ name, causeName, accountNames = [], reason = "changed", signUrl }) {
   const others = accountNames.length === 1 ? accountNames[0] : `${accountNames.slice(0, -1).join(", ")} and ${accountNames.at(-1)}`;
   return {
     subject: "The agreement you were signing was cancelled",
     html: wrap(`
       ${hello(name)}
-      <p>${e(causeName)} ${reason === "ended" ? "no longer has you as their authorized signer" : "changed who signs for their account"}, so the agreement you were signing for them${accountNames.length ? ` and ${e(others)}` : ""} was cancelled. A document can't be changed once it is sent for signature.</p>
+      <p>${e(causeName)} ${CANCEL_CAUSE[reason] ?? CANCEL_CAUSE.changed}, so the agreement you were signing for them${accountNames.length ? ` and ${e(others)}` : ""} was cancelled. A document can't be changed once it is sent for signature.</p>
       ${accountNames.length ? `<p>Nothing is lost for ${e(others)}: open your Billing page to sign for ${accountNames.length === 1 ? "them" : "those accounts"} again.</p>` : ""}
       ${button(signUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>

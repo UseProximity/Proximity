@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { DEFAULT_FILTERS } from "@/lib/listings/filterListings";
+import { DEFAULT_FILTERS, TERM_RANGES } from "@/lib/listings/filterListings";
 import {
   ClearFilter,
   StepRange,
@@ -49,11 +49,13 @@ const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DURATIONS = ["6-month", "10-month", "12-month"];
 const MAX_DURATION_MONTHS = 36;
 // "9-month" to "9-Month Lease". The two older values (from filters saved before
-// durations were month counts) keep their names.
+// durations were month counts) keep their names, and the ranges Find Your Place
+// hands over read as ranges.
 const durationLabel = (value) =>
+  TERM_RANGES[value]?.label ||
   ({ semester: "Semester Lease", summer: "Summer Lease" })[value] ||
   `${parseInt(value, 10)}-Month Lease`;
-const durationMonths = (value) => parseInt(value, 10) || 0;
+const durationMonths = (value) => TERM_RANGES[value]?.order ?? (parseInt(value, 10) || 0);
 const HOME_TYPES = [
   { label: "Apartment", value: "apartment" },
   { label: "House", value: "house" },

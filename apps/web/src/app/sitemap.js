@@ -27,7 +27,7 @@ const PAGE_SIZE = 1000;
 const staticRoutes = [
   { path: "/", priority: 1, changeFrequency: "weekly" },
   { path: "/browse", priority: 0.9, changeFrequency: "daily" },
-  { path: "/matchmaking", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/find-your-place", priority: 0.8, changeFrequency: "monthly" },
   { path: "/guides", priority: 0.7, changeFrequency: "monthly" },
   { path: "/about", priority: 0.6, changeFrequency: "monthly" },
   { path: "/CampusHub", priority: 0.6, changeFrequency: "weekly" },

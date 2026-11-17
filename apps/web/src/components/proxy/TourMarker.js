@@ -20,7 +20,9 @@ import TourBooking from "./TourBooking";
 import { fmtSlot } from "@/lib/agents/tourTime";
 import { onInboxChange } from "@/components/landlord/landlordSync";
 
-const LIVE = new Set(["requested", "proposed", "confirmed"]);
+// "messaging": the landlord took the tour to a direct chat. Still open, so it
+// can be changed or canceled like a request.
+const LIVE = new Set(["requested", "proposed", "messaging", "confirmed"]);
 
 export function tourLabel(tour) {
   if (!tour || !LIVE.has(tour.status)) return null;

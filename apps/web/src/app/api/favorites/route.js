@@ -111,13 +111,18 @@ export async function POST(req) {
     }
 
     // Check if already favorited
-    const { data: existing } = await supabase
+    const { data: existing, error: lookupError } = await supabase
       .from("user_listing_interactions")
       .select("listing_id")
       .eq("user_id", userId)
       .eq("listing_id", listingId)
       .eq("interaction_type_id", favoriteTypeId)
       .maybeSingle();
+    // An unknown state is never answered as done: the client goes back to what it last confirmed.
+    if (lookupError) {
+      console.error("Toggle favorite lookup failed:", lookupError.message);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
 
     const want = typeof favorited === "boolean" ? favorited : !existing;
     // Already in the wanted state: nothing to write (and no second "saves" tick).
@@ -127,20 +132,30 @@ export async function POST(req) {
 
     if (!want) {
       // Remove favorite
-      await deleteAsUser(supabase, {
+      const { error: deleteError } = await deleteAsUser(supabase, {
         userId,
         table: "user_listing_interactions",
         match: { user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId },
       });
+      if (deleteError) {
+        console.error("Toggle favorite delete failed:", deleteError.message);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
+      }
 
       return NextResponse.json({ favorited: false });
     } else {
       // Add favorite
-      await insertAsUser(supabase, {
+      const { error: insertError } = await insertAsUser(supabase, {
         userId,
         table: "user_listing_interactions",
         data: { user_id: userId, listing_id: listingId, interaction_type_id: favoriteTypeId },
       });
+      // A duplicate means another request saved it first: it is saved, so no second "saves" tick.
+      if (insertError?.code === "23505") return NextResponse.json({ favorited: true });
+      if (insertError) {
+        console.error("Toggle favorite insert failed:", insertError.message);
+        return NextResponse.json({ error: "Server error" }, { status: 500 });
+      }
 
       // Track saves metric (fire-and-forget). Not for a review sandbox account, so a
       // reviewer never inflates a real landlord's numbers.

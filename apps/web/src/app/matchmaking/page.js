@@ -1,17 +1,7 @@
-import Footer from "@/components/layout/Footer";
-import ChatClient from "@/components/matchmaking/ChatClient";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Find Your Place — Housing Matchmaking | Proximity",
-  description:
-    "Chat with Proxy to get free personalized off-campus housing recommendations near WashU.",
-};
-
+// The chat-style matchmaking page became the Find Your Place flow (2026-11-10).
+// Old links, guides and emails still point here, so send them on.
 export default function MatchmakingPage() {
-  return (
-    <>
-      <ChatClient />
-      <Footer />
-    </>
-  );
+  redirect("/find-your-place");
 }

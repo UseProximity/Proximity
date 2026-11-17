@@ -23,7 +23,7 @@ export const LISTING_SELECT = `
     name, sort_order, floor_plan_image_url,
     unit_leases!unit_id(id, rent, is_active, unavailable, sublease,
       available_from, lease_term_months, furnished, owner_id, rent_is_per_person,
-      description, contact_email, contact_phone, contact_name, deleted_at, published_at)),
+      description, contact_email, contact_phone, contact_name, application_url, deleted_at, published_at)),
   listing_landlords!listing_id(user_id, is_primary),
   listing_amenities!listing_id(
     air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
