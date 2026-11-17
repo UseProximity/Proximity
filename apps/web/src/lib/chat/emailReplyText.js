@@ -74,6 +74,17 @@ const URL_LINE = /^\s*(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?\s*
 const ADDRESS_LINE = /^\s*\d+\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way|pkwy|parkway)\b\.?(,.*)?\s*$/i;
 const CITY_STATE_ZIP = /^\s*[a-z .'-]+,\s*[a-z]{2}\s+\d{5}(-\d{4})?\s*$/i;
 const TITLE_LINE = /^\s*(leasing|property|community|assistant|regional|general)?\s*(manager|agent|consultant|coordinator|director|owner|landlord|office|specialist|associate|team)\b[\w ,&|-]*$/i;
+/**
+ * Did a leasing assistant (EliseAI and the like) write this email? Its legal
+ * footer gives it away. Such a sender answers every email it gets, so nothing
+ * automatic of ours (a guidelines note) may be sent back to it, or the two
+ * would write to each other (Wyatt, 2026-11-17).
+ */
+export function fromLeasingAssistant({ text, html } = {}) {
+  const body = normalize(text && String(text).trim() ? text : htmlToPlainText(html));
+  return body.split("\n").some((l) => LEGAL_FOOTER_MARKERS.some((re) => re.test(l)));
+}
+
 // "Virtual Leasing Assistant", "AI Leasing Agent"
 const ASSISTANT_TITLE_LINE = /^\s*(virtual|ai|digital|automated)\s+(leasing|property|community|resident)?\s*(assistant|agent|concierge|representative)\s*$/i;
 // "Mac Properties", "Revival Property Management": capitalised words ending in a

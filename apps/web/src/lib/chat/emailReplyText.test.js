@@ -3,7 +3,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractReplyText, htmlToPlainText } from "./emailReplyText.js";
+import { extractReplyText, fromLeasingAssistant, htmlToPlainText } from "./emailReplyText.js";
 
 const QUOTE = [
   "",
@@ -104,6 +104,11 @@ const ELISE_MESSAGE = [
 
 test("a leasing assistant's legal footer and signature go", () => {
   assert.equal(extractReplyText({ text: ELISE_BODY, senderName: "Yuki Wang", fromName: "Riley" }), ELISE_MESSAGE);
+});
+
+test("a leasing assistant is recognised by its footer, a person is not", () => {
+  assert.equal(fromLeasingAssistant({ text: ELISE_BODY }), true);
+  assert.equal(fromLeasingAssistant({ text: `Sounds good, see you at 3.\n\nJessica Nelson\n${QUOTE}` }), false);
 });
 
 test("a reply that is only an opt-out sentence is kept", () => {
