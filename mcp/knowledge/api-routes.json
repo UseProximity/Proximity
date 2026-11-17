@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-17T05:15:46.319Z",
-  "count": 274,
+  "_generated": "2026-11-17T17:12:36.266Z",
+  "count": 275,
   "routes": [
     {
       "path": "/api/account",
@@ -2129,6 +2129,7 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "events",
         "listing_applications",
         "device_push_tokens",
         "user_blocks",
@@ -2451,6 +2452,18 @@
         "users"
       ],
       "file": "src/app/api/find-your-place/route.js"
+    },
+    {
+      "path": "/api/find-your-place/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/find-your-place/events/route.js"
     },
     {
       "path": "/api/getUser",

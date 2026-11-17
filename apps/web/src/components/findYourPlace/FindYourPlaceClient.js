@@ -8,7 +8,7 @@ import StepPreferences from "./StepPreferences";
 import StepMatches, { MATCH_PANEL } from "./StepMatches";
 import { ProgressBar, FooterButton, ChoiceDialog } from "./ui";
 import { HANDOFF_VERSION } from "@/lib/findYourPlace/browseHandoff";
-import { trackEvent, setListingSource, rememberMatchesShown, getPreviousPath } from "@/utils/analytics";
+import { trackEvent, recordFyp, setListingSource, rememberMatchesShown, getPreviousPath } from "@/utils/analytics";
 import {
   NO_PREFERENCE,
   QUESTION_COUNT,
@@ -31,8 +31,11 @@ const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 const SOURCE = "matchmaking";
 
-// Each page by name, as the analytics page reports where people stop.
+// Each page by name, as the analytics page reports where people stop. Page 3
+// before any match is on screen is "loading" (a search takes several seconds)
+// or "error" (it failed), so leaving there is not read as leaving the matches.
 const STAGES = { 1: "basics", 2: "preferences", 3: "matches" };
+const stageOf = (step, loading, error) => (step === 3 && loading ? "loading" : step === 3 && error ? "error" : STAGES[step]);
 
 // The five questions fill the bar to here; it completes on "Show My Matches".
 const QUESTIONS_FILL = 0.8;
@@ -158,6 +161,7 @@ export default function FindYourPlaceClient() {
   // Whether this browser held a run before the popup's answer went in: the
   // popup answer alone was just given by whoever is here now (PR 447 review).
   const storedContentRef = useRef(false);
+  const openedRef = useRef(false);
 
   // Where the page starts under the site header (and any environment banner),
   // so the panel can be sized to exactly the rest of the screen. The measured
@@ -213,6 +217,9 @@ export default function FindYourPlaceClient() {
     }
     setReady(true);
     trackEvent("Find Your Place Opened", { resumed: !!stored, from: getPreviousPath("/find-your-place") });
+    // Once per page view: React's development double mount runs this twice.
+    if (!openedRef.current) recordFyp("opened", { resumed: !!stored, fromPopup: fromPopupRef.current });
+    openedRef.current = true;
   }, []);
 
   /*
@@ -220,8 +227,13 @@ export default function FindYourPlaceClient() {
    * on (the old chat's "Proxy Chat Exited"). Fired once, on the tab closing,
    * hiding into another app, or navigating away inside the site.
    */
+  // The latest of each, for the leave handler set up once below.
   const stepRef = useRef(step);
   stepRef.current = step;
+  const stageRef = useRef(STAGES[step]);
+  stageRef.current = stageOf(step, loading, error);
+  const answeredRef = useRef(0);
+  answeredRef.current = answeredCount(answers);
   const shownRef = useRef(false);
   const leaveTimer = useRef(null);
   useEffect(() => {
@@ -232,7 +244,10 @@ export default function FindYourPlaceClient() {
     const leave = () => {
       if (sent || shownRef.current) return;
       sent = true;
-      trackEvent("Find Your Place Exited", { stage: STAGES[stepRef.current] });
+      const stage = stageRef.current;
+      trackEvent("Find Your Place Exited", { stage });
+      // How many of page 1's questions were answered, for which one loses people.
+      recordFyp("exited", stepRef.current === 1 ? { stage, answered: answeredRef.current } : { stage });
     };
     window.addEventListener("pagehide", leave);
     return () => {
@@ -356,7 +371,7 @@ export default function FindYourPlaceClient() {
     // Only the ideas whose sentence still stands in the box: one the student
     // deleted is not a preference any more.
     const input = { ...merged, chips: standingChips(merged.text, merged.chips) };
-    const payload = { ...input, sessionId: results?.sessionId ?? null };
+    const payload = { ...input, sessionId: results?.sessionId ?? null, fromPopup: fromPopupRef.current, retry: force };
     if (!force && results?.matches && results.key === keyOf(input)) {
       setError(null);
       goTo(3);
@@ -409,7 +424,9 @@ export default function FindYourPlaceClient() {
 
   // Wipe every answer and the saved matches, and go back to the first page.
   const startOver = () => {
-    trackEvent("Find Your Place Started Over", { stage: STAGES[step] });
+    const stage = stageOf(step, loading, error);
+    trackEvent("Find Your Place Started Over", { stage });
+    recordFyp("started_over", { stage });
     wipe();
     goTo(1);
   };
@@ -512,14 +529,31 @@ export default function FindYourPlaceClient() {
                 setError(null);
                 goTo(1);
               }}
-              onSignIn={() => writeClaimIntent(results?.sessionId)}
+              onSignIn={() => {
+                // The search cap's Sign in: the one sign-up moment besides the wall.
+                trackEvent("Find Your Place Cap Sign In Clicked");
+                recordFyp("cap_sign_in");
+                writeClaimIntent(results?.sessionId);
+              }}
             />
           )}
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2.5">
           {step > 1 ? (
-            <FooterButton onClick={() => goTo(step - 1)}>{step === 3 ? "Edit Preferences" : "Back"}</FooterButton>
+            <FooterButton
+              onClick={() => {
+                // Back from the matches to change answers (the old chat's "Answer Edited").
+                if (step === 3) {
+                  const stage = stageOf(step, loading, error);
+                  trackEvent("Find Your Place Preferences Edited", { stage });
+                  recordFyp("preferences_edited", { stage });
+                }
+                goTo(step - 1);
+              }}
+            >
+              {step === 3 ? "Edit Preferences" : "Back"}
+            </FooterButton>
           ) : (
             <span />
           )}

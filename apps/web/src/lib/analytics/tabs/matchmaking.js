@@ -25,6 +25,9 @@ import {
   within,
   countValues,
 } from "@/lib/analytics/blocks";
+import { EVENT_PREFIX, CLIENT_EVENTS } from "@/lib/findYourPlace/events";
+
+const FYP_EVENT_TYPES = [...CLIENT_EVENTS, "search_failed"].map((name) => `${EVENT_PREFIX}${name}`);
 
 /*
  * Find Your Place: the three-page flow (basics, then anything else in their own
@@ -38,6 +41,10 @@ import {
  * written when matches are found, so a student who leaves on page 1 or 2 has
  * no row: those drop-offs come from Google Analytics. Rows without _fyp are the
  * Proxy chat, which the mobile app still uses; they get their own small block.
+ *
+ * The moments that leave no row (leaving a page, a failed search, the homepage
+ * popup) are recorded in our own `events` table as fyp_* rows
+ * (lib/findYourPlace/events.js), from 2026-11-17 on.
  */
 
 const COMPLETED = "recommendations_ready";
@@ -49,6 +56,23 @@ const fyp = (s) => s.preferences?._fyp ?? {};
 const answers = (s) => fyp(s).answers ?? {};
 const parsed = (s) => fyp(s).parsed ?? {};
 const recs = (s) => (Array.isArray(s.recommendations) ? s.recommendations : []);
+
+const STAGE_LABELS = {
+  basics: "Page 1: the basics",
+  preferences: "Page 2: their own words",
+  loading: "Waiting for matches to load",
+  error: "After a search failed",
+  matches: "Page 3: matches",
+};
+const STAGE_ORDER = Object.values(STAGE_LABELS);
+const stageLabel = (v) => STAGE_LABELS[v] ?? null;
+const FAIL_LABELS = {
+  cap: "Hit the signed-out search limit",
+  busy: "Too many searches from one network",
+  invalid: "Answers needed another look",
+  error: "Something went wrong",
+};
+const IN_APP_NOTE = "Recorded by Proximity itself (not Google Analytics) since November 17, 2026, so it counts every visitor; weeks before that show nothing.";
 
 // ─── Labelling answers ───────────────────────────────────────────────────────────
 
@@ -142,17 +166,25 @@ const furnishing = (s) => ({ yes: "Furnished", no: "Unfurnished" })[parsed(s).fu
 // ─── Loader ─────────────────────────────────────────────────────────────────────
 
 export default async function loadMatchmaking(period) {
-  const [rows, guestRows] = await Promise.all([
+  const [rows, guestRows, eventRows] = await Promise.all([
     fetchAll(
       "matchmaking_chat_sessions",
       "id, user_id, visitor_id, status, created_at, expired_at, preferences, recommendations",
       (q) => q.gte("created_at", period.prevStart)
     ),
     fetchAll("users", "id", (q) => q.eq("email", "guest@proximity.test")),
+    fetchAll("events", "id, user_id, event_type, metadata, created_at", (q) =>
+      q.in("event_type", FYP_EVENT_TYPES).gte("created_at", period.prevStart)
+    ),
   ]);
   // The shared guest account is a house test login, not a student.
   const guestId = guestRows[0]?.id;
   const sessions = rows.filter((s) => !guestId || s.user_id !== guestId);
+
+  const events = eventRows.filter((e) => !guestId || e.user_id !== guestId);
+  const ofEvent = (name) => events.filter((e) => e.event_type === `fyp_${name}`);
+  const nowEvents = (name) => ofEvent(name).filter((e) => within(e.created_at, period.start));
+  const meta = (e) => e.metadata ?? {};
 
   const searches = sessions.filter(isFyp);
   const chats = sessions.filter((s) => !isFyp(s));
@@ -253,19 +285,134 @@ export default async function loadMatchmaking(period) {
       })
     ),
 
-    gaBlock("Where people stop", async () => {
-      const [exits, restarts] = await Promise.all([
-        gaBreakdown(period, { dimension: "customEvent:stage", event: "Find Your Place Exited" }),
-        gaBreakdown(period, { dimension: "customEvent:stage", event: "Find Your Place Started Over" }),
-      ]);
-      const stage = (v) => ({ basics: "Page 1: the basics", preferences: "Page 2: their own words", matches: "Page 3: matches" })[v] ?? v;
+    safeBlock("Where people stop", () => {
+      const opened = periodTotals(period, ofEvent("opened"));
+      const exits = ofEvent("exited");
+      const left = periodTotals(period, exits);
+      const exitsNow = nowEvents("exited");
+      const searchesNow = current.length;
       return block("Where people stop", {
         description:
-          "The page a visitor was on when they left without seeing matches, and where they chose to start over.",
-        distributions: [
-          customDimensionDistribution("Left before seeing matches", exits, stage),
-          customDimensionDistribution("Started over from", restarts, stage),
+          "Visits that ended before any matches were on screen, and the page they were on. Someone who comes back to matches they already have is not counted as leaving.",
+        tiles: [
+          { label: "Visits to Find Your Place", ...opened },
+          {
+            label: "Left before seeing matches",
+            current: pct(left.current, opened.current),
+            previous: pct(left.previous, opened.previous),
+            format: "percent",
+            hint: "Share of visits.",
+          },
+          {
+            label: "Left while matches were loading",
+            current: exitsNow.filter((e) => meta(e).stage === "loading").length,
+            hint: "A search takes several seconds. These visitors asked for matches and left before they arrived.",
+          },
+          {
+            label: "Went back to edit after seeing matches",
+            current: pct(nowEvents("preferences_edited").filter((e) => meta(e).stage === "matches").length, searchesNow),
+            format: "percent",
+            hint: "Edit Preferences clicks with matches on screen, as a share of searches. Clicks while matches were still loading are not counted.",
+          },
         ],
+        distributions: [
+          {
+            title: "Left before seeing matches, by page",
+            source: DB,
+            rows: countValues(exitsNow, (e) => stageLabel(meta(e).stage), { order: STAGE_ORDER }),
+          },
+          {
+            title: "Questions answered when leaving page 1",
+            source: DB,
+            rows: countValues(
+              exitsNow.filter((e) => meta(e).stage === "basics"),
+              (e) => (Number.isInteger(meta(e).answered) ? `${meta(e).answered} of 5` : null),
+              { order: ["0 of 5", "1 of 5", "2 of 5", "3 of 5", "4 of 5", "5 of 5"] }
+            ),
+            note: "5 of 5 means every question was answered but they never clicked Next.",
+          },
+          {
+            title: "Started over from",
+            source: DB,
+            rows: countValues(nowEvents("started_over"), (e) => stageLabel(meta(e).stage), { order: STAGE_ORDER }),
+          },
+        ],
+        notes: [IN_APP_NOTE],
+      });
+    }),
+
+    safeBlock("Searches that failed", () => {
+      const failures = ofEvent("search_failed");
+      const failedNow = nowEvents("search_failed");
+      const attempts = readable.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0) + failedNow.length;
+      const capped = failedNow.filter((e) => meta(e).reason === "cap").length;
+      return block("Searches that failed", {
+        description:
+          "Times Show My Matches did not bring back matches. Recorded by the server, so it counts the mobile app too once it uses Find Your Place.",
+        tiles: [
+          { label: "Failed searches", ...periodTotals(period, failures) },
+          {
+            label: "Share of searches that failed",
+            current: pct(failedNow.length, attempts),
+            format: "percent",
+          },
+          { label: "Stopped by the signed-out limit", current: capped, hint: "Signed-out devices get 10 searches before being asked to sign in." },
+          {
+            label: "Signed in from the limit",
+            current: pct(nowEvents("cap_sign_in").length, capped),
+            format: "percent",
+            hint: "Clicked Sign in to keep going, as a share of searches stopped by the limit.",
+          },
+          {
+            label: "Failures on a retry",
+            current: pct(failedNow.filter((e) => meta(e).retry).length, failedNow.length),
+            format: "percent",
+            hint: "Failed again after the student clicked Try again.",
+          },
+        ],
+        trends: [{ title: "Failed searches per week", source: DB, series: [{ label: "Failed", values: weeklyCounts(period, failures) }] }],
+        distributions: [
+          { title: "Why it failed", source: DB, rows: countValues(failedNow, (e) => FAIL_LABELS[meta(e).reason] ?? null) },
+        ],
+        notes: [IN_APP_NOTE],
+      });
+    }),
+
+    safeBlock("Homepage popup", () => {
+      const shown = periodTotals(period, ofEvent("popup_shown"));
+      const clicked = periodTotals(period, ofEvent("popup_clicked"));
+      const fromPopup = readable.filter((s) => fyp(s).fromPopup).length;
+      return block("Homepage popup", {
+        description:
+          "The homepage card that asks the group-size question. Picking a size opens Find Your Place with that answer filled in. It is not shown on a browser that already has matches.",
+        tiles: [
+          { label: "Times shown", ...shown },
+          {
+            label: "Picked a group size",
+            current: pct(clicked.current, shown.current),
+            previous: pct(clicked.previous, shown.previous),
+            format: "percent",
+            hint: "Share of times shown.",
+          },
+          {
+            label: "Closed it",
+            current: pct(nowEvents("popup_dismissed").length, shown.current),
+            format: "percent",
+          },
+          {
+            label: "Searches that started from it",
+            current: fromPopup,
+            hint: `Got as far as matches after starting in the popup: ${Math.round((pct(fromPopup, readable.length) ?? 0) * 100)}% of searches this period.`,
+          },
+        ],
+        distributions: [
+          {
+            title: "Group size picked",
+            source: DB,
+            rows: countValues(nowEvents("popup_clicked"), (e) => meta(e).group ?? null, { order: ["1", "2", "3", "4", "5+"] }),
+          },
+        ],
+        notes: [IN_APP_NOTE],
       });
     }),
 

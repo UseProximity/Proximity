@@ -20,7 +20,7 @@ import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
 import { becomeLandlord } from "@/lib/auth/landlordRole";
-import { trackEvent, setListingSource } from "@/utils/analytics";
+import { trackEvent, recordFyp, setListingSource } from "@/utils/analytics";
 import { GROUP_OPTIONS as FYP_GROUPS } from "@/lib/findYourPlace/options";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
@@ -836,12 +836,14 @@ function FindYourPlacePopup() {
     const t = setTimeout(() => {
       setVisible(true);
       trackEvent("Find Your Place Popup Shown");
+      recordFyp("popup_shown", {}, "/");
     }, 3000);
     return () => clearTimeout(t);
   }, []);
 
   const start = (group) => {
     trackEvent("Find Your Place Popup Clicked", { group });
+    recordFyp("popup_clicked", { group }, "/");
     router.push(`/find-your-place?group=${encodeURIComponent(group)}`);
   };
 
@@ -866,6 +868,7 @@ function FindYourPlacePopup() {
               onClick={() => {
                 setDismissed(true);
                 trackEvent("Find Your Place Popup Dismissed");
+                recordFyp("popup_dismissed", {}, "/");
               }}
               className="text-gray-300 transition-colors hover:text-gray-500"
               aria-label="Dismiss"

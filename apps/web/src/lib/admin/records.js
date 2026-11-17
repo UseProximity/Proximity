@@ -104,7 +104,7 @@ export async function loadUserRecord(db, id) {
   const user = stripSecrets(raw);
   const emailFilter = raw.email ? `user_id.eq.${id},to_email.eq."${String(raw.email).replace(/"/g, "")}"` : `user_id.eq.${id}`;
 
-  const [owned, threadRows, tourRows, reviewRows, emailRows, emailCount, sessionRows, sessionCount, leaseChecks, interactionRows, activity] = await Promise.all([
+  const [owned, threadRows, tourRows, reviewRows, emailRows, emailCount, sessionRows, sessionCount, searchCount, leaseChecks, interactionRows, activity] = await Promise.all([
     db.from("listing_landlords").select("listing_id, is_primary, claimed_at, listings!listing_id(id, title, address, published_at, deleted_at, unavailable, review_sandbox, min_rent, max_rent)").eq("user_id", id),
     db.from("chat_threads").select(THREAD_SELECT).or(`interested_user_id.eq.${id},landlord_id.eq.${id}`).order("updated_at", { ascending: false }).limit(40),
     db.from("tour_requests").select(TOUR_SELECT).or(`student_id.eq.${id},landlord_id.eq.${id}`).order("created_at", { ascending: false }).limit(40),
@@ -113,6 +113,7 @@ export async function loadUserRecord(db, id) {
     db.from("sent_emails").select("id", { count: "exact", head: true }).or(emailFilter),
     db.from("matchmaking_chat_sessions").select("id, status, created_at, updated_at").eq("user_id", id).order("updated_at", { ascending: false }).limit(5),
     db.from("matchmaking_chat_sessions").select("id", { count: "exact", head: true }).eq("user_id", id),
+    db.from("matchmaking_chat_sessions").select("id", { count: "exact", head: true }).eq("user_id", id).not("preferences->_fyp", "is", null),
     db.from("lease_checks").select("id, file_name, created_at, deleted_at").eq("user_id", id).order("created_at", { ascending: false }).limit(5),
     db.from("user_listing_interactions").select("interaction_types!interaction_type_id(name)").eq("user_id", id).limit(2000),
     db.from("action_log").select("id, table_name, record_id, event_type, changed_fields, changed_at").eq("changed_by_id", id).order("changed_at", { ascending: false }).limit(15),
@@ -131,7 +132,10 @@ export async function loadUserRecord(db, id) {
     const name = i.interaction_types?.name;
     if (name in interactions) interactions[name] += 1;
   }
-  const sessions = { total: sessionCount?.count ?? rows(sessionRows).length, recent: rows(sessionRows).map((s) => ({ id: s.id, status: s.status, updatedAt: s.updated_at ?? s.created_at })) };
+  // Find Your Place searches and mobile Proxy chats share the table; the
+  // searches are the rows marked preferences._fyp.
+  const total = sessionCount?.count ?? rows(sessionRows).length;
+  const sessions = { total, searches: Math.min(searchCount?.count ?? 0, total), recent: rows(sessionRows).map((s) => ({ id: s.id, status: s.status, updatedAt: s.updated_at ?? s.created_at })) };
 
   const isLandlordish = role === "landlord" || listings.length > 0;
   const stage = isLandlordish

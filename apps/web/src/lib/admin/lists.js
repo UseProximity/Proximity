@@ -396,16 +396,34 @@ export const LISTS = {
 
   // ── Student activity ──────────────────────────────────────────────────────
   "matchmaking-sessions": {
-    title: "Matchmaking chats",
-    note: "Each time someone started the matchmaking flow and how far they got.",
-    columns: [["when", "Last active"], ["who", "Who"], ["status", "Got to"], ["started", "Started"]],
+    title: "Find Your Place searches",
+    note: "Each Find Your Place search (saved once matches are found), plus the mobile app's Proxy chats, which share the table until the app moves to Find Your Place.",
+    columns: [["when", "Last active"], ["who", "Who"], ["kind", "Kind"], ["status", "Got to"], ["started", "Started"]],
     async load(db) {
-      const rows = rowsOf(await newest(db, "matchmaking_chat_sessions", "id, user_id, visitor_id, status, created_at, updated_at, expired_at", "updated_at"));
+      // `fyp` is the Find Your Place marker, present (if emptied, once a
+      // signed-out search expires) only on search rows.
+      const rows = rowsOf(await newest(db, "matchmaking_chat_sessions", "id, user_id, visitor_id, status, created_at, updated_at, expired_at, fyp:preferences->_fyp", "updated_at"));
       const people = await peopleBy(db, rows.map((r) => r.user_id));
       const colors = { recommendations_ready: "green", swiping: "blue", in_progress: "amber", abandoned: "gray" };
+      const chatStatus = { recommendations_ready: "Got recommendations", swiping: "Swiping", in_progress: "In progress", abandoned: "Abandoned" };
+      const isSearch = (r) => r.fyp != null;
       return {
-        filters: [{ key: "recommendations_ready", label: "Got recommendations" }, { key: "swiping", label: "Swiping" }, { key: "in_progress", label: "In progress" }, { key: "abandoned", label: "Abandoned" }],
-        rows: rows.map((r) => ({ id: r.id, filter: r.status, cells: { when: date(r.updated_at ?? r.created_at), who: person(people.get(r.user_id), "Signed-out visitor"), status: badge(r.status, colors[r.status]), started: date(r.created_at) } })),
+        filters: [{ key: "search", label: "Find Your Place" }, { key: "chat", label: "Proxy chat (mobile)" }],
+        rows: rows.map((r) => {
+          const search = isSearch(r);
+          const runs = Number(r.fyp?.runs) || 1;
+          return {
+            id: r.id,
+            filter: search ? "search" : "chat",
+            cells: {
+              when: date(r.updated_at ?? r.created_at),
+              who: person(people.get(r.user_id), "Signed-out visitor"),
+              kind: search ? lines("Find Your Place", runs > 1 ? `searched ${runs} times` : null) : "Proxy chat (mobile)",
+              status: search ? badge("Got matches", "green") : badge(chatStatus[r.status] ?? r.status, colors[r.status]),
+              started: date(r.created_at),
+            },
+          };
+        }),
       };
     },
   },
