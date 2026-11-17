@@ -11,9 +11,10 @@ import { trackEvent } from "@/utils/analytics";
  * the grid takes all the height the panel has left and splits it into two
  * rows, and each card stretches to its cell. So the whole set is on screen
  * without scrolling, larger on a big window and tighter on a small one. On a
- * phone the cards stack and the panel's body scrolls.
+ * phone the cards stack at their natural height (photo, facts and the full
+ * explanation) and the panel's body scrolls.
  */
-const GRID = "grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-2";
+const GRID = "grid grid-cols-1 gap-4 sm:min-h-0 sm:flex-1 sm:grid-cols-2 sm:grid-rows-2 sm:gap-3";
 // The panel is wider on this step so each cell has room for photo and text.
 export const MATCH_PANEL = "max-w-[1100px]";
 
@@ -66,7 +67,7 @@ function BrowseMatchesLink({ browse }) {
 export default function StepMatches({ loading, error, matches, browse, signedIn, onOpen, onContact, onLocked, onRetry, onFixAnswers, onSignIn }) {
   if (loading) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex flex-col sm:h-full">
         <h2 className="text-[15px] font-semibold text-gray-900">Finding your top matches...</h2>
         <p className="mb-3 mt-1 text-xs text-gray-500">Checking every live listing against what you told us.</p>
         <div className={GRID}>
@@ -155,8 +156,8 @@ function MatchGrid({ matches, nearOnly, browse, signedIn, onOpen, onContact, onL
   const revealed = timedOut || matches.every((m) => ready.has(m.listing_id));
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="flex flex-col sm:h-full">
+      <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-gray-900">Your Top Matches</h2>
           {nearOnly && (

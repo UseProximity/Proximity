@@ -20,7 +20,8 @@ const range = (values) => {
  * The explanation has to fit the card without scrolling (Wyatt, 2026-11-11),
  * and the card's height follows the window. So the text steps down through
  * these sizes until it fits the room it has. Only if the smallest still
- * overflows (a very short window) does the box scroll.
+ * overflows (a very short window) does the box scroll. On a phone the card
+ * grows to fit its text instead, so the full size always fits.
  */
 const FIT_STEPS = [
   { reason: "text-xs leading-relaxed", note: "text-xs leading-snug" },
@@ -56,7 +57,7 @@ function FittedReason({ reason, note }) {
 
   const size = FIT_STEPS[step];
   return (
-    <div ref={boxRef} className="scrollbar-hidden mt-2.5 min-h-0 flex-1 overflow-y-auto">
+    <div ref={boxRef} className="scrollbar-hidden mt-2.5 sm:min-h-0 sm:flex-1 sm:overflow-y-auto">
       <p className={`${size.reason} text-gray-700`}>{reason}</p>
       {note && <p className={`mt-1 ${size.note} text-red-600`}>{note}</p>}
     </div>
@@ -66,7 +67,7 @@ function FittedReason({ reason, note }) {
 export function MatchCardSkeleton() {
   return (
     <div className="flex h-full min-h-[150px] flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg sm:flex-row">
-      <div className="aspect-video animate-pulse bg-gray-200 sm:aspect-auto sm:h-full sm:w-[36%]" />
+      <div className="aspect-[2/1] animate-pulse bg-gray-200 sm:aspect-auto sm:h-full sm:w-[36%]" />
       <div className="flex-1 space-y-2 p-3">
         <div className="h-3.5 w-2/3 animate-pulse rounded bg-gray-200" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-gray-100" />
@@ -116,9 +117,9 @@ export default function MatchCard({ revealed = true, onReady, ...props }) {
   const delay = REVEAL_DELAY[(position - 1) % REVEAL_DELAY.length];
   const fade = "transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none";
   return (
-    <div className="relative h-full min-h-[150px]">
+    <div className="relative min-h-[150px] sm:h-full">
       {listing && (
-        <div className={`h-full ${fade} ${delay} ${revealed ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1.5 opacity-0"}`}>
+        <div className={`sm:h-full ${fade} ${delay} ${revealed ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1.5 opacity-0"}`}>
           <MatchCardBody {...props} listing={listing} onPhotoDone={() => setPhotoDone(true)} />
         </div>
       )}
@@ -188,9 +189,9 @@ function MatchCardBody({ match, position, signedIn, onOpen, onContact, onLocked,
               onLocked(match, position);
             }
       }
-      className="group flex h-full min-h-[150px] cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg transition-colors hover:border-red-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 sm:flex-row"
+      className="group flex min-h-[150px] cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg transition-colors hover:border-red-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300 sm:h-full sm:flex-row"
     >
-      <div className="relative aspect-video flex-shrink-0 bg-gray-100 sm:aspect-auto sm:h-full sm:w-[36%]">
+      <div className="relative aspect-[2/1] flex-shrink-0 bg-gray-100 sm:aspect-auto sm:h-full sm:w-[36%]">
         {image ? (
           <Image src={image} alt={listing.address ?? title} fill sizes="(max-width: 640px) 100vw, 320px" className="object-cover" onLoad={onPhotoDone} onError={onPhotoDone} />
         ) : (
@@ -233,7 +234,7 @@ function MatchCardBody({ match, position, signedIn, onOpen, onContact, onLocked,
               e.stopPropagation();
               onContact(match, position);
             }}
-            className="h-7 rounded-full border border-red-300 bg-white px-3.5 text-xs font-medium text-red-600 hover:bg-red-50"
+            className="h-8 rounded-full border border-red-300 bg-white px-4 text-xs sm:h-7 sm:px-3.5 font-medium text-red-600 hover:bg-red-50"
           >
             Contact
           </button>
