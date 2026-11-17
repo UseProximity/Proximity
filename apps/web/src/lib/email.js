@@ -472,6 +472,28 @@ export async function sendChatMessageEmail({
 }
 
 /*
+ * A student's inquiry re-sent to a listing's contact address as a plain
+ * inquiry from the student, so a leasing assistant such as EliseAI answers it
+ * (Wyatt, 2026-11-17). From the chat's reply address through SES only, so the
+ * answer comes back into the conversation and delivery is tracked. Resolves
+ * to the SES message id.
+ */
+export async function sendLeadInquiryEmail({ to, fromName, replyTo, subject, text, html, threadId, recipientId }) {
+  if (!sesTransporter) throw new Error("Amazon SES is not configured");
+  const info = await sendMailSafe(sesTransporter, {
+    logAs: { kind: "chat_alert", threadId, userId: recipientId },
+    from: { name: fromName, address: replyTo },
+    to,
+    replyTo,
+    subject,
+    text,
+    html,
+    ses: SES_SEND_OPTIONS,
+  });
+  return info?.response || info?.messageId || null;
+}
+
+/*
  * Internal email to the team (lib/chat/deliveryAlerts.js). Tries SES first and
  * Gmail second, so a report that one of the two is failing still gets out
  * through the other (Wyatt, 2026-10-23).
