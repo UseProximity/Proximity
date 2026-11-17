@@ -25,11 +25,12 @@ const BROWSE_AMENITY = {
   mailroom: "mailroom",
 };
 
-// Find Your Place lease answer -> browse's duration chips ("<n>-month").
+// Find Your Place lease answer -> browse's lease ranges (TERM_RANGES in
+// lib/listings/filterListings.js), the same buckets the matcher counts as a fit.
 const BROWSE_LEASE = {
-  semester: ["6-month"],
-  academic: ["10-month"],
-  full: ["12-month"],
+  semester: ["semester-term"],
+  academic: ["academic-year"],
+  full: ["full-year"],
 };
 
 const NEIGHBORHOOD_NAMES = {
@@ -46,7 +47,7 @@ const CAMPUS_WALK_STOPS = [10, 15, 20, 30];
 const SHUTTLE_WALK_STOPS = [2, 5, 10];
 // Raised whenever what the hand-off sets changes, so a saved set of matches
 // carrying an older hand-off is searched again rather than reused.
-export const HANDOFF_VERSION = 2;
+export const HANDOFF_VERSION = 3;
 const stopFor = (stops, minutes) => stops.find((s) => s >= minutes) ?? null;
 
 export function buildBrowseHandoff({ answers, parsed, preferences }) {
