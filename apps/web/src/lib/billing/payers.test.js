@@ -418,6 +418,39 @@ describe("payer: revoking and changing", () => {
     assert.equal(db.tables.billing_payers[0].status, "ended");
   });
 
+  it("a revoke that fails halfway reopens the link, so the next run finishes it (PR 447 review)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L2"] });
+    await signFor(db, documenso, "pm1", { listingIds: ["L2"] });
+    // The last step (cancelling the waiting publish requests) fails once.
+    const realFrom = db.from;
+    let failNext = true;
+    db.from = (table) => {
+      const q = realFrom(table);
+      if (table !== "payer_publish_requests" || !failNext) return q;
+      const update = q.update;
+      q.update = (patch) => {
+        const api = update(patch);
+        if (patch.status === "cancelled") {
+          failNext = false;
+          api.run = async () => ({ data: null, error: { message: "connection reset" } });
+        }
+        return api;
+      };
+      return q;
+    };
+    await assert.rejects(() => endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" }));
+    assert.equal(db.tables.billing_payers[0].status, "active", "the link is open again for a retry");
+    assert.equal(db.tables.billing_payers[0].ended_at, null);
+    assert.equal(db.tables.payer_publish_requests[0].status, "waiting");
+    // The retry runs every step again and finishes.
+    await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
+    assert.equal(db.tables.billing_payers[0].status, "ended");
+    assert.equal(db.tables.payer_publish_requests[0].status, "cancelled");
+    assert.equal(db.tables.landlord_agreements[0].status, "voided");
+  });
+
   it("revoking one account leaves the signer's other accounts covered", async () => {
     const db = world();
     db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2026-11-09T00:00:00Z", created_at: "2026-11-09T00:01:00Z" });
