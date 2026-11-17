@@ -18,7 +18,8 @@
  *                    that flag. Landlord contact fields on a review describe a
  *                    DIFFERENT person and are deliberately left in place.
  *   - behavioral     user_listing_interactions, user_filter_summaries,
- *                    review_votes, waitlist_clicks: deleted outright.
+ *                    review_votes, waitlist_clicks, listing_applications
+ *                    (Apply clicks): deleted outright.
  *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
  *                    three years (Privacy Policy s8). They record why we showed
  *                    this person the properties we did, so they are erased by
@@ -260,6 +261,10 @@ async function purgeUser(user) {
   await must(
     "waitlist_clicks",
     supabase.from("waitlist_clicks").delete().eq("user_id", userId)
+  );
+  await must(
+    "listing_applications",
+    supabase.from("listing_applications").delete().eq("student_id", userId)
   );
   await must(
     "device_push_tokens",

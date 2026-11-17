@@ -21,7 +21,8 @@ export function zoneAbbrev(date = new Date()) {
 
 // `booked`: Map of slot iso -> what is booked then. Those hours show grey on
 // their own date only, and can still be picked (Wyatt, 2026-11-02).
-export function DateGrid({ selected, onChange, days = 7, scrollClass = "", booked = null }) {
+// cellClass sets the hour cells' height, so a popup can fit the whole grid on one screen.
+export function DateGrid({ selected, onChange, days = 7, scrollClass = "", booked = null, cellClass = "h-6" }) {
   const list = upcomingDays({ days });
   const cells = list.map((day) => HOURS.map((h) => ({ iso: chicagoToUtc(day.y, day.m, day.d, h).toISOString(), h })));
   // The latest selection, so a fast drag never paints from a stale render.
@@ -94,7 +95,7 @@ export function DateGrid({ selected, onChange, days = 7, scrollClass = "", booke
                       data-iso={cell.iso}
                       onPointerDown={onPointerDown(cell.iso)}
                       onPointerEnter={() => paint(cell.iso)}
-                      className={`h-6 w-full cursor-pointer border border-gray-200 ${
+                      className={`${cellClass} w-full cursor-pointer border border-gray-200 ${
                         on ? (taken ? "bg-red-300" : "bg-red-500") : taken ? "bg-gray-300 hover:bg-gray-400" : "bg-white hover:bg-red-50"
                       }`}
                     />

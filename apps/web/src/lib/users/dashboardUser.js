@@ -144,6 +144,8 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
             contactName: lease.contact_name ?? l.contact_name ?? "",
             contactEmail: lease.contact_email ?? l.contact_email ?? "",
             contactPhone: lease.contact_phone ?? l.contact_phone ?? "",
+            // Saved with the contact block, so it agrees across these too.
+            applicationUrl: lease.application_url ?? "",
             description: lease.description ?? "",
             isActive: !!lease.is_active,
             unavailable: !!lease.unavailable,
