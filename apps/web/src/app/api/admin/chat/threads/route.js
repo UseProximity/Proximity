@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
+import { alertEmailsFor } from "@/lib/chat/alertRoutes";
 
 /*
  * Every chat thread, summarised for the admin Conversations view: who is
@@ -15,6 +16,10 @@ import { getSupabaseClient } from "@/lib/supabase";
  * ?kind=direct (the default) is person to person: a student and a landlord,
  * including the chats a tour opened ("From a tour"). ?kind=agent is a student
  * or signed-out visitor talking with Proxy (Wyatt, 2026-11-01).
+ *
+ * A direct thread's landlord carries alertEmail, where their chat alerts
+ * actually go, so the list can be searched by a leasing inbox address that is
+ * not the account email (Wyatt, 2026-11-16).
  *
  * Honours the dashboard's dev/prod switch via the x-db-target header, like the
  * other admin reads.
@@ -71,7 +76,7 @@ export async function GET(req) {
     const userIds = [...new Set(threads.flatMap((t) => [t.landlord_id, t.interested_user_id]).filter(Boolean))];
     const listingIds = [...new Set(threads.map((t) => t.listing_id).filter(Boolean))];
 
-    const [users, listings, messages, events] = await Promise.all([
+    const [users, listings, messages, events, alertRoutes] = await Promise.all([
       fetchAll(supabase.from("users").select("id, name, email, roles!role_id(name)").in("id", userIds)),
       fetchAll(supabase.from("listings").select("id, title, address").in("id", listingIds)),
       fetchAll(
@@ -87,6 +92,9 @@ export async function GET(req) {
           .select("thread_id, action, message_id, reviewed_at")
           .in("thread_id", threadIds)
       ),
+      kind === "direct"
+        ? alertEmailsFor(supabase, threads.filter((t) => t.landlord_id).map((t) => ({ threadId: t.id, userId: t.landlord_id })))
+        : new Map(),
     ]);
 
     const userById = new Map(users.map((u) => [u.id, { id: u.id, name: u.name, email: u.email, role: u.roles?.name ?? null }]));
@@ -119,7 +127,9 @@ export async function GET(req) {
       updatedAt: t.updated_at,
       deletedAt: t.deleted_at,
       listing: listingById.get(t.listing_id) ?? null,
-      landlord: userById.get(t.landlord_id) ?? null,
+      landlord: userById.has(t.landlord_id)
+        ? { ...userById.get(t.landlord_id), alertEmail: alertRoutes.get(t.id) ?? null }
+        : null,
       student: userById.get(t.interested_user_id) ?? null,
       // A signed-out visitor talking with Proxy: their cookie id and, once
       // confirmed, the email Proxy writes to.

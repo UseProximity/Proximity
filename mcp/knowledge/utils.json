@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-15T20:51:58.657Z",
-  "count": 360,
+  "_generated": "2026-11-17T04:36:35.557Z",
+  "count": 361,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -662,6 +662,10 @@
     {
       "file": "src/lib/chat/accessToken.js",
       "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
+    },
+    {
+      "file": "src/lib/chat/alertRoutes.js",
+      "description": "Where a thread's chat alert emails go for one participant, for admin views."
     },
     {
       "file": "src/lib/chat/attachments.js",
