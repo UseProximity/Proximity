@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-16T23:20:50.342Z",
-  "count": 362,
+  "_generated": "2026-11-17T04:58:28.197Z",
+  "count": 363,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
