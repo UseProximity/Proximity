@@ -80,8 +80,12 @@ export const NAV = [
     items: [{ path: "billing", label: "Billing", superOnly: true }],
   },
   {
-    label: "Marketing",
-    items: [{ path: "marketing/links", label: "Campaign links", pinned: true }],
+    // Analytics replaced the standalone /analytics page (marketing attribution, PRD 7.6).
+    label: "Analytics",
+    items: [
+      { path: "analytics", label: "Analytics", pinned: true },
+      { path: "marketing/links", label: "Campaign links", pinned: true },
+    ],
   },
   {
     label: "Agents and sync",

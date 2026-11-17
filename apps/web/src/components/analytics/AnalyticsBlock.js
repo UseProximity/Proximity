@@ -1,12 +1,14 @@
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/Card";
 import TrendChart from "@/components/analytics/TrendChart";
 import DistributionChart from "@/components/analytics/DistributionChart";
+import Link from "next/link";
+import PivotTable from "@/components/analytics/PivotTable";
 import { formatValue, formatChange, weekLabel } from "@/components/analytics/format";
 
 /*
  * Renders one block from a tab loader (shape documented in lib/analytics/blocks.js): headline
  * tiles, weekly trends (chart plus weekly numbers), breakdowns (bars plus counts and shares),
- * then tables and notes.
+ * then tables, expandable pivot tables and notes.
  */
 
 function Tile({ tile }) {
@@ -83,7 +85,7 @@ function Trend({ trend, weekKeys }) {
 
 function BreakdownTable({ table }) {
   return (
-    <Card>
+    <Card className={table.wide ? "lg:col-span-2" : undefined}>
       <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-2">
         <CardTitle className="text-base">{table.title}</CardTitle>
         <Source>{table.source}</Source>
@@ -107,9 +109,14 @@ function BreakdownTable({ table }) {
                     {row.map((cell, i) => {
                       const value = cell?.value !== undefined ? cell.value : cell;
                       const format = cell?.format ?? table.columns[i]?.format;
+                      const shown = i ? formatValue(value, format) : value;
                       return (
                         <td key={i} className={`py-1 pr-4 ${i ? "text-right tabular-nums" : ""}`}>
-                          {i ? formatValue(value, format) : value}
+                          {cell?.href ? (
+                            <Link href={cell.href} className="font-medium text-red-700 hover:underline">{shown}</Link>
+                          ) : (
+                            shown
+                          )}
                         </td>
                       );
                     })}
@@ -169,7 +176,8 @@ function Distribution({ dist }) {
 }
 
 export default function AnalyticsBlock({ block, weekKeys }) {
-  const cards = block.trends.length + block.distributions.length + block.tables.length;
+  const pivots = block.pivots ?? [];
+  const cards = block.trends.length + block.distributions.length + block.tables.length + pivots.length;
   return (
     <section className="space-y-4">
       <div>
@@ -199,6 +207,9 @@ export default function AnalyticsBlock({ block, weekKeys }) {
               ))}
               {block.tables.map((t) => (
                 <BreakdownTable key={t.title} table={t} />
+              ))}
+              {pivots.map((p) => (
+                <PivotTable key={p.title} pivot={p} />
               ))}
             </div>
           )}

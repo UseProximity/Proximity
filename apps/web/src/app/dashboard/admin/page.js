@@ -30,6 +30,7 @@ import ListingRecord from "@/components/admin/records/ListingRecord";
 import HomeView from "@/components/admin/HomeView";
 import ReferralsView from "@/components/admin/ReferralsView";
 import CampaignLinksView from "@/components/admin/marketing/CampaignLinksView";
+import AnalyticsView from "@/components/admin/analytics/AnalyticsView";
 import { ListTabs } from "@/components/admin/lists/ListPage";
 
 export default function AdminDashboard() {
@@ -436,6 +437,8 @@ export default function AdminDashboard() {
               <BillingView key={`${dbTarget}-${navCount}`} search={search} dbTarget={dbTarget} />
             ) : path === "marketing/links" ? (
               <CampaignLinksView key={navCount} search={search} />
+            ) : path === "analytics" ? (
+              <AnalyticsView key={navCount} />
             ) : path === "agents" ? (
               <AgentsView key={navCount} search={search} />
             ) : path === "system/errors" ? (

@@ -1,10 +1,11 @@
 "use client";
 
 /*
- * Marketing > Campaign links (PRD 7.9). Admins create trackable links and QR
+ * Analytics > Campaign links (PRD 7.9). Admins create trackable links and QR
  * codes here, with the naming convention enforced by the form, and see each
  * link's headline numbers for the period (sessions, accounts, inquiries,
- * applications started; admin and super traffic left out).
+ * applications started; admin and super traffic left out). Each number opens
+ * the Marketing tab of the Analytics page limited to that link.
  *
  * Unregistered src tags seen on visits are listed with a Register shortcut:
  * registering a link with that slug gives new visits the link's labels. The
@@ -18,6 +19,24 @@ import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { normalizeTag } from "@/lib/marketing/tags";
 import CampaignLinkDetail from "./CampaignLinkDetail";
 import CampaignLinkForm from "./CampaignLinkForm";
+
+// The Marketing tab works in weeks (4, 12, 26, 52): the nearest period that covers this one.
+const WEEKS_FOR_DAYS = { 7: 4, 30: 4, 90: 12 };
+
+/** A link's headline number, opening the Marketing tab limited to that link. */
+function StatLink({ link, days, value }) {
+  const weeks = WEEKS_FOR_DAYS[days] ?? 12;
+  return (
+    <a
+      href={`/dashboard/admin/analytics?tab=marketing&weeks=${weeks}&link=${link.id}`}
+      onClick={(e) => e.stopPropagation()}
+      title={`Open ${link.slug} in the Marketing tab (last ${weeks} weeks)`}
+      className="text-gray-900 underline decoration-gray-300 underline-offset-2 hover:text-red-700 hover:decoration-red-700"
+    >
+      {value}
+    </a>
+  );
+}
 
 const PERIODS = [7, 30, 90];
 const SELECT = "rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm";
@@ -176,10 +195,10 @@ export default function CampaignLinksView({ search = "" }) {
                   <td className="px-3 py-2 text-gray-700">{l.campaign}</td>
                   <td className="max-w-[12rem] truncate px-3 py-2 font-mono text-xs text-gray-500" title={l.destination_path}>{l.destination_path}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">{fmtDate(l.created_at)}{l.creator?.name ? ` by ${l.creator.name}` : ""}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{l.stats.sessions}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{l.stats.accounts}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{l.stats.inquiries}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{l.stats.applications}</td>
+                  <td className="px-3 py-2 text-right tabular-nums"><StatLink link={l} days={days} value={l.stats.sessions} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums"><StatLink link={l} days={days} value={l.stats.accounts} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums"><StatLink link={l} days={days} value={l.stats.inquiries} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums"><StatLink link={l} days={days} value={l.stats.applications} /></td>
                 </tr>
               ))}
             </tbody>
