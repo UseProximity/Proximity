@@ -1,4 +1,4 @@
-import { canonStreet, metersBetween } from "@/lib/reviews/listingMatch";
+import { canonStreet, effectiveKey, metersBetween } from "@/lib/reviews/listingMatch";
 
 /*
  * Review stubs that may be a building already listed under another address.
@@ -53,6 +53,12 @@ export async function findReviewDuplicateSuspects(supabase, placeholderId) {
     const realOwner = (l.listing_landlords ?? []).some((o) => o.user_id !== placeholderId);
     if (hasUnits) listed.push(l);
     else if (reviews.length && !realOwner) stubs.push({ ...l, reviews });
+  }
+  // A stub keyed from a place name is compared by its street's key (effectiveKey).
+  for (const stub of stubs) {
+    const { key, error } = await effectiveKey(stub, supabase);
+    if (error) throw new Error(error);
+    stub.property_key = key;
   }
 
   const suspects = [];

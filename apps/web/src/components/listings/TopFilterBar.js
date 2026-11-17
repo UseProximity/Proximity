@@ -87,9 +87,12 @@ export default function TopFilterBar({
   const [showFilters, setShowFilters] = useState(false);
   // Rents for the Price card's histogram: the listings that fit the filters.
   const priceOpen = showFilters === "price";
+  // The price range does not change it (as in FiltersPanel), so a drag of the
+  // price slider does not work it out again.
+  const histogramKey = priceOpen ? JSON.stringify({ ...filters, minRent: "", maxRent: "" }) : null;
   const rents = useMemo(
-    () => (priceOpen ? rentsFor(filters) : []),
-    [priceOpen, rentsFor, filters]
+    () => (histogramKey ? rentsFor(JSON.parse(histogramKey)) : []),
+    [rentsFor, histogramKey]
   );
   // For the document listeners below, which are set up once.
   const showFiltersRef = useRef(showFilters);
@@ -225,6 +228,12 @@ export default function TopFilterBar({
       setLiveFilters(next);
       commitFilters(next);
     });
+  };
+  // Clear All: what was picked before it is not saved when the control closes.
+  // (An empty set is never saved: the filter-summary route skips it.)
+  const reset = () => {
+    unsaved.current = null;
+    onReset();
   };
   useEffect(() => {
     if (showFilters || !unsaved.current) return;
@@ -391,7 +400,7 @@ export default function TopFilterBar({
 
         {/* Clear All */}
         <button
-          onClick={onReset}
+          onClick={reset}
           className={`flex items-center gap-1 px-3 py-2 text-[13px] font-medium transition-colors rounded-full whitespace-nowrap ${
             hasActiveFilters
               ? "text-red-600 hover:bg-red-50 border border-red-200"
@@ -460,7 +469,7 @@ export default function TopFilterBar({
           rentsFor={rentsFor}
           filters={filters}
           onChange={applyLive}
-          onReset={onReset}
+          onReset={reset}
         />
       </CardDropdown>
     </>

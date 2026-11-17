@@ -370,7 +370,7 @@ export async function POST(req) {
     }
 
     /*
-     * ── Validate the address and find its listing ───────────────────────────
+     * ── Validate the address ────────────────────────────────────────────────
      * Done before the reviewer is resolved: a signed-out reviewer's account is
      * created below, and a refusal after that point answers without the setup
      * token, so a simple retry would lose the inline profile setup.
@@ -390,16 +390,6 @@ export async function POST(req) {
     }
     const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
 
-    const matched = await findListingForReviewAddress({
-      address: addressText,
-      lat: latitude,
-      lng: longitude,
-    });
-    if (matched.error) {
-      // Not "no match": that would make a second property beside the real one.
-      console.error("[reviewReferral] address match failed:", matched.error);
-      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
-    }
 
     /*
      * ── Resolve the reviewer ────────────────────────────────────────────────
@@ -518,10 +508,36 @@ export async function POST(req) {
         );
       }
 
+      reviewerEmail = email;
+    } else {
+      return NextResponse.json(
+        { error: "Add your name and school email, or sign in, to leave a review." },
+        { status: 401 }
+      );
+    }
+
+    /*
+     * ── Find the address's listing ──────────────────────────────────────────
+     * After the cheap checks above (and the signed-out rate limit), so a request
+     * that is refused never reaches the property-key lookup. Before the account
+     * is created, for the setup-token reason given at the address check.
+     */
+    const matched = await findListingForReviewAddress({
+      address: addressText,
+      lat: latitude,
+      lng: longitude,
+    });
+    if (matched.error) {
+      // Not "no match": that would make a second property beside the real one.
+      console.error("[reviewReferral] address match failed:", matched.error);
+      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
+    }
+
+    if (signedOutReviewer) {
       const account = await ensureReviewerAccount({
         firstName: signedOutReviewer.firstName,
         lastName: signedOutReviewer.lastName,
-        email,
+        email: reviewerEmail,
         classYear: signedOutReviewer.classYear,
         source: normalizeReviewSource(source),
         /*
@@ -539,16 +555,10 @@ export async function POST(req) {
         return NextResponse.json({ error: account.error }, { status: 400 });
       }
       reviewerUserId = account.userId;
-      reviewerEmail = email;
       reviewerDisplayName = account.displayName;
       setupToken = account.setupToken;
       existingAccount = !!account.existingAccount;
       setupByEmail = !!account.setupByEmail;
-    } else {
-      return NextResponse.json(
-        { error: "Add your name and school email, or sign in, to leave a review." },
-        { status: 401 }
-      );
     }
 
     // Record the reviewer's school on their account. This is the only place the school is
