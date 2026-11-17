@@ -369,6 +369,15 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     if (tourRef.current?.status === "confirmed") setTourMenuOpen(true);
     else setPickerOpen(true);
   }, [tourIntentSignal, signedIn]);
+  // The picker opened before the tour had loaded, and it turned out to be
+  // confirmed: swap to the Tour menu, since new times can't be sent for it
+  // (PR 447 review).
+  useEffect(() => {
+    if (pickerOpen && tour?.status === "confirmed") {
+      setPickerOpen(false);
+      setTourMenuOpen(true);
+    }
+  }, [pickerOpen, tour?.status]);
 
   // The chat to its newest message, and whatever scrolls around it (the
   // listing modal, or the page) all the way to the bottom.
