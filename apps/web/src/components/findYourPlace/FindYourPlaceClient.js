@@ -13,6 +13,8 @@ import {
   NO_PREFERENCE,
   QUESTION_COUNT,
   LEASE_OPTIONS,
+  GROUP_OPTIONS,
+  BIG_GROUP_MIN,
   answeredCount,
   sanitizeAnswers,
   standingChips,
@@ -151,6 +153,8 @@ export default function FindYourPlaceClient() {
   // Bumped by Start over so page 1 remounts with its "Other" fields closed.
   const [round, setRound] = useState(0);
   const mainRef = useRef(null);
+  // Arrived with the group already picked in the homepage popup.
+  const fromPopupRef = useRef(false);
 
   // Where the page starts under the site header (and any environment banner),
   // so the panel can be sized to exactly the rest of the screen. The measured
@@ -188,6 +192,20 @@ export default function FindYourPlaceClient() {
       // Back to matches already found: leaving now is not dropping out.
       if (saved) shownRef.current = true;
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
+    }
+    // A group size picked in the homepage popup (?group=2): that answer goes
+    // in, on page 1, and anything else saved on this browser stays.
+    const params = new URLSearchParams(window.location.search);
+    // "5+" is the same as tapping 5+ on page 1: 5, with the exact number open.
+    const picked = params.get("group");
+    const group = picked === "5+" ? String(BIG_GROUP_MIN) : picked;
+    if (GROUP_OPTIONS.includes(picked)) {
+      fromPopupRef.current = true;
+      setAnswers((current) => ({ ...current, group }));
+      setStep(1);
+      params.delete("group");
+      const qs = params.toString();
+      window.history.replaceState(null, "", `/find-your-place${qs ? `?${qs}` : ""}`);
     }
     setReady(true);
     trackEvent("Find Your Place Opened", { resumed: !!stored, from: getPreviousPath("/find-your-place") });
@@ -299,14 +317,18 @@ export default function FindYourPlaceClient() {
   useEffect(() => {
     if (!ready || !settled || askClaim || !signedIn || prefilled) return;
     setPrefilled(true);
-    if (answeredCount(answers) > 0 || results) return;
+    // The popup's group answer alone still counts as an untouched form; the
+    // profile fills the rest and never replaces that answer.
+    const own = fromPopupRef.current ? 1 : 0;
+    if (answeredCount(answers) > own || results) return;
     fetch("/api/account/lease-preferences")
       .then((res) => (res.ok ? res.json() : null))
       .then((saved) => {
         if (!saved) return;
         const fromProfile = answersFromProfile(saved);
+        if (fromPopupRef.current) delete fromProfile.group;
         if (Object.keys(fromProfile).length) {
-          setAnswers((current) => (answeredCount(current) > 0 ? current : { ...current, ...fromProfile }));
+          setAnswers((current) => (answeredCount(current) > own ? current : { ...current, ...fromProfile }));
         }
       })
       .catch(() => {});
