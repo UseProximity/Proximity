@@ -86,9 +86,10 @@ export default function TourDialog({ listing, session, tour, onSubmit, onClose, 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
     window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    // A class, not a style (Tailwind only). Left on if the page had it already.
+    const had = document.body.classList.contains("overflow-hidden");
+    document.body.classList.add("overflow-hidden");
+    return () => { window.removeEventListener("keydown", onKey); if (!had) document.body.classList.remove("overflow-hidden"); };
   }, [onClose]);
 
   const submit = async () => {
