@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T05:10:28.244Z",
-  "count": 334,
+  "_generated": "2026-11-17T05:15:46.398Z",
+  "count": 340,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -257,7 +257,7 @@
     },
     {
       "file": "src/lib/analytics/tabs/matchmaking.js",
-      "description": "Matchmaking (the Proxy chat). Shared with partners on the sandbox, so everything here is a"
+      "description": "Find Your Place: the three-page flow (basics, then anything else in their own"
     },
     {
       "file": "src/lib/analytics/tabs/overview.js",
@@ -734,6 +734,26 @@
     {
       "file": "src/lib/escapeHtml.js",
       "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
+    },
+    {
+      "file": "src/lib/findYourPlace/browseHandoff.js",
+      "description": "\"Browse All N Matches\": the browse page opened with the student's answers"
+    },
+    {
+      "file": "src/lib/findYourPlace/commute.js",
+      "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
+    },
+    {
+      "file": "src/lib/findYourPlace/match.js",
+      "description": "Find Your Place: answers in, top four places out."
+    },
+    {
+      "file": "src/lib/findYourPlace/options.js",
+      "description": "Find Your Place: the questions, answer options and prompt chips, shared by"
+    },
+    {
+      "file": "src/lib/findYourPlace/parsePreferences.js",
+      "description": "Find Your Place, page 2: turn whatever the student wrote into preferences"
     },
     {
       "file": "src/lib/firecrawl.js",
@@ -1282,6 +1302,10 @@
     {
       "file": "src/utils/availability.js",
       "description": "How an offering's start date reads to a person."
+    },
+    {
+      "file": "src/utils/bikeTimes.js",
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/calendarDate.js",

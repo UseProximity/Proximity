@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
 import {
   DEFAULT_FILTERS,
@@ -25,6 +25,7 @@ import {
   filtersActive,
   fittingRents,
 } from "@/lib/listings/filterListings";
+import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
 export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
@@ -39,6 +40,22 @@ export default function BrowseContent({ session, initialListings = null }) {
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  /*
+   * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
+   * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
+   * The answers browse has a filter for are pre-set in the filter bar, where
+   * they can be changed or cleared like any other.
+   */
+  const fromFindYourPlace = searchParams.get("fyp");
+  useEffect(() => {
+    if (!fromFindYourPlace) return;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
+      if (raw?.filters && typeof raw.filters === "object") setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
+    } catch {
+      // No readable hand-off: plain browse.
+    }
+  }, [fromFindYourPlace]);
   // Desktop only: hide the map and show the listings as a wider grid.
   const [mapHidden, setMapHidden] = useState(false);
   // Compare Listings (desktop): null when closed, else the [left, right] listings
@@ -172,20 +189,9 @@ export default function BrowseContent({ session, initialListings = null }) {
     handleClearSearch();
   };
 
-  /*
-   * Minimum walk time to campus — the same place set the /washu pages use
-   * (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES). Injected into
-   * the filter module so it stays free of WashU-specific geography.
-   */
-  const campusMinutes = (listing) => {
-    const pwm = listing.placeWalkMinutes;
-    const mins = WASHU_PLACES.filter(
-      (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-    )
-      .map((p) => pwm?.[p.name])
-      .filter((m) => m != null);
-    return mins.length ? Math.min(...mins) : null;
-  };
+  // Minimum walk time to campus (utils/washuPlaces), injected into the filter
+  // module so it stays free of WashU-specific geography.
+  const campusMinutes = campusWalkMinutes;
 
   const filteredListings = useMemo(
     () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
