@@ -346,10 +346,10 @@ export default function Page() {
                   recommendations built around your preferences. Get your free
                   match at{" "}
                   <Link
-                    href="/matchmaking"
+                    href="/find-your-place"
                     className="font-medium text-rose-600 hover:underline"
                   >
-                    useproximity.org/matchmaking
+                    useproximity.org/find-your-place
                   </Link>
                   .
                 </p>

@@ -423,7 +423,7 @@ export default function FiltersPanel({
         <p>{"Tell us about what you're looking for, and we'll find it for you!"}</p>
       </div>
       <Link
-        href="/matchmaking"
+        href="/find-your-place"
         className="ml-5 mt-2.5 flex h-5 w-[100px] items-center justify-center rounded-full border border-[#F71C1E] bg-[#fff5f5] text-[10px] font-bold text-[#F71C1E]"
       >
         Find Your Place
