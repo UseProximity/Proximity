@@ -329,7 +329,7 @@
           "created_at:timestamptz",
           "updated_at:timestamptz"
         ],
-        "notes": "status=active; pk id; fk listing_id->listings.id (cascade), student_id->users.id (cascade), landlord_id->users.id (set null), lease_id->unit_leases.id (set null); unique index listing_applications_per_landlord (listing_id, student_id, coalesce(landlord_id::text, application_url)) (202611160001); check status in (started,applied,not_applying); rls: service role only, anon/authenticated revoked (202611150001)"
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade), student_id->users.id (cascade), landlord_id->users.id (cascade, 202611170001), lease_id->unit_leases.id (set null); unique index listing_applications_per_landlord (listing_id, student_id, coalesce(landlord_id::text, application_url)) (202611160001); check status in (started,applied,not_applying); rls: service role only, anon/authenticated revoked (202611150001)"
       },
       {
         "table": "sent_emails",
