@@ -26,6 +26,9 @@
  *                    the retention stage below, not here. (Signed-out chats that
  *                    no account claimed within 30 days are a separate, final
  *                    step of this run: they belong to no one, so their contents are blanked.)
+ *   - events         site events (Find Your Place's page and popup tracking,
+ *                    the old page-view log): KEPT for the totals but unlinked,
+ *                    the account and the device cookie cleared (Wyatt, 2026-11-17).
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
@@ -261,6 +264,10 @@ async function purgeUser(user) {
   await must(
     "waitlist_clicks",
     supabase.from("waitlist_clicks").delete().eq("user_id", userId)
+  );
+  await must(
+    "events unlinked",
+    supabase.from("events").update({ user_id: null, session_id: null }).eq("user_id", userId)
   );
   await must(
     "listing_applications",

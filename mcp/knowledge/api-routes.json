@@ -2169,6 +2169,7 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "events",
         "listing_applications",
         "device_push_tokens",
         "user_blocks",
@@ -2491,6 +2492,18 @@
         "users"
       ],
       "file": "src/app/api/find-your-place/route.js"
+    },
+    {
+      "path": "/api/find-your-place/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/find-your-place/events/route.js"
     },
     {
       "path": "/api/getUser",
