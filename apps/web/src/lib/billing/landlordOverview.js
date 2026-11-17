@@ -20,7 +20,7 @@ import { BillingError } from "./errors.js";
 import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
 import { getLiveVersion, liveLandlordVersions, resignCutoff } from "./agreementVersions.js";
-import { summarizeAgreementRows } from "./agreements.js";
+import { isPaperOut, summarizeAgreementRows } from "./agreements.js";
 import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
 import { gateDecision, getGateSettings } from "./listingGate.js";
@@ -240,9 +240,12 @@ export function invoiceSummary(invoices) {
 
 export function agreementSummary(state) {
   const { signed, pending, lastEnded, valid, needsResign, expired } = state;
-  const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
+  const paperOut = isPaperOut(state);
+  const status = valid ? "signed" : paperOut ? "on_paper" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
   return {
     status,
+    // A copy printed for paper signing, still out: its id and when it was printed.
+    paper: paperOut ? { id: pending.id, sentAt: pending.created_at } : null,
     negotiated: !!signed?.agreement_version?.landlord_id,
     // Signed, and a version made for them alone has gone live since: they are asked to sign it.
     newVersionReady: !!state.negotiatedOffer,
@@ -267,7 +270,7 @@ export function matchesFilter(row, filter) {
     case "needs_resign":
       return row.agreement.status === "needs_resign" || !!row.agreement.newVersionReady;
     case "in_progress":
-      return row.agreement.status === "in_progress";
+      return row.agreement.status === "in_progress" || row.agreement.status === "on_paper";
     case "no_method":
       return row.payment.state !== "active";
     case "blocked":

@@ -92,8 +92,8 @@ function ManualRecord({ busy, run }) {
               </label>
             </div>
             <label className="block text-sm font-medium text-gray-700">
-              Signed PDF (optional, up to 4 MB)
-              <input className="mt-1 block w-full text-sm" type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              Signed PDF (up to 4 MB)
+              <input className="mt-1 block w-full text-sm" type="file" accept="application/pdf" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </label>
           </div>
         )}

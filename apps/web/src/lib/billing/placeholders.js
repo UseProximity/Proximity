@@ -23,7 +23,8 @@ const PLACEHOLDER = /\[([A-Za-z][A-Za-z0-9 ._'/-]{0,39})\]/g;
 
 /*
  * Every placeholder in the PDF: [{ label, page (1-based), x, y (baseline), width,
- * size (font size), pageWidth, pageHeight }], in PDF points from the bottom left.
+ * size (font size), pageWidth, pageHeight, roomRight (free space to its right on
+ * the line, from its left edge) }], in PDF points from the bottom left.
  * Text on one line is joined first, so a placeholder split into pieces by the
  * export ("[Owner" + " Name]") is still found.
  */
@@ -67,7 +68,10 @@ export async function findPlaceholders(bytes) {
           // The nearest text below this line (another placeholder, a paragraph, the page number).
           const below = lineTops.filter((l) => l.y < y - 1).map((l) => l.top);
           const textBelowTop = below.length ? Math.max(...below) : null;
-          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight, textBelowTop });
+          // How far right the line is free: to the next text on it, or the page's right margin.
+          const next = chars.slice(m.index + m[0].length).find((c) => c.ch.trim());
+          const roomRight = (next ? next.x0 - 3 : pageWidth - 54) - first.x0;
+          out.push({ label: m[1].trim(), page: p, x: first.x0, y, width: last.x1 - first.x0, size, pageWidth, pageHeight, textBelowTop, roomRight });
         }
       }
     }
