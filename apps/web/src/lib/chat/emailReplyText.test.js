@@ -69,3 +69,49 @@ test("a name line over a removed signature goes even when no name matches", () =
 test("a short last line that is the message itself stays", () => {
   assert.equal(extractReplyText({ text: `Sounds good.\n\nSee You Then\n${QUOTE}`, senderName: "Jessica Nelson" }), "Sounds good.\n\nSee You Then");
 });
+
+// An EliseAI reply as it arrived on 2026-11-17 (CRLF line ends, a zero-width
+// no-break space after the name), with the unsubscribe token replaced.
+const ELISE_BODY = [
+  "Hi Wyatt,",
+  "",
+  "Thanks for your interest in our homes at Kingsbury. We are offering in-person agent-led tours of our community.",
+  "",
+  "Which layout and budget are you considering?",
+  "",
+  "",
+  "Riley﻿",
+  "",
+  "Virtual Leasing Assistant",
+  "",
+  "Mac Properties",
+  "",
+  "",
+  "",
+  "",
+  'To opt-out of emails reply "Unsubscribe" or use this link UNSUBSCRIBE<https://app.meetelise.com/unsubscribe?stateId=TOKEN>.',
+  "",
+  "By replying you consent to this Privacy Policy<https://www.eliseai.com/policy>. Replies may be human and/or AI generated. Emails are collected and recorded by a third party. Mac 501 and 525 Clara Avenue St. Louis, MO 63112",
+  "",
+].join("\r\n");
+const ELISE_MESSAGE = [
+  "Hi Wyatt,",
+  "",
+  "Thanks for your interest in our homes at Kingsbury. We are offering in-person agent-led tours of our community.",
+  "",
+  "Which layout and budget are you considering?",
+].join("\n");
+
+test("a leasing assistant's legal footer and signature go", () => {
+  assert.equal(extractReplyText({ text: ELISE_BODY, senderName: "Yuki Wang", fromName: "Riley" }), ELISE_MESSAGE);
+});
+
+test("a reply that is only an opt-out sentence is kept", () => {
+  const text = 'To opt-out of emails reply "Unsubscribe".';
+  assert.equal(extractReplyText({ text, senderName: "Yuki Wang" }), text);
+});
+
+test("a sentence that mentions a company is not taken for a company line", () => {
+  const text = "Yes, that unit is still open.\n\nWe are managed by Mac Properties";
+  assert.equal(extractReplyText({ text, senderName: "Yuki Wang" }), text);
+});

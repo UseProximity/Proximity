@@ -16,6 +16,13 @@
  *   3. A dangling sign-off left at the end ("Best,", "Regards,"). A sign-off that
  *      is a sentence ("Thanks!") stays, because it is part of the message.
  *
+ * Leasing assistants such as EliseAI end every reply with a legal footer ("To
+ * opt-out of emails reply Unsubscribe", "By replying you consent to this
+ * Privacy Policy") under a signature like "Riley / Virtual Leasing Assistant /
+ * Mac Properties". The footer is cut like a quoted original, and the assistant's
+ * title and company line count as signature lines (Wyatt, 2026-11-17). A student
+ * never sees the footer, so a chat reply can't unsubscribe them by accident.
+ *
  * Contact details anywhere else in the text are left for moderation to redact.
  * Pure string work with no imports, so it can be exercised directly.
  */
@@ -26,6 +33,14 @@ const QUOTE_MARKERS = [
   /^\s*-{2,}\s*Forwarded message\s*-{2,}/i,
   /^\s*Begin forwarded message:/i,
   /^\s*_{10,}\s*$/,
+];
+
+// A leasing assistant's legal footer. Only cut below the first line, so a reply
+// that is nothing but one of these sentences is never emptied.
+const LEGAL_FOOTER_MARKERS = [
+  /^\s*To opt[ -]?out of (these |our |future )?(emails|messages)\b/i,
+  /^\s*By replying,? you (consent|agree) to\b/i,
+  /^\s*Replies may be human and\/or AI generated\b/i,
 ];
 
 // "On Tue, Oct 9, 2026 at 4:12 PM Angela Clayton <...> wrote:", which Gmail and
@@ -59,6 +74,11 @@ const URL_LINE = /^\s*(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?\s*
 const ADDRESS_LINE = /^\s*\d+\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way|pkwy|parkway)\b\.?(,.*)?\s*$/i;
 const CITY_STATE_ZIP = /^\s*[a-z .'-]+,\s*[a-z]{2}\s+\d{5}(-\d{4})?\s*$/i;
 const TITLE_LINE = /^\s*(leasing|property|community|assistant|regional|general)?\s*(manager|agent|consultant|coordinator|director|owner|landlord|office|specialist|associate|team)\b[\w ,&|-]*$/i;
+// "Virtual Leasing Assistant", "AI Leasing Agent"
+const ASSISTANT_TITLE_LINE = /^\s*(virtual|ai|digital|automated)\s+(leasing|property|community|resident)?\s*(assistant|agent|concierge|representative)\s*$/i;
+// "Mac Properties", "Revival Property Management": capitalised words ending in a
+// business word, with nothing else, so a sentence never matches.
+const COMPANY_LINE = /^\s*[A-Z][\w&'.-]*(?: [A-Z&][\w&'.-]*){0,4} (Properties|Property Management|Management|Apartments|Realty|Leasing|Living|Residential|Homes|Group|Communities|LLC|Inc\.?)\s*$/;
 const SEPARATOR_LINE = /^\s*[|_\-=*~]{2,}\s*$/;
 const SOCIAL_LINK = /^\s*(linkedin|twitter|x|instagram|facebook|website|web|site|portfolio|github|blog|calendly|book a (tour|time|call))\b/i;
 // Any short label Outlook wrote as a link, "Portfolio<https://...>".
@@ -93,6 +113,8 @@ function isContactPiece(piece) {
 function normalize(value) {
   return String(value ?? "")
     .replace(/\r\n?/g, "\n")
+    // Zero-width characters ("Riley﻿") would keep a name line from matching.
+    .replace(/[​-‍﻿]/g, "")
     .replace(/ /g, " ")
     .replace(/[ \t]+$/gm, "");
 }
@@ -112,6 +134,8 @@ function isSignatureLine(line, names) {
   }
   return (
     isContactPiece(t) ||
+    ASSISTANT_TITLE_LINE.test(t) ||
+    COMPANY_LINE.test(t) ||
     ADDRESS_LINE.test(t) ||
     CITY_STATE_ZIP.test(t) ||
     SEPARATOR_LINE.test(t)
@@ -189,6 +213,8 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
   const outlook = outlookHeaderIndex(lines);
   if (outlook !== -1 && (cut === -1 || outlook < cut)) cut = outlook;
   if (cut !== -1) lines = lines.slice(0, cut);
+  const footer = lines.findIndex((l, i) => i > 0 && LEGAL_FOOTER_MARKERS.some((re) => re.test(l)));
+  if (footer !== -1) lines = lines.slice(0, footer);
   lines = lines.filter((l) => !/^\s*>/.test(l));
 
   // 2. signature
