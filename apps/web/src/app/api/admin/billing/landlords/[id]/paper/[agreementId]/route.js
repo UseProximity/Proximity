@@ -6,6 +6,7 @@ import { requireDbRole } from "@/lib/userRole";
 import { publishCovered, recordPaperAgreement, recordPreview } from "@/lib/billing/paperAgreements";
 import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
 import { publishProperty } from "@/lib/listings/publish";
+import { afterPayerSigned } from "@/lib/billing/payerServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -84,6 +85,13 @@ export async function POST(req, { params }) {
       signedAt,
       signedFileKey,
     });
+    // Signed by the account's authorized signer: settle what the landlord sent them
+    // and tell the landlord, as when the signer signs in the app.
+    if (result.holderId !== landlordId) {
+      await afterPayerSigned({ signerId: result.holderId, kind: "master", documentId: agreementId, accounts: { [landlordId]: result.covered }, withdrawn: result.withdrawn }).catch((err) =>
+        console.error("billing: after a signer's paper agreement failed", err?.message)
+      );
+    }
     const published = await publishCovered(billingDb.db, {
       landlordId,
       agreementId,

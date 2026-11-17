@@ -21,7 +21,12 @@
  *
  * Voiding uses voidDocument (agreements.js), which releases the hold.
  * Only a main agreement: a landlord who already signed adds properties with the
- * in-app addendum. A landlord with an authorized signer signs in the app.
+ * in-app addendum.
+ *
+ * A landlord account with an authorized signer (billing_payers): the paper
+ * agreement is the SIGNER's, covering this account's properties, exactly as when
+ * the signer signs in the app (Wyatt, 2026-11-17). The record belongs to the
+ * signer (`holderId`); the coverage rows to the landlord account.
  *
  * `db` is a service-role Supabase client.
  */
@@ -43,18 +48,26 @@ const SIGNER_MAX = 100;
 
 const cleanCompany = (c) => String(c ?? "").trim().replace(/\s+/g, " ").slice(0, COMPANY_MAX);
 
-// Why this landlord can't have a paper copy printed now, or null.
-async function cannotPrint(db, landlordId, state) {
-  if (await activePayerLink(db, landlordId)) {
-    return "This landlord has an authorized signer, who signs in the app.";
-  }
+// Why this landlord can't have a paper copy printed now, or null. `state` is the
+// holder's (agreementState): the authorized signer's when the account has one.
+function cannotPrint(state) {
+  const signer = state.payerLink?.signer_name;
   if (state.valid && !state.negotiatedOffer) {
-    return "This landlord already has a signed agreement. New properties are added with the Exhibit A addendum in the app.";
+    return signer
+      ? `${signer}'s agreement is already signed. This account's properties are added with the Exhibit A addendum in the app.`
+      : "This landlord already has a signed agreement. New properties are added with the Exhibit A addendum in the app.";
   }
+  // A signer's agreement that needs signing again may cover other accounts too:
+  // replacing it is done in the app, where every account is carried over.
+  if (state.payerLink && state.signed) return `${signer} has an agreement that needs signing again. They sign the new one in the app.`;
   if (isPaperOut(state)) {
     return `A paper copy is already out (printed ${fmtDate(state.pending.created_at)}). Void it first to print a new one.`;
   }
-  if (state.pending) return "This landlord has started signing in the app. Void that copy first to print a paper one.";
+  if (state.pending) {
+    return signer
+      ? `${signer} has started signing in the app. Void that copy first to print a paper one.`
+      : "This landlord has started signing in the app. Void that copy first to print a paper one.";
+  }
   return null;
 }
 
@@ -79,20 +92,22 @@ async function lastCompany(db, landlordId) {
 
 export async function paperPreview(db, landlordId, now = new Date()) {
   const state = await agreementState(db, landlordId, now);
-  const reason = await cannotPrint(db, landlordId, state);
+  const reason = cannotPrint(state);
   if (reason) throw new BillingError("cannot_print", reason, 409);
-  const version = await liveMasterVersion(db, landlordId);
-  const preview = await exhibitPreview(db, landlordId, { now });
+  const version = await liveMasterVersion(db, state.holderId);
+  // A signer may leave off anything of the account's not covered yet, drafts included (Project B).
+  const preview = await exhibitPreview(db, landlordId, { now, forPayee: !!state.payerLink });
   return {
     properties: preview.kind === "none" ? [] : preview.properties,
-    company: await lastCompany(db, landlordId),
+    company: (await lastCompany(db, state.holderId)) || (state.payerLink ? "" : await lastCompany(db, landlordId)),
     versionLabel: version.label,
     negotiated: !!version.landlord_id,
+    signer: state.payerLink ? { name: state.payerLink.signer_name } : null,
   };
 }
 
 // The Exhibit A plan for a main agreement with these choices.
-async function planMaster(db, landlordId, exhibit, now) {
+async function planMaster(db, landlordId, exhibit, now, { requestedExcludable = false } = {}) {
   const loaded = await coverageFor(db, landlordId, now);
   const { state } = loaded;
   const plan = planCoverage({
@@ -103,6 +118,7 @@ async function planMaster(db, landlordId, exhibit, now) {
     requestedIds: [],
     carry: [],
     selections: exhibitSelections(exhibit),
+    requestedExcludable,
   });
   if (plan.kind !== "master") throw new BillingError("cannot_print", "This landlord already has a signed agreement.", 409);
   if (!plan.entries.length) throw new BillingError("no_properties", "Choose at least one property for Exhibit A.");
@@ -126,19 +142,22 @@ const coverageRows = (landlordId, agreementId, entries, extra) =>
  * lock as signing in the app, so the landlord can't start a copy at the same moment.
  */
 export async function printPaperAgreement(db, { landlordId, exhibit, company, now = new Date() }) {
+  // The lock in-app signing takes is the signer's: the holder's.
+  const holderId = (await activePayerLink(db, landlordId))?.payer_id ?? landlordId;
   return withSettingsLock(
     db,
-    { key: `agreement_sign:${landlordId}`, staleMs: 2 * 60 * 1000, now, busyMessage: "This landlord's agreement is being prepared. Try again in a moment." },
+    { key: `agreement_sign:${holderId}`, staleMs: 2 * 60 * 1000, now, busyMessage: "This landlord's agreement is being prepared. Try again in a moment." },
     async () => {
       const state = await agreementState(db, landlordId, now);
-      const reason = await cannotPrint(db, landlordId, state);
+      const reason = cannotPrint(state);
       if (reason) throw new BillingError("cannot_print", reason, 409);
-      const version = await liveMasterVersion(db, landlordId);
-      const { plan } = await planMaster(db, landlordId, exhibit, now);
+      if (state.holderId !== holderId) throw new BillingError("status_changed", "This landlord's authorized signer just changed. Reload and try again.", 409);
+      const version = await liveMasterVersion(db, holderId);
+      const { plan } = await planMaster(db, landlordId, exhibit, now, { requestedExcludable: !!state.payerLink });
       const { data: row, error } = await db
         .from("landlord_agreements")
         .insert({
-          user_id: landlordId,
+          user_id: holderId,
           status: "sent",
           provider: PAPER,
           version: version.label,
@@ -167,15 +186,21 @@ export async function printPaperAgreement(db, { landlordId, exhibit, company, no
   );
 }
 
+// A paper agreement of this landlord account: their own, or their signer's
+// covering their properties (its coverage rows are the account's).
 async function paperRow(db, landlordId, id) {
   const { data, error } = await db
     .from("landlord_agreements")
     .select("id, user_id, status, provider, version_id, exhibit, signer_details, created_at, agreement_version:agreement_versions!version_id(id, label, file_key, provider_template_id)")
     .eq("id", id)
-    .eq("user_id", landlordId)
     .maybeSingle();
   if (error) throw error;
   if (!data || data.provider !== PAPER) throw new BillingError("not_found", "That paper agreement was not found.", 404);
+  if (data.user_id !== landlordId) {
+    const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
+    if (covError) throw covError;
+    if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
+  }
   return data;
 }
 
@@ -244,7 +269,8 @@ export async function publishable(db, landlordId, listingIds) {
 export async function recordPreview(db, landlordId, id, now = new Date()) {
   const row = await paperRow(db, landlordId, id);
   if (row.status !== "sent") throw new BillingError("not_out", "That paper agreement is no longer out.", 409);
-  const preview = await exhibitPreview(db, landlordId, { now, paper: true });
+  const forPayee = row.user_id !== landlordId;
+  const preview = await exhibitPreview(db, landlordId, { now, paper: true, forPayee });
   const printed = new Map((row.exhibit ?? []).map((e) => [e.listingId, e]));
   const properties = (preview.kind === "none" ? [] : preview.properties).map((p) => {
     const e = printed.get(p.listingId);
@@ -252,6 +278,8 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
       ...p,
       // Anything can be crossed off on paper: a live one then comes off the site.
       canExclude: true,
+      // Nothing is being published here: a draft reads as a draft.
+      locked: p.live,
       onPrinted: !!e,
       choice: e
         ? { ...p.choice, include: true, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] }
@@ -260,6 +288,7 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
   });
   const drafts = await publishable(db, landlordId, properties.map((p) => p.listingId));
   return {
+    signer: forPayee ? { name: (await agreementState(db, landlordId, now)).payerLink?.signer_name ?? null } : null,
     printedAt: row.created_at,
     versionLabel: row.agreement_version?.label ?? null,
     company: row.signer_details?.company ?? "",
@@ -281,11 +310,15 @@ export async function recordPaperAgreement(db, { landlordId, id, exhibit, signer
   const row = await paperRow(db, landlordId, id);
   if (row.status !== "sent") throw new BillingError("not_out", "That paper agreement is no longer out.", 409);
 
+  const forPayee = row.user_id !== landlordId;
   return withSettingsLock(
     db,
-    { key: `agreement_sign:${landlordId}`, staleMs: 2 * 60 * 1000, now, busyMessage: "This landlord's agreement is being updated. Try again in a moment." },
+    { key: `agreement_sign:${row.user_id}`, staleMs: 2 * 60 * 1000, now, busyMessage: "This landlord's agreement is being updated. Try again in a moment." },
     async () => {
-      const { plan, state } = await planMaster(db, landlordId, exhibit, now);
+      const { plan, state } = await planMaster(db, landlordId, exhibit, now, { requestedExcludable: forPayee });
+      if (state.holderId !== row.user_id) {
+        throw new BillingError("status_changed", "This landlord's authorized signer changed since it was printed. Void the paper copy and print a new one.", 409);
+      }
       const whenIso = when.toISOString();
       const nowIso = now.toISOString();
 
@@ -342,7 +375,7 @@ export async function recordPaperAgreement(db, { landlordId, id, exhibit, signer
           console.error("billing: withdrawing units left off a paper Exhibit A failed", err?.message);
         }
       }
-      return { id: row.id, covered: plan.entries.map((e) => e.listingId), withdrawn };
+      return { id: row.id, holderId: row.user_id, covered: plan.entries.map((e) => e.listingId), withdrawn };
     }
   );
 }

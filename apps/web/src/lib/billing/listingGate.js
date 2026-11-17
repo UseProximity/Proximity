@@ -99,7 +99,8 @@ export function draftedMessage(missing, uncovered = []) {
 // The body a route returns when the gate says no. `uncovered` lets the page open
 // the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
-  if (gate.payer) {
+  // A paper copy out (the landlord's or their signer's): no popup, no request to the signer.
+  if (gate.payer && !gate.missing.includes("paper_agreement")) {
     const waits = payerCanFix(gate.missing);
     return {
       error: waits
@@ -279,7 +280,7 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
   }
 
   const decision = gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice });
-  if (paperOut && !payerLink) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
+  if (paperOut) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
   return {
     ...decision,
     ...settings,

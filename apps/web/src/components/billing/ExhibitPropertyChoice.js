@@ -196,7 +196,7 @@ export default function PropertyChoice({ p, choice, onChange, admin = false, bad
             <p className="text-xs text-gray-500">{admin ? "They list" : "You list"} units here but do not own the building, so name the units this agreement covers.</p>
           )}
           {choice.wholeBuilding ? (
-            <p className="text-xs text-gray-500">Covers every unit in the building, including ones you add later.</p>
+            <p className="text-xs text-gray-500">Covers every unit in the building, including ones {admin ? "they add" : "you add"} later.</p>
           ) : (
             <div className="space-y-2">
               {/* Exhibit A: "Units: ..., and any unit at this address the landlord later lists through Proximity." (Wyatt, 2026-11-07) */}

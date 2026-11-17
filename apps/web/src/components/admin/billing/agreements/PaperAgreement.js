@@ -118,6 +118,12 @@ export function PrintPaperForm({ row, busy, run, onDone }) {
   return (
     <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
       <p className="font-medium text-gray-900">Print the agreement for {row.name || row.email} to sign on paper</p>
+      {data.signer && (
+        <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          {data.signer.name} is this account&apos;s authorized signer, so this is {data.signer.name}&apos;s agreement covering these properties, as when they sign
+          in the app. Invoices keep going to {data.signer.name}.
+        </p>
+      )}
       <p className="text-xs text-gray-600">
         {data.versionLabel}
         {data.negotiated ? " (their own version)" : ""}. Exhibit A and the company are filled in; everything else is left blank for them to
@@ -211,6 +217,7 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
   return (
     <form onSubmit={submit} className="space-y-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
       <p className="font-medium text-gray-900">Record the signed paper agreement for {row.name || row.email}</p>
+      {data.signer?.name && <p className="text-xs text-gray-600">Signed by the authorized signer, {data.signer.name}, for this account.</p>}
       <p className="text-xs text-gray-600">
         Printed {fmtDate(data.printedAt)}
         {data.versionLabel ? ` · ${data.versionLabel}` : ""}. Make the list match the signed copy: untick anything they crossed off, tick

@@ -133,6 +133,29 @@ describe("paper agreements", () => {
     await recordPaperAgreement(db, { landlordId: "u1", id: again.id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
     await assert.rejects(() => paperPreview(db, "u1", now), (e) => e.code === "cannot_print" && /addendum/.test(e.message));
   });
+
+  it("an account with an authorized signer: the paper agreement is the signer's, covering the account", async () => {
+    const db = world();
+    db.tables.users.push({ id: "p1", name: "Ryan Signer", email: "ryan@example.com", billing_only: true });
+    db.tables.billing_payers = [{ id: "bp1", landlord_id: "u1", payer_id: "p1", signer_name: "Ryan Signer", status: "active", listing_id: null }];
+    const preview = await paperPreview(db, "u1", now);
+    assert.equal(preview.signer.name, "Ryan Signer");
+
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    const row = db.tables.landlord_agreements.find((a) => a.id === id);
+    assert.equal(row.user_id, "p1", "the record is the signer's");
+    assert.deepEqual(db.tables.agreement_coverage.filter((c) => c.agreement_id === id).map((c) => c.user_id), ["u1", "u1"], "the coverage is the account's");
+
+    const gate = await checkListingGate(db, "u1", { listingIds: ["L2"], now });
+    assert.deepEqual(gate.missing, ["paper_agreement"]);
+    assert.match(gateResponseBody(gate).error, /sign on paper/, "not sent to the signer to approve");
+
+    const r = await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Ryan Signer", signedFileKey: "k", signedAt: now, now });
+    assert.equal(r.holderId, "p1");
+    const { covered, state } = await coverageFor(db, "u1", now);
+    assert.equal(state.holderId, "p1");
+    assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
+  });
 });
 
 // A one-page agreement with [Company], [Exhibit A] and [Signature] typed in it.

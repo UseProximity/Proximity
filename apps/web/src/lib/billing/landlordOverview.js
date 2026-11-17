@@ -245,7 +245,8 @@ export function agreementSummary(state) {
   return {
     status,
     // A copy printed for paper signing, still out: its id and when it was printed.
-    paper: paperOut ? { id: pending.id, sentAt: pending.created_at } : null,
+    // holderId: whose record it is (the authorized signer's, for an account with one).
+    paper: paperOut ? { id: pending.id, sentAt: pending.created_at, holderId: pending.user_id } : null,
     negotiated: !!signed?.agreement_version?.landlord_id,
     // Signed, and a version made for them alone has gone live since: they are asked to sign it.
     newVersionReady: !!state.negotiatedOffer,

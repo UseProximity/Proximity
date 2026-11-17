@@ -423,10 +423,11 @@ function LandlordRow({ row, busy, run, canEmail }) {
   // "print" or "record": a paper agreement form open on this row.
   const [paperForm, setPaperForm] = useState(null);
   const paper = row.agreement.paper;
-  const canPrint = !row.payer && !row.billingOnly && !paper && row.agreement.status !== "in_progress" && (row.agreement.status !== "signed" || row.agreement.newVersionReady);
+  const canPrint = !row.billingOnly && !paper && row.agreement.status !== "in_progress" && (row.agreement.status !== "signed" || row.agreement.newVersionReady);
   const voidPaper = () => {
     if (!window.confirm(`Void the paper agreement printed ${fmtDate(paper.sentAt)} for ${row.name || row.email}?\n\nThe properties on it are no longer held, and a new copy can be printed or signed in the app. Throw away the printed copy.`)) return;
-    return run(() => postJson(`/api/admin/billing/landlords/${row.id}/documents`, { action: "void", kind: "master", id: paper.id }), "Paper agreement voided.");
+    // The record is the authorized signer's when the account has one.
+    return run(() => postJson(`/api/admin/billing/landlords/${paper.holderId ?? row.id}/documents`, { action: "void", kind: "master", id: paper.id }), "Paper agreement voided.");
   };
   const [agColor, agLabel] = AGREEMENT[row.agreement.status] ?? AGREEMENT.not_signed;
   const [payColor, payLabel] = PAYMENT[row.payment.state] ?? PAYMENT.none;
