@@ -146,7 +146,7 @@ export default function FindYourPlaceScreen() {
         <ScrollView
           ref={scrollRef}
           className="flex-1"
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerClassName="p-4 pb-6"
           keyboardShouldPersistTaps="handled"
         >
           {step === 1 && (

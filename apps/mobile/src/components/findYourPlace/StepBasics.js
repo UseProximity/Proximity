@@ -78,7 +78,11 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
   const groupNum = parseInt(answers.group, 10);
   const bigGroup = Number.isFinite(groupNum) && groupNum >= BIG_GROUP_MIN;
   // The box holds the raw text while it is typed (clamping each keystroke would
-  // turn the "1" of "10" into 5); leaving it snaps the number into range.
+  // turn the "1" of "10" into 5). The answer is always the number shown, or no
+  // answer while the box holds one out of range (so Next waits); leaving the
+  // box snaps it into range. It stays open while that answer is cleared.
+  const [groupOpen, setGroupOpen] = useState(false);
+  const showGroupBox = groupOpen || bigGroup;
   const [groupDraft, setGroupDraft] = useState(bigGroup ? String(groupNum) : "");
   useEffect(() => {
     if (bigGroup) setGroupDraft((d) => (parseInt(d, 10) === groupNum ? d : String(groupNum)));
@@ -97,8 +101,8 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
   // which land after this page first draws).
   const [leaseOtherOpen, setLeaseOtherOpen] = useState(false);
   const showLeaseOther = leaseOtherOpen || leaseIsOther;
-  // Like the group box: the raw text while typing, the answer only while it is
-  // in range, and leaving the box snaps it into range.
+  // Like the group box: the raw text while typing, the answer always the number
+  // shown (or none while it is out of range), and leaving the box snaps it into range.
   const [leaseDraft, setLeaseDraft] = useState(leaseIsOther ? answers.lease : "");
   useEffect(() => {
     if (leaseIsOther) setLeaseDraft((d) => (parseInt(d, 10) === Number(answers.lease) ? d : answers.lease));
@@ -123,20 +127,38 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
       <Question title="How many people are you planning to live with, including yourself?">
         {GROUP_OPTIONS.map((g) =>
           g === "5+" ? (
-            <Chip key={g} on={bigGroup} onPress={() => set({ group: bigGroup ? null : String(BIG_GROUP_MIN) })}>
+            <Chip
+              key={g}
+              on={showGroupBox}
+              onPress={() => {
+                setGroupOpen(!showGroupBox);
+                setGroupDraft(showGroupBox ? "" : String(BIG_GROUP_MIN));
+                set({ group: showGroupBox ? null : String(BIG_GROUP_MIN) });
+              }}
+            >
               5+
             </Chip>
           ) : (
-            <Chip key={g} on={answers.group === g} onPress={() => set({ group: answers.group === g ? null : g })}>
+            <Chip
+              key={g}
+              on={answers.group === g}
+              onPress={() => {
+                setGroupOpen(false);
+                set({ group: answers.group === g ? null : g });
+              }}
+            >
               {g}
             </Chip>
           )
         )}
         <NoPreference
           selected={answers.group === NO_PREFERENCE}
-          onPress={() => set({ group: answers.group === NO_PREFERENCE ? null : NO_PREFERENCE })}
+          onPress={() => {
+            setGroupOpen(false);
+            set({ group: answers.group === NO_PREFERENCE ? null : NO_PREFERENCE });
+          }}
         />
-        {bigGroup && (
+        {showGroupBox && (
           <View className="w-full flex-row flex-wrap items-center mt-1">
             <Text className="text-sm text-gray-500 mr-2 mb-2">How many of you?</Text>
             <TextInput
@@ -144,15 +166,17 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
               accessibilityLabel="How many of you?"
               value={groupDraft}
               onChangeText={(v) => {
+                setGroupOpen(true);
                 setGroupDraft(v);
                 const n = parseInt(v, 10);
-                if (Number.isFinite(n) && n >= BIG_GROUP_MIN && n <= BIG_GROUP_MAX) set({ group: String(n) });
+                set({ group: Number.isFinite(n) && n >= BIG_GROUP_MIN && n <= BIG_GROUP_MAX ? String(n) : null });
               }}
               onBlur={() => {
                 const n = parseInt(groupDraft, 10);
-                const fixed = clamp(Number.isFinite(n) ? n : groupNum, BIG_GROUP_MIN, BIG_GROUP_MAX);
-                setGroupDraft(String(fixed));
-                set({ group: String(fixed) });
+                if (!Number.isFinite(n)) return;
+                const fixed = String(clamp(n, BIG_GROUP_MIN, BIG_GROUP_MAX));
+                setGroupDraft(fixed);
+                set({ group: fixed });
               }}
               className={`${FIELD(true)} w-20 text-center mr-2 mb-2`}
             />
@@ -229,8 +253,7 @@ export function StepBasics({ answers, onChange, onFollowUpShown }) {
                 setLeaseOtherOpen(true);
                 setLeaseDraft(v);
                 const n = parseInt(v, 10);
-                if (!Number.isFinite(n)) set({ lease: null });
-                else if (n >= LEASE_OTHER_MIN && n <= LEASE_OTHER_MAX) set({ lease: String(n) });
+                set({ lease: Number.isFinite(n) && n >= LEASE_OTHER_MIN && n <= LEASE_OTHER_MAX ? String(n) : null });
               }}
               onBlur={() => {
                 const n = parseInt(leaseDraft, 10);
