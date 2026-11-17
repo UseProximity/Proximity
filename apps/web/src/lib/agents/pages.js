@@ -68,6 +68,11 @@ const GONE_CODES = new Set(["http_404", "http_410"]);
 const NOT_FOUND_TEXT = /\b(404|page not found|page cannot be found|page could not be found|page you (?:are|were|'re) looking for|no longer exists)\b/i;
 // The weekly read leaves this much of a five-minute function for saving.
 const READ_DEADLINE_MS = 150000;
+// No new batch of pages is sent to the model after this long, so the job
+// ends inside its five minutes instead of being killed and queued again.
+// Pages left unread keep their old fingerprint and are read next week
+// (PR 447 review).
+const BATCH_DEADLINE_MS = 220000;
 
 /*
  * The whole-site read: the first import, every landlord-triggered sync, and
@@ -157,7 +162,14 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     onStep(`Saving what the site says (${done} of ${batches.length})`);
   };
   // Three batches at a time keeps a 50-page site to a couple of minutes.
-  for (let i = 0; i < batches.length; i += 3) await Promise.all(batches.slice(i, i + 3).map(runBatch));
+  for (let i = 0; i < batches.length; i += 3) {
+    if (Date.now() - started > BATCH_DEADLINE_MS) {
+      totals.leftForNextWeek = batches.slice(i).reduce((n, b) => n + b.length, 0);
+      console.log(`[agents] whole-site read for ${listingId}: out of time, ${totals.leftForNextWeek} pages left for next week`);
+      break;
+    }
+    await Promise.all(batches.slice(i, i + 3).map(runBatch));
+  }
 
   // Known pages that failed for another reason: counted, so after
   // STALE_AFTER_FAILURES in a row their facts read as stale.
