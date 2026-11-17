@@ -874,14 +874,12 @@ function FindYourPlacePopup() {
             </button>
           </div>
 
-          <h3 className="mt-3 text-base font-bold text-gray-900">Find Your Place</h3>
+          <h3 className="mt-3 text-xl font-bold text-gray-900">Find Your Place</h3>
           <p className="mt-1 text-xs leading-relaxed text-gray-600">
-            Answer a few quick questions and see the 4 places that fit you best.
+            Answer a few quick questions and find your perfect fit.
           </p>
 
-          <p className="mt-4 text-[13px] font-medium text-gray-900">
-            How many people are you living with, including yourself?
-          </p>
+          <p className="mt-4 text-[13px] font-medium text-gray-900">Group Size</p>
           <div className="mt-2 flex gap-2">
             {FYP_GROUPS.map((g) => (
               <button
@@ -895,7 +893,6 @@ function FindYourPlacePopup() {
             ))}
           </div>
 
-          <p className="mt-3 text-[11px] text-gray-400">Takes about a minute. No account needed.</p>
         </motion.div>
       )}
     </AnimatePresence>
