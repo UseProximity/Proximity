@@ -15,6 +15,7 @@
  *   })
  */
 import supabase from "@/lib/supabase";
+import { dayText } from "@/utils/calendarDate";
 
 const NOT_ON_PROXIMITY = "Not on Proximity";
 const NOT_GIVEN = "Not given";
@@ -22,11 +23,7 @@ const NOT_GIVEN = "Not given";
 const money = (n, perPerson = false) =>
   n == null || Number(n) === 0 ? "No price" : `$${Number(n).toLocaleString("en-US")}/mo${perPerson ? " per person" : ""}`;
 
-function dateText(d) {
-  if (!d) return null;
-  const t = new Date(`${String(d).slice(0, 10)}T12:00:00Z`);
-  return Number.isNaN(t.getTime()) ? String(d) : t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-}
+const dateText = (d) => (d ? dayText(d) ?? String(d) : null);
 
 function termsText(list) {
   const t = [...new Set((list ?? []).map(Number).filter((n) => n > 0))].sort((a, b) => a - b);

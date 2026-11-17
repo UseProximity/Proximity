@@ -27,6 +27,7 @@ import { RefreshCw, Link2, Upload, History, ChevronDown, ChevronRight, CheckCirc
 import LandlordProxyChat from "@/components/landlord/LandlordProxyChat";
 import UnitPages from "@/components/landlord/UnitPages";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { dayText } from "@/utils/calendarDate";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 const SECTION_LABELS = { fees: "Fees", policies: "Policies", specials: "Specials and promotions", misc: "Other details", core: "Displayed fields set by you" };
@@ -229,7 +230,7 @@ function FactRow({ listingId, f, onChanged }) {
             {f.scope.label && <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">{f.scope.label}</span>}
             <div className="text-[11px] text-gray-500">
               {path ? <a href={f.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-red-600 hover:underline">{path}</a> : f.source}
-              {" · "}updated {when(f.updatedAt)}{f.validUntil ? ` · until ${when(f.validUntil)}` : ""}{f.stale ? " · stale, please confirm" : ""}
+              {" · "}updated {when(f.updatedAt)}{f.validUntil ? ` · until ${dayText(f.validUntil, { year: false }) ?? when(f.validUntil)}` : ""}{f.stale ? " · stale, please confirm" : ""}
             </div>
           </>
         )}

@@ -163,6 +163,9 @@ export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), be
         ? l.lease_term_months.map(Number).filter(Number.isFinite)
         : [],
       ownerId: l.owner_id ?? null,
+      // The landlord's own application (their portal or form), or null: the
+      // Apply button shows only when there is one (lib/listings/applicationLink.js).
+      applicationUrl: l.application_url ?? null,
       // The person a renter would actually be emailing about THIS offering.
       landlordName:
         l.users?.name ?? l.contact_name ?? listingRow.contact_name ?? null,
@@ -437,7 +440,7 @@ async function fetchListing(listingId, currentUserId, { includeDrafts, preview =
         unit_leases(
           id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
           unavailable, description, furnished, owner_id, published_at,
-          contact_name, contact_email, contact_phone,
+          contact_name, contact_email, contact_phone, application_url,
           users!owner_id(id, name, image)
         )
       ),

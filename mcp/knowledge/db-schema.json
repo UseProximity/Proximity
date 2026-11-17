@@ -311,6 +311,27 @@
         "notes": "Live on dev and prod. Status check includes 'held' since migration 202610240001 (dev applied 2026-10-24; prod with the feat/approved-reply-senders release). Partial index (user_id, from_email) where status='held'. pk id; fk thread_id->chat_threads.id (set null); user_id->users.id (set null); chat_message_id->chat_messages.id (set null); unique (s3_key); check status in (processing,posted,spam,auto_reply,unauthenticated,unknown_address,wrong_sender,empty,rejected,error); rls: service role only (no policies)"
       },
       {
+        "table": "listing_applications",
+        "status": "active",
+        "description": "Who went to apply through a landlord's application link (the Apply button). One row per student per landlord per listing: 'started' on click (click_count, last_clicked_at bump on repeats via record_application_click; a repeat after 'not_applying' goes back to 'started'), then 'applied' or 'not_applying' from the student's answer to 'Did you submit your application?' on their next visit. Read/written by lib/listings/applications.js via /api/applications and /api/landlord/listings/[id]/applications. RLS on, no policies: service role only. Landlords see the click count only and names only for 'applied' rows; sandbox and deleted students hidden. Deleted outright by the purge-accounts cron.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "student_id:uuid",
+          "landlord_id:uuid",
+          "lease_id:uuid",
+          "application_url:text",
+          "status:text",
+          "click_count:integer",
+          "first_clicked_at:timestamptz",
+          "last_clicked_at:timestamptz",
+          "answered_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=active; pk id; fk listing_id->listings.id (cascade), student_id->users.id (cascade), landlord_id->users.id (set null), lease_id->unit_leases.id (set null); unique index listing_applications_per_landlord (listing_id, student_id, coalesce(landlord_id::text, application_url)) (202611160001); check status in (started,applied,not_applying); rls: service role only, anon/authenticated revoked (202611150001)"
+      },
+      {
         "table": "sent_emails",
         "status": "live",
         "description": "Every email the app sends, one row per attempt, for the admin Sent emails page (Wyatt, 2026-10-24). Written by sendMailSafe (lib/outreach.js) through recordEmail (lib/emailLog.js); callers label each email with logAs: { kind }, and the kind decides the category (lib/emailKinds.js). body_html and body_text are stored with every token in their links replaced by [removed]. SES events (/api/ses/events) move status forward with the same rules as chat_email_log. Gmail sends never get a delivery report and stay 'sent'. Rows copied from chat_email_log at creation have no subject or body.",
@@ -2653,7 +2674,8 @@
           "unavailable:bool",
           "rent_is_per_person:bool",
           "deleted_at:timestamptz",
-          "published_at:timestamptz"
+          "published_at:timestamptz",
+          "application_url:text"
         ],
         "dev_only_columns": [
           "published_at"
@@ -2666,7 +2688,7 @@
           "published_at": "NULL = draft offering; visible only to its owner until published",
           "lease_structure_id": "NULL on every row; legacy"
         },
-        "notes": "status=active; pk id; fk unit_id->listing_units.id (cascade); lease_structure_id->lease_structures.id; owner_id->users.id; rls: on, with policies (app uses the service role anyway)",
+        "notes": "status=active; pk id; fk unit_id->listing_units.id (cascade); lease_structure_id->lease_structures.id; owner_id->users.id; rls: on, with policies (app uses the service role anyway); application_url: the landlord's own application link (https only, <=2000 chars, check unit_leases_application_url_check), set once per landlord per property via PUT /api/landlord/listings/[id]/contact and copied to all their leases; NULL = no Apply button (202611150001)",
         "observed_2026_10_12": {
           "prod_rows": 4102,
           "prod_last_write": "2026-10-12"
@@ -3949,6 +3971,24 @@
         "called_from": "lib/errors/record.js",
         "defined_in": "supabase/migrations/202611030003_app_errors.sql",
         "description": "Insert or count one occurrence of a site error; reopens a resolved one. SECURITY INVOKER, service_role only."
+      },
+      {
+        "name": "record_application_click",
+        "kind": "rpc",
+        "args": "p_listing_id uuid, p_student_id uuid, p_landlord_id uuid, p_lease_id uuid, p_application_url text",
+        "touches": "listing_applications",
+        "called_from": "lib/listings/applications.js recordApplyClick (POST /api/applications)",
+        "defined_in": "supabase/migrations/202611160001_application_per_landlord.sql",
+        "description": "An Apply click in one statement: inserts the student's row for that landlord or bumps click_count/last_clicked_at, moving 'not_applying' back to 'started'. SECURITY INVOKER; service_role only (anon/authenticated revoked)."
+      },
+      {
+        "name": "unit_leases_inherit_application_url",
+        "kind": "trigger",
+        "args": "",
+        "touches": "unit_leases",
+        "called_from": "BEFORE INSERT trigger unit_leases_inherit_application_url on unit_leases",
+        "defined_in": "supabase/migrations/202611160001_application_per_landlord.sql",
+        "description": "A new lease with no application_url takes the link from the same owner's other live lease at the property, so one link per landlord per property holds for leases added later (editor, add flow, importer, PMS)."
       }
     ],
     "triggers": {
@@ -4066,6 +4106,9 @@
         ],
         "unit_leases (dev only)": [
           "trg_keep_published (published_at is one-way)"
+        ],
+        "unit_leases": [
+          "unit_leases_inherit_application_url (BEFORE INSERT: application_url from the owner's other live lease at the property, 202611160001)"
         ]
       },
       "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, listing_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."

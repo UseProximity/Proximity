@@ -8,7 +8,9 @@
  * @auth landlord
  */
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// 120: the reply is two model rounds of up to 3000 tokens (see agentChat), and
+// at 60 a long one was killed before it could answer.
+export const maxDuration = 120;
 
 import { NextResponse } from "next/server";
 import { agentGate, readJson } from "@/lib/agents/gate";
