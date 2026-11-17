@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-11-15T19:26:44.362Z",
-  "count": 48,
+  "_generated": "2026-11-17T06:51:08.502Z",
+  "count": 47,
   "pages": [
     {
       "path": "/",
@@ -138,10 +138,6 @@
     {
       "path": "/login",
       "file": "src/app/login/page.js"
-    },
-    {
-      "path": "/matchmaking",
-      "file": "src/app/matchmaking/page.js"
     },
     {
       "path": "/messages",
