@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
-import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
+import { recordDashboardSave, coreValuesBefore } from "@/lib/agents/coreWrites";
 import { attachSourceUrl } from "@/lib/sourceSync/attach";
 import {
   findPropertyNameConflict,
@@ -158,7 +158,7 @@ export async function PATCH(req, { params }) {
   if (Object.keys(patch).length) {
     const protectedFields = Object.fromEntries(Object.entries(patch).filter(([k]) => ["description", "furnished", "sublease_friendly"].includes(k)));
     const old = await coreValuesBefore({ target: "property", id: listingId, fields: protectedFields });
-    const { error } = await supabase.from("listings").update(patch).eq("id", listingId);
+    const { data: saved, error } = await supabase.from("listings").update(patch).eq("id", listingId).select("updated_at");
     if (error) {
       // The lookup above can lose a race with another save; the index still wins.
       if (error.code === "23505" && patch.title) {
@@ -169,10 +169,8 @@ export async function PATCH(req, { params }) {
     }
     // A dashboard edit after launch is landlord-set: a website sync holds
     // changes to these fields for the landlord instead of applying them.
-    // In after(), so the work is finished before the server rests (see leases/[leaseId]).
     if (Object.keys(protectedFields).length) {
-      const at = new Date().toISOString();
-      after(() => markLandlordSet({ listingId, target: "property", fields: protectedFields, old, userId: session.user.id, cause: "dashboard", at }).catch(() => {}));
+      recordDashboardSave({ listingId, target: "property", fields: protectedFields, old, userId: session.user.id, savedAt: saved?.[0]?.updated_at });
     }
   }
 

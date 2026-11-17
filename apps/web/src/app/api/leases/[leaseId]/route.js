@@ -7,7 +7,8 @@ import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownershi
 import { shortDescription } from "@/lib/listings/leaseDescription";
 import { checkListingDescription } from "@/lib/contentRules";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateResponseBody, isLeaseHeldForBilling } from "@/lib/billing/listingGate";
-import { markLandlordSet, coreValuesBefore } from "@/lib/agents/coreWrites";
+import { recordDashboardSave, coreValuesBefore } from "@/lib/agents/coreWrites";
+import { dayOf } from "@/utils/calendarDate";
 
 /*
  * Manage ONE lease — the counterpart to the property-level routes under
@@ -32,7 +33,9 @@ const EDITABLE = {
   contact_name: (v) => (typeof v === "string" ? v.trim() || null : null),
   contact_email: (v) => (typeof v === "string" ? v.trim() || null : null),
   contact_phone: (v) => (typeof v === "string" ? v.trim() || null : null),
-  available_from: (v) => v || null,
+  // A calendar day. A timestamp of that day is cut down to it; anything else
+  // comes back as given and is refused below.
+  available_from: (v) => (v ? dayOf(String(v)) ?? String(v) : null),
   unavailable: (v) => !!v,
   is_active: (v) => !!v,
   sublease: (v) => !!v,
@@ -112,6 +115,9 @@ export async function PATCH(req, { params }) {
   if (!Object.keys(patch).length) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
+  if (patch.available_from != null && !/^\d{4}-\d{2}-\d{2}$/.test(patch.available_from)) {
+    return NextResponse.json({ error: "That move-in date is not a date." }, { status: 400 });
+  }
 
   /*
    * Same no-names / no-links / no-contact-details rule as the property
@@ -151,13 +157,14 @@ export async function PATCH(req, { params }) {
   const leaseProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));
   const old = await coreValuesBefore({ target: "lease", id: leaseId, fields: leaseProtected });
 
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from("unit_leases")
     .update(patch)
     .eq("id", leaseId)
     // Re-asserted in the write itself so a lease that changed hands between the
     // check and the update cannot be edited by the previous owner.
-    .eq("owner_id", session.user.id);
+    .eq("owner_id", session.user.id)
+    .select("updated_at");
 
   if (error) {
     // Withdrawn for an overdue invoice between the check above and this write.
@@ -170,11 +177,8 @@ export async function PATCH(req, { params }) {
 
   // A dashboard edit after launch is landlord-set: a website sync holds
   // changes to this lease for the landlord instead of applying them.
-  // In after(), so the work is finished before the server rests: left loose it
-  // could be paused part way and land minutes later, over a newer save.
   if (Object.keys(leaseProtected).length && check.listingId) {
-    const at = new Date().toISOString();
-    after(() => markLandlordSet({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, cause: "dashboard", at }).catch(() => {}));
+    recordDashboardSave({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, savedAt: saved?.[0]?.updated_at });
   }
 
   // A changed contact address only receives message alerts once confirmed.
