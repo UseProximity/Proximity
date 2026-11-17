@@ -18,6 +18,12 @@ function formatRentRange(min, max) {
 
 // ─── Availability dates ──────────────────────────────────────────────────────
 
+// Timestamps print in St. Louis time on both the server and the browser. Left
+// to each side's own timezone and locale, a review posted late in the evening
+// reads one day on the server render and the next day on a visitor's phone,
+// and React throws a hydration error (#418) over the mismatch.
+export const SITE_TIME_ZONE = "America/Chicago";
+
 // "Available Aug 1" label for a future move-in date (listing.availableFrom /
 // unitType.availableFrom). Returns null for past/today/absent dates — those
 // mean "available now" and get no label. Adds the year when it isn't this year.
@@ -26,11 +32,12 @@ export function formatAvailableFrom(dateStr) {
   const iso = String(dateStr).slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   if (iso <= today) return null;
-  const d = new Date(`${iso}T00:00:00`);
+  // A plain calendar day: read and printed in UTC so it never shifts a day.
+  const d = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return null;
-  const opts = { month: "short", day: "numeric" };
-  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return `Available ${d.toLocaleDateString(undefined, opts)}`;
+  const opts = { month: "short", day: "numeric", timeZone: "UTC" };
+  if (d.getUTCFullYear() !== new Date().getUTCFullYear()) opts.year = "numeric";
+  return `Available ${d.toLocaleDateString("en-US", opts)}`;
 }
 
 // ─── Lease terms ──────────────────────────────────────────────────────────────

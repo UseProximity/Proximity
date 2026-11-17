@@ -644,25 +644,40 @@ export async function endPayerFor(db, documenso, { landlordId, payerId = null, r
     .select("id");
   if (error) throw error;
   if (!claimed?.length) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
-  const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
-  const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
-  if (masterError) throw masterError;
-  const masterIds = (masters ?? []).map((m) => m.id);
-  let released = 0;
-  if (masterIds.length) {
-    const { data, error } = await db
-      .from("agreement_coverage")
-      .update({ status: "released", released_at: nowIso })
-      .eq("user_id", landlordId)
-      .in("agreement_id", masterIds)
-      .in("status", ["proposed", "covered"])
-      .select("id");
-    if (error) throw error;
-    released = data?.length ?? 0;
+  try {
+    const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
+    const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
+    if (masterError) throw masterError;
+    const masterIds = (masters ?? []).map((m) => m.id);
+    let released = 0;
+    if (masterIds.length) {
+      const { data, error } = await db
+        .from("agreement_coverage")
+        .update({ status: "released", released_at: nowIso })
+        .eq("user_id", landlordId)
+        .in("agreement_id", masterIds)
+        .in("status", ["proposed", "covered"])
+        .select("id");
+      if (error) throw error;
+      released = data?.length ?? 0;
+    }
+    const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
+    if (waitError) throw waitError;
+    return { released, cancelled, link };
+  } catch (err) {
+    // A step after the claim failed (Documenso timing out, a database error).
+    // The link goes back to active so the next run (the webhook, the popup's
+    // sync, the daily cron) can finish the job: every step above is safe to
+    // repeat. Only our own claim is undone, matched on the time it was stamped.
+    const { error: undoError } = await db
+      .from("billing_payers")
+      .update({ status: "active", ended_reason: null, ended_at: null })
+      .eq("id", link.id)
+      .eq("status", "ended")
+      .eq("ended_at", nowIso);
+    if (undoError) console.error("[billing] could not reopen the signer link after a failed end:", undoError.message);
+    throw err;
   }
-  const { error: waitError } = await db.from("payer_publish_requests").update({ status: "cancelled", resolved_at: nowIso }).eq("landlord_id", landlordId).eq("status", "waiting");
-  if (waitError) throw waitError;
-  return { released, cancelled, link };
 }
 
 /*

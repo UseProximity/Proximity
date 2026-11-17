@@ -34,6 +34,7 @@
  * an answer to them and is excluded. Silently padding a sublease search with
  * places that have never published lease terms is worse than a short list.
  */
+import { TERM_RANGES } from "@proximity/shared";
 
 export const DEFAULT_FILTERS = {
   minRent: "",
@@ -104,10 +105,13 @@ const LEGACY_TERM_BUCKETS = {
   summer: (m) => m <= 3,
   semester: (m) => m >= 4 && m <= 6,
 };
+// The Find Your Place lease ranges live in the shared package, so the app's
+// copy of these rules reads the same ones (PR 447 review).
+export { TERM_RANGES };
 const termBucket = (key) => {
   const months = /^(\d+)-month$/.exec(key);
   if (months) return (m) => m === Number(months[1]);
-  return LEGACY_TERM_BUCKETS[key];
+  return TERM_RANGES[key]?.test ?? LEGACY_TERM_BUCKETS[key];
 };
 
 // ---------------------------------------------------------------------------

@@ -34,6 +34,7 @@ const JOBS = {
   "agent-questions": { does: "Reminds landlords about unanswered questions and tour requests.", trace: ["listing_questions", "reminder_1_at", "last question reminder"], every: null },
   "agent-sync": { does: "Queues the daily website sync for every listing that is due.", trace: ["listing_source_monitors", "last_checked_at", "last page checked"], every: 2 },
   "agent-digest": { does: "Emails the team the daily agents digest.", trace: ["sent_emails", "created_at", "last digest email", (q) => q.eq("kind", "agent_digest")], every: 2 },
+  "agent-knowledge": { does: "Queues the Monday read of every listing's website into what Proxy knows; each hourly run picks up listings not read yet this week.", trace: ["listing_import_jobs", "finished_at", "last website read", (q) => q.contains("target", { knowledge: true })], every: 7 },
 };
 
 // "0 14 * * 1" -> "Mondays at 2:00 PM UTC". Covers the shapes vercel.json uses.
@@ -41,10 +42,13 @@ export function describeSchedule(cron) {
   const [min, hour, , , dow] = String(cron).split(" ");
   if (min?.startsWith("*/")) return `Every ${min.slice(2)} minutes`;
   if (hour === "*") return `Every hour at :${String(min).padStart(2, "0")}`;
-  const h = Number(hour);
-  const time = `${((h + 11) % 12) + 1}:${String(min).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} UTC`;
+  const clock = (h) => `${((h + 11) % 12) + 1}:${String(min).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
   const days = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
-  return dow !== "*" && days[Number(dow)] ? `${days[Number(dow)]} at ${time}` : `Daily at ${time}`;
+  const when = dow !== "*" && days[Number(dow)] ? days[Number(dow)] : "Daily";
+  // An hour range ("11-21"): every hour between the two (PR 447 review).
+  const range = /^(\d+)-(\d+)$/.exec(hour ?? "");
+  if (range) return `${when}, every hour from ${clock(Number(range[1]))} to ${clock(Number(range[2]))} UTC`;
+  return `${when} at ${clock(Number(hour))} UTC`;
 }
 
 export async function loadScheduledJobs(db) {

@@ -109,13 +109,25 @@ function parseValue(json) {
 
 /*
  * A website saying the same thing in other words: same validity and either
- * the same structured value, or the same amounts and dates in it. Not a
- * change, so nothing is written and no student gets a correction ("Parking
- * is $75 a month" read again as "Parking costs $75 per month").
+ * the same structured value, or the same amounts and dates in it with only
+ * filler words changed. Not a change, so nothing is written and no student
+ * gets a correction ("Parking is $75 a month" read again as "Parking costs $75
+ * per month"). A changed word that carries meaning is a change even when the
+ * numbers stay ("Application fee $50, refundable" read again as "Application
+ * fee $50, non-refundable"), PR 447 review.
  */
 const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, x[key]])) : x));
 const numbersIn = (value, summary) => [...new Set(`${canon(value ?? {})} ${summary ?? ""}`.match(/\d+(?:\.\d+)?/g) ?? [])].sort().join(",");
 const plain = (t) => String(t ?? "").toLowerCase().replace(/[^a-z0-9$%]+/g, " ").trim();
+// Words that only change how a fact is phrased. Units (month, year, week),
+// negations and qualifiers are deliberately not here.
+const FILLER = new Set([
+  "a", "an", "the", "is", "are", "was", "be", "it", "its", "this", "that", "there",
+  "per", "each", "of", "for", "to", "and", "with", "at", "on", "in",
+  "cost", "costs", "costing", "charge", "charged", "charges", "fee", "fees",
+  "price", "priced", "runs", "comes", "will", "you", "your",
+]);
+const meaningWords = (summary) => new Set(plain(summary).split(" ").filter((w) => w && !/\d/.test(w) && !FILLER.has(w)));
 export function sameFactReworded(current, { value, summary, validUntil }) {
   if ((current.valid_until ?? null) !== (validUntil ?? null)) return false;
   if (canon(current.value ?? {}) === canon(value ?? {})) return true;
@@ -123,7 +135,9 @@ export function sameFactReworded(current, { value, summary, validUntil }) {
   // details say.
   if (plain(current.summary) === plain(summary)) return true;
   const before = numbersIn(current.value, current.summary);
-  return !!before && before === numbersIn(value, summary);
+  if (!before || before !== numbersIn(value, summary)) return false;
+  const [was, now] = [meaningWords(current.summary), meaningWords(summary)];
+  return was.size === now.size && [...was].every((w) => now.has(w));
 }
 
 function knowledgeIndex(facts) {
@@ -200,8 +214,13 @@ export async function synthesizeKnowledge({
     if (op.op === "keep") {
       // Still said, nothing changed: counted for the weekly read's
       // missed-reads rule, nothing written.
-      const current = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null))
-        ?? facts.find((f) => f.field_key === key && f.section === op.section);
+      // The exact scope first. Failing that, the same key only when it exists
+      // at a single scope: with several (a property fee and a lease's fee),
+      // guessing could keep a fact alive that its own page no longer says
+      // (PR 447 review).
+      const sameKey = facts.filter((f) => f.field_key === key && f.section === op.section);
+      const current = sameKey.find((f) => f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null))
+        ?? (sameKey.length === 1 ? sameKey[0] : null);
       if (current) { result.unchanged++; result.touched.push(current.id); }
       continue;
     }

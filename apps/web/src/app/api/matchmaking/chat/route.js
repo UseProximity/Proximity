@@ -24,6 +24,8 @@ import {
   isLockedStatus,
   lockSessionForVisitor,
   lockTurnForVisitor,
+  chatsOnly,
+  isFindYourPlaceRow,
 } from "@/lib/matchmaking/anonymousSessions";
 
 // Resolve a listing's primary-landlord contact (server-side, never trusting the
@@ -134,9 +136,7 @@ export async function GET(request) {
     // for that one by id, hand it back; an unknown/foreign id just means "no
     // session to resume" and falls through to the latest.
     if (wanted) {
-      const { data: byId } = await supabase
-        .from("matchmaking_chat_sessions")
-        .select("*")
+      const { data: byId } = await chatsOnly(supabase.from("matchmaking_chat_sessions").select("*"))
         .eq("id", wanted)
         .eq("user_id", actor.id)
         .not("status", "eq", "abandoned")
@@ -144,9 +144,8 @@ export async function GET(request) {
       if (byId) return NextResponse.json({ session: byId, ...claimable });
     }
 
-    const { data: chatSession } = await supabase
-      .from("matchmaking_chat_sessions")
-      .select("*")
+    // A Find Your Place search is never resumed as the live chat.
+    const { data: chatSession } = await chatsOnly(supabase.from("matchmaking_chat_sessions").select("*"))
       .eq("user_id", actor.id)
       .not("status", "eq", "abandoned")
       .order("created_at", { ascending: false })
@@ -216,7 +215,8 @@ async function handlePost(request) {
         .select("*")
         .eq("id", sessionId)
         .single();
-      if (error || !data) {
+      // A Find Your Place search is not a chat: the app cannot write to one.
+      if (error || !data || isFindYourPlaceRow(data)) {
         return respond({ error: "Session not found" }, { status: 404 });
       }
       if (!owns(data, actor, visitor)) {
@@ -504,7 +504,7 @@ async function handlePatch(request) {
       .select("*")
       .eq("id", sessionId)
       .single();
-    if (error || !chatSession) {
+    if (error || !chatSession || isFindYourPlaceRow(chatSession)) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
     if (!owns(chatSession, actor, visitor)) {

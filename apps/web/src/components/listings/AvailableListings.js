@@ -41,6 +41,8 @@ export default function AvailableListings({
   filters,
   setFilters,
   handleReset,
+  // Find Your Place's nice-to-haves, marked in the filter drawer.
+  suggestedFilters = null,
   onClearSearch,
   search,
   setSearch,
@@ -1242,6 +1244,7 @@ export default function AvailableListings({
                 drawer
                 rentsFor={rentsFor}
                 filters={filters}
+                suggested={suggestedFilters}
                 onReset={handleReset}
                 onApply={(next) => {
                   setFilters(next);

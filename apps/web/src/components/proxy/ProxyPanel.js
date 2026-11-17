@@ -15,9 +15,9 @@
  * (ListingModalInfo), and in the popup the panel fills its height (`fill`)
  * with the input at the bottom. Sending or receiving a message scrolls the
  * chat and the page around it to the very bottom. Consecutive messages
- * from the same side stack with one icon. Every tour control lives in the
- * input: the calendar button beside Send opens TourPicker, its choice
- * becomes a chip ("2 day availability"), and sending sends the request.
+ * from the same side stack with one icon. Tour beside the input opens the
+ * tour popup (TourDialog), which sends the request itself (2026-11-14), and
+ * Apply beside it opens the landlord's application when they added a link.
  * Panels open on the same thread (the listing page and the Messages popup)
  * tell each other when something new arrives, so both stay in step.
  * The panel is mounted with the listing (hidden until the Contact tab) so
@@ -56,10 +56,11 @@ import { createPortal } from "react-dom";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 import Link from "next/link";
-import { Send, Sparkles, Flag, CalendarDays, X } from "lucide-react";
+import { Send, Sparkles, Flag, CalendarDays, Check, Pencil, X } from "lucide-react";
 import { useTour } from "./TourMarker";
-import TourPicker from "./TourPicker";
-import { availabilitySummary, availabilityText } from "@/lib/agents/tourTime";
+import TourDialog from "./TourDialog";
+import ApplyButton from "@/components/listings/ApplyButton";
+import { pickApplication } from "@/lib/listings/applicationLink";
 import ChatSkeleton from "@/components/chat/ChatSkeleton";
 import { announceInboxChange } from "@/components/landlord/landlordSync";
 
@@ -263,14 +264,19 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const [unavailable, setUnavailable] = useState(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // Read after an await (the tour popup), where `sending` would be stale.
+  const sendingRef = useRef(false);
+  sendingRef.current = sending;
   // Proxy's reply as it streams in, until the saved message replaces it.
   const [draft, setDraft] = useState("");
   // The answer is in; no typing dots while the panel catches up after it.
   const [answered, setAnswered] = useState(false);
   const [signInNeeded, setSignInNeeded] = useState(false);
-  // Tour times waiting in the input as a chip, and whether the picker is open.
+  // Whether the tour popup is open.
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [tourSlots, setTourSlots] = useState(null);
+  // Tour's little Edit tour / Cancel tour menu, once a tour is requested.
+  const [tourMenuOpen, setTourMenuOpen] = useState(false);
+  const tourMenuRef = useRef(null);
   const [tourBusy, setTourBusy] = useState(false);
   // Messages that arrived in this session type themselves out.
   const [fresh, setFresh] = useState(() => new Set());
@@ -282,6 +288,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   const started = messages.length > 0 || sending;
   const greet = !loading && !!thread && !started;
   const { tour, setTour } = useTour(listingId, signedIn);
+  const tourRef = useRef(tour);
+  tourRef.current = tour;
 
   useEffect(() => {
     if (!listingId) return;
@@ -355,7 +363,21 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [listingId]);
 
   // A tour question opens the picker (from Proxy's reply, or the Messages header).
-  useEffect(() => { if (tourIntentSignal && signedIn) setPickerOpen(true); }, [tourIntentSignal, signedIn]);
+  // A confirmed tour opens the Tour menu instead (Cancel only, see below).
+  useEffect(() => {
+    if (!tourIntentSignal || !signedIn) return;
+    if (tourRef.current?.status === "confirmed") setTourMenuOpen(true);
+    else setPickerOpen(true);
+  }, [tourIntentSignal, signedIn]);
+  // The picker opened before the tour had loaded, and it turned out to be
+  // confirmed: swap to the Tour menu, since new times can't be sent for it
+  // (PR 447 review).
+  useEffect(() => {
+    if (pickerOpen && tour?.status === "confirmed") {
+      setPickerOpen(false);
+      setTourMenuOpen(true);
+    }
+  }, [pickerOpen, tour?.status]);
 
   // The chat to its newest message, and whatever scrolls around it (the
   // listing modal, or the page) all the way to the bottom.
@@ -425,6 +447,9 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }, [active, loading, glideOnOpen, scrollToEnd]);
 
   const sendTour = useCallback(async (slots) => {
+    // A confirmed tour is not edited from here: new times would create a
+    // second request beside the booked one (Wyatt, 2026-11-16).
+    if (tour?.status === "confirmed") throw new Error("Your tour is already confirmed. Cancel it first to pick new times.");
     const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
     const r = open
       ? await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", slots }) })
@@ -434,27 +459,23 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
     setTour(data.tour);
   }, [tour, listingId, leaseId, choices, thread, setTour]);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if ((!text && !tourSlots) || !thread || sending) return;
+  /*
+   * A message to Proxy: what is in the input, or `noteText` (the tour
+   * popup's note, sent right after the request so Proxy reads it in order).
+   */
+  const send = useCallback(async (noteText = null) => {
+    const fromInput = typeof noteText !== "string";
+    const text = (fromInput ? input : noteText).trim();
+    if (!text || !thread || sending) return;
     setSending(true);
     setAnswered(false);
-    setInput("");
-    const slots = tourSlots;
-    setTourSlots(null);
-    const temp = text ? { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" } : null;
-    // The schedule shows at once, worded as it will be saved (lib/agents/tours.js).
-    const updating = tour && ["requested", "proposed", "messaging"].includes(tour.status);
-    const tempTour = slots ? { id: `temp-tour-${Date.now()}`, body: `${updating ? "Here's my updated availability for a tour:" : "I'd like to tour. Here's when I'm available:"}\n${availabilityText(slots)}`, isMine: true, type: "text" } : null;
-    const temps = [tempTour, temp].filter(Boolean);
+    if (fromInput) setInput("");
+    const temp = { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" };
+    const temps = [temp];
     const tempIds = new Set(temps.map((x) => x.id));
-    if (temps.length) setMessages((m) => [...m, ...temps]);
+    setMessages((m) => [...m, ...temps]);
     requestAnimationFrame(() => scrollToEnd(true));
     try {
-      if (slots) {
-        try { await sendTour(slots); } catch (err) { toast.error(err.message); setTourSlots(slots); setMessages((m) => m.filter((x) => x.id !== tempTour.id)); }
-      }
-      if (text) {
         let streamed = "";
         const { ok, data } = await postStreamed(thread.id, { body: text, leaseId }, (piece) => {
           streamed += piece;
@@ -477,8 +498,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
         setMessages((m) => [...m.filter((x) => !tempIds.has(x.id)), ...incoming]);
         setDraft("");
         setAnswered(true);
-        if (data.intent === "tour" && signedIn) setPickerOpen(true);
-      }
+        // A tour question opens the popup, unless it came from the popup.
+        if (data.intent === "tour" && signedIn && fromInput) setPickerOpen(true);
       // Seen on the page: no email for this answer. Other panels catch up too.
       await refresh();
       announce(thread.id, selfId.current);
@@ -492,7 +513,36 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       requestAnimationFrame(() => scrollToEnd(true));
       inputRef.current?.focus();
     }
-  }, [input, tourSlots, tour, thread, sending, leaseId, signedIn, refresh, sendTour, scrollToEnd]);
+  }, [input, thread, sending, leaseId, signedIn, refresh, scrollToEnd]);
+
+  /*
+   * Send from the tour popup: the request goes at once and its message shows
+   * in the chat (the server posts it); then the note, if any, as the
+   * student's own message so Proxy answers it there. The popup stays open
+   * with an error if the request fails, so nothing picked is lost.
+   */
+  const submitTour = useCallback(async ({ slots, note }) => {
+    try {
+      await sendTour(slots);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
+    setPickerOpen(false);
+    toast.success("Tour request sent.");
+    // The request's own messages first, so the note lands after them.
+    await refresh();
+    if (note && sendingRef.current) {
+      // Proxy is still answering: keep the note in the box rather than drop it.
+      setInput((cur) => (cur.trim() ? cur : note));
+      toast("Your note is in the message box. Send it once Proxy finishes.");
+    } else if (note) {
+      await send(note);
+    } else {
+      announce(thread?.id, selfId.current);
+      requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [sendTour, send, refresh, thread, scrollToEnd]);
 
   const cancelTour = useCallback(async () => {
     if (!tour) return;
@@ -503,12 +553,23 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       if (!r.ok) { toast.error(data?.error || "Could not cancel."); return; }
       setTour(null);
       setPickerOpen(false);
+      setTourMenuOpen(false);
+      toast.success("Tour request canceled.");
       await refresh();
       announce(thread?.id, selfId.current);
     } finally {
       setTourBusy(false);
     }
   }, [tour, setTour, refresh, thread]);
+
+  useEffect(() => {
+    if (!tourMenuOpen) return;
+    const onDown = (e) => { if (!tourMenuRef.current?.contains(e.target)) setTourMenuOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setTourMenuOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [tourMenuOpen]);
 
   const report = useCallback(async (msg) => {
     if (!thread) return;
@@ -525,6 +586,8 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
   }
 
   const tourAllowed = !testMode && choices.length > 0;
+  const activeTour = tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null;
+  const applyShown = !!pickApplication(listing, selectedLease);
   const sideOf = (m) => (m.isMine ? "me" : "proxy");
 
   const inputBar = signInNeeded ? (
@@ -535,26 +598,22 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
       ) : (
         <div className="relative">
           {pickerOpen && signedIn && tourAllowed && (
-            <div className="absolute bottom-full right-0 z-[100] mb-2 w-full max-w-md">
-              <TourPicker
-                tour={tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null}
-                initial={tourSlots}
-                busy={tourBusy}
-                onAdd={(slots) => { setTourSlots(slots); setPickerOpen(false); inputRef.current?.focus(); }}
-                onCancelTour={cancelTour}
-                onClose={() => setPickerOpen(false)}
-              />
-            </div>
+            <TourDialog
+              listing={listing}
+              session={session}
+              tour={activeTour}
+              busy={tourBusy}
+              onSubmit={submitTour}
+              onClose={() => setPickerOpen(false)}
+            />
           )}
-          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-end gap-2">
-            <div className="flex min-h-11 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400">
-              {tourSlots && (
-                <span className="mb-1 inline-flex w-fit items-center gap-1 rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-semibold text-white">
-                  <CalendarDays className="h-3 w-3" />
-                  <button type="button" onClick={() => setPickerOpen(true)} className="hover:underline">{availabilitySummary(tourSlots)}</button>
-                  <button type="button" onClick={() => setTourSlots(null)} aria-label="Remove availability" className="ml-0.5 opacity-70 hover:opacity-100"><X className="h-3 w-3" /></button>
-                </span>
-              )}
+          {/*
+           * One row on a computer. On a phone with Apply as well, Tour and
+           * Apply get their own row above the input, so the input keeps its
+           * width and both buttons keep their words.
+           */}
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex flex-wrap items-end gap-2">
+            <div className="order-2 flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400 sm:order-1">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -566,24 +625,65 @@ export default function ProxyPanel({ listing, session, selectedLease = null, pre
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 rows={1}
                 maxLength={2000}
-                placeholder={tourSlots ? "Add a note, or just send" : started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
+                placeholder={started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
                 disabled={loading || sending || !thread}
                 className="w-full resize-none border-0 bg-transparent p-0 py-1 text-base leading-6 focus:outline-none focus:ring-0"
               />
             </div>
-            {tourAllowed && (
-              <button
-                type="button"
-                onClick={() => (signedIn ? setPickerOpen((o) => !o) : signIn())}
-                aria-label={signedIn ? "Pick tour times" : "Sign in to request a tour"}
-                title={signedIn ? "Request a tour" : "Sign in to request a tour"}
-                className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${pickerOpen || tourSlots ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
-              >
-                <CalendarDays className="h-5 w-5" />
-                Tour
-              </button>
-            )}
-            <button type="submit" disabled={loading || sending || (!input.trim() && !tourSlots)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
+            <div className={`flex gap-2 ${applyShown ? "order-1 w-full sm:order-2 sm:w-auto" : "order-2"}`}>
+              {/*
+               * Tour (Wyatt, 2026-11-15): before a request it opens the tour
+               * popup. Once there is one, the calendar turns into a check and
+               * a click opens a small menu above it instead: Edit tour (the
+               * popup, with the times filled in) or Cancel tour.
+               */}
+              {tourAllowed && (
+                <div ref={tourMenuRef} className={`relative ${applyShown ? "flex flex-1 sm:flex-none" : ""}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!signedIn) { signIn(); return; }
+                      if (activeTour) setTourMenuOpen((o) => !o);
+                      else setPickerOpen(true);
+                    }}
+                    aria-label={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed: cancel" : activeTour ? "Tour requested: edit or cancel" : "Pick tour times"}
+                    aria-haspopup={activeTour ? "menu" : undefined}
+                    aria-expanded={activeTour ? tourMenuOpen : undefined}
+                    title={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed" : activeTour ? "Tour requested" : "Request a tour"}
+                    className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${applyShown ? "flex-1 sm:flex-none" : ""} ${pickerOpen || tourMenuOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    {activeTour ? <Check className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+                    Tour
+                  </button>
+                  {activeTour && tourMenuOpen && (
+                    <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                      {/* A confirmed tour is booked: cancel it, but changing the time is a talk with the landlord. */}
+                      {activeTour.status !== "confirmed" && <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setTourMenuOpen(false); setPickerOpen(true); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                      >
+                        <Pencil className="h-4 w-4 text-gray-500" /> Edit tour
+                      </button>}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={tourBusy}
+                        onClick={cancelTour}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" /> {tourBusy ? "Canceling..." : "Cancel tour"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Only when a landlord here added an application link. */}
+              <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={signedIn}
+                record={!testMode && !preview} className="flex-1 sm:flex-none" />
+            </div>
+            <button type="submit" disabled={loading || sending || !input.trim()} className="order-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
               <Send className="h-5 w-5" />
             </button>
           </form>

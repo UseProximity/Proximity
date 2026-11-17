@@ -29,6 +29,8 @@
  *
  * Pure on purpose: no React, no fetch. leaseFit.test.js covers it.
  */
+// Relative, not "@/": the node test runner loads this file directly.
+import { dayText } from "../../utils/calendarDate.js";
 
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -272,13 +274,7 @@ export function compareLeases(a, b, prefs, today = todayISO()) {
   return byPrice(a, b);
 }
 
-const shortDate = (iso) =>
-  new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+const shortDate = (iso) => dayText(iso) ?? String(iso);
 
 // "9 or 12", "6, 9 or 12".
 const orList = (items) =>

@@ -39,9 +39,19 @@ export async function PATCH(req, { params }) {
   if (body.action === "restore" && review.deleted_at && review.removed_by !== "admin") {
     return Response.json({ error: "Only a review the team removed can be restored here." }, { status: 409 });
   }
+  // Already down: removing again would overwrite who took it down ("author"
+  // becoming "admin"), which would then let a withdrawn review be restored
+  // (PR 447 review).
+  if (body.action === "remove" && review.deleted_at) {
+    return Response.json({ error: "This review is already removed." }, { status: 409 });
+  }
 
   const patch = body.action === "remove" ? { deleted_at: new Date().toISOString(), removed_by: "admin" } : { deleted_at: null, removed_by: null };
-  const { data, error } = await db.from("listing_reviews").update(patch).eq("id", id).select("id");
+  // The same guard in the update itself, for a removal made by someone else
+  // between the read and this write.
+  let update = db.from("listing_reviews").update(patch).eq("id", id);
+  if (body.action === "remove") update = update.is("deleted_at", null);
+  const { data, error } = await update.select("id");
   if (error) {
     console.error("PATCH admin/reviews failed:", error);
     return Response.json({ error: "Could not change the review" }, { status: 500 });

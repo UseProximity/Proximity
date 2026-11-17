@@ -65,6 +65,7 @@ export default function TopFilterBar({
   setFilters: commitFilters,
   onReset,
   onFiltersSaved = () => {},
+  suggested = null,
   mapHidden,
   onToggleMap,
   compareOpen,
@@ -468,6 +469,7 @@ export default function TopFilterBar({
         <FiltersPanel
           rentsFor={rentsFor}
           filters={filters}
+          suggested={suggested}
           onChange={applyLive}
           onReset={reset}
         />
