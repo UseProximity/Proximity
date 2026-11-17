@@ -628,6 +628,7 @@
         "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
+        "chat_email_log",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
