@@ -13,7 +13,7 @@
 import supabase from "@/lib/supabase";
 import { attributionEnabled, isUuid } from "./config";
 import { OUTCOMES, buildDedupeKey, isOutcome } from "./outcomes";
-import { attachUserToSession, loadLiveSession, readSessionCookie } from "./sessions";
+import { attachUserToSession, loadLiveSession, loadSessionById, readSessionCookie } from "./sessions";
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -39,9 +39,12 @@ async function accountAttribution(userId) {
  * @param {string} [o.sessionId]  use this session instead of the cookie's
  * @param {boolean} [o.useCookie=true]  false: never read the request cookie
  *   (outcomes recorded on someone else's behalf, e.g. an admin invite)
+ * @param {string} [o.creditSessionId]  credit this session even if it has
+ *   ended (application_submitted -> its application_started's session); when
+ *   it is missing or gone, the live session or the account is used as usual
  * @returns {Promise<{recorded: boolean, reason?: string}>}
  */
-export async function recordOutcome(req, { outcome, userId = null, userRole = null, subjectId = null, sessionId = null, useCookie = true } = {}) {
+export async function recordOutcome(req, { outcome, userId = null, userRole = null, subjectId = null, sessionId = null, useCookie = true, creditSessionId = null } = {}) {
   try {
     if (!attributionEnabled()) return { recorded: false, reason: "disabled" };
     if (!isOutcome(outcome)) {
@@ -51,9 +54,11 @@ export async function recordOutcome(req, { outcome, userId = null, userRole = nu
     const uid = isUuid(userId) ? userId : null;
     const subject = isUuid(subjectId) ? subjectId : null;
 
-    let session = null;
-    const sid = sessionId || (useCookie ? await readSessionCookie(req) : null);
-    if (sid) session = await loadLiveSession(sid);
+    let session = creditSessionId ? await loadSessionById(creditSessionId) : null;
+    if (!session) {
+      const sid = sessionId || (useCookie ? await readSessionCookie(req) : null);
+      if (sid) session = await loadLiveSession(sid);
+    }
 
     let role = userRole;
     let account = null;
@@ -95,7 +100,7 @@ export async function recordOutcome(req, { outcome, userId = null, userRole = nu
 
     // Not for an outcome credited to an older session (application_submitted):
     // that session is over, and it already has its user.
-    if (session && uid && !session.user_id && !sessionId) await attachUserToSession(session.id, uid);
+    if (session && uid && !session.user_id && !sessionId && !creditSessionId) await attachUserToSession(session.id, uid);
     return { recorded: true };
   } catch (err) {
     console.error(`marketing: recordOutcome(${outcome}) failed:`, err?.message || err);

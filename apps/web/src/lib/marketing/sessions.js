@@ -39,6 +39,38 @@ export async function loadLiveSession(sessionId, now = Date.now()) {
   return idleMs <= SESSION_IDLE_SECONDS * 1000 ? data : null;
 }
 
+/**
+ * A session row whatever its age, or null. For outcomes credited to an earlier
+ * visit (application_submitted goes to the session of its application_started).
+ */
+export async function loadSessionById(sessionId) {
+  if (!isUuid(sessionId)) return null;
+  const { data, error } = await supabase.from("marketing_sessions").select(SESSION_FIELDS).eq("id", sessionId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * The session of the student's first application_started on a listing (PRD 7.3:
+ * the "Did you submit?" answer usually arrives on a later visit). Null when the
+ * start was never recorded or had no session.
+ */
+export async function applicationStartSessionId(userId, listingId) {
+  if (!isUuid(userId) || !isUuid(listingId)) return null;
+  const { data, error } = await supabase
+    .from("marketing_outcomes")
+    .select("session_id")
+    .eq("outcome", "application_started")
+    .eq("user_id", userId)
+    .eq("subject_id", listingId)
+    .not("session_id", "is", null)
+    .order("occurred_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.session_id ?? null;
+}
+
 /** A registered campaign link by slug (archived links still attribute). */
 export async function findLinkBySlug(slug) {
   if (!slug) return null;
