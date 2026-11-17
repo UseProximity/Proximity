@@ -21,8 +21,8 @@ export const PRIMARY =
 // Open a file route in a new tab. A route answers either the PDF itself (signed
 // documents, joined into one) or JSON with a short-lived link. The tab opens
 // straight away so the browser does not block it as a popup.
-export async function openFile(url) {
-  const tab = window.open("", "_blank");
+// `tab`: a tab already opened in the click itself, for a file made after another call.
+export async function openFile(url, tab = window.open("", "_blank")) {
   try {
     const res = await billingFetch(url);
     if (!res.ok) {

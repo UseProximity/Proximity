@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T17:12:36.424Z",
-  "count": 341,
+  "_generated": "2026-11-17T17:03:49.781Z",
+  "count": 342,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -530,6 +530,14 @@
     {
       "file": "src/lib/billing/overdueJob.js",
       "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
+    },
+    {
+      "file": "src/lib/billing/paperAgreementPdf.js",
+      "description": "The marketing agreement printed for a landlord to sign on paper (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/paperAgreements.js",
+      "description": "A landlord's marketing agreement signed on paper (Wyatt, 2026-11-17)."
     },
     {
       "file": "src/lib/billing/payerLinks.js",
