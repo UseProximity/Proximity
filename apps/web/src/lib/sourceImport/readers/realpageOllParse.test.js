@@ -2,6 +2,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { appUrl, feeLine, findRealPageOll, mergeSameRent, mergeWalk, nextSundayCheckAt, offersFor, sayDate, siteIdFromLanding, unitsFromWalk } from "./realpageOllParse.js";
+import { resumePoint } from "./portalWalkParse.js";
+
+test("resumePoint hands a carried-on walk its priced apartments to jump with, latest first, never past an unpriced one", () => {
+  // Mansions on the Plaza, 2026-11-17: ten apartments priced, then 142
+  // (Jan 21) listed once the date reached Jan 15.
+  const units = {
+    124: { plan: "Highland - B1", number: "124", avail: null },
+    348: { plan: "Highland - A3", number: "348", avail: "2026-12-23" },
+    109: { plan: "Mayfair - A4", number: "109", avail: "2027-01-15" },
+    120: { plan: "Mayfair - A1", number: "120", avail: "2027-01-15" },
+  };
+  const priced = (...n) => n.map((number) => ({ number, terms: { 12: 2000 } }));
+  const numbers = (list) => list.map((t) => t.number);
+  // Nothing priced yet: start at the beginning.
+  assert.deepEqual(resumePoint({ units, priced: [] }), []);
+  // Everything priced: one apartment per date, latest first.
+  assert.deepEqual(numbers(resumePoint({ units, priced: priced("124", "348", "109", "120") })), ["109", "348"]);
+  // 109 and 120 still to price: stop at 348, so they are priced for their own date.
+  assert.deepEqual(resumePoint({ units, priced: priced("124", "348") }), [{ number: "348", plan: "Highland - A3", avail: "2026-12-23" }]);
+  // An apartment free now still unpriced: no jump at all.
+  assert.deepEqual(resumePoint({ units, priced: priced("348", "109", "120") }), []);
+  // 142 found but not priced: the jumps stop at or before its date.
+  const withLater = { ...units, 142: { plan: "Highland - A7", number: "142", avail: "2027-01-21" } };
+  assert.deepEqual(numbers(resumePoint({ units: withLater, priced: priced("124", "348", "109", "120") })), ["109", "348"]);
+  // 142 priced too: it leads, and 109 is there to reach it (142 is not listed
+  // at the portal's first date).
+  assert.deepEqual(numbers(resumePoint({ units: withLater, priced: priced("124", "348", "109", "120", "142") })), ["142", "109", "348"]);
+  // Only apartments free now priced: nothing later to jump to.
+  assert.deepEqual(resumePoint({ units: { 124: units[124] }, priced: priced("124") }), []);
+});
 
 test("findRealPageOll reads the landing page link and the app link", () => {
   assert.deepEqual(findRealPageOll('<a href="https://9030769.onlineleasing.realpage.com/#k=1">Apply</a>'), { propertyId: "9030769", siteId: null });
