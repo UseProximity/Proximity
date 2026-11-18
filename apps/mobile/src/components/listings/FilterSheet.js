@@ -4,7 +4,7 @@
 // filters and sends it only on Apply. Intended differences from the website
 // (design-system/MASTER.md §11): a full-screen modal, the app's own icons on
 // amenity and utility chips and a check mark on the other chips, the app's red,
-// a Month and Day wheel sheet instead of dropdowns, and Clear All also closes it.
+// a calendar instead of Month and Day dropdowns, and Clear All also closes it.
 import { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
