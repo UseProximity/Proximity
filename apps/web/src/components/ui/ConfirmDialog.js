@@ -18,7 +18,7 @@ export default function ConfirmDialog({
 }) {
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
         {message && <p className="mt-1 text-sm text-gray-600">{message}</p>}
         <div className="mt-5 flex justify-end gap-2">

@@ -30,9 +30,9 @@ export default function ProfileSection({
   return (
     <>
     <div className="bg-white p-5 sm:p-8 rounded-lg shadow-lg mb-8">
-      <div className="flex flex-col md:flex-row gap-5 md:gap-8">
+      <div className="flex flex-col lg:flex-row gap-5 lg:gap-8">
         {/* Profile Image */}
-        <div className="flex-shrink-0 flex justify-center md:block">
+        <div className="flex-shrink-0 flex justify-center lg:block">
           <img
             src={user.image}
             alt={user.name}

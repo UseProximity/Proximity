@@ -99,7 +99,7 @@ function AttachmentImage({ attachment, mine, onOpen }) {
         <a
           href={downloadHref}
           download={attachment.fileName || undefined}
-          className={`absolute bottom-2 right-2 p-1.5 rounded-full opacity-0 group-hover/att:opacity-100 transition-opacity ${
+          className={`absolute bottom-2 right-2 p-1.5 rounded-full [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/att:opacity-100 transition-opacity ${
             mine
               ? "bg-black/50 text-white hover:bg-black/70"
               : "bg-white/90 text-gray-700 hover:bg-white shadow-sm"

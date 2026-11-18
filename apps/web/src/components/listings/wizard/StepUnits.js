@@ -134,7 +134,7 @@ function UnitPhotos({ photos, held = [], uploading, error, onPick, onRemove, onA
               type="button"
               onClick={() => onRemove(url)}
               aria-label="Remove photo"
-              className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition group-hover:opacity-100"
+              className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
             >
               <X className="h-3.5 w-3.5" />
             </button>
