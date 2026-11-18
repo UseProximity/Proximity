@@ -15,7 +15,7 @@
  * `db` is a service-role Supabase client.
  */
 import { BillingError } from "./errors.js";
-import { coverageFor, takeoverCoverage } from "./agreements.js";
+import { assertNoPaperOut, coverageFor, takeoverCoverage } from "./agreements.js";
 import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
@@ -25,8 +25,11 @@ const NAME_MAX = 60;
 // `takeover`: a landlord with an authorized signer previewing their OWN agreement
 // (startSigning's takeover): what the signer covers for them, and what still waits
 // on the signer, is on it and stays on.
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false } = {}) {
+// `paper`: the admin confirming a paper copy (paperAgreements.js); anyone else is
+// told the agreement is out on paper rather than shown a popup they can't finish.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false, paper = false } = {}) {
   const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now);
+  if (!paper) assertNoPaperOut(loaded.state);
   const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
   const { state, rows, covered } = loaded;
   const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
