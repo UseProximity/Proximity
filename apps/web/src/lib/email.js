@@ -14,6 +14,7 @@ import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
 import { emailFooter, OPT_OUT_INBOX, POSTAL_ADDRESS } from "./emailFooter";
+import { buildInquiryEmail, stripOwnerGreeting } from "./inquiryEmail";
 
 export { emailFooter };
 import { MREC_FORM_FILENAME, MREC_FORM_KIND, MREC_FORM_SUBJECT } from "./users/mrecForm";
@@ -304,7 +305,17 @@ export function buildChatMessageEmail({
   canReply,
   reminder = false,
   action = null,
+  // Landlord alerts only: lines about the inquiry (unit, student's school and
+  // class year) and the first name a routed alert's greeting is stripped of.
+  details = [],
+  ownerFirst = null,
 }) {
+  if (!recipientIsInterestedUser) {
+    return buildLandlordChatEmail({
+      senderName, listingTitle, listingAddress, subject: threadSubject, messages, earlierCount,
+      threadUrl, canReply, reminder, action, details, ownerFirst,
+    });
+  }
   const named = displayName(senderName, "");
   const other = named || "Someone";
   const otherFirst = other.split(/\s+/)[0];
@@ -378,6 +389,45 @@ export function buildChatMessageEmail({
   return { subject, fromName, html, text };
 }
 
+/*
+ * A student's chat message, emailed to the landlord (or the listing contact the
+ * alert is routed to) in the inquiry layout of lib/inquiryEmail.js (Wyatt,
+ * 2026-11-18): their words first, signed with their name, From their name, and
+ * the Proximity details under the "-- " line. The subject is a plain
+ * "Inquiry about <listing>", the same for every alert in the conversation so
+ * they stack into one email thread. Never the student's contact details.
+ */
+function buildLandlordChatEmail({
+  senderName, listingTitle, listingAddress, subject: threadSubject, messages, earlierCount = 0,
+  threadUrl, canReply, reminder = false, action = null, details = [], ownerFirst = null,
+}) {
+  const named = displayName(senderName, "");
+  const other = named || "A student";
+  const otherFirst = named ? named.split(/\s+/)[0] : "the student";
+  const listingLabel = chatListingLabel({ listingTitle, listingAddress, subject: threadSubject });
+  const list = Array.isArray(messages) ? messages : [];
+  const labels = chatTimeLabels(list);
+  const earlier = earlierCount > 0
+    ? `There ${earlierCount === 1 ? "is 1 earlier message" : `are ${earlierCount} earlier messages`} in the conversation.`
+    : null;
+  const { html, text } = buildInquiryEmail({
+    lead: reminder ? `Reminder, ${named ? otherFirst : "a student"} is still waiting on your reply.` : null,
+    messages: list.map((m, i) => ({
+      body: i === 0 ? stripOwnerGreeting(chatMessageText(m), ownerFirst) : chatMessageText(m),
+      label: labels[i],
+    })),
+    signature: other,
+    action,
+    marker: canReply ? other : null,
+    details: ["Message sent through Proximity (useproximity.org)", ...details, earlier],
+    howToReply: canReply
+      ? { text: `Reply to this email and ${otherFirst} sees it on Proximity, or`, link: { label: "open the conversation.", url: threadUrl } }
+      : { text: "Reply on Proximity:", link: { label: "open the conversation.", url: threadUrl } },
+    reason: "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.",
+  });
+  return { subject: `Inquiry about ${listingLabel}`, fromName: named || "Proximity", html, text };
+}
+
 export async function sendChatMessageEmail({
   to,
   senderName,
@@ -401,6 +451,8 @@ export async function sendChatMessageEmail({
   // lib/outreach.js). The caller leaves out the reply address and magic link for these.
   sandbox = false,
   action = null,
+  details = [],
+  ownerFirst = null,
 }) {
   const build = (canReply) =>
     buildChatMessageEmail({
@@ -416,6 +468,8 @@ export async function sendChatMessageEmail({
       canReply,
       reminder,
       action,
+      details,
+      ownerFirst,
     });
   const { subject, fromName } = build(false);
 
@@ -476,7 +530,7 @@ export async function sendChatMessageEmail({
  * inquiry from the student, so a leasing assistant such as EliseAI answers it
  * (Wyatt, 2026-11-17). From the chat's reply address through SES only, so the
  * answer comes back into the conversation and delivery is tracked. Resolves
- * to the SES message id.
+ * to { id: the SES message id, suppressed }.
  */
 export async function sendLeadInquiryEmail({ to, fromName, replyTo, subject, text, html, threadId, recipientId }) {
   if (!sesTransporter) throw new Error("Amazon SES is not configured");
@@ -490,7 +544,7 @@ export async function sendLeadInquiryEmail({ to, fromName, replyTo, subject, tex
     html,
     ses: SES_SEND_OPTIONS,
   });
-  return info?.response || info?.messageId || null;
+  return { id: info?.response || info?.messageId || null, suppressed: Boolean(info?.suppressed) };
 }
 
 /*
@@ -1479,26 +1533,46 @@ export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, thre
  * named, and the question names the listing, not a lease (2026-10-29).
  * A contact with no account yet is asked to create one to answer.
  */
+/*
+ * A question Proxy could not answer, sent to the listing's landlord (or its
+ * routed contact), in the inquiry layout of lib/inquiryEmail.js (Wyatt,
+ * 2026-11-18): the question first, signed "A student" (never a name or contact
+ * details), then what Proxy is and how to answer below the "-- " line. The
+ * student's reply to a clarifying question leads its own email with the
+ * original question quoted under it, and a reminder adds one line on top.
+ * Every variant has the same "Question about <listing>" subject so they stack.
+ */
+export function buildProxyLandlordQuestionEmail({
+  listingLabel, question, queueUrl, hasAccount = true, studentReply = null, reminderDay = null, canReply = false,
+}) {
+  const reply = String(studentReply ?? "").trim();
+  const asked = hasAccount
+    ? canReply
+      ? "Reply to this email with your answer, or answer in the app. If you need something from the student first, just ask it in your reply."
+      : "Answer in the app and Proxy passes it on to the student."
+    : `This address is listed as the contact for ${listingLabel} on Proximity. Create an account with it to answer students' questions.`;
+  const { html, text } = buildInquiryEmail({
+    lead: reminderDay ? "Reminder, a student is still waiting on your answer." : null,
+    messages: [{ body: reply || question }],
+    quoted: reply ? { label: "Their original question:", body: question } : null,
+    signature: "A student",
+    details: [
+      `Asked through Proxy, the assistant on your Proximity listing ${listingLabel}. Your answer is saved for future students and passed on to the student.`,
+      asked,
+    ],
+    button: { label: hasAccount ? "Answer in the app" : "Create an account to answer", url: queueUrl },
+    reason: "You are receiving this because you are the contact for a listing on Proximity.",
+  });
+  return { subject: `Question about ${listingLabel}`, html, text };
+}
+
 export async function sendProxyLandlordQuestionEmail({
-  to, name, listingLabel, question, queueUrl, kind = "proxy_question",
+  to, listingLabel, question, queueUrl, kind = "proxy_question",
   hasAccount = true, studentReply = null, reminderDay = null, replyTo = null, sandbox = false,
 }) {
-  const first = name ? String(name).split(" ")[0] : "";
   // With a per-question reply address, answering the email answers the student.
   const canReply = !!replyTo && hasAccount;
-  const subject = reminderDay
-    ? `Reminder: a student is waiting on an answer about ${listingLabel}`
-    : studentReply
-      ? `The student replied about ${listingLabel}`
-      : `A student has a question about ${listingLabel}`;
-  // One line from Proxy, the question in a box, then how to answer (Wyatt, 2026-10-28).
-  const hello = `${first ? `Hi ${escapeHtml(first)}, it's` : "It's"} Proxy, the assistant on ${escapeHtml(listingLabel)}.`;
-  const lead = reminderDay
-    ? `A student asked me this ${reminderDay === 1 ? "yesterday" : `${reminderDay} days ago`} and is still waiting on you:`
-    : studentReply
-      ? "The student got back to you about this question:"
-      : "A student asked me something I don't know yet:";
-  const box = (text, label = null) => `<div style="margin:12px 0;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;white-space:pre-wrap;line-height:1.45">${label ? `<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(label)}</div>` : ""}${escapeHtml(text)}</div>`;
+  const { subject, html, text } = buildProxyLandlordQuestionEmail({ listingLabel, question, queueUrl, hasAccount, studentReply, reminderDay, canReply });
   await sendMailSafe(transporter, {
     logAs: { kind },
     // A review sandbox question (asked by, or sent to, a sandbox account) is never sent.
@@ -1507,18 +1581,8 @@ export async function sendProxyLandlordQuestionEmail({
     to,
     replyTo: canReply ? replyTo : CHAT_FROM_ADDRESS,
     subject,
-    html: `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111;font-size:14px">
-        <p style="margin:0">${hello} ${lead}</p>
-        ${box(question)}
-        ${studentReply ? box(studentReply, "Their reply") : ""}
-        ${hasAccount
-          ? `<p style="margin:14px 0 6px">${canReply ? "<strong>Reply to this email</strong> with your answer, or answer in the app. Either way I'll save it and pass it on to the student. If you need a detail from them first, just ask it and I'll check with them." : "Answer in the app and I'll save it and pass it on to the student."}</p>
-        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Answer in the app</a>`
-          : `<p style="margin:14px 0 6px">This address is listed as the contact for ${escapeHtml(listingLabel)} on Proximity. Create an account with it to answer students' questions.</p>
-        <a href="${queueUrl}" style="display:inline-block;margin:8px 0 14px;padding:10px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">Create an account to answer</a>`}
-        ${emailFooter({ reason: "You are receiving this because you are the contact for a listing on Proximity." })}
-      </div>`,
+    html,
+    text,
   });
 }
 
@@ -1549,6 +1613,26 @@ export async function sendTourEmail({ kind, to, name, subject, intro, lines = []
         ${ctaUrl ? `<a href="${ctaUrl}" style="display:inline-block;margin:12px 0;padding:11px 20px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">${escapeHtml(ctaLabel ?? "Open Proximity")}</a>` : ""}
         ${emailFooter({ reason: "You are receiving this because of a tour request on Proximity." })}
       </div>`,
+  });
+}
+
+/*
+ * A tour email to the landlord side, already built by lib/agents/tourEmails.js
+ * in the inquiry layout. Same transport, logging and sandbox rule as
+ * sendTourEmail; `fromName` is the student's name on a request.
+ */
+export async function sendLandlordTourEmail({ kind, to, fromName = "Proximity", subject, html, text, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
+  await sendMailSafe(transporter, {
+    logAs: { kind, userId, threadId },
+    sandbox,
+    from: { name: displayName(fromName, "Proximity"), address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
+    to,
+    // A reply goes into the direct chat when the email carries its reply address.
+    replyTo: replyTo || CHAT_FROM_ADDRESS,
+    subject,
+    ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }] } : {}),
+    html,
+    text,
   });
 }
 
