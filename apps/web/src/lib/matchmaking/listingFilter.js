@@ -209,7 +209,7 @@ function activeLeasesOf(listing) {
  * whole listing and treated the pair as one place. A building with a 1-bed at
  * $800 and a 4-bed at $2,000/person therefore read as "4 bedrooms, $800 each",
  * and was recommended — and quoted — to groups who could never rent it. The
- * browse filters were fixed the same way; see lib/listings/filterListings.js.
+ * browse filters were fixed the same way; see packages/shared/src/formatters/listingFilters.js.
  *
  * A unit with no live offering still yields ONE unpriced offer, because the
  * ranker deliberately keeps listings that have room data but no published

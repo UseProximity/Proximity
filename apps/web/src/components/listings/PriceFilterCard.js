@@ -2,41 +2,24 @@
 
 import { useMemo, useState } from "react";
 import {
+  PRICE_MIN,
+  PRICE_MAX,
+  PRICE_STEP,
+  priceBuckets,
+  formatPrice,
+  PRICE_BAR_COUNT,
+  rentRange,
+  rentFilters,
+} from "@proximity/shared";
+import {
   FilterCard,
   RangeSlider,
   useLiveFilters,
   accentClasses,
-  PRICE_MIN,
-  PRICE_MAX,
-  PRICE_STEP,
 } from "@/components/listings/FilterComponents";
 
-const BAR_COUNT = 20;
-const BUCKET = (PRICE_MAX - PRICE_MIN) / BAR_COUNT;
-
-// Rents per price bucket. Prices outside the slider's range fall into the
-// first and last bars, so the last bar is the "$4000+" bucket.
-function priceBuckets(rents) {
-  const counts = new Array(BAR_COUNT).fill(0);
-  rents.forEach((rent) => {
-    const i = Math.floor((rent - PRICE_MIN) / BUCKET);
-    counts[Math.min(BAR_COUNT - 1, Math.max(0, i))] += 1;
-  });
-  return counts;
-}
-
-const formatPrice = (v) => (v >= PRICE_MAX ? "$4000+" : `$${v.toLocaleString()}`);
-
-// Slider range for the minRent / maxRent filter strings, and back: "" at either
-// end means no limit.
-export const rentRange = (minRent, maxRent) => ({
-  low: minRent ? Math.max(PRICE_MIN, Number(minRent)) : PRICE_MIN,
-  high: maxRent ? Math.min(PRICE_MAX, Number(maxRent)) : PRICE_MAX,
-});
-export const rentFilters = ({ low, high }) => ({
-  minRent: low <= PRICE_MIN ? "" : String(low),
-  maxRent: high >= PRICE_MAX ? "" : String(high),
-});
+// Width of one histogram bar, in dollars.
+const BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
 
 // Histogram of rents (see fittingRents: the available listings that fit the
 // other filters) with the range slider under it, so it changes as the other

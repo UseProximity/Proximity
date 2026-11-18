@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import PriceFilterCard from "@/components/listings/PriceFilterCard";
 import BedBathFilterCard from "@/components/listings/BedBathFilterCard";
 import FiltersPanel from "@/components/listings/FiltersPanel";
-import { filtersActive } from "@/lib/listings/filterListings";
+import { filtersActive } from "@proximity/shared";
 
 function FilterDropdownPortal({ children, isOpen }) {
   const [mounted, setMounted] = useState(false);

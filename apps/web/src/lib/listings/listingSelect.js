@@ -3,7 +3,7 @@
  * lists, admin). Units carry their own id and their leases carry `unavailable`
  * and `furnished` because a unit is only a real option when ONE of its offerings
  * satisfies the price, term and furnishing asked of it — see
- * lib/listings/filterListings.js for the same rule on browse.
+ * packages/shared/src/formatters/listingFilters.js for the same rule on browse.
  *
  * The unit rows carry no availability column of their own: whether a unit is
  * available is derived from these leases by lib/listings/unitAvailability.js.

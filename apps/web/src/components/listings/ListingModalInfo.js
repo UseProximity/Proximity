@@ -1529,7 +1529,7 @@ export default function ListingModalInfo({
   compact = false,
   tabBarAction = null,
   // The unit that satisfied the browse filters, if the renter arrived from a
-  // filtered search. See lib/listings/filterListings.js.
+  // filtered search. See packages/shared/src/formatters/listingFilters.js.
   initialUnitId = null,
   /*
    * True while the caller is still fetching the full listing. The browse panel
