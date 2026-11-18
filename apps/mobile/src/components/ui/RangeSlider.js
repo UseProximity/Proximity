@@ -9,12 +9,17 @@
 // handles may get (default one step; 0 lets them meet). onDragging(true/false)
 // says when a drag starts and ends, so a scroll view around it can hold still.
 //
-// Built on React Native's own PanResponder (no gesture library): the handle is
-// chosen once, on press, and then follows the finger, kept minGap clear of the
-// other one, as on the website. Positions are runtime values from the slider's
-// values and width, so they are inline styles.
-import { useRef, useState } from "react";
-import { PanResponder, Pressable, Text, View } from "react-native";
+// Built on React Native's own PanResponder and Animated (no gesture library).
+// The handle is chosen once, on press, and then follows the finger, kept
+// minGap clear of the other one. The value is the closest allowed one, which
+// onChange gets as it changes. By default the handle steps from value to value.
+// With `continuous` it moves freely with the finger (its position is an
+// Animated value set straight from the touch, so this needs no React render)
+// and settles on the value on release, gliding there too when the value
+// changes from outside. Positions are runtime values, so they are inline
+// styles.
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, PanResponder, Pressable, Text, View } from "react-native";
 
 // Visible handle size, and the height of the row the finger can press (44pt,
 // design-system/MASTER.md §9).
@@ -23,6 +28,8 @@ const ROW = 44;
 // Labels whose handles are closer than this (% of the track) merge into one.
 const LABEL_MERGE_PCT = 16;
 const LABEL_WIDTH = 64;
+// How long a handle takes to settle on its value (release, tap, accessibility).
+const SETTLE_MS = 120;
 
 export function RangeSlider({
   min,
@@ -37,52 +44,119 @@ export function RangeSlider({
   ticks,
   label,
   onDragging,
+  continuous = false,
 }) {
   const [width, setWidth] = useState(0);
   // Left edge of the row in the window, for turning a touch into a position.
   const left = useRef(0);
   const rowRef = useRef(null);
+  // Centre of each handle, in px from the row's left edge.
+  const pos = useRef({ low: new Animated.Value(0), high: new Animated.Value(0) }).current;
+  // Derived positions: the red fill's width, and the middle of the handles.
+  const derived = useRef({
+    fill: Animated.subtract(pos.high, pos.low),
+    middle: Animated.multiply(Animated.add(pos.low, pos.high), 0.5),
+  }).current;
   // What the responder below reads: it is created once, so it reads the
   // latest props from here.
   const latest = useRef(null);
-  latest.current = { min, max, step, minGap, single, low, high, onChange, width, onDragging };
-  // Drag in progress: { handle, offset, startX }. handle is null until known.
+  latest.current = { min, max, step, minGap, single, low, high, onChange, width, onDragging, continuous };
+  // Drag in progress: { handle, offset, value } or { handle: null, startX }
+  // while it is not yet known which of two stacked handles moves.
   const drag = useRef(null);
 
   const pctOf = (v) => ((v - min) / (max - min)) * 100;
-  // Centre of a handle, in px from the row's left edge.
   const xOf = (pct) => HANDLE / 2 + (pct / 100) * (width - HANDLE);
 
+  // A handle not being dragged sits on its value: placed at once, or with
+  // `continuous` gliding there after the first layout (a tick tap, an
+  // accessibility action, a reset).
+  // Where each handle was last sent, so one that keeps its place is left alone.
+  const placed = useRef({ low: null, high: null });
+  const laidOut = useRef(false);
+  useEffect(() => {
+    if (!width) return;
+    for (const [which, value] of [["low", low], ["high", high]]) {
+      if (drag.current?.handle === which) continue;
+      const x = HANDLE / 2 + ((value - min) / (max - min)) * (width - HANDLE);
+      if (placed.current[which] === x) continue;
+      placed.current[which] = x;
+      if (laidOut.current && continuous) {
+        Animated.timing(pos[which], { toValue: x, duration: SETTLE_MS, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+      } else pos[which].setValue(x);
+    }
+    laidOut.current = true;
+  }, [low, high, width, min, max, continuous, pos]);
+
   const responder = useRef(null);
-  // Moves a handle by value (also used by the accessibility actions).
+  // Moves a handle to a value (the accessibility actions).
   const moveRef = useRef(null);
   if (!responder.current) {
     const centre = (v) => {
       const p = latest.current;
       return HANDLE / 2 + ((v - p.min) / (p.max - p.min)) * (p.width - HANDLE);
     };
+    // The closest allowed value to a position.
     const valueAt = (x) => {
       const p = latest.current;
       const raw = p.min + ((x - HANDLE / 2) / (p.width - HANDLE)) * (p.max - p.min);
-      return p.min + Math.round((raw - p.min) / p.step) * p.step;
+      return Math.min(p.max, Math.max(p.min, p.min + Math.round((raw - p.min) / p.step) * p.step));
     };
-    const move = (handle, value) => {
+    // The values with one handle at v, kept minGap clear of the other.
+    const withValue = (handle, v) => {
       const p = latest.current;
-      const v = Math.min(p.max, Math.max(p.min, value));
-      const next = handle === "low" ? [Math.min(v, p.high - p.minGap), p.high] : [p.low, Math.max(v, p.low + p.minGap)];
-      if (next[0] !== p.low || next[1] !== p.high) p.onChange(next[0], next[1]);
+      return handle === "low" ? [Math.min(v, p.high - p.minGap), p.high] : [p.low, Math.max(v, p.low + p.minGap)];
+    };
+    const send = ([nextLow, nextHigh]) => {
+      const p = latest.current;
+      if (nextLow !== p.low || nextHigh !== p.high) p.onChange(nextLow, nextHigh);
+    };
+    // Moves the dragged handle to the finger (x), within the track and minGap
+    // clear of the other handle: under the finger with `continuous`, else on
+    // the closest allowed value, which is sent when it changes.
+    const follow = (x) => {
+      const p = latest.current;
+      const d = drag.current;
+      const other = d.handle === "low" ? p.high : p.low;
+      const gap = (p.minGap / (p.max - p.min)) * (p.width - HANDLE);
+      const [lo, hi] = d.handle === "low" ? [HANDLE / 2, centre(other) - gap] : [centre(other) + gap, p.width - HANDLE / 2];
+      const clamped = Math.min(hi, Math.max(lo, x));
+      const [nextLow, nextHigh] = withValue(d.handle, valueAt(clamped));
+      const value = d.handle === "low" ? nextLow : nextHigh;
+      pos[d.handle].setValue(p.continuous ? clamped : centre(value));
+      // d.value is what was last sent, so props that have not caught up yet
+      // cannot swallow a change.
+      if (value !== d.value) {
+        d.value = value;
+        p.onChange(nextLow, nextHigh);
+      }
     };
     // Pressing on a handle keeps the finger's offset from its centre; pressing
-    // on the track jumps the handle there.
+    // on the track brings the handle to the finger.
     const grab = (handle, x) => {
       const p = latest.current;
-      const d = x - centre(handle === "low" ? p.low : p.high);
+      const value = handle === "low" ? p.low : p.high;
+      const d = x - centre(value);
       const onHandle = Math.abs(d) <= HANDLE / 2;
-      drag.current = { handle, offset: onHandle ? d : 0 };
-      if (!onHandle) move(handle, valueAt(x));
+      pos[handle].stopAnimation();
+      placed.current[handle] = null;
+      drag.current = { handle, offset: onHandle ? d : 0, value };
+      if (!onHandle) follow(x);
     };
+    // Released (or interrupted): a continuous handle settles on the value it
+    // was sending; a stepping one is already on it.
     const end = () => {
+      const d = drag.current;
       drag.current = null;
+      if (d?.handle) placed.current[d.handle] = centre(d.value);
+      if (d?.handle && latest.current.continuous) {
+        Animated.timing(pos[d.handle], {
+          toValue: centre(d.value),
+          duration: SETTLE_MS,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }).start();
+      }
       latest.current.onDragging?.(false);
     };
     responder.current = PanResponder.create({
@@ -111,12 +185,15 @@ export function RangeSlider({
           if (Math.abs(x - startX) < 2) return;
           grab(x < startX ? "low" : "high", startX);
         }
-        move(drag.current.handle, valueAt(x - drag.current.offset));
+        follow(x - drag.current.offset);
       },
       onPanResponderRelease: end,
       onPanResponderTerminate: end,
     });
-    moveRef.current = move;
+    moveRef.current = (handle, value) => {
+      const p = latest.current;
+      send(withValue(handle, Math.min(p.max, Math.max(p.min, value))));
+    };
   }
 
   const lowPct = pctOf(low);
@@ -124,8 +201,8 @@ export function RangeSlider({
   const valueText = (v) => (ticks ? ticks[Math.round((v - min) / step)] : formatLabel(v));
 
   // A handle is also an adjustable control for VoiceOver and TalkBack.
-  const handle = (which, value, pct) => (
-    <View
+  const handle = (which, value) => (
+    <Animated.View
       key={which}
       accessible
       accessibilityRole="adjustable"
@@ -136,17 +213,25 @@ export function RangeSlider({
         moveRef.current(which, value + (e.nativeEvent.actionName === "increment" ? step : -step))
       }
       className="absolute rounded-full bg-red-600 border-2 border-white"
-      style={{ width: HANDLE, height: HANDLE, left: xOf(pct) - HANDLE / 2, top: (ROW - HANDLE) / 2 }}
+      style={{
+        width: HANDLE,
+        height: HANDLE,
+        left: -HANDLE / 2,
+        top: (ROW - HANDLE) / 2,
+        transform: [{ translateX: pos[which] }],
+      }}
     />
   );
-  const valueLabel = (pct, text, wide = 1) => (
-    <Text
-      key={text}
+  // A value label under its handle (or under the middle of the two), moving
+  // with it.
+  const valueLabel = (key, x, text, wide = 1) => (
+    <Animated.Text
+      key={key}
       className="absolute text-xs font-medium text-red-600 text-center"
-      style={{ width: LABEL_WIDTH * wide, left: xOf(pct) - (LABEL_WIDTH * wide) / 2 }}
+      style={{ width: LABEL_WIDTH * wide, left: -(LABEL_WIDTH * wide) / 2, transform: [{ translateX: x }] }}
     >
       {text}
-    </Text>
+    </Animated.Text>
   );
 
   return (
@@ -168,12 +253,12 @@ export function RangeSlider({
               className="absolute h-0.5 bg-gray-200"
               style={{ left: HANDLE / 2, right: HANDLE / 2, top: ROW / 2 - 1 }}
             />
-            <View
+            <Animated.View
               className="absolute h-0.5 bg-red-600"
-              style={{ left: xOf(lowPct), width: xOf(highPct) - xOf(lowPct), top: ROW / 2 - 1 }}
+              style={{ left: pos.low, width: derived.fill, top: ROW / 2 - 1 }}
             />
-            {single ? null : handle("low", low, lowPct)}
-            {handle("high", high, highPct)}
+            {single ? null : handle("low", low)}
+            {handle("high", high)}
           </>
         ) : null}
       </View>
@@ -204,8 +289,8 @@ export function RangeSlider({
                 );
               })
             : highPct - lowPct < LABEL_MERGE_PCT
-              ? valueLabel((lowPct + highPct) / 2, `${formatLabel(low)} – ${formatLabel(high)}`, 2)
-              : [valueLabel(lowPct, formatLabel(low)), valueLabel(highPct, formatLabel(high))]}
+              ? valueLabel("both", derived.middle, `${formatLabel(low)} – ${formatLabel(high)}`, 2)
+              : [valueLabel("low", pos.low, formatLabel(low)), valueLabel("high", pos.high, formatLabel(high))]}
         </View>
       ) : null}
     </View>
