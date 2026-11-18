@@ -21,6 +21,7 @@ function InviteLinkCard({ userId }) {
   async function copy() {
     if (!link) return;
     if (await copyText(link)) {
+      setCopyFailed(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } else {

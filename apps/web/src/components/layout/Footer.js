@@ -76,13 +76,12 @@ function ContactButton({ copyState, onClick }) {
       )}
       {copyState === "failed" && (
         <p className="text-xs text-gray-400 mt-1">
-          Email us at{" "}
-          <a
-            href={`mailto:${CONTACT_EMAIL}`}
-            className="text-white underline select-all"
-          >
-            {CONTACT_EMAIL}
+          Email us at <span className="text-white select-all">{CONTACT_EMAIL}</span>{" "}
+          (
+          <a href={`mailto:${CONTACT_EMAIL}`} className="text-white underline">
+            open mail app
           </a>
+          )
         </p>
       )}
     </>
@@ -91,7 +90,8 @@ function ContactButton({ copyState, onClick }) {
 
 export default function Footer() {
   // "idle" | "copied" | "failed". A failed copy (browser denied clipboard
-  // access) leaves the address on screen as a mailto link so nobody is stuck.
+  // access) leaves the address on screen as selectable text, with a separate
+  // mailto link, so nobody is stuck.
   const [copyState, setCopyState] = useState("idle");
 
   async function handleCopyEmail() {

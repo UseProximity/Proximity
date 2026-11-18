@@ -26,7 +26,12 @@ function legacyCopy(text) {
   textarea.className = "fixed top-0 left-0 opacity-0 pointer-events-none";
   document.body.appendChild(textarea);
   try {
+    // iOS Safari ignores select() on its own, and execCommand can still
+    // report success with nothing selected, so set the range explicitly and
+    // refuse to claim a copy unless the whole text really is selected.
     textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    if (textarea.selectionEnd - textarea.selectionStart !== text.length) return false;
     return document.execCommand("copy");
   } catch {
     return false;
