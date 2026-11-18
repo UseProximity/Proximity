@@ -181,3 +181,31 @@ export function nextSundayCheckAt(now = Date.now(), slackMs = 6 * 60 * 60 * 1000
   if (days === 0 && run.getTime() - slackMs <= now) days = 7;
   return new Date(run.getTime() + days * 86400000 - slackMs).toISOString();
 }
+
+/*
+ * Where a carried-on walk starts. A fresh render opens at the earliest
+ * move-in date, and reaching an apartment that frees up months out means
+ * listing every floor plan again on the way (a minute a pass on Mansions on
+ * the Plaza). Opening an apartment already priced moves the date to its
+ * own, so the walk is handed those apartments, latest first, one per date.
+ * It jumps to the latest it can open: an apartment the portal only lists
+ * once the date is near (Mansions' 142 at Jan 21 shows only from Jan 15)
+ * is reached by first opening an earlier one. Only up to the earliest
+ * apartment still unpriced, so that one is still priced for its own date.
+ */
+export function resumePoint(walk, max = 4) {
+  const priced = new Set((walk.priced ?? []).map((q) => String(q.number)));
+  if (!priced.size) return [];
+  const units = Object.values(walk.units ?? {}).filter((u) => u?.number && u.plan);
+  const open = units.filter((u) => !priced.has(String(u.number)));
+  // An unpriced apartment free now: nothing to skip ahead to.
+  if (open.some((u) => !u.avail)) return [];
+  const limit = open.map((u) => u.avail).sort()[0] ?? null;
+  const dates = new Set();
+  return units
+    .filter((u) => priced.has(String(u.number)) && u.avail && (!limit || u.avail <= limit))
+    .sort((a, b) => b.avail.localeCompare(a.avail) || String(a.number).localeCompare(String(b.number)))
+    .filter((u) => !dates.has(u.avail) && dates.add(u.avail))
+    .slice(0, max)
+    .map((u) => ({ number: String(u.number), plan: u.plan, avail: u.avail }));
+}

@@ -748,7 +748,7 @@ export function readProperty(args) {
  * where that unit's data lives, so nothing else is opened: no own-site hop,
  * no floor plan index, no per-apartment pages, no exploring for gaps.
  */
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, _crawl = null, _brandName = null, _modelDraft = null }) {
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, stopWhenPending = false, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
@@ -964,6 +964,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // this runs again after each round of exploring, until a portal is tried.
   let portalMissed = false;
   let portalPending = false;
+  // Why a portal that was found and walked gave no apartments, for the team.
+  let portalUnread = null;
   let walkedKind = null;
   const tryWalkedPortals = async () => {
     if (learned || walkedKind) return false;
@@ -1026,11 +1028,41 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         portalMissed = true;
         notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
       }
+      if (!rp?.units?.length && !rp?.pending) {
+        // Said where the team sees it (the sync's summary), not only in the
+        // logs: an outage on the portal's side once went unnoticed for days.
+        portalUnread = rp?.reason ?? "the leasing portal gave no apartments";
+        console.warn(`[source-import] ${target.name}: ${def.kind} portal read nothing: ${portalUnread}`);
+      }
       return true;
     }
     return false;
   };
+  /*
+   * A sync whose portal walk is part way through stops here. Nothing in this
+   * read would be applied (the sync keeps the listing as it is until the walk
+   * is done), and reading the website on with the model would cost money and
+   * eat the time the next walk needs: one Mansions on the Plaza run spent
+   * over two minutes on it and hit the five minute limit (2026-11-17).
+   */
+  const pendingSnapshot = () => {
+    const snapshot = makeSnapshot({
+      sourceUrl: propPage?.finalUrl ?? main.finalUrl,
+      indexUrl: null,
+      platform: walkedKind ?? "generic",
+      confidence: "low",
+      unitListComplete: false,
+      property: { name: target.name ?? null, address: target.address ?? null },
+      units: [],
+      notes: [],
+    });
+    snapshot.trace = { pages: crawl.fetched.map((f) => ({ url: f.finalUrl })), refused: crawl.refused, stoppedForPortal: true };
+    snapshot.portal = learned && isWalkedPortal(learned) ? { ...learned, walked: true } : learned;
+    snapshot.portalPending = true;
+    return snapshot;
+  };
   await tryWalkedPortals();
+  if (stopWhenPending && portalPending) return pendingSnapshot();
 
   // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
@@ -1116,6 +1148,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   await explore(readerUnits, null);
   // A portal link found on a page the explorer just opened.
   await tryWalkedPortals();
+  if (stopWhenPending && portalPending) return pendingSnapshot();
 
   /*
    * "What's included" and fee-guide flyers: pictures, read by the model's
@@ -1226,6 +1259,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // opened anything, read again with those pages in hand.
   if (await explore(units, listing)) {
     await tryWalkedPortals();
+    if (stopWhenPending && portalPending) return pendingSnapshot();
     await readFlyers();
     await extractAndFill(true);
   }
@@ -1359,6 +1393,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   if (snapshot.portal && isWalkedPortal(snapshot.portal)) snapshot.portal = { ...snapshot.portal, walked: true };
   // The portal walk is part way through: nothing in this read is final.
   snapshot.portalPending = portalPending;
+  // The portal was found but read nothing: the sync tells the team.
+  snapshot.portalUnread = portalUnread;
   return snapshot;
 }
 
