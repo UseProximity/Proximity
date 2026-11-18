@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "expo-router";
 import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
@@ -11,6 +12,7 @@ import {
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
 import { useAuthStore } from "../../src/store/authStore";
+import { useBrowseHandoffStore } from "../../src/store/browseHandoffStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
@@ -38,6 +40,9 @@ export default function BrowseScreen() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  // Find Your Place's nice-to-haves, marked in the filter sheet but switched off.
+  // { furnished, amenities } or null; gone once the filters are reset.
+  const [suggestedFilters, setSuggestedFilters] = useState(null);
   const [view, setView] = useState("list");
   const listRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -51,6 +56,30 @@ export default function BrowseScreen() {
   useEffect(() => {
     if (view !== "list") setShowBackToTop(false);
   }, [view]);
+
+  // Arriving from Find Your Place's "Browse All Matches": its answers become the
+  // filters (each one shown, and removable, in the filter sheet), as on web.
+  const handoff = useBrowseHandoffStore((state) => state.pending);
+  // Only the Browse on screen takes it: a hidden one (for example under the
+  // stack after a sign-in) must not use it up. `handoff` and focus only wake
+  // this effect; the store is read once, here, and an empty read does nothing.
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    if (!isFocused) return;
+    const next = useBrowseHandoffStore.getState().take();
+    if (!next) return;
+    const { filters: handed, suggested } = next;
+    setFilters({ ...DEFAULT_FILTERS, ...(handed ?? {}) });
+    setSearch("");
+    setSuggestedFilters(
+      suggested
+        ? {
+            furnished: typeof suggested.furnished === "string" ? suggested.furnished : null,
+            amenities: Array.isArray(suggested.amenities) ? suggested.amenities.filter((a) => typeof a === "string") : [],
+          }
+        : null
+    );
+  }, [handoff, isFocused]);
 
   async function load() {
     try {
@@ -252,8 +281,10 @@ export default function BrowseScreen() {
       <FilterSheet
         visible={filterSheetVisible}
         filters={filters}
+        suggested={suggestedFilters}
         onApply={(next) => {
           setFilters(next);
+          if (countActiveFilters(next) === 0) setSuggestedFilters(null);
           setFilterSheetVisible(false);
         }}
         onClose={() => setFilterSheetVisible(false)}

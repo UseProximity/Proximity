@@ -1,15 +1,17 @@
 // Bottom tab navigator. Students: Browse | Saved | Matchmaking | Chat | Profile.
+// The third tab's screen is Find Your Place; its bar label stays the shorter
+// "Matchmaking", which fits five tabs on small phones.
 // Landlords: Browse | Saved | Listings | Chat | Profile.
 // Icons/colors per design-system/MASTER.md §7: active tab uses `primary`,
 // inactive uses `textMuted`, icons from the shared Lucide set (§6). All tabs
 // use the same flat icon treatment (Stage H's raised/logo-mark treatment for
-// Matchmaking was tried and reverted after on-device review, since it read as too
+// this tab was tried and reverted after on-device review, since it read as too
 // special-cased rather than consistent with the rest).
 //
-// The third tab is role-dependent: students get Matchmaking, landlords get My
+// The third tab is role-dependent: students get Find Your Place, landlords get My
 // Listings (their own properties) instead, per the profile-split plan's
 // mobile-focused landlord experience. Saved is shown to both roles. The
-// Matchmaking route stays valid for landlords, it just has no tab. All three
+// Find Your Place route stays valid for landlords, it just has no tab. All three
 // routes must stay declared as Tabs.Screen, because Expo
 // Router auto-registers every file under (tabs)/ as a tab regardless of
 // whether it's explicitly declared, so simply omitting one from JSX doesn't
@@ -32,7 +34,7 @@ const TAB_ICONS = {
   index: Search,
   saved: Heart,
   "my-listings": Building2,
-  matchmaking: Sparkles,
+  "find-your-place": Sparkles,
   chat: MessageCircle,
   profile: User,
 };
@@ -105,7 +107,10 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Browse" }} />
       <Tabs.Screen name="saved" options={{ title: "Saved" }} />
       <Tabs.Screen name="my-listings" options={{ title: "Listings", href: landlord ? undefined : null }} />
-      <Tabs.Screen name="matchmaking" options={{ title: "Matchmaking", href: landlord ? null : undefined }} />
+      <Tabs.Screen
+        name="find-your-place"
+        options={{ title: "Find Your Place", tabBarLabel: "Matchmaking", href: landlord ? null : undefined }}
+      />
       <Tabs.Screen
         name="chat"
         options={{

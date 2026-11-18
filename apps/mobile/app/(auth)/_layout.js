@@ -26,7 +26,11 @@ export default function AuthLayout() {
     }
     if (!isHydrated || redirected.current) return;
     redirected.current = true;
-    router.replace(safeReturnPath(next) ?? "/(tabs)");
+    // Back to the tabs already under this screen, not a second copy of them
+    // stacked on top (replace would add one, with its own Browse and chat).
+    const destination = safeReturnPath(next);
+    if (destination) router.replace(destination);
+    else router.dismissTo("/(tabs)");
   }, [isHydrated, user, next]);
 
   return (

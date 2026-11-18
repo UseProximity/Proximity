@@ -75,7 +75,7 @@ export default function LoginScreen() {
       // Signed in: (auth)/_layout.js navigates on, to the pending conversation if any.
       // A dismissed Google prompt resolves with nobody signed in; that case still goes
       // to the tabs, as before.
-      if (!useAuthStore.getState().user) router.replace("/(tabs)");
+      if (!useAuthStore.getState().user) router.dismissTo("/(tabs)");
     } catch (err) {
       setError(getErrorMessage(err, ERROR_MESSAGES.AUTH.SIGN_IN_GOOGLE));
     }

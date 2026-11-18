@@ -43,9 +43,8 @@ export const useAuthStore = create((set, get) => ({
     const { useFavoritesStore } = await import("./favoritesStore");
     useFavoritesStore.getState().clear();
 
-    // Matchmaking's own chatStore reacts to this store's user?.id changing
-    // (see the effect in app/(tabs)/matchmaking.js), so no explicit reset
-    // needed here.
+    // Find Your Place's store reacts to this store's user?.id changing (see
+    // store/findYourPlaceStore.js), so no explicit reset needed here.
   },
 
   hydrate: async () => {
