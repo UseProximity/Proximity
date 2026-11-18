@@ -13,7 +13,7 @@ import loadTraffic from "@/lib/analytics/tabs/traffic";
  */
 export const TABS = [
   { slug: "overview", title: "Overview", load: loadOverview },
-  { slug: "matchmaking", title: "Matchmaking", load: loadMatchmaking },
+  { slug: "matchmaking", title: "Find Your Place", load: loadMatchmaking },
   { slug: "landlords", title: "Landlords", load: loadLandlords },
   { slug: "engagement", title: "Listing engagement", load: loadEngagement },
   { slug: "reviews", title: "Reviews", load: loadReviews },

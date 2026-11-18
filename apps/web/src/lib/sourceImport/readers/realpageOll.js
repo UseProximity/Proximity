@@ -233,7 +233,7 @@ const WALK = String.raw`
         leaf(/^Yes$/)[0].click();
         await waitFor(() => step() === 3, 30000);
       }
-      if (step() !== 3) return false;
+      if (step() !== 3) { note('lease terms did not open for ' + u.number); return false; }
       await waitFor(() => /months? Lease\s*\$/.test(doc().body.innerText), 20000);
       await waitFor(() => cap.seq > seq && cap.detail, 2500);
       await sleep(1200);
@@ -274,6 +274,20 @@ const WALK = String.raw`
     for (const n of (OPTS.skip || [])) skip[String(n)] = true;
     const got = () => { const s = {}; for (const q of out.priced) s[q.number] = true; return s; };
     const when = (u) => u.avail || '';
+    // A walk carried on from an earlier render: open apartments it already
+    // priced (latest first) to move the date straight to where it stopped,
+    // rather than listing every floor plan at each date on the way. One not
+    // listed yet at today's date is tried again once an earlier one has
+    // moved the date nearer it.
+    const targets = (OPTS.resumeAt || []).filter((t) => t && t.number && t.plan && t.avail);
+    const failed = {};
+    for (let tries = 0; tries < 5; tries++) {
+      const now = desired() || '';
+      const t = targets.find((x) => x.avail > now && !failed[x.number + '@' + now]);
+      if (!t) break;
+      if (await openUnit({ plan: t.plan, number: String(t.number) }, false)) note('resumed at ' + desired() + ' with ' + t.number);
+      else failed[t.number + '@' + now] = true;
+    }
     let hops = 0;
     for (let round = 0; round < 10; round++) {
       // Each round starts from the floor plan list: the date may have moved
@@ -303,12 +317,21 @@ const WALK = String.raw`
       // screen moves the date on; when none is later than the date, the
       // portal has shown everything it has.
       const now = desired() || '';
-      const ahead = Object.keys(out.units).map((n) => out.units[n]).filter((u) => u.visible && when(u) > now).sort((a, b) => when(b).localeCompare(when(a)))[0];
-      if (!ahead || hops >= 6) { out.done = true; break; }
+      const aheads = Object.keys(out.units).map((n) => out.units[n]).filter((u) => u.visible && when(u) > now).sort((a, b) => when(b).localeCompare(when(a)));
+      if (!aheads.length || hops >= 6) { out.done = true; break; }
       if (left() < 30000) { out.timeUp = true; break; }
       hops += 1;
-      note('moving the date on with ' + ahead.number);
-      if (!(await openUnit(ahead, false))) { note('could not move the date on'); break; }
+      // Any later apartment moves the date on; one that will not open is
+      // not a reason to stop (the walk would end unfinished, and a let
+      // apartment would never be taken off the listing).
+      let moved = false;
+      for (const ahead of aheads.slice(0, 3)) {
+        if (left() < 30000) { out.timeUp = true; break; }
+        note('moving the date on with ' + ahead.number);
+        if (await openUnit(ahead, false)) { moved = true; break; }
+        note('could not move the date on with ' + ahead.number);
+      }
+      if (out.timeUp || !moved) break;
     }
     if (out.timeUp) out.done = false;
   } catch (e) {
@@ -318,8 +341,8 @@ const WALK = String.raw`
   return JSON.stringify(out);
 })()`;
 
-export function walkScript({ skip = [], budgetMs = WALK_MS } = {}) {
-  return WALK.replace("__OPTS__", JSON.stringify({ skip: skip.map(String), budgetMs }));
+export function walkScript({ skip = [], budgetMs = WALK_MS, resumeAt = [] } = {}) {
+  return WALK.replace("__OPTS__", JSON.stringify({ skip: skip.map(String), budgetMs, resumeAt }));
 }
 
 /*

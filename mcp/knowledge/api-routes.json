@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-15T20:34:49.540Z",
-  "count": 270,
+  "_generated": "2026-11-18T19:48:17.877Z",
+  "count": 278,
   "routes": [
     {
       "path": "/api/account",
@@ -434,6 +434,46 @@
       "file": "src/app/api/admin/billing/landlords/[id]/license-disclosure/route.js"
     },
     {
+      "path": "/api/admin/billing/landlords/[id]/paper",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/paper/[agreementId]",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/[agreementId]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/landlords/[id]/paper/[agreementId]/file",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/landlords/[id]/paper/[agreementId]/file/route.js"
+    },
+    {
       "path": "/api/admin/billing/landlords/agreement-email",
       "methods": [
         "POST"
@@ -628,6 +668,7 @@
         "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
+        "chat_email_log",
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
@@ -1071,6 +1112,21 @@
       "file": "src/app/api/admin/update-campus-walk-times/route.js"
     },
     {
+      "path": "/api/admin/update-listing-bike-times",
+      "methods": [
+        "POST"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "POST": "super"
+      },
+      "tables": [
+        "listings",
+        "listing_bike_times"
+      ],
+      "file": "src/app/api/admin/update-listing-bike-times/route.js"
+    },
+    {
       "path": "/api/admin/update-listing-drive-times",
       "methods": [
         "POST"
@@ -1126,6 +1182,22 @@
       },
       "tables": [],
       "file": "src/app/api/agents/enabled/route.js"
+    },
+    {
+      "path": "/api/applications",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any",
+        "POST": "any",
+        "PATCH": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/applications/route.js"
     },
     {
       "path": "/api/auth/[...nextauth]",
@@ -2097,6 +2169,8 @@
         "review_votes",
         "lease_checks",
         "waitlist_clicks",
+        "events",
+        "listing_applications",
         "device_push_tokens",
         "user_blocks",
         "review_reports",
@@ -2404,6 +2478,34 @@
       "file": "src/app/api/filter-summary/route.js"
     },
     {
+      "path": "/api/find-your-place",
+      "methods": [
+        "POST",
+        "PATCH"
+      ],
+      "auth": "optional",
+      "methodAuth": {
+        "POST": "optional",
+        "PATCH": "optional"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/find-your-place/route.js"
+    },
+    {
+      "path": "/api/find-your-place/events",
+      "methods": [
+        "POST"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "POST": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/find-your-place/events/route.js"
+    },
+    {
       "path": "/api/getUser",
       "methods": [
         "GET"
@@ -2708,6 +2810,18 @@
       },
       "tables": [],
       "file": "src/app/api/landlord/listings/[listingId]/agent/url/route.js"
+    },
+    {
+      "path": "/api/landlord/listings/[listingId]/applications",
+      "methods": [
+        "GET"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "GET": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/landlord/listings/[listingId]/applications/route.js"
     },
     {
       "path": "/api/landlord/listings/[listingId]/contact",

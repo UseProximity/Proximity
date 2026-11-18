@@ -322,6 +322,9 @@ function leaseMonthsOf(listing) {
 // or anything unrecognized returns null (no constraint from that label). The
 // agent may pass free-form strings ("summer sublet"), which bucket as semester.
 function leaseBucketTest(label) {
+  // An exact length in months ("9 months"), from Find Your Place's "Other".
+  const exact = /^(\d{1,2})\s*months?$/i.exec(String(label ?? "").trim());
+  if (exact) return (m) => m === Number(exact[1]);
   if (label === "Semester only" || /\b(?:summer|semester)\b/i.test(label ?? "")) return (m) => m <= 7;
   if (/academic/i.test(label ?? "")) return (m) => m >= 8 && m <= 10;
   if (label === "Full year only") return (m) => m >= 11;
@@ -956,35 +959,31 @@ function computeFitScores(pool, weights, preferences, vettingById = null) {
   return { scores, dims };
 }
 
-// Fetch the active, available listing rows with everything the ranker/narrowing
-// needs (units, leases, reviews, amenities, images, walk times). Shared by
-// rankListings and the narrowing phase so both see the same universe.
-export async function fetchActiveListings() {
-  const active = (sandbox) =>
-    supabase
-      .from("listings")
-      .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
-      .is("deleted_at", null)
-      .eq("unavailable", false)
-      .not("published_at", "is", null)
-      .eq("review_sandbox", sandbox);
-  // Never recommend a listing made by an App Store review sandbox account to a real
-  // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
-  // the sandbox listings, fetched on their own so they never push a real one out of
-  // the 80.
-  const { data, error } = await active(false).limit(80);
-  if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
-  let rows = data ?? [];
-  if (sandboxViewerInScope()) {
-    const { data: sandboxRows, error: sandboxErr } = await active(true).limit(20);
-    if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
-    rows = [...rows, ...(sandboxRows ?? [])];
-  }
-  // Review sandbox accounts' reviews never move a listing's rating here.
-  await stripSandboxReviews(rows);
-  // Retired units (collapsed by a property merge) are not rentable options, and
-  // neither are drafts. Draft offerings are dropped here too, so every check
-  // below sees only what students can.
+/*
+ * The whole live market, read once and shared for a short while. One mobile
+ * chat turn reads it in up to five places and every Find Your Place search
+ * reads it again, so without this each of those is a full join over every
+ * live listing. Ten seconds covers a chat turn and back-to-back searches; a
+ * listing published in that window shows up on the next read. On globalThis so
+ * every route bundle on an instance shares it. Each caller gets its own copy,
+ * so nothing one caller changes leaks into another's rows.
+ */
+const ACTIVE_LISTINGS_TTL_MS = 10_000;
+
+function activeListingsQuery(sandbox) {
+  return supabase
+    .from("listings")
+    .select(`${LISTING_SELECT}, listing_walk_times(minutes, locations(name))`)
+    .is("deleted_at", null)
+    .eq("unavailable", false)
+    .not("published_at", "is", null)
+    .eq("review_sandbox", sandbox);
+}
+
+// Retired units (collapsed by a property merge) are not rentable options, and
+// neither are drafts. Draft offerings are dropped here too, so every check
+// downstream sees only what students can.
+function studentVisible(rows) {
   return rows.map((row) => ({
     ...row,
     listing_units: publicUnits(row.listing_units).map((u) => ({
@@ -992,6 +991,46 @@ export async function fetchActiveListings() {
       unit_leases: (u.unit_leases ?? []).filter(isPublished),
     })),
   }));
+}
+
+async function readActiveListings() {
+  // Every live listing is ranked (Wyatt, 2026-11-10). This used to stop at 80
+  // rows in no particular order, so with a few hundred live listings most of
+  // the market was never considered. 1000 is PostgREST's own page ceiling.
+  const { data, error } = await activeListingsQuery(false).limit(1000);
+  if (error) throw new Error(`[listingFilter] Supabase fetch failed: ${error.message}`);
+  const rows = data ?? [];
+  // Review sandbox accounts' reviews never move a listing's rating here.
+  await stripSandboxReviews(rows);
+  return studentVisible(rows);
+}
+
+// Fetch the active, available listing rows with everything the ranker/narrowing
+// needs (units, leases, reviews, amenities, images, walk times). Shared by
+// rankListings and the narrowing phase so both see the same universe.
+export async function fetchActiveListings() {
+  const cache = (globalThis.__prxActiveListings ??= { at: 0, promise: null });
+  if (!cache.promise || Date.now() - cache.at > ACTIVE_LISTINGS_TTL_MS) {
+    const read = readActiveListings();
+    cache.at = Date.now();
+    cache.promise = read;
+    // A failed read is not kept: the next caller tries again.
+    read.catch(() => {
+      if (cache.promise === read) cache.promise = null;
+    });
+  }
+  let rows = structuredClone(await cache.promise);
+  // Never recommend a listing made by an App Store review sandbox account to a real
+  // student. A sandbox student's turn (withSandboxViewer in the chat route) also gets
+  // the sandbox listings, fetched on their own and never cached.
+  if (sandboxViewerInScope()) {
+    const { data: sandboxRows, error: sandboxErr } = await activeListingsQuery(true).limit(20);
+    if (sandboxErr) console.error("[listingFilter] sandbox listing fetch failed:", sandboxErr.message);
+    const extra = sandboxRows ?? [];
+    await stripSandboxReviews(extra);
+    rows = [...rows, ...studentVisible(extra)];
+  }
+  return rows;
 }
 
 // ---- Relaxable-constraint machinery (v2) -----------------------------------
@@ -1051,6 +1090,10 @@ function splitRelaxable(candidates, relaxInputs) {
       : relaxFailures(x, relaxInputs);
     if (fails.length === 0) strict.push(x);
     else if (fails.length === 1) shadow.push({ ...x, relax: fails[0] });
+    // Find Your Place always fills four cards, so it also wants the places
+    // that miss more than one thing (it ranks them last and says what each
+    // misses). `all` carries every miss; the chat never sets this.
+    else if (relaxInputs.allowMultiMiss) shadow.push({ ...x, relax: { ...fails[0], all: fails } });
   }
   return { strict, shadow };
 }
@@ -1069,12 +1112,19 @@ function neighborhoodFailure(x, { areas, wantsHood }) {
 // Shared preference-derived inputs for relaxFailures.
 function relaxInputsOf(preferences) {
   const areas = Array.isArray(preferences?.area) ? preferences.area : [];
+  /*
+   * `_softArea` / `_softFurnished` (Find Your Place): the student mentioned a
+   * neighborhood or furnishing as a wish, not a requirement. The wish still
+   * scores (neighborhoodNorm reads preferences.area), it just stops being a
+   * constraint a listing can fail.
+   */
   return {
     budgetMax: preferences?.budget_max ?? Infinity,
     leaseTests: leaseTestsFor(preferences?.lease_term),
-    furnishedPref: furnishedPrefOf(preferences),
+    furnishedPref: preferences?._softFurnished ? null : furnishedPrefOf(preferences),
     areas,
-    wantsHood: areas.some((a) => a && a !== "No preference"),
+    wantsHood: !preferences?._softArea && areas.some((a) => a && a !== "No preference"),
+    allowMultiMiss: preferences?._allowMultiMiss === true,
   };
 }
 
@@ -1175,7 +1225,10 @@ export function splitEligible(allListings, preferences) {
 // diverse candidate pool plus per-dimension norms and fit scores. Shared by
 // rankListings (production) and the saturation simulation so both score the
 // candidates identically.
-export function buildRankContext(allListings, preferences, weights, limit = 10) {
+// `poolSize` caps the strict pool handed back. The chat ranker keeps the
+// default (a diverse 24 the model can read in one go); Find Your Place asks for
+// everything and scores the whole field itself.
+export function buildRankContext(allListings, preferences, weights, limit = 10, { poolSize = 24 } = {}) {
   const groupRange = parseGroupRange(preferences.group_size);
   const groupSize = parseGroupSize(preferences.group_size); // representative size for prose
   const relaxInputs = relaxInputsOf(preferences);
@@ -1368,7 +1421,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   // then let a tagged slice of the shadow pool ride along so the ranker always
   // sees what one relaxation would buy (cheapest budget-misses first). The
   // shadow slice grows when the strict pool is thin.
-  const strictPicked = buildDiversePool(preferred, 24, vettingById);
+  const strictPicked = buildDiversePool(preferred, poolSize, vettingById);
   const shadowSorted = [...shadow].sort(
     (a, b) =>
       (a.relax.constraint === "budget" ? a.perPerson : 5e8) -
@@ -1376,7 +1429,7 @@ export function buildRankContext(allListings, preferences, weights, limit = 10) 
   );
   const shadowPicked = shadowSorted.slice(
     0,
-    Math.min(shadowSorted.length, Math.max(6, 30 - strictPicked.length))
+    Math.min(shadowSorted.length, Math.max(6, Math.max(30, poolSize) - strictPicked.length))
   );
   const relaxById = {};
   for (const s of shadowPicked) relaxById[s.listing.id] = s.relax;

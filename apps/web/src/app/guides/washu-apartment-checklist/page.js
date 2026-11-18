@@ -278,10 +278,10 @@ export default function Page() {
                 <p className="text-base leading-7 sm:text-lg sm:leading-8">
                   Get a free housing match at{" "}
                   <Link
-                    href="/matchmaking"
+                    href="/find-your-place"
                     className="font-medium text-rose-600 hover:underline"
                   >
-                    useproximity.org/matchmaking
+                    useproximity.org/find-your-place
                   </Link>
                   , or browse verified WashU listings and reviews at{" "}
                   <Link

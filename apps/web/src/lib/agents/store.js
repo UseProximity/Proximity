@@ -23,7 +23,7 @@
  * Server-only: uses the service-role client.
  */
 import supabase from "@/lib/supabase";
-import { SECTIONS, SCOPES, CONFIDENCES, CAUSES, cleanText } from "./sections";
+import { SECTIONS, SCOPES, CONFIDENCES, CAUSES, cleanText, isLaterThan } from "./sections";
 
 const NIL = "00000000-0000-0000-0000-000000000000";
 
@@ -168,12 +168,12 @@ export async function recordEvent(ev) {
  *   { fact, changed: true, event }     written (and the old row retired)
  *   { held: true, event, fact }        landlord-set value kept; change held
  */
-export async function setFact(input) {
+export async function setFact(input, attempt = 0) {
   const {
     listingId, section, fieldKey, value = {}, scopeLevel = "property", scopeId = null,
     sourceId = null, sourceRef = null, excerpt = null, confidence = "high",
     landlordSet = false, setBy = null, observedAt = null, validFrom = null, validUntil = null,
-    cause, actorId = null, detail = {}, holdForTeam = false,
+    cause, actorId = null, detail = {}, holdForTeam = false, skipIfNewer = false,
   } = input;
   const summary = cleanText(input.summary);
 
@@ -195,6 +195,13 @@ export async function setFact(input) {
   if (e1) throw fail("fact lookup", e1);
 
   const observed = observedAt ? new Date(observedAt).toISOString() : new Date().toISOString();
+
+  // A record of a dashboard save is written after the page has answered, and
+  // can land late: an early save's record once arrived after a newer save's
+  // and replaced it. With skipIfNewer, one older than what is stored is dropped.
+  if (skipIfNewer && existing && isLaterThan(existing.observed_at, observed)) {
+    return { fact: existing, changed: false, skipped: true };
+  }
 
   if (existing) {
     const same = stable(existing.value) === stable(value) && existing.summary === summary
@@ -251,10 +258,24 @@ export async function setFact(input) {
     }
   }
 
-  // Retire the old row first: the unique index allows one current row.
+  // Retire the old row first: the unique index allows one current row. Only
+  // while it is still the current one: if another write replaced it since the
+  // read above, start again from what is there now, so the checks above (newer
+  // record, landlord's word, team review) are made against the real row and
+  // two saves at once cannot leave the older one standing.
+  // A short, uneven wait first: the other write is between its retire and its
+  // insert (no current row at all), and trying again at once only collides with
+  // it a second time (two saves at once lost a record that way in testing).
+  const raced = async () => {
+    if (attempt >= 3) throw new Error("fact write: another write kept replacing this record");
+    await new Promise((r) => setTimeout(r, 60 * (attempt + 1) + Math.random() * 60));
+    return setFact(input, attempt + 1);
+  };
   if (existing) {
-    const { error } = await supabase.from("listing_facts").update({ is_current: false }).eq("id", existing.id);
+    const { data: retired, error } = await supabase.from("listing_facts").update({ is_current: false })
+      .eq("id", existing.id).eq("is_current", true).select("id");
     if (error) throw fail("fact retire", error);
+    if (!retired?.length) return raced();
   }
   const row = {
     listing_id: listingId, section, field_key: fieldKey, value, summary, scope_level: scopeLevel,
@@ -265,6 +286,8 @@ export async function setFact(input) {
   const { data: fact, error: e2 } = await supabase.from("listing_facts").insert(row).select("*").single();
   if (e2) {
     if (existing) await supabase.from("listing_facts").update({ is_current: true }).eq("id", existing.id);
+    // 23505: another write put a current row in first (two first records at once).
+    if (e2.code === "23505") return raced();
     throw fail("fact write", e2);
   }
   if (existing) await supabase.from("listing_facts").update({ superseded_by: fact.id }).eq("id", existing.id);

@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, applyEnvelope, coverageFor, coveringAgreement, documentParts, listAgreementDocuments, startSigning } from "./agreements.js";
-import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, completeTakeover, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments } from "./payers.js";
+import { approveWaiting, cancelPayerDocuments, changePayer, cleanPayerInput, completeTakeover, endPayerFor, landlordPayerView, lookupPayer, namePayer, payerAccounts, requestPayerCoverage, settleSignedDocument, settleStaleDocuments, staleTakeoverLandlords } from "./payers.js";
 import { checkListingGate, coverageOnly, gateResponseBody, payerCanFix } from "./listingGate.js";
 import { payeeChargeView, statusMessage } from "./chargeDisplay.js";
 import { exhibitPreview } from "./exhibitUnits.js";
@@ -418,6 +418,39 @@ describe("payer: revoking and changing", () => {
     assert.equal(db.tables.billing_payers[0].status, "ended");
   });
 
+  it("a revoke that fails halfway reopens the link, so the next run finishes it (PR 447 review)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L2"] });
+    await signFor(db, documenso, "pm1", { listingIds: ["L2"] });
+    // The last step (cancelling the waiting publish requests) fails once.
+    const realFrom = db.from;
+    let failNext = true;
+    db.from = (table) => {
+      const q = realFrom(table);
+      if (table !== "payer_publish_requests" || !failNext) return q;
+      const update = q.update;
+      q.update = (patch) => {
+        const api = update(patch);
+        if (patch.status === "cancelled") {
+          failNext = false;
+          api.run = async () => ({ data: null, error: { message: "connection reset" } });
+        }
+        return api;
+      };
+      return q;
+    };
+    await assert.rejects(() => endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" }));
+    assert.equal(db.tables.billing_payers[0].status, "active", "the link is open again for a retry");
+    assert.equal(db.tables.billing_payers[0].ended_at, null);
+    assert.equal(db.tables.payer_publish_requests[0].status, "waiting");
+    // The retry runs every step again and finishes.
+    await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
+    assert.equal(db.tables.billing_payers[0].status, "ended");
+    assert.equal(db.tables.payer_publish_requests[0].status, "cancelled");
+    assert.equal(db.tables.landlord_agreements[0].status, "voided");
+  });
+
   it("revoking one account leaves the signer's other accounts covered", async () => {
     const db = world();
     db.tables.billing_payers.push({ id: "link2", landlord_id: "pm2", payer_id: "own", listing_id: null, signer_name: "Jane Owner", signer_email: owner.email, status: "active", invited_at: "2026-11-09T00:00:00Z", created_at: "2026-11-09T00:01:00Z" });
@@ -428,6 +461,36 @@ describe("payer: revoking and changing", () => {
     await endPayerFor(db, documenso, { landlordId: "pm1", reason: "revoked by the landlord" });
     assert.equal((await coverageFor(db, "pm1")).covered.size, 0);
     assert.ok((await coverageFor(db, "pm2")).covered.has("L3"), "the other account is still covered by the signer");
+  });
+
+  it("a takeover carries what still waits on the signer, and holds the signer off until it is signed", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1");
+    db.tables.listings.push(listing("L4", "400 New St", false));
+    db.tables.listing_landlords.push({ user_id: "pm1", listing_id: "L4" });
+    db.tables.listing_units.push(unit("U4", "L4", "Apt 4", false));
+    await requestPayerCoverage(db, documenso, { landlordId: "pm1", listingIds: ["L4"] });
+    const preview = await exhibitPreview(db, "pm1", { takeover: true });
+    assert.ok(preview.properties.find((p) => p.address === "400 New St")?.locked, "the waiting listing is on the landlord's agreement and can't be left off");
+    await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true, takeover: true });
+    await assert.rejects(() => signFor(db, documenso, "pm1", { listingIds: ["L4"] }), (e) => e.code === "takeover_in_progress");
+    const own = db.tables.landlord_agreements.find((a) => a.user_id === "pm1");
+    documenso.complete(own.provider_envelope_id, "2027-02-01T12:00:00.000Z");
+    await applyEnvelope(db, documenso, await documenso.getEnvelope(own.provider_envelope_id), { storeSigned });
+    assert.deepEqual(await staleTakeoverLandlords(db), ["pm1"], "the cron safety net finds it");
+    // The webhook and the popup finish it at the same moment: only one of them does.
+    const runs = await Promise.all([completeTakeover(db, documenso, "pm1"), completeTakeover(db, documenso, "pm1")]);
+    assert.equal(runs.filter(Boolean).length, 1);
+    assert.ok((await coverageFor(db, "pm1")).covered.has("L4"), "nothing fell through");
+    assert.deepEqual(await staleTakeoverLandlords(db), []);
+  });
+
+  it("a takeover left unsigned for a week no longer holds the signer off, and is cancelled", async () => {
+    const { db, documenso } = await ownerSignedFor("pm1");
+    await startSigning(db, documenso, { user: pm, signerTitle: "Manager", signerName: "Pat Manager", authorized: true, takeover: true, now: new Date("2027-02-01T00:00:00Z") });
+    const own = db.tables.landlord_agreements.find((a) => a.user_id === "pm1");
+    own.created_at = "2027-02-01T00:00:00Z";
+    await signFor(db, documenso, "pm1", { includeDrafts: true, now: new Date("2027-02-09T00:00:00Z") }).catch((e) => assert.notEqual(e.code, "takeover_in_progress"));
+    assert.equal(own.status, "voided");
   });
 
   it("the landlord signs their own agreement first: the signer stays until it is signed, then everything is covered by it", async () => {

@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { runReviewClock } from "@/lib/billing/reviewClock";
-import { settleStalePayerDocuments } from "@/lib/billing/payerServices";
+import { finishStaleTakeovers, settleStalePayerDocuments } from "@/lib/billing/payerServices";
+import { agreementServices } from "@/lib/billing/agreementServices";
 
 /*
  * Daily cron: approve every Pending charge whose 7 day review has ended. The
@@ -12,7 +13,9 @@ import { settleStalePayerDocuments } from "@/lib/billing/payerServices";
  *
  * Also the safety net for authorized signers: a signature whose follow-up never
  * finished (listings still waiting on a signed document) is settled now, and the
- * landlord emailed what was approved or declined.
+ * landlord emailed what was approved or declined. A landlord who signed their own
+ * agreement to take over from their signer, but whose signer is still linked
+ * (the follow-up after signing failed), has the takeover finished now.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -33,7 +36,13 @@ export async function GET(req) {
     } catch (err) {
       console.error("billing: settling payer documents failed", err?.message);
     }
-    return NextResponse.json({ ok: true, ...result, payerDocuments });
+    let takeovers = null;
+    try {
+      takeovers = await finishStaleTakeovers(agreementServices().documenso);
+    } catch (err) {
+      console.error("billing: finishing takeovers failed", err?.message);
+    }
+    return NextResponse.json({ ok: true, ...result, payerDocuments, takeovers });
   } catch (err) {
     console.error("billing review clock failed", err);
     return NextResponse.json({ error: "Review clock failed" }, { status: 500 });

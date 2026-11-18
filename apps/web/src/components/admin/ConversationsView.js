@@ -242,6 +242,40 @@ function InboxLink({ person, threadId, label }) {
   );
 }
 
+const ALERT_STATUS = { delivered: "delivered", sent: "sent, not yet confirmed delivered" };
+
+// Where the landlord's chat alerts go. A lease or listing contact (often a
+// leasing inbox) wins over the account email, so the account email alone can
+// point at the wrong person (Wyatt, 2026-11-16).
+function LandlordAlertRoute({ landlord }) {
+  const account = (landlord?.email || "").toLowerCase();
+  const routed = landlord?.alertEmail || account;
+  const last = landlord?.lastAlert;
+  if (!routed && !last) return null;
+  const viaContact = routed && routed !== account;
+  const lastElsewhere = last?.to && last.to.toLowerCase() !== routed;
+  return (
+    <div className="sm:col-span-2 space-y-0.5 text-[11px]">
+      {routed && (
+        <p>
+          <span className="text-gray-500">Alerts go to </span>
+          <span className="font-medium text-gray-900 break-all">{routed}</span>
+          <span className="text-gray-400"> ({viaContact ? "the contact on this listing" : "their account email"})</span>
+        </p>
+      )}
+      {last ? (
+        <p className={lastElsewhere ? "text-amber-700" : "text-gray-400"}>
+          Last {last.kind === "reminder" ? "reminder" : "alert"} {ALERT_STATUS[last.status] ?? last.status} to{" "}
+          <span className="break-all">{last.to}</span> · {fmtWhen(last.at)}
+          {lastElsewhere && " (the contact has changed since)"}
+        </p>
+      ) : (
+        <p className="text-gray-400">No alert emailed for this conversation yet.</p>
+      )}
+    </div>
+  );
+}
+
 function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
   const readOnly = !!useAdminNav()?.isReadOnly;
   const { thread, people, messages, blockedAttempts, refusedReplies = [], replySenders = [] } = detail;
@@ -289,11 +323,12 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
           ) : (
             <p>
               <Badge color="blue">landlord</Badge> <span className="font-medium text-gray-900"><PersonLink id={landlord?.id}>{personLabel(landlord)}</PersonLink></span>
-              {landlord?.email && <span className="text-gray-400"> · {landlord.email}</span>}
+              {landlord?.email && <span className="text-gray-400"> · account {landlord.email}</span>}
               {landlord?.emailMode && <span className="text-purple-700"> · replying by email</span>}
               {thread.fromTour && <> <Badge color="green">From a tour</Badge></>}
             </p>
           )}
+          {!agent && landlord && <LandlordAlertRoute landlord={landlord} />}
         </div>
         {dbTarget === siteDb && (student || (!agent && landlord)) && (
           <p className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
@@ -669,6 +704,9 @@ export default function ConversationsView({ search, dbTarget }) {
   const [tours, setTours] = useState(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
+  // Hides threads opened and left without a word: a Proxy chat a student
+  // started but never typed in (Wyatt, 2026-11-18).
+  const [withMessagesOnly, setWithMessagesOnly] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [siteDb, setSiteDb] = useState(null);
 
@@ -779,13 +817,14 @@ export default function ConversationsView({ search, dbTarget }) {
     return (threads ?? []).filter((t) => {
       if (flaggedOnly && t.flagged === 0 && t.blocked === 0) return false;
       if (!includeDeleted && t.deletedAt) return false;
+      if (withMessagesOnly && !(t.messages > 0)) return false;
       if (!q) return true;
       return [
-        t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.visitor?.email,
+        t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.landlord?.alertEmail, t.visitor?.email,
         t.listing?.title, t.listing?.address, t.subject, t.id,
       ].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [threads, flaggedOnly, includeDeleted, q]);
+  }, [threads, flaggedOnly, includeDeleted, withMessagesOnly, q]);
   const filteredChats = useMemo(() => (landlordChats ?? []).filter((c) => !q || [c.landlord?.name, c.landlord?.email, c.listing?.title, c.listing?.address]
     .some((v) => (v || "").toLowerCase().includes(q))), [landlordChats, q]);
 
@@ -835,6 +874,7 @@ export default function ConversationsView({ search, dbTarget }) {
           </p>
           {!landlordSide && (
             <div className="ml-auto flex items-center gap-2">
+              <Pill on={withMessagesOnly} onClick={() => setWithMessagesOnly((v) => !v)}>Has messages</Pill>
               <Pill on={flaggedOnly} onClick={() => setFlaggedOnly((v) => !v)} tone="red">Flagged only</Pill>
               <Pill on={includeDeleted} onClick={() => setIncludeDeleted((v) => !v)}>Include deleted</Pill>
             </div>

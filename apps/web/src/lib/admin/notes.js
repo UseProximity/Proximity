@@ -2,6 +2,7 @@
  * Shared by the admin notes routes (app/api/admin/notes): checking what was
  * typed and shaping rows for the page.
  */
+import { stLouisDay } from "@/utils/calendarDate";
 export const NOTE_SELECT = "id, subject_type, subject_id, body, follow_up_on, follow_up_done_at, author_id, created_at, edited_at";
 
 /*
@@ -9,9 +10,7 @@ export const NOTE_SELECT = "id, subject_type, subject_id, body, follow_up_on, fo
  * dates are calendar days for the team, so "due" must not flip at UTC midnight
  * (6pm or 7pm here). Used by the notes panel and by Home, so both agree.
  */
-export function teamDate(offsetDays = 0) {
-  return new Date(Date.now() + offsetDays * 86400000).toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-}
+export const teamDate = (offsetDays = 0) => stLouisDay(offsetDays);
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

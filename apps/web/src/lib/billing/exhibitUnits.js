@@ -15,7 +15,7 @@
  * `db` is a service-role Supabase client.
  */
 import { BillingError } from "./errors.js";
-import { coverageFor } from "./agreements.js";
+import { assertNoPaperOut, coverageFor, takeoverCoverage } from "./agreements.js";
 import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
@@ -23,11 +23,14 @@ const NAME_MAX = 60;
 // `forPayee`: an authorized signer previewing a document for an account they sign for (Project B):
 // every property, drafts included, and any not covered yet can be left off.
 // `takeover`: a landlord with an authorized signer previewing their OWN agreement
-// (startSigning's takeover): what the signer covers for them is on it and stays on.
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false } = {}) {
-  const keep = takeover ? [...(await coverageFor(db, userId, now)).covered.keys()] : [];
-  const requested = await resolvePublishedIds(db, [...listingIds, ...keep]);
-  const loaded = await coverageFor(db, userId, now, { own: takeover });
+// (startSigning's takeover): what the signer covers for them, and what still waits
+// on the signer, is on it and stays on.
+// `paper`: the admin confirming a paper copy (paperAgreements.js); anyone else is
+// told the agreement is out on paper rather than shown a popup they can't finish.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false, paper = false } = {}) {
+  const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now);
+  if (!paper) assertNoPaperOut(loaded.state);
+  const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
   const { state, rows, covered } = loaded;
   const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);
   // A document already in progress (an addendum started from a publish, then closed)

@@ -40,7 +40,9 @@ import {
   routeLandlordMessage, sendLandlordMessage, decideAgentProposal, retryBlockedChanges,
 } from "@/lib/agents/landlordChat";
 
-export const maxDuration = 60;
+// 120: a message to the agent is two model rounds of up to 3000 tokens (see
+// agentChat), and at 60 a long reply was killed before it could answer.
+export const maxDuration = 120;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

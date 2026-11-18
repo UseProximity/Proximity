@@ -28,7 +28,7 @@
  * that long).
  */
 import { renderPage } from "@/lib/listingDraft/fetchSite";
-import { mergeWalk, unitsFromWalk } from "./portalWalkParse.js";
+import { mergeWalk, resumePoint, unitsFromWalk } from "./portalWalkParse.js";
 
 export const PORTAL_RUN_MS = 175000;
 export const WALK_MS = 120000;
@@ -39,12 +39,12 @@ const MAX_RUNS = 6;
 const PROGRESS_FRESH_MS = 3 * 86400000;
 
 /* One render of the portal's app with the walk script inside it. */
-async function walkOnce(def, target, { skip, budgetMs }) {
+async function walkOnce(def, target, { skip, budgetMs, resumeAt = [] }) {
   const r = await renderPage(def.appUrl(target), {
     waitMs: def.waitMs ?? 6000,
     raw: true,
     timeoutMs: budgetMs + RENDER_SLACK_MS,
-    actions: [{ type: "executeJavascript", script: def.walkScript({ skip, budgetMs }) }],
+    actions: [{ type: "executeJavascript", script: def.walkScript({ skip, budgetMs, resumeAt }) }],
   });
   const returned = r?.returns?.find((v) => typeof v === "string" && v.startsWith("{"));
   if (!returned) {
@@ -59,10 +59,13 @@ async function walkOnce(def, target, { skip, budgetMs }) {
   }
 }
 
+/* A portal that gave nothing, and why, for the team (read.js portalUnread). */
+const nothingRead = (reason) => ({ units: [], notes: [], complete: false, pending: false, reason, learned: null, apartments: 0, quoted: 0 });
+
 /*
  * Read a building through its portal. Returns raw snapshot units (one per
- * floor plan, one offer per apartment and price), or null when the portal
- * gave nothing.
+ * floor plan, one offer per apartment and price). When the portal gave
+ * nothing, units is empty and `reason` says why.
  *
  *   def      the portal (readers/portals.js)
  *   portal   what def.find saw on the landlord's site
@@ -79,7 +82,7 @@ export async function walkPortal(def, portal, { known = null, onStep = () => {},
   const target = await def.resolve(portal, sameBuilding ? known : null);
   if (!target?.id) {
     console.warn(`[source-import] ${def.kind}: could not open the portal (${JSON.stringify(portal).slice(0, 120)})`);
-    return null;
+    return nothingRead("the landlord's site links to a leasing portal that could not be opened");
   }
   const prior =
     sameBuilding && known?.progress && Date.now() - Date.parse(known.progress.startedAt ?? 0) < PROGRESS_FRESH_MS && (known.progress.runs ?? 0) < MAX_RUNS ? known.progress : null;
@@ -89,11 +92,14 @@ export async function walkPortal(def, portal, { known = null, onStep = () => {},
   let walkMs = sameBuilding && known?.walkMs ? known.walkMs : WALK_MS;
   let complete = false;
   let progressed = false;
+  let lastLog = [];
+  let rendered = false;
   for (;;) {
     const budgetMs = Math.min(walkMs, deadline - Date.now() - RENDER_SLACK_MS);
     if (budgetMs < 30000) break;
     const before = walk.priced.length;
-    const got = await walkOnce(def, target, { skip: walk.priced.map((q) => q.number), budgetMs });
+    const knownBefore = Object.keys(walk.units).length;
+    const got = await walkOnce(def, target, { skip: walk.priced.map((q) => q.number), budgetMs, resumeAt: resumePoint(walk) });
     if (!got) {
       // The renderer may not run a script this long: carry on in short walks.
       if (walkMs > SHORT_WALK_MS) {
@@ -102,20 +108,35 @@ export async function walkPortal(def, portal, { known = null, onStep = () => {},
       }
       break;
     }
+    rendered = true;
     mergeWalk(walk, got);
+    lastLog = got.log ?? [];
     const total = Object.keys(walk.units).length;
     onStep(`Priced ${walk.priced.length} of ${total} apartment${total === 1 ? "" : "s"} at every lease length the portal offers`);
-    if (walk.priced.length > before) progressed = true;
+    // An apartment priced, or one the portal had not listed before (it lists
+    // apartments only once the move-in date nears theirs: Mansions on the
+    // Plaza's 142 showed only after the date reached January, 2026-11-18).
+    const found = walk.priced.length > before || total > knownBefore;
+    if (found) progressed = true;
     if (got.done) {
       complete = true;
       break;
     }
-    // A walk that priced nothing and was not cut off by the clock is stuck.
-    if (walk.priced.length === before && !got.timeUp) break;
+    // A walk that found nothing and was not cut off by the clock is stuck.
+    if (!found && !got.timeUp) break;
   }
+  if (!complete) console.log(`[source-import] ${def.kind} ${target.id}: walk not finished: ${lastLog.slice(-8).join(" | ") || "no log"}`);
   const built = unitsFromWalk(walk, today);
   const pending = !complete && progressed;
-  if (!built.units.length && !pending) return null;
+  if (!built.units.length && !pending) {
+    return nothingRead(
+      !rendered
+        ? "the leasing portal's page could not be opened"
+        : lastLog.some((l) => /no floor plans listed/.test(l))
+          ? "the leasing portal listed no floor plans (it may be down, or asking visitors to sign in)"
+          : `the leasing portal gave no apartments (${lastLog.slice(-1)[0] ?? "no reason given"})`
+    );
+  }
   const notes = [...built.notes];
   if (!complete && !pending) notes.push("The leasing portal stopped answering before every apartment was read; what is here is what it gave. Check it against the portal.");
   return {

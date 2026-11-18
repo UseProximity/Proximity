@@ -19,7 +19,8 @@ function suppressPlainClick(e) {
   e.preventDefault();
 }
 
-function WalkScale({ minutes, label }) {
+// Exported for the Find Your Place match cards, which show the same times.
+export function WalkScale({ minutes, label }) {
   const isCampus = label === "campus";
   const filled = isCampus
     ? minutes < 12 ? 1 : minutes < 20 ? 2 : minutes < 30 ? 3 : minutes < 45 ? 4 : 5

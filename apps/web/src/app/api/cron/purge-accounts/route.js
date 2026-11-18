@@ -18,13 +18,17 @@
  *                    that flag. Landlord contact fields on a review describe a
  *                    DIFFERENT person and are deliberately left in place.
  *   - behavioral     user_listing_interactions, user_filter_summaries,
- *                    review_votes, waitlist_clicks: deleted outright.
+ *                    review_votes, waitlist_clicks, listing_applications
+ *                    (Apply clicks): deleted outright.
  *   - matchmaking    chat sessions and matchmaking_preferences are KEPT for
  *                    three years (Privacy Policy s8). They record why we showed
  *                    this person the properties we did, so they are erased by
  *                    the retention stage below, not here. (Signed-out chats that
  *                    no account claimed within 30 days are a separate, final
  *                    step of this run: they belong to no one, so their contents are blanked.)
+ *   - events         site events (Find Your Place's page and popup tracking,
+ *                    the old page-view log): KEPT for the totals but unlinked,
+ *                    the account and the device cookie cleared (Wyatt, 2026-11-17).
  *   - lease_checks   AI summaries about the person's own lease: deleted.
  *   - invites        review_invites carry the person's email address.
  *   - devices        device_push_tokens, for when the mobile apps ship.
@@ -260,6 +264,14 @@ async function purgeUser(user) {
   await must(
     "waitlist_clicks",
     supabase.from("waitlist_clicks").delete().eq("user_id", userId)
+  );
+  await must(
+    "events unlinked",
+    supabase.from("events").update({ user_id: null, session_id: null }).eq("user_id", userId)
+  );
+  await must(
+    "listing_applications",
+    supabase.from("listing_applications").delete().eq("student_id", userId)
   );
   await must(
     "device_push_tokens",

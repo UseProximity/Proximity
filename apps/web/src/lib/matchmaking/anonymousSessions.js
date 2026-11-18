@@ -30,6 +30,15 @@ export const ANON_RETENTION_DAYS = 30;
 
 const T = "matchmaking_chat_sessions";
 
+/*
+ * Find Your Place searches share this table (marked by preferences._fyp) but
+ * are not chats: the mobile app must never resume, claim or write to one, or a
+ * web search would turn into a "live chat" there and a later web search would
+ * overwrite that conversation. Every chat read goes through this filter.
+ */
+export const chatsOnly = (query) => query.is("preferences->_fyp", null);
+export const isFindYourPlaceRow = (row) => !!row?.preferences?._fyp;
+
 // ── Soft per-IP limit ───────────────────────────────────────────────────────
 //
 // Sliding window, in memory, on globalThis so dev hot reloads and separately
@@ -41,18 +50,24 @@ export const ANON_IP_LIMIT = 60;
 const ANON_IP_WINDOW_MS = 60 * 60 * 1000;
 const MAX_TRACKED_IPS = 10_000;
 
-function ipHits() {
-  if (!globalThis.__prxAnonChatHits) globalThis.__prxAnonChatHits = new Map();
-  return globalThis.__prxAnonChatHits;
+function ipHits(bucket = "chat") {
+  if (!globalThis.__prxAnonIpHits) globalThis.__prxAnonIpHits = new Map();
+  const all = globalThis.__prxAnonIpHits;
+  if (!all.has(bucket)) all.set(bucket, new Map());
+  return all.get(bucket);
 }
 
-// Records a chat start for this IP and reports whether it was over the limit.
-export function anonIpLimited(ip) {
+/*
+ * Records one use for this IP in `bucket` and reports whether it was over
+ * `limit` for the hour. Each bucket has its own count, so Find Your Place's
+ * searches do not use up the mobile chat's budget (PR 447 review).
+ */
+export function ipLimited(ip, { bucket = "chat", limit = ANON_IP_LIMIT } = {}) {
   if (!ip) return false;
   const now = Date.now();
-  const map = ipHits();
+  const map = ipHits(bucket);
   const recent = (map.get(ip) ?? []).filter((t) => now - t < ANON_IP_WINDOW_MS);
-  if (recent.length >= ANON_IP_LIMIT) {
+  if (recent.length >= limit) {
     map.set(ip, recent);
     return true;
   }
@@ -67,13 +82,13 @@ export function anonIpLimited(ip) {
   return false;
 }
 
+// Records a chat start for this IP and reports whether it was over the limit.
+export const anonIpLimited = (ip) => ipLimited(ip);
+
 // ── Reads ───────────────────────────────────────────────────────────────────
 
 export async function countVisitorSessions(visitorId) {
-  const { count } = await supabase
-    .from(T)
-    .select("id", { count: "exact", head: true })
-    .eq("visitor_id", visitorId);
+  const { count } = await chatsOnly(supabase.from(T).select("id", { count: "exact", head: true })).eq("visitor_id", visitorId);
   return count ?? 0;
 }
 
@@ -86,9 +101,7 @@ export async function triesLeftFor(visitorId) {
 // cookie and not yet claimed by an account. Once claimed, the row belongs to the
 // account, even on the device that started it.
 export async function visitorSessionById(visitorId, sessionId) {
-  const { data } = await supabase
-    .from(T)
-    .select("*")
+  const { data } = await chatsOnly(supabase.from(T).select("*"))
     .eq("id", sessionId)
     .eq("visitor_id", visitorId)
     .is("user_id", null)
@@ -98,9 +111,7 @@ export async function visitorSessionById(visitorId, sessionId) {
 }
 
 export async function latestVisitorSession(visitorId) {
-  const { data } = await supabase
-    .from(T)
-    .select("*")
+  const { data } = await chatsOnly(supabase.from(T).select("*"))
     .eq("visitor_id", visitorId)
     .is("user_id", null)
     .not("status", "eq", "abandoned")
@@ -118,9 +129,7 @@ export function ownsAsVisitor(session, visitorId) {
 
 // "Start over" leaves exactly one live chat per device: the one being created.
 export async function abandonUnfinishedVisitorSessions(visitorId) {
-  await supabase
-    .from(T)
-    .update({ status: "abandoned" })
+  await chatsOnly(supabase.from(T).update({ status: "abandoned" }))
     .eq("visitor_id", visitorId)
     .is("user_id", null)
     .eq("status", "in_progress");
@@ -135,23 +144,17 @@ export async function abandonUnfinishedVisitorSessions(visitorId) {
  */
 export async function expireAnonymousSessions() {
   const cutoff = new Date(Date.now() - ANON_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from(T)
-    .update({
-      visitor_id: null,
-      expired_at: new Date().toISOString(),
-      preferences: {},
-      weights: {},
-      transcript: [],
-      candidates: [],
-      recommendations: [],
-    })
-    .is("user_id", null)
-    .not("visitor_id", "is", null)
-    .lt("created_at", cutoff)
-    .select("id");
-  if (error) throw error;
-  return data?.length ?? 0;
+  const blank = { visitor_id: null, expired_at: new Date().toISOString(), weights: {}, transcript: [], candidates: [], recommendations: [] };
+  const expire = (query) => query.is("user_id", null).not("visitor_id", "is", null).lt("created_at", cutoff).select("id");
+  // A Find Your Place search keeps an empty _fyp marker, so the dashboard
+  // still counts it as a search (not a mobile chat) after it is blanked.
+  const [searches, chats] = await Promise.all([
+    expire(supabase.from(T).update({ ...blank, preferences: { _fyp: {} } }).not("preferences->_fyp", "is", null)),
+    expire(chatsOnly(supabase.from(T).update({ ...blank, preferences: {} }))),
+  ]);
+  if (searches.error) throw searches.error;
+  if (chats.error) throw chats.error;
+  return (searches.data?.length ?? 0) + (chats.data?.length ?? 0);
 }
 
 // The chats this browser started signed out that no account owns yet, for the
@@ -160,9 +163,7 @@ export async function expireAnonymousSessions() {
 // Abandoned ones ("start over") are not worth asking about.
 export async function countClaimableSessions(visitorId) {
   if (!visitorId) return { count: 0, latestAt: null };
-  const { data, count } = await supabase
-    .from(T)
-    .select("created_at", { count: "exact" })
+  const { data, count } = await chatsOnly(supabase.from(T).select("created_at", { count: "exact" }))
     .eq("visitor_id", visitorId)
     .is("user_id", null)
     .not("status", "eq", "abandoned")
@@ -189,9 +190,7 @@ export async function countClaimableSessions(visitorId) {
 export async function claimVisitorSessions(actor, visitorId) {
   const none = { claimed: 0, sessionId: null };
   if (!visitorId || !actor?.id) return none;
-  const { data: rows } = await supabase
-    .from(T)
-    .select("id, status, created_at, preferences, weights, transcript")
+  const { data: rows } = await chatsOnly(supabase.from(T).select("id, status, created_at, preferences, weights, transcript"))
     .eq("visitor_id", visitorId)
     .is("user_id", null)
     .order("created_at", { ascending: false });

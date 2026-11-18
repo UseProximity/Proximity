@@ -5,6 +5,7 @@ import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { domainApprovable } from "@/lib/chat/replySenders";
 import { PROXY_USER_ID } from "@/lib/agents/threads";
+import { alertEmailsFor } from "@/lib/chat/alertRoutes";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -24,6 +25,11 @@ import { PROXY_USER_ID } from "@/lib/agents/threads";
  * have no sender and are marked as the visitor, and each Proxy message says
  * what it was (an answer, a question sent on, a landlord reply relayed, a
  * note). A tour's direct chat carries the tour it came from.
+ *
+ * The landlord carries alertEmail, where their chat alerts actually go (a
+ * lease or listing contact can differ from the account email), and lastAlert,
+ * the latest alert or reminder we sent them for this thread (Wyatt,
+ * 2026-11-16).
  *
  * Read only. Nothing here marks events reviewed or edits messages.
  *
@@ -106,7 +112,7 @@ export async function GET(req, { params }) {
       .or(`thread_id.eq.${threadId},proxy_thread_id.eq.${threadId}`)
       .order("created_at", { ascending: false });
 
-    const [{ data: inbound, error: inError }, { data: senders, error: sendersError }] = await Promise.all([
+    const [{ data: inbound, error: inError }, { data: senders, error: sendersError }, alertRoutes, { data: lastAlertRows }] = await Promise.all([
       supabase
         .from("chat_inbound_emails")
         .select("id, from_email, sender_name, status, reason, body_preview, created_at, approval_requested_at, chat_message_id")
@@ -120,6 +126,18 @@ export async function GET(req, { params }) {
             .eq("landlord_id", thread.landlord_id)
             .order("updated_at", { ascending: false })
         : { data: [], error: null },
+      thread.landlord_id && !isProxy
+        ? alertEmailsFor(supabase, [{ threadId, userId: thread.landlord_id }])
+        : new Map(),
+      thread.landlord_id && !isProxy
+        ? supabase
+            .from("chat_email_log")
+            .select("to_email, kind, status, created_at")
+            .eq("thread_id", threadId)
+            .eq("recipient_id", thread.landlord_id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+        : { data: [] },
     ]);
     if (inError) throw inError;
     if (sendersError) throw sendersError;
@@ -142,6 +160,15 @@ export async function GET(req, { params }) {
         },
       ])
     );
+
+    const landlordPerson = people.get(thread.landlord_id);
+    if (landlordPerson && !isProxy) {
+      const last = lastAlertRows?.[0];
+      landlordPerson.alertEmail = alertRoutes.get(threadId) ?? null;
+      landlordPerson.lastAlert = last
+        ? { to: last.to_email, kind: last.kind, status: last.status, at: last.created_at }
+        : null;
+    }
 
     // A sender who left the thread has no participant row; name them from users.
     const missing = [...new Set((messages ?? []).map((m) => m.sender_id))].filter((id) => id && !people.has(id));

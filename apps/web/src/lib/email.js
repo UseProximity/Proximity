@@ -911,7 +911,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
     ? `Your ${list.length} reviews are live`
     : `Your review of ${list[0] || "your place"} is live`;
 
-  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/matchmaking`;
+  const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/find-your-place`;
   const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
 
   const tail = setupToken
@@ -1299,9 +1299,14 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     const hold = i.holdReason
       ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight. Nothing was applied: the changes below wait in admin, under Agents, for the team or the landlord to apply or reject" : "Held: the reader was not confident in this read. Nothing was applied"}.</p>`
       : "";
-    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+    // The building's leasing portal (where its real prices live) was found
+    // but read nothing: its prices were not refreshed.
+    const portal = i.portalUnread
+      ? `<p style="color:#b45309;margin:4px 0">Leasing portal not read: ${escapeHtml(i.portalUnread)}. Prices and lease lengths were not refreshed; the listing keeps the ones it had. Check the portal by hand.</p>`
+      : "";
+    return `${head}${hold}${portal}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
-  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const changed = items.filter((i) => (i.status !== "unchanged" && i.status !== "ok") || i.portalUnread);
   const quiet = items.length - changed.length;
   await sendMailSafe(transporter, {
     logAs: { kind: "source_sync_digest" },
