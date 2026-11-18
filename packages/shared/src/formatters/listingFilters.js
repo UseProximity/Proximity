@@ -1,7 +1,16 @@
 import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "../constants/places.js";
 
-// Browse filter defaults. Keep in step with DEFAULT_FILTERS in
-// apps/web/src/lib/listings/filterListings.js.
+/*
+ * Browse filtering, the one copy: the web Browse page and the app's Browse
+ * both filter with it, so the same filters give the same results. What each
+ * filter offers (options, labels, slider steps) is in
+ * ../constants/browseFilters.js.
+ */
+
+// Browse filter defaults. subleaseFriendly, subleaseOnly, leaseStructure and
+// moveInDate have no control on either platform any more. They are kept
+// because saved filter summaries hold them (the web's cleanFilterSummary keeps
+// only these keys) and Find Your Place can hand over a moveInDate.
 export const DEFAULT_FILTERS = {
   minRent: "",
   maxRent: "",
@@ -33,62 +42,14 @@ export const filtersActive = (filters) =>
       JSON.stringify(DEFAULT_FILTERS[k])
   );
 
-// Canonical filter-chip amenity values are a distinct, smaller vocabulary
-// from packages/shared's AMENITY_OPTIONS (which mirrors the DB columns) -
-// this mirrors a pre-existing inconsistency in web itself between its
-// filter UI and its listing-form UI, not something to unify here.
-export const FILTER_AMENITY_OPTIONS = [
-  "dishwasher",
-  "in_unit_laundry",
-  "ac_heating",
-  "mailroom",
-  "pets_allowed",
-  "extra_storage",
-  "fireplace",
-  "private_parking",
-  "pool",
-  "study_room",
-  "gym",
-];
-
-export const FILTER_AMENITY_LABELS = {
-  dishwasher: "Dishwasher",
-  in_unit_laundry: "In-Unit Laundry",
-  ac_heating: "A/C & Heating",
-  mailroom: "Mailroom",
-  pets_allowed: "Pets Allowed",
-  extra_storage: "Extra Storage",
-  fireplace: "Fireplace",
-  private_parking: "Private Parking",
-  pool: "Pool",
-  study_room: "Study Room",
-  gym: "Gym",
-};
-
-export const HOME_TYPE_FILTER_OPTIONS = ["house", "apartment", "condo", "townhouse", "singleBedroom"];
-export const HOME_TYPE_FILTER_LABELS = {
-  house: "House",
-  apartment: "Apartment",
-  condo: "Condo",
-  townhouse: "Townhouse",
-  singleBedroom: "Single Bedroom",
-};
-
-export const LEASE_AVAILABILITY_FILTER_OPTIONS = ["summer", "semester", "10-month", "12-month"];
+// Labels of a listing's lease availability values, shown on the app's listing
+// page.
 export const LEASE_AVAILABILITY_FILTER_LABELS = {
   summer: "Summer",
   semester: "Semester",
   "10-month": "10-Month",
   "12-month": "12-Month",
 };
-
-/*
- * Everything from here to countActiveFilters is a copy of the web Browse logic
- * in apps/web/src/lib/listings/filterListings.js (the source of truth). Keep the
- * two in step. Only differences: filterListings defaults `campusMinutes` to the
- * shared place list, and rankBrowseListings adds the final step web applies in
- * AvailableListings.js.
- */
 
 // Minimum walk minutes to campus, with the same place set as web's BrowseContent
 // (grocery + Med Campus excluded via NON_CAMPUS_WALK_PLACES).
@@ -127,7 +88,7 @@ export function moveInDeadline(month, day, today = new Date()) {
  * every term a landlord will accept, so [6,10,12] is one flexible offering that
  * satisfies "6-month", "10-month" AND "12-month". A duration is "<n>-month"
  * for any number of months. "summer" and "semester" are the older buckets,
- * still offered by the app's filter sheet and held by saved filters.
+ * still held by saved filters and older app versions.
  */
 const LEGACY_TERM_BUCKETS = {
   summer: (m) => m <= 3,
@@ -136,8 +97,8 @@ const LEGACY_TERM_BUCKETS = {
 /*
  * Ranges, set by Find Your Place's "Browse All Matches" so browse keeps the
  * same lease buckets the matcher used: semester up to 7 months, academic year
- * 8 to 10, full year 11 or more. The one copy: the web's filterListings reads
- * it from here (PR 447 review).
+ * 8 to 10, full year 11 or more. The one copy (PR 447 review): the matching
+ * below and the duration labels (../constants/browseFilters.js) read it.
  */
 export const TERM_RANGES = {
   "semester-term": { label: "Semester (up to 7 months)", order: 7, test: (m) => m <= 7 },
@@ -346,8 +307,8 @@ function propertyMatches(listing, { filters, search, savedIds, campusMinutes }) 
         case "studio":
           return unitPool(listing).some((u) => u.bedrooms === 0);
         case "single_room":
-        // The older name for a single room, which the app's filter sheet
-        // still offers and saved filters still hold.
+        // The older name for a single room, which saved filters and older
+        // app versions still send.
         case "singleBedroom":
           return unitPool(listing).some((u) => u.bedrooms === 1);
         // A building type: the listing's home type label, which has to be the
