@@ -6,7 +6,6 @@ import { useIsFocused } from "expo-router";
 import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
-  defaultCampusMinutes,
   filterListings,
   filtersActive,
   fittingRents,
@@ -143,7 +142,7 @@ export default function BrowseScreen() {
   // For the filter sheet's price histogram: the rents of the available
   // listings that fit the given filters, as on web.
   const rentsFor = useCallback(
-    (forFilters) => fittingRents(listings, { filters: forFilters, search, campusMinutes: defaultCampusMinutes }),
+    (forFilters) => fittingRents(listings, { filters: forFilters, search }),
     [listings, search]
   );
 

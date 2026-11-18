@@ -148,6 +148,16 @@ export function FilterSheet({ visible, filters, suggested = null, rentsFor, onAp
     if (!FILTER_DURATIONS.includes(value)) setAddedDurations((added) => (added.includes(value) ? added : [...added, value]));
     setDraft((d) => (d.leaseAvailability.includes(value) ? d : { ...d, leaseAvailability: [...d.leaseAvailability, value] }));
   };
+  // Apply also takes a valid number still sitting in the "Other" box, not yet
+  // confirmed with Return or Add, so the lease length just typed is not lost.
+  const apply = () => {
+    const typed = durationFromMonths(otherMonths);
+    onApply(
+      typed && !draft.leaseAvailability.includes(typed)
+        ? { ...draft, leaseAvailability: [...draft.leaseAvailability, typed] }
+        : draft
+    );
+  };
   const durationOptions = [...FILTER_DURATIONS, ...addedDurations]
     .sort((a, b) => durationMonths(a) - durationMonths(b))
     .map((value) => ({ label: durationLabel(value), value }));
@@ -260,7 +270,7 @@ export function FilterSheet({ visible, filters, suggested = null, rentsFor, onAp
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerClassName="px-[16px] pb-[24px]"
           scrollEnabled={!dragging}
           automaticallyAdjustKeyboardInsets
           keyboardShouldPersistTaps="handled"
@@ -316,7 +326,7 @@ export function FilterSheet({ visible, filters, suggested = null, rentsFor, onAp
             Clear All
           </Button>
           <View className="flex-1">
-            <Button onPress={() => onApply(draft)}>Apply Your Filter Preference</Button>
+            <Button onPress={apply}>Apply Your Filter Preference</Button>
           </View>
         </View>
       </KeyboardAvoidingView>

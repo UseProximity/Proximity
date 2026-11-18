@@ -14,14 +14,11 @@ import {
   PRICE_MIN,
   PRICE_MAX,
   PRICE_STEP,
-  PRICE_BAR_COUNT,
+  PRICE_BUCKET,
   priceBuckets,
   formatPrice,
 } from "@proximity/shared";
 import { RangeSlider } from "../ui/RangeSlider";
-
-// Width of one histogram bar, in dollars.
-const BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
 
 export function PriceRangeSlider({ rents, low, high, onChange, onDragging }) {
   const counts = useMemo(() => priceBuckets(rents), [rents]);
@@ -54,8 +51,8 @@ export function PriceRangeSlider({ rents, low, high, onChange, onDragging }) {
           ends (which are half a handle, 11pt, in from the slider's edges). */}
       <View className="flex-row items-end gap-0.5 h-16 pl-5 pr-[22px]">
         {counts.map((count, i) => {
-          const start = PRICE_MIN + i * BUCKET;
-          const inRange = start < shown.high && start + BUCKET > shown.low;
+          const start = PRICE_MIN + i * PRICE_BUCKET;
+          const inRange = start < shown.high && start + PRICE_BUCKET > shown.low;
           return (
             <View
               key={i}

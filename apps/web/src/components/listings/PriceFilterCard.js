@@ -7,7 +7,7 @@ import {
   PRICE_STEP,
   priceBuckets,
   formatPrice,
-  PRICE_BAR_COUNT,
+  PRICE_BUCKET,
   rentRange,
   rentFilters,
 } from "@proximity/shared";
@@ -17,9 +17,6 @@ import {
   useLiveFilters,
   accentClasses,
 } from "@/components/listings/FilterComponents";
-
-// Width of one histogram bar, in dollars.
-const BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
 
 // Histogram of rents (see fittingRents: the available listings that fit the
 // other filters) with the range slider under it, so it changes as the other
@@ -44,8 +41,8 @@ export function PriceRangeSlider({
         {/* Each bar's height is an inline style: a runtime value from the
             listing counts, which Tailwind classes cannot express. */}
         {counts.map((count, i) => {
-          const start = PRICE_MIN + i * BUCKET;
-          const inRange = start < high && start + BUCKET > low;
+          const start = PRICE_MIN + i * PRICE_BUCKET;
+          const inRange = start < high && start + PRICE_BUCKET > low;
           return (
             <div
               key={i}

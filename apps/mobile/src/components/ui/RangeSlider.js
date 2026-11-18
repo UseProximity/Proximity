@@ -21,10 +21,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, Text, View } from "react-native";
 
-// Visible handle size, and the height of the row the finger can press (44pt,
-// design-system/MASTER.md §9).
+// Visible handle size. The row the finger can press is 44pt tall
+// (design-system/MASTER.md §9), with the 2pt track across its middle. The
+// classes below spell these sizes out in px (NativeWind's rem is 14px here):
+// handle w-/h-[22px] centred with -left-[11px] top-[11px], row h-[44px],
+// track top-[21px] and inset [11px], labels w-[64px] (-left-[32px]).
 const HANDLE = 22;
-const ROW = 44;
 // Labels whose handles are closer than this (% of the track) merge into one.
 const LABEL_MERGE_PCT = 16;
 const LABEL_WIDTH = 64;
@@ -212,14 +214,8 @@ export function RangeSlider({
       onAccessibilityAction={(e) =>
         moveRef.current(which, value + (e.nativeEvent.actionName === "increment" ? step : -step))
       }
-      className="absolute rounded-full bg-red-600 border-2 border-white"
-      style={{
-        width: HANDLE,
-        height: HANDLE,
-        left: -HANDLE / 2,
-        top: (ROW - HANDLE) / 2,
-        transform: [{ translateX: pos[which] }],
-      }}
+      className="absolute w-[22px] h-[22px] -left-[11px] top-[11px] rounded-full bg-red-600 border-2 border-white"
+      style={{ transform: [{ translateX: pos[which] }] }}
     />
   );
   // A value label under its handle (or under the middle of the two), moving
@@ -227,8 +223,10 @@ export function RangeSlider({
   const valueLabel = (key, x, text, wide = 1) => (
     <Animated.Text
       key={key}
-      className="absolute text-xs font-medium text-red-600 text-center"
-      style={{ width: LABEL_WIDTH * wide, left: -(LABEL_WIDTH * wide) / 2, transform: [{ translateX: x }] }}
+      className={`absolute text-xs font-medium text-red-600 text-center ${
+        wide === 2 ? "w-[128px] -left-[64px]" : "w-[64px] -left-[32px]"
+      }`}
+      style={{ transform: [{ translateX: x }] }}
     >
       {text}
     </Animated.Text>
@@ -238,7 +236,7 @@ export function RangeSlider({
     <View>
       <View
         ref={rowRef}
-        style={{ height: ROW }}
+        className="h-[44px]"
         onLayout={(e) => {
           setWidth(e.nativeEvent.layout.width);
           rowRef.current?.measureInWindow((x) => {
@@ -250,12 +248,11 @@ export function RangeSlider({
         {width > 0 ? (
           <>
             <View
-              className="absolute h-0.5 bg-gray-200"
-              style={{ left: HANDLE / 2, right: HANDLE / 2, top: ROW / 2 - 1 }}
+              className="absolute h-0.5 left-[11px] right-[11px] top-[21px] bg-gray-200"
             />
             <Animated.View
-              className="absolute h-0.5 bg-red-600"
-              style={{ left: pos.low, width: derived.fill, top: ROW / 2 - 1 }}
+              className="absolute h-0.5 top-[21px] bg-red-600"
+              style={{ left: pos.low, width: derived.fill }}
             />
             {single ? null : handle("low", low)}
             {handle("high", high)}
@@ -279,8 +276,8 @@ export function RangeSlider({
                     onPress={() => {
                       if ((single ? low : v) !== low || v !== high) onChange(single ? low : v, v);
                     }}
-                    className="absolute h-6 justify-center"
-                    style={{ width: LABEL_WIDTH, left: xOf(pctOf(v)) - LABEL_WIDTH / 2 }}
+                    className="absolute w-[64px] h-6 justify-center"
+                    style={{ left: xOf(pctOf(v)) - LABEL_WIDTH / 2 }}
                   >
                     <Text className={`text-xs font-medium text-center ${selected ? "text-red-600" : "text-gray-400"}`}>
                       {text}

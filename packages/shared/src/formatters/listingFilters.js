@@ -416,7 +416,10 @@ export function matchListing(listing, ctx) {
  * its cheapest offering that fits. A listing with no published rent on a
  * fitting offering has no bar to be in.
  */
-export function fittingRents(listings, { filters, search = "", savedIds = [], campusMinutes }) {
+export function fittingRents(
+  listings,
+  { filters, search = "", savedIds = [], campusMinutes = defaultCampusMinutes }
+) {
   const open = { ...filters, minRent: "", maxRent: "" };
   const ctx = { filters: open, search, savedIds, campusMinutes };
   return listings.flatMap((listing) => {

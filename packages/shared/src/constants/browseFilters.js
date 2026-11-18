@@ -14,16 +14,17 @@ export const PRICE_MIN = 400;
 export const PRICE_MAX = 4000;
 export const PRICE_STEP = 50;
 
-// Bars of the price histogram, each one an equal slice of the price range.
+// Bars of the price histogram, each one an equal slice of the price range
+// PRICE_BUCKET dollars wide.
 export const PRICE_BAR_COUNT = 20;
-const BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
+export const PRICE_BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
 
 // Rents per price bucket. Prices outside the slider's range fall into the
 // first and last bars, so the last bar is the "$4000+" bucket.
 export function priceBuckets(rents) {
   const counts = new Array(PRICE_BAR_COUNT).fill(0);
   rents.forEach((rent) => {
-    const i = Math.floor((rent - PRICE_MIN) / BUCKET);
+    const i = Math.floor((rent - PRICE_MIN) / PRICE_BUCKET);
     counts[Math.min(PRICE_BAR_COUNT - 1, Math.max(0, i))] += 1;
   });
   return counts;
