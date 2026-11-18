@@ -160,7 +160,7 @@ Web paths are under `apps/web/src/`. `app/api/` mirrors the URL: `/api/landlord/
 
 Worth knowing:
 
-- **Listings are a three-level tree**: `listings` (a building), `listing_units` (a unit type, not a physical apartment), `unit_leases` (an offering: rent, term, furnished, availability). A place matches only when one offering fits price, term and furnishing. See `lib/listings/listingSelect.js` and `filterListings.js`.
+- **Listings are a three-level tree**: `listings` (a building), `listing_units` (a unit type, not a physical apartment), `unit_leases` (an offering: rent, term, furnished, availability). A place matches only when one offering fits price, term and furnishing. See `lib/listings/listingSelect.js` and `packages/shared/src/formatters/listingFilters.js`.
 - **Any web page can open a listing modal** with `?listing=<id>`. `GlobalListingModal`, in the root layout, watches that parameter.
 
 ---

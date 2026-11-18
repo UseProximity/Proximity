@@ -1,5 +1,5 @@
 // Browse listings tab (home screen).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useIsFocused } from "expo-router";
@@ -7,6 +7,8 @@ import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-n
 import {
   DEFAULT_FILTERS,
   filterListings,
+  filtersActive,
+  fittingRents,
   rankBrowseListings,
   countActiveFilters,
 } from "@proximity/shared";
@@ -41,7 +43,7 @@ export default function BrowseScreen() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   // Find Your Place's nice-to-haves, marked in the filter sheet but switched off.
-  // { furnished, amenities } or null; gone once the filters are reset.
+  // { furnished, amenities } or null; gone after Clear All.
   const [suggestedFilters, setSuggestedFilters] = useState(null);
   const [view, setView] = useState("list");
   const listRef = useRef(null);
@@ -137,15 +139,22 @@ export default function BrowseScreen() {
 
   const activeFilterCount = countActiveFilters(filters);
 
+  // For the filter sheet's price histogram: the rents of the available
+  // listings that fit the given filters, as on web.
+  const rentsFor = useCallback(
+    (forFilters) => fittingRents(listings, { filters: forFilters, search }),
+    [listings, search]
+  );
+
   // Web's rule (BrowseContent): suggestions show only on the unfiltered view,
   // once a student narrows the list their own question is the ranking. Only
   // listings still in the feed count, kept to an even number.
   const suggestedListings = useMemo(() => {
-    if (search.trim() || activeFilterCount > 0) return [];
+    if (search.trim() || filtersActive(filters)) return [];
     const byId = new Map(listings.map((l) => [String(l._id), l]));
     const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
     return found.slice(0, found.length - (found.length % 2));
-  }, [listings, suggestedIds, search, activeFilterCount]);
+  }, [listings, suggestedIds, search, filters]);
   const suggestedIdSet = useMemo(
     () => new Set(suggestedListings.map((l) => String(l._id))),
     [suggestedListings]
@@ -282,9 +291,20 @@ export default function BrowseScreen() {
         visible={filterSheetVisible}
         filters={filters}
         suggested={suggestedFilters}
+        rentsFor={rentsFor}
         onApply={(next) => {
           setFilters(next);
-          if (countActiveFilters(next) === 0) setSuggestedFilters(null);
+          // As on web, the applied filters feed the student's filter summary
+          // (a "Suggested for you" signal). Fire-and-forget.
+          if (userId) apiClient.listings.saveFilterSummary(next).catch(() => {});
+          setFilterSheetVisible(false);
+        }}
+        // Clear All: as on web it clears the filters, the search and Find Your
+        // Place's hints; unlike web it also closes the sheet.
+        onReset={() => {
+          setFilters(DEFAULT_FILTERS);
+          setSearch("");
+          setSuggestedFilters(null);
           setFilterSheetVisible(false);
         }}
         onClose={() => setFilterSheetVisible(false)}

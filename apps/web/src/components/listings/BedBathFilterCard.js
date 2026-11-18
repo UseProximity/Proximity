@@ -1,15 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { stepIndex, stepLimits, BED_STEPS, BATH_STEPS } from "@proximity/shared";
 import {
   FilterCard,
   ClearFilter,
   StepRange,
   useLiveFilters,
-  stepIndex,
-  stepLimits,
-  BED_STEPS,
-  BATH_STEPS,
 } from "@/components/listings/FilterComponents";
 
 function StepSection({ title, steps, range, onChange }) {

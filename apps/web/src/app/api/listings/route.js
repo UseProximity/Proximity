@@ -4,7 +4,7 @@
  *   - Removed FK hint `!` syntax from all select() calls; plain table names only
  *     (each pair of tables has at most one FK, so Supabase resolves without hints)
  *   - listing_units: unit_leases ARE nested here as of 2026-08-22 — browse filters
- *     per unit/lease (see lib/listings/filterListings.js), so unitTypes[].leases
+ *     per unit/lease (see packages/shared/src/formatters/listingFilters.js), so unitTypes[].leases
  *     carries every live offering in the same shape the detail fetch produces
  *   - listing_amenities / listing_utilities: PK is listing_id → Supabase returns single object,
  *     not array; amenitiesRowToArray / utilitiesRowToArray handle the object shape

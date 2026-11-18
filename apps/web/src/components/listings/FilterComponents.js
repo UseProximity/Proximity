@@ -1,17 +1,11 @@
 "use client";
 
-// Shared parts of the browse filters: the price range, the bed and bath steps,
-// the card shell and the range sliders. The Price and Beds & Baths cards (the
-// desktop bar) and the side panel (desktop, and the phone's filter drawer) are
-// built from them.
+// Shared parts of the browse filters: the card shell and the range sliders. The
+// Price and Beds & Baths cards (the desktop bar) and the side panel (desktop,
+// and the phone's filter drawer) are built from them. The price range and the
+// bed and bath steps are in the shared package (@proximity/shared).
 
 import { useEffect, useRef } from "react";
-
-// Price range shared by every price slider. The right end ($4000+) means no
-// upper limit, so a max of PRICE_MAX or more is stored as "".
-export const PRICE_MIN = 400;
-export const PRICE_MAX = 4000;
-export const PRICE_STEP = 50;
 
 // Sends a filter control's values on as they change, so the results update
 // live with no Apply step. `values` must be a new object only when something
@@ -284,19 +278,6 @@ export function RangeSlider({
   );
 }
 
-// Index of a filter value in steps ({ label, value }). "" (the open end), or a
-// value the steps do not offer, gives fallback.
-export const stepIndex = (steps, value, fallback) => {
-  const i = value ? steps.findIndex((s) => s.value === value) : -1;
-  return i < 0 ? fallback : i;
-};
-
-// Filter strings for a range of step indexes: "" at either end means no limit.
-export const stepLimits = (steps, { low, high }) => [
-  low === 0 ? "" : steps[low].value,
-  high === steps.length - 1 ? "" : steps[high].value,
-];
-
 // RangeSlider over named steps, labelling every step. low and high are step
 // indexes and may be equal; with single only high is used.
 export function StepRange({ steps, low = 0, high, single, accent, onChange }) {
@@ -314,21 +295,3 @@ export function StepRange({ steps, low = 0, high, single, accent, onChange }) {
     />
   );
 }
-
-export const BED_STEPS = [
-  { label: "0",  value: "0" },
-  { label: "1",  value: "1" },
-  { label: "2",  value: "2" },
-  { label: "3",  value: "3" },
-  { label: "4",  value: "4" },
-  { label: "5+", value: "5" },
-];
-
-export const BATH_STEPS = [
-  { label: "1",   value: "1"   },
-  { label: "1.5", value: "1.5" },
-  { label: "2",   value: "2"   },
-  { label: "2.5", value: "2.5" },
-  { label: "3",   value: "3"   },
-  { label: "4+",  value: "4"   },
-];

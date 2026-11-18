@@ -6,7 +6,7 @@ import { readVisitorId, newVisitorId, setVisitorCookie, ipLimited } from "@/lib/
 import { recordError } from "@/lib/errors/record";
 import { findMatches } from "@/lib/findYourPlace/match";
 import { getCachedListings } from "@/lib/listings/queryListings";
-import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
+import { DEFAULT_FILTERS, filterListings } from "@proximity/shared";
 import { campusWalkMinutes } from "@/utils/washuPlaces";
 import { sanitizeAnswers, sanitizeChips, standingChips, answeredCount, QUESTION_COUNT, TEXT_MAX, chipSentences } from "@/lib/findYourPlace/options";
 

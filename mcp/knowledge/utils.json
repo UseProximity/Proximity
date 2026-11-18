@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-17T05:15:46.398Z",
-  "count": 340,
+  "_generated": "2026-11-18T14:26:43.078Z",
+  "count": 339,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -830,10 +830,6 @@
     {
       "file": "src/lib/listings/applications.js",
       "description": "Who went to apply (listing_applications), server side."
-    },
-    {
-      "file": "src/lib/listings/filterListings.js",
-      "description": "Browse filtering, evaluated against the property → unit → lease model."
     },
     {
       "file": "src/lib/listings/getListing.js",
