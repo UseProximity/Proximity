@@ -28,7 +28,8 @@ export default function InfoTip({ children, label = "More info" }) {
       <span
         id={id}
         role="tooltip"
-        className="pointer-events-none invisible absolute bottom-full left-0 z-50 mb-2 w-72 max-w-[80vw] rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal normal-case leading-relaxed tracking-normal text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        // On phones the bubble is pinned to the bottom of the screen: anchored to the icon it hangs past the right edge and widens the page.
+        className="pointer-events-none invisible absolute bottom-full left-0 z-50 mb-2 w-72 max-w-[80vw] max-sm:fixed max-sm:inset-x-4 max-sm:bottom-4 max-sm:top-auto max-sm:mb-0 max-sm:w-auto max-sm:max-w-none rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal normal-case leading-relaxed tracking-normal text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
       >
         {children}
       </span>

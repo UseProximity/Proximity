@@ -35,9 +35,49 @@ test("a signature under a real message is still removed", () => {
   assert.equal(extractReplyText({ text, senderName: "Jessica Nelson" }), "Sounds good, see you at 3.");
 });
 
-test("a dangling sign-off and signature still go", () => {
+test("a sign-off and the name under it stay, the signature below goes", () => {
   const text = `Yes, it is available.\n\nBest,\nJessica Nelson\njessica@example.com\n${QUOTE}`;
-  assert.equal(extractReplyText({ text, senderName: "Jessica Nelson" }), "Yes, it is available.");
+  assert.equal(extractReplyText({ text, senderName: "Jessica Nelson" }), "Yes, it is available.\n\nBest,\nJessica Nelson");
+});
+
+test("a dangling sign-off with nothing under it still goes", () => {
+  assert.equal(extractReplyText({ text: `Yes, it is available.\n\nBest,\n${QUOTE}` }), "Yes, it is available.");
+});
+
+// Clock Tower's Gmail signature, as its plain-text part arrives (2026-11-18).
+const CLOCK_TOWER_SIG = [
+  "*Clock Tower Company*",
+  "*ClockTowerCompany.com <http://clocktowercompany.com/> - Apply Here",
+  "<https://clocktowercompany.com/pages/apply>*",
+  "6631 Delmar Blvd, University City, MO 63130",
+  "Text: (586) 666-1217",
+].join("\n");
+
+test("a signer who is not the account holder keeps their sign-off and name", () => {
+  const text = `Hi Lea,\n\nPlease text us to schedule a tour at (586) 666-1217.\n\nThanks,\nAddison\n${CLOCK_TOWER_SIG}\n${QUOTE}`;
+  assert.equal(
+    extractReplyText({ text, senderName: "Isabella Rossato" }),
+    "Hi Lea,\n\nPlease text us to schedule a tour at (586) 666-1217.\n\nThanks,\nAddison",
+  );
+});
+
+test("a bold name and company block over a signature goes with it", () => {
+  const text = `Hi Lea,\n\nAre you still interested in housing for next year?\n\n*Addison Witte*\n${CLOCK_TOWER_SIG}\n${QUOTE}`;
+  assert.equal(extractReplyText({ text, senderName: "Isabella Rossato" }), "Hi Lea,\n\nAre you still interested in housing for next year?");
+});
+
+test("a bolded company line straight under the message goes with the signature", () => {
+  const text = `Good luck!\n\nO-THREE - 6603 UNIVERSITY DRIVE - $1,400/Bedroom NONE Available\n${CLOCK_TOWER_SIG}\n${QUOTE}`;
+  assert.equal(extractReplyText({ text }), "Good luck!\n\nO-THREE - 6603 UNIVERSITY DRIVE - $1,400/Bedroom NONE Available");
+});
+
+test("a P.S. under a sign-off is never cut", () => {
+  const text = `See you then.\n\nThanks,\nAddison\n\nP.S. Bring a photo ID.\n${QUOTE}`;
+  assert.equal(extractReplyText({ text }), "See you then.\n\nThanks,\nAddison\n\nP.S. Bring a photo ID.");
+});
+
+test("a reply that is only a labelled Text: number is the message", () => {
+  assert.equal(extractReplyText({ text: `Text: (586) 666-1217\n${QUOTE}` }), "Text: (586) 666-1217");
 });
 
 test("iPhone Mail's footer is removed even though it shares no line break in the source", () => {

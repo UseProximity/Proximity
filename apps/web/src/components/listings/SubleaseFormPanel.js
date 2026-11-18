@@ -704,7 +704,7 @@ export default function SubleaseFormPanel({
                   }
                 }}
                 placeholder="Add other amenity…"
-                className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="flex-1 max-xl:min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               />
               <button
                 type="button"

@@ -194,6 +194,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       knownPortal: m.portal ?? null,
       deep: goDeep,
       deadline: started + READ_BUDGET_MS,
+      // Nothing is applied while a portal walk is unfinished, so the read
+      // stops there and leaves the run's time to the walk.
+      stopWhenPending: true,
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
@@ -251,7 +254,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         last_checked_at: new Date().toISOString(),
         last_extracted_at: new Date().toISOString(),
         last_status: status,
-        last_error: null,
+        // A leasing portal that read nothing is not a failed sync (the
+        // listing keeps its prices), but the team should see it.
+        last_error: snapshot.portalUnread ? `Leasing portal not read: ${snapshot.portalUnread}`.slice(0, 500) : null,
         consecutive_failures: 0,
         last_fingerprint: fp,
         // A listing priced by a leasing portal is refreshed weekly, on
@@ -278,6 +283,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       summary: summarize(snapshot),
       pages,
       unitPages,
+      portalUnread: snapshot.portalUnread ?? null,
     };
     console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${item.seconds}s, ${pages.filter((p) => p.written).length} page${pages.length === 1 ? "" : "s"} with new knowledge)`);
     return item;
@@ -325,7 +331,7 @@ export async function runSourceSync({ listingId = null, limit = 30, force = fals
   for (const m of monitors) items.push(await syncMonitor(m, { force, email, deep }));
 
   // One digest per run, when there is anything to say.
-  const worth = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const worth = items.filter((i) => (i.status !== "unchanged" && i.status !== "ok") || i.portalUnread);
   if (email && worth.length) {
     try {
       await sendSourceSyncDigestEmail({ to: ALERT_TO, items, baseUrl: getBaseUrl() });

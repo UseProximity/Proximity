@@ -501,7 +501,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-6">
       <BackToTop />
-      <div className="sticky top-[83px] z-40 -mx-4 mb-5 border-b border-gray-200 bg-gray-50/95 px-4 pb-4 pt-5 backdrop-blur md:top-[104px]">
+      <div className="sticky top-[var(--header-h)] z-40 -mx-4 mb-5 border-b border-gray-200 bg-gray-50/95 px-4 pb-4 pt-5 backdrop-blur">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Review your listings</h1>
@@ -590,7 +590,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
                     type="button"
                     onClick={() => remove(j)}
                     aria-label={`Remove ${nameOf(j)} from this import`}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5 text-gray-300 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
+                    className="absolute right-1.5 top-1.5 rounded p-0.5 text-gray-300 transition hover:text-red-600 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

@@ -20,6 +20,9 @@ export default function ListingDetailClient({
   const [notFound, setNotFound] = useState(false);
 
   const from = searchParams.get("from");
+  // Set when a phone opened the site on a ?listing= link and was handed here
+  // (GlobalListingModal): the page that popup would have been on.
+  const back = searchParams.get("back");
 
   useEffect(() => {
     fetch(`/api/listing/${listingId}`)
@@ -39,6 +42,7 @@ export default function ListingDetailClient({
   const handleBack = () => {
     if (from === "map") router.push("/browse?view=map");
     else if (from === "listings") router.push("/browse?view=listings");
+    else if (back && /^\/(?![/\\])/.test(back)) router.push(back);
     else router.back();
   };
 
@@ -94,14 +98,15 @@ export default function ListingDetailClient({
         <span className="flex-1 font-semibold text-gray-900 text-sm truncate">
           {listing.title || listing.address?.split(",")[0]}
         </span>
-        <div className="flex-shrink-0">
+        {/* Below 1280px the heart on the photo is the only one. */}
+        <div className="flex-shrink-0 max-xl:hidden">
           <HeartIcon listingId={listing._id} />
         </div>
       </div>
 
       {/* Detail content */}
       <div className="flex-1">
-        <ListingModalInfo session={session} listing={listing} />
+        <ListingModalInfo session={session} listing={listing} initialUnitId={searchParams.get("unit")} page />
       </div>
     </div>
   );
