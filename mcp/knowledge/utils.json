@@ -1332,6 +1332,10 @@
       "description": "No description. Add a top-of-file comment."
     },
     {
+      "file": "src/utils/copyText.js",
+      "description": "Copies text to the clipboard and resolves to true/false. Never throws."
+    },
+    {
       "file": "src/utils/drivePlaces.js",
       "description": "No description. Add a top-of-file comment."
     },
