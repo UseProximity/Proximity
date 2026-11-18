@@ -25,6 +25,14 @@ export const DEFAULT_FILTERS = {
   savedOnly: false,
 };
 
+// True when any filter differs from its default.
+export const filtersActive = (filters) =>
+  Object.keys(DEFAULT_FILTERS).some(
+    (k) =>
+      JSON.stringify(filters[k] ?? DEFAULT_FILTERS[k]) !==
+      JSON.stringify(DEFAULT_FILTERS[k])
+  );
+
 // Canonical filter-chip amenity values are a distinct, smaller vocabulary
 // from packages/shared's AMENITY_OPTIONS (which mirrors the DB columns) -
 // this mirrors a pre-existing inconsistency in web itself between its
@@ -438,6 +446,26 @@ export function matchListing(listing, ctx) {
     matchedUnitId: narrowed ? best.unit.id ?? null : null,
     priceUnknown: !best.priceKnown,
   };
+}
+
+/**
+ * The rents the price histogram draws: one per available listing that fits
+ * every filter except the price range itself (so the bars show where the
+ * places a renter is looking for sit, inside the range and outside it), at
+ * its cheapest offering that fits. A listing with no published rent on a
+ * fitting offering has no bar to be in.
+ */
+export function fittingRents(listings, { filters, search = "", savedIds = [], campusMinutes }) {
+  const open = { ...filters, minRent: "", maxRent: "" };
+  const ctx = { filters: open, search, savedIds, campusMinutes };
+  return listings.flatMap((listing) => {
+    if (listing.unavailable || !propertyMatches(listing, ctx)) return [];
+    const rents = unitPool(listing)
+      .map((u) => unitMatch(u, open))
+      .filter((m) => m?.priceKnown)
+      .map((m) => m.lease.rent);
+    return rents.length ? [Math.min(...rents)] : [];
+  });
 }
 
 /**

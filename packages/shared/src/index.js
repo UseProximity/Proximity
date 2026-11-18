@@ -8,4 +8,5 @@ export * from "./constants/listing.js";
 export * from "./constants/places.js";
 export * from "./constants/chat.js";
 export * from "./constants/listingReports.js";
+export * from "./constants/browseFilters.js";
 export * from "./findYourPlace/options.js";
