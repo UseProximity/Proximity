@@ -69,14 +69,14 @@ export const CAMPUS_STEPS = [
   { label: "10 min", value: "10" },
   { label: "15 min", value: "15" },
   { label: "20 min", value: "20" },
-  { label: "30min", value: "30" },
-  { label: "45min+", value: "" },
+  { label: "30 min", value: "30" },
+  { label: "45 min+", value: "" },
 ];
 export const SHUTTLE_STEPS = [
   { label: "2 min", value: "2" },
   { label: "5 min", value: "5" },
   { label: "10 min", value: "10" },
-  { label: "20min", value: "" },
+  { label: "20 min+", value: "" },
 ];
 
 // Index of a filter value in steps ({ label, value }). "" (the open end), or a
