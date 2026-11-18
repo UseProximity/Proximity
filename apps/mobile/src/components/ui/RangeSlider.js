@@ -70,12 +70,12 @@ export function RangeSlider({
   const pctOf = (v) => ((v - min) / (max - min)) * 100;
   const xOf = (pct) => HANDLE / 2 + (pct / 100) * (width - HANDLE);
 
-  // A handle not being dragged sits on its value: placed at once, or with
-  // `continuous` gliding there after the first layout (a tick tap, an
-  // accessibility action, a reset).
   // Where each handle was last sent, so one that keeps its place is left alone.
   const placed = useRef({ low: null, high: null });
   const laidOut = useRef(false);
+  // A handle not being dragged sits on its value: placed at once, or with
+  // `continuous` gliding there after the first layout (a tick tap, an
+  // accessibility action, a reset).
   useEffect(() => {
     if (!width) return;
     for (const [which, value] of [["low", low], ["high", high]]) {

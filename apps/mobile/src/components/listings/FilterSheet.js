@@ -106,7 +106,7 @@ const extraDurations = (filters) => (filters.leaseAvailability || []).filter((v)
 // the filters, the search and the Find Your Place hints (and closes the sheet).
 export function FilterSheet({ visible, filters, suggested = null, rentsFor, onApply, onReset, onClose }) {
   const [draft, setDraft] = useState(filters);
-  const [addedDurations, setAddedDurations] = useState(() => extraDurations(filters));
+  const [addedDurations, setAddedDurations] = useState([]);
   // The "Other" box of Duration: null when closed, else the text typed so far.
   const [otherMonths, setOtherMonths] = useState(null);
   // A slider is being dragged: the list holds still meanwhile.
@@ -119,6 +119,8 @@ export function FilterSheet({ visible, filters, suggested = null, rentsFor, onAp
     setDraft(filters);
     setAddedDurations(extraDurations(filters));
     setOtherMonths(null);
+    // A drag cut short by closing the sheet must not leave the list frozen.
+    setDragging(false);
   }, [visible, filters]);
 
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));

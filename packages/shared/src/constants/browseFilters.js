@@ -16,7 +16,7 @@ export const PRICE_STEP = 50;
 
 // Bars of the price histogram, each one an equal slice of the price range
 // PRICE_BUCKET dollars wide.
-export const PRICE_BAR_COUNT = 20;
+const PRICE_BAR_COUNT = 20;
 export const PRICE_BUCKET = (PRICE_MAX - PRICE_MIN) / PRICE_BAR_COUNT;
 
 // Rents per price bucket. Prices outside the slider's range fall into the
@@ -95,7 +95,7 @@ export const stepLimits = (steps, { low, high }) => [
 
 // Lease durations always offered. The renter can add others with "Other".
 export const FILTER_DURATIONS = ["6-month", "10-month", "12-month"];
-export const MAX_DURATION_MONTHS = 36;
+const MAX_DURATION_MONTHS = 36;
 // "9-month" to "9-Month Lease". The two older values (from filters saved before
 // durations were month counts) keep their names, and the ranges Find Your Place
 // hands over read as ranges.
