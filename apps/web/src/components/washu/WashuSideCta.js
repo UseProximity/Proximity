@@ -5,7 +5,7 @@ import Link from "next/link";
 const MATCH_DEFAULT = {
   title: "Tell us what you want. We'll find it.",
   body: "Share your budget and move-in date. We'll send you places near campus that actually fit.",
-  primary: { label: "Find my apartment", href: "/find-your-place" },
+  primary: { label: "Find Your Place", href: "/find-your-place" },
   secondary: { label: "See every listing on the map", href: "/browse" },
 };
 
@@ -22,7 +22,7 @@ const BY_SLUG = {
   "housing-cost": {
     title: "Personalized housing match.",
     body: "Tell us your budget and we'll match you with places near campus that fit it.",
-    primary: { label: "Find my apartment", href: "/find-your-place" },
+    primary: { label: "Find Your Place", href: "/find-your-place" },
     secondary: {
       label: "Open the budget guide",
       href: "/guides/washu-off-campus-budget",
@@ -32,7 +32,7 @@ const BY_SLUG = {
     eyebrow: "Don't wait for February",
     title: "The best places go before November.",
     body: "Tell us what you need now and we'll start looking before the signing wave hits.",
-    primary: { label: "Find my apartment", href: "/find-your-place" },
+    primary: { label: "Find Your Place", href: "/find-your-place" },
     secondary: { label: "Browse what's open now", href: "/browse" },
   },
   "washu-owned-apartments": {
@@ -40,13 +40,13 @@ const BY_SLUG = {
     title: "Renting private usually costs far less.",
     body: "See what private apartments near campus actually cost, with reviews from students who lived there.",
     primary: { label: "Browse private listings", href: "/browse" },
-    secondary: { label: "Find my apartment", href: "/find-your-place" },
+    secondary: { label: "Find Your Place", href: "/find-your-place" },
   },
   "graduate-student-housing": {
     eyebrow: "Searching from out of town?",
     title: "We'll shortlist places for you.",
     body: "Tell us your campus and budget. We'll send you places that fit, free.",
-    primary: { label: "Find my apartment", href: "/find-your-place" },
+    primary: { label: "Find Your Place", href: "/find-your-place" },
     secondary: {
       label: "Med campus apartments",
       href: "/washu/central-west-end-apartments",
