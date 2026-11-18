@@ -4,7 +4,7 @@
 // filters and sends it only on Apply. Intended differences from the website
 // (design-system/MASTER.md §11): a full-screen modal, the app's own icons on
 // amenity and utility chips and a check mark on the other chips, the app's red,
-// Month and Day as lists instead of dropdowns, and Clear All also closes it.
+// a Month and Day wheel sheet instead of dropdowns, and Clear All also closes it.
 import { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +26,8 @@ import {
   Wifi,
   Trash2,
   Tv,
+  Utensils,
+  Toilet,
 } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
@@ -53,9 +55,9 @@ import { PriceRangeSlider } from "./PriceRangeSlider";
 import { MoveInPicker } from "./MoveInPicker";
 import { colors } from "../../theme/tokens";
 
-// Icons only where one genuinely aids recognition (dishwasher and sewer have
-// no clean 1:1 icon and stay text-only).
+// An icon on every amenity and utility chip, to aid recognition.
 const AMENITY_ICONS = {
+  dishwasher: Utensils,
   pets_allowed: PawPrint,
   gym: Dumbbell,
   study_room: BookOpen,
@@ -75,6 +77,7 @@ const UTILITY_ICONS = {
   internet: Wifi,
   trash: Trash2,
   cable: Tv,
+  sewer: Toilet,
 };
 
 // A titled block. With onClear (passed while the filter has something filled

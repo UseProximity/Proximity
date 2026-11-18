@@ -1,110 +1,153 @@
 // Move-in Date of the filter sheet: the website's Month and Day dropdowns, as
-// two fields that each open a list (design-system/MASTER.md §11.3: dropdowns
-// become sheets). Month alone means open by the end of the next such month; a
-// day makes it by that day of it. The day needs a month first. onChange gets
-// the fields to set: a new month drops a day it does not have, and clears the
-// older moveInDate, as on the website.
-import { useState } from "react";
+// one field that opens a bottom sheet with a Month wheel and a Day wheel and a
+// Done button (design-system/MASTER.md §11). Month alone means open by the end
+// of the next such month; a day makes it by that day of it. The first row of
+// each wheel ("Month", "Day") means not set, as the website's placeholders do.
+// The Day wheel waits for a month, and February has 29 days. Done sends the
+// fields to set, with the website's rules: a day the month does not have is
+// dropped, and a new month clears the older moveInDate. Tapping outside the
+// sheet closes it without changes.
+import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Check, ChevronDown } from "lucide-react-native";
+import { ChevronDown } from "lucide-react-native";
 import { FILTER_MONTHS, DAYS_IN_MONTH } from "@proximity/shared";
 import { colors } from "../../theme/tokens";
 
-// A dropdown-style field. Red edge while it holds a value, as on the website.
-function Field({ placeholder, text, disabled, onPress, className }) {
+// Wheel row height (h-10). A wheel shows 5 rows (h-[200px]) and the middle one
+// is the pick (its band at top-[80px]).
+const ROW = 40;
+
+// A scrolling wheel of labels that snaps to a row. index is the row it sits
+// on; onChange(i) is called when it comes to rest on another row (or one is
+// tapped). Native scrolling, so it flings and snaps as the platform does.
+function Wheel({ items, index, onChange, disabled = false, label }) {
+  const ref = useRef(null);
+  // The row the wheel is on, so a scroll that ends there sends nothing and an
+  // index from outside only scrolls when it differs.
+  const at = useRef(index);
+  useEffect(() => {
+    if (at.current === index) return;
+    at.current = index;
+    ref.current?.scrollTo({ y: index * ROW, animated: true });
+  }, [index]);
+  const pick = (i) => {
+    if (i === at.current) return;
+    at.current = i;
+    onChange(i);
+  };
+  // Where a scroll came to rest (a drag let go without a fling, or a fling).
+  const settle = (e) => pick(Math.min(items.length - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.y / ROW))));
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={`Move-in ${placeholder.toLowerCase()}`}
-      accessibilityValue={{ text: text || "Any" }}
-      accessibilityState={{ disabled }}
-      className={`${className} h-11 flex-row items-center justify-between rounded-xl border px-3 ${
-        disabled ? "border-gray-200 bg-gray-50" : text ? "border-red-600 bg-white" : "border-gray-300 bg-white"
-      }`}
-    >
-      <Text className={`text-sm ${disabled ? "text-gray-300" : text ? "text-gray-900" : "text-gray-400"}`}>
-        {text || placeholder}
-      </Text>
-      <ChevronDown size={16} color={disabled ? colors.border : colors.textSecondary} strokeWidth={2} />
-    </Pressable>
+    <View className={`flex-1 h-[200px] ${disabled ? "opacity-40" : ""}`} accessibilityLabel={label}>
+      {/* The band behind the picked row. */}
+      <View pointerEvents="none" className="absolute inset-x-0 top-[80px] h-10 rounded-lg bg-gray-100" />
+      <ScrollView
+        ref={ref}
+        onLayout={() => ref.current?.scrollTo({ y: index * ROW, animated: false })}
+        scrollEnabled={!disabled}
+        snapToInterval={ROW}
+        decelerationRate="fast"
+        showsVerticalScrollIndicator={false}
+        // Two empty rows above the first item and below the last, so each one
+        // can reach the middle (py-20 = 80pt = 2 rows of ROW).
+        contentContainerClassName="py-20"
+        onScrollEndDrag={settle}
+        onMomentumScrollEnd={settle}
+      >
+        {items.map((text, i) => (
+          <Pressable
+            key={text}
+            disabled={disabled}
+            onPress={() => {
+              pick(i);
+              ref.current?.scrollTo({ y: i * ROW, animated: true });
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: i === index, disabled }}
+            className="h-10 items-center justify-center"
+          >
+            <Text
+              className={`text-lg ${
+                i === index ? "font-semibold text-gray-900" : i === 0 ? "text-gray-400" : "text-gray-600"
+              }`}
+            >
+              {text}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
-// The list a field opens: its placeholder (no value) first, then the options
-// ([value, label]); picking one closes it.
-function OptionSheet({ title, options, value, onPick, onClose }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/40" onPress={onClose} accessibilityLabel="Close" />
-      <View className="bg-white rounded-t-2xl" style={{ paddingBottom: insets.bottom }}>
-        <Text className="text-base font-bold text-gray-900 px-4 pt-4 pb-2">{title}</Text>
-        <ScrollView className="max-h-96">
-          {[["", title], ...options].map(([v, label]) => (
-            <Pressable
-              key={v || "none"}
-              onPress={() => onPick(v)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: v === value }}
-              className="h-11 flex-row items-center justify-between px-4 border-b border-gray-100 active:bg-gray-50"
-            >
-              <Text className={`text-sm ${v === value ? "font-semibold text-red-600" : v ? "text-gray-900" : "text-gray-400"}`}>
-                {label}
-              </Text>
-              {v === value ? <Check size={16} color={colors.primary} strokeWidth={2.5} /> : null}
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-    </Modal>
-  );
-}
+const MONTH_ROWS = ["Month", ...FILTER_MONTHS];
 
 export function MoveInPicker({ month, day, onChange }) {
-  // Which list is open: "month", "day" or null.
-  const [open, setOpen] = useState(null);
-  const months = FILTER_MONTHS.map((name, i) => [String(i + 1), name]);
-  const days = Array.from({ length: DAYS_IN_MONTH[(month || 1) - 1] }, (_, i) => [String(i + 1), String(i + 1)]);
-  const pick = (patch) => {
-    setOpen(null);
+  const insets = useSafeAreaInsets();
+  // The wheels' picks while the sheet is open (null when closed). The day is
+  // kept as picked, even while a shorter month is passing on the Month wheel;
+  // Done drops it if the month it lands on does not have it.
+  const [picked, setPicked] = useState(null);
+  const days = picked?.month ? DAYS_IN_MONTH[picked.month - 1] : 0;
+  const dayRows = ["Day", ...Array.from({ length: days }, (_, i) => String(i + 1))];
+  const dayIndex = picked && Number(picked.day) <= days ? Number(picked.day) : 0;
+
+  const done = () => {
+    const m = picked.month;
+    const patch = { moveInMonth: m, moveInDay: m && Number(picked.day) <= DAYS_IN_MONTH[m - 1] ? picked.day : "" };
+    if (m !== (month || "")) patch.moveInDate = "";
+    setPicked(null);
     onChange(patch);
   };
+
+  const text = month ? `${FILTER_MONTHS[month - 1]}${day ? ` ${day}` : ""}` : "";
   return (
-    <View className="flex-row gap-2">
-      <Field
-        placeholder="Month"
-        text={month ? FILTER_MONTHS[month - 1] : ""}
-        onPress={() => setOpen("month")}
-        className="flex-[3]"
-      />
-      <Field placeholder="Day" text={day} disabled={!month} onPress={() => setOpen("day")} className="flex-[2]" />
-      {open === "month" ? (
-        <OptionSheet
-          title="Month"
-          options={months}
-          value={month || ""}
-          onClose={() => setOpen(null)}
-          onPick={(m) =>
-            pick({
-              moveInMonth: m,
-              moveInDate: "",
-              moveInDay: m && Number(day) <= DAYS_IN_MONTH[m - 1] ? day : "",
-            })
-          }
-        />
-      ) : null}
-      {open === "day" ? (
-        <OptionSheet
-          title="Day"
-          options={days}
-          value={day || ""}
-          onClose={() => setOpen(null)}
-          onPick={(d) => pick({ moveInDay: d })}
-        />
-      ) : null}
-    </View>
+    <>
+      <Pressable
+        onPress={() => setPicked({ month: month || "", day: day || "" })}
+        accessibilityRole="button"
+        accessibilityLabel="Move-in date"
+        accessibilityValue={{ text: text || "Any" }}
+        className={`h-11 flex-row items-center justify-between rounded-xl border bg-white px-3 ${
+          text ? "border-red-600" : "border-gray-300"
+        }`}
+      >
+        <Text className={`text-sm ${text ? "text-gray-900" : "text-gray-400"}`}>{text || "Month / Day"}</Text>
+        <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} />
+      </Pressable>
+      <Modal visible={!!picked} transparent animationType="slide" onRequestClose={() => setPicked(null)}>
+        <Pressable className="flex-1 bg-black/30" onPress={() => setPicked(null)} accessibilityLabel="Close" />
+        {picked ? (
+          <View className="bg-white rounded-t-2xl px-4" style={{ paddingBottom: Math.max(16, insets.bottom) }}>
+            <View className="flex-row items-center justify-between h-14">
+              <Text className="text-base font-bold text-gray-900">Move-in Date</Text>
+              <Pressable onPress={done} hitSlop={12} accessibilityRole="button">
+                <Text className="text-base font-semibold text-red-600">Done</Text>
+              </Pressable>
+            </View>
+            <View className="flex-row gap-2">
+              <View className="flex-[3]">
+                <Wheel
+                  label="Month"
+                  items={MONTH_ROWS}
+                  index={picked.month ? Number(picked.month) : 0}
+                  onChange={(i) => setPicked((p) => ({ ...p, month: i ? String(i) : "" }))}
+                />
+              </View>
+              <View className="flex-[2]">
+                <Wheel
+                  label="Day"
+                  items={dayRows}
+                  index={dayIndex}
+                  disabled={!picked.month}
+                  onChange={(i) => setPicked((p) => ({ ...p, day: i ? String(i) : "" }))}
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </Modal>
+    </>
   );
 }

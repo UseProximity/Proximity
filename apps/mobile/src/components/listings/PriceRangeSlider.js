@@ -23,8 +23,9 @@ export function PriceRangeSlider({ rents, low, high, onChange, onDragging }) {
   const tallest = Math.max(...counts, 1);
   return (
     <View>
-      {/* Inset by half a handle, so the bars line up with the track. */}
-      <View className="flex-row items-end gap-0.5 h-16 px-2.5">
+      {/* As on the website, the bars start and end a little inside the track's
+          ends (which are half a handle, 11pt, in from the slider's edges). */}
+      <View className="flex-row items-end gap-0.5 h-16 pl-5 pr-[22px]">
         {counts.map((count, i) => {
           const start = PRICE_MIN + i * BUCKET;
           const inRange = start < high && start + BUCKET > low;
@@ -37,17 +38,21 @@ export function PriceRangeSlider({ rents, low, high, onChange, onDragging }) {
           );
         })}
       </View>
-      <RangeSlider
-        min={PRICE_MIN}
-        max={PRICE_MAX}
-        step={PRICE_STEP}
-        low={low}
-        high={high}
-        label="Price"
-        onChange={onChange}
-        onDragging={onDragging}
-        formatLabel={formatPrice}
-      />
+      {/* Pulled up by half the slider's 44pt touch row, so the track runs along
+          the bottom of the bars, as on the website. */}
+      <View className="-mt-[22px]">
+        <RangeSlider
+          min={PRICE_MIN}
+          max={PRICE_MAX}
+          step={PRICE_STEP}
+          low={low}
+          high={high}
+          label="Price"
+          onChange={onChange}
+          onDragging={onDragging}
+          formatLabel={formatPrice}
+        />
+      </View>
     </View>
   );
 }
