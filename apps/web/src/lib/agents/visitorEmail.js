@@ -31,6 +31,7 @@ import { getBaseUrl, sendProxyConfirmEmail, sendProxyStudentEmail } from "@/lib/
 import { proxyReplyAddress } from "./replyTokens";
 import { updateProxyState, PROXY_USER_ID } from "./threads";
 import { stampSignup } from "@/lib/marketing/accounts";
+import { loadLiveSession, readSessionCookie } from "@/lib/marketing/sessions";
 
 // Confirmation links last two days; a conversation gets three of them.
 const CONFIRM_TTL_MS = 2 * 24 * 60 * 60 * 1000;
@@ -52,7 +53,7 @@ async function userByEmail(email) {
   return data ?? null;
 }
 
-async function startIncompleteAccount(email) {
+async function startIncompleteAccount(email, visitSessionId = null) {
   const { data: role } = await supabase.from("roles").select("id").eq("name", "student").maybeSingle();
   const local = email.split("@")[0].replace(/[._+-]+/g, " ").trim();
   const name = local ? local.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 60) : "Proximity student";
@@ -64,9 +65,11 @@ async function startIncompleteAccount(email) {
     if (error.code === "23505") return userByEmail(email);
     throw new Error(`incomplete account: ${error.message}`);
   }
-  // A signed-out visitor giving Proxy their email: an account made in their
-  // own visit, so it takes that visit's source.
-  await stampSignup(null, { userId: data.id, role: "student" });
+  // A signed-out visitor giving Proxy their email. The account is only made
+  // when the emailed link is opened (often another browser, a mail app or a
+  // link scanner, after the visit has gone idle), so it takes the source of
+  // the visit where the email was given, saved with the pending confirmation.
+  await stampSignup(null, { userId: data.id, role: "student", sessionId: visitSessionId });
   return data;
 }
 
@@ -94,11 +97,15 @@ export async function handleVisitorEmail({ thread, text, testEmailTo = null }) {
   // Every link sent for the same address keeps working, so a second tab's
   // email does not turn the first one's link into "expired" (Wyatt, 2026-11-01).
   const prior = state.emailConfirm?.email === email ? state.emailConfirm : null;
+  // The marketing visit this email was given in (null outside a browser
+  // request, or with no live session). See startIncompleteAccount.
+  const visit = await loadLiveSession(await readSessionCookie(null)).catch(() => null);
+  const msid = visit?.id ?? prior?.msid ?? null;
   const hashes = [...(prior?.hashes ?? (prior?.hash ? [prior.hash] : [])), hashToken(token)].slice(-CONFIRMS_PER_THREAD);
   await updateProxyState(thread.id, {
     notifyAsked: true,
     confirmsSent: sent + 1,
-    emailConfirm: { email, hash: hashes.at(-1), hashes, expiresAt: new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), at: prior?.at ?? new Date().toISOString() },
+    emailConfirm: { email, hash: hashes.at(-1), hashes, msid, expiresAt: new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), at: prior?.at ?? new Date().toISOString() },
   });
   const { data: listing } = await supabase.from("listings").select("title, address").eq("id", thread.listing_id).maybeSingle();
   await sendProxyConfirmEmail({
@@ -149,7 +156,7 @@ export async function confirmVisitorEmail(token) {
     await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(true), heldForAccount: user.id });
     return { listingId: thread.listing_id, existingAccount: true };
   }
-  const stub = user ?? (await startIncompleteAccount(email));
+  const stub = user ?? (await startIncompleteAccount(email, pending.msid ?? null));
   await supabase.from("chat_threads").update({ notify_email: email }).eq("id", thread.id);
   await updateProxyState(thread.id, { emailConfirm: null, emailConfirmed: confirmed(false), heldForAccount: null, incompleteAccount: stub?.id ?? null });
 

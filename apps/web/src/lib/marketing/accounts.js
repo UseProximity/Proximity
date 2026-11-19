@@ -15,7 +15,7 @@
 import supabase from "@/lib/supabase";
 import { attributionEnabled, isUuid } from "./config";
 import { recordOutcome } from "./record";
-import { attachUserToSession, loadLiveSession, readSessionCookie } from "./sessions";
+import { attachUserToSession, loadLiveSession, loadSessionById, readSessionCookie } from "./sessions";
 import { shouldRecordActivation, signupColumns } from "./signup";
 
 /**
@@ -25,13 +25,18 @@ import { shouldRecordActivation, signupColumns } from "./signup";
  * @param {string} [o.role]  student, landlord or parent (looked up when omitted)
  * @param {"app"|"invite"} [o.label]  no visitor session: mobile ("app") or
  *   created on someone's behalf ("invite"). The request cookie is not read.
+ * @param {string} [o.sessionId]  the visit the account was really started in,
+ *   when it is only created later (a Proxy visitor's emailed confirmation
+ *   link). Used whatever its age, instead of the request cookie.
  */
-export async function stampSignup(req, { userId, role = null, label = null } = {}) {
+export async function stampSignup(req, { userId, role = null, label = null, sessionId = null } = {}) {
   try {
     if (!attributionEnabled() || !isUuid(userId)) return;
 
     let session = null;
-    if (!label) {
+    if (!label && sessionId) {
+      session = await loadSessionById(sessionId);
+    } else if (!label) {
       const sid = await readSessionCookie(req);
       if (sid) session = await loadLiveSession(sid);
     }
@@ -50,7 +55,9 @@ export async function stampSignup(req, { userId, role = null, label = null } = {
       outcome: "account_created",
       userId,
       userRole: role,
-      sessionId: session?.id ?? null,
+      // An earlier visit has usually gone idle by now, so it is credited
+      // directly rather than looked up as a live session.
+      ...(sessionId && session ? { creditSessionId: session.id } : { sessionId: session?.id ?? null }),
       useCookie: false,
     });
   } catch (err) {
