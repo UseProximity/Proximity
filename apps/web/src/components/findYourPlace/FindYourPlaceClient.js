@@ -444,10 +444,11 @@ export default function FindYourPlaceClient() {
     });
     setListingSource(match.listing_id, SOURCE);
     // The listing's panel on the browse page, in a new tab, so the matches stay
-    // open behind it (Wyatt, 2026-11-10). `src=matchmaking` is the value the
-    // browse page attributes opens, saves and contacts to this flow with.
+    // open behind it (Wyatt, 2026-11-10). `from=matchmaking` is the value the
+    // browse page attributes opens, saves and contacts to this flow with. Not
+    // `src`: that parameter is a marketing campaign tag (printed QR codes).
     window.open(
-      `/browse?panel=${match.listing_id}&src=matchmaking${tab ? `&listingTab=${tab}` : ""}`,
+      `/browse?panel=${match.listing_id}&from=matchmaking${tab ? `&listingTab=${tab}` : ""}`,
       "_blank",
       "noopener,noreferrer"
     );

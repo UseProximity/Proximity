@@ -1568,7 +1568,7 @@ export default function ListingModalInfo({
   }, [activeTab]);
 
   // A Find Your Place match opened some other way than from the matches page.
-  // Deferred a moment: a ?src=matchmaking deep link marks its source in the
+  // Deferred a moment: a ?from=matchmaking deep link marks its source in the
   // browse page's own effect, which runs after this panel's.
   useEffect(() => {
     if (preview || !listing?._id) return;
