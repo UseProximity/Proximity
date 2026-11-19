@@ -58,3 +58,15 @@ test("only the listed kinds are tagged", () => {
   assert.notEqual(tagged, msg); // a copy, the caller's message is not changed
   assert.doesNotMatch(msg.html, /utm_/);
 });
+
+test("shared kinds are tagged only for a student or parent recipient", () => {
+  const msg = { html: '<a href="https://useproximity.org/messages">Open</a>' };
+  for (const kind of ["chat_alert", "tour_confirmed", "mass_email"]) {
+    assert.equal(tagEmailMessage(msg, kind), msg, `${kind} with no audience`);
+    assert.equal(tagEmailMessage(msg, kind, [], "landlord"), msg, `${kind} to a landlord`);
+    assert.match(tagEmailMessage(msg, kind, [], "student").html, new RegExp(`utm_campaign=${kind}`));
+    assert.match(tagEmailMessage(msg, kind, [], "parent").html, /utm_source=proximity-email/);
+  }
+  // tour_request only ever goes to a landlord.
+  assert.equal(tagEmailMessage(msg, "tour_request", [], "student"), msg);
+});

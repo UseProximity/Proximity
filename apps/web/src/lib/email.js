@@ -436,7 +436,7 @@ export async function sendChatMessageEmail({
     try {
       const { html, text } = build(true);
       const info = await sendMailSafe(sesTransporter, {
-        logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
+        logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId, audience: recipientIsInterestedUser ? "student" : "landlord" },
         from,
         to,
         replyTo,
@@ -458,7 +458,7 @@ export async function sendChatMessageEmail({
   // Reply-To, so a reply still reaches the conversation.
   const { html, text } = build(Boolean(replyTo));
   const info = await sendMailSafe(transporter, {
-    logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
+    logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId, audience: recipientIsInterestedUser ? "student" : "landlord" },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
     ...(replyTo ? { replyTo } : {}),
@@ -512,9 +512,11 @@ export async function sendTeamEmail({ to, subject, html }) {
  */
 export const MASS_EMAIL_ADDRESS = "info@useproximity.org";
 
-export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null }) {
+// `audience` is the recipient's role: only a student's or parent's links carry
+// marketing tags, so a landlord launch email never counts as a marketing visit.
+export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null, audience = null }) {
   const message = {
-    logAs: { kind: "mass_email", userId },
+    logAs: { kind: "mass_email", userId, audience },
     to,
     replyTo: MASS_EMAIL_ADDRESS,
     subject,
@@ -1507,10 +1509,12 @@ export async function sendProxyLandlordQuestionEmail({
  */
 // `sandbox` is true when the student or the landlord is a review sandbox account:
 // sendMailSafe then records the email as suppressed and sends nothing.
-export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
+// `audience` ("student" or "landlord") decides whether the links carry
+// marketing tags (lib/marketing/emailLinks.js): only a student's do.
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false, audience = null }) {
   const first = name ? String(name).split(" ")[0] : "";
   await sendMailSafe(transporter, {
-    logAs: { kind, userId, threadId },
+    logAs: { kind, userId, threadId, audience },
     sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,

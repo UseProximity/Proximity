@@ -104,8 +104,9 @@ function sentOutcome(transporter, info, redirectedTo) {
 export async function sendMailSafe(transporter, message, req) {
   const { logAs, sandbox, ...untagged } = message ?? {};
   // Links to our own site in student-facing emails carry proximity-email UTMs
-  // (marketing attribution, PRD 7.5). Other kinds pass through unchanged.
-  const mail = tagEmailMessage(untagged, logAs?.kind, [process.env.NEXTAUTH_URL]);
+  // (marketing attribution, PRD 7.5). logAs.audience says who a shared kind
+  // (chat alert, tour email, mass email) is going to; landlords are not tagged.
+  const mail = tagEmailMessage(untagged, logAs?.kind, [process.env.NEXTAUTH_URL], logAs?.audience ?? null);
   let redirectedTo = null;
   try {
     const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; }, sandbox === true);

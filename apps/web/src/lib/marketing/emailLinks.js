@@ -2,8 +2,14 @@
  * Campaign tags on links in our own emails (PRD 7.5): utm_source=proximity-email,
  * utm_medium=email, utm_campaign=<email kind>.
  *
- * Applied once, in sendMailSafe, to the email kinds below, so each sender does
- * not have to build tagged URLs itself. Only links to our own site are tagged.
+ * Applied once, in sendMailSafe, to student-facing emails only, so each sender
+ * does not have to build tagged URLs itself. A landlord clicking through from
+ * an email is not a marketing visit and must not count as one:
+ *   - STUDENT_EMAIL_KINDS only ever go to students (or parents): always tagged
+ *   - SHARED_EMAIL_KINDS go to students AND landlords (chat alerts, tour
+ *     emails, mass email): tagged only when the sender sets
+ *     logAs.audience to "student" or "parent". Anything unmarked stays
+ *     untagged, so a missed sender is never counted. Only links to our own site are tagged.
  * Left alone:
  *   - /api/ links: one-click endpoints (unsubscribe, waitlist hand-off) that
  *     never load a page, so the tags would do nothing there
@@ -22,31 +28,43 @@
 export const EMAIL_SOURCE = "proximity-email";
 export const EMAIL_MEDIUM = "email";
 
-export const TAGGED_EMAIL_KINDS = new Set([
-  // chat alerts and follow-up reminders
-  "chat_alert",
-  "chat_reminder",
+export const STUDENT_EMAIL_KINDS = new Set([
+  // Proxy's emails to the student who asked
   "proxy_answer",
   "proxy_relay",
   "proxy_clarifier",
   "proxy_correction",
   "proxy_reply",
   "proxy_no_answer",
-  // tour emails
-  "tour_request",
+  // tour emails that only go to the student
   "tour_proposal",
-  "tour_confirmed",
-  "tour_cancelled",
-  "tour_reminder",
   "tour_no_answer",
-  // mass email
-  "mass_email",
   // review invites and the review / waitlist follow-ups
   "review_invite",
   "review_confirmation",
   "waitlist_nudge",
   "parent_guide",
 ]);
+
+export const SHARED_EMAIL_KINDS = new Set([
+  "chat_alert",
+  "chat_reminder",
+  "tour_confirmed",
+  "tour_cancelled",
+  "tour_reminder",
+  "mass_email",
+]);
+
+const MARKETING_AUDIENCES = new Set(["student", "parent"]);
+
+/** Every kind that can be tagged (for tests and docs). */
+export const TAGGED_EMAIL_KINDS = new Set([...STUDENT_EMAIL_KINDS, ...SHARED_EMAIL_KINDS]);
+
+/** Whether an email of this kind, to this audience, gets campaign tags. */
+export function shouldTagEmail(kind, audience = null) {
+  if (STUDENT_EMAIL_KINDS.has(kind)) return true;
+  return SHARED_EMAIL_KINDS.has(kind) && MARKETING_AUDIENCES.has(audience);
+}
 
 const OWN_HOSTS = new Set(["useproximity.org", "localhost", "127.0.0.1"]);
 
@@ -115,10 +133,10 @@ export function tagTextLinks(text, kind, baseUrls = []) {
 
 /**
  * A copy of the mail message with its links tagged, or the message itself
- * when the kind is not one we tag.
+ * when the kind (and, for shared kinds, the audience) is not one we tag.
  */
-export function tagEmailMessage(message, kind, baseUrls = []) {
-  if (!message || !TAGGED_EMAIL_KINDS.has(kind)) return message;
+export function tagEmailMessage(message, kind, baseUrls = [], audience = null) {
+  if (!message || !shouldTagEmail(kind, audience)) return message;
   const out = { ...message };
   if (typeof message.html === "string") out.html = tagHtmlLinks(message.html, kind, baseUrls);
   if (typeof message.text === "string") out.text = tagTextLinks(message.text, kind, baseUrls);
