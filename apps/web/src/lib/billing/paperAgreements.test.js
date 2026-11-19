@@ -9,6 +9,9 @@ import assert from "node:assert/strict";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, coverageFor, startSigning, voidDocument } from "./agreements.js";
+import { assertNoPaperHold, cancelPayerDocuments, changePayer, endPayerFor } from "./payers.js";
+import { paperOutIds } from "./enrollment.js";
+import { paperBoxKind } from "./paperAgreementPdf.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { checkListingGate, gateResponseBody } from "./listingGate.js";
 import { paperPreview, paperSignerDetails, printPaperAgreement, publishCovered, recordPaperAgreement, recordPreview } from "./paperAgreements.js";
@@ -112,7 +115,7 @@ describe("paper agreements", () => {
   it("the signed copy is required", async () => {
     const db = world();
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: [], signerName: "Pat", signedFileKey: null, now }), (e) => e.code === "file_required");
+    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: [], signerName: "Pat Landlord", signedFileKey: null, now }), (e) => e.code === "file_required");
   });
 
   it("the signed copy is stored only once the record's checks pass", async () => {
@@ -124,31 +127,37 @@ describe("paper agreements", () => {
       return "billing/signed/u1/late.pdf";
     };
     const everythingOff = ["L1", "L2", "L3"].map((listingId) => ({ listingId, include: false, excluded: true }));
-    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: everythingOff, signerName: "Pat", storeSigned, now }), (e) => e.code === "no_properties");
+    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: everythingOff, signerName: "Pat Landlord", storeSigned, now }), (e) => e.code === "no_properties");
     await assert.rejects(
-      () => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: new Date("2027-01-20T12:00:00Z"), now }),
+      () => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", storeSigned, signedAt: new Date("2027-01-20T12:00:00Z"), now }),
       (e) => e.code === "bad_date"
     );
     assert.equal(stored, 0);
-    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: now, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", storeSigned, signedAt: now, now });
     assert.equal(stored, 1);
     assert.equal((await agreementState(db, "u1", now)).signed.signed_file_key, "billing/signed/u1/late.pdf");
     // Saved twice (a double click): the second is refused before anything is stored.
-    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: now, now }), (e) => e.code === "not_out");
+    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", storeSigned, signedAt: now, now }), (e) => e.code === "not_out");
     assert.equal(stored, 1);
   });
 
   it("a publish that fails with a database error is reported in plain words", async () => {
     const db = world();
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
     const raw = async () => {
       throw new Error('duplicate key value violates unique constraint "listings_pkey"');
     };
     const [out] = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: raw });
     assert.equal(out.error, "Could not publish it.");
+    // Any error with a status is not enough: only one written for people.
+    const statusOnly = async () => {
+      throw Object.assign(new Error("relation listings_x does not exist"), { status: 404 });
+    };
+    const [hidden] = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: statusOnly });
+    assert.equal(hidden.error, "Could not publish it.");
     const readable = async () => {
-      throw Object.assign(new Error("That property no longer exists."), { status: 404 });
+      throw Object.assign(new Error("That property no longer exists."), { status: 404, name: "PublishError" });
     };
     const [said] = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: readable });
     assert.equal(said.error, "That property no longer exists.");
@@ -157,7 +166,7 @@ describe("paper agreements", () => {
   it("only drafts now covered by it are published, as the landlord", async () => {
     const db = world();
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
     const calls = [];
     const out = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2", "L3"], publishProperty: async (...a) => calls.push(a) });
     assert.deepEqual(calls, [["u1", false, "L2"]]);
@@ -167,10 +176,10 @@ describe("paper agreements", () => {
   it("voiding the paper copy releases the hold, and a landlord who signed is pointed at the addendum", async () => {
     const db = world();
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await voidDocument(db, null, { userId: "u1", kind: "master", id, now });
+    await voidDocument(db, null, { userId: "u1", kind: "master", id, paper: true, now });
     assert.deepEqual(statuses(db, id), {});
     const again = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await recordPaperAgreement(db, { landlordId: "u1", id: again.id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id: again.id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
     await assert.rejects(() => paperPreview(db, "u1", now), (e) => e.code === "cannot_print" && /addendum/.test(e.message));
   });
 
@@ -206,7 +215,6 @@ describe("paper agreements", () => {
     ];
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
     await assert.rejects(() => recordPreview(db, "u2", id, now), (e) => e.code === "not_found");
-    await assert.rejects(() => recordPreview(db, "p1", id, now), (e) => e.code === "not_found");
     await recordPreview(db, "u1", id, now);
 
     // The admin list: controls on the printed account's row, a note naming it on the others.
@@ -225,7 +233,7 @@ describe("paper agreements", () => {
     assert.throws(() => paperSignerDetails({ email: "pat@example.com", street: "1 Main St", city: "" }), (e) => e.code === "contact_required" && /address/.test(e.message));
     assert.throws(() => paperSignerDetails({ email: "not an email", street: "1 Main St", city: "St. Louis, MO 63130" }), (e) => e.code === "bad_email");
     const signerDetails = paperSignerDetails({ company: " Pat  Rentals LLC ", email: "pat@example.com", street: "1 Main St", suite: "", city: "St. Louis, MO 63130" });
-    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, signerDetails, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, signerDetails, now });
     assert.deepEqual(db.tables.landlord_agreements.find((a) => a.id === id).signer_details, {
       company: "Pat Rentals LLC",
       email: "pat@example.com",
@@ -235,10 +243,108 @@ describe("paper agreements", () => {
     });
   });
 
+  it("publishing after the record meets the same billing check as the landlord's own Publish", async () => {
+    const db = world();
+    db.tables.billing_settings.push({ key: "payment_method_required", value: true });
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
+    const calls = [];
+    const out = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: async (...a) => calls.push(a), now });
+    assert.deepEqual(calls, [], "no payment method: nothing goes live");
+    assert.equal(out[0].ok, false);
+    assert.match(out[0].error, /payment method/);
+  });
+
+  it("a record that fails part way is undone: the copy is out again and the old agreement restored", async () => {
+    const db = world();
+    const first = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k1", signedAt: now, now });
+    // Pat is offered their own version and it is printed to sign on paper.
+    db.tables.agreement_versions.push({ ...MASTER, id: "vn", label: "Pat's own", landlord_id: "u1", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" });
+    const later = new Date("2027-02-10T18:00:00Z");
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now: later });
+    // The covered rows can't be written.
+    const from = db.from.bind(db);
+    db.from = (table) => {
+      const q = from(table);
+      if (table !== "agreement_coverage") return q;
+      const insert = q.insert;
+      q.insert = (rows) => ((Array.isArray(rows) ? rows : [rows]).some((r) => r.status === "covered") ? Object.assign(q, { then: (res) => res({ data: null, error: { code: "XX000", message: "boom" } }) }) : insert(rows));
+      return q;
+    };
+    const discarded = [];
+    await assert.rejects(() =>
+      recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", storeSigned: async () => "k2", discardSigned: async (k) => discarded.push(k), signedAt: later, now: later })
+    );
+    db.from = from;
+    const rows = Object.fromEntries(db.tables.landlord_agreements.map((a) => [a.id, a.status]));
+    assert.equal(rows[id], "sent", "the paper copy is out again, ready to record");
+    assert.equal(rows[first.id], "signed", "the agreement it was replacing is back");
+    assert.deepEqual(statuses(db, id), { L1: "proposed", L2: "proposed" }, "its printed list is held again");
+    assert.deepEqual(discarded, ["k2"]);
+    const { covered } = await coverageFor(db, "u1", later);
+    assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"], "still covered by the old agreement");
+  });
+
+  it("the license answer on the paper is saved for the signer", async () => {
+    const db = world();
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await assert.rejects(
+      () => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", license: { isLicensee: true }, now }),
+      (e) => e.code === "license_disclosure_invalid"
+    );
+    assert.equal(db.tables.landlord_agreements.find((a) => a.id === id).status, "sent", "a bad answer saves nothing");
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", license: { isLicensee: false, notLicensedConfirmed: true }, now });
+    assert.equal(db.tables.landlord_license_disclosures[0].user_id, "u1");
+    assert.equal(db.tables.landlord_license_disclosures[0].is_licensee, false);
+    assert.equal(db.tables.landlord_license_disclosure_history[0].source, "signing");
+  });
+
+  it("nobody changes who signs while a paper copy holds the account, and nothing voids it quietly", async () => {
+    const db = world();
+    db.tables.users.push({ id: "p1", name: "Ryan Signer", email: "ryan@example.com", billing_only: true }, { id: "u2", name: "Sam Other", email: "sam@example.com" });
+    db.tables.billing_payers = [
+      { id: "bp1", landlord_id: "u1", payer_id: "p1", signer_name: "Ryan Signer", status: "active", listing_id: null },
+      { id: "bp2", landlord_id: "u2", payer_id: "p1", signer_name: "Ryan Signer", status: "active", listing_id: null },
+    ];
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    const landlord = { id: "u1", name: "Pat Landlord", email: "pat@example.com" };
+    await assert.rejects(() => assertNoPaperHold(db, "u1"), (e) => e.code === "paper_out");
+    await assert.rejects(() => changePayer(db, null, { landlord, name: "New Signer", email: "new@example.com", now }), (e) => e.code === "paper_out");
+    await assert.rejects(() => endPayerFor(db, null, { landlordId: "u1", reason: "revoked by the landlord", now }), (e) => e.code === "paper_out");
+    await assert.rejects(() => cancelPayerDocuments(db, null, "u1", { payerId: "p1" }), (e) => e.code === "paper_out");
+    await assert.rejects(() => voidDocument(db, null, { userId: "p1", kind: "master", id, now }), (e) => e.code === "paper_out");
+    assert.equal(db.tables.landlord_agreements.find((a) => a.id === id).status, "sent");
+    assert.equal(db.tables.billing_payers.find((p) => p.id === "bp1").status, "active");
+
+    // The signer's other account is not held: its signer can be changed.
+    await assertNoPaperHold(db, "u2");
+    // Pat's account reads as out on paper, Sam's does not, and Ryan can't start
+    // anything for Sam until it is recorded, told why.
+    assert.equal((await agreementState(db, "u1", now)).paperElsewhere, false);
+    const other = await agreementState(db, "u2", now);
+    assert.equal(other.paperElsewhere, true);
+    const gate = await checkListingGate(db, "u2", { listingIds: [], now });
+    assert.ok(!gate.missing.includes("paper_agreement"), "Sam is not told the agreement went to them on paper");
+    await assert.rejects(() => exhibitPreview(db, "u2", { now, forPayee: true }), (e) => e.code === "paper_elsewhere");
+    assert.deepEqual([...(await paperOutIds(db))].sort(), ["p1", "u1"], "the batch email skips the held account");
+  });
+
+  it("a printed box labelled for the email, address, title or name never gets the company", () => {
+    const box = (label) => paperBoxKind({ type: "TEXT", label });
+    assert.equal(box("Company"), "company");
+    assert.equal(box("Owner"), "company");
+    assert.equal(box("Owner Name"), "company");
+    assert.equal(box("Landlord Email"), "blank");
+    assert.equal(box("Company Address"), "blank");
+    assert.equal(box("Owner Title"), "blank");
+    assert.equal(box("Exhibit A"), "exhibit");
+  });
+
   it("no paper copy is printed while an addendum is open for signing", async () => {
     const db = world();
     const first = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
-    await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
     // A version made for Pat alone goes live: they may sign it, in the app or on paper.
     db.tables.agreement_versions.push({ ...MASTER, id: "vn", label: "Pat's own", landlord_id: "u1", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" });
     const later = new Date("2027-02-10T18:00:00Z");

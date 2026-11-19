@@ -37,19 +37,20 @@ import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { activePayerLink } from "./payerLinks.js";
-import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, cancelInDocumenso, cleanSignerDetails, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
+import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, cancelInDocumenso, cleanSignerCompany, cleanSignerDetails, cleanSignerName, cleanSignerTitle, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
 import { planCoverage, withdrawOfferings, withdrawUnitLeases } from "./coverage.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { signerOf } from "./documenso.js";
 import { buildPaperAgreementPdf } from "./paperAgreementPdf.js";
 import { fmtDate } from "./exhibitPdf.js";
+import { checkListingGate, gateResponseBody } from "./listingGate.js";
+import { hasPricedLease } from "../listings/pricedLease.js";
+import { cleanDisclosure, saveDisclosure } from "../users/licenseDisclosure.js";
 
 export { PAPER, PAPER_OUT_MESSAGE, isPaperOut, assertNoPaperOut };
 
-const COMPANY_MAX = 120;
-const SIGNER_MAX = 100;
-
-const cleanCompany = (c) => String(c ?? "").trim().replace(/\s+/g, " ").slice(0, COMPANY_MAX);
+// The same rules as signing in the app: too long is refused, never cut short.
+const cleanCompany = (c) => cleanSignerCompany(c);
 
 // Why this landlord can't have a paper copy printed now, or null. `state` is the
 // holder's (agreementState): the authorized signer's when the account has one.
@@ -95,7 +96,8 @@ async function liveMasterVersion(db, landlordId) {
   return version;
 }
 
-// The company last given on one of their agreements, to start the field with.
+// The company last given on one of their agreements, to start the field with: a
+// copy printed with it left blank does not hide an older one that had it.
 async function lastCompany(db, landlordId) {
   const { data, error } = await db
     .from("landlord_agreements")
@@ -103,9 +105,14 @@ async function lastCompany(db, landlordId) {
     .eq("user_id", landlordId)
     .not("signer_details", "is", null)
     .order("created_at", { ascending: false })
-    .limit(1);
+    .limit(20);
   if (error) return "";
-  return cleanCompany(data?.[0]?.signer_details?.company);
+  const company = (data ?? []).map((r) => String(r.signer_details?.company ?? "").trim()).find(Boolean) ?? "";
+  try {
+    return cleanCompany(company);
+  } catch {
+    return "";
+  }
 }
 
 export async function paperPreview(db, landlordId, now = new Date()) {
@@ -209,16 +216,18 @@ export async function printPaperAgreement(db, { landlordId, exhibit, company, no
 async function paperRow(db, landlordId, id) {
   const { data, error } = await db
     .from("landlord_agreements")
-    .select("id, user_id, status, provider, version_id, exhibit, signer_details, created_at, agreement_version:agreement_versions!version_id(id, label, file_key, provider_template_id)")
+    .select("id, user_id, status, provider, version_id, exhibit, signer_details, withdraw_on_sign, withdraw_unit_ids_on_sign, created_at, agreement_version:agreement_versions!version_id(id, label, file_key, provider_template_id)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
   if (!data || data.provider !== PAPER) throw new BillingError("not_found", "That paper agreement was not found.", 404);
-  // The account it was printed for, by the properties on it: a signer's copy for
-  // one account is not another account's, nor the signer's own.
-  const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
-  if (covError) throw covError;
-  if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
+  // A landlord's own copy is theirs. A signer's is the account's it was printed
+  // for, by the properties on it: not another account's they sign for.
+  if (data.user_id !== landlordId) {
+    const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
+    if (covError) throw covError;
+    if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
+  }
   return data;
 }
 
@@ -277,7 +286,7 @@ export async function publishable(db, landlordId, listingIds) {
     const units = (l.listing_units ?? []).filter((u) => !u.deleted_at);
     const leases = units.flatMap((u) => (u.unit_leases ?? []).filter((x) => !x.deleted_at));
     if (l.published_at === null) {
-      const ready = leases.some((x) => x.rent != null);
+      const ready = hasPricedLease(units);
       out.set(l.id, { ready, reason: ready ? null : "No unit with a price yet, so it stays a draft." });
     } else if (leases.some((x) => x.owner_id === landlordId && x.published_at === null)) {
       out.set(l.id, { ready: true, reason: null });
@@ -324,15 +333,24 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
  * form leaves no file behind; `discardSigned(key)` removes it if the record then
  * fails. `documenso` (optional) withdraws an addendum still open for signing.
  * `signerDetails` (paperSignerDetails) is what they wrote on it; without it the
- * company printed stays and the rest is blank.
+ * company printed stays and the rest is blank. `license` (cleanDisclosure's
+ * input) is their real estate license answer from the paper, saved for the
+ * signer as signing in the app does (Wyatt, 2026-11-19).
+ *
+ * Nothing is left half done: if a step after the signature is saved fails, the
+ * paper copy goes back to being out, the agreement it was replacing is restored
+ * and the upload removed, so the admin can simply record it again.
  * Returns { id, covered: [listingId], withdrawn: [listingId] }.
  */
 export async function recordPaperAgreement(
   db,
-  { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey = null, storeSigned = null, discardSigned = null, documenso = null, signerDetails = null, now = new Date() }
+  { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey = null, storeSigned = null, discardSigned = null, documenso = null, signerDetails = null, license = null, now = new Date() }
 ) {
-  const name = String(signerName ?? "").trim().slice(0, SIGNER_MAX);
-  if (!name) throw new BillingError("signer_required", "Who signed the agreement?");
+  if (!String(signerName ?? "").trim()) throw new BillingError("signer_required", "Who signed the agreement?");
+  const name = cleanSignerName(signerName);
+  const title = signerTitle && String(signerTitle).trim() ? cleanSignerTitle(signerTitle) : null;
+  // Checked before anything is saved; stored once the signature is.
+  const disclosure = license ? cleanDisclosure(license) : null;
   if (!signedFileKey && !storeSigned) throw new BillingError("file_required", "Upload the signed copy.");
   const when = new Date(signedAt);
   if (Number.isNaN(when.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
@@ -393,7 +411,7 @@ export async function recordPaperAgreement(
           status: "signed",
           signed_at: whenIso,
           signer_name: name,
-          ...(signerTitle && String(signerTitle).trim() && { signer_title: String(signerTitle).trim().slice(0, SIGNER_MAX) }),
+          ...(title && { signer_title: title }),
           term_start: whenIso,
           exhibit: plan.entries,
           ...(signerDetails && { signer_details: signerDetails }),
@@ -412,17 +430,34 @@ export async function recordPaperAgreement(
         throw new BillingError("status_changed", "That paper agreement just changed. Reload and try again.", 409);
       }
 
+      // What was printed is replaced by the confirmed list, now covered. Undone in
+      // full if it fails: the copy is out again, ready to record once more.
+      try {
+        await releaseProposed(db, "master", row.id, now);
+        const { error: covError } = await db.from("agreement_coverage").insert(coverageRows(landlordId, row.id, plan.entries, { status: "covered", covered_at: whenIso }));
+        if (covError) throw covError;
+      } catch (err) {
+        await undoRecord(db, { row, nowIso }).catch((undoErr) => console.error("billing: undoing a failed paper record failed", undoErr?.message));
+        await restore();
+        await discard();
+        throw err;
+      }
+
       // An addendum to the agreement this replaces ends with it: withdrawn in
       // Documenso too, so it can't be signed or send reminders afterwards.
       if (state.pendingAmendment) {
-        if (documenso) await cancelInDocumenso(documenso, state.pendingAmendment, "Replaced by a signed paper agreement");
-        await endDocument(db, "amendment", state.pendingAmendment, "replaced by a paper signature", now);
+        try {
+          if (documenso) await cancelInDocumenso(documenso, state.pendingAmendment, "Replaced by a signed paper agreement");
+          await endDocument(db, "amendment", state.pendingAmendment, "replaced by a paper signature", now);
+        } catch (err) {
+          console.error("billing: ending the addendum a paper agreement replaced failed", err?.message);
+        }
       }
-
-      // What was printed is replaced by the confirmed list, now covered.
-      await releaseProposed(db, "master", row.id, now);
-      const { error: covError } = await db.from("agreement_coverage").insert(coverageRows(landlordId, row.id, plan.entries, { status: "covered", covered_at: whenIso }));
-      if (covError) throw covError;
+      if (disclosure) {
+        await saveDisclosure(db, row.user_id, disclosure, { source: "signing", now }).catch((err) =>
+          console.error("billing: saving the license answer from a paper agreement failed", err?.message)
+        );
+      }
 
       // Live listings left off come off the site, as when signing in the app.
       const withdrawn = [];
@@ -446,12 +481,46 @@ export async function recordPaperAgreement(
   );
 }
 
+// A failed record put back: the paper copy out again as printed, its list held.
+async function undoRecord(db, { row, nowIso }) {
+  const { error: delError } = await db.from("agreement_coverage").delete().eq("agreement_id", row.id).eq("status", "covered");
+  if (delError) throw delError;
+  const { error: heldError } = await db
+    .from("agreement_coverage")
+    .update({ status: "proposed", released_at: null })
+    .eq("agreement_id", row.id)
+    .is("amendment_id", null)
+    .eq("status", "released")
+    .eq("released_at", nowIso);
+  if (heldError) throw heldError;
+  const { error } = await db
+    .from("landlord_agreements")
+    .update({
+      status: "sent",
+      signed_at: null,
+      signer_name: null,
+      signer_title: null,
+      term_start: null,
+      signed_file_key: null,
+      exhibit: row.exhibit,
+      signer_details: row.signer_details,
+      withdraw_on_sign: row.withdraw_on_sign ?? [],
+      withdraw_unit_ids_on_sign: row.withdraw_unit_ids_on_sign ?? [],
+    })
+    .eq("id", row.id)
+    .eq("status", "signed");
+  if (error) throw error;
+}
+
 /*
  * Publish the drafts the admin ticked, as the landlord would. Only properties now
- * covered by this agreement. `publishProperty(userId, isSuper, id)` is
- * lib/listings/publish.js's. Returns [{ listingId, ok, error }].
+ * covered by this agreement, and only past the same billing check the landlord's
+ * own Publish meets (a payment method, no overdue invoice): the agreement is
+ * signed now, but anything else still in the way keeps them drafts (PR 462
+ * review). `publishProperty(userId, isSuper, id)` is lib/listings/publish.js's.
+ * Returns [{ listingId, ok, error }].
  */
-export async function publishCovered(db, { landlordId, agreementId, listingIds, publishProperty }) {
+export async function publishCovered(db, { landlordId, agreementId, listingIds, publishProperty, checkGate = checkListingGate, now = new Date() }) {
   if (!listingIds?.length) return [];
   const { data, error } = await db
     .from("agreement_coverage")
@@ -461,10 +530,17 @@ export async function publishCovered(db, { landlordId, agreementId, listingIds, 
     .in("listing_id", listingIds);
   if (error) throw error;
   const covered = new Set((data ?? []).map((r) => r.listing_id));
+  const ready = listingIds.filter((id) => covered.has(id));
+  const gate = ready.length ? await checkGate(db, landlordId, { listingIds: ready, now }) : { allowed: true };
+  const blocked = gate.allowed ? null : gateResponseBody(gate).error;
   const out = [];
   for (const listingId of listingIds) {
     if (!covered.has(listingId)) {
       out.push({ listingId, ok: false, error: "Not on the agreement." });
+      continue;
+    }
+    if (blocked) {
+      out.push({ listingId, ok: false, error: blocked });
       continue;
     }
     try {
@@ -472,7 +548,7 @@ export async function publishCovered(db, { landlordId, agreementId, listingIds, 
       out.push({ listingId, ok: true });
     } catch (err) {
       // Only a message written for people (PublishError, BillingError), never a raw database error.
-      const readable = Number.isInteger(err?.status) && err.status < 500 && err.message;
+      const readable = (err instanceof BillingError || err?.name === "PublishError") && Number.isInteger(err.status) && err.status < 500 && err.message;
       if (!readable) console.error("billing: publishing a property after a paper agreement failed", err?.message);
       out.push({ listingId, ok: false, error: readable ? err.message : "Could not publish it." });
     }

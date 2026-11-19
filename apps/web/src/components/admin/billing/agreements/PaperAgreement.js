@@ -15,7 +15,39 @@
 import { useEffect, useState } from "react";
 import { fmtDate } from "@/components/admin/adminShared";
 import PropertyChoice, { droppedUnits, hasListings } from "@/components/billing/ExhibitPropertyChoice";
+import LicenseDisclosureFields, { disclosurePayload, disclosureReady } from "@/components/account/LicenseDisclosureFields";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
+
+const NO_LICENSE = {
+  isLicensee: null,
+  agentName: "",
+  companyName: "",
+  companyPhone: "",
+  licenseNumber: "",
+  notLicensedConfirmed: false,
+  ownerAgreementConfirmed: false,
+};
+
+// The license fields the landlord answers before signing in the app, as a form
+// the admin fills from the paper (never the admin's own saved answer).
+function useLicenseFromPaper() {
+  const [draft, setDraft] = useState(NO_LICENSE);
+  const noop = () => {};
+  return {
+    loading: false,
+    saved: null,
+    setSaved: noop,
+    draft,
+    setDraft,
+    mode: "edit",
+    setMode: noop,
+    stillCorrect: false,
+    setStillCorrect: noop,
+    ready: disclosureReady(draft),
+    payload: () => disclosurePayload(draft),
+    reset: noop,
+  };
+}
 
 const base = (landlordId) => `/api/admin/billing/landlords/${landlordId}/paper`;
 export const paperFileUrl = (landlordId, id) => `${base(landlordId)}/${id}/file`;
@@ -163,6 +195,7 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
   const [choices, setChoices] = useState({});
   const [publish, setPublish] = useState({});
   const [signer, setSigner] = useState({ name: "", title: "", date: today() });
+  const license = useLicenseFromPaper();
   // What they wrote on the paper: a later addendum in the app prints these as they are.
   const [contact, setContact] = useState({ company: "", email: "", street: "", suite: "", city: "" });
   const [file, setFile] = useState(null);
@@ -192,7 +225,9 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
       ? "Who signed it?"
       : !contact.email.trim() || !contact.street.trim() || !contact.city.trim()
         ? "Enter the email and address written on the signed copy."
-        : !file
+        : !license.ready
+          ? "Answer the real estate license questions as they did on the signed copy."
+          : !file
           ? "Upload the signed copy."
           : null);
   const off = liveLeftOff(data.properties, choices);
@@ -209,6 +244,7 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
     form.set("signerTitle", signer.title);
     form.set("signedAt", signer.date);
     for (const [key, value] of Object.entries(contact)) form.set(key, value);
+    form.set("license", JSON.stringify(license.payload()));
     return run(async () => {
       const r = await call(`${base(row.id)}/${id}`, { method: "POST", body: form });
       onDone();
@@ -300,6 +336,14 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
             <input className={`${FIELD} mt-1`} value={contact.city} maxLength={150} onChange={(e) => setContact({ ...contact, city: e.target.value })} placeholder="St. Louis, MO 63117" required />
           </label>
         </div>
+      </div>
+      <div className="space-y-2 rounded-md bg-white px-3 py-2">
+        <p className="text-xs font-medium text-gray-900">Real estate license, as answered on the signed copy</p>
+        <p className="text-xs text-gray-500">
+          Saved for {data.signer?.name || row.name || "them"} as if they answered it in the app. A licensee&apos;s name, company and phone show on their
+          listings as &quot;Listed by&quot;.
+        </p>
+        <LicenseDisclosureFields state={license} allowSummary={false} idPrefix={`paper-license-${id}`} />
       </div>
       <label className="block text-xs font-medium text-gray-700">
         Signed copy (PDF, up to 4 MB)

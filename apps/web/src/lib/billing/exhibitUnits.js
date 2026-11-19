@@ -31,7 +31,8 @@ export async function exhibitPreview(db, userId, { listingIds = [], requiredUnit
   const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now);
   if (!paper) {
     assertNoPaperOut(loaded.state);
-    assertNoPaperOut(loaded.signerState);
+    // Taking over: the signer's copy for another account does not touch this one.
+    assertNoPaperOut(loaded.signerState, { elsewhere: false });
   }
   const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
   const { state, rows, covered } = loaded;

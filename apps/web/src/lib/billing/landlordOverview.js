@@ -254,8 +254,9 @@ async function paperAccounts(db, agreementIds) {
 export function paperForAccount(paper, accountId, printedFor, nameOf) {
   if (!paper) return null;
   const accounts = printedFor.get(paper.id);
-  // Nothing held (it should never be): keep the controls rather than strand it.
-  const here = !accounts?.size || accounts.has(accountId);
+  // Nothing held on it (its properties were released): the controls stay with
+  // whoever's record it is, so a signer's other accounts never get buttons that 404.
+  const here = accounts?.size ? accounts.has(accountId) : paper.holderId === accountId;
   return { ...paper, here, forName: here ? null : [...accounts].map((id) => nameOf.get(id)).filter(Boolean).join(", ") || null };
 }
 
@@ -400,15 +401,16 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       overdueInvoice: invoice.overdue,
     });
     const email = lastEmails.get(l.id);
+    const summary = agreementSummary(state);
+    const paper = paperForAccount(summary.paper, l.id, printedFor, nameOf);
+    // A paper copy holding this account reads as that, as the publish gate says it.
+    if (paper?.here) publishing.missing = publishing.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
     return {
       id: l.id,
       name: l.name ?? null,
       email: l.email ?? null,
       hasLiveListing: live.has(l.id),
-      agreement: (() => {
-        const summary = agreementSummary(state);
-        return { ...summary, paper: paperForAccount(summary.paper, l.id, printedFor, nameOf), amendmentPendingSince: amending.get(l.id) ?? null };
-      })(),
+      agreement: { ...summary, paper, amendmentPendingSince: amending.get(l.id) ?? null },
       coverage,
       payment,
       autopay: autopays.get(l.id) ?? null,
