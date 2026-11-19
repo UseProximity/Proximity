@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export default function ListingDetailClient({
   listingId,
@@ -22,7 +23,8 @@ export default function ListingDetailClient({
   const from = searchParams.get("from");
   // Set when a phone opened the site on a ?listing= link and was handed here
   // (GlobalListingModal): the page that popup would have been on.
-  const back = searchParams.get("back");
+  // Only ever a path on this site (a crafted link could name another).
+  const back = sanitizeCallbackUrl(searchParams.get("back"), null);
 
   useEffect(() => {
     fetch(`/api/listing/${listingId}`)
@@ -42,7 +44,7 @@ export default function ListingDetailClient({
   const handleBack = () => {
     if (from === "map") router.push("/browse?view=map");
     else if (from === "listings") router.push("/browse?view=listings");
-    else if (back && /^\/(?![/\\])/.test(back)) router.push(back);
+    else if (back) router.push(back);
     else router.back();
   };
 

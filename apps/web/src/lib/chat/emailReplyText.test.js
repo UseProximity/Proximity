@@ -71,6 +71,23 @@ test("a bolded company line straight under the message goes with the signature",
   assert.equal(extractReplyText({ text }), "Good luck!\n\nO-THREE - 6603 UNIVERSITY DRIVE - $1,400/Bedroom NONE Available");
 });
 
+test("more message under a sign-off and name is never cut", () => {
+  const text = `Sounds good.\n\nThanks,\nAddison\n\nAlso, parking is $50 a month.\n(586) 666-1217\n${QUOTE}`;
+  assert.equal(extractReplyText({ text, senderName: "Isabella Rossato" }), "Sounds good.\n\nThanks,\nAddison\n\nAlso, parking is $50 a month.\n(586) 666-1217");
+  const link = `Sounds good.\n\nThanks,\nAddison\n\nHere is the application:\nclocktowercompany.com/pages/apply\n${QUOTE}`;
+  assert.equal(extractReplyText({ text: link, senderName: "Isabella Rossato" }), "Sounds good.\n\nThanks,\nAddison\n\nHere is the application:\nclocktowercompany.com/pages/apply");
+});
+
+test("a number given as the answer under a sign-off and name stays", () => {
+  const text = `Sure, here it is.\n\nThanks,\nAddison\n(586) 666-1217\n${QUOTE}`;
+  assert.equal(extractReplyText({ text, senderName: "Isabella Rossato" }), "Sure, here it is.\n\nThanks,\nAddison\n(586) 666-1217");
+});
+
+test("a link with a few words after it is the message, a button label is signature", () => {
+  assert.equal(extractReplyText({ text: `Apply here:\nclocktowercompany.com - takes 5 min\n${QUOTE}` }), "Apply here:\nclocktowercompany.com - takes 5 min");
+  assert.equal(extractReplyText({ text: `You can see more photos there.\nzillow.com - check it out\n${QUOTE}` }), "You can see more photos there.\nzillow.com - check it out");
+});
+
 test("a P.S. under a sign-off is never cut", () => {
   const text = `See you then.\n\nThanks,\nAddison\n\nP.S. Bring a photo ID.\n${QUOTE}`;
   assert.equal(extractReplyText({ text }), "See you then.\n\nThanks,\nAddison\n\nP.S. Bring a photo ID.");

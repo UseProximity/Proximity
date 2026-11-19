@@ -79,7 +79,11 @@ const LABELLED_CONTACT = /^\s*(p|ph|phone|t|tel|text|sms|call|m|mobile|cell|c|o|
 const EMAIL_LINE = /^\s*\S+@\S+\.\S+\s*$/;
 const URL_LINE = /^\s*(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?\s*$/i;
 // "ClockTowerCompany.com - Apply Here": a website with a short button label.
-const URL_WITH_LABEL = /^\s*(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?\s*[-|:]\s*[\w '&]{1,25}$/i;
+// The label is written like a button ("Apply Here", "Schedule A Tour"), so a
+// sentence after a link ("zillow.com - check it out") stays message.
+const URL_WITH_LABEL = /^\s*(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?\s*[-|:]\s*([\w '&]{1,25})$/i;
+const BUTTON_LABEL = /^[A-Z][\w'&]*(?: [A-Z&][\w'&]*){0,3}$/;
+const isUrlWithLabel = (t) => BUTTON_LABEL.test((t.match(URL_WITH_LABEL)?.[1] ?? "").trim());
 const ADDRESS_LINE = /^\s*\d+\s+[\w .'-]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way|pkwy|parkway)\b\.?(,.*)?\s*$/i;
 const CITY_STATE_ZIP = /^\s*[a-z .'-]+,\s*[a-z]{2}\s+\d{5}(-\d{4})?\s*$/i;
 const TITLE_LINE = /^\s*(leasing|property|community|assistant|regional|general)?\s*(manager|agent|consultant|coordinator|director|owner|landlord|office|specialist|associate|team)\b[\w ,&|-]*$/i;
@@ -134,7 +138,7 @@ function isContactPiece(piece) {
     LABELLED_CONTACT.test(t) ||
     EMAIL_LINE.test(t) ||
     URL_LINE.test(t) ||
-    URL_WITH_LABEL.test(t) ||
+    isUrlWithLabel(t) ||
     SOCIAL_LINK.test(t) ||
     TITLE_LINE.test(t) ||
     /^x@x\.co$/.test(t)
@@ -182,16 +186,21 @@ function isPhoneOnly(line) {
 
 /*
  * "Thanks,\nAddison" with a signature under it: the index of the name line, so
- * the reply ends there. Only when what follows the name looks like a
- * signature (or nothing follows), so a P.S. or more message is never cut.
+ * the reply ends there. Only when everything after the name is signature (or
+ * nothing follows), so a P.S. or more message is never cut: each line is a
+ * signature line or a bare name or company ("Clock Tower Company"), and at
+ * least one is a signature line. Phone numbers alone are left to
+ * isAnsweredNumber, which keeps a number given as the answer.
  */
 function signedNameIndex(lines, names) {
   for (let i = lines.length - 2; i >= 0; i--) {
     if (!SIGN_OFF.test(lines[i]) || !SIGNER_NAME.test(unbold(lines[i + 1]))) continue;
     const tail = lines.slice(i + 2).filter((l) => l.trim());
     if (tail.length === 0) return i + 1;
-    if (tail.length > 12 || tail.some((l) => /^\s*\*?P\.?\s?S\b/i.test(l) || l.length > 120)) return -1;
-    return tail.some((l) => isSignatureLine(l, names)) ? i + 1 : -1;
+    if (tail.length > 12 || tail.every(isPhoneOnly)) return -1;
+    const signature = tail.map((l) => isSignatureLine(l, names));
+    const allSignature = tail.every((l, k) => signature[k] || NAME_OR_COMPANY.test(unbold(l)));
+    return allSignature && signature.some(Boolean) ? i + 1 : -1;
   }
   return -1;
 }
@@ -201,14 +210,16 @@ function signedNameIndex(lines, names) {
  * nothing in it but phone numbers (a real signature also carries a name, title
  * or email), or it follows a line ending in a colon ("My number is:"). Kept so
  * the number reaches moderation, which posts it with a guidelines notice rather
- * than it vanishing as a signature (Wyatt, 2026-10-24).
+ * than it vanishing as a signature (Wyatt, 2026-10-24). A link under a colon
+ * ("Apply here:") is the answer in the same way.
  */
 function isAnsweredNumber(kept, removed) {
   const filled = removed.filter((l) => l.trim());
-  if (!filled.some(isPhoneOnly)) return false;
-  if (filled.every(isPhoneOnly)) return true;
   const lead = kept.filter((l) => l.trim()).at(-1) ?? "";
-  return /:\s*$/.test(lead);
+  const afterColon = /:\s*$/.test(lead);
+  if (afterColon && filled.some((l) => URL_LINE.test(unbold(l)) || URL_WITH_LABEL.test(unbold(l)))) return true;
+  if (!filled.some(isPhoneOnly)) return false;
+  return filled.every(isPhoneOnly) || afterColon;
 }
 
 /** Rough text from an HTML-only email: quotes dropped, blocks become lines. */
