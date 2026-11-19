@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-19T22:46:04.677Z",
-  "count": 360,
+  "_generated": "2026-11-19T22:57:39.116Z",
+  "count": 361,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -894,6 +894,10 @@
     {
       "file": "src/lib/listings/placeholderOwner.js",
       "description": "The shared \"Proximity\" landlord account."
+    },
+    {
+      "file": "src/lib/listings/pricedLease.js",
+      "description": "Whether a property is complete enough to go live: some unit still standing"
     },
     {
       "file": "src/lib/listings/propertyName.js",

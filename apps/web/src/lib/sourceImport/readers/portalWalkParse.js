@@ -114,7 +114,11 @@ export function unitsFromWalk(walk, today) {
   const feeNames = new Map();
   let quoted = 0;
   let unquoted = 0;
-  for (const [plan, apartments] of byPlan) {
+  let gone = 0;
+  for (const [plan, listed] of byPlan) {
+    // No longer listed by the portal (mergeWalk): probably let, so not offered.
+    const apartments = listed.filter((a) => !(a.gone && !quotes.has(String(a.number))));
+    gone += listed.length - apartments.length;
     const info = planInfo.get(plan) ?? {};
     apartments.sort((a, b) => String(a.avail ?? "").localeCompare(String(b.avail ?? "")) || String(a.number).localeCompare(String(b.number)));
     const offers = apartments.flatMap((a) => {
@@ -153,6 +157,7 @@ export function unitsFromWalk(walk, today) {
     const hi = Math.max(...amts);
     notes.push(`The portal adds a ${name} of ${lo === hi ? `$${lo}` : `$${lo} to $${hi}`}/month on top of the rent shown.`);
   }
+  if (gone) notes.push(`${gone} apartment${gone === 1 ? "" : "s"} the leasing portal stopped listing ${gone === 1 ? "was" : "were"} left off as probably let.`);
   if (unquoted) notes.push(`${unquoted} apartment${unquoted === 1 ? "" : "s"} on the leasing portal could not be opened for lease lengths; ${unquoted === 1 ? "it carries" : "they carry"} the portal's twelve month rent only. Check ${unquoted === 1 ? "it" : "them"}.`);
   return { units, notes, apartments: quoted + unquoted, quoted, lengths: offered };
 }
@@ -163,8 +168,9 @@ export function unitsFromWalk(walk, today) {
  * An apartment free now that a render did not list, though it listed every
  * floor plan at the portal's first date (got.listedAll), has probably been
  * let. Missed twice, it is marked stuck like one that would not open (the
- * walk script marks those itself), so it stops holding the resume jump back.
- * It is never dropped here: a floor plan lists only so many apartments.
+ * walk script marks those itself), so it stops holding the resume jump back,
+ * and `gone`, so unitsFromWalk leaves it off and the sync withdraws it (PR 462
+ * review). It is kept here: listed again later, it comes back.
  */
 export function mergeWalk(into, got) {
   if (!got) return into;
@@ -178,7 +184,7 @@ export function mergeWalk(into, got) {
     for (const [n, u] of Object.entries(before)) {
       if (!u || u.avail || priced.has(String(u.number ?? n)) || (got.units ?? {})[n]) continue;
       const misses = (u.misses ?? 0) + 1;
-      into.units[n] = { ...u, misses, ...(misses >= 2 && { stuck: true }) };
+      into.units[n] = { ...u, misses, ...(misses >= 2 && { stuck: true, gone: true }) };
     }
   }
   into.log = [...(into.log ?? []), ...(got.log ?? [])].slice(-60);

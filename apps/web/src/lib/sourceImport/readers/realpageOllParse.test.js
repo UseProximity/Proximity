@@ -188,3 +188,18 @@ test("withWalkOptions survives replacement patterns in a floor plan name", () =>
   // The script still parses.
   assert.doesNotThrow(() => new Function(`return ${script.replace(/\)\(\)$/, ")")}`));
 });
+
+test("an apartment the portal stopped listing is left off as let, and comes back if listed again", () => {
+  const plan = "Highland - B1";
+  const walk = { plans: [{ name: plan }], units: { 101: { plan, number: "101", avail: null, twelve: 1500 }, 124: { plan, number: "124", avail: null, twelve: 1400 } }, priced: [{ number: "101", terms: { 12: 1500 } }], log: [] };
+  // Two full listings without 124.
+  mergeWalk(walk, { listedAll: true, units: { 101: { plan, number: "101", avail: null, twelve: 1500 } }, priced: [] });
+  mergeWalk(walk, { listedAll: true, units: { 101: { plan, number: "101", avail: null, twelve: 1500 } }, priced: [] });
+  assert.equal(walk.units[124].gone, true);
+  const built = unitsFromWalk(walk, "2026-11-19");
+  assert.equal(built.apartments, 1, "124 is not offered");
+  assert.ok(built.notes.some((n) => /stopped listing/.test(n)));
+  // Listed again: offered again.
+  mergeWalk(walk, { listedAll: true, units: { 124: { plan, number: "124", avail: null, twelve: 1400 } }, priced: [] });
+  assert.equal(unitsFromWalk(walk, "2026-11-19").apartments, 2);
+});

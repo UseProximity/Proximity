@@ -940,7 +940,7 @@
       {
         "table": "events",
         "status": "active",
-        "description": "First-party analytics events. Revived 2026-11-17 for Find Your Place: rows named fyp_* (opened, exited, started_over, preferences_edited, cap_sign_in, popup_shown, popup_clicked, popup_dismissed, search_failed), written by POST /api/find-your-place/events and the search route (lib/findYourPlace/events.js) and read by the admin Analytics Find Your Place tab. session_id = prx_vid device cookie or null. On account deletion rows are kept but unlinked (user_id and session_id nulled). The 9,530 legacy rows (page_view, listing_click, session_end, contact_submit, matchmaking_submit, last 2026-05-26) are untouched history.",
+        "description": "First-party analytics events. Revived 2026-11-17 for Find Your Place: rows named fyp_* (opened, exited, started_over, preferences_edited, cap_sign_in, popup_shown, popup_clicked, popup_dismissed, search_failed, and from 2026-11-19 searched: every search that answered, so the failure share is exact), written by POST /api/find-your-place/events and the search route (lib/findYourPlace/events.js) and read by the admin Analytics Find Your Place tab. session_id = prx_vid device cookie or null. On account deletion rows are kept but unlinked (user_id and session_id nulled). The 9,530 legacy rows (page_view, listing_click, session_end, contact_submit, matchmaking_submit, last 2026-05-26) are untouched history.",
         "columns": [
           "id:uuid",
           "user_id:uuid",

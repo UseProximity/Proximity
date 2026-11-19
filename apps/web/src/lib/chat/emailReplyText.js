@@ -117,6 +117,11 @@ const PERSON_NAME = /^[A-Z][a-zA-Z'.-]+(?: [A-Z][a-zA-Z'.-]+){1,2}$/;
 const SIGNER_NAME = /^[A-Z][a-zA-Z'.-]+(?: [A-Z][a-zA-Z'.-]+){0,2}$/;
 // "Addison Witte", "Clock Tower Company": up to four capitalised words.
 const NAME_OR_COMPANY = /^[A-Z][a-zA-Z'.&-]*(?: [A-Z&][a-zA-Z'.&-]*){0,3}$/;
+// A company by its last word: "Clock Tower Company", "Medve Rentals LLC". Under a
+// sign-off only these pass as signature, so "Parking Included" (two capitalised
+// words, but message) is kept (Wyatt, 2026-11-19).
+const COMPANY_END = /\b(Company|Co\.?|Corp\.?|Corporation|Rentals?|Holdings|Partners|Estate|Investments?|Properties|Property|Management|Apartments|Realty|Leasing|Living|Residential|Homes|Group|Communities|Lofts|LLC|L\.L\.C\.|Inc\.?)$/;
+const isCompanyName = (t) => NAME_OR_COMPANY.test(t) && COMPANY_END.test(t);
 
 // Gmail's plain-text bold: "*Clock Tower Company*", or a "*" left at the end
 // of a wrapped link line.
@@ -188,8 +193,9 @@ function isPhoneOnly(line) {
  * "Thanks,\nAddison" with a signature under it: the index of the name line, so
  * the reply ends there. Only when everything after the name is signature (or
  * nothing follows), so a P.S. or more message is never cut: each line is a
- * signature line or a bare name or company ("Clock Tower Company"), and at
- * least one is a signature line. Phone numbers alone are left to
+ * signature line or a company name ("Clock Tower Company"), and at least one is
+ * a signature line. Other short capitalised lines ("Parking Included") are
+ * message. Phone numbers alone are left to
  * isAnsweredNumber, which keeps a number given as the answer.
  */
 function signedNameIndex(lines, names) {
@@ -199,7 +205,7 @@ function signedNameIndex(lines, names) {
     if (tail.length === 0) return i + 1;
     if (tail.length > 12 || tail.every(isPhoneOnly)) return -1;
     const signature = tail.map((l) => isSignatureLine(l, names));
-    const allSignature = tail.every((l, k) => signature[k] || NAME_OR_COMPANY.test(unbold(l)));
+    const allSignature = tail.every((l, k) => signature[k] || isCompanyName(unbold(l)));
     return allSignature && signature.some(Boolean) ? i + 1 : -1;
   }
   return -1;
@@ -310,7 +316,12 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
     // styling, so they go even with no blank line above.
     const bolded = block.length > 0 && block.every((l) => /^\s*\*[^*]+\*\s*$/.test(l));
     const spaced = block.length > 0 && top > 0 && !lines[top - 1].trim() && block.some((l) => PERSON_NAME.test(unbold(l)));
-    if (bolded || spaced) {
+    // Already signed above it ("Thanks,\nAddison"): the name is given, so a block
+    // under it is signature only as a company; "Parking Included" is message.
+    const above = lines.slice(0, top).filter((l) => l.trim());
+    const signedAbove = above.length >= 2 && SIGN_OFF.test(above[above.length - 2]) && SIGNER_NAME.test(unbold(above[above.length - 1]));
+    const plainCompany = block.every((l) => isCompanyName(unbold(l).replace(/^\*|\*$/g, "")));
+    if ((bolded || spaced) && (!signedAbove || plainCompany)) {
       lines = lines.slice(0, top);
     }
   }
