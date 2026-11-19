@@ -66,7 +66,7 @@ import { EMBEDDED_HINT_RE, parseEmbeddedFloorPlans } from "./readers/rentcafeEmb
 import { G5_HINT_RE, findG5Urns, fetchG5Locations, fetchG5Inventory } from "./readers/g5.js";
 import { parseEmbeddedProperties } from "./readers/embeddedProperties.js";
 import { findSecureCafe, readSecureCafe } from "./readers/securecafe.js";
-import { walkPortal, PORTAL_RUN_MS } from "./readers/portalWalk.js";
+import { walkPortal, MIN_PORTAL_RUN_MS, PORTAL_RUN_MS } from "./readers/portalWalk.js";
 import { WALKED_PORTALS, isWalkedPortal } from "./readers/portals.js";
 import { confirmFloorPlans } from "./readers/floorPlanVision.js";
 import { ZILLOW_HOST_RE, parseZillowGallery } from "./readers/zillow.js";
@@ -966,24 +966,29 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let portalPending = false;
   // Why a portal that was found and walked gave no apartments, for the team.
   let portalUnread = null;
+  // Whether that left the listing's prices alone (the website read is then
+  // held), or the website's own prices were read in their place.
+  let portalUnreadKept = false;
   let walkedKind = null;
   const tryWalkedPortals = async () => {
     if (learned || walkedKind) return false;
     for (const def of WALKED_PORTALS) {
       const known = knownPortal?.kind === def.kind ? knownPortal : null;
       let portal = crawl.fetched.map((f) => def.find(f.html)).find(Boolean) ?? def.find(crawl.links.map((l) => l.url).join("\n")) ?? null;
+      let linked = !!portal;
       if (!portal && !known && crawl.fetched.some((f) => def.hintRe.test(f.html))) {
         for (const url of def.extraPages(main.finalUrl)) {
           const page = await crawl.follow(url).catch(() => null);
           portal = page ? def.find(page.html) : null;
           if (portal) break;
         }
+        linked = !!portal;
       }
       portal ??= known ? def.fromKnown(known) : null;
       if (!portal) continue;
       walkedKind = def.kind;
       const runMs = Math.min(PORTAL_RUN_MS, timeLeft() - 50000);
-      if (runMs < 60000) {
+      if (runMs < MIN_PORTAL_RUN_MS) {
         // Found with too little time left to walk it: remembered, and the
         // next read walks it first. Nothing is applied from this one.
         const target = await def.resolve(portal, known).catch(() => null);
@@ -993,7 +998,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         console.log(`[source-import] ${def.kind} portal found late; walked on the next read`);
         return true;
       }
-      const rp = await walkPortal(def, portal, { known, onStep, runMs });
+      const rp = await walkPortal(def, portal, { known, linked, onStep, runMs });
       if (rp?.pending) {
         // The walk ran out of time with apartments still to price. What it
         // has is kept on the monitor and the next read carries on; until
@@ -1028,10 +1033,12 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         portalMissed = true;
         notes.push("The leasing portal could not be read this time, so prices and lease lengths were not refreshed.");
       }
-      if (!rp?.units?.length && !rp?.pending) {
+      if (rp?.reason || (!rp?.units?.length && !rp?.pending)) {
         // Said where the team sees it (the sync's summary), not only in the
         // logs: an outage on the portal's side once went unnoticed for days.
+        // So is a portal that listed apartments and priced none of them.
         portalUnread = rp?.reason ?? "the leasing portal gave no apartments";
+        portalUnreadKept = portalMissed;
         console.warn(`[source-import] ${target.name}: ${def.kind} portal read nothing: ${portalUnread}`);
       }
       return true;
@@ -1045,6 +1052,9 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    * eat the time the next walk needs: one Mansions on the Plaza run spent
    * over two minutes on it and hit the five minute limit (2026-11-17).
    */
+  // A portal walked screen by screen (readers/portalWalk.js) is the
+  // landlord's own price list: its weekly repricing is not churn.
+  const portalFor = (p) => (p && isWalkedPortal(p) ? { ...p, walked: true } : p);
   const pendingSnapshot = () => {
     const snapshot = makeSnapshot({
       sourceUrl: propPage?.finalUrl ?? main.finalUrl,
@@ -1057,12 +1067,18 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       notes: [],
     });
     snapshot.trace = { pages: crawl.fetched.map((f) => ({ url: f.finalUrl })), refused: crawl.refused, stoppedForPortal: true };
-    snapshot.portal = learned && isWalkedPortal(learned) ? { ...learned, walked: true } : learned;
+    snapshot.portal = portalFor(learned);
     snapshot.portalPending = true;
     return snapshot;
   };
-  await tryWalkedPortals();
-  if (stopWhenPending && portalPending) return pendingSnapshot();
+  // Look for a portal to walk; the snapshot to stop with when its walk is
+  // part way through, or null to read on.
+  const walkPortalsOrStop = async () => {
+    await tryWalkedPortals();
+    return stopWhenPending && portalPending ? pendingSnapshot() : null;
+  };
+  const stoppedAtStart = await walkPortalsOrStop();
+  if (stoppedAtStart) return stoppedAtStart;
 
   // 3. Entrata floor plan cards.
   if (!readerUnits.length) {
@@ -1147,8 +1163,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   };
   await explore(readerUnits, null);
   // A portal link found on a page the explorer just opened.
-  await tryWalkedPortals();
-  if (stopWhenPending && portalPending) return pendingSnapshot();
+  const stoppedAfterExploring = await walkPortalsOrStop();
+  if (stoppedAfterExploring) return stoppedAfterExploring;
 
   /*
    * "What's included" and fee-guide flyers: pictures, read by the model's
@@ -1258,8 +1274,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   // Still missing something after the extraction: one more hunt, and if it
   // opened anything, read again with those pages in hand.
   if (await explore(units, listing)) {
-    await tryWalkedPortals();
-    if (stopWhenPending && portalPending) return pendingSnapshot();
+    const stopped = await walkPortalsOrStop();
+    if (stopped) return stopped;
     await readFlyers();
     await extractAndFill(true);
   }
@@ -1387,14 +1403,12 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   snapshot.trace = trace;
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
-  snapshot.portal = learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null);
-  // A portal walked screen by screen (readers/portalWalk.js) is the
-  // landlord's own price list: its weekly repricing is not churn.
-  if (snapshot.portal && isWalkedPortal(snapshot.portal)) snapshot.portal = { ...snapshot.portal, walked: true };
+  snapshot.portal = portalFor(learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null));
   // The portal walk is part way through: nothing in this read is final.
   snapshot.portalPending = portalPending;
   // The portal was found but read nothing: the sync tells the team.
   snapshot.portalUnread = portalUnread;
+  snapshot.portalUnreadKept = portalUnread ? portalUnreadKept : null;
   return snapshot;
 }
 

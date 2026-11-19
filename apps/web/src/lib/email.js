@@ -1309,6 +1309,17 @@ function describeChange(c) {
   }
 }
 
+/* A synced listing worth a line in the digest: it changed, was held or failed, or its leasing portal was not read. */
+export const needsLook = (i) => (i.status !== "unchanged" && i.status !== "ok") || !!i.portalUnread;
+
+/*
+ * What a leasing portal that was not read means for the listing. When the
+ * portal priced it before, the listing keeps those prices; a portal never
+ * read yet leaves the website's own prices in use.
+ */
+export const portalUnreadLine = (i) =>
+  `Leasing portal not read: ${i.portalUnread}. ${i.portalUnreadKept === false ? "This listing has not been priced from the portal yet, so the website's own prices were read instead" : "Prices and lease lengths were not refreshed; the listing keeps the ones it had"}. Check the portal by hand.`;
+
 export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const block = (i) => {
     const link = `${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(i.listingId)}`;
@@ -1324,11 +1335,11 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     // The building's leasing portal (where its real prices live) was found
     // but read nothing: its prices were not refreshed.
     const portal = i.portalUnread
-      ? `<p style="color:#b45309;margin:4px 0">Leasing portal not read: ${escapeHtml(i.portalUnread)}. Prices and lease lengths were not refreshed; the listing keeps the ones it had. Check the portal by hand.</p>`
+      ? `<p style="color:#b45309;margin:4px 0">${escapeHtml(portalUnreadLine(i))}</p>`
       : "";
     return `${head}${hold}${portal}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
-  const changed = items.filter((i) => (i.status !== "unchanged" && i.status !== "ok") || i.portalUnread);
+  const changed = items.filter(needsLook);
   const quiet = items.length - changed.length;
   await sendMailSafe(transporter, {
     logAs: { kind: "source_sync_digest" },
