@@ -53,6 +53,8 @@ export async function POST(req, { params }) {
       userId: id,
       kind: body.kind,
       id: body.id,
+      // An admin voiding by hand: a paper copy out may be voided here on purpose.
+      paper: true,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

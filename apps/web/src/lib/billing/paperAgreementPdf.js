@@ -36,6 +36,9 @@ export function paperBoxKind(box) {
   if (box.type !== "TEXT") return "blank";
   if (matches("exhibitBefore", label)) return "blank";
   if (matches("exhibit", label)) return "exhibit";
+  // The same order the app fills boxes in (documenso.js): "[Landlord Email]" or
+  // "[Company Address]" is the email or address there, so never the company here.
+  if (["title", "address", "address1", "address2", "email", "name"].some((k) => matches(k, label))) return "blank";
   if (matches("company", label) || matches("owner", label)) return "company";
   return "blank";
 }

@@ -7,7 +7,7 @@ import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { markAgreementSent, markAgreementSigned, voidAgreement } from "@/lib/billing/agreements";
 import { documensoConfigured } from "@/lib/billing/documenso";
 import { documensoClient } from "@/lib/billing/agreementServices";
-import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { discardSignedAgreement, storeSignedAgreement } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -84,13 +84,19 @@ export async function POST(req) {
         userId: landlord.id,
         bytes: new Uint8Array(await file.arrayBuffer()),
       });
-      agreement = await markAgreementSigned(supabase, {
-        userId: landlord.id,
-        signerName,
-        signerTitle,
-        signedAt: signedDate,
-        signedFileKey,
-      });
+      try {
+        agreement = await markAgreementSigned(supabase, {
+          userId: landlord.id,
+          signerName,
+          signerTitle,
+          signedAt: signedDate,
+          signedFileKey,
+        });
+      } catch (err) {
+        // Refused (a paper copy out, a bad date): the upload goes too.
+        await discardSignedAgreement(signedFileKey).catch(() => {});
+        throw err;
+      }
     }
     return NextResponse.json({ ok: true, status: agreement.status });
   } catch (err) {

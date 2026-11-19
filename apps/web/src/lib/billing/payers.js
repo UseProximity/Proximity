@@ -38,7 +38,7 @@
  */
 import { BillingError } from "./errors.js";
 import { activePayerLink, clearDocumentRequests, payeeLinks } from "./payerLinks.js";
-import { agreementState, coverageFor, isPaperOut, voidDocument } from "./agreements.js";
+import { PAPER, PAPER_HOLD_MESSAGE, agreementState, coverageFor, voidDocument } from "./agreements.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { displayAddress } from "./coverage.js";
 import { getGateSettings } from "./listingGate.js";
@@ -206,11 +206,35 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
 }
 
 /*
+ * A paper copy out that holds this account: their own, or their signer's printed
+ * for it. While it is out nobody changes who signs (Wyatt, 2026-11-19): naming,
+ * changing, revoking or ending a signer, or a landlord taking over, would void
+ * the copy the team is waiting on. Checked before anything changes.
+ */
+export async function assertNoPaperHold(db, landlordId) {
+  const { data: rows, error } = await db.from("agreement_coverage").select("agreement_id").eq("user_id", landlordId).eq("status", "proposed").not("agreement_id", "is", null).is("amendment_id", null).limit(200);
+  if (missingSchema(error)) return;
+  if (error) throw error;
+  const ids = [...new Set((rows ?? []).map((r) => r.agreement_id))];
+  const { data: own, error: ownError } = await db.from("landlord_agreements").select("id").eq("user_id", landlordId).eq("provider", PAPER).eq("status", "sent").limit(1);
+  if (ownError) throw ownError;
+  let held = (own ?? []).length > 0;
+  if (!held && ids.length) {
+    const { data, error: paperError } = await db.from("landlord_agreements").select("id").in("id", ids).eq("provider", PAPER).eq("status", "sent").limit(1);
+    if (paperError) throw paperError;
+    held = (data ?? []).length > 0;
+  }
+  if (held) throw new BillingError("paper_out", PAPER_HOLD_MESSAGE, 409);
+}
+
+/*
  * Cancel the landlord's own documents still being signed, BEFORE a payer is
  * named: a copy left open would block the payer's addendum. Throws when one
- * can't be cancelled, so nothing is named half way.
+ * can't be cancelled, so nothing is named half way. A paper copy out is never
+ * cancelled this way: naming a signer waits for it.
  */
 export async function cancelOwnSigning(db, documenso, landlordId) {
+  await assertNoPaperHold(db, landlordId);
   const state = await agreementState(db, landlordId);
   const own = [];
   if (state.pendingAmendment && !state.pendingAmendment.signer_id) own.push(["amendment", state.pendingAmendment.id]);
@@ -247,6 +271,7 @@ async function signedForAccount(db, landlordId) {
 export async function changePayer(db, documenso, { landlord, name, email, now = new Date() }) {
   const link = await activePayerLink(db, landlord.id);
   if (!link) throw new BillingError("no_payer", "You don't have an authorized signer to change.", 404);
+  await assertNoPaperHold(db, landlord.id);
   if (await signedForAccount(db, landlord.id)) {
     throw new BillingError("payer_signed", `${link.signer_name} already signed for your account. Revoke them first, then name someone else.`, 409);
   }
@@ -291,6 +316,8 @@ export async function changePayer(db, documenso, { landlord, name, email, now = 
  * { payerId, otherAccounts } when that happened, so the caller emails the payer.
  */
 export async function cancelPayerDocuments(db, documenso, landlordId, { payerId = null } = {}) {
+  // Before anything is cancelled: a paper copy holding this account stops it all.
+  await assertNoPaperHold(db, landlordId);
   // Whose master: the payer given (the old one, after a change of signer), else the current one.
   const holderId = payerId ?? (await activePayerLink(db, landlordId))?.payer_id ?? null;
   const { data: amendments, error: amendError } = await db.from("agreement_amendments").select("id").eq("user_id", landlordId).in("status", ["not_sent", "sent"]);
@@ -604,7 +631,7 @@ export async function payerAccounts(db, payerId, now = new Date()) {
         : [],
       // What signing for it now makes: the agreement itself, or an addendum to it.
       // "paper": their agreement is out on paper, so there is nothing to sign in the app.
-      needs: !state.valid ? (isPaperOut(state) ? "paper" : "agreement") : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length ? "addendum" : null,
+      needs: !state.valid ? (state.pending?.provider === PAPER && state.pending.status === "sent" ? "paper" : "agreement") : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length ? "addendum" : null,
       // The landlord's drafts not covered yet: the signer sees them and may add
       // them to the agreement (Wyatt, 2026-11-09). Covering a draft does not publish it.
       drafts: properties
@@ -633,6 +660,7 @@ export async function payerAccounts(db, payerId, now = new Date()) {
 export async function endPayerFor(db, documenso, { landlordId, payerId = null, reason = "ended by an admin", now = new Date() }) {
   const link = await activePayerLink(db, landlordId);
   if (!link || (payerId && link.payer_id !== payerId)) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
+  await assertNoPaperHold(db, landlordId);
   const nowIso = now.toISOString();
   // The link is ended first, and only by the run whose update changed it: two
   // runs at once (the signing webhook and the landlord's popup) can't both

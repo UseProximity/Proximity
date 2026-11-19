@@ -24,6 +24,8 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  *         signerName, signerTitle (optional), signedAt (YYYY-MM-DD, default today)
  *         email, street, city (required), company, suite (optional): the contact
  *         details written on the signed copy
+ *         license     JSON, their real estate license answer on the signed copy
+ *                     (lib/users/licenseDisclosure.js cleanDisclosure's input), required
  *       Answers { ok, covered, withdrawn, published: [{ listingId, ok, error }] }.
  *
  * Voiding it is the documents route (kind master).
@@ -77,6 +79,8 @@ export async function POST(req, { params }) {
     const signedAtRaw = String(form.get("signedAt") ?? "").trim();
     const signedAt = signedAtRaw ? new Date(`${signedAtRaw}T12:00:00Z`) : new Date();
     if (Number.isNaN(signedAt.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
+    const license = parseJson(form.get("license"), null);
+    if (!license) throw new BillingError("license_disclosure_required", "Enter their real estate license answer from the signed copy.");
     const signerDetails = paperSignerDetails({
       company: form.get("company"),
       email: form.get("email"),
@@ -96,6 +100,7 @@ export async function POST(req, { params }) {
       signerTitle: form.get("signerTitle"),
       signedAt,
       signerDetails,
+      license,
       storeSigned: () => storeSignedAgreement({ userId: landlordId, bytes }),
       discardSigned: discardSignedAgreement,
       documenso: documensoConfigured() ? documensoClient() : null,

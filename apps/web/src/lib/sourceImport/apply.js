@@ -202,7 +202,8 @@ async function gateFor(userId, listingId, unitIds = [], newUnitName = null) {
     const addendum = missing.length === 1 && missing[0] === "agreement" && uncovered.length
       ? { what: units.length ? `${units.join(", ")}${address ? ` at ${address}` : ""}` : address ?? "this property" }
       : null;
-    return { allowed: false, message: gateMessage(missing, uncovered), addendum };
+    // Named for an account with an authorized signer: the paper copy and payment method are theirs.
+    return { allowed: false, message: gateMessage(missing, uncovered, { signerName: g.payer?.name ?? null }), addendum };
   } catch (err) {
     console.error(`[source-import] listing gate for ${listingId}: ${err?.message}`);
     return { allowed: false, message: "Could not check the listing gate; held for the landlord." };

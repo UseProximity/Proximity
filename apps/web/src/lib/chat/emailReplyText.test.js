@@ -177,3 +177,9 @@ test("a sentence that mentions a company is not taken for a company line", () =>
   const text = "Yes, that unit is still open.\n\nWe are managed by Mac Properties";
   assert.equal(extractReplyText({ text, senderName: "Yuki Wang" }), text);
 });
+
+test("a short capitalised line under a sign-off is message, a company name is signature", () => {
+  const kept = "Yes, still available.\n\nThanks,\nAddison\n\nParking Included\n(586) 666-1217";
+  assert.equal(extractReplyText({ text: kept }), kept);
+  assert.equal(extractReplyText({ text: "Yes, still available.\n\nThanks,\nAddison\nClock Tower Company\nleasing@clocktowercompany.com" }), "Yes, still available.\n\nThanks,\nAddison");
+});
