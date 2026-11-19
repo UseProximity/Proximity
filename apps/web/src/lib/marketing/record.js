@@ -5,7 +5,8 @@
  * outcome, and inserts it with a dedupe_key so retries and double clicks are
  * counted once. An outcome with no session (mobile app, expired cookie) is
  * still recorded, with its source taken from the account's signup_* columns,
- * or "app" when the account has none.
+ * or, when the account has none, "app" for a mobile app request and
+ * "unknown" for anything else.
  *
  * Recording must NEVER fail the user's action: every error is logged and
  * swallowed, and the function always resolves.
@@ -13,6 +14,7 @@
 import supabase from "@/lib/supabase";
 import { SESSION_COOKIE, attributionEnabled, isUuid, sessionCookieOptions } from "./config";
 import { OUTCOMES, buildDedupeKey, isOutcome } from "./outcomes";
+import { UNKNOWN_SOURCE, looksLikeAppRequest } from "./signup";
 import { attachUserToSession, loadLiveSession, loadSessionById, readSessionCookie } from "./sessions";
 
 const UNIQUE_VIOLATION = "23505";
@@ -79,11 +81,15 @@ export async function recordOutcome(req, { outcome, userId = null, userRole = nu
       role = role || account?.role || null;
     }
 
+    // No session and no account source: "app" only when the request really
+    // came from the mobile app; otherwise "unknown", which the Data quality
+    // block reports, rather than inflating the app row with web activity.
+    const fallback = req?.headers && looksLikeAppRequest(req.headers) ? "app" : UNKNOWN_SOURCE;
     const attribution = session
       ? { source: session.source, medium: session.medium, campaign: session.campaign, link_id: session.link_id }
       : account?.signup_source
         ? { source: account.signup_source, medium: account.signup_medium, campaign: account.signup_campaign, link_id: null }
-        : { source: "app", medium: "app", campaign: null, link_id: null };
+        : { source: fallback, medium: fallback, campaign: null, link_id: null };
 
     const dedupeKey = buildDedupeKey(outcome, { sessionId: session?.id, userId: uid, subjectId: subject });
     if (!dedupeKey) return { recorded: false, reason: "missing_id" };
