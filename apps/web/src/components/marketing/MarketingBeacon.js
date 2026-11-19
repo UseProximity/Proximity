@@ -14,6 +14,13 @@
  * The first beacon carries document.referrer (where the visitor came from).
  * Later ones carry our own previous URL, so an expired session restarted by
  * in-app navigation is classified as direct, not as the original referrer.
+ *
+ * Keep-alive: someone can spend a long time on one page (listing modals on
+ * /browse, a Proxy chat, the review form) without a pathname change. While
+ * the tab is visible a small keep-alive goes every 10 minutes, and once when
+ * the tab comes back into view, so the 30-minute session does not lapse mid
+ * visit. It only renews a live session; it never starts one or records a
+ * visit. A hidden tab sends nothing, so a forgotten tab still ends.
  */
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -27,6 +34,22 @@ import { usePathname } from "next/navigation";
  */
 const LANDING_SEARCH = typeof window === "undefined" ? "" : window.location.search;
 
+const KEEP_ALIVE_MS = 10 * 60 * 1000;
+
+function send(body) {
+  try {
+    fetch("/api/marketing/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive: true,
+      credentials: "same-origin",
+    }).catch(() => {});
+  } catch {
+    // A beacon must never affect the page.
+  }
+}
+
 export default function MarketingBeacon() {
   const pathname = usePathname();
   const previous = useRef(null);
@@ -37,18 +60,21 @@ export default function MarketingBeacon() {
     const referrer = first ? document.referrer : `${window.location.origin}${previous.current}`;
     const search = first ? LANDING_SEARCH : window.location.search;
     previous.current = pathname;
-    try {
-      fetch("/api/marketing/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: pathname, search, referrer }),
-        keepalive: true,
-        credentials: "same-origin",
-      }).catch(() => {});
-    } catch {
-      // A beacon must never affect the page.
-    }
+    send({ path: pathname, search, referrer });
   }, [pathname]);
+
+  useEffect(() => {
+    const keepAlive = () => {
+      if (document.visibilityState !== "visible" || !previous.current) return;
+      send({ path: previous.current, keepAlive: true });
+    };
+    const timer = setInterval(keepAlive, KEEP_ALIVE_MS);
+    document.addEventListener("visibilitychange", keepAlive);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", keepAlive);
+    };
+  }, []);
 
   return null;
 }

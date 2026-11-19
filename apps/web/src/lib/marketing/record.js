@@ -11,11 +11,23 @@
  * swallowed, and the function always resolves.
  */
 import supabase from "@/lib/supabase";
-import { attributionEnabled, isUuid } from "./config";
+import { SESSION_COOKIE, attributionEnabled, isUuid, sessionCookieOptions } from "./config";
 import { OUTCOMES, buildDedupeKey, isOutcome } from "./outcomes";
 import { attachUserToSession, loadLiveSession, loadSessionById, readSessionCookie } from "./sessions";
 
 const UNIQUE_VIOLATION = "23505";
+
+// Never throws. The cookie can only be set where Next allows it (route
+// handlers and server actions); anywhere else the DB renewal still counts.
+async function renewSession(sessionId) {
+  try {
+    await supabase.from("marketing_sessions").update({ last_seen_at: new Date().toISOString() }).eq("id", sessionId);
+    const { cookies } = await import("next/headers");
+    (await cookies()).set(SESSION_COOKIE, sessionId, sessionCookieOptions());
+  } catch {
+    // outside a request scope, or a read-only cookie store
+  }
+}
 
 // The role lives in roles (users.role_id), not on users itself.
 async function accountAttribution(userId) {
@@ -100,7 +112,11 @@ export async function recordOutcome(req, { outcome, userId = null, userRole = nu
 
     // Not for an outcome credited to an older session (application_submitted):
     // that session is over, and it already has its user.
-    if (session && uid && !session.user_id && !sessionId && !creditSessionId) await attachUserToSession(session.id, uid);
+    const fromCookie = session && !sessionId && !creditSessionId;
+    if (fromCookie && uid && !session.user_id) await attachUserToSession(session.id, uid);
+    // Doing something (messaging a landlord, applying) is activity too, so it
+    // renews the session and its cookie like a beacon does.
+    if (fromCookie) await renewSession(session.id);
     return { recorded: true };
   } catch (err) {
     console.error(`marketing: recordOutcome(${outcome}) failed:`, err?.message || err);

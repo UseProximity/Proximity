@@ -11,6 +11,8 @@
  *     campaign arrival as a touchpoint without changing the session's source.
  *   - Either way: record guides_visit / hub_visit for the path (once per
  *     session) and set the 30-minute HttpOnly session cookie.
+ *   - keepAlive (sent every 10 minutes while a tab is visible): renew a live
+ *     session and its cookie, nothing else. Never starts a session.
  *
  * Public by design (signed-out visitors are most of the traffic). Rate limited
  * per IP, body capped at 2 KB. Always answers 204 and never reports internal
@@ -64,6 +66,21 @@ async function readBody(req) {
   }
 }
 
+async function keepAlive(req) {
+  try {
+    const session = await loadLiveSession(await readSessionCookie(req));
+    if (!session) return noContent();
+    const authSession = await auth();
+    await touchSession(session, { userId: authSession?.user?.id || null });
+    const res = noContent();
+    res.cookies.set(SESSION_COOKIE, session.id, sessionCookieOptions());
+    return res;
+  } catch (err) {
+    console.error("marketing keep-alive failed:", err?.message || err);
+    return noContent();
+  }
+}
+
 export async function POST(req) {
   if (!attributionEnabled()) return noContent();
   if (beaconRateLimited(clientIp(req.headers))) {
@@ -74,6 +91,7 @@ export async function POST(req) {
   if (!body) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const path = cleanPath(body.path);
   if (!path) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  if (body.keepAlive === true) return keepAlive(req);
   const search = typeof body.search === "string" ? body.search.slice(0, 1500) : "";
   const referrer = typeof body.referrer === "string" ? body.referrer.slice(0, 500) : "";
 
