@@ -14,6 +14,7 @@
 
 - **Header** (fixed, `border-gray-100` bottom hairline): a thin progress bar (4px, `gray-100` track, `primary` fill, fully rounded, no number) and "Start over" (`text-xs`, `textSecondary`) on the right. Start over keeps its place and is invisible until there is something to clear.
 - **Body:** a scroll view with 16px padding. Each page starts at its top. On page 1 the commute follow-up question scrolls into view when it appears.
+- **AI notice** (page 2, until the user agrees): a soft amber card (`amber-50` fill, `amber-200` edge, `amber-900` text, `container` radius) directly above the footer, saying that answers and anything typed go to Anthropic, with a primary "I agree" `Button`. No search starts before that tap; trying one shakes the card. Once agreed it never shows again for that account on that device.
 - **Footer** (fixed, `border-gray-100` top hairline): the back action on the left ("Back", or "Edit Preferences" on the matches page), the forward action on the right ("Next", disabled until all five answers are given, or "Show My Matches"). Footer buttons are pills (40px high): primary is `primary` fill with white text, disabled is `gray-200` with `textMuted` text, secondary is `gray-100` with `gray-700` text.
 
 ## Answers

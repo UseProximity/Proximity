@@ -8,7 +8,9 @@ import * as secureStorage from "./secureStorage";
 // longer counts, and the gate asks again.
 // One exception, a product decision (2026-11-17): the rewording for Find Your
 // Place kept version 1, because what is shared shrank (no name or gender any
-// more), so consent given to the old chat still covers it.
+// more), so consent given to the old chat still covers it. The inline notice on
+// page 2 that replaced the full-page screen (2026-11-19) kept it too, by the
+// same decision: what is shared did not change.
 export const AI_CONSENT_VERSION = 1;
 
 // SecureStore keys may only contain letters, digits, ".", "-" and "_".
