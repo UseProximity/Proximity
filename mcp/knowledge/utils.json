@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-18T14:26:43.078Z",
-  "count": 339,
+  "_generated": "2026-11-18T19:48:17.953Z",
+  "count": 344,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -532,6 +532,14 @@
       "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
     },
     {
+      "file": "src/lib/billing/paperAgreementPdf.js",
+      "description": "The marketing agreement printed for a landlord to sign on paper (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/paperAgreements.js",
+      "description": "A landlord's marketing agreement signed on paper (Wyatt, 2026-11-17)."
+    },
+    {
       "file": "src/lib/billing/payerLinks.js",
       "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
     },
@@ -744,6 +752,10 @@
       "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
     },
     {
+      "file": "src/lib/findYourPlace/events.js",
+      "description": "Find Your Place's own record of the moments that leave no search row: which"
+    },
+    {
       "file": "src/lib/findYourPlace/match.js",
       "description": "Find Your Place: answers in, top four places out."
     },
@@ -850,6 +862,10 @@
     {
       "file": "src/lib/listings/leasePrefsColumns.js",
       "description": "The account columns behind a student's saved sizes and lease lengths."
+    },
+    {
+      "file": "src/lib/listings/listingLink.js",
+      "description": "Where a tap on a listing card goes. Below 768px the popup is too tight, so a"
     },
     {
       "file": "src/lib/listings/listingSelect.js",
@@ -1293,7 +1309,7 @@
     },
     {
       "file": "src/utils/analytics.js",
-      "description": "── Cross-page navigation source ──"
+      "description": "── Find Your Place, recorded in our own database ──"
     },
     {
       "file": "src/utils/availability.js",
@@ -1314,6 +1330,10 @@
     {
       "file": "src/utils/compressImage.js",
       "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/copyText.js",
+      "description": "Copies text to the clipboard and resolves to true/false. Never throws."
     },
     {
       "file": "src/utils/drivePlaces.js",

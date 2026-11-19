@@ -61,6 +61,11 @@ function defaultListingInquiry(ownerName) {
     : "Hi, I'm interested in this listing.";
 }
 
+// How far below the top of the window the title and tabs stick: the "Did you
+// submit?" bar's height (0 without it), plus the site header's height on the
+// full listing page below 1280px.
+const stickTop = (head) => (head ? parseFloat(getComputedStyle(head).top) || 0 : 0);
+
 // The nearest ancestor that scrolls vertically, or null when the window does.
 // Shared with ListDetailPanel so both find the same container. Stops below
 // <body>: the app's body is overflow:auto, but that passes to the viewport, so
@@ -724,7 +729,7 @@ function ReviewsTab({
       )}
       {blockTarget && overBody(
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
             <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
             <p className="mt-1 text-sm text-gray-600">
               Their reviews will no longer be visible to you. Their star ratings
@@ -1450,7 +1455,7 @@ function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
           {/* Photo grid: one hero plus the two stacked side tiles */}
           <div
             className={`flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
-              compact ? "md:h-[300px]" : "md:h-[520px]"
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
             }`}
           >
             <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
@@ -1539,6 +1544,12 @@ export default function ListingModalInfo({
    * feed data rather than leaving the skeleton up forever.
    */
   detailLoading = false,
+  /*
+   * The full listing page (/listings/[id]), where the window scrolls under the
+   * site header. Below 1280px the title and tabs stick under that header (and
+   * its 1px border), not behind it, and the heart sits in the photo's corner (no close button there).
+   */
+  page = false,
   // Called with true/false as the title and tabs stick to the top and let go.
   onHeadStuck = null,
   // Called when a tab click starts scrolling the page to its section.
@@ -1606,8 +1617,10 @@ export default function ListingModalInfo({
     const target = root ?? window;
     let stuck = false;
     const onScroll = () => {
-      // The header sticks below the "Did you submit?" bar when that shows.
-      const top = (root ? root.getBoundingClientRect().top : 0) + applyBarH.current;
+      // The header sticks below the "Did you submit?" bar when that shows. In
+      // a scrolling panel that is the panel's top plus the bar; on the full
+      // page, the header's own sticky top, which already counts the bar.
+      const top = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -1645,7 +1658,7 @@ export default function ListingModalInfo({
     spyQuietUntil.current = Date.now() + 1000;
     onSectionJumpRef.current?.();
     const root = scrollParent(section);
-    const rootTop = root ? root.getBoundingClientRect().top : 0;
+    const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
     const scrolled = root ? root.scrollTop : window.scrollY;
     /*
      * Less the header's height as it is NOW. If it isn't stuck yet it compacts
@@ -1653,7 +1666,7 @@ export default function ListingModalInfo({
      * it loses, so the full height is the right offset in both cases.
      */
     const top =
-      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0) - applyBarH.current;
+      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
     // Contact goes all the way down, to the chat's newest message and its box
     // (Wyatt, 2026-11-01): it is the last section, so that is the page's bottom.
     const end = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -1669,8 +1682,8 @@ export default function ListingModalInfo({
     const ids = visibleKey.split(",");
     const onScroll = () => {
       if (Date.now() < spyQuietUntil.current) return;
-      const rootTop = root ? root.getBoundingClientRect().top : 0;
-      const line = rootTop + applyBarH.current + (headRef.current?.offsetHeight ?? 0) + 24;
+      const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
+      const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
       const scrolled = root ? root.scrollTop : window.scrollY;
       const viewport = root ? root.clientHeight : window.innerHeight;
       const height = root ? root.scrollHeight : document.documentElement.scrollHeight;
@@ -2144,7 +2157,7 @@ export default function ListingModalInfo({
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
         {/* "Did you submit your application?" sits above everything and stays stuck. */}
-        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} onHeight={onApplyBarHeight} />
+        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} onHeight={onApplyBarHeight} page={page} />
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
@@ -2153,7 +2166,7 @@ export default function ListingModalInfo({
               the page padding. */}
           <div
             className={`relative flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
-              compact ? "md:h-[300px]" : "md:h-[520px]"
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
             }`}
           >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
@@ -2214,7 +2227,7 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <HeartIcon listingId={listing._id} />
@@ -2310,8 +2323,15 @@ export default function ListingModalInfo({
                 compacts: a smaller title, no address, the rating cut to the
                 title's height. The sentinel just above it says when. */}
             <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
-            {/* Under the stuck "Did you submit?" bar when it shows (--apply-check-h, set by ApplicationCheck). */}
-            <div id="listing-head" ref={headRef} className="sticky top-[var(--apply-check-h,0px)] z-30">
+            {/* Under the stuck "Did you submit?" bar when it shows (--apply-check-h, set by ApplicationCheck),
+                and under the site header too on the full listing page below 1280px. */}
+            <div
+              id="listing-head"
+              ref={headRef}
+              className={`sticky top-[var(--apply-check-h,0px)] z-30 ${
+                page ? "max-xl:top-[calc(var(--header-h)_+_1px_+_var(--apply-check-h,0px))]" : ""
+              }`}
+            >
               {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
               <div
                 className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
@@ -2424,13 +2444,14 @@ export default function ListingModalInfo({
                     title above, in the browse panel (Wyatt, 2026-11-01) and the
                     popup alike (Wyatt, 2026-11-15): pl-5 plus the tab's own
                     px-5 matches the title's px-10.
-                    On a phone every tab has to be in view at once, so the six
-                    share the full width in a tighter size, and whatever sits
-                    to their right on desktop wraps onto its own line under
-                    them instead of pushing tabs off the edge. */}
-                <nav className="flex flex-wrap items-stretch md:flex-nowrap">
+                    Below 1280px there is no room beside the tabs, so they get
+                    a row to themselves and the actions (the last child here)
+                    get the row above it. On a phone, and in the browse panel
+                    below 1024px, the six tabs share the width in a tighter
+                    size. Tabs that do not fit scroll sideways. */}
+                <nav className="flex flex-wrap items-stretch xl:flex-nowrap">
 
-                  <div className="flex w-full overflow-x-auto scrollbar-hidden md:w-auto">
+                  <div className="flex w-full overflow-x-auto scrollbar-hidden xl:w-auto">
                     {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
                       (tab) => (
                         <button
@@ -2438,7 +2459,9 @@ export default function ListingModalInfo({
                           type="button"
                           onClick={() => jumpTo(tab.id)}
                           aria-current={activeTab === tab.id ? "true" : undefined}
-                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition md:flex-none md:px-5 md:text-sm ${
+                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition ${
+                            compact ? "lg:flex-none lg:px-5 lg:text-sm" : "md:flex-none md:px-5 md:text-sm"
+                          } ${
                             activeTab === tab.id
                               ? "text-red-600 border-red-600"
                               : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
@@ -2450,16 +2473,14 @@ export default function ListingModalInfo({
                     )}
                   </div>
 
-                  {/* Furniture rental, styled as a tab so it reads as part of this
-                      row. It only appears against an UNFURNISHED offering:
-                      furnished belongs to the lease now, not the building, so this
-                      asks whether any live offering on the open unit is
-                      unfurnished, falling back to listings.furnished when none has
-                      loaded. */}
-                  {/* Opaque and padded so that when the tab strip scrolls under it
-                      on a narrow screen, the last tab is clipped cleanly instead of
-                      appearing to run into the button. */}
-                  <div className="flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 md:w-auto md:flex-1">
+                  {/* The actions: beside the tabs from 1280px. Below that, a row
+                      of their own between the title and the tabs, starting in
+                      line with the title; it is not rendered when there is none. */}
+                  <div
+                    className={`flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 xl:w-auto xl:flex-1 max-xl:order-first max-xl:flex-wrap max-xl:items-center max-xl:justify-start max-xl:gap-x-3 max-xl:pb-1 max-xl:empty:hidden ${
+                      compact ? "max-xl:pl-5 max-xl:pr-10" : "max-xl:px-6"
+                    }`}
+                  >
                     {/* Joining this property's waitlist happens on the landlord's
                         own form, so the link hops through our API first: that
                         redirect is the only place a click can still be recorded
@@ -2490,19 +2511,24 @@ export default function ListingModalInfo({
                           {waitlist.label}
                         </button>
                       ))}
-                    {/* Same font, weight, colour and hover as "View on map" beside it (Wyatt, 2026-11-15). */}
+                    {/* Furniture rental, in the same font, weight, colour and hover
+                        as "View on map" beside it (Wyatt, 2026-11-15). It only
+                        appears against an UNFURNISHED offering: furnished belongs
+                        to the lease now, not the building, so this asks whether
+                        any live offering on the open unit is unfurnished, falling
+                        back to listings.furnished when none has loaded. */}
                     {showFurnishCta && (
                       <a
                         href="https://cort.sjv.io/zzb9y0"
                         target="_blank"
                         rel="noopener noreferrer sponsored nofollow"
-                        className="inline-flex items-center whitespace-nowrap px-5 py-3 text-sm font-semibold text-red-600 transition-colors hover:text-red-700"
+                        className="inline-flex items-center whitespace-nowrap px-5 py-3 text-sm font-semibold text-red-600 transition-colors hover:text-red-700 max-xl:px-0 max-xl:py-2"
                       >
                         Furnish This Property
                       </a>
                     )}
                     {tabBarAction && (
-                      <div className="flex items-center pl-3 pr-8">{tabBarAction}</div>
+                      <div className="flex items-center pl-3 pr-8 max-xl:ml-auto max-xl:px-0">{tabBarAction}</div>
                     )}
                   </div>
                 </nav>

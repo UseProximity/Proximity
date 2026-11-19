@@ -82,7 +82,7 @@ export default function DraggableImageGrid({
             <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
 
             {/* Drag handle */}
-            <div className="absolute top-1 left-1 bg-black/50 rounded p-0.5 opacity-0 group-hover:opacity-100 transition">
+            <div className="absolute top-1 left-1 bg-black/50 rounded p-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition">
               <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 6h2v2H8zm0 4h2v2H8zm0 4h2v2H8zm6-8h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z" />
               </svg>
@@ -102,7 +102,7 @@ export default function DraggableImageGrid({
               <button
                 type="button"
                 onClick={() => onRemove(url)}
-                className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition"
               >
                 ×
               </button>

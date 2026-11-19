@@ -472,6 +472,28 @@ export async function sendChatMessageEmail({
 }
 
 /*
+ * A student's inquiry re-sent to a listing's contact address as a plain
+ * inquiry from the student, so a leasing assistant such as EliseAI answers it
+ * (Wyatt, 2026-11-17). From the chat's reply address through SES only, so the
+ * answer comes back into the conversation and delivery is tracked. Resolves
+ * to the SES message id.
+ */
+export async function sendLeadInquiryEmail({ to, fromName, replyTo, subject, text, html, threadId, recipientId }) {
+  if (!sesTransporter) throw new Error("Amazon SES is not configured");
+  const info = await sendMailSafe(sesTransporter, {
+    logAs: { kind: "chat_alert", threadId, userId: recipientId },
+    from: { name: fromName, address: replyTo },
+    to,
+    replyTo,
+    subject,
+    text,
+    html,
+    ses: SES_SEND_OPTIONS,
+  });
+  return info?.response || info?.messageId || null;
+}
+
+/*
  * Internal email to the team (lib/chat/deliveryAlerts.js). Tries SES first and
  * Gmail second, so a report that one of the two is failing still gets out
  * through the other (Wyatt, 2026-10-23).
@@ -1299,9 +1321,14 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     const hold = i.holdReason
       ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight. Nothing was applied: the changes below wait in admin, under Agents, for the team or the landlord to apply or reject" : "Held: the reader was not confident in this read. Nothing was applied"}.</p>`
       : "";
-    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+    // The building's leasing portal (where its real prices live) was found
+    // but read nothing: its prices were not refreshed.
+    const portal = i.portalUnread
+      ? `<p style="color:#b45309;margin:4px 0">Leasing portal not read: ${escapeHtml(i.portalUnread)}. Prices and lease lengths were not refreshed; the listing keeps the ones it had. Check the portal by hand.</p>`
+      : "";
+    return `${head}${hold}${portal}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
-  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const changed = items.filter((i) => (i.status !== "unchanged" && i.status !== "ok") || i.portalUnread);
   const quiet = items.length - changed.length;
   await sendMailSafe(transporter, {
     logAs: { kind: "source_sync_digest" },

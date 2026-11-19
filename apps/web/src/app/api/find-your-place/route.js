@@ -5,6 +5,7 @@ import { clientIp } from "@/lib/auth/loginThrottle";
 import { readVisitorId, newVisitorId, setVisitorCookie, ipLimited } from "@/lib/matchmaking/anonymousSessions";
 import { recordError } from "@/lib/errors/record";
 import { findMatches } from "@/lib/findYourPlace/match";
+import { recordFypEvent } from "@/lib/findYourPlace/events";
 import { getCachedListings } from "@/lib/listings/queryListings";
 import { DEFAULT_FILTERS, filterListings } from "@proximity/shared";
 import { campusWalkMinutes } from "@/utils/washuPlaces";
@@ -65,9 +66,14 @@ async function visitorRuns(visitorId) {
  * @auth optional
  */
 export async function POST(request) {
+  // Who and what, for recording a search that fails (lib/findYourPlace/events).
+  let actor = null;
+  let visitor = null;
+  let retry = false;
+  const failed = (reason) =>
+    after(() => recordFypEvent({ name: "search_failed", userId: actor?.id ?? null, visitorId: visitor, metadata: { reason, retry } }));
   try {
     const requestUser = await getRequestUser(request);
-    let actor = null;
     if (requestUser?.email) {
       const { data } = await supabase
         .from("users")
@@ -80,13 +86,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let visitor = readVisitorId(request);
+    visitor = readVisitorId(request);
 
     const body = await request.json().catch(() => ({}));
+    // "Try again" after an error, so a failure retried until it works is told
+    // apart from one the student gave up on.
+    retry = body.retry === true;
+    // Started from the homepage popup's group-size question.
+    const fromPopup = body.fromPopup === true;
     const answers = sanitizeAnswers(body.answers);
     // The page holds the same rules, so this only trips on an old saved run
     // or a hand-made request. "invalid" sends the student back to page 1.
     if (answeredCount(answers) < QUESTION_COUNT) {
+      failed("invalid");
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
     const text = typeof body.text === "string" ? body.text.slice(0, TEXT_MAX).trim() : "";
@@ -127,11 +139,13 @@ export async function POST(request) {
           message: `Find Your Place per-network limit reached (${FYP_IP_LIMIT} signed-out searches an hour): students on one network are being turned away`,
         }).catch(() => {})
       );
+      failed("busy");
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
 
     const runs = (existing?.preferences?._fyp?.runs ?? 0) + 1;
     if (!actor && (await visitorRuns(visitor)) >= VISITOR_RUN_CAP) {
+      failed("cap");
       return NextResponse.json({ error: "cap" }, { status: 429 });
     }
 
@@ -154,7 +168,11 @@ export async function POST(request) {
     }));
     const row = {
       status: "recommendations_ready",
-      preferences: { ...result.preferences, _fyp: { answers, chips, text, parsed: result.parsed, runs } },
+      preferences: { ...result.preferences, _fyp: {
+        answers, chips, text, parsed: result.parsed, runs,
+        // Once a search came from the popup it stays counted as one.
+        ...(fromPopup || existing?.preferences?._fyp?.fromPopup ? { fromPopup: true } : {}),
+      } },
       weights: result.weights,
       recommendations,
       // Readable by the chat clients that still list past sessions.
@@ -202,6 +220,7 @@ export async function POST(request) {
     return response;
   } catch (err) {
     console.error("[find-your-place POST]", err);
+    failed("error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

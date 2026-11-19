@@ -14,7 +14,7 @@ export const metadata = {
 
 function ChatLinkFallback() {
   return (
-    <div className="min-h-[calc(100dvh-83px)] md:min-h-[calc(100dvh-104px)] flex items-center justify-center px-4">
+    <div className="min-h-[calc(100dvh-var(--header-h))] flex items-center justify-center px-4">
       <p className="text-sm text-gray-400">Loading…</p>
     </div>
   );

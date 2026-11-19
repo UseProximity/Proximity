@@ -85,7 +85,7 @@ export default function SuggestedStrip({
           layout === "grid"
             ? wide
               ? WIDE_GRID_CLASS
-              : "grid grid-cols-2 gap-3"
+              : "grid grid-cols-1 xl:grid-cols-2 gap-3"
             : "space-y-4"
         }
       >

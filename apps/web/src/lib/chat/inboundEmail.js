@@ -56,7 +56,7 @@ import {
   CHAT_ATTACHMENT_MAX_FILES,
   sanitizeChatAttachmentFileName,
 } from "@/lib/chat/attachments";
-import { extractReplyText } from "@/lib/chat/emailReplyText";
+import { extractReplyText, fromLeasingAssistant } from "@/lib/chat/emailReplyText";
 import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { requestSenderApproval } from "@/lib/chat/replySenderRequest";
@@ -553,7 +553,10 @@ async function processOne({ bucket, key, recipients }) {
         p_listing_id: sent.listingId ?? null,
       });
     }
-    if (reasons.length > 0) {
+    // Never to a leasing assistant: it answers every email, so the note and its
+    // answer would bounce between us (Wyatt, 2026-11-17). The flag above stays.
+    const assistant = fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" });
+    if (reasons.length > 0 && !assistant) {
       // Straight away, every time. The sender is authenticated by this point.
       try {
         const t = participant.chat_threads ?? {};

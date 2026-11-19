@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Height of the sticky site header (components/layout/Header.js: h-[83px] md:h-[104px]).
+ * The single source for anything positioned or sized against it: use
+ * top-[var(--header-h)] or calc(100dvh-var(--header-h)), not the pixel values.
+ */
+:root {
+  --header-h: 83px;
+}
+@media (min-width: 768px) {
+  :root {
+    --header-h: 104px;
+  }
+}
+
+/*
+ * iPhone Safari zooms the page when a focused field's text is under 16px. Only
+ * touch devices below the desktop breakpoint: desktop (1280px and wider) keeps
+ * every field at its designed size.
+ */
+@media (pointer: coarse) and (max-width: 1279px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Completely prevent unwanted scrolling on form elements */
 html {
   scroll-behavior: auto !important;

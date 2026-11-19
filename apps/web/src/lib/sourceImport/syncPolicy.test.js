@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { churnCheck, decideSyncChange, DENY, smallPriceMove } from "./syncPolicy.js";
+import { bareCoveredPlan, churnCheck, decideSyncChange, DENY, smallPriceMove } from "./syncPolicy.js";
 
 const full = { snapshot: { unitListComplete: true } };
 const partial = { snapshot: { unitListComplete: false } };
@@ -132,4 +132,31 @@ test("a small move is only small for a repricing, not another building", () => {
   // A date or length riding along does not stop a cut being small.
   const withDate = move(1000, 980, { field: "rent,availableFrom", old: { rent: 1000, availableFrom: null }, new: { rent: 980, availableFrom: "2027-08-01" } });
   assert.equal(smallPriceMove(withDate), true);
+});
+
+test("a bare floor plan card is not a new home on a listing of apartments", () => {
+  // Shepard School Lofts, 2026-11-17: priced apartments on the listing, bare layout cards on the website.
+  const shepard = [
+    { name: "Apt F15", bedrooms: 1, bathrooms: 1 },
+    { name: "1 bed, 1 bath loft", bedrooms: 1, bathrooms: 1 },
+    { name: "Apt G14", bedrooms: 2, bathrooms: 1 },
+    { name: "Apt G22", bedrooms: 2, bathrooms: 2 },
+    { name: "Apt S18", bedrooms: 3, bathrooms: 2 },
+  ];
+  const bare = (name, bedrooms, bathrooms) => ({ name, bedrooms, bathrooms, area: null, offers: [] });
+  for (const card of [bare(null, 1, 1), bare(null, 2, 1), bare("2 Bed 2 Bath Level 1", 2, 2), bare("3 Bed 2 Bath Level 2", 3, 2)]) {
+    assert.equal(bareCoveredPlan(card, shepard), true, card.name ?? `${card.bedrooms}/${card.bathrooms}`);
+  }
+  // A layout the listing does not have yet is still new.
+  assert.equal(bareCoveredPlan(bare(null, 4, 2), shepard), false);
+  // Anything that says something about a home is still new.
+  assert.equal(bareCoveredPlan({ ...bare(null, 1, 1), area: 700 }, shepard), false);
+  assert.equal(bareCoveredPlan({ ...bare(null, 1, 1), offers: [{ rent: 1300, apartments: [] }] }, shepard), false);
+  assert.equal(bareCoveredPlan({ ...bare(null, 1, 1), offers: [{ rent: null, apartments: ["F2"] }] }, shepard), false);
+  assert.equal(bareCoveredPlan(bare("Apt F2", 1, 1), shepard), false);
+  // Unknown beds or baths: not judged as covered.
+  assert.equal(bareCoveredPlan(bare(null, null, 1), shepard), false);
+  // A listing made only of floor plans keeps gaining new price-on-request plans (LOCAL on Delmar).
+  const plans = [{ name: "Ace", bedrooms: 4, bathrooms: 4 }, { name: "Jack", bedrooms: 4, bathrooms: 4 }];
+  assert.equal(bareCoveredPlan(bare("Joker", 4, 4), plans), false);
 });

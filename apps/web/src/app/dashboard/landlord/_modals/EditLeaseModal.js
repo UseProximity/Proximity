@@ -60,7 +60,7 @@ export default function EditLeaseModal({ property, lease, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-2xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Edit your listing</h3>
           <p className="mt-0.5 text-sm text-gray-500">

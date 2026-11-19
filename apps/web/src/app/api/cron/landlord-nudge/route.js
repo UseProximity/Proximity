@@ -43,12 +43,14 @@ export async function GET(req) {
   const since = new Date(now - MAX_AGE_MS).toISOString(); // oldest: 36h ago
   const until = new Date(now - MIN_AGE_MS).toISOString(); // newest: 12h ago
 
-  // New landlords created between 12h and 36h ago (exclude soft-deleted accounts).
+  // New landlords created between 12h and 36h ago (exclude soft-deleted accounts
+  // and billing accounts, which only sign and pay for others and never list).
   const { data: newLandlords, error: usersError } = await supabase
     .from("users")
     .select("id, name, email")
     .eq("role_id", landlordRole.id)
     .is("deleted_at", null)
+    .eq("billing_only", false)
     .gte("created_at", since)
     .lte("created_at", until);
 
