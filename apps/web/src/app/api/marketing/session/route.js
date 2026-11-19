@@ -38,9 +38,16 @@ export const dynamic = "force-dynamic";
 const MAX_BODY_BYTES = 2048;
 const noContent = () => new NextResponse(null, { status: 204 });
 
+// Pages whose path carries a credential. The token is replaced before the
+// path is stored as a landing path or touchpoint, so these tables never hold a
+// working link (the review-invite page treats its token as the whole security
+// story and will not even echo it into the DOM).
+const SECRET_PATHS = [/^(\/review-invite\/t\/)[^/]+/];
+
 function cleanPath(raw) {
-  const p = String(raw ?? "").split("#")[0].split("?")[0];
+  let p = String(raw ?? "").split("#")[0].split("?")[0];
   if (!p.startsWith("/") || p.startsWith("//")) return null;
+  for (const re of SECRET_PATHS) p = p.replace(re, "$1:token");
   return p.slice(0, 500);
 }
 
