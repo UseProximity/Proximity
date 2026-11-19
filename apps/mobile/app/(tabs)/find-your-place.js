@@ -6,7 +6,8 @@
 // State and the saved run live in store/findYourPlaceStore.js.
 //
 // Signed in only: a signed-out user is shown the sign-in screen. Every search
-// reaches Anthropic, so a signed-in user first agrees to that (lib/aiConsent.js).
+// reaches Anthropic, so until the user agrees (lib/aiConsent.js) page 2 shows a
+// notice above the footer and no search starts.
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,13 +15,12 @@ import { QUESTION_COUNT, answeredCount } from "@proximity/shared";
 import { useAuthStore } from "../../src/store/authStore";
 import { useFindYourPlaceStore } from "../../src/store/findYourPlaceStore";
 import { LoggedOutScreen } from "../../src/components/brand/LoggedOutScreen";
-import { Button } from "../../src/components/ui/Button";
 import { ProgressBar } from "../../src/components/findYourPlace/ui";
 import { StepBasics } from "../../src/components/findYourPlace/StepBasics";
 import { StepPreferences } from "../../src/components/findYourPlace/StepPreferences";
 import { StepMatches } from "../../src/components/findYourPlace/StepMatches";
+import { AiNotice } from "../../src/components/findYourPlace/AiNotice";
 import { useAiConsent } from "../../src/lib/aiConsent";
-import { openLegalLink, PRIVACY_URL } from "../../src/lib/legalLinks";
 
 // The five questions fill the bar to here; it completes on "Show My Matches".
 const QUESTIONS_FILL = 0.8;
@@ -43,48 +43,29 @@ function FooterButton({ primary = false, disabled = false, onPress, children }) 
   );
 }
 
-function ConsentScreen({ onAgree }) {
-  const [declined, setDeclined] = useState(false);
-  return (
-    <SafeAreaView className="flex-1 bg-white items-center justify-center px-8">
-      <Text className="text-lg font-bold text-gray-900 mb-3">Before you start</Text>
-      <Text className="text-sm text-gray-500 text-center mb-3">
-        Find Your Place uses Anthropic, a third-party AI provider, to read your answers and choose your matches.
-      </Text>
-      <Text className="text-sm text-gray-500 text-center mb-4">
-        Your answers, and anything you write on the second page, may be shared with Anthropic for this purpose.
-      </Text>
-      <Pressable onPress={() => openLegalLink(PRIVACY_URL)} hitSlop={8} className="mb-6">
-        <Text className="text-sm font-semibold text-gray-900 underline">Privacy Policy</Text>
-      </Pressable>
-      <Button onPress={onAgree} className="self-stretch">
-        Agree & continue
-      </Button>
-      <Button variant="ghost" onPress={() => setDeclined(true)} className="self-stretch mt-2">
-        Not now
-      </Button>
-      {declined ? (
-        <Text className="text-xs text-gray-500 text-center mt-3">
-          Find Your Place needs this to work. You can agree whenever you&apos;re ready.
-        </Text>
-      ) : null}
-    </SafeAreaView>
-  );
-}
-
 export default function FindYourPlaceScreen() {
   const userId = useAuthStore((s) => s.user?.id);
   const isAuthHydrated = useAuthStore((s) => s.isHydrated);
   const consent = useAiConsent(userId);
+  const consented = consent.status === "granted";
   const store = useFindYourPlaceStore();
   const { owner, step, answers, text, chips, results, loading, error, round } = store;
   const scrollRef = useRef(null);
+  const [nudge, setNudge] = useState(0);
 
-  // Reads this account's saved run once it has agreed (and again after a switch
-  // of account, which clears the store).
+  // Every search starts here, so nothing reaches the AI before the user agrees:
+  // until then it goes to page 2, where the notice shakes.
+  const search = (...args) => {
+    if (consented) return store.run(...args);
+    store.setStep(2);
+    setNudge((n) => n + 1);
+  };
+
+  // Reads this account's saved run (and again after a switch of account, which
+  // clears the store). No AI is involved.
   useEffect(() => {
-    if (userId && consent.status === "granted") store.load(userId);
-  }, [userId, consent.status, owner]);
+    if (userId) store.load(userId);
+  }, [userId, owner]);
 
   // Each page starts at its top.
   useEffect(() => {
@@ -107,8 +88,6 @@ export default function FindYourPlaceScreen() {
       />
     );
   }
-
-  if (consent.status !== "granted") return <ConsentScreen onAgree={consent.grant} />;
 
   if (owner !== userId) {
     return (
@@ -162,7 +141,7 @@ export default function FindYourPlaceScreen() {
               text={text}
               chips={chips}
               onChange={store.setPreferences}
-              onSkip={() => store.run({ text: "", chips: {} })}
+              onSkip={() => search({ text: "", chips: {} })}
             />
           )}
           {step === 3 && (
@@ -170,7 +149,7 @@ export default function FindYourPlaceScreen() {
               loading={loading}
               error={error}
               results={results}
-              onRetry={() => store.run({}, { force: true })}
+              onRetry={() => search({}, { force: true })}
               onFixAnswers={() => {
                 store.clearError();
                 store.setStep(1);
@@ -178,6 +157,8 @@ export default function FindYourPlaceScreen() {
             />
           )}
         </ScrollView>
+
+        {step === 2 && !consented && <AiNotice onAccept={consent.grant} nudge={nudge} />}
 
         <View className="flex-row items-center justify-between px-4 py-3 border-t border-gray-100 bg-white">
           {step > 1 ? (
@@ -191,7 +172,7 @@ export default function FindYourPlaceScreen() {
             </FooterButton>
           )}
           {step === 2 && (
-            <FooterButton primary onPress={() => store.run()}>
+            <FooterButton primary onPress={() => search()}>
               Show My Matches
             </FooterButton>
           )}
