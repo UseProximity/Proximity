@@ -19,8 +19,10 @@ import { retentionCutoff } from "@/lib/marketing/retention";
 
 export const dynamic = "force-dynamic";
 
-const BATCH = 500;
-const MAX_BATCHES = 20;
+// 150 ids per delete keeps the PostgREST URL short (the same chunk size as
+// lib/billing/enrollment.js); 500 uuids is an ~18 KB query string.
+const BATCH = 150;
+const MAX_BATCHES = 60;
 
 async function deleteOldUnlinkedSessions(cutoff) {
   let deleted = 0;
