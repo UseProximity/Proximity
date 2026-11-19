@@ -108,3 +108,22 @@ test("the beacon rate limit trips at the limit and resets after the window", () 
   assert.equal(beaconRateLimited("5.6.7.8", t0), false, "other IPs unaffected");
   assert.equal(beaconRateLimited("1.2.3.4", t0 + BEACON_WINDOW_MS + BEACON_LIMIT + 1), false);
 });
+
+test("beacon limits: by session when there is one, so a shared campus IP is not throttled", async () => {
+  const { beaconRequestLimited, SESSION_LIMIT, NO_COOKIE_IP_LIMIT } = await import("./rateLimit.js");
+  _resetBeaconRateLimit();
+  const t0 = 1_000_000;
+  // 20 students on one IP, each well under their own session limit.
+  for (let s = 0; s < 20; s++) {
+    for (let i = 0; i < 30; i++) assert.equal(beaconRequestLimited({ ip: "9.9.9.9", sessionId: `sess-${s}` }, t0 + s * 100 + i), false);
+  }
+  // One session past its own limit is stopped; the others are not.
+  for (let i = 30; i < SESSION_LIMIT; i++) beaconRequestLimited({ ip: "9.9.9.9", sessionId: "sess-0" }, t0 + 5000 + i);
+  assert.equal(beaconRequestLimited({ ip: "9.9.9.9", sessionId: "sess-0" }, t0 + 9000), true);
+  assert.equal(beaconRequestLimited({ ip: "9.9.9.9", sessionId: "sess-1" }, t0 + 9001), false);
+  // No cookie: the per-IP limit applies.
+  _resetBeaconRateLimit();
+  for (let i = 0; i < NO_COOKIE_IP_LIMIT; i++) beaconRequestLimited({ ip: "8.8.8.8", sessionId: null }, t0 + i);
+  assert.equal(beaconRequestLimited({ ip: "8.8.8.8", sessionId: null }, t0 + NO_COOKIE_IP_LIMIT), true);
+  _resetBeaconRateLimit();
+});

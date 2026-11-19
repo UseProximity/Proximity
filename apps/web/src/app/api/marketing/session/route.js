@@ -15,8 +15,8 @@
  *     session and its cookie, nothing else. Never starts a session.
  *
  * Public by design (signed-out visitors are most of the traffic). Rate limited
- * per IP, body capped at 2 KB. Always answers 204 and never reports internal
- * errors: a failed beacon must not affect the page.
+ * per session (per IP without one), body capped at 2 KB. Always answers 204
+ * and never reports internal errors: a failed beacon must not affect the page.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
@@ -24,7 +24,7 @@ import { clientIp } from "@/lib/auth/loginThrottle";
 import { classifyVisit, hasCampaignSignal, readCampaignParams } from "@/lib/marketing/classify";
 import { SESSION_COOKIE, attributionEnabled, sessionCookieOptions } from "@/lib/marketing/config";
 import { visitOutcomesForPath } from "@/lib/marketing/outcomes";
-import { beaconRateLimited } from "@/lib/marketing/rateLimit";
+import { beaconRequestLimited } from "@/lib/marketing/rateLimit";
 import { recordOutcome } from "@/lib/marketing/record";
 import {
   addTouchpoint,
@@ -83,7 +83,9 @@ async function keepAlive(req) {
 
 export async function POST(req) {
   if (!attributionEnabled()) return noContent();
-  if (beaconRateLimited(clientIp(req.headers))) {
+  // By session where there is one, so students sharing a campus IP are not
+  // throttled together (lib/marketing/rateLimit.js).
+  if (beaconRequestLimited({ ip: clientIp(req.headers), sessionId: await readSessionCookie(req) })) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
