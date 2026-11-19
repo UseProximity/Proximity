@@ -5,30 +5,9 @@ import SignAgreementDialog from "./SignAgreementDialog";
 import Spinner from "./Spinner";
 import SignerFields, { useSignerDetails } from "./SignerFields";
 import LicenseDisclosureFields, { MissingHint, useLicenseDisclosure } from "@/components/account/LicenseDisclosureFields";
-import PropertyChoice, { droppedUnits, hasListings, listWords } from "@/components/billing/ExhibitPropertyChoice";
+import PropertyChoice, { BUTTON, call, droppedUnits, hasListings, listWords } from "@/components/billing/ExhibitPropertyChoice";
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const BUTTON = "rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
 const PRIMARY = "rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60";
-
-// A JSON call. While another call for this landlord holds the signing lock (a
-// background build still finishing) the sign route answers 409 "in_progress":
-// wait and ask again rather than show that.
-async function call(url, { method = "GET", body, retries = 0 } = {}) {
-  for (let attempt = 0; ; attempt += 1) {
-    const res = await fetch(url, {
-      method,
-      ...(body && { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) return data;
-    if (res.status === 409 && data.code === "in_progress" && attempt < retries) {
-      await wait(1500);
-      continue;
-    }
-    throw new Error(data.error || "Something went wrong. Please try again.");
-  }
-}
 
 const STEPS = ["Your details", "Properties covered", "Real estate license"];
 

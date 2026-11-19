@@ -84,15 +84,27 @@ function todoList(missing, uncovered) {
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
 }
 
+// A paper copy is out: who it went to (the landlord, or `signerName`, their
+// authorized signer), and anything else still in the way, so the next publish
+// is not refused for something this message never mentioned.
+function paperNotice(missing, signerName) {
+  const sent = signerName
+    ? `Your marketing agreement was sent to ${signerName} to sign on paper. Once we receive the signed copy, the properties on it can go live. To change anything, email info@useproximity.org.`
+    : PAPER_OUT_MESSAGE;
+  // With a signer, the payment method is the signer's to add.
+  const rest = missing.filter((m) => m !== "paper_agreement" && m !== "agreement" && (!signerName || m === "overdue_invoice"));
+  return rest.length ? `${sent} You also need to ${todoList(rest, [])} under Billing.` : sent;
+}
+
 // What to tell a landlord who is blocked. Plain words, and where to fix it.
-export function gateMessage(missing, uncovered = []) {
-  if (missing.includes("paper_agreement")) return `${PAPER_OUT_MESSAGE} Your drafts are saved.`;
+export function gateMessage(missing, uncovered = [], { signerName = null } = {}) {
+  if (missing.includes("paper_agreement")) return `${paperNotice(missing, signerName)} Your drafts are saved.`;
   return `Before you can publish a listing you need to ${todoList(missing, uncovered)}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
 }
 
 // What to tell a landlord whose publish was kept as a draft instead (code billing_needed).
-export function draftedMessage(missing, uncovered = []) {
-  if (missing.includes("paper_agreement")) return `Saved as a draft. ${PAPER_OUT_MESSAGE}`;
+export function draftedMessage(missing, uncovered = [], { signerName = null } = {}) {
+  if (missing.includes("paper_agreement")) return `Saved as a draft. ${paperNotice(missing, signerName)}`;
   return `Saved as a draft. To publish it, ${todoList(missing, uncovered)} under Billing.`;
 }
 
@@ -114,12 +126,13 @@ export function gateResponseBody(gate) {
       drafted: waits ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.` : draftedMessage(gate.missing, gate.uncovered ?? []),
     };
   }
+  const who = { signerName: gate.payer?.name ?? null };
   return {
-    error: gateMessage(gate.missing, gate.uncovered ?? []),
+    error: gateMessage(gate.missing, gate.uncovered ?? [], who),
     code: "billing_setup_required",
     missing: gate.missing,
     uncovered: gate.uncovered ?? [],
-    drafted: draftedMessage(gate.missing, gate.uncovered ?? []),
+    drafted: draftedMessage(gate.missing, gate.uncovered ?? [], who),
   };
 }
 

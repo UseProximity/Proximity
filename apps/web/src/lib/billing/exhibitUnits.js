@@ -29,7 +29,10 @@ const NAME_MAX = 60;
 // told the agreement is out on paper rather than shown a popup they can't finish.
 export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false, paper = false } = {}) {
   const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now);
-  if (!paper) assertNoPaperOut(loaded.state);
+  if (!paper) {
+    assertNoPaperOut(loaded.state);
+    assertNoPaperOut(loaded.signerState);
+  }
   const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
   const { state, rows, covered } = loaded;
   const properties = await withRequestedProperties(db, withRequiredUnits(loaded.properties, requiredUnits), requested, requiredUnits);

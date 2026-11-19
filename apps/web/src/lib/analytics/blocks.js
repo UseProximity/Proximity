@@ -10,8 +10,12 @@ import { gaConfigured, gaEventUsers } from "@/lib/analytics/ga";
  *     tiles:         [{ label, current, previous?, format?: "number" | "percent" | "days" | "money", hint? }],
  *     trends:        [{ title, source, series: [{ label, values: number[] }] }],   one value per week
  *     distributions: [{ title, source, rows: [[label, count]], answered?, note? }],  bar chart + table
- *     tables:        [{ title, source, columns: [{ label, format? }], rows: [[...]] }],
- *                    (a cell may be { value, format } to override its column's format)
+ *     tables:        [{ title, source, columns: [{ label, format? }], rows: [[...]], wide? }],
+ *                    (a cell may be { value, format, href? } to override its column's format
+ *                    or link it; wide spans the full width)
+ *     pivots:        [{ title, source, firstColumn, columns: [{ key, label, format? }],
+ *                      rows: [{ label, href?, metrics: { [key]: number }, children?: [same] }] }]
+ *                    a sortable table whose rows expand into child rows (Marketing tab)
  *     notes:         [string],
  *   }
  *
@@ -52,6 +56,7 @@ export function block(title, parts = {}) {
     trends: parts.trends ?? [],
     distributions: parts.distributions ?? [],
     tables: parts.tables ?? [],
+    pivots: parts.pivots ?? [],
     notes: parts.notes ?? [],
   };
 }

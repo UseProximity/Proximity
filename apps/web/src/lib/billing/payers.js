@@ -38,7 +38,7 @@
  */
 import { BillingError } from "./errors.js";
 import { activePayerLink, clearDocumentRequests, payeeLinks } from "./payerLinks.js";
-import { agreementState, coverageFor, voidDocument } from "./agreements.js";
+import { agreementState, coverageFor, isPaperOut, voidDocument } from "./agreements.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { displayAddress } from "./coverage.js";
 import { getGateSettings } from "./listingGate.js";
@@ -603,7 +603,8 @@ export async function payerAccounts(db, payerId, now = new Date()) {
         ? waiting.filter((w) => covered.has(w.listing_id)).map((w) => ({ listingId: w.listing_id, address: nameOf.get(w.listing_id) ?? "Listing" }))
         : [],
       // What signing for it now makes: the agreement itself, or an addendum to it.
-      needs: !state.valid ? "agreement" : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length ? "addendum" : null,
+      // "paper": their agreement is out on paper, so there is nothing to sign in the app.
+      needs: !state.valid ? (isPaperOut(state) ? "paper" : "agreement") : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length ? "addendum" : null,
       // The landlord's drafts not covered yet: the signer sees them and may add
       // them to the agreement (Wyatt, 2026-11-09). Covering a draft does not publish it.
       drafts: properties

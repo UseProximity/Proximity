@@ -429,7 +429,7 @@ export async function runJob(jobId) {
       const item = await runSyncJob(job, { onStep });
       await supabase.from("listing_import_jobs").update({
         status: "done",
-        step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.status === "unchanged" ? "Nothing changed" : item.holdReason === "churn_hold" ? "Skipped: too much changed at once" : `${item.applied.length} applied, ${item.denied?.length ?? 0} denied`,
+        step: target.knowledge ? `Read ${item.pages?.pages ?? 0} pages, ${item.pages?.written ?? 0} new things saved` : target.propose ? `${item.held.length} proposed change${item.held.length === 1 ? "" : "s"}` : item.portalPending ? item.note : item.status === "unchanged" ? "Nothing changed" : item.holdReason === "churn_hold" ? "Skipped: too much changed at once" : `${item.applied.length} applied, ${item.denied?.length ?? 0} denied`,
         progress: 100, finished_at: new Date().toISOString(),
         result: {
           mode: "sync", status: item.status, platform: item.platform, confidence: item.confidence, summary: item.summary, applied: item.applied.length, held: item.held.length, holdReason: item.holdReason, pages: item.pages, seconds: item.seconds,
@@ -437,6 +437,8 @@ export async function runJob(jobId) {
           denied: item.denied?.length ?? 0, deniedNew: item.deniedNew ?? 0, deep: !!item.deep, unitListComplete: item.unitListComplete ?? null,
           refused: (item.refused ?? []).slice(0, 20),
           unitPages: (item.unitPages ?? []).map((u) => ({ unit: u.unit, status: u.status })),
+          // The leasing portal: read nothing (and whether the listing kept its prices), or part way through its walk.
+          portalUnread: item.portalUnread ?? null, portalUnreadKept: item.portalUnreadKept ?? null, portalPending: !!item.portalPending,
         },
       }).eq("id", jobId);
       // A landlord's sync goes on to read the whole site.

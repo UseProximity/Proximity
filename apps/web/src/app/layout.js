@@ -5,6 +5,7 @@
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
  * Also mounts FeedbackWidget (bottom-left). Messages live at /messages (header entry).
+ * MarketingBeacon sends the marketing attribution session beacon on each route change.
  * Also mounts the Vercel Analytics and Speed Insights beacons and Google Analytics (GA4) tag. All client
  * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
  * inside Providers.
@@ -23,6 +24,7 @@ import GlobalListingModal from "@/components/listings/GlobalListingModal";
 import GlobalMessagesPanel from "@/components/chat/GlobalMessagesPanel";
 import ErrorReporter from "@/components/ErrorReporter";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
+import MarketingBeacon from "@/components/marketing/MarketingBeacon";
 import Providers from "@/components/layout/Providers";
 import { serializeJsonLd } from "@/lib/jsonLd";
 import { Analytics } from "@vercel/analytics/next";
@@ -108,6 +110,7 @@ export default async function RootLayout({ children }) {
           <GlobalMessagesPanel />
           <ErrorReporter />
           <FeedbackWidget />
+          <MarketingBeacon />
           {children}
           <Analytics />
           <SpeedInsights />

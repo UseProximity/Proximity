@@ -21,6 +21,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
+import { recordActivation } from "@/lib/marketing/accounts";
 
 export async function POST(req) {
   try {
@@ -81,6 +82,8 @@ export async function POST(req) {
       console.error("set-password: update failed", writeError);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
+
+    await recordActivation(req, { userId: user.id });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

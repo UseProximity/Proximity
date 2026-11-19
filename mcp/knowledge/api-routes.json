@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-18T20:04:51.870Z",
-  "count": 280,
+  "_generated": "2026-11-19T22:51:42.974Z",
+  "count": 285,
   "routes": [
     {
       "path": "/api/account",
@@ -144,6 +144,18 @@
         "listing_agents"
       ],
       "file": "src/app/api/admin/agents/queue/route.js"
+    },
+    {
+      "path": "/api/admin/analytics",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/analytics/route.js"
     },
     {
       "path": "/api/admin/billing/agreement-versions",
@@ -804,6 +816,34 @@
       },
       "tables": [],
       "file": "src/app/api/admin/lists/[name]/route.js"
+    },
+    {
+      "path": "/api/admin/marketing/links",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/marketing/links/route.js"
+    },
+    {
+      "path": "/api/admin/marketing/links/[id]",
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "PATCH": "admin",
+        "DELETE": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/marketing/links/[id]/route.js"
     },
     {
       "path": "/api/admin/mass-email",
@@ -2161,6 +2201,21 @@
       "file": "src/app/api/cron/lease-check-cleanup/route.js"
     },
     {
+      "path": "/api/cron/marketing-retention",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [
+        "marketing_sessions",
+        "marketing_outcome_rejections"
+      ],
+      "file": "src/app/api/cron/marketing-retention/route.js"
+    },
+    {
       "path": "/api/cron/pms-sync",
       "methods": [
         "GET"
@@ -2197,6 +2252,8 @@
         "user_filter_summaries",
         "review_votes",
         "lease_checks",
+        "marketing_outcomes",
+        "marketing_sessions",
         "waitlist_clicks",
         "events",
         "listing_applications",
@@ -3371,6 +3428,18 @@
       },
       "tables": [],
       "file": "src/app/api/listings/suggested/route.js"
+    },
+    {
+      "path": "/api/marketing/session",
+      "methods": [
+        "POST"
+      ],
+      "auth": "any",
+      "methodAuth": {
+        "POST": "any"
+      },
+      "tables": [],
+      "file": "src/app/api/marketing/session/route.js"
     },
     {
       "path": "/api/matchmaking/chat",

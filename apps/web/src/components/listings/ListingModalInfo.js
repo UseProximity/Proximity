@@ -1579,7 +1579,7 @@ export default function ListingModalInfo({
   }, [activeTab]);
 
   // A Find Your Place match opened some other way than from the matches page.
-  // Deferred a moment: a ?src=matchmaking deep link marks its source in the
+  // Deferred a moment: a ?from=matchmaking deep link marks its source in the
   // browse page's own effect, which runs after this panel's.
   useEffect(() => {
     if (preview || !listing?._id) return;
@@ -1602,9 +1602,21 @@ export default function ListingModalInfo({
   const applyBarH = useRef(0);
   const onApplyBarCb = useRef(onApplyBar);
   onApplyBarCb.current = onApplyBar;
+  // Where the title and tabs stick (stickTop), read from the style once and again
+  // only when it can have changed: the bar's height, or the window's size.
+  const headTopRef = useRef(null);
+  const headTop = useCallback((head) => (headTopRef.current ??= head ? stickTop(head) : null) ?? 0, []);
   const onApplyBarHeight = useCallback((h) => {
     applyBarH.current = h;
+    headTopRef.current = null;
     onApplyBarCb.current?.(h);
+  }, []);
+  useEffect(() => {
+    const reset = () => {
+      headTopRef.current = null;
+    };
+    window.addEventListener("resize", reset);
+    return () => window.removeEventListener("resize", reset);
   }, []);
   const [headStuck, setHeadStuck] = useState(false);
   // The browse panel's sliding pills follow the same stuck state (one listener).
@@ -1620,7 +1632,7 @@ export default function ListingModalInfo({
       // The header sticks below the "Did you submit?" bar when that shows. In
       // a scrolling panel that is the panel's top plus the bar; on the full
       // page, the header's own sticky top, which already counts the bar.
-      const top = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
+      const top = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
       const dist = el.getBoundingClientRect().top - top;
       if (!stuck && dist < 0) stuck = true;
       else if (stuck && dist > HEAD_UNSTICK) stuck = false;
@@ -1631,7 +1643,7 @@ export default function ListingModalInfo({
     onScroll();
     target.addEventListener("scroll", onScroll, { passive: true });
     return () => target.removeEventListener("scroll", onScroll);
-  }, [detailLoading]);
+  }, [detailLoading, headTop]);
 
   /*
    * One continuous page: every section renders in order and the tabs are
@@ -1658,7 +1670,7 @@ export default function ListingModalInfo({
     spyQuietUntil.current = Date.now() + 1000;
     onSectionJumpRef.current?.();
     const root = scrollParent(section);
-    const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
+    const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
     const scrolled = root ? root.scrollTop : window.scrollY;
     /*
      * Less the header's height as it is NOW. If it isn't stuck yet it compacts
@@ -1682,7 +1694,7 @@ export default function ListingModalInfo({
     const ids = visibleKey.split(",");
     const onScroll = () => {
       if (Date.now() < spyQuietUntil.current) return;
-      const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : stickTop(headRef.current);
+      const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
       const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
       const scrolled = root ? root.scrollTop : window.scrollY;
       const viewport = root ? root.clientHeight : window.innerHeight;
@@ -1700,7 +1712,7 @@ export default function ListingModalInfo({
     };
     target.addEventListener("scroll", onScroll, { passive: true });
     return () => target.removeEventListener("scroll", onScroll);
-  }, [detailLoading, visibleKey]);
+  }, [detailLoading, visibleKey, headTop]);
 
   // Run a jump that was asked for while the skeleton was still up.
   useEffect(() => {

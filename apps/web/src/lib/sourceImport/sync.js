@@ -23,7 +23,7 @@
  * the agents), so moving a landlord to weekly is a column update.
  */
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
+import { getBaseUrl, needsLook, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
 import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
 import { readProperty, DraftFetchError } from "./read.js";
 import { nextSundayCheckAt } from "./readers/portalWalkParse.js";
@@ -214,7 +214,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
         .update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date().toISOString() })
         .eq("id", m.id);
       console.log(`[source-sync] ${label}: ${note}`);
-      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: summarize(snapshot), pages: [], unitPages: [], note };
+      // No summary: nothing was read from the website, which is not the same as a page with no units on it.
+      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: null, pages: [], unitPages: [], note, portalPending: true };
     }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
@@ -284,6 +285,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       pages,
       unitPages,
       portalUnread: snapshot.portalUnread ?? null,
+      portalUnreadKept: snapshot.portalUnreadKept ?? null,
     };
     console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${item.seconds}s, ${pages.filter((p) => p.written).length} page${pages.length === 1 ? "" : "s"} with new knowledge)`);
     return item;
@@ -331,8 +333,7 @@ export async function runSourceSync({ listingId = null, limit = 30, force = fals
   for (const m of monitors) items.push(await syncMonitor(m, { force, email, deep }));
 
   // One digest per run, when there is anything to say.
-  const worth = items.filter((i) => (i.status !== "unchanged" && i.status !== "ok") || i.portalUnread);
-  if (email && worth.length) {
+  if (email && items.some(needsLook)) {
     try {
       await sendSourceSyncDigestEmail({ to: ALERT_TO, items, baseUrl: getBaseUrl() });
     } catch (e) {

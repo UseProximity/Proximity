@@ -368,7 +368,7 @@ export function PayerCard({ view, onChanged }) {
  * before anything new goes live (Wyatt, 2026-11-09).
  */
 export function SignerChecklist({ accounts, hasPaymentMethod }) {
-  const signed = !accounts.some((a) => a.needs === "agreement");
+  const signed = !accounts.some((a) => a.needs === "agreement" || a.needs === "paper");
   const addendaDue = accounts.filter((a) => a.needs === "addendum").length;
   const held = accounts.reduce((n, a) => n + (a.waitingOnPaymentMethod?.length ?? 0), 0);
   return (
@@ -397,10 +397,22 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
   // (Wyatt, 2026-11-09). After that, each account's new properties are an addendum.
   const needingAgreement = accounts.filter((a) => a.needs === "agreement").map((a) => a.landlordId);
 
+  // Their agreement is out on paper: nothing to sign here until we have it back.
+  const onPaper = accounts.some((a) => a.needs === "paper");
+
   if (!accounts.length) return null;
   return (
     <div className="space-y-3 border-t border-gray-100 pt-3">
       <p className="text-sm font-medium text-gray-900">Accounts you are the authorized signer for</p>
+
+      {onPaper && (
+        <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <p>
+            We sent you the marketing agreement to sign on paper. Once we receive your signed copy, the properties on it can go live. To change anything,
+            email info@useproximity.org.
+          </p>
+        </div>
+      )}
 
       {needingAgreement.length > 0 && (
         <div className="rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-2">
@@ -432,7 +444,11 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
             {a.needs && (
               <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-2">
                 <p>
-                  {a.needs === "agreement"
+                  {a.needs === "paper"
+                    ? a.waiting.length
+                      ? `Waiting on your signed paper agreement (${a.waiting.length} ${a.waiting.length === 1 ? "property" : "properties"}):`
+                      : "Waiting on your signed paper agreement."
+                    : a.needs === "agreement"
                     ? a.waiting.length
                       ? `Covered once you sign the agreement above (${a.waiting.length} ${a.waiting.length === 1 ? "property" : "properties"}):`
                       : "Covered once you sign the agreement above."
@@ -475,7 +491,7 @@ export function PaidForAccounts({ accounts, onChanged, hasPaymentMethod = true }
                     <li key={d.listingId}>{d.address}</li>
                   ))}
                 </ul>
-                {a.needs ? (
+                {a.needs === "paper" ? null : a.needs ? (
                   <p className="mt-1 text-xs text-gray-500">They are on the same document when you sign; you can leave any off on the Exhibit A step.</p>
                 ) : (
                   <button type="button" className={`${BUTTON} mt-1`} disabled={!!signing} onClick={() => setSigning({ accountId: a.landlordId, includeDrafts: true })}>

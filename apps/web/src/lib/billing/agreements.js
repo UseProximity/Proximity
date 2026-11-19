@@ -212,6 +212,9 @@ export async function takeoverCoverage(db, userId, now = new Date()) {
   const signerCovered = coveredMap(rows, { master: signerState.signed, masterValid: signerState.valid });
   return {
     state,
+    // The signer's own agreement state: a paper copy of theirs out for this
+    // account holds the takeover off too.
+    signerState,
     properties,
     rows,
     covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }),
@@ -344,7 +347,9 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
     // Out on paper: the properties printed on it, waiting for the signed copy.
-    paper: paperOut ? { sentAt: pending.created_at, properties: (pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
+    // A signer's copy may be for another account they sign for, so an account
+    // with a signer is never shown what is on it.
+    paper: paperOut ? { sentAt: pending.created_at, properties: (state.payerLink ? [] : pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
     canSign: !paperOut && (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
     // A version made for them alone went live after they signed: signing it
     // replaces the one they have. Worded like any updated agreement, so nothing
@@ -656,6 +661,7 @@ export async function startSigning(
       const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
       const { state } = loaded;
       assertNoPaperOut(state);
+      assertNoPaperOut(loaded.signerState);
       let rows = loaded.rows;
       // Which account each property belongs to, so its coverage row is that account's.
       const accountOf = new Map(loaded.properties.map((p) => [p.listingId, account]));
@@ -832,7 +838,7 @@ async function currentStatus(db, doc) {
 }
 
 // Withdraw a copy in Documenso, best effort: cancelled if it was opened, deleted if still a draft.
-async function cancelInDocumenso(documenso, row, reason) {
+export async function cancelInDocumenso(documenso, row, reason) {
   if (!row?.provider_envelope_id) return;
   const withdraw = documenso.discard ? documenso.discard.bind(documenso) : documenso.cancel.bind(documenso);
   await withdraw(row.provider_envelope_id, reason).catch(() => {});

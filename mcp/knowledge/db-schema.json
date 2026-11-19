@@ -1,6 +1,6 @@
 {
   "_description": "Supabase (PostgreSQL) public schema for Proximity, with what each table is for, who reads and writes it, keys and constraints, RPC functions, triggers, webhooks, the edge function, RLS and environment drift. Columns are \"name:type\" using Postgres udt_name (int4, int8, int2, numeric, bool, text, uuid, jsonb, date, timestamptz; a leading underscore means an array: _text = text[], _int4 = integer[]). Column order is the physical order on the dev DB.",
-  "_generated": "2026-10-12T00:00:00Z",
+  "_generated": "2026-11-17T00:00:00Z",
   "_source": {
     "schema": "dev DB information_schema + pg_catalog on 2026-10-12",
     "verified_against_prod": "2026-10-12 (every table and column compared; differences are listed under supabase.environments)",
@@ -2786,7 +2786,11 @@
           "preferred_lease_months:int4",
           "preferred_beds:int4",
           "review_sandbox:bool",
-          "billing_only:bool"
+          "billing_only:bool",
+          "signup_session_id:uuid",
+          "signup_source:text",
+          "signup_medium:text",
+          "signup_campaign:text"
         ],
         "dev_only_columns": [
           "apple_refresh_token",
@@ -2801,7 +2805,8 @@
           "email_notifications": "chat email opt-out (unsubscribe token flips it to false)",
           "is_system": "house accounts such as guest@proximity.test and info@; never treated as a landlord",
           "apple_refresh_token/company_name": "DEV ONLY columns",
-          "review_sandbox": "App Store review sandbox account (default false). Set only by the team, by SQL; no API sets it. The server keeps everything a flagged account does away from real users: emails to or from it (chat alerts, owner inquiries, contact verification) are suppressed, never sent or redirected, and recorded in sent_emails as suppressed with the reason 'review sandbox'; no push to non-sandbox users, its threads are hidden from the other person's inbox, its listings are hidden from the public (lib/reviewSandbox.js). Partial index idx_users_review_sandbox. Migration 202611020001, applied to dev and prod 2026-11-02."
+          "review_sandbox": "App Store review sandbox account (default false). Set only by the team, by SQL; no API sets it. The server keeps everything a flagged account does away from real users: emails to or from it (chat alerts, owner inquiries, contact verification) are suppressed, never sent or redirected, and recorded in sent_emails as suppressed with the reason 'review sandbox'; no push to non-sandbox users, its threads are hidden from the other person's inbox, its listings are hidden from the public (lib/reviewSandbox.js). Partial index idx_users_review_sandbox. Migration 202611020001, applied to dev and prod 2026-11-02.",
+          "signup_session_id/signup_source/signup_medium/signup_campaign": "Where the account came from, stamped once at creation by lib/marketing/accounts.js stampSignup on every creation path: the live marketing session's source, or 'app' (mobile), 'invite' (payer and admin invites), or 'unknown' (web signup with no live session). Not the same as referral_source, which stays the self-reported answer. signup_session_id -> marketing_sessions.id (set null); index (signup_source, signup_campaign) where signup_source is not null. Cleared by the account purge. Migration 202611180001."
         },
         "notes": "status=active; pk id; fk role_id->roles.id; school_id->schools.id (set null); unique (email) | (apple_sub) where not null; check payment_method in (zelle,venmo) or null; rls: on, with policies (app uses the service role anyway)",
         "observed_2026_10_12": {
@@ -3529,6 +3534,101 @@
           "edited_at:timestamptz (nullable; set only when the text changes, drives the 'edited' label)"
         ],
         "notes": "status=unreleased (202611140001, applied to dev and prod 2026-11-14; code ships with PR 433); rls on, service role only; action_log trigger; updated_at trigger; index (subject_type,subject_id,created_at desc); partial index on follow_up_on where open"
+      },
+      {
+        "table": "marketing_links",
+        "status": "unreleased",
+        "description": "Campaign links made on Admin > Analytics > Campaign links (PRD 7.9): a slug carrying source, medium, campaign and content, used as ?src=<slug> on any page and as the /go/<slug> short link that QR codes point at. destination_path is a path on our own domain and can change after printing; the slug cannot (trigger). An archived link keeps attributing. A link with sessions cannot be deleted (FK restrict from sessions and touchpoints).",
+        "columns": [
+          "id:uuid",
+          "slug:text",
+          "name:text",
+          "source:text",
+          "medium:text",
+          "campaign:text",
+          "content:text",
+          "destination_path:text",
+          "status:text",
+          "created_by:uuid",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk id; unique slug; fk created_by->users.id (set null); check slug and labels ^[a-z0-9_-]{1,40}$, name 1-120 chars, destination_path starts with a single \"/\" (no whitespace or backslash, <= 500), status in (active, archived); indexes (status, created_at desc), (campaign); triggers trg_marketing_links_lock_slug, trg_set_updated_at_marketing_links, trg_action_log_marketing_links; rls: on, no policies; revoked from anon and authenticated (service role only). Migration 202611180001_marketing_attribution.sql (dev applied; prod pending, with the PR)."
+      },
+      {
+        "table": "marketing_sessions",
+        "status": "unreleased",
+        "description": "One visit (PRD 7.2): created by the browser beacon POST /api/marketing/session, never by the server request, and renewed by each beacon while the 30-minute HttpOnly prx_msid cookie lives. The first source owns the session (classified by lib/marketing/classify.js: link, utm, src, gclid, referrer or direct); later campaign arrivals are touchpoints. user_id is attached at signup or sign-in. Unlinked sessions are deleted after 13 months by /api/cron/marketing-retention; linked ones by the account purge. No names, emails or IPs.",
+        "columns": [
+          "id:uuid",
+          "started_at:timestamptz",
+          "last_seen_at:timestamptz",
+          "source:text",
+          "medium:text",
+          "campaign:text",
+          "content:text",
+          "term:text",
+          "gclid:text",
+          "classified_from:text",
+          "link_id:uuid",
+          "landing_path:text",
+          "referrer_host:text",
+          "tags_cleaned:bool",
+          "user_id:uuid"
+        ],
+        "notes": "pk id; fk link_id->marketing_links.id (restrict); user_id->users.id (cascade); check classified_from in (link, utm, src, gclid, referrer, direct), gclid <= 200, landing_path <= 500, referrer_host <= 255; indexes (started_at desc), (source, campaign), (link_id) partial, (user_id) partial, (started_at) where user_id is null (retention); rls: on, no policies; revoked from anon and authenticated (service role only). Migration 202611180001_marketing_attribution.sql (dev applied; prod pending, with the PR)."
+      },
+      {
+        "table": "marketing_touchpoints",
+        "status": "unreleased",
+        "description": "A later campaign arrival inside a live session (PRD D4): logged in order, never credited. Kept for the later multi-touch phase. Repeats of the session's own source or of the previous touchpoint are not written.",
+        "columns": [
+          "id:uuid",
+          "session_id:uuid",
+          "occurred_at:timestamptz",
+          "source:text",
+          "medium:text",
+          "campaign:text",
+          "content:text",
+          "term:text",
+          "gclid:text",
+          "classified_from:text",
+          "link_id:uuid",
+          "path:text"
+        ],
+        "notes": "pk id; fk session_id->marketing_sessions.id (cascade); link_id->marketing_links.id (restrict); check classified_from as on sessions, gclid <= 200, path <= 500; indexes (session_id, occurred_at), (occurred_at desc), (link_id) partial; rls: on, no policies; revoked from anon and authenticated (service role only). Migration 202611180001_marketing_attribution.sql (dev applied; prod pending, with the PR)."
+      },
+      {
+        "table": "marketing_outcomes",
+        "status": "unreleased",
+        "description": "The canonical outcomes of PRD section 6, written by recordOutcome (lib/marketing/record.js) server-side, except guides_visit and hub_visit from the beacon. source/medium/campaign/link_id and user_role are snapshots: of the session, else of the account's signup_* columns, else app. tier is generated from outcome. dedupe_key (unique, always starting '<outcome>:') enforces the 'Counted' column: per account, per listing per session (s:<session> or u:<user>:<UTC day> without a session), per application, or every one. application_submitted is credited to the session of the first application_started. Read by the Marketing tab of the admin Analytics page, which leaves out admin and super accounts.",
+        "columns": [
+          "id:uuid",
+          "session_id:uuid",
+          "user_id:uuid",
+          "outcome:text",
+          "tier:text (generated)",
+          "user_role:text",
+          "source:text",
+          "medium:text",
+          "campaign:text",
+          "link_id:uuid",
+          "subject_id:uuid",
+          "occurred_at:timestamptz",
+          "dedupe_key:text"
+        ],
+        "notes": "pk id; unique dedupe_key; fk session_id->marketing_sessions.id (cascade); user_id->users.id (cascade); link_id->marketing_links.id (set null); check outcome in the 13 canonical names, dedupe_key like outcome || ':%' and <= 300; tier generated (account | inquiry | application | engagement); subject_id = listing, review, application or lease check id (no FK); indexes (occurred_at desc), (outcome, occurred_at desc), (session_id), (user_id), (source, campaign), (link_id), (user_id, subject_id, occurred_at) where outcome = 'application_started'; rls: on, no policies; revoked from anon and authenticated (service role only). Migration 202611180001_marketing_attribution.sql (dev applied; prod pending, with the PR)."
+      },
+      {
+        "table": "marketing_outcome_rejections",
+        "status": "unreleased",
+        "description": "One row per outcome refused by its dedupe_key (a retry or double click), for the Data quality block's 'duplicate outcomes rejected'. Repeat page visits (guides_visit, hub_visit) are not logged here. Holds no identity; deleted after 13 months by /api/cron/marketing-retention.",
+        "columns": [
+          "id:uuid",
+          "outcome:text",
+          "occurred_at:timestamptz"
+        ],
+        "notes": "pk id; index (occurred_at desc); rls: on, no policies; revoked from anon and authenticated (service role only). Migration 202611180001_marketing_attribution.sql (dev applied; prod pending, with the PR)."
       }
     ],
     "functions": [
@@ -3994,6 +4094,15 @@
         "called_from": "BEFORE INSERT trigger unit_leases_inherit_application_url on unit_leases",
         "defined_in": "supabase/migrations/202611160001_application_per_landlord.sql",
         "description": "A new lease with no application_url takes the link from the same owner's other live lease at the property, so one link per landlord per property holds for leases added later (editor, add flow, importer, PMS)."
+      },
+      {
+        "name": "fn_marketing_links_lock_slug",
+        "kind": "trigger_fn",
+        "args": "-",
+        "touches": "marketing_links",
+        "called_from": "trigger trg_marketing_links_lock_slug",
+        "defined_in": "202611180001_marketing_attribution.sql",
+        "description": "Rejects a change to marketing_links.slug (check_violation): slugs are printed on paper and in QR codes. Not SECURITY DEFINER; search_path set; execute revoked from public."
       }
     ],
     "triggers": {
@@ -4038,7 +4147,8 @@
         "thread_types",
         "unit_leases",
         "user_listing_interactions",
-        "users"
+        "users",
+        "marketing_links"
       ],
       "updated_at stamps (fn_set_updated_at or set_updated_at)": [
         "chat_threads",
@@ -4074,7 +4184,8 @@
         "testimonials",
         "unit_leases",
         "users",
-        "verified_residencies"
+        "verified_residencies",
+        "marketing_links"
       ],
       "aggregates (sync_listing_aggregates -> listings.min/max columns)": [
         "listing_units",
@@ -4114,6 +4225,9 @@
         ],
         "unit_leases": [
           "unit_leases_inherit_application_url (BEFORE INSERT: application_url from the owner's other live lease at the property, 202611160001)"
+        ],
+        "marketing_links": [
+          "trg_marketing_links_lock_slug (BEFORE UPDATE: the slug cannot change once saved)"
         ]
       },
       "note": "Tables created in Oct 2026 (user_blocks, review_reports, chat_reports, listing_reports, chat_attachments, chat_access_tokens, waitlist_clicks, review_invites, student_roster, seo_query_metrics, checkin_response_events, lead_*, listing_source_snapshots) have NO action_log trigger; add trg_action_log_<table> in the migration if you want them audited."

@@ -203,6 +203,9 @@ export async function POST(request) {
       sessionId = data?.id ?? null;
     }
 
+    // Every search that answered, so failures can be read as a share of all searches.
+    after(() => recordFypEvent({ name: "searched", userId: actor?.id ?? null, visitorId: visitor, metadata: { retry, rerun: !!existing } }));
+
     const u = result.usage;
     console.log(
       `[find-your-place] ${result.matches.length} matches of ${result.totalMatches} fits (parse:${result.parseSource} in:${(u.parse?.input_tokens ?? 0) + (u.pick?.input_tokens ?? 0)} out:${(u.parse?.output_tokens ?? 0) + (u.pick?.output_tokens ?? 0)})`

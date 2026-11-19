@@ -21,6 +21,30 @@ import { BOX_RULES } from "./documenso.js";
 // [Owner], [Address 1], [Exhibit A before]: a letter first, up to 40 characters.
 const PLACEHOLDER = /\[([A-Za-z][A-Za-z0-9 ._'/-]{0,39})\]/g;
 
+async function openPdf(bytes) {
+  const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // pdf.js runs its "worker" in this process when it is handed the module. Loading
+  // it here also makes the deploy include the file: on Vercel pdf.js's own lookup
+  // of pdf.worker.mjs found nothing ("Setting up fake worker failed", 2026-11-07).
+  if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+  return { doc, OPS };
+}
+
+// One page's thin horizontal rules: [{ x0, x1, y }] (see findRules).
+async function pageRules(page, OPS) {
+  const ops = await page.getOperatorList();
+  const rules = [];
+  ops.fnArray.forEach((fn, i) => {
+    if (fn !== OPS.constructPath) return;
+    const box = ops.argsArray[i]?.[2];
+    if (!Array.isArray(box) || box.length < 4) return;
+    const [x0, y0, x1, y1] = box.map(Number);
+    if (Math.abs(y1 - y0) <= 2 && Math.abs(x1 - x0) >= 30) rules.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y: (y0 + y1) / 2 });
+  });
+  return rules;
+}
+
 /*
  * Every placeholder in the PDF: [{ label, page (1-based), x, y (baseline), width,
  * size (font size), pageWidth, pageHeight, roomRight (free space to its right on
@@ -28,17 +52,22 @@ const PLACEHOLDER = /\[([A-Za-z][A-Za-z0-9 ._'/-]{0,39})\]/g;
  * Text on one line is joined first, so a placeholder split into pieces by the
  * export ("[Owner" + " Name]") is still found.
  */
-export async function findPlaceholders(bytes) {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  // pdf.js runs its "worker" in this process when it is handed the module. Loading
-  // it here also makes the deploy include the file: on Vercel pdf.js's own lookup
-  // of pdf.worker.mjs found nothing ("Setting up fake worker failed", 2026-11-07).
-  if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
-  const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+export async function findPlaceholders(bytes, { rules = null } = {}) {
+  const { doc, OPS } = await openPdf(bytes);
   const out = [];
   try {
     for (let p = 1; p <= doc.numPages; p += 1) {
       const page = await doc.getPage(p);
+      // `rules` (an object) is filled with each page's drawn lines on the same
+      // pass, so a caller needing both reads the PDF once (see findRules).
+      if (rules) {
+        try {
+          const drawn = await pageRules(page, OPS);
+          if (drawn.length) rules[p] = drawn;
+        } catch (err) {
+          console.error("billing: could not read the PDF's lines", err?.message);
+        }
+      }
       const { width: pageWidth, height: pageHeight } = page.getViewport({ scale: 1 });
       const { items } = await page.getTextContent();
       // Characters by line (same baseline), each spread evenly across its piece's width.
@@ -91,21 +120,10 @@ export async function findPlaceholders(bytes) {
 export async function findRules(bytes) {
   const out = {};
   try {
-    const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    if (!globalThis.pdfjsWorker) globalThis.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
-    const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+    const { doc, OPS } = await openPdf(bytes);
     try {
       for (let p = 1; p <= doc.numPages; p += 1) {
-        const page = await doc.getPage(p);
-        const ops = await page.getOperatorList();
-        const rules = [];
-        ops.fnArray.forEach((fn, i) => {
-          if (fn !== OPS.constructPath) return;
-          const box = ops.argsArray[i]?.[2];
-          if (!Array.isArray(box) || box.length < 4) return;
-          const [x0, y0, x1, y1] = box.map(Number);
-          if (Math.abs(y1 - y0) <= 2 && Math.abs(x1 - x0) >= 30) rules.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y: (y0 + y1) / 2 });
-        });
+        const rules = await pageRules(await doc.getPage(p), OPS);
         if (rules.length) out[p] = rules;
       }
     } finally {
@@ -201,13 +219,15 @@ export function boxesFor(found) {
 /*
  * The PDF with every placeholder painted out in white, and the boxes to add.
  * Returns { bytes, boxes, found } (the original bytes when there are none).
+ * `rules` (an object), when given, is filled with the PDF's own drawn lines per
+ * page, as findRules returns them.
  */
-export async function preparePlaceholders(bytes) {
+export async function preparePlaceholders(bytes, { rules = null } = {}) {
   let found;
   try {
     // Only the placeholders we know become boxes; any other [bracketed] text, like
     // a drafting note, stays exactly as typed.
-    found = (await findPlaceholders(bytes)).filter((f) => isKnownPlaceholder(f.label));
+    found = (await findPlaceholders(bytes, { rules })).filter((f) => isKnownPlaceholder(f.label));
   } catch (err) {
     // An unreadable PDF keeps today's way: boxes placed by hand.
     console.error("billing: could not read placeholders", err?.message);

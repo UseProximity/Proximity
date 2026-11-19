@@ -1,7 +1,8 @@
 import supabase from "@/lib/supabase";
+import { appEnv, isProdData } from "@/lib/appEnv";
 
 /*
- * Small read helpers for /analytics. Reads go through the deployment's own database
+ * Small read helpers for the admin Analytics page. Reads go through the deployment's own database
  * (prod on useproximity.org, the dev snapshot on staging and the sandbox), so the page
  * always describes the data that deployment actually serves.
  */
@@ -44,4 +45,16 @@ export async function snapshotTakenAt() {
     .eq("key", "snapshot_taken_at")
     .maybeSingle();
   return data?.value ?? null;
+}
+
+/*
+ * The line under the Analytics title saying which database the numbers come from. On a copy
+ * of production (staging, the sandbox, local) it says so, with the date of the last refresh.
+ */
+export function dataSourceLine(snapshotAt) {
+  if (isProdData()) return "Database numbers are live from the production site.";
+  const when = snapshotAt
+    ? new Date(snapshotAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "the last weekly refresh";
+  return `Database numbers come from this ${appEnv()} copy of production, refreshed weekly (last on ${when}), plus any activity on this site since.`;
 }

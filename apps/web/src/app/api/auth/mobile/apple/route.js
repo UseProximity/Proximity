@@ -3,6 +3,7 @@ import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authM
 import { AppleTokenError, verifyAppleIdentityToken, exchangeAuthorizationCode } from "@/lib/appleAuth";
 import { AUTH_ERRORS } from "@proximity/auth-core";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+import { recordActivation, stampSignup } from "@/lib/marketing/accounts";
 
 const USER_SELECT = "id, email, name, image, profile_complete, deleted_at, roles!role_id(name)";
 
@@ -134,8 +135,10 @@ export async function POST(req) {
         userRow = winner;
       } else {
         userRow = newUser;
+        await stampSignup(req, { userId: newUser.id, role: "student", label: "app" });
       }
     }
+    await recordActivation(req, { userId: userRow.id, role: userRow.roles?.name ?? null, useCookie: false });
 
     // Kept only so account deletion can revoke the user's Apple grant. Best
     // effort: a failed exchange must not block signing in.

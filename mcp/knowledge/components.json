@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-17T22:37:12.718Z",
-  "count": 220,
+  "_generated": "2026-11-19T22:51:42.977Z",
+  "count": 227,
   "components": [
     {
       "name": "ErrorReporter",
@@ -164,6 +164,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "AnalyticsView",
+      "file": "src/components/admin/analytics/AnalyticsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "AdminAutopayLine",
       "file": "src/components/admin/billing/AdminAutopayLine.js",
       "description": "No description. Run generate after adding a description above."
@@ -264,6 +269,26 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "CampaignLinkDetail",
+      "file": "src/components/admin/marketing/CampaignLinkDetail.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CampaignLinkForm",
+      "file": "src/components/admin/marketing/CampaignLinkForm.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "CampaignLinksView",
+      "file": "src/components/admin/marketing/CampaignLinksView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "LinkQrCode",
+      "file": "src/components/admin/marketing/LinkQrCode.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "EmailEditor",
       "file": "src/components/admin/massEmail/EmailEditor.js",
       "description": "No description. Run generate after adding a description above."
@@ -331,6 +356,11 @@
     {
       "name": "DistributionChart",
       "file": "src/components/analytics/DistributionChart.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "PivotTable",
+      "file": "src/components/analytics/PivotTable.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -936,6 +966,11 @@
     {
       "name": "wizardShared",
       "file": "src/components/listings/wizard/wizardShared.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MarketingBeacon",
+      "file": "src/components/marketing/MarketingBeacon.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

@@ -78,7 +78,7 @@ export async function notifyTourRequested({ tourId }) {
   if (!r || !canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_request",
+    kind: "tour_request", audience: "landlord",
     to: await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email }),
     name: r.landlord.name,
     subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
@@ -103,7 +103,7 @@ export async function notifyTourProposed({ tourId }) {
   const replyTo = await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.student.id }).catch(() => null);
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_proposal", to: r.student.email, name: r.student.name,
+    kind: "tour_proposal", to: r.student.email, name: r.student.name, audience: "student",
     subject: `The landlord at ${r.listingLabel} wrote to you about your tour`,
     intro: `The landlord couldn't make the times you offered for ${r.listingLabel}, so they wrote to you directly:`,
     lines: first?.body ? [first.body] : [],
@@ -148,7 +148,7 @@ export async function notifyTourConfirmed({ tourId }) {
     const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
     await sendTourEmail({
       sandbox: r.sandbox,
-      kind: "tour_confirmed", to: u.email, name: u.name,
+      kind: "tour_confirmed", to: u.email, name: u.name, audience: isStudent ? "student" : "landlord",
       subject: isStudent ? `Tour confirmed: ${r.listingLabel}, ${when}` : `Tour confirmed: ${r.student?.name || "a student"}, ${when}`,
       intro: isStudent
         ? `You're booked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`
@@ -170,7 +170,7 @@ export async function notifyTourCancelled({ tourId, by }) {
   if (!canEmail(target)) return "no_recipient";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_cancelled", to: target.email, name: target.name,
+    kind: "tour_cancelled", to: target.email, name: target.name, audience: by === "student" ? "landlord" : "student",
     subject: `Tour request cancelled: ${r.listingLabel}`,
     intro: by === "student" ? `${r.studentLabel || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
     lines: [], note: by === "student" ? "" : "You can send new times from the calendar button in the chat.",
@@ -191,7 +191,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
       const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
       await sendTourEmail({
         sandbox: r.sandbox,
-        kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
+        kind: "tour_reminder", to: u.email, name: u.name, audience: u === r.student ? "student" : "landlord", subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
         lines: [`Address: ${r.address}`],
         note: replyTo ? "Reply to this email to message the other side." : "",
@@ -203,7 +203,7 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
   if (!canEmail(r.landlord)) return "no_recipient";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name,
+    kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name, audience: "landlord",
     subject: `Reminder: ${r.studentLabel || "a student"} is waiting to tour ${r.listingLabel}`,
     intro: `${r.studentLabel || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
     lines: rangeLines(r.t.student_slots),
@@ -224,7 +224,7 @@ export async function notifyTourNoAnswer({ tourId }) {
   if (!canEmail(r.student)) return "posted";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_no_answer", to: r.student.email, name: r.student.name,
+    kind: "tour_no_answer", to: r.student.email, name: r.student.name, audience: "student",
     subject: `No answer yet on your tour request for ${r.listingLabel}`,
     intro: `The landlord hasn't responded to your tour request for ${r.listingLabel} yet.`,
     lines: [], note: "If you're still interested, keep the request open, try other times, or browse similar places.",
