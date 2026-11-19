@@ -203,7 +203,9 @@ function UnitPills({ tabs, picked, onPick }) {
 
 // The cells of the comparison table. Each column is a subgrid over the table's
 // rows, so a row is as tall as its taller cell in every column.
-const COLUMNS = "grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]";
+// Below 1024px the panel is narrow: the label column and the cells' side
+// padding give their width to the two listings.
+const COLUMNS = "grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)] max-lg:grid-cols-[96px_minmax(0,1fr)_minmax(0,1fr)]";
 const ROW = "flex items-center border-t border-[#e6e7eb] py-4";
 
 // `tabs` are the listing's units; `reserve` is set when either listing has several,
@@ -253,7 +255,7 @@ function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, nudge
             <HeartIcon listingId={listing._id} />
           </div>
         </div>
-        <div className="px-4 pb-4 pt-1">
+        <div className="px-4 max-lg:px-3 pb-4 pt-1">
           <h3 className="truncate text-base font-bold text-black">{title}</h3>
           <p className="truncate text-xs font-medium text-[#404040]">{subtitle}</p>
           {/* New tab, so the comparison (kept only in memory) is not lost. */}
@@ -267,7 +269,7 @@ function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, nudge
           </a>
         </div>
         {reserve && (
-          <div className="h-14 px-4 pt-1">
+          <div className="h-14 px-4 max-lg:px-3 pt-1">
             {tabs.length > 1 && (
               <>
                 <p className="text-xs text-black">{tabs.length} units</p>
@@ -278,7 +280,7 @@ function Slot({ listing, tabs, picked, onPick, best, reserve, rows, empty, nudge
         )}
       </div>
       {compareRows(listing, tabs[picked]?.unit).map(([label, value]) => (
-        <div key={label} className={`${ROW} whitespace-pre-line px-6 text-base font-medium text-[#495564]`}>
+        <div key={label} className={`${ROW} whitespace-pre-line px-6 max-lg:px-3 text-base max-lg:text-sm font-medium text-[#495564]`}>
           {best.has(label) ? <Winner>{value}</Winner> : value}
         </div>
       ))}
@@ -340,21 +342,21 @@ function ListSection({ title, a, b }) {
     : items.length
     ? `${both.length} shared · ${items.length} ${items.length === 1 ? "difference" : "differences"}`
     : `All ${both.length} shared`;
-  const label = `${ROW} px-4 text-xs text-black`;
+  const label = `${ROW} px-4 max-lg:px-3 text-xs text-black`;
   return (
     <>
-      <div className={`${ROW} col-span-3 justify-between gap-3 px-4`}>
+      <div className={`${ROW} col-span-3 justify-between gap-3 px-4 max-lg:px-3`}>
         <h3 className="text-base font-bold text-black">{title}</h3>
         {summary && <span className="text-xs font-medium text-red-700">{summary}</span>}
       </div>
       {!a.length && !b.length ? (
-        <p className={`${ROW} col-span-3 px-4 text-sm text-gray-500`}>Not listed</p>
+        <p className={`${ROW} col-span-3 px-4 max-lg:px-3 text-sm text-gray-500`}>Not listed</p>
       ) : (
         <>
           {both.length > 0 && (
             <>
               <p className={label}>Both have</p>
-              <div className={`${ROW} col-span-2 border-l px-6`}>
+              <div className={`${ROW} col-span-2 border-l px-6 max-lg:px-3`}>
                 <Pills items={both} />
               </div>
             </>
@@ -363,7 +365,7 @@ function ListSection({ title, a, b }) {
             <Fragment key={item}>
               <p className={label}>{item}</p>
               {[a, b].map((list, i) => (
-                <div key={i} className={`${ROW} border-l px-6`}>
+                <div key={i} className={`${ROW} border-l px-6 max-lg:px-3`}>
                   <Mark has={inList(list, item)} />
                 </div>
               ))}
@@ -477,7 +479,7 @@ export default function ComparePanel({ slots, nudge, onRemove, onClose }) {
                 <div className="grid grid-rows-subgrid [&>:nth-child(even)]:bg-[#fff9f9]" style={{ gridRow: rows }}>
                   <div ref={head} />
                   {labels.map((label) => (
-                    <div key={label} className={`${ROW} px-4 text-xs text-black`}>
+                    <div key={label} className={`${ROW} px-4 max-lg:px-3 text-xs text-black`}>
                       {label}
                     </div>
                   ))}

@@ -7,7 +7,7 @@ import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { markAgreementSent, markAgreementSigned, voidAgreement } from "@/lib/billing/agreements";
 import { documensoConfigured } from "@/lib/billing/documenso";
 import { documensoClient } from "@/lib/billing/agreementServices";
-import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { discardSignedAgreement, storeSignedAgreement } from "@/lib/billing/agreementFiles";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -22,7 +22,7 @@ import { billingErrorResponse } from "@/lib/billing/http";
  *                 (a Documenso copy still waiting is cancelled there too)
  *         "sign"  record it signed. Needs signerName; signerTitle is optional,
  *                 signedAt (YYYY-MM-DD) defaults to today. Send multipart/form-data
- *                 with an optional PDF in "file" to keep the signed copy.
+ *                 with the signed PDF in "file" (required).
  *
  * @auth admin
  */
@@ -76,22 +76,27 @@ export async function POST(req) {
     } else {
       // Validate the name and date first, so a bad form never leaves an orphaned upload.
       if (!String(signerName ?? "").trim()) throw new BillingError("signer_required", "Who signed the agreement?");
+      // No coverage without the signed document on file (Wyatt, 2026-11-17).
+      if (!file) throw new BillingError("file_required", "Upload the signed copy.");
       const signedDate = signedAt ? new Date(`${signedAt}T12:00:00Z`) : new Date();
       if (Number.isNaN(signedDate.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
-      let signedFileKey = null;
-      if (file) {
-        signedFileKey = await storeSignedAgreement({
-          userId: landlord.id,
-          bytes: new Uint8Array(await file.arrayBuffer()),
-        });
-      }
-      agreement = await markAgreementSigned(supabase, {
+      const signedFileKey = await storeSignedAgreement({
         userId: landlord.id,
-        signerName,
-        signerTitle,
-        signedAt: signedDate,
-        signedFileKey,
+        bytes: new Uint8Array(await file.arrayBuffer()),
       });
+      try {
+        agreement = await markAgreementSigned(supabase, {
+          userId: landlord.id,
+          signerName,
+          signerTitle,
+          signedAt: signedDate,
+          signedFileKey,
+        });
+      } catch (err) {
+        // Refused (a paper copy out, a bad date): the upload goes too.
+        await discardSignedAgreement(signedFileKey).catch(() => {});
+        throw err;
+      }
     }
     return NextResponse.json({ ok: true, status: agreement.status });
   } catch (err) {

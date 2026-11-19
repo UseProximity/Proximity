@@ -17,6 +17,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { loadProfileSetupUser } from "@/lib/reviews/onboarding";
+import { recordActivation } from "@/lib/marketing/accounts";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,8 @@ export async function POST(req) {
       console.error("set-review-password: update failed:", error.message);
       return NextResponse.json({ error: "Couldn't save your password." }, { status: 500 });
     }
+
+    await recordActivation(req, { userId: found.userId });
 
     return NextResponse.json({
       ok: true,

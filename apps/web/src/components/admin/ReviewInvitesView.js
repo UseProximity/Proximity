@@ -36,6 +36,7 @@ import InviteComposer, {
   DEFAULT_SUBJECT,
   DEFAULT_MESSAGE,
 } from "@/components/admin/reviewInvites/InviteComposer";
+import { copyText } from "@/utils/copyText";
 
 // Must not exceed MAX_PER_REQUEST in /api/admin/review-invites.
 const CHUNK = 50;
@@ -115,6 +116,33 @@ function downloadCsv(text, filename) {
 }
 
 const INVITE_TABS = ["send", "history"];
+
+// Copies MERGE_FOOTER, saying so either way: a blocked copy used to look
+// identical to a successful one.
+function CopyFooterButton() {
+  const [state, setState] = useState("idle");
+  async function copy() {
+    const ok = await copyText(MERGE_FOOTER);
+    setState(ok ? "copied" : "failed");
+    if (ok) setTimeout(() => setState("idle"), 1500);
+  }
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={copy}
+        className="px-2 py-1 text-[11px] font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
+      >
+        {state === "copied" ? "Copied!" : "Copy"}
+      </button>
+      {state === "failed" && (
+        <span className="text-[11px] text-red-700">
+          Browser blocked copying. Select the text above instead.
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function ReviewInvitesView({ search = "" }) {
   const readOnly = !!useAdminNav()?.isReadOnly;
@@ -543,13 +571,7 @@ export default function ReviewInvitesView({ search = "" }) {
                     <p className="p-2 rounded border border-gray-300 bg-white text-[11px] text-gray-600 leading-relaxed">
                       {MERGE_FOOTER}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard?.writeText(MERGE_FOOTER)}
-                      className="mt-1 px-2 py-1 text-[11px] font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
-                    >
-                      Copy
-                    </button>
+                    <CopyFooterButton />
                   </div>
                 </div>
               )}

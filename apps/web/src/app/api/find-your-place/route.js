@@ -5,6 +5,7 @@ import { clientIp } from "@/lib/auth/loginThrottle";
 import { readVisitorId, newVisitorId, setVisitorCookie, ipLimited } from "@/lib/matchmaking/anonymousSessions";
 import { recordError } from "@/lib/errors/record";
 import { findMatches } from "@/lib/findYourPlace/match";
+import { recordFypEvent } from "@/lib/findYourPlace/events";
 import { getCachedListings } from "@/lib/listings/queryListings";
 import { DEFAULT_FILTERS, filterListings } from "@/lib/listings/filterListings";
 import { campusWalkMinutes } from "@/utils/washuPlaces";
@@ -44,6 +45,9 @@ async function browseCount(browse) {
 const VISITOR_RUN_CAP = 10;
 // Signed-out searches an hour from one network address (Wyatt, 2026-11-17).
 const FYP_IP_LIMIT = 200;
+// Failed searches recorded an hour from one network address: a script posting
+// junk must not fill the events table or skew the failure share (PR 462 review).
+const FAILED_EVENT_LIMIT = 20;
 
 // Searches this device has run, over every Find Your Place row it started
 // (claimed ones too: signing up does not refill a later signed-out run).
@@ -65,9 +69,17 @@ async function visitorRuns(visitorId) {
  * @auth optional
  */
 export async function POST(request) {
+  // Who and what, for recording a search that fails (lib/findYourPlace/events).
+  let actor = null;
+  let visitor = null;
+  let retry = false;
+  const ip = clientIp(request.headers);
+  const failed = (reason) => {
+    if (ipLimited(ip, { bucket: "find-your-place-failed", limit: FAILED_EVENT_LIMIT })) return;
+    after(() => recordFypEvent({ name: "search_failed", userId: actor?.id ?? null, visitorId: visitor, metadata: { reason, retry } }));
+  };
   try {
     const requestUser = await getRequestUser(request);
-    let actor = null;
     if (requestUser?.email) {
       const { data } = await supabase
         .from("users")
@@ -80,13 +92,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let visitor = readVisitorId(request);
+    visitor = readVisitorId(request);
 
     const body = await request.json().catch(() => ({}));
+    // "Try again" after an error, so a failure retried until it works is told
+    // apart from one the student gave up on.
+    retry = body.retry === true;
+    // Started from the homepage popup's group-size question.
+    const fromPopup = body.fromPopup === true;
     const answers = sanitizeAnswers(body.answers);
     // The page holds the same rules, so this only trips on an old saved run
     // or a hand-made request. "invalid" sends the student back to page 1.
     if (answeredCount(answers) < QUESTION_COUNT) {
+      failed("invalid");
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
     const text = typeof body.text === "string" ? body.text.slice(0, TEXT_MAX).trim() : "";
@@ -119,7 +137,7 @@ export async function POST(request) {
      * error, so the team is emailed the first time and as it keeps happening
      * (Wyatt, 2026-11-17).
      */
-    if (!actor && !existing && ipLimited(clientIp(request.headers), { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
+    if (!actor && !existing && ipLimited(ip, { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
       after(() =>
         recordError({
           source: "server",
@@ -127,11 +145,13 @@ export async function POST(request) {
           message: `Find Your Place per-network limit reached (${FYP_IP_LIMIT} signed-out searches an hour): students on one network are being turned away`,
         }).catch(() => {})
       );
+      failed("busy");
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
 
     const runs = (existing?.preferences?._fyp?.runs ?? 0) + 1;
     if (!actor && (await visitorRuns(visitor)) >= VISITOR_RUN_CAP) {
+      failed("cap");
       return NextResponse.json({ error: "cap" }, { status: 429 });
     }
 
@@ -154,7 +174,11 @@ export async function POST(request) {
     }));
     const row = {
       status: "recommendations_ready",
-      preferences: { ...result.preferences, _fyp: { answers, chips, text, parsed: result.parsed, runs } },
+      preferences: { ...result.preferences, _fyp: {
+        answers, chips, text, parsed: result.parsed, runs,
+        // Once a search came from the popup it stays counted as one.
+        ...(fromPopup || existing?.preferences?._fyp?.fromPopup ? { fromPopup: true } : {}),
+      } },
       weights: result.weights,
       recommendations,
       // Readable by the chat clients that still list past sessions.
@@ -185,6 +209,9 @@ export async function POST(request) {
       sessionId = data?.id ?? null;
     }
 
+    // Every search that answered, so failures can be read as a share of all searches.
+    after(() => recordFypEvent({ name: "searched", userId: actor?.id ?? null, visitorId: visitor, metadata: { retry, rerun: !!existing } }));
+
     const u = result.usage;
     console.log(
       `[find-your-place] ${result.matches.length} matches of ${result.totalMatches} fits (parse:${result.parseSource} in:${(u.parse?.input_tokens ?? 0) + (u.pick?.input_tokens ?? 0)} out:${(u.parse?.output_tokens ?? 0) + (u.pick?.output_tokens ?? 0)})`
@@ -202,6 +229,7 @@ export async function POST(request) {
     return response;
   } catch (err) {
     console.error("[find-your-place POST]", err);
+    failed("error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

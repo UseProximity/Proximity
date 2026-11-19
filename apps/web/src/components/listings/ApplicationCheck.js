@@ -18,7 +18,7 @@ import toast from "react-hot-toast";
 import { Pen } from "lucide-react";
 import { APPLY_CLICKED_EVENT } from "./ApplyButton";
 
-export default function ApplicationCheck({ listingId, signedIn, preview = false, onHeight = null }) {
+export default function ApplicationCheck({ listingId, signedIn, preview = false, onHeight = null, page = false }) {
   const [app, setApp] = useState(null);
   const [busy, setBusy] = useState(false);
   const openedAt = useRef(Date.now());
@@ -93,7 +93,11 @@ export default function ApplicationCheck({ listingId, signedIn, preview = false,
   };
 
   return (
-    <div ref={barRef} className="sticky top-0 z-40 border-b border-red-100 bg-red-50">
+    <div
+      ref={barRef}
+      className={`sticky top-0 z-40 border-b border-red-100 bg-red-50 ${page ? "max-xl:top-[calc(var(--header-h)_+_1px)]" : ""}`}
+    >
+      {/* On the full listing page below 1280px the site header stays pinned, so the bar sits under it. */}
       {/* pr-16 keeps the text and buttons clear of the popup's round × at top right. */}
       <div className="mx-auto flex max-w-7xl flex-col gap-2.5 py-3 pl-4 pr-16 sm:flex-row sm:items-center sm:pl-6">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">

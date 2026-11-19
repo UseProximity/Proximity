@@ -107,18 +107,20 @@ export default function AvailableListings({
   /* ── Map overlay card state ── */
   const [selectedListing, setSelectedListing] = useState(null);
 
-  // A panel deep-linked from matchmaking arrives with ?src=matchmaking. Remember
+  // A panel deep-linked from matchmaking arrives with ?from=matchmaking. Remember
   // the attribution for this tab (so save/contact events carry it), then strip
   // the param so it doesn't linger in the URL. history.replaceState (not
   // router.replace) so this can't race the other URL-writing effects here.
+  // `from`, not `src`: src is the marketing campaign tag, and an internal link
+  // carrying it would be counted as a QR code visit.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const src = params.get("src");
-    const srcPanelId = params.get("panel");
-    if (!src) return;
-    if (src === "matchmaking" && srcPanelId)
-      setListingSource(srcPanelId, "matchmaking");
-    params.delete("src");
+    const from = params.get("from");
+    const fromPanelId = params.get("panel");
+    if (!from) return;
+    if (from === "matchmaking" && fromPanelId)
+      setListingSource(fromPanelId, "matchmaking");
+    params.delete("from");
     const qs = params.toString();
     window.history.replaceState(null, "", `/browse${qs ? `?${qs}` : ""}`);
   }, []);
@@ -780,7 +782,7 @@ export default function AvailableListings({
             ) : (
               <div
                 className={
-                  wideLayout ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
+                  wideLayout ? WIDE_GRID_CLASS : "grid grid-cols-1 xl:grid-cols-2 gap-3"
                 }
               >
                 {visibleListings.map((listing) => (

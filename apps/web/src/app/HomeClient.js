@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { listingHref } from "@/lib/listings/listingLink";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -20,7 +21,7 @@ import Footer from "@/components/layout/Footer";
 import { getRentRangeLabel } from "@/utils/listingFormatters";
 import MapPopupCard from "@/components/listings/MapPopupCard";
 import { becomeLandlord } from "@/lib/auth/landlordRole";
-import { trackEvent, setListingSource } from "@/utils/analytics";
+import { trackEvent, recordFyp, setListingSource } from "@/utils/analytics";
 import { GROUP_OPTIONS as FYP_GROUPS } from "@/lib/findYourPlace/options";
 
 const MapView = dynamic(() => import("@/components/listings/MapView"), {
@@ -38,7 +39,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-const SIDE_MARGIN = "px-12 md:px-20 lg:px-28";
+const SIDE_MARGIN = "px-5 sm:px-12 md:px-20 lg:px-28";
 
 // ─── Hero + Map (combined) ─────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ function HeroMapSection({ initialListings = null }) {
 
   return (
     <section className="relative overflow-hidden" style={{ background: BG }}>
-      <div className="flex flex-col lg:flex-row lg:min-h-[680px]">
+      <div className="flex flex-col xl:flex-row xl:min-h-[680px]">
         {/* ── Left: Hero content ── */}
         <div
           className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}
@@ -154,7 +155,7 @@ function HeroMapSection({ initialListings = null }) {
         </div>
 
         {/* ── Right: Map ── */}
-        <div className="relative flex-1 min-h-[400px] lg:min-h-0 overflow-hidden">
+        <div className="relative flex-1 min-h-[400px] xl:min-h-0 overflow-hidden">
           {/* Real Mapbox map, desaturated */}
           <div className="absolute inset-0">
             <MapView
@@ -185,7 +186,7 @@ function HeroMapSection({ initialListings = null }) {
 
           {/* Left gradient — blends map into hero bg (desktop only) */}
           <div
-            className="hidden lg:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
+            className="hidden xl:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
             style={{
               background: `linear-gradient(to right, ${BG} 0%, transparent 100%)`,
             }}
@@ -503,7 +504,7 @@ function RentalCard({ listing, index, isInView, onSelect = null }) {
       <div
         onClick={() => {
           onSelect?.();
-          router.push(`/?listing=${listing._id}`);
+          router.push(listingHref(listing._id, "/"));
         }}
         className="group block cursor-pointer relative"
       >
@@ -836,12 +837,14 @@ function FindYourPlacePopup() {
     const t = setTimeout(() => {
       setVisible(true);
       trackEvent("Find Your Place Popup Shown");
+      recordFyp("popup_shown", {}, "/");
     }, 3000);
     return () => clearTimeout(t);
   }, []);
 
   const start = (group) => {
     trackEvent("Find Your Place Popup Clicked", { group });
+    recordFyp("popup_clicked", { group }, "/");
     router.push(`/find-your-place?group=${encodeURIComponent(group)}`);
   };
 
@@ -866,6 +869,7 @@ function FindYourPlacePopup() {
               onClick={() => {
                 setDismissed(true);
                 trackEvent("Find Your Place Popup Dismissed");
+                recordFyp("popup_dismissed", {}, "/");
               }}
               className="text-gray-300 transition-colors hover:text-gray-500"
               aria-label="Dismiss"

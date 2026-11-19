@@ -22,6 +22,9 @@
  * Pure: decides from the change and the snapshot, writes nothing.
  */
 
+// A relative path, not "@/utils/unitFormat": syncPolicy.test.js runs under node --test, which does not know the alias.
+import { unitFormat } from "../../utils/unitFormat.js";
+
 export const DENY = {
   landlord: "set by the landlord, who wins",
   specs: "the landlord's unit details win over the website's",
@@ -173,4 +176,22 @@ export function churnCheck({ changes, existingLeases, existingUnits, policyRun =
   const tooManyUnits = newUnits > MAX_NEW_UNITS || (existingUnits >= 1 && newUnits > existingUnits);
   const tooMuchChurn = existingLeases >= CHURN_MIN_LEASES && touched > Math.ceil(existingLeases * CHURN_FRACTION);
   return tooManyUnits || tooMuchChurn ? { touched, existing: existingLeases, newUnits, units: existingUnits } : null;
+}
+
+/*
+ * A website floor plan card that says nothing about any one home: no price,
+ * no size and no apartment numbers ("2 Bed 2 Bath Level 1" on Shepard School
+ * Lofts' homepage). On a listing that tracks real apartments (Apt F15, 201)
+ * with a unit of the same beds and baths, it is that layout again, not a new
+ * home, so the sync leaves it out rather than adding an empty unit (Wyatt,
+ * 2026-11-17). A listing made only of floor plans still gains it, priced on
+ * request (LOCAL on Delmar, 2026-11-09).
+ */
+export function bareCoveredPlan(snap, dbUnits) {
+  if (!snap || snap.area > 0 || snap.bedrooms == null || snap.bathrooms == null) return false;
+  if (unitFormat(snap.name) === "apartment") return false;
+  if ((snap.offers ?? []).some((o) => o.rent != null || (o.apartments ?? []).length)) return false;
+  const units = dbUnits ?? [];
+  if (!units.some((u) => unitFormat(u.name) === "apartment")) return false;
+  return units.some((u) => Number(u.bedrooms) === Number(snap.bedrooms) && Number(u.bathrooms) === Number(snap.bathrooms));
 }

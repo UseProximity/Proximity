@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { requestTour, listStudentTours, openTourFor } from "@/lib/agents/tours";
 import { agentsEnabled } from "@/lib/agents/flags";
+import { recordOutcome } from "@/lib/marketing/record";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,6 +43,8 @@ export async function POST(req) {
       slots: body.slots, proxyThreadId: UUID.test(body?.proxyThreadId ?? "") ? body.proxyThreadId : null,
     });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
+    // Counts whether or not the listing has Proxy on (PRD edge case 16).
+    await recordOutcome(req, { outcome: "tour_requested", userId: user.id, userRole: user.role ?? null, subjectId: body.listingId });
     return NextResponse.json(result);
   } catch (err) {
     console.error("POST /api/tours failed:", err);

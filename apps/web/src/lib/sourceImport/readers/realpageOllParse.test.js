@@ -2,6 +2,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { appUrl, feeLine, findRealPageOll, mergeSameRent, mergeWalk, nextSundayCheckAt, offersFor, sayDate, siteIdFromLanding, unitsFromWalk } from "./realpageOllParse.js";
+import { resumePoint, stuckUnits, withWalkOptions } from "./portalWalkParse.js";
+
+test("resumePoint hands a carried-on walk its priced apartments to jump with, latest first, never past an unpriced one", () => {
+  // Mansions on the Plaza, 2026-11-17: ten apartments priced, then 142
+  // (Jan 21) listed once the date reached Jan 15.
+  const units = {
+    124: { plan: "Highland - B1", number: "124", avail: null },
+    348: { plan: "Highland - A3", number: "348", avail: "2026-12-23" },
+    109: { plan: "Mayfair - A4", number: "109", avail: "2027-01-15" },
+    120: { plan: "Mayfair - A1", number: "120", avail: "2027-01-15" },
+  };
+  const priced = (...n) => n.map((number) => ({ number, terms: { 12: 2000 } }));
+  const numbers = (list) => list.map((t) => t.number);
+  // Nothing priced yet: start at the beginning.
+  assert.deepEqual(resumePoint({ units, priced: [] }), []);
+  // Everything priced: one apartment per date, latest first.
+  assert.deepEqual(numbers(resumePoint({ units, priced: priced("124", "348", "109", "120") })), ["109", "348"]);
+  // 109 and 120 still to price: stop at 348, so they are priced for their own date.
+  assert.deepEqual(resumePoint({ units, priced: priced("124", "348") }), [{ number: "348", plan: "Highland - A3", avail: "2026-12-23" }]);
+  // An apartment free now still unpriced: no jump at all.
+  assert.deepEqual(resumePoint({ units, priced: priced("348", "109", "120") }), []);
+  // 142 found but not priced: the jumps stop at or before its date.
+  const withLater = { ...units, 142: { plan: "Highland - A7", number: "142", avail: "2027-01-21" } };
+  assert.deepEqual(numbers(resumePoint({ units: withLater, priced: priced("124", "348", "109", "120") })), ["109", "348"]);
+  // 142 priced too: it leads, and 109 is there to reach it (142 is not listed
+  // at the portal's first date).
+  assert.deepEqual(numbers(resumePoint({ units: withLater, priced: priced("124", "348", "109", "120", "142") })), ["142", "109", "348"]);
+  // Only apartments free now priced: nothing later to jump to.
+  assert.deepEqual(resumePoint({ units: { 124: units[124] }, priced: priced("124") }), []);
+});
 
 test("findRealPageOll reads the landing page link and the app link", () => {
   assert.deepEqual(findRealPageOll('<a href="https://9030769.onlineleasing.realpage.com/#k=1">Apply</a>'), { propertyId: "9030769", siteId: null });
@@ -107,4 +137,69 @@ test("mergeSameRent names twin apartments once and flags differing lengths", () 
   assert.equal(mixed.length, 1);
   assert.deepEqual(mixed[0].leaseTermMonths, [9, 13]);
   assert.match(mixed[0].special, /vary by apartment/);
+});
+
+test("a stuck apartment does not switch the resume jump off, and is handed to the walk to try last", () => {
+  const units = {
+    124: { plan: "Highland - B1", number: "124", avail: null, stuck: true },
+    348: { plan: "Highland - A3", number: "348", avail: "2026-12-23" },
+    109: { plan: "Mayfair - A4", number: "109", avail: "2027-01-15" },
+  };
+  const priced = [{ number: "348", terms: { 12: 2000 } }];
+  // 124 would not open twice: the jump still goes to 348, on the way to 109.
+  assert.deepEqual(resumePoint({ units, priced }).map((t) => t.number), ["348"]);
+  assert.deepEqual(stuckUnits({ units, priced }), ["124"]);
+  // Once priced it is no longer stuck.
+  assert.deepEqual(stuckUnits({ units, priced: [...priced, { number: "124", terms: { 12: 1500 } }] }), []);
+  // Not stuck: an unpriced apartment free now still holds the jump back.
+  assert.deepEqual(resumePoint({ units: { ...units, 124: { ...units[124], stuck: false } }, priced }), []);
+});
+
+test("mergeWalk marks a free-now apartment the portal stopped listing as stuck after two full listings", () => {
+  const walk = {
+    plans: [],
+    units: { 124: { plan: "B1", number: "124", avail: null }, 348: { plan: "A3", number: "348", avail: "2026-12-23" }, 500: { plan: "A3", number: "500", avail: "2027-02-01" } },
+    priced: [{ number: "348", plan: "A3", terms: { 12: 2000 } }],
+  };
+  const render = { units: { 348: { plan: "A3", number: "348", avail: "2026-12-23" } }, priced: [] };
+  // A render that did not list every plan at the first date says nothing.
+  mergeWalk(walk, render);
+  assert.equal(walk.units[124].misses, undefined);
+  mergeWalk(walk, { ...render, listedAll: true });
+  assert.equal(walk.units[124].misses, 1);
+  assert.equal(walk.units[124].stuck, undefined);
+  assert.deepEqual(resumePoint(walk), []);
+  mergeWalk(walk, { ...render, listedAll: true });
+  assert.equal(walk.units[124].stuck, true);
+  assert.deepEqual(resumePoint(walk).map((t) => t.number), ["348"]);
+  // A later apartment is only listed once the date nears it: never counted as missed.
+  assert.equal(walk.units[500].misses, undefined);
+  // Listed again: the count starts over.
+  mergeWalk(walk, { units: { 124: { plan: "B1", number: "124", avail: null } }, priced: [], listedAll: true });
+  assert.equal(walk.units[124].stuck, undefined);
+  assert.equal(walk.units[124].misses, undefined);
+});
+
+test("withWalkOptions survives replacement patterns in a floor plan name", () => {
+  const plan = "Loft $' Deluxe $& $` $$";
+  const script = withWalkOptions("(async () => { const OPTS = __OPTS__;\n return OPTS; })()", { skip: ["1"], resumeAt: [{ number: "2", plan, avail: "2027-01-01" }] });
+  const opts = JSON.parse(script.match(/const OPTS = (.*);\n/)[1]);
+  assert.equal(opts.resumeAt[0].plan, plan);
+  // The script still parses.
+  assert.doesNotThrow(() => new Function(`return ${script.replace(/\)\(\)$/, ")")}`));
+});
+
+test("an apartment the portal stopped listing is left off as let, and comes back if listed again", () => {
+  const plan = "Highland - B1";
+  const walk = { plans: [{ name: plan }], units: { 101: { plan, number: "101", avail: null, twelve: 1500 }, 124: { plan, number: "124", avail: null, twelve: 1400 } }, priced: [{ number: "101", terms: { 12: 1500 } }], log: [] };
+  // Two full listings without 124.
+  mergeWalk(walk, { listedAll: true, units: { 101: { plan, number: "101", avail: null, twelve: 1500 } }, priced: [] });
+  mergeWalk(walk, { listedAll: true, units: { 101: { plan, number: "101", avail: null, twelve: 1500 } }, priced: [] });
+  assert.equal(walk.units[124].gone, true);
+  const built = unitsFromWalk(walk, "2026-11-19");
+  assert.equal(built.apartments, 1, "124 is not offered");
+  assert.ok(built.notes.some((n) => /stopped listing/.test(n)));
+  // Listed again: offered again.
+  mergeWalk(walk, { listedAll: true, units: { 124: { plan, number: "124", avail: null, twelve: 1400 } }, priced: [] });
+  assert.equal(unitsFromWalk(walk, "2026-11-19").apartments, 2);
 });

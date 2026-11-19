@@ -10,6 +10,7 @@ import { billingErrorResponse } from "@/lib/billing/http";
 import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordPayerView, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
 import { sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 /*
  * The signed-in landlord's payer: the person who signs the marketing agreement
@@ -64,7 +65,9 @@ export async function POST(req) {
     // nobody is named, so a copy left open never blocks the payer's addendum.
     const { documenso } = agreementServices();
     await cancelOwnSigning(supabase, documenso, landlord.id);
-    const { link } = await namePayer(supabase, { landlord, name: body.name, email: body.email });
+    const { link, created } = await namePayer(supabase, { landlord, name: body.name, email: body.email });
+    // A billing account made for the invited signer: labelled "invite", not the landlord's visit.
+    if (created) await stampSignup(req, { userId: link.payer_id, role: "landlord", label: "invite" });
     after(() => sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message)));
     return NextResponse.json({ payer: await landlordPayerView(supabase, landlord.id) });
   } catch (err) {
@@ -91,7 +94,8 @@ export async function PATCH(req) {
       if (!sent) throw new BillingError("send_failed", "We couldn't send the email. Try again in a few minutes.", 502);
     } else if (body.action === "change") {
       const { documenso } = agreementServices();
-      const { link, cancelled } = await changePayer(supabase, documenso, { landlord, name: body.name, email: body.email });
+      const { link, cancelled, created } = await changePayer(supabase, documenso, { landlord, name: body.name, email: body.email });
+      if (created) await stampSignup(req, { userId: link.payer_id, role: "landlord", label: "invite" });
       after(async () => {
         await sendPayerInvite({ landlordId: landlord.id, payerId: link.payer_id }).catch((err) => console.error("billing: payer invite failed", err?.message));
         // The old signer's document also covered other accounts: it was cancelled whole, so tell them.

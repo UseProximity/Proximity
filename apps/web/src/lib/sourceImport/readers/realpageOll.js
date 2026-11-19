@@ -35,6 +35,7 @@
  */
 import { REALPAGE_OLL_RE, appUrl, findRealPageOll, siteIdFromLanding } from "./realpageOllParse.js";
 import { walkPortal, WALK_MS } from "./portalWalk.js";
+import { withWalkOptions } from "./portalWalkParse.js";
 
 export { findRealPageOll, REALPAGE_OLL_HINT_RE, nextSundayCheckAt } from "./realpageOllParse.js";
 import { REALPAGE_OLL_HINT_RE as REALPAGE_OLL_HINT_RE_LOCAL } from "./realpageOllParse.js";
@@ -59,14 +60,15 @@ export async function resolveSiteId(propertyId) {
  * The walk, run inside the rendered app. String.raw keeps it exactly as
  * written (no build step touches it); the options go in where __OPTS__ is.
  *
- * It returns JSON: { plans, units, priced, log, done, timeUp }.
+ * It returns JSON: { plans, units, priced, log, done, timeUp, empty,
+ * listedAll } (readers/portalWalk.js says what each is).
  */
 const WALK = String.raw`
 (async () => {
   const OPTS = __OPTS__;
   const T0 = Date.now();
   const left = () => OPTS.budgetMs - (Date.now() - T0);
-  const out = { plans: [], units: {}, priced: [], log: [], done: false, timeUp: false };
+  const out = { plans: [], units: {}, priced: [], log: [], done: false, timeUp: false, empty: null, listedAll: false };
   const note = (s) => { if (out.log.length < 60) out.log.push(String(s).slice(0, 140)); };
   try {
     const frame = document.getElementById('rp-leasing-widget');
@@ -233,7 +235,7 @@ const WALK = String.raw`
         leaf(/^Yes$/)[0].click();
         await waitFor(() => step() === 3, 30000);
       }
-      if (step() !== 3) return false;
+      if (step() !== 3) { note('lease terms did not open for ' + u.number); return false; }
       await waitFor(() => /months? Lease\s*\$/.test(doc().body.innerText), 20000);
       await waitFor(() => cap.seq > seq && cap.detail, 2500);
       await sleep(1200);
@@ -269,11 +271,47 @@ const WALK = String.raw`
     // ---- the walk
     await waitFor(() => leaf(/^Start$/).length > 0 || avBtns().length > 0, 30000);
     if (leaf(/^Start$/).length) { leaf(/^Start$/)[0].click(); await sleep(1500); }
-    if (!(await waitFor(() => avBtns().length > 0, 30000))) { note('no floor plans listed'); return JSON.stringify(out); }
+    if (!(await waitFor(() => avBtns().length > 0, 30000))) { note('no floor plans listed'); out.empty = 'no_plans'; return JSON.stringify(out); }
     const skip = {};
     for (const n of (OPTS.skip || [])) skip[String(n)] = true;
     const got = () => { const s = {}; for (const q of out.priced) s[q.number] = true; return s; };
     const when = (u) => u.avail || '';
+    // A walk carried on from an earlier render: open apartments it already
+    // priced (latest first) to move the date straight to where it stopped,
+    // rather than listing every floor plan at each date on the way. One not
+    // listed yet at today's date is tried again once an earlier one has
+    // moved the date nearer it.
+    const targets = (OPTS.resumeAt || []).filter((t) => t && t.number && t.plan && t.avail);
+    // Apartments that would not open twice on an earlier render, or that
+    // the portal stopped listing: left until the rest is priced, then
+    // tried once more.
+    const last = {};
+    for (const n of (OPTS.last || [])) last[String(n)] = true;
+    const tried = {};
+    let jumpedTo = null;
+    for (let tries = 0; tries < 5; tries++) {
+      // A jump is only worth the time it leaves for pricing afterwards.
+      if (left() < Math.max(30000, OPTS.budgetMs / 2)) break;
+      const now = desired() || '';
+      // Each apartment is tried once per date, whether or not it opened:
+      // one that opens without moving the date on would be chosen again.
+      const t = targets.find((x) => x.avail > now && !tried[x.number + '@' + now]);
+      if (!t) break;
+      tried[t.number + '@' + now] = true;
+      if (await openUnit({ plan: t.plan, number: String(t.number) }, false)) {
+        const at = desired() || '';
+        // The apartment's own date, as the list states it: the same
+        // reckoning as every other apartment's, which the date box is not.
+        if (at > now) { if (!jumpedTo || t.avail > jumpedTo) jumpedTo = t.avail; note('resumed at ' + at + ' with ' + t.number); }
+        else note('opening ' + t.number + ' did not move the date on');
+      }
+    }
+    // An unpriced apartment that frees up before the one jumped with is new
+    // since the earlier render (the jump never passes one already known).
+    // Pricing it here would quote it for the later date (the date only moves
+    // forward), so it is left unpriced: the next render sees it and starts
+    // at or before its own date.
+    const behind = (u) => !!jumpedTo && !last[u.number] && when(u) < jumpedTo;
     let hops = 0;
     for (let round = 0; round < 10; round++) {
       // Each round starts from the floor plan list: the date may have moved
@@ -286,8 +324,11 @@ const WALK = String.raw`
         await listPlan(plan);
       }
       if (out.timeUp) break;
+      // Every floor plan listed at the portal's own first date.
+      if (round === 0 && !jumpedTo) out.listedAll = true;
       const have = got();
-      const pending = Object.keys(out.units).map((n) => out.units[n]).filter((u) => !have[u.number] && !skip[u.number] && u.tries < 2).sort((a, b) => when(a).localeCompare(when(b)));
+      const open = Object.keys(out.units).map((n) => out.units[n]).filter((u) => !have[u.number] && !skip[u.number]);
+      const pending = open.filter((u) => u.tries < 2 && !last[u.number] && !behind(u)).sort((a, b) => when(a).localeCompare(when(b)));
       let progressed = 0;
       for (const u of pending) {
         if (left() < 22000) { out.timeUp = true; break; }
@@ -303,23 +344,55 @@ const WALK = String.raw`
       // screen moves the date on; when none is later than the date, the
       // portal has shown everything it has.
       const now = desired() || '';
-      const ahead = Object.keys(out.units).map((n) => out.units[n]).filter((u) => u.visible && when(u) > now).sort((a, b) => when(b).localeCompare(when(a)))[0];
-      if (!ahead || hops >= 6) { out.done = true; break; }
+      const aheads = Object.keys(out.units).map((n) => out.units[n]).filter((u) => u.visible && when(u) > now).sort((a, b) => when(b).localeCompare(when(a)));
+      if (!aheads.length) {
+        const leftBehind = open.filter(behind);
+        if (leftBehind.length) { note('new since the last render, for the next one: ' + leftBehind.map((u) => u.number).join(', ')); break; }
+        // The apartments left for last, once each.
+        for (const u of open.filter((x) => last[x.number] && x.visible && x.tries < 1)) {
+          if (left() < 22000) { out.timeUp = true; break; }
+          u.tries += 1;
+          if (!(await openUnit(u, true))) note('still could not open ' + u.number);
+        }
+        if (!out.timeUp) out.done = true;
+        break;
+      }
+      // More apartments lie ahead than one render hops to: not the whole
+      // building, so the walk is not done (the next render carries on).
+      if (hops >= 6) { note('hop limit reached with later apartments still ahead'); break; }
       if (left() < 30000) { out.timeUp = true; break; }
       hops += 1;
-      note('moving the date on with ' + ahead.number);
-      if (!(await openUnit(ahead, false))) { note('could not move the date on'); break; }
+      // Any later apartment moves the date on; one that will not open is
+      // not a reason to stop (the walk would end unfinished, and a let
+      // apartment would never be taken off the listing).
+      let moved = false;
+      for (const ahead of aheads.slice(0, 3)) {
+        if (left() < 30000) { out.timeUp = true; break; }
+        note('moving the date on with ' + ahead.number);
+        if (await openUnit(ahead, false)) { moved = true; break; }
+        note('could not move the date on with ' + ahead.number);
+      }
+      if (out.timeUp || !moved) break;
     }
     if (out.timeUp) out.done = false;
   } catch (e) {
     note('error ' + String((e && e.message) || e));
   }
-  for (const n of Object.keys(out.units)) { delete out.units[n].visible; delete out.units[n].tries; }
+  // An apartment that would not open twice is marked, so the next render
+  // leaves it for last and it does not hold the resume jump back.
+  const sold = {};
+  for (const q of out.priced) sold[q.number] = true;
+  for (const n of Object.keys(out.units)) {
+    const u = out.units[n];
+    if (!sold[n] && (u.tries >= 2 || (OPTS.last || []).map(String).indexOf(n) >= 0)) u.stuck = true;
+    delete u.visible;
+    delete u.tries;
+  }
   return JSON.stringify(out);
 })()`;
 
-export function walkScript({ skip = [], budgetMs = WALK_MS } = {}) {
-  return WALK.replace("__OPTS__", JSON.stringify({ skip: skip.map(String), budgetMs }));
+export function walkScript({ skip = [], budgetMs = WALK_MS, resumeAt = [], last = [] } = {}) {
+  return withWalkOptions(WALK, { skip: skip.map(String), budgetMs, resumeAt, last: last.map(String) });
 }
 
 /*

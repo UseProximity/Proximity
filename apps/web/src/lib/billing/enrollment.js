@@ -175,6 +175,23 @@ export async function validSignerIds(db, ids) {
 }
 
 /*
+ * Landlord accounts whose agreement is out to sign on paper: their own copy, or
+ * their signer's printed for them. An email asking them to sign in the app
+ * would send them to a step that refuses (PR 462 review).
+ */
+export async function paperOutIds(db) {
+  const { data: out, error } = await db.from("landlord_agreements").select("id, user_id").eq("provider", "paper").eq("status", "sent");
+  if (error) throw error;
+  const ids = new Set((out ?? []).map((r) => r.user_id));
+  if (out?.length) {
+    const { data: rows, error: covError } = await db.from("agreement_coverage").select("user_id").in("agreement_id", out.map((r) => r.id)).eq("status", "proposed");
+    if (covError) throw covError;
+    for (const r of rows ?? []) ids.add(r.user_id);
+  }
+  return ids;
+}
+
+/*
  * Who would be emailed, and why everyone else would not. Counts explain the gap
  * between "all landlords" and "emails to send".
  */
@@ -206,6 +223,7 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
   }
 
   const signed = await validSignerIds(db, ids);
+  const onPaper = includeAgreement ? await paperOutIds(db) : new Set();
 
   const emailed = new Set(
     (
@@ -222,7 +240,7 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
     ).map((r) => r.user_id)
   );
 
-  const counts = { landlords: landlords.length, withLiveListing: 0, alreadySetUp: 0, alreadyEmailed: 0, toSend: 0 };
+  const counts = { landlords: landlords.length, withLiveListing: 0, alreadySetUp: 0, alreadyEmailed: 0, onPaper: 0, toSend: 0 };
   const toSend = [];
   for (const l of landlords) {
     if (!liveOwners.has(l.id)) continue;
@@ -230,6 +248,10 @@ export async function findEnrollmentAudience(db, { includeAgreement = false, inc
     const setUp = hasActivePaymentMethod(methods.get(l.id) ?? [], now) && (!includeAgreement || signed.has(l.id));
     if (setUp) {
       counts.alreadySetUp += 1;
+      continue;
+    }
+    if (onPaper.has(l.id)) {
+      counts.onPaper += 1;
       continue;
     }
     if (emailed.has(l.id)) {

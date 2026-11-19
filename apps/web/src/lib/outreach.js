@@ -41,6 +41,7 @@
  */
 import { outreachEnabled } from "./appEnv.js";
 import { recordEmail } from "./emailLog.js";
+import { tagEmailMessage } from "./marketing/emailLinks.js";
 
 // One ordinary address only: commas, semicolons and angle brackets are rejected so a
 // header, cookie or env value cannot name several recipients (nodemailer splits on them).
@@ -101,7 +102,11 @@ function sentOutcome(transporter, info, redirectedTo) {
 }
 
 export async function sendMailSafe(transporter, message, req) {
-  const { logAs, sandbox, ...mail } = message ?? {};
+  const { logAs, sandbox, ...untagged } = message ?? {};
+  // Links to our own site in student-facing emails carry proximity-email UTMs
+  // (marketing attribution, PRD 7.5). logAs.audience says who a shared kind
+  // (chat alert, tour email, mass email) is going to; landlords are not tagged.
+  const mail = tagEmailMessage(untagged, logAs?.kind, [process.env.NEXTAUTH_URL], logAs?.audience ?? null);
   let redirectedTo = null;
   try {
     const info = await deliver(transporter, mail, req, (to) => { redirectedTo = to; }, sandbox === true);

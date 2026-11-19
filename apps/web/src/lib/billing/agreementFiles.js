@@ -13,7 +13,7 @@
  * code change.
  */
 import { randomUUID } from "node:crypto";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getBucket, r2 } from "@/lib/r2";
 import { agreementVersionKey, massEmailFileKey, MAX_SIGNED_PDF_BYTES, mergeSignedParts, mrecFormKey, pageCount, signedAgreementKey, validateSignedPdf } from "./agreementPdf";
@@ -34,6 +34,12 @@ export async function storeSignedAgreement({ userId, bytes, maxBytes }) {
     })
   );
   return key;
+}
+
+// A signed copy stored for a record that was then refused: nothing points at it.
+export async function discardSignedAgreement(key) {
+  if (!key) return;
+  await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
 // A short-lived download link for a stored agreement.

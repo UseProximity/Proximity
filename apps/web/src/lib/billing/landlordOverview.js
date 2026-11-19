@@ -20,7 +20,7 @@ import { BillingError } from "./errors.js";
 import { AGREEMENT_REQUEST_KIND } from "./constants.js";
 import { liveListingOwners } from "./enrollment.js";
 import { getLiveVersion, liveLandlordVersions, resignCutoff } from "./agreementVersions.js";
-import { summarizeAgreementRows } from "./agreements.js";
+import { isPaperOut, summarizeAgreementRows } from "./agreements.js";
 import { coveredMap, displayAddress, unitLabel } from "./coverage.js";
 import { describeMethod, effectiveStatus, hasActivePaymentMethod } from "./paymentMethodState.js";
 import { gateDecision, getGateSettings } from "./listingGate.js";
@@ -227,6 +227,39 @@ export function paymentSummary(methods, now = new Date()) {
   return { state, methods: shown };
 }
 
+/*
+ * Which accounts each paper copy still out was printed for: Map agreementId ->
+ * Set of user ids, from the properties it holds. The record is the signer's, so
+ * every account they sign for reads as out on paper, but the copy is downloaded,
+ * recorded and voided only from the account whose properties are on it (Wyatt,
+ * 2026-11-19).
+ */
+async function paperAccounts(db, agreementIds) {
+  const out = new Map();
+  const rows = await inChunks(agreementIds, async (chunk) => {
+    const { data, error } = await db.from("agreement_coverage").select("user_id, agreement_id").in("agreement_id", chunk).eq("status", "proposed");
+    if (missingSchema(error)) return [];
+    if (error) throw error;
+    return data;
+  });
+  for (const r of rows) {
+    if (!out.has(r.agreement_id)) out.set(r.agreement_id, new Set());
+    out.get(r.agreement_id).add(r.user_id);
+  }
+  return out;
+}
+
+// The paper copy as one account's row shows it: `here` when it was printed for
+// this account, else `forName`, the account(s) it was printed for.
+export function paperForAccount(paper, accountId, printedFor, nameOf) {
+  if (!paper) return null;
+  const accounts = printedFor.get(paper.id);
+  // Nothing held on it (its properties were released): the controls stay with
+  // whoever's record it is, so a signer's other accounts never get buttons that 404.
+  const here = accounts?.size ? accounts.has(accountId) : paper.holderId === accountId;
+  return { ...paper, here, forName: here ? null : [...accounts].map((id) => nameOf.get(id)).filter(Boolean).join(", ") || null };
+}
+
 // One landlord's unpaid invoices.
 export function invoiceSummary(invoices) {
   const unpaid = (invoices ?? []).filter((i) => ["open", "failed", "processing"].includes(i.status) && i.invoice_date);
@@ -240,9 +273,13 @@ export function invoiceSummary(invoices) {
 
 export function agreementSummary(state) {
   const { signed, pending, lastEnded, valid, needsResign, expired } = state;
-  const status = valid ? "signed" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
+  const paperOut = isPaperOut(state);
+  const status = valid ? "signed" : paperOut ? "on_paper" : needsResign ? "needs_resign" : expired ? "expired" : pending ? "in_progress" : "not_signed";
   return {
     status,
+    // A copy printed for paper signing, still out: its id and when it was printed.
+    // holderId: whose record it is (the authorized signer's, for an account with one).
+    paper: paperOut ? { id: pending.id, sentAt: pending.created_at, holderId: pending.user_id } : null,
     negotiated: !!signed?.agreement_version?.landlord_id,
     // Signed, and a version made for them alone has gone live since: they are asked to sign it.
     newVersionReady: !!state.negotiatedOffer,
@@ -267,7 +304,7 @@ export function matchesFilter(row, filter) {
     case "needs_resign":
       return row.agreement.status === "needs_resign" || !!row.agreement.newVersionReady;
     case "in_progress":
-      return row.agreement.status === "in_progress";
+      return row.agreement.status === "in_progress" || row.agreement.status === "on_paper";
     case "no_method":
       return row.payment.state !== "active";
     case "blocked":
@@ -343,6 +380,11 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   const paysFor = new Map();
   for (const p of payerLinks) paysFor.set(p.payer_id, (paysFor.get(p.payer_id) ?? 0) + 1);
   const licenses = await disclosuresFor(db, ids);
+  const printedFor = await paperAccounts(
+    db,
+    [...agreements.values()].flat().filter((a) => a.provider === "paper" && a.status === "sent").map((a) => a.id)
+  );
+  const nameOf = new Map(landlords.map((l) => [l.id, l.name || l.email]));
   const rows = landlords.map((l) => {
     const payer = payerOf.get(l.id) ?? null;
     const holder = payer?.payer_id ?? l.id;
@@ -359,12 +401,16 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       overdueInvoice: invoice.overdue,
     });
     const email = lastEmails.get(l.id);
+    const summary = agreementSummary(state);
+    const paper = paperForAccount(summary.paper, l.id, printedFor, nameOf);
+    // A paper copy holding this account reads as that, as the publish gate says it.
+    if (paper?.here) publishing.missing = publishing.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
     return {
       id: l.id,
       name: l.name ?? null,
       email: l.email ?? null,
       hasLiveListing: live.has(l.id),
-      agreement: { ...agreementSummary(state), amendmentPendingSince: amending.get(l.id) ?? null },
+      agreement: { ...summary, paper, amendmentPendingSince: amending.get(l.id) ?? null },
       coverage,
       payment,
       autopay: autopays.get(l.id) ?? null,

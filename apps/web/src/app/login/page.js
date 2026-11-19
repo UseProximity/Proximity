@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
 import { sanitizeCallbackUrl, toSameSitePath } from "@/lib/auth/callbackUrl";
+import { withCampaignParams } from "@/lib/marketing/tags";
 
 function configuredAuthHost() {
   try {
@@ -30,7 +31,8 @@ export default async function LoginPage({ searchParams }) {
   // session straight to callbackUrl, which dashboard/layout.js now redirects
   // right back to /login for the same reason — an infinite loop.
   if (session?.user?.id) {
-    redirect(callbackUrl);
+    // Campaign tags on the login URL follow the visitor (marketing attribution).
+    redirect(withCampaignParams(callbackUrl, params));
   }
 
   return <LoginClient callbackUrl={callbackUrl} initialTab={initialTab} />;

@@ -6,6 +6,7 @@ import { PersonLink } from "@/components/admin/RecordLink";
 import { formatCents } from "@/lib/billing/money";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
 import AdminAutopayLine from "../AdminAutopayLine";
+import { PrintPaperForm, RecordPaperForm, paperFileUrl } from "./PaperAgreement";
 
 const FILTERS = [
   ["all", "All"],
@@ -24,6 +25,7 @@ const AGREEMENT = {
   needs_resign: ["amber", "Needs to re-sign"],
   expired: ["amber", "Term ended"],
   in_progress: ["blue", "Signing started"],
+  on_paper: ["blue", "Out on paper"],
   not_signed: ["gray", "Not signed"],
 };
 
@@ -37,6 +39,7 @@ const PAYMENT = {
 const MISSING = {
   payment_method: "payment method",
   agreement: "agreement",
+  paper_agreement: "paper agreement out",
   overdue_invoice: "overdue invoice",
 };
 
@@ -51,6 +54,14 @@ function AgreementDetail({ a }) {
         {a.signedVersionLabel ? ` · ${a.signedVersionLabel}` : ""}
         {a.negotiated ? " (their own version)" : ""}
         {a.signedBy === "admin" ? " · recorded by an admin" : ""}
+      </span>
+    );
+  }
+  if (a.status === "on_paper") {
+    return (
+      <span>
+        Printed for paper signing {fmtDate(a.paper.sentAt)}
+        {a.paper.here ? "" : a.paper.forName ? ` for ${a.paper.forName}` : " for another account"}, waiting for the signed copy
       </span>
     );
   }
@@ -416,6 +427,15 @@ function LandlordRow({ row, busy, run, canEmail }) {
     return run(() => call("/api/admin/billing/payers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ landlordId: row.id }) }), "Authorized signer ended.");
   };
   const [showDocs, setShowDocs] = useState(false);
+  // "print" or "record": a paper agreement form open on this row.
+  const [paperForm, setPaperForm] = useState(null);
+  const paper = row.agreement.paper;
+  const canPrint = !row.billingOnly && !paper && row.agreement.status !== "in_progress" && (row.agreement.status !== "signed" || row.agreement.newVersionReady);
+  const voidPaper = () => {
+    if (!window.confirm(`Void the paper agreement printed ${fmtDate(paper.sentAt)} for ${row.name || row.email}?\n\nThe properties on it are no longer held, and a new copy can be printed or signed in the app. Throw away the printed copy.`)) return;
+    // The record is the authorized signer's when the account has one.
+    return run(() => postJson(`/api/admin/billing/landlords/${paper.holderId ?? row.id}/documents`, { action: "void", kind: "master", id: paper.id }), "Paper agreement voided.");
+  };
   const [agColor, agLabel] = AGREEMENT[row.agreement.status] ?? AGREEMENT.not_signed;
   const [payColor, payLabel] = PAYMENT[row.payment.state] ?? PAYMENT.none;
 
@@ -512,12 +532,38 @@ function LandlordRow({ row, busy, run, canEmail }) {
             View signed agreement
           </button>
         )}
-        {(row.agreement.status !== "signed" || row.agreement.newVersionReady) && row.email && !row.payer && (
+        {canPrint && !paperForm && (
+          <button type="button" disabled={busy} className={BUTTON} onClick={() => setPaperForm("print")}>
+            Print for paper signing
+          </button>
+        )}
+        {paper && !paper.here && (
+          <span className="text-xs text-gray-600">
+            {row.payer ? `${row.payer.name}'s agreement` : "Their agreement"} is out on paper for {paper.forName || "another account"}. Record or void it
+            from that account&apos;s row.
+          </span>
+        )}
+        {paper?.here && (
+          <>
+            <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(paperFileUrl(row.id, paper.id)))}>
+              Download printed copy
+            </button>
+            {!paperForm && (
+              <button type="button" disabled={busy} className={BUTTON} onClick={() => setPaperForm("record")}>
+                Record signed copy
+              </button>
+            )}
+            <button type="button" disabled={busy} className={`${BUTTON} text-red-700`} onClick={voidPaper}>
+              Void paper copy
+            </button>
+          </>
+        )}
+        {(row.agreement.status !== "signed" || row.agreement.newVersionReady) && !paper && row.email && !row.payer && (
           <button type="button" disabled={busy || !canEmail} className={BUTTON} onClick={email} title={canEmail ? "" : "Make a version live first"}>
             {row.lastAgreementEmailAt ? "Resend signing email" : "Email signing link"}
           </button>
         )}
-        {!row.payer && !row.billingOnly && row.agreement.status !== "signed" && !settingPayer && (
+        {!row.payer && !row.billingOnly && row.agreement.status !== "signed" && !paper && !settingPayer && (
           <button type="button" disabled={busy} className={BUTTON} onClick={() => setSettingPayer(true)}>
             Set authorized signer
           </button>
@@ -529,6 +575,8 @@ function LandlordRow({ row, busy, run, canEmail }) {
         )}
       </div>
       {settingPayer && <PayerForm row={row} busy={busy} run={run} onDone={() => setSettingPayer(false)} />}
+      {paperForm === "print" && <PrintPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
+      {paperForm === "record" && paper?.here && <RecordPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
       {showDocs && (
         <>
           <DocumentHistory landlordId={row.id} landlordName={row.name || row.email || "this landlord"} busy={busy} run={run} />

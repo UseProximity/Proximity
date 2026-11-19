@@ -704,6 +704,9 @@ export default function ConversationsView({ search, dbTarget }) {
   const [tours, setTours] = useState(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
+  // Hides threads opened and left without a word: a Proxy chat a student
+  // started but never typed in (Wyatt, 2026-11-18).
+  const [withMessagesOnly, setWithMessagesOnly] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [siteDb, setSiteDb] = useState(null);
 
@@ -814,13 +817,14 @@ export default function ConversationsView({ search, dbTarget }) {
     return (threads ?? []).filter((t) => {
       if (flaggedOnly && t.flagged === 0 && t.blocked === 0) return false;
       if (!includeDeleted && t.deletedAt) return false;
+      if (withMessagesOnly && !(t.messages > 0)) return false;
       if (!q) return true;
       return [
         t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.landlord?.alertEmail, t.visitor?.email,
         t.listing?.title, t.listing?.address, t.subject, t.id,
       ].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [threads, flaggedOnly, includeDeleted, q]);
+  }, [threads, flaggedOnly, includeDeleted, withMessagesOnly, q]);
   const filteredChats = useMemo(() => (landlordChats ?? []).filter((c) => !q || [c.landlord?.name, c.landlord?.email, c.listing?.title, c.listing?.address]
     .some((v) => (v || "").toLowerCase().includes(q))), [landlordChats, q]);
 
@@ -870,6 +874,7 @@ export default function ConversationsView({ search, dbTarget }) {
           </p>
           {!landlordSide && (
             <div className="ml-auto flex items-center gap-2">
+              <Pill on={withMessagesOnly} onClick={() => setWithMessagesOnly((v) => !v)}>Has messages</Pill>
               <Pill on={flaggedOnly} onClick={() => setFlaggedOnly((v) => !v)} tone="red">Flagged only</Pill>
               <Pill on={includeDeleted} onClick={() => setIncludeDeleted((v) => !v)}>Include deleted</Pill>
             </div>

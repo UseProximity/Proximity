@@ -30,6 +30,7 @@ import {
 import { resolveInvite, consumeInvite } from "@/lib/reviews/invites";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { withoutSandboxReviews } from "@/lib/reviewSandbox";
+import { recordOutcome } from "@/lib/marketing/record";
 
 export const dynamic = "force-dynamic";
 
@@ -326,6 +327,7 @@ export async function POST(req) {
     }
 
     if (review?.id) await attachDormTags(review.id, tags);
+    if (review?.id) await recordOutcome(req, { outcome: "review_submitted", userId: reviewerUserId, subjectId: review.id });
 
     /*
      * Spent only now that a review exists, so a failure earlier in this handler

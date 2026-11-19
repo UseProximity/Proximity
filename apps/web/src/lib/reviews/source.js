@@ -9,17 +9,18 @@
  * Shared by client and server; keep it free of server-only imports.
  */
 
-export const MAX_SOURCE_LENGTH = 40;
+import { MAX_TAG_LENGTH, normalizeTag } from "../marketing/tags.js";
+import { EMAIL_SOURCE as OWN_EMAIL_SOURCE } from "../marketing/emailLinks.js";
 
-/** A safe campaign tag, or null when there's nothing usable in `raw`. */
+export const MAX_SOURCE_LENGTH = MAX_TAG_LENGTH;
+
+/**
+ * A safe campaign tag, or null when there's nothing usable in `raw`. The
+ * cleaner itself lives in lib/marketing/tags.js so marketing attribution and
+ * the review flow normalize tags identically.
+ */
 export function normalizeReviewSource(raw) {
-  const lowered = String(raw ?? "").trim().toLowerCase();
-  if (!lowered) return null;
-  const cleaned = lowered
-    .replace(/[^a-z0-9_-]+/g, "-") // spaces, punctuation, anything exotic
-    .replace(/-{2,}/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "");
-  return cleaned ? cleaned.slice(0, MAX_SOURCE_LENGTH) : null;
+  return normalizeTag(raw);
 }
 
 /*
@@ -32,8 +33,12 @@ export function readReviewSource(params) {
   if (!params) return null;
   const get =
     typeof params.get === "function" ? (k) => params.get(k) : (k) => params[k];
+  // Links in our own emails carry utm_source=proximity-email and the email
+  // kind as utm_campaign (marketing attribution). That marks the email click
+  // for marketing; it is not a printed code, so the review keeps no tag.
+  const own = normalizeReviewSource(get("utm_source")) === OWN_EMAIL_SOURCE;
   return normalizeReviewSource(
-    get("src") || get("utm_campaign") || get("utm_source")
+    get("src") || (own ? null : get("utm_campaign") || get("utm_source"))
   );
 }
 

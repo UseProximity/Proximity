@@ -59,9 +59,13 @@ export function fakeDb(tables = {}) {
       insert(row) { op = { kind: "insert", row }; return api; },
       upsert(row, { onConflict } = {}) {
         const existing = rows(table).find((r) => r[onConflict] === row[onConflict]);
+        let saved = existing;
         if (existing) Object.assign(existing, row);
-        else rows(table).push({ ...row });
-        return Promise.resolve({ error: null });
+        else rows(table).push((saved = { ...row }));
+        // Chainable like Supabase's (.select().single()), and awaitable on its own.
+        const done = { data: saved, error: null };
+        const chain = { select: () => chain, single: () => Promise.resolve(done), maybeSingle: () => Promise.resolve(done), then: (res, rej) => Promise.resolve({ error: null }).then(res, rej) };
+        return chain;
       },
       update(patch) { op = { kind: "update", patch }; return api; },
       delete() { op = { kind: "delete" }; return api; },

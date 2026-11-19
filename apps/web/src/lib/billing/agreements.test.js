@@ -83,6 +83,18 @@ describe("gate messages", () => {
     assert.match(both, /drafts are saved/i);
   });
 
+  it("with a paper copy out, name who it went to and anything else still in the way", () => {
+    const own = gateMessage(["payment_method", "paper_agreement"]);
+    assert.match(own, /sent to you to sign on paper/);
+    assert.match(own, /You also need to add an active payment method under Billing\./);
+    assert.match(own, /drafts are saved/i);
+    assert.ok(!/You also need/.test(gateMessage(["paper_agreement"])));
+    // With an authorized signer the copy went to them, and the payment method is theirs to add.
+    const signer = gateMessage(["payment_method", "paper_agreement"], [], { signerName: "Ryan Signer" });
+    assert.match(signer, /sent to Ryan Signer to sign on paper/);
+    assert.ok(!/payment method/.test(signer));
+  });
+
   it("never use an em dash (repo rule)", () => {
     const dash = String.fromCharCode(0x2014);
     for (const m of [["payment_method"], ["agreement"], ["payment_method", "agreement"]]) {

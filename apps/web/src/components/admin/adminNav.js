@@ -31,7 +31,7 @@ export const NAV = [
         path: "people/activity",
         label: "Student activity",
         lists: [
-          { list: "matchmaking-sessions", label: "Matchmaking chats" },
+          { list: "matchmaking-sessions", label: "Find Your Place searches" },
           { list: "lease-checks", label: "Lease checks" },
           { list: "waitlist", label: "Waitlist" },
         ],
@@ -78,6 +78,14 @@ export const NAV = [
   {
     label: "Billing",
     items: [{ path: "billing", label: "Billing", superOnly: true }],
+  },
+  {
+    // Analytics replaced the standalone /analytics page (marketing attribution, PRD 7.6).
+    label: "Analytics",
+    items: [
+      { path: "analytics", label: "Analytics", pinned: true },
+      { path: "marketing/links", label: "Campaign links", pinned: true },
+    ],
   },
   {
     label: "Agents and sync",
