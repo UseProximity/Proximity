@@ -11,7 +11,8 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, coverageFor, startSigning, voidDocument } from "./agreements.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { checkListingGate, gateResponseBody } from "./listingGate.js";
-import { paperPreview, printPaperAgreement, publishCovered, recordPaperAgreement, recordPreview } from "./paperAgreements.js";
+import { paperPreview, paperSignerDetails, printPaperAgreement, publishCovered, recordPaperAgreement, recordPreview } from "./paperAgreements.js";
+import { paperForAccount } from "./landlordOverview.js";
 import { buildPaperAgreementPdf, signatureAndDateLines } from "./paperAgreementPdf.js";
 
 const MASTER = {
@@ -194,6 +195,57 @@ describe("paper agreements", () => {
     const { covered, state } = await coverageFor(db, "u1", now);
     assert.equal(state.holderId, "p1");
     assert.deepEqual([...covered.keys()].sort(), ["L1", "L2"]);
+  });
+
+  it("a signer's paper copy belongs to the account it was printed for, not the signer's own or another account", async () => {
+    const db = world();
+    db.tables.users.push({ id: "p1", name: "Ryan Signer", email: "ryan@example.com", billing_only: true }, { id: "u2", name: "Sam Other", email: "sam@example.com" });
+    db.tables.billing_payers = [
+      { id: "bp1", landlord_id: "u1", payer_id: "p1", signer_name: "Ryan Signer", status: "active", listing_id: null },
+      { id: "bp2", landlord_id: "u2", payer_id: "p1", signer_name: "Ryan Signer", status: "active", listing_id: null },
+    ];
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await assert.rejects(() => recordPreview(db, "u2", id, now), (e) => e.code === "not_found");
+    await assert.rejects(() => recordPreview(db, "p1", id, now), (e) => e.code === "not_found");
+    await recordPreview(db, "u1", id, now);
+
+    // The admin list: controls on the printed account's row, a note naming it on the others.
+    const paper = { id, sentAt: now.toISOString(), holderId: "p1" };
+    const printedFor = new Map([[id, new Set(["u1"])]]);
+    const nameOf = new Map([["u1", "Pat Landlord"], ["u2", "Sam Other"]]);
+    assert.equal(paperForAccount(paper, "u1", printedFor, nameOf).here, true);
+    assert.deepEqual(paperForAccount(paper, "u2", printedFor, nameOf), { ...paper, here: false, forName: "Pat Landlord" });
+    assert.equal(paperForAccount(null, "u2", printedFor, nameOf), null);
+  });
+
+  it("the contact details typed when recording are saved for a later addendum", async () => {
+    const db = world();
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, company: "Pat Rentals LLC", now });
+    assert.throws(() => paperSignerDetails({ email: "", street: "1 Main St", city: "St. Louis, MO 63130" }), (e) => e.code === "contact_required" && /email/.test(e.message));
+    assert.throws(() => paperSignerDetails({ email: "pat@example.com", street: "1 Main St", city: "" }), (e) => e.code === "contact_required" && /address/.test(e.message));
+    assert.throws(() => paperSignerDetails({ email: "not an email", street: "1 Main St", city: "St. Louis, MO 63130" }), (e) => e.code === "bad_email");
+    const signerDetails = paperSignerDetails({ company: " Pat  Rentals LLC ", email: "pat@example.com", street: "1 Main St", suite: "", city: "St. Louis, MO 63130" });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, signerDetails, now });
+    assert.deepEqual(db.tables.landlord_agreements.find((a) => a.id === id).signer_details, {
+      company: "Pat Rentals LLC",
+      email: "pat@example.com",
+      street: "1 Main St",
+      suite: "",
+      city: "St. Louis, MO 63130",
+    });
+  });
+
+  it("no paper copy is printed while an addendum is open for signing", async () => {
+    const db = world();
+    const first = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    // A version made for Pat alone goes live: they may sign it, in the app or on paper.
+    db.tables.agreement_versions.push({ ...MASTER, id: "vn", label: "Pat's own", landlord_id: "u1", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" });
+    const later = new Date("2027-02-10T18:00:00Z");
+    await paperPreview(db, "u1", later);
+    db.tables.agreement_amendments = [{ id: "am1", user_id: "u1", agreement_id: first.id, status: "sent", proposed_exhibit: [], created_at: later.toISOString() }];
+    await assert.rejects(() => paperPreview(db, "u1", later), (e) => e.code === "cannot_print" && /addendum is open/.test(e.message));
+    await assert.rejects(() => printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now: later }), (e) => e.code === "cannot_print");
   });
 });
 

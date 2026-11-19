@@ -25,9 +25,9 @@ import {
   within,
   countValues,
 } from "@/lib/analytics/blocks";
-import { EVENT_PREFIX, CLIENT_EVENTS } from "@/lib/findYourPlace/events";
+import { EVENT_PREFIX, CLIENT_EVENTS, SERVER_EVENTS } from "@/lib/findYourPlace/events";
 
-const FYP_EVENT_TYPES = [...CLIENT_EVENTS, "search_failed"].map((name) => `${EVENT_PREFIX}${name}`);
+const FYP_EVENT_TYPES = [...CLIENT_EVENTS, ...SERVER_EVENTS].map((name) => `${EVENT_PREFIX}${name}`);
 
 /*
  * Find Your Place: the three-page flow (basics, then anything else in their own
@@ -162,6 +162,20 @@ const AMENITY_LABELS = {
 const areas = (s) => (parsed(s).areas ?? []).map((a) => AREA_LABELS[a] ?? a);
 const amenities = (s) => (parsed(s).amenities ?? []).map((k) => AMENITY_LABELS[k] ?? k);
 const furnishing = (s) => ({ yes: "Furnished", no: "Unfurnished" })[parsed(s).furnished] ?? null;
+
+/*
+ * Failed searches as a share of all searches. Every search that answered is
+ * logged from 2026-11-19 (`fyp_searched`), so from the first one on the share is
+ * exact: failures since then over failures plus answers. A period with none
+ * logged falls back to the run counts on the search rows, which miss searches
+ * run again later on an older row.
+ */
+export function failureShare({ failed, succeeded, estimatedRuns }) {
+  if (!succeeded.length) return { value: pct(failed.length, estimatedRuns + failed.length), exact: false };
+  const since = succeeded.reduce((min, e) => (e.created_at < min ? e.created_at : min), succeeded[0].created_at);
+  const failedSince = failed.filter((e) => e.created_at >= since).length;
+  return { value: pct(failedSince, failedSince + succeeded.length), exact: true };
+}
 
 // ─── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -344,10 +358,13 @@ export default async function loadMatchmaking(period) {
     safeBlock("Searches that failed", () => {
       const failures = ofEvent("search_failed");
       const failedNow = nowEvents("search_failed");
-      // Every search started this period counts, an expired one too (its run
-      // count went with its answers, so it counts once): leaving those out made
-      // the share of failures look higher than it was.
-      const attempts = current.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0) + failedNow.length;
+      const failedShare = failureShare({
+        failed: failedNow,
+        succeeded: nowEvents("searched"),
+        // Before searches were logged: every search started this period, an expired
+        // one too (its run count went with its answers, so it counts once).
+        estimatedRuns: current.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0),
+      });
       const capped = failedNow.filter((e) => meta(e).reason === "cap").length;
       return block("Searches that failed", {
         description:
@@ -356,8 +373,11 @@ export default async function loadMatchmaking(period) {
           { label: "Failed searches", ...periodTotals(period, failures) },
           {
             label: "Share of searches that failed",
-            current: pct(failedNow.length, attempts),
+            current: failedShare.value,
             format: "percent",
+            hint: failedShare.exact
+              ? "Failed searches out of every search run, counted since each search began being logged (November 19, 2026)."
+              : "An estimate: searches were not each logged before November 19, 2026.",
           },
           { label: "Stopped by the signed-out limit", current: capped, hint: "Signed-out devices get 10 searches before being asked to sign in." },
           {

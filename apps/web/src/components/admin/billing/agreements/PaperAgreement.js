@@ -8,8 +8,9 @@
  *                    company, then print. The properties are held until the
  *                    signed copy is recorded or the paper copy is voided.
  *   RecordPaperForm  the signed copy is back: upload it, confirm the properties
- *                    on it (tick or untick to match the paper) and tick which
- *                    drafts go live now.
+ *                    on it (tick or untick to match the paper), type the email
+ *                    and address they wrote on it, and tick which drafts go
+ *                    live now.
  */
 import { useEffect, useState } from "react";
 import { fmtDate } from "@/components/admin/adminShared";
@@ -162,11 +163,14 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
   const [choices, setChoices] = useState({});
   const [publish, setPublish] = useState({});
   const [signer, setSigner] = useState({ name: "", title: "", date: today() });
+  // What they wrote on the paper: a later addendum in the app prints these as they are.
+  const [contact, setContact] = useState({ company: "", email: "", street: "", suite: "", city: "" });
   const [file, setFile] = useState(null);
   useEffect(() => {
     call(`${base(row.id)}/${id}`)
       .then((d) => {
         setData(d);
+        setContact((c) => ({ ...c, company: d.company ?? "" }));
         setChoices(Object.fromEntries(d.properties.map((p) => [p.listingId, p.choice])));
         setPublish(Object.fromEntries(d.properties.filter((p) => p.onPrinted && p.publish?.ready).map((p) => [p.listingId, true])));
       })
@@ -184,7 +188,13 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
     );
   }
   if (!data) return <p className="text-xs text-gray-400">Loading the paper agreement...</p>;
-  const problem = exhibitProblem(data.properties, choices) || (!signer.name.trim() ? "Who signed it?" : !file ? "Upload the signed copy." : null);
+  const problem = exhibitProblem(data.properties, choices) || (!signer.name.trim()
+      ? "Who signed it?"
+      : !contact.email.trim() || !contact.street.trim() || !contact.city.trim()
+        ? "Enter the email and address written on the signed copy."
+        : !file
+          ? "Upload the signed copy."
+          : null);
   const off = liveLeftOff(data.properties, choices);
   const drafts = data.properties.filter((p) => p.publish && choices[p.listingId]?.include);
   const changed = data.properties.filter((p) => p.onPrinted !== !!choices[p.listingId]?.include);
@@ -198,6 +208,7 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
     form.set("signerName", signer.name);
     form.set("signerTitle", signer.title);
     form.set("signedAt", signer.date);
+    for (const [key, value] of Object.entries(contact)) form.set(key, value);
     return run(async () => {
       const r = await call(`${base(row.id)}/${id}`, { method: "POST", body: form });
       onDone();
@@ -260,6 +271,35 @@ export function RecordPaperForm({ row, busy, run, onDone }) {
           Date signed
           <input className={`${FIELD} mt-1`} type="date" value={signer.date} max={today()} onChange={(e) => setSigner({ ...signer, date: e.target.value })} />
         </label>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-gray-600">
+          Copy these from the signed paper. The next time they add a property in the app, the addendum prints them without asking again.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <label className="block min-w-[12rem] flex-1 text-xs font-medium text-gray-700">
+            Company (optional)
+            <input className={`${FIELD} mt-1`} value={contact.company} maxLength={120} onChange={(e) => setContact({ ...contact, company: e.target.value })} />
+          </label>
+          <label className="block min-w-[12rem] flex-1 text-xs font-medium text-gray-700">
+            Email
+            <input className={`${FIELD} mt-1`} type="email" value={contact.email} maxLength={254} onChange={(e) => setContact({ ...contact, email: e.target.value })} required />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <label className="block min-w-[12rem] flex-[2] text-xs font-medium text-gray-700">
+            Street address
+            <input className={`${FIELD} mt-1`} value={contact.street} maxLength={150} onChange={(e) => setContact({ ...contact, street: e.target.value })} placeholder="8151 Clayton Rd" required />
+          </label>
+          <label className="block min-w-[8rem] flex-1 text-xs font-medium text-gray-700">
+            Suite or unit (optional)
+            <input className={`${FIELD} mt-1`} value={contact.suite} maxLength={60} onChange={(e) => setContact({ ...contact, suite: e.target.value })} />
+          </label>
+          <label className="block min-w-[12rem] flex-[2] text-xs font-medium text-gray-700">
+            City, state and ZIP
+            <input className={`${FIELD} mt-1`} value={contact.city} maxLength={150} onChange={(e) => setContact({ ...contact, city: e.target.value })} placeholder="St. Louis, MO 63117" required />
+          </label>
+        </div>
       </div>
       <label className="block text-xs font-medium text-gray-700">
         Signed copy (PDF, up to 4 MB)

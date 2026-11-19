@@ -16,7 +16,10 @@
  *   recordPaperAgreement  the signed copy is back: the admin uploads it (required)
  *                         and confirms the properties on it, changing the list to
  *                         match the paper. Those become covered. Live listings left
- *                         off come off the site, as when signing in the app.
+ *                         off come off the site, as when signing in the app. The
+ *                         admin also types the email and address written on it
+ *                         (Wyatt, 2026-11-19): a later addendum in the app fills
+ *                         its signature block from them without asking.
  *   publishCovered        the drafts the admin ticked go live
  *
  * Voiding uses voidDocument (agreements.js), which releases the hold.
@@ -34,7 +37,7 @@ import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { activePayerLink } from "./payerLinks.js";
-import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, cancelInDocumenso, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
+import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, cancelInDocumenso, cleanSignerDetails, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
 import { planCoverage, withdrawOfferings, withdrawUnitLeases } from "./coverage.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { signerOf } from "./documenso.js";
@@ -68,7 +71,22 @@ function cannotPrint(state) {
       ? `${signer} has started signing in the app. Void that copy first to print a paper one.`
       : "This landlord has started signing in the app. Void that copy first to print a paper one.";
   }
+  // An addendum still open would be signed against the agreement this replaces
+  // (Wyatt, 2026-11-19): it is voided by hand first, never silently.
+  if (state.pendingAmendment) return "An Exhibit A addendum is open for signing. Void it first (under Documents) to print a paper copy.";
   return null;
+}
+
+/*
+ * The contact details the admin copies from the signed paper: the email, street
+ * and city line are required (a later addendum prints them as they are), the
+ * company and suite optional. Returns them in the saved shape.
+ */
+export function paperSignerDetails({ company, email, street, suite, city } = {}) {
+  const d = cleanSignerDetails({ company, email, address1: street, address2: suite, city });
+  if (!d.email) throw new BillingError("contact_required", "Enter the email written on the signed copy.");
+  if (!d.street || !d.city) throw new BillingError("contact_required", "Enter the address written on the signed copy: the street, and the city, state and ZIP.");
+  return { company: d.company ?? "", email: d.email, street: d.street, suite: d.suite ?? "", city: d.city };
 }
 
 async function liveMasterVersion(db, landlordId) {
@@ -196,11 +214,11 @@ async function paperRow(db, landlordId, id) {
     .maybeSingle();
   if (error) throw error;
   if (!data || data.provider !== PAPER) throw new BillingError("not_found", "That paper agreement was not found.", 404);
-  if (data.user_id !== landlordId) {
-    const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
-    if (covError) throw covError;
-    if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
-  }
+  // The account it was printed for, by the properties on it: a signer's copy for
+  // one account is not another account's, nor the signer's own.
+  const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
+  if (covError) throw covError;
+  if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
   return data;
 }
 
@@ -305,11 +323,13 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
  * it and returns its key: called only once every check has passed, so a refused
  * form leaves no file behind; `discardSigned(key)` removes it if the record then
  * fails. `documenso` (optional) withdraws an addendum still open for signing.
+ * `signerDetails` (paperSignerDetails) is what they wrote on it; without it the
+ * company printed stays and the rest is blank.
  * Returns { id, covered: [listingId], withdrawn: [listingId] }.
  */
 export async function recordPaperAgreement(
   db,
-  { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey = null, storeSigned = null, discardSigned = null, documenso = null, now = new Date() }
+  { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey = null, storeSigned = null, discardSigned = null, documenso = null, signerDetails = null, now = new Date() }
 ) {
   const name = String(signerName ?? "").trim().slice(0, SIGNER_MAX);
   if (!name) throw new BillingError("signer_required", "Who signed the agreement?");
@@ -376,6 +396,7 @@ export async function recordPaperAgreement(
           ...(signerTitle && String(signerTitle).trim() && { signer_title: String(signerTitle).trim().slice(0, SIGNER_MAX) }),
           term_start: whenIso,
           exhibit: plan.entries,
+          ...(signerDetails && { signer_details: signerDetails }),
           signed_file_key: fileKey,
           withdraw_on_sign: plan.withdraw ?? [],
           withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [],
