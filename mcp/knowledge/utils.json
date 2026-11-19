@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-18T14:16:33.130Z",
+  "_generated": "2026-11-19T22:10:56.883Z",
   "count": 358,
   "utils": [
     {
@@ -953,7 +953,7 @@
     },
     {
       "file": "src/lib/marketing/rateLimit.js",
-      "description": "In-memory sliding-window limit on the session beacon, per client IP."
+      "description": "In-memory sliding-window limits on the session beacon."
     },
     {
       "file": "src/lib/marketing/record.js",
