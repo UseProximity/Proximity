@@ -10,6 +10,7 @@
  */
 
 import { MAX_TAG_LENGTH, normalizeTag } from "../marketing/tags.js";
+import { EMAIL_SOURCE as OWN_EMAIL_SOURCE } from "../marketing/emailLinks.js";
 
 export const MAX_SOURCE_LENGTH = MAX_TAG_LENGTH;
 
@@ -32,8 +33,12 @@ export function readReviewSource(params) {
   if (!params) return null;
   const get =
     typeof params.get === "function" ? (k) => params.get(k) : (k) => params[k];
+  // Links in our own emails carry utm_source=proximity-email and the email
+  // kind as utm_campaign (marketing attribution). That marks the email click
+  // for marketing; it is not a printed code, so the review keeps no tag.
+  const own = normalizeReviewSource(get("utm_source")) === OWN_EMAIL_SOURCE;
   return normalizeReviewSource(
-    get("src") || get("utm_campaign") || get("utm_source")
+    get("src") || (own ? null : get("utm_campaign") || get("utm_source"))
   );
 }
 
