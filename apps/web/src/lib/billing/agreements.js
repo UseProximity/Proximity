@@ -347,7 +347,9 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
     // Out on paper: the properties printed on it, waiting for the signed copy.
-    paper: paperOut ? { sentAt: pending.created_at, properties: (pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
+    // A signer's copy may be for another account they sign for, so an account
+    // with a signer is never shown what is on it.
+    paper: paperOut ? { sentAt: pending.created_at, properties: (state.payerLink ? [] : pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
     canSign: !paperOut && (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
     // A version made for them alone went live after they signed: signing it
     // replaces the one they have. Worded like any updated agreement, so nothing
