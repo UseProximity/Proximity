@@ -19,7 +19,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { BOX_RULES, EXHIBIT_CONTINUED_NOTE } from "./documenso.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
-import { findRules, preparePlaceholders } from "./placeholders.js";
+import { preparePlaceholders } from "./placeholders.js";
 
 const EXHIBIT_SIZE = 9;
 const EXHIBIT_LEADING = 11.5;
@@ -128,7 +128,8 @@ export function layoutExhibit(blocks, boxes, fonts) {
 /*
  * Build the printable agreement. Returns { bytes, pageCount }.
  *   versionBytes    the agreement version's uploaded PDF
- *   templateFields  the Documenso template's fields, used only when the PDF has no placeholders
+ *   templateFields  the Documenso template's fields, or a function that loads them:
+ *                   used (and loaded) only when the PDF has no placeholders
  *   blocks          one string per property: "address\nWhole building" (coverageLine)
  *   company         printed in the Company / Owner boxes; blank when not given
  *   landlordName    for the heading of any continued pages
@@ -146,10 +147,15 @@ export const signatureAndDateLines = (box, rules = []) => (box.type === "SIGNATU
 
 // `drawLine(box, rules)`: whether a blank gets a line to write on (default: signatureAndDateLines).
 export async function buildPaperAgreementPdf({ versionBytes, templateFields = null, blocks = [], company = "", landlordName = "", preparedAt = new Date(), drawLine = signatureAndDateLines }) {
-  const prepared = await preparePlaceholders(versionBytes);
+  // The agreement's own drawn lines, read on the same pass as the placeholders.
+  const rules = {};
+  const prepared = await preparePlaceholders(versionBytes, { rules });
   // boxesFor keeps the placeholders' order: each box knows the room to its right.
   let boxes = prepared.boxes.map((b, i) => ({ ...b, roomRight: prepared.found[i]?.roomRight ?? null }));
-  if (!boxes.length && templateFields?.length) boxes = boxesFromTemplate(templateFields);
+  if (!boxes.length) {
+    const fields = typeof templateFields === "function" ? await templateFields() : templateFields;
+    if (fields?.length) boxes = boxesFromTemplate(fields);
+  }
   const doc = await PDFDocument.load(prepared.bytes, { ignoreEncryption: true });
   const fonts = { regular: await doc.embedFont(StandardFonts.Helvetica), bold: await doc.embedFont(StandardFonts.HelveticaBold) };
   const pages = doc.getPages();
@@ -164,7 +170,15 @@ export async function buildPaperAgreementPdf({ versionBytes, templateFields = nu
     const page = pages[f.page - 1];
     if (!page || paperBoxKind({ type: f.label && /\bexhibit\s*a\b/i.test(f.label) ? "TEXT" : "", label: f.label }) === "exhibit") continue;
     const width = Math.min(Math.max(f.width, Number(f.roomRight) || 0) + 4, page.getSize().width - f.x);
-    page.drawRectangle({ x: f.x - 2, y: f.y - f.size * 0.35, width, height: f.size * 1.45, color: rgb(1, 1, 1) });
+    const band = { x0: f.x - 2, x1: f.x - 2 + width, y0: f.y - f.size * 0.35, y1: f.y + f.size * 1.1 };
+    page.drawRectangle({ x: band.x0, y: band.y0, width, height: band.y1 - band.y0, color: rgb(1, 1, 1) });
+    // The agreement's own line under a placeholder (a signature rule in a Word
+    // table sits a point or two below the baseline) is put back where the white
+    // covered it, so the copy never loses a line it is counted as having.
+    for (const r of rules[f.page] ?? []) {
+      if (r.y < band.y0 - 1 || r.y > band.y1 || r.x1 <= band.x0 || r.x0 >= band.x1) continue;
+      page.drawLine({ start: { x: Math.max(r.x0, band.x0), y: r.y }, end: { x: Math.min(r.x1, band.x1), y: r.y }, thickness: 0.6, color: rgb(0.25, 0.25, 0.25) });
+    }
   }
 
   // A line to write on along the bottom of the box, long enough to sign or date
@@ -180,7 +194,6 @@ export async function buildPaperAgreementPdf({ versionBytes, templateFields = nu
       color: rgb(0.25, 0.25, 0.25),
     });
   };
-  const rules = await findRules(versionBytes);
   for (const box of located.filter((x) => x.kind === "blank" && drawLine(x, rules[x.page] ?? []))) writeLine(box);
 
   // The company, on the placeholder's own line and size, made smaller to fit its

@@ -4,7 +4,9 @@ import { NextResponse } from "next/server";
 import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
 import { publishCovered, recordPaperAgreement, recordPreview } from "@/lib/billing/paperAgreements";
-import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { discardSignedAgreement, storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { documensoConfigured } from "@/lib/billing/documenso";
+import { documensoClient } from "@/lib/billing/agreementServices";
 import { publishProperty } from "@/lib/listings/publish";
 import { afterPayerSigned } from "@/lib/billing/payerServices";
 import { BillingError } from "@/lib/billing/errors";
@@ -74,8 +76,9 @@ export async function POST(req, { params }) {
     const signedAt = signedAtRaw ? new Date(`${signedAtRaw}T12:00:00Z`) : new Date();
     if (Number.isNaN(signedAt.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
 
-    // The form is checked before the upload, so a bad one never leaves a stray file.
-    const signedFileKey = await storeSignedAgreement({ userId: landlordId, bytes: new Uint8Array(await file.arrayBuffer()) });
+    // The copy is stored only once the record's own checks have passed (and removed
+    // again if saving it then fails), so a refused form never leaves a stray file.
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const result = await recordPaperAgreement(billingDb.db, {
       landlordId,
       id: agreementId,
@@ -83,7 +86,9 @@ export async function POST(req, { params }) {
       signerName,
       signerTitle: form.get("signerTitle"),
       signedAt,
-      signedFileKey,
+      storeSigned: () => storeSignedAgreement({ userId: landlordId, bytes }),
+      discardSigned: discardSignedAgreement,
+      documenso: documensoConfigured() ? documensoClient() : null,
     });
     // Signed by the account's authorized signer: settle what the landlord sent them
     // and tell the landlord, as when the signer signs in the app.

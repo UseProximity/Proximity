@@ -344,7 +344,10 @@ export default async function loadMatchmaking(period) {
     safeBlock("Searches that failed", () => {
       const failures = ofEvent("search_failed");
       const failedNow = nowEvents("search_failed");
-      const attempts = readable.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0) + failedNow.length;
+      // Every search started this period counts, an expired one too (its run
+      // count went with its answers, so it counts once): leaving those out made
+      // the share of failures look higher than it was.
+      const attempts = current.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0) + failedNow.length;
       const capped = failedNow.filter((e) => meta(e).reason === "cap").length;
       return block("Searches that failed", {
         description:

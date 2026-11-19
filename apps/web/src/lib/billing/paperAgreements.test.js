@@ -114,6 +114,45 @@ describe("paper agreements", () => {
     await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: [], signerName: "Pat", signedFileKey: null, now }), (e) => e.code === "file_required");
   });
 
+  it("the signed copy is stored only once the record's checks pass", async () => {
+    const db = world();
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    let stored = 0;
+    const storeSigned = async () => {
+      stored += 1;
+      return "billing/signed/u1/late.pdf";
+    };
+    const everythingOff = ["L1", "L2", "L3"].map((listingId) => ({ listingId, include: false, excluded: true }));
+    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: everythingOff, signerName: "Pat", storeSigned, now }), (e) => e.code === "no_properties");
+    await assert.rejects(
+      () => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: new Date("2027-01-20T12:00:00Z"), now }),
+      (e) => e.code === "bad_date"
+    );
+    assert.equal(stored, 0);
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: now, now });
+    assert.equal(stored, 1);
+    assert.equal((await agreementState(db, "u1", now)).signed.signed_file_key, "billing/signed/u1/late.pdf");
+    // Saved twice (a double click): the second is refused before anything is stored.
+    await assert.rejects(() => recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", storeSigned, signedAt: now, now }), (e) => e.code === "not_out");
+    assert.equal(stored, 1);
+  });
+
+  it("a publish that fails with a database error is reported in plain words", async () => {
+    const db = world();
+    const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
+    await recordPaperAgreement(db, { landlordId: "u1", id, exhibit: L3_OFF, signerName: "Pat", signedFileKey: "k", signedAt: now, now });
+    const raw = async () => {
+      throw new Error('duplicate key value violates unique constraint "listings_pkey"');
+    };
+    const [out] = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: raw });
+    assert.equal(out.error, "Could not publish it.");
+    const readable = async () => {
+      throw Object.assign(new Error("That property no longer exists."), { status: 404 });
+    };
+    const [said] = await publishCovered(db, { landlordId: "u1", agreementId: id, listingIds: ["L2"], publishProperty: readable });
+    assert.equal(said.error, "That property no longer exists.");
+  });
+
   it("only drafts now covered by it are published, as the landlord", async () => {
     const db = world();
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });

@@ -212,6 +212,9 @@ export async function takeoverCoverage(db, userId, now = new Date()) {
   const signerCovered = coveredMap(rows, { master: signerState.signed, masterValid: signerState.valid });
   return {
     state,
+    // The signer's own agreement state: a paper copy of theirs out for this
+    // account holds the takeover off too.
+    signerState,
     properties,
     rows,
     covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }),
@@ -656,6 +659,7 @@ export async function startSigning(
       const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
       const { state } = loaded;
       assertNoPaperOut(state);
+      assertNoPaperOut(loaded.signerState);
       let rows = loaded.rows;
       // Which account each property belongs to, so its coverage row is that account's.
       const accountOf = new Map(loaded.properties.map((p) => [p.listingId, account]));
@@ -832,7 +836,7 @@ async function currentStatus(db, doc) {
 }
 
 // Withdraw a copy in Documenso, best effort: cancelled if it was opened, deleted if still a draft.
-async function cancelInDocumenso(documenso, row, reason) {
+export async function cancelInDocumenso(documenso, row, reason) {
   if (!row?.provider_envelope_id) return;
   const withdraw = documenso.discard ? documenso.discard.bind(documenso) : documenso.cancel.bind(documenso);
   await withdraw(row.provider_envelope_id, reason).catch(() => {});

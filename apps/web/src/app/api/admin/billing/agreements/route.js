@@ -80,13 +80,10 @@ export async function POST(req) {
       if (!file) throw new BillingError("file_required", "Upload the signed copy.");
       const signedDate = signedAt ? new Date(`${signedAt}T12:00:00Z`) : new Date();
       if (Number.isNaN(signedDate.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
-      let signedFileKey = null;
-      if (file) {
-        signedFileKey = await storeSignedAgreement({
-          userId: landlord.id,
-          bytes: new Uint8Array(await file.arrayBuffer()),
-        });
-      }
+      const signedFileKey = await storeSignedAgreement({
+        userId: landlord.id,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+      });
       agreement = await markAgreementSigned(supabase, {
         userId: landlord.id,
         signerName,
