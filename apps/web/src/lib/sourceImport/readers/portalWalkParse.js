@@ -157,13 +157,30 @@ export function unitsFromWalk(walk, today) {
   return { units, notes, apartments: quoted + unquoted, quoted, lengths: offered };
 }
 
-/* Fold one render's findings into the running total. */
+/*
+ * Fold one render's findings into the running total.
+ *
+ * An apartment free now that a render did not list, though it listed every
+ * floor plan at the portal's first date (got.listedAll), has probably been
+ * let. Missed twice, it is marked stuck like one that would not open (the
+ * walk script marks those itself), so it stops holding the resume jump back.
+ * It is never dropped here: a floor plan lists only so many apartments.
+ */
 export function mergeWalk(into, got) {
   if (!got) return into;
   if ((got.plans ?? []).length) into.plans = got.plans;
-  into.units = { ...(into.units ?? {}), ...(got.units ?? {}) };
+  const before = into.units ?? {};
+  into.units = { ...before, ...(got.units ?? {}) };
   const seen = new Set((into.priced ?? []).map((q) => String(q.number)));
   into.priced = [...(into.priced ?? []), ...(got.priced ?? []).filter((q) => q?.number && !seen.has(String(q.number)) && Object.keys(q.terms ?? {}).length)];
+  if (got.listedAll) {
+    const priced = new Set(into.priced.map((q) => String(q.number)));
+    for (const [n, u] of Object.entries(before)) {
+      if (!u || u.avail || priced.has(String(u.number ?? n)) || (got.units ?? {})[n]) continue;
+      const misses = (u.misses ?? 0) + 1;
+      into.units[n] = { ...u, misses, ...(misses >= 2 && { stuck: true }) };
+    }
+  }
   into.log = [...(into.log ?? []), ...(got.log ?? [])].slice(-60);
   return into;
 }
@@ -192,12 +209,15 @@ export function nextSundayCheckAt(now = Date.now(), slackMs = 6 * 60 * 60 * 1000
  * once the date is near (Mansions' 142 at Jan 21 shows only from Jan 15)
  * is reached by first opening an earlier one. Only up to the earliest
  * apartment still unpriced, so that one is still priced for its own date.
+ * A stuck apartment (it would not open twice, or the portal stopped listing
+ * it) does not count: one of those would otherwise switch the jump off for
+ * every later render. The walk tries it again last (stuckUnits).
  */
 export function resumePoint(walk, max = 4) {
   const priced = new Set((walk.priced ?? []).map((q) => String(q.number)));
   if (!priced.size) return [];
   const units = Object.values(walk.units ?? {}).filter((u) => u?.number && u.plan);
-  const open = units.filter((u) => !priced.has(String(u.number)));
+  const open = units.filter((u) => !priced.has(String(u.number)) && !u.stuck);
   // An unpriced apartment free now: nothing to skip ahead to.
   if (open.some((u) => !u.avail)) return [];
   const limit = open.map((u) => u.avail).sort()[0] ?? null;
@@ -208,4 +228,22 @@ export function resumePoint(walk, max = 4) {
     .filter((u) => !dates.has(u.avail) && dates.add(u.avail))
     .slice(0, max)
     .map((u) => ({ number: String(u.number), plan: u.plan, avail: u.avail }));
+}
+
+/* The unpriced apartments a walk leaves for last (see resumePoint). */
+export function stuckUnits(walk) {
+  const priced = new Set((walk.priced ?? []).map((q) => String(q.number)));
+  return Object.values(walk.units ?? {})
+    .filter((u) => u?.number && u.stuck && !priced.has(String(u.number)))
+    .map((u) => String(u.number));
+}
+
+/*
+ * A walk script with its options written in where __OPTS__ is. A function
+ * does the replacing, so "$&" or "$'" in a portal's floor plan name (carried
+ * in resumeAt) is not read as a replacement pattern.
+ */
+export function withWalkOptions(script, options) {
+  const json = JSON.stringify(options);
+  return script.replace("__OPTS__", () => json);
 }
