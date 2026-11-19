@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-18T14:16:32.543Z",
-  "count": 283,
+  "_generated": "2026-11-19T22:46:04.591Z",
+  "count": 284,
   "routes": [
     {
       "path": "/api/account",
@@ -684,6 +684,23 @@
         "users"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
+    },
+    {
+      "path": "/api/admin/chat/threads/[threadId]/resend-inquiry",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [
+        "chat_threads",
+        "users",
+        "chat_messages",
+        "chat_email_log"
+      ],
+      "file": "src/app/api/admin/chat/threads/[threadId]/resend-inquiry/route.js"
     },
     {
       "path": "/api/admin/db-env",

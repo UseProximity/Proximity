@@ -57,7 +57,14 @@ function AgreementDetail({ a }) {
       </span>
     );
   }
-  if (a.status === "on_paper") return <span>Printed for paper signing {fmtDate(a.paper.sentAt)}, waiting for the signed copy</span>;
+  if (a.status === "on_paper") {
+    return (
+      <span>
+        Printed for paper signing {fmtDate(a.paper.sentAt)}
+        {a.paper.here ? "" : a.paper.forName ? ` for ${a.paper.forName}` : " for another account"}, waiting for the signed copy
+      </span>
+    );
+  }
   if (a.status === "in_progress") return <span>Opened the agreement {fmtDate(a.pendingSince)}, not finished</span>;
   if (a.lastEndedReason) return <span>Last attempt: {a.lastEndedReason}</span>;
   return <span>Has not started</span>;
@@ -530,7 +537,13 @@ function LandlordRow({ row, busy, run, canEmail }) {
             Print for paper signing
           </button>
         )}
-        {paper && (
+        {paper && !paper.here && (
+          <span className="text-xs text-gray-600">
+            {row.payer ? `${row.payer.name}'s agreement` : "Their agreement"} is out on paper for {paper.forName || "another account"}. Record or void it
+            from that account&apos;s row.
+          </span>
+        )}
+        {paper?.here && (
           <>
             <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(paperFileUrl(row.id, paper.id)))}>
               Download printed copy
@@ -563,7 +576,7 @@ function LandlordRow({ row, busy, run, canEmail }) {
       </div>
       {settingPayer && <PayerForm row={row} busy={busy} run={run} onDone={() => setSettingPayer(false)} />}
       {paperForm === "print" && <PrintPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
-      {paperForm === "record" && paper && <RecordPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
+      {paperForm === "record" && paper?.here && <RecordPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
       {showDocs && (
         <>
           <DocumentHistory landlordId={row.id} landlordName={row.name || row.email || "this landlord"} busy={busy} run={run} />

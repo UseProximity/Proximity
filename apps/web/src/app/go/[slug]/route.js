@@ -23,7 +23,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req, { params }) {
   const { slug: raw } = await params;
-  const slug = normalizeTag(decodeURIComponent(raw || ""));
+  let decoded = raw || "";
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // A malformed escape like %E0 would throw; clean the raw text instead.
+  }
+  const slug = normalizeTag(decoded);
   const { search } = new URL(req.url);
   if (!slug) return NextResponse.redirect(new URL("/", req.url), 307);
 

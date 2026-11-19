@@ -15,7 +15,7 @@
  * LANDLORD_GONE_NOTICES to true.
  */
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendAgentDigestEmail, sendTourEmail } from "@/lib/email";
+import { getBaseUrl, portalUnreadLine, sendAgentDigestEmail, sendTourEmail } from "@/lib/email";
 import { ALERT_TO } from "@/lib/sourceImport/sync";
 import { syncTeamReview } from "./flags";
 
@@ -120,8 +120,11 @@ export async function buildDigest({ now = new Date() } = {}) {
     if (j.status === "failed") return `${label(j.listings)}: FAILED, ${j.error ?? "unknown error"}`;
     const pagesRead = Array.isArray(r.pages) ? r.pages.filter((p) => !p.error && !p.skipped).length : 0;
     const unitPages = (r.unitPages ?? []).filter((u) => u.status !== "ok").map((u) => `${u.unit} page ${u.status}`);
+    // Part way through a leasing portal walk: nothing else was read or applied.
+    if (r.portalPending) return `${label(j.listings)}: leasing portal part read, carrying on with the next run`;
     return [
       `${label(j.listings)}: ${RUN_WORD[r.status] ?? r.status ?? j.status}${r.deep ? " (deep read)" : ""}`,
+      r.portalUnread ? "leasing portal not read" : null,
       `${pagesRead} page${pagesRead === 1 ? "" : "s"} read`,
       Object.keys(ev.applied).length ? `applied ${counted(ev.applied)}` : "nothing applied",
       Object.keys(ev.denied).length ? `declined ${counted(ev.denied, (k) => `(${k})`)}` : null,
@@ -145,14 +148,19 @@ export async function buildDigest({ now = new Date() } = {}) {
   /*
    * Sources that keep the sync from doing its job: a page with no units on
    * it (a home page, or one that blocks reading), a read that saw only part
-   * of the unit list (so nothing it missed can be withdrawn), or a website
-   * that failed. Fixing the URL or adding the floor plans page fixes these.
+   * of the unit list (so nothing it missed can be withdrawn), a leasing
+   * portal that could not be read, or a website that failed. Fixing the URL or adding the floor plans page fixes these.
    */
   const toFix = [];
   for (const j of syncs.filter((x) => !x.target?.knowledge)) {
     const r = j.result ?? {};
     const where = `${label(j.listings)} (${j.target?.url ?? "no URL"})`;
+    // The building's leasing portal (where its real prices live) read nothing:
+    // said here every day it happens, whatever else the website read found.
+    if (j.status !== "failed" && r.portalUnread) toFix.push(`${label(j.listings)}: ${portalUnreadLine(r)}`);
     if (j.status === "failed") toFix.push(`${where}: could not be read`);
+    // A portal walk part way through read no website units on purpose.
+    else if (r.portalPending) continue;
     else if (r.summary && r.summary.units === 0) toFix.push(`${where}: no units found on the page; it may be a home page or block reading, so point it at the floor plans or availability page`);
     else if (r.unitListComplete === false) toFix.push(`${where}: only part of the unit list was readable, so units it missed are not withdrawn`);
     else if (r.summary && r.summary.units > 0 && r.summary.priced === 0) toFix.push(`${where}: no prices on the page`);

@@ -782,7 +782,7 @@ export default function AvailableListings({
             ) : (
               <div
                 className={
-                  wideLayout ? WIDE_GRID_CLASS : "grid grid-cols-2 gap-3"
+                  wideLayout ? WIDE_GRID_CLASS : "grid grid-cols-1 xl:grid-cols-2 gap-3"
                 }
               >
                 {visibleListings.map((listing) => (

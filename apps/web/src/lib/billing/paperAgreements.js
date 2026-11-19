@@ -16,7 +16,10 @@
  *   recordPaperAgreement  the signed copy is back: the admin uploads it (required)
  *                         and confirms the properties on it, changing the list to
  *                         match the paper. Those become covered. Live listings left
- *                         off come off the site, as when signing in the app.
+ *                         off come off the site, as when signing in the app. The
+ *                         admin also types the email and address written on it
+ *                         (Wyatt, 2026-11-19): a later addendum in the app fills
+ *                         its signature block from them without asking.
  *   publishCovered        the drafts the admin ticked go live
  *
  * Voiding uses voidDocument (agreements.js), which releases the hold.
@@ -34,7 +37,7 @@ import { BillingError } from "./errors.js";
 import { withSettingsLock } from "./settings.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { activePayerLink } from "./payerLinks.js";
-import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
+import { PAPER, PAPER_OUT_MESSAGE, agreementState, assertNoPaperOut, cancelInDocumenso, cleanSignerDetails, coverageFor, coverageLine, endDocument, exhibitSelections, isPaperOut, releaseProposed } from "./agreements.js";
 import { planCoverage, withdrawOfferings, withdrawUnitLeases } from "./coverage.js";
 import { exhibitPreview } from "./exhibitUnits.js";
 import { signerOf } from "./documenso.js";
@@ -68,7 +71,22 @@ function cannotPrint(state) {
       ? `${signer} has started signing in the app. Void that copy first to print a paper one.`
       : "This landlord has started signing in the app. Void that copy first to print a paper one.";
   }
+  // An addendum still open would be signed against the agreement this replaces
+  // (Wyatt, 2026-11-19): it is voided by hand first, never silently.
+  if (state.pendingAmendment) return "An Exhibit A addendum is open for signing. Void it first (under Documents) to print a paper copy.";
   return null;
+}
+
+/*
+ * The contact details the admin copies from the signed paper: the email, street
+ * and city line are required (a later addendum prints them as they are), the
+ * company and suite optional. Returns them in the saved shape.
+ */
+export function paperSignerDetails({ company, email, street, suite, city } = {}) {
+  const d = cleanSignerDetails({ company, email, address1: street, address2: suite, city });
+  if (!d.email) throw new BillingError("contact_required", "Enter the email written on the signed copy.");
+  if (!d.street || !d.city) throw new BillingError("contact_required", "Enter the address written on the signed copy: the street, and the city, state and ZIP.");
+  return { company: d.company ?? "", email: d.email, street: d.street, suite: d.suite ?? "", city: d.city };
 }
 
 async function liveMasterVersion(db, landlordId) {
@@ -99,7 +117,7 @@ export async function paperPreview(db, landlordId, now = new Date()) {
   const preview = await exhibitPreview(db, landlordId, { now, forPayee: !!state.payerLink });
   return {
     properties: preview.kind === "none" ? [] : preview.properties,
-    company: (await lastCompany(db, state.holderId)) || (state.payerLink ? "" : await lastCompany(db, landlordId)),
+    company: await lastCompany(db, state.holderId),
     versionLabel: version.label,
     negotiated: !!version.landlord_id,
     signer: state.payerLink ? { name: state.payerLink.signer_name } : null,
@@ -196,11 +214,11 @@ async function paperRow(db, landlordId, id) {
     .maybeSingle();
   if (error) throw error;
   if (!data || data.provider !== PAPER) throw new BillingError("not_found", "That paper agreement was not found.", 404);
-  if (data.user_id !== landlordId) {
-    const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
-    if (covError) throw covError;
-    if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
-  }
+  // The account it was printed for, by the properties on it: a signer's copy for
+  // one account is not another account's, nor the signer's own.
+  const { data: rows, error: covError } = await db.from("agreement_coverage").select("id").eq("agreement_id", id).eq("user_id", landlordId).limit(1);
+  if (covError) throw covError;
+  if (!rows?.length) throw new BillingError("not_found", "That paper agreement was not found.", 404);
   return data;
 }
 
@@ -213,16 +231,19 @@ export async function paperAgreementPdf(db, { landlordId, id, readFile, documens
   if (row.status !== "sent") throw new BillingError("not_out", "That paper agreement is no longer out. Print a new one to change it.", 409);
   const version = row.agreement_version;
   if (!version?.file_key) throw new BillingError("not_available", "That agreement version's PDF is missing.", 409);
-  let templateFields = null;
-  if (documenso && version.provider_template_id) {
-    try {
-      const envelope = await documenso.getEnvelope(version.provider_template_id);
-      const signer = signerOf(envelope);
-      templateFields = (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
-    } catch {
-      templateFields = null;
-    }
-  }
+  // Read from Documenso only when the PDF turns out to have no placeholders.
+  const templateFields =
+    documenso && version.provider_template_id
+      ? async () => {
+          try {
+            const envelope = await documenso.getEnvelope(version.provider_template_id);
+            const signer = signerOf(envelope);
+            return (envelope?.fields ?? []).filter((f) => !signer || f.recipientId === signer.id);
+          } catch {
+            return null;
+          }
+        }
+      : null;
   const { data: landlord } = await db.from("users").select("name").eq("id", landlordId).maybeSingle();
   const entries = Array.isArray(row.exhibit) ? row.exhibit : [];
   return buildPaperAgreementPdf({
@@ -288,7 +309,7 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
   });
   const drafts = await publishable(db, landlordId, properties.map((p) => p.listingId));
   return {
-    signer: forPayee ? { name: (await agreementState(db, landlordId, now)).payerLink?.signer_name ?? null } : null,
+    signer: forPayee ? { name: (await activePayerLink(db, landlordId))?.signer_name ?? null } : null,
     printedAt: row.created_at,
     versionLabel: row.agreement_version?.label ?? null,
     company: row.signer_details?.company ?? "",
@@ -297,13 +318,22 @@ export async function recordPreview(db, landlordId, id, now = new Date()) {
 }
 
 /*
- * The signed copy is back. `exhibit` is the confirmed list (the picker's choices),
- * `signedFileKey` the stored upload. Returns { id, covered: [listingId], withdrawn: [listingId] }.
+ * The signed copy is back. `exhibit` is the confirmed list (the picker's choices).
+ * The upload is `signedFileKey` (already stored), or `storeSigned()`, which stores
+ * it and returns its key: called only once every check has passed, so a refused
+ * form leaves no file behind; `discardSigned(key)` removes it if the record then
+ * fails. `documenso` (optional) withdraws an addendum still open for signing.
+ * `signerDetails` (paperSignerDetails) is what they wrote on it; without it the
+ * company printed stays and the rest is blank.
+ * Returns { id, covered: [listingId], withdrawn: [listingId] }.
  */
-export async function recordPaperAgreement(db, { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey, now = new Date() }) {
+export async function recordPaperAgreement(
+  db,
+  { landlordId, id, exhibit, signerName, signerTitle = null, signedAt = new Date(), signedFileKey = null, storeSigned = null, discardSigned = null, documenso = null, signerDetails = null, now = new Date() }
+) {
   const name = String(signerName ?? "").trim().slice(0, SIGNER_MAX);
   if (!name) throw new BillingError("signer_required", "Who signed the agreement?");
-  if (!signedFileKey) throw new BillingError("file_required", "Upload the signed copy.");
+  if (!signedFileKey && !storeSigned) throw new BillingError("file_required", "Upload the signed copy.");
   const when = new Date(signedAt);
   if (Number.isNaN(when.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
   if (when.getTime() > now.getTime() + 24 * 60 * 60 * 1000) throw new BillingError("bad_date", "The signing date cannot be in the future.");
@@ -322,16 +352,40 @@ export async function recordPaperAgreement(db, { landlordId, id, exhibit, signer
       const whenIso = when.toISOString();
       const nowIso = now.toISOString();
 
-      // One current signature: an older one (needing a re-sign) steps aside.
-      if (state.signed && state.signed.id !== row.id) {
+      // The paper copy may have been voided since it was read (voiding takes no lock).
+      const { data: still, error: stillError } = await db.from("landlord_agreements").select("status").eq("id", row.id).maybeSingle();
+      if (stillError) throw stillError;
+      if (still?.status !== "sent") throw new BillingError("not_out", "That paper agreement is no longer out.", 409);
+
+      const fileKey = signedFileKey ?? (await storeSigned());
+      if (!fileKey) throw new BillingError("file_required", "Upload the signed copy.");
+      const discard = async () => {
+        if (!signedFileKey && discardSigned) await discardSigned(fileKey).catch(() => {});
+      };
+
+      // One current signature (a unique index): an older one (needing a re-sign)
+      // steps aside first, and comes back if the paper copy turns out to be gone.
+      const replaced = state.signed && state.signed.id !== row.id ? state.signed.id : null;
+      const restore = async () => {
+        if (!replaced) return;
+        const { error } = await db
+          .from("landlord_agreements")
+          .update({ status: "signed", ended_reason: null, ended_at: null })
+          .eq("id", replaced)
+          .eq("status", "superseded");
+        if (error) console.error("billing: restoring the agreement a paper copy was replacing failed", error.message);
+      };
+      if (replaced) {
         const { error } = await db
           .from("landlord_agreements")
           .update({ status: "superseded", ended_reason: "replaced by a paper signature", ended_at: nowIso })
-          .eq("id", state.signed.id)
+          .eq("id", replaced)
           .eq("status", "signed");
-        if (error) throw error;
+        if (error) {
+          await discard();
+          throw error;
+        }
       }
-      if (state.pendingAmendment) await endDocument(db, "amendment", state.pendingAmendment, "replaced by a paper signature", now);
 
       const { data: signed, error: signError } = await db
         .from("landlord_agreements")
@@ -342,7 +396,8 @@ export async function recordPaperAgreement(db, { landlordId, id, exhibit, signer
           ...(signerTitle && String(signerTitle).trim() && { signer_title: String(signerTitle).trim().slice(0, SIGNER_MAX) }),
           term_start: whenIso,
           exhibit: plan.entries,
-          signed_file_key: signedFileKey,
+          ...(signerDetails && { signer_details: signerDetails }),
+          signed_file_key: fileKey,
           withdraw_on_sign: plan.withdraw ?? [],
           withdraw_unit_ids_on_sign: plan.withdrawUnits ?? [],
         })
@@ -350,8 +405,19 @@ export async function recordPaperAgreement(db, { landlordId, id, exhibit, signer
         .eq("status", "sent")
         .select("id")
         .maybeSingle();
-      if (signError) throw signError;
-      if (!signed) throw new BillingError("status_changed", "That paper agreement just changed. Reload and try again.", 409);
+      if (signError || !signed) {
+        await restore();
+        await discard();
+        if (signError) throw signError;
+        throw new BillingError("status_changed", "That paper agreement just changed. Reload and try again.", 409);
+      }
+
+      // An addendum to the agreement this replaces ends with it: withdrawn in
+      // Documenso too, so it can't be signed or send reminders afterwards.
+      if (state.pendingAmendment) {
+        if (documenso) await cancelInDocumenso(documenso, state.pendingAmendment, "Replaced by a signed paper agreement");
+        await endDocument(db, "amendment", state.pendingAmendment, "replaced by a paper signature", now);
+      }
 
       // What was printed is replaced by the confirmed list, now covered.
       await releaseProposed(db, "master", row.id, now);
@@ -405,7 +471,10 @@ export async function publishCovered(db, { landlordId, agreementId, listingIds, 
       await publishProperty(landlordId, false, listingId);
       out.push({ listingId, ok: true });
     } catch (err) {
-      out.push({ listingId, ok: false, error: err?.message || "Could not publish it." });
+      // Only a message written for people (PublishError, BillingError), never a raw database error.
+      const readable = Number.isInteger(err?.status) && err.status < 500 && err.message;
+      if (!readable) console.error("billing: publishing a property after a paper agreement failed", err?.message);
+      out.push({ listingId, ok: false, error: readable ? err.message : "Could not publish it." });
     }
   }
   return out;

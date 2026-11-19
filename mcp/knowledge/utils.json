@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-19T22:10:56.883Z",
-  "count": 358,
+  "_generated": "2026-11-19T22:46:04.677Z",
+  "count": 360,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -872,6 +872,10 @@
       "description": "The account columns behind a student's saved sizes and lease lengths."
     },
     {
+      "file": "src/lib/listings/listingLink.js",
+      "description": "Where a tap on a listing card goes. Below 768px the popup is too tight, so a"
+    },
+    {
       "file": "src/lib/listings/listingSelect.js",
       "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
     },
@@ -1390,6 +1394,10 @@
     {
       "file": "src/utils/compressImage.js",
       "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/copyText.js",
+      "description": "Copies text to the clipboard and resolves to true/false. Never throws."
     },
     {
       "file": "src/utils/drivePlaces.js",

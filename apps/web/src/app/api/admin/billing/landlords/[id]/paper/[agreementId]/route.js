@@ -3,8 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
-import { publishCovered, recordPaperAgreement, recordPreview } from "@/lib/billing/paperAgreements";
-import { storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { paperSignerDetails, publishCovered, recordPaperAgreement, recordPreview } from "@/lib/billing/paperAgreements";
+import { discardSignedAgreement, storeSignedAgreement } from "@/lib/billing/agreementFiles";
+import { documensoConfigured } from "@/lib/billing/documenso";
+import { documensoClient } from "@/lib/billing/agreementServices";
 import { publishProperty } from "@/lib/listings/publish";
 import { afterPayerSigned } from "@/lib/billing/payerServices";
 import { BillingError } from "@/lib/billing/errors";
@@ -20,6 +22,8 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  *         exhibit     JSON, the confirmed properties (the picker's choices)
  *         publish     JSON, listing ids of drafts to put live now
  *         signerName, signerTitle (optional), signedAt (YYYY-MM-DD, default today)
+ *         email, street, city (required), company, suite (optional): the contact
+ *         details written on the signed copy
  *       Answers { ok, covered, withdrawn, published: [{ listingId, ok, error }] }.
  *
  * Voiding it is the documents route (kind master).
@@ -73,9 +77,17 @@ export async function POST(req, { params }) {
     const signedAtRaw = String(form.get("signedAt") ?? "").trim();
     const signedAt = signedAtRaw ? new Date(`${signedAtRaw}T12:00:00Z`) : new Date();
     if (Number.isNaN(signedAt.getTime())) throw new BillingError("bad_date", "That is not a valid signing date.");
+    const signerDetails = paperSignerDetails({
+      company: form.get("company"),
+      email: form.get("email"),
+      street: form.get("street"),
+      suite: form.get("suite"),
+      city: form.get("city"),
+    });
 
-    // The form is checked before the upload, so a bad one never leaves a stray file.
-    const signedFileKey = await storeSignedAgreement({ userId: landlordId, bytes: new Uint8Array(await file.arrayBuffer()) });
+    // The copy is stored only once the record's own checks have passed (and removed
+    // again if saving it then fails), so a refused form never leaves a stray file.
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const result = await recordPaperAgreement(billingDb.db, {
       landlordId,
       id: agreementId,
@@ -83,7 +95,10 @@ export async function POST(req, { params }) {
       signerName,
       signerTitle: form.get("signerTitle"),
       signedAt,
-      signedFileKey,
+      signerDetails,
+      storeSigned: () => storeSignedAgreement({ userId: landlordId, bytes }),
+      discardSigned: discardSignedAgreement,
+      documenso: documensoConfigured() ? documensoClient() : null,
     });
     // Signed by the account's authorized signer: settle what the landlord sent them
     // and tell the landlord, as when the signer signs in the app.
