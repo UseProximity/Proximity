@@ -9,13 +9,27 @@ import { useState } from "react";
 import { Pencil } from "lucide-react";
 
 const FIELD = "rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-red-500";
-const BUTTON = "rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
+export const BUTTON = "rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60";
 
-async function call(url, { method = "GET", body } = {}) {
-  const res = await fetch(url, { method, ...(body && { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
-  return data;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A JSON call. While another call for this landlord holds the signing lock (a
+// background build still finishing) the sign route answers 409 "in_progress":
+// with `retries`, wait and ask again rather than show that.
+export async function call(url, { method = "GET", body, retries = 0 } = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, {
+      method,
+      ...(body && { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    if (res.status === 409 && data.code === "in_progress" && attempt < retries) {
+      await wait(1500);
+      continue;
+    }
+    throw new Error(data.error || "Something went wrong. Please try again.");
+  }
 }
 
 // One unit on the Exhibit A step: tick it, or rename it with the pencil.
@@ -218,7 +232,7 @@ export default function PropertyChoice({ p, choice, onChange, admin = false, bad
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-gray-500">{admin ? "No units on this property yet. Choose the whole building, or exclude it." : "No units on this property yet. Add the ones this agreement covers."}</p>
+                <p className="text-xs text-gray-500">{admin ? (p.canWholeBuilding ? "No units on this property yet. Choose the whole building, or exclude it." : "No units on this property yet, so it can only be excluded. Add its units on the listing first to cover them.") : "No units on this property yet. Add the ones this agreement covers."}</p>
               )}
               {dropped.length > 0 && (
                 <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">

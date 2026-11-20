@@ -101,11 +101,12 @@ export default function FeedbackWidget() {
         className={`hidden sm:flex [body[data-listing-contact]_&]:!hidden fixed bottom-6 left-6 z-50 items-center rounded-full shadow-lg transition ${
           subtle
             ? "p-3 bg-gray-900/40 text-white/70 backdrop-blur-sm hover:bg-gray-900 hover:text-white focus-visible:bg-gray-900 focus-visible:text-white"
-            : "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800"
+            : // Below the desktop breakpoint the labelled pill covers content, so it takes the icon-only look there.
+              "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800 max-xl:gap-0 max-xl:p-3 max-xl:bg-gray-900/40 max-xl:text-white/70 max-xl:backdrop-blur-sm max-xl:hover:bg-gray-900 max-xl:hover:text-white max-xl:focus-visible:bg-gray-900 max-xl:focus-visible:text-white"
         }`}
       >
         <MessageSquarePlus className="h-5 w-5" />
-        {!subtle && <span className="text-sm font-semibold">Feedback</span>}
+        {!subtle && <span className="text-sm font-semibold max-xl:hidden">Feedback</span>}
       </button>
 
       {/* Modal */}
@@ -115,7 +116,7 @@ export default function FeedbackWidget() {
           onClick={close}
         >
           <div
-            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6"
+            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-1">

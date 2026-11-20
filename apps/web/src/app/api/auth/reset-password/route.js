@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
 import { hashToken } from "@/lib/auth/tokenHash";
+import { recordActivation } from "@/lib/marketing/accounts";
 
 export async function POST(req) {
   try {
@@ -45,6 +46,9 @@ export async function POST(req) {
         password_reset_expires_at: null,
       })
       .eq("id", user.id);
+
+    // A shell or invited account setting its first password (once per account).
+    await recordActivation(req, { userId: user.id });
 
     return NextResponse.json({}, { status: 200 });
   } catch (err) {

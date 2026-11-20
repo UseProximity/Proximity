@@ -489,7 +489,7 @@ export async function sendChatMessageEmail({
     try {
       const { html, text } = build(true);
       const info = await sendMailSafe(sesTransporter, {
-        logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
+        logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId, audience: recipientIsInterestedUser ? "student" : "landlord" },
         from,
         to,
         replyTo,
@@ -511,7 +511,7 @@ export async function sendChatMessageEmail({
   // Reply-To, so a reply still reaches the conversation.
   const { html, text } = build(Boolean(replyTo));
   const info = await sendMailSafe(transporter, {
-    logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId },
+    logAs: { kind: reminder ? "chat_reminder" : "chat_alert", threadId, userId: recipientId, audience: recipientIsInterestedUser ? "student" : "landlord" },
     from: { name: fromName, address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,
     ...(replyTo ? { replyTo } : {}),
@@ -587,9 +587,11 @@ export async function sendTeamEmail({ to, subject, html }) {
  */
 export const MASS_EMAIL_ADDRESS = "info@useproximity.org";
 
-export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null }) {
+// `audience` is the recipient's role: only a student's or parent's links carry
+// marketing tags, so a landlord launch email never counts as a marketing visit.
+export async function sendMassEmail({ to, subject, html, text = null, headers = null, attachments = [], userId = null, req = null, audience = null }) {
   const message = {
-    logAs: { kind: "mass_email", userId },
+    logAs: { kind: "mass_email", userId, audience },
     to,
     replyTo: MASS_EMAIL_ADDRESS,
     subject,
@@ -987,7 +989,7 @@ export async function sendReviewConfirmationEmail({ email, name, baseUrl, places
     : `Your review of ${list[0] || "your place"} is live`;
 
   const ctaUrl = setupToken ? `${baseUrl}/review/finish?token=${setupToken}` : `${baseUrl}/find-your-place`;
-  const ctaLabel = setupToken ? "Finish my profile" : "Matchmaking";
+  const ctaLabel = setupToken ? "Finish my profile" : "Find Your Place";
 
   const tail = setupToken
     ? `<p style="font-size:15px;line-height:1.6;color:#333">
@@ -1362,6 +1364,17 @@ function describeChange(c) {
   }
 }
 
+/* A synced listing worth a line in the digest: it changed, was held or failed, or its leasing portal was not read. */
+export const needsLook = (i) => (i.status !== "unchanged" && i.status !== "ok") || !!i.portalUnread;
+
+/*
+ * What a leasing portal that was not read means for the listing. When the
+ * portal priced it before, the listing keeps those prices; a portal never
+ * read yet leaves the website's own prices in use.
+ */
+export const portalUnreadLine = (i) =>
+  `Leasing portal not read: ${i.portalUnread}. ${i.portalUnreadKept === false ? "This listing has not been priced from the portal yet, so the website's own prices were read instead" : "Prices and lease lengths were not refreshed; the listing keeps the ones it had"}. Check the portal by hand.`;
+
 export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
   const block = (i) => {
     const link = `${baseUrl}/dashboard/admin/listings?listing=${encodeURIComponent(i.listingId)}`;
@@ -1374,9 +1387,14 @@ export async function sendSourceSyncDigestEmail({ to, items, baseUrl }) {
     const hold = i.holdReason
       ? `<p style="color:#b45309;margin:4px 0">${i.holdReason === "churn_hold" ? "Skipped: more than a fifth of the leases would change at once, which is more likely a misread than a building re-let overnight. Nothing was applied: the changes below wait in admin, under Agents, for the team or the landlord to apply or reject" : "Held: the reader was not confident in this read. Nothing was applied"}.</p>`
       : "";
-    return `${head}${hold}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
+    // The building's leasing portal (where its real prices live) was found
+    // but read nothing: its prices were not refreshed.
+    const portal = i.portalUnread
+      ? `<p style="color:#b45309;margin:4px 0">${escapeHtml(portalUnreadLine(i))}</p>`
+      : "";
+    return `${head}${hold}${portal}${applied ? `<p style="margin:4px 0 2px;color:#166534">Applied</p><ul style="margin:0 0 6px 18px;padding:0">${applied}</ul>` : ""}${denied ? `<p style="margin:4px 0 2px;color:#6b7280">Not applied</p><ul style="margin:0 0 6px 18px;padding:0">${denied}</ul>` : ""}${held ? `<p style="margin:4px 0 2px;color:#b45309">Needs a look</p><ul style="margin:0 0 6px 18px;padding:0">${held}</ul>` : ""}`;
   };
-  const changed = items.filter((i) => i.status !== "unchanged" && i.status !== "ok");
+  const changed = items.filter(needsLook);
   const quiet = items.length - changed.length;
   await sendMailSafe(transporter, {
     logAs: { kind: "source_sync_digest" },
@@ -1574,7 +1592,7 @@ export async function sendProxyLandlordQuestionEmail({
   const canReply = !!replyTo && hasAccount;
   const { subject, html, text } = buildProxyLandlordQuestionEmail({ listingLabel, question, queueUrl, hasAccount, studentReply, reminderDay, canReply });
   await sendMailSafe(transporter, {
-    logAs: { kind },
+    logAs: { kind, audience: "landlord" },
     // A review sandbox question (asked by, or sent to, a sandbox account) is never sent.
     sandbox,
     from: `"Proxy at Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
@@ -1593,10 +1611,12 @@ export async function sendProxyLandlordQuestionEmail({
  */
 // `sandbox` is true when the student or the landlord is a review sandbox account:
 // sendMailSafe then records the email as suppressed and sends nothing.
-export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
+// `audience` ("student" or "landlord") decides whether the links carry
+// marketing tags (lib/marketing/emailLinks.js): only a student's do.
+export async function sendTourEmail({ kind, to, name, subject, intro, lines = [], note = "", ctaLabel, ctaUrl, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false, audience = null }) {
   const first = name ? String(name).split(" ")[0] : "";
   await sendMailSafe(transporter, {
-    logAs: { kind, userId, threadId },
+    logAs: { kind, userId, threadId, audience },
     sandbox,
     from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>`,
     to,
@@ -1623,7 +1643,8 @@ export async function sendTourEmail({ kind, to, name, subject, intro, lines = []
  */
 export async function sendLandlordTourEmail({ kind, to, fromName = "Proximity", subject, html, text, attachment = null, userId = null, replyTo = null, threadId = null, sandbox = false }) {
   await sendMailSafe(transporter, {
-    logAs: { kind, userId, threadId },
+    // Always to a landlord, so its links never carry campaign tags.
+    logAs: { kind, userId, threadId, audience: "landlord" },
     sandbox,
     from: { name: displayName(fromName, "Proximity"), address: process.env.EMAIL_USER || CHAT_FROM_ADDRESS },
     to,

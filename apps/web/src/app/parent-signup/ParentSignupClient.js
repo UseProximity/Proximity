@@ -42,7 +42,7 @@ export default function ParentSignupClient() {
   }
 
   return (
-    <main className="relative min-h-[calc(100dvh-83px)] md:min-h-[calc(100dvh-104px)] overflow-hidden bg-gradient-to-br from-rose-50 via-white to-gray-50 px-4 py-10 sm:py-16">
+    <main className="relative min-h-[calc(100dvh-var(--header-h))] overflow-hidden bg-gradient-to-br from-rose-50 via-white to-gray-50 px-4 py-10 sm:py-16">
       <div className="pointer-events-none absolute -top-24 right-[-6rem] h-96 w-96 rounded-full bg-rose-200/40 blur-3xl" />
       <div className="pointer-events-none absolute bottom-[-5rem] left-[-4rem] h-80 w-80 rounded-full bg-orange-100/60 blur-3xl" />
 

@@ -7,6 +7,7 @@ import supabase from "@/lib/supabase";
 import { isPropertyOwner, canManageLease } from "@/lib/listings/ownership";
 import { emailNewListingToOwners } from "@/lib/email/newListingEmail";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { hasPricedLease, liveRows } from "@/lib/listings/pricedLease";
 import { unitNameKey } from "@/utils/unitName";
 
 const now = () => new Date().toISOString();
@@ -15,6 +16,8 @@ export class PublishError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    // Read by callers that can't import this file (lib/billing/paperAgreements.js).
+    this.name = "PublishError";
   }
 }
 
@@ -26,12 +29,6 @@ async function publishRows(table, column, ids, extra) {
   if (error) throw error;
 }
 
-const liveRows = (rows) => (rows ?? []).filter((r) => !r.deleted_at);
-
-// Complete enough to go live in bulk: some unit carries an offering with a rent.
-function hasPricedLease(units) {
-  return liveRows(units).some((u) => liveRows(u.unit_leases).some((l) => Number(l.rent) > 0));
-}
 
 // A draft unit added alongside someone else's offering is theirs to publish.
 const addedByOthers = (unit, ownerIds) => {

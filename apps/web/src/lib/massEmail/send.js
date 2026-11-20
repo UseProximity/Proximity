@@ -276,7 +276,7 @@ export async function sendBatch(db, { version, userIds, adminId, turnProxyOn: sw
       setup_link: !!setupUrl,
     };
     try {
-      const out = await sendMassEmail({ to: u.email, subject, html, text, headers, attachments, userId: u.id, req });
+      const out = await sendMassEmail({ to: u.email, subject, html, text, headers, attachments, userId: u.id, req, audience: u.roles?.name ?? null });
       row.status = out.suppressed ? "suppressed" : out.redirected ? "redirected" : "sent";
       row.provider_message_id = out.providerMessageId;
       row.status_detail = out.provider === "gmail" ? "sent via Gmail" : null;

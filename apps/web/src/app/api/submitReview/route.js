@@ -5,6 +5,7 @@ import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
 import { checkReviewText } from "@/lib/contentRules";
 import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
+import { recordOutcome } from "@/lib/marketing/record";
 
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
 // /api/reviewReferral so both review entry points accept the same values.
@@ -99,6 +100,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    await recordOutcome(req, { outcome: "review_submitted", userId: session.user.id, userRole: session.user.role ?? null, subjectId: newReview?.id });
     return NextResponse.json(newReview);
   } catch (e) {
     console.error("POST /api/submitReview failed:", e);

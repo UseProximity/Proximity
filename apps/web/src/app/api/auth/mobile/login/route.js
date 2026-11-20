@@ -3,6 +3,7 @@ import supabase from "@/lib/supabase";
 import { signAccessToken, signRefreshToken, buildUserPayload } from "@/lib/authMobile";
 import { AUTH_ERRORS } from "@proximity/auth-core";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
+import { recordActivation } from "@/lib/marketing/accounts";
 import {
   checkLoginLock,
   recordLoginFailure,
@@ -60,6 +61,7 @@ export async function POST(req) {
     }
 
     recordLoginSuccess(who);
+    await recordActivation(req, { userId: user.id, role: user.roles?.name ?? null, useCookie: false });
 
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken({

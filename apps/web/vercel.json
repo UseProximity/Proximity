@@ -34,6 +34,10 @@
       "schedule": "30 8 * * *"
     },
     {
+      "path": "/api/cron/marketing-retention",
+      "schedule": "45 8 * * *"
+    },
+    {
       "path": "/api/cron/chat-checkin",
       "schedule": "0 14 * * *"
     },

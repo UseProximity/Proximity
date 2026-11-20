@@ -3,7 +3,10 @@ import { GROUP_OPTIONS, QUESTION_COUNT } from "@/lib/findYourPlace/options";
 
 /*
  * Find Your Place's own record of the moments that leave no search row: which
- * page someone left on, a failed search, the homepage popup. Kept in our
+ * page someone left on, a failed search, the homepage popup. Every search that
+ * brought back an answer is recorded too (`searched`, Wyatt 2026-11-19): a search
+ * row only counts its runs while it lasts, so the share of searches that failed
+ * needs its own count of the ones that worked. Kept in our
  * database (the `events` table, unused since its old page-view logging stopped
  * in May 2026) so the admin Analytics tab can read it without Google Analytics,
  * and so the mobile app, once it moves to this flow, records the same events
@@ -39,8 +42,11 @@ const FIELDS = {
   popup_dismissed: {},
   // Server only: never accepted from the browser.
   search_failed: { reason: oneOf(FAIL_REASONS), retry: bool },
+  // A search that answered. rerun: the same search run again (Back, then Show My Matches).
+  searched: { retry: bool, rerun: bool },
 };
-export const CLIENT_EVENTS = Object.keys(FIELDS).filter((name) => name !== "search_failed");
+export const SERVER_EVENTS = ["search_failed", "searched"];
+export const CLIENT_EVENTS = Object.keys(FIELDS).filter((name) => !SERVER_EVENTS.includes(name));
 
 export function cleanMetadata(name, raw) {
   const fields = FIELDS[name];

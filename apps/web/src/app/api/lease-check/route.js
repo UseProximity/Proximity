@@ -18,6 +18,7 @@ import { isProdData } from "@/lib/appEnv";
 import { analyzeLease, Anthropic, LEASE_MODEL } from "@/lib/leaseCheck/analyzeLease";
 import { buildPropertyContext } from "@/lib/leaseCheck/propertyContext";
 import { leaseCheckRateLimited } from "@/lib/leaseCheck/rateLimit";
+import { recordOutcome } from "@/lib/marketing/record";
 
 // Analysis of a scanned lease takes 60-120s. Requires Fluid compute (300s cap on the
 // current plan) — the legacy serverless mode would kill this at 60s.
@@ -139,6 +140,8 @@ export async function POST(req) {
       })
     );
 
+    // Started is recorded for drop-off only; completed is the headline outcome.
+    await recordOutcome(req, { outcome: "lease_check_started", userId: session.user.id, userRole: session.user.role ?? null, subjectId: row.id });
     return Response.json({ leaseCheckId: row.id, presigned });
   } catch (error) {
     console.error("[lease-check] presign error:", error);
@@ -290,6 +293,7 @@ export async function PUT(req) {
     }
 
     analysisSaved = !updateError;
+    await recordOutcome(req, { outcome: "lease_check_completed", userId: session.user.id, userRole: session.user.role ?? null, subjectId: leaseCheckId });
     return Response.json({
       leaseCheckId,
       summary: analysis.summary,

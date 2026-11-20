@@ -27,8 +27,19 @@ import { proxyActor, proxyAvailable } from "@/lib/agents/access";
 import { getThread, canAccessThread, shapeMessage } from "@/lib/agents/threads";
 import { handleStudentMessage } from "@/lib/agents/proxy";
 import { clientIp } from "@/lib/auth/loginThrottle";
+import { recordOutcome } from "@/lib/marketing/record";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * Marketing: one proxy_question per listing per session (PRD section 6).
+ * Not for a landlord's test questions, nor a message that only gave an email
+ * for alerts (Proxy answered nothing). Never throws.
+ */
+function recordProxyQuestion(req, { actor, thread, testMode, result }) {
+  if (testMode || !result || result.error || result.intent === "notify_email") return Promise.resolve();
+  return recordOutcome(req, { outcome: "proxy_question", userId: actor.userId, userRole: actor.role ?? null, subjectId: thread.listing_id });
+}
 
 export async function POST(req, { params }) {
   try {
@@ -73,7 +84,10 @@ export async function POST(req, { params }) {
           try {
             const result = await handleStudentMessage({ ...args, defer: (work) => handOver(work), onReplyDelta: (text) => send({ type: "delta", text }) });
             if (result.error) send({ type: "error", error: result.error, code: result.code ?? null });
-            else send({ type: "done", ...shape(result) });
+            else {
+              send({ type: "done", ...shape(result) });
+              await recordProxyQuestion(req, { actor, thread, testMode: avail.testMode, result });
+            }
           } catch (err) {
             console.error("POST /api/proxy/threads/[id]/messages (stream) failed:", err);
             send({ type: "error", error: "Proxy could not answer just now. Please try again." });
@@ -92,6 +106,7 @@ export async function POST(req, { params }) {
     });
     if (result.error) return NextResponse.json({ error: result.error, code: result.code ?? null }, { status: result.status ?? 400 });
 
+    after(() => recordProxyQuestion(req, { actor, thread, testMode: avail.testMode, result }));
     return NextResponse.json(shape(result));
   } catch (err) {
     console.error("POST /api/proxy/threads/[id]/messages failed:", err);

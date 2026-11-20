@@ -10,6 +10,7 @@ import {
   isOpenEnded,
   promptSentence,
   standingChips,
+  QUESTION_COUNT,
 } from "@/lib/findYourPlace/options";
 import {
   DB,
@@ -25,9 +26,9 @@ import {
   within,
   countValues,
 } from "@/lib/analytics/blocks";
-import { EVENT_PREFIX, CLIENT_EVENTS } from "@/lib/findYourPlace/events";
+import { EVENT_PREFIX, CLIENT_EVENTS, SERVER_EVENTS } from "@/lib/findYourPlace/events";
 
-const FYP_EVENT_TYPES = [...CLIENT_EVENTS, "search_failed"].map((name) => `${EVENT_PREFIX}${name}`);
+const FYP_EVENT_TYPES = [...CLIENT_EVENTS, ...SERVER_EVENTS].map((name) => `${EVENT_PREFIX}${name}`);
 
 /*
  * Find Your Place: the three-page flow (basics, then anything else in their own
@@ -163,6 +164,37 @@ const areas = (s) => (parsed(s).areas ?? []).map((a) => AREA_LABELS[a] ?? a);
 const amenities = (s) => (parsed(s).amenities ?? []).map((k) => AMENITY_LABELS[k] ?? k);
 const furnishing = (s) => ({ yes: "Furnished", no: "Unfurnished" })[parsed(s).furnished] ?? null;
 
+/*
+ * Failed searches as a share of all searches. Every search that answered is
+ * logged from 2026-11-19 (`fyp_searched`), so from the first one on the share is
+ * exact: failures since then over failures plus answers. A period with none
+ * logged falls back to the run counts on the search rows, which miss searches
+ * run again later on an older row.
+ */
+export function failureShare({ failed, succeeded, estimatedRuns }) {
+  if (!succeeded.length) return { value: pct(failed.length, estimatedRuns + failed.length), exact: false };
+  // Compared as times, not text: timestamps come back with varying precision and offsets.
+  const since = Math.min(...succeeded.map((e) => Date.parse(e.created_at)));
+  const failedSince = failed.filter((e) => Date.parse(e.created_at) >= since).length;
+  return { value: pct(failedSince, failedSince + succeeded.length), exact: true };
+}
+
+// Who an event or a search is: the account when signed in, else the device.
+const eventActor = (e) => (e.user_id ? `u:${e.user_id}` : e.session_id ? `v:${e.session_id}` : null);
+const searchActor = (s) => (s.user_id ? `u:${s.user_id}` : s.visitor_id ? `v:${s.visitor_id}` : null);
+
+/*
+ * The share of people who searched this period and then went back to edit with
+ * their matches on screen. People, not clicks: a student editing three times
+ * counts once, and only people who searched this period count, so it never
+ * passes 100% (PR 462 review).
+ */
+export function editedAfterMatches(searches, edits) {
+  const searchers = new Set(searches.map(searchActor).filter(Boolean));
+  const editors = new Set(edits.map(eventActor).filter((a) => a && searchers.has(a)));
+  return pct(editors.size, searchers.size);
+}
+
 // ─── Loader ─────────────────────────────────────────────────────────────────────
 
 export default async function loadMatchmaking(period) {
@@ -173,7 +205,7 @@ export default async function loadMatchmaking(period) {
       (q) => q.gte("created_at", period.prevStart)
     ),
     fetchAll("users", "id", (q) => q.eq("email", "guest@proximity.test")),
-    fetchAll("events", "id, user_id, event_type, metadata, created_at", (q) =>
+    fetchAll("events", "id, user_id, session_id, event_type, metadata, created_at", (q) =>
       q.in("event_type", FYP_EVENT_TYPES).gte("created_at", period.prevStart)
     ),
   ]);
@@ -182,8 +214,15 @@ export default async function loadMatchmaking(period) {
   const sessions = rows.filter((s) => !guestId || s.user_id !== guestId);
 
   const events = eventRows.filter((e) => !guestId || e.user_id !== guestId);
-  const ofEvent = (name) => events.filter((e) => e.event_type === `fyp_${name}`);
-  const nowEvents = (name) => ofEvent(name).filter((e) => within(e.created_at, period.start));
+  // Grouped once by name: the blocks below ask for each kind several times.
+  const byName = new Map();
+  for (const e of events) byName.set(e.event_type, [...(byName.get(e.event_type) ?? []), e]);
+  const nowByName = new Map();
+  const ofEvent = (name) => byName.get(`fyp_${name}`) ?? [];
+  const nowEvents = (name) => {
+    if (!nowByName.has(name)) nowByName.set(name, ofEvent(name).filter((e) => within(e.created_at, period.start)));
+    return nowByName.get(name);
+  };
   const meta = (e) => e.metadata ?? {};
 
   const searches = sessions.filter(isFyp);
@@ -290,7 +329,6 @@ export default async function loadMatchmaking(period) {
       const exits = ofEvent("exited");
       const left = periodTotals(period, exits);
       const exitsNow = nowEvents("exited");
-      const searchesNow = current.length;
       return block("Where people stop", {
         description:
           "Visits that ended before any matches were on screen, and the page they were on. Someone who comes back to matches they already have is not counted as leaving.",
@@ -310,9 +348,9 @@ export default async function loadMatchmaking(period) {
           },
           {
             label: "Went back to edit after seeing matches",
-            current: pct(nowEvents("preferences_edited").filter((e) => meta(e).stage === "matches").length, searchesNow),
+            current: editedAfterMatches(current, nowEvents("preferences_edited").filter((e) => meta(e).stage === "matches")),
             format: "percent",
-            hint: "Edit Preferences clicks with matches on screen, as a share of searches. Clicks while matches were still loading are not counted.",
+            hint: "People who searched this period and clicked Edit Preferences with their matches on screen, counted once each. Clicks while matches were still loading are not counted.",
           },
         ],
         distributions: [
@@ -326,10 +364,10 @@ export default async function loadMatchmaking(period) {
             source: DB,
             rows: countValues(
               exitsNow.filter((e) => meta(e).stage === "basics"),
-              (e) => (Number.isInteger(meta(e).answered) ? `${meta(e).answered} of 5` : null),
-              { order: ["0 of 5", "1 of 5", "2 of 5", "3 of 5", "4 of 5", "5 of 5"] }
+              (e) => (Number.isInteger(meta(e).answered) ? `${meta(e).answered} of ${QUESTION_COUNT}` : null),
+              { order: Array.from({ length: QUESTION_COUNT + 1 }, (_, n) => `${n} of ${QUESTION_COUNT}`) }
             ),
-            note: "5 of 5 means every question was answered but they never clicked Next.",
+            note: `${QUESTION_COUNT} of ${QUESTION_COUNT} means every question was answered but they never clicked Next.`,
           },
           {
             title: "Started over from",
@@ -344,7 +382,13 @@ export default async function loadMatchmaking(period) {
     safeBlock("Searches that failed", () => {
       const failures = ofEvent("search_failed");
       const failedNow = nowEvents("search_failed");
-      const attempts = readable.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0) + failedNow.length;
+      const failedShare = failureShare({
+        failed: failedNow,
+        succeeded: nowEvents("searched"),
+        // Before searches were logged: every search started this period, an expired
+        // one too (its run count went with its answers, so it counts once).
+        estimatedRuns: current.reduce((sum, s) => sum + (Number(fyp(s).runs) || 1), 0),
+      });
       const capped = failedNow.filter((e) => meta(e).reason === "cap").length;
       return block("Searches that failed", {
         description:
@@ -353,8 +397,11 @@ export default async function loadMatchmaking(period) {
           { label: "Failed searches", ...periodTotals(period, failures) },
           {
             label: "Share of searches that failed",
-            current: pct(failedNow.length, attempts),
+            current: failedShare.value,
             format: "percent",
+            hint: failedShare.exact
+              ? "Failed searches out of every search run, counted since each search began being logged (November 19, 2026)."
+              : "An estimate: searches were not each logged before November 19, 2026.",
           },
           { label: "Stopped by the signed-out limit", current: capped, hint: "Signed-out devices get 10 searches before being asked to sign in." },
           {

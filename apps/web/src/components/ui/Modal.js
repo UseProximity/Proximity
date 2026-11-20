@@ -28,7 +28,7 @@ export default function Modal({ isOpen, onClose, children }) {
 
       {/* Modal */}
       <div
-        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto overflow-hidden"
+        className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md mx-auto overflow-hidden max-xl:max-h-[calc(100dvh-1rem)] max-xl:flex max-xl:flex-col"
         onWheel={(e) => {
           // Prevent wheel events from bubbling up to parent elements (like the map)
           e.stopPropagation();
@@ -44,11 +44,12 @@ export default function Modal({ isOpen, onClose, children }) {
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl z-10 w-8 h-8 max-xl:w-10 max-xl:h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>
-        <div className="w-full">{children}</div>
+        {/* Below 1280px the content scrolls inside the box, so the close button above stays in reach. */}
+        <div className="w-full max-xl:min-h-0 max-xl:overflow-y-auto">{children}</div>
       </div>
     </div>
   );

@@ -22,6 +22,7 @@
  * Pure: decides from the change and the snapshot, writes nothing.
  */
 
+// A relative path, not "@/utils/unitFormat": syncPolicy.test.js runs under node --test, which does not know the alias.
 import { unitFormat } from "../../utils/unitFormat.js";
 
 export const DENY = {

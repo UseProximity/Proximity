@@ -21,7 +21,7 @@ export const metadata = {
 
 export default function SupportPage() {
   return (
-    <main className="relative isolate flex min-h-[calc(100dvh-83px)] items-center md:min-h-[calc(100dvh-104px)] justify-center overflow-hidden bg-gradient-to-b from-red-50 via-white to-white px-5 py-20 sm:py-28">
+    <main className="relative isolate flex min-h-[calc(100dvh-var(--header-h))] items-center justify-center overflow-hidden bg-gradient-to-b from-red-50 via-white to-white px-5 py-20 sm:py-28">
       {/* Soft red glows behind the content. Decorative only. */}
       <div
         aria-hidden="true"
