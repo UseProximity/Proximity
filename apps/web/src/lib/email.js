@@ -418,7 +418,6 @@ function buildLandlordChatEmail({
     })),
     signature: other,
     action,
-    marker: canReply ? other : null,
     details: ["Message sent through Proximity (useproximity.org)", ...details, earlier],
     howToReply: canReply
       ? { text: `Reply to this email and ${otherFirst} sees it on Proximity, or`, link: { label: "open the conversation.", url: threadUrl } }
@@ -1555,9 +1554,10 @@ export function buildProxyLandlordQuestionEmail({
     lead: reminderDay ? "Reminder, a student is still waiting on your answer." : null,
     messages: [{ body: reply || question }],
     quoted: reply ? { label: "Their original question:", body: question } : null,
-    signature: "A student",
+    // No signature (Wyatt, 2026-11-20): the building it was asked about instead.
+    signature: `Asked about ${listingLabel}`,
     details: [
-      `Asked through Proxy, the assistant on your Proximity listing ${listingLabel}. Your answer is saved for future students and passed on to the student.`,
+      `Asked through Proxy, the assistant on your Proximity listing. Your answer is saved for future students and passed on to the student.`,
       asked,
     ],
     button: { label: hasAccount ? "Answer in the app" : "Create an account to answer", url: queueUrl },

@@ -18,10 +18,11 @@
  * The student's email address and phone number are never part of it: replies
  * come back through the private reply address and stay on Proximity.
  *
- * The faint "Reply above this line" marker heads the details block rather than
- * the email. Inbound parsing (lib/chat/emailReplyText.js) cuts a reply at the
- * quote header ("On ... wrote:", Outlook's From/Sent block) first, and at the
- * marker or the "-- " line after that.
+ * There is no "Reply above this line" marker (Wyatt, 2026-11-20: it sat under
+ * the message, so it read backwards). Inbound parsing
+ * (lib/chat/emailReplyText.js) cuts a reply at the quote header ("On ...
+ * wrote:", Outlook's From/Sent block), the "-- " line, or the first details
+ * line ("Message sent through Proximity" and the like).
  *
  * Pure string work, so the layout can be tested and previewed without sending.
  */
@@ -86,8 +87,6 @@ export function studentLine({ school, graduationYear } = {}) {
  *   quoted      optional { label, body }: an earlier message quoted under this one
  *   signature   the name under the message ("Jordan Lee", "A student")
  *   action      optional { label, url } button right under the message
- *   marker      the name for "Reply above this line to message <name>." when a
- *               reply goes back into the conversation; null when it does not
  *   details     lines about the inquiry ("Message sent through Proximity", ...)
  *   howToReply  one line on how to answer, with an optional { label, url } link
  *   button      optional { label, url } in the details block
@@ -101,7 +100,6 @@ export function buildInquiryEmail({
   quoted = null,
   signature = null,
   action = null,
-  marker = null,
   details = [],
   howToReply = null,
   button = null,
@@ -126,7 +124,6 @@ export function buildInquiryEmail({
       ${signature ? `<p style="margin:0 0 16px">${escapeHtml(signature)}</p>` : ""}
       ${action ? `<a href="${action.url}" style="display:inline-block;margin:0 0 16px;padding:10px 18px;background:#ef4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px">${escapeHtml(action.label)}</a>` : ""}
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px;line-height:1.5">
-        ${marker ? `<p style="margin:0 0 8px;color:#c4c8cf;font-size:11px">Reply above this line to message ${escapeHtml(marker)}.</p>` : ""}
         ${lines.map((l) => small(escapeHtml(l))).join("")}
         ${reply ? small(`${escapeHtml(reply.text)}${reply.link ? ` <a href="${reply.link.url}" style="color:#6b7280">${escapeHtml(reply.link.label)}</a>` : ""}`) : ""}
         ${button ? `<a href="${button.url}" style="display:inline-block;margin:8px 0 4px;padding:9px 16px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">${escapeHtml(button.label)}</a>` : ""}
@@ -145,7 +142,6 @@ export function buildInquiryEmail({
     signature ? `${signature}\n` : null,
     action ? `${action.label}: ${action.url}\n` : null,
     "-- ",
-    marker ? `Reply above this line to message ${marker}.` : null,
     ...lines,
     reply ? `${reply.text}${reply.link ? ` ${reply.link.url}` : ""}` : null,
     button ? `${button.label}: ${button.url}` : null,

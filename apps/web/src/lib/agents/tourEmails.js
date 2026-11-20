@@ -3,11 +3,13 @@
  * (Wyatt, 2026-11-18).
  *
  * A request reads like the student wrote it: which unit, the times they can
- * make, "Could you let me know a time that works?", signed with their name, or
- * "A student" until the landlord may see it (tourNotify.nameShown). A reminder
- * puts "Reminder, a student is still waiting on your reply about touring." on
- * top of the same request. Confirmed, day-before and cancelled are
- * announcements, so they open with the fact. Never the student's contact details.
+ * make, "Could you let me know a time that works?", signed and sent From the
+ * student's first name (Wyatt, 2026-11-20), or "A student" when they have no
+ * name. A reminder puts "Reminder, a student is still waiting on your reply
+ * about touring." on top of the same request. A student's cancellation is also
+ * in their words, with the time when one was booked. Confirmed, day-before and
+ * the landlord's own cancellation are announcements, so they open with the
+ * fact. Never the student's contact details.
  *
  * Pure string work, so each one can be tested and previewed without sending.
  */
@@ -30,11 +32,12 @@ const where = (unit, listingLabel) => {
 };
 
 /**
- * The request, and its reminder (`reminderDay` set). `slots` are availability
- * lines ("Thu, Nov 20, 2 to 5 PM"). `details` are the unit and student lines.
+ * The request, and its reminder (`reminderDay` set). `firstName` is the
+ * student's first name, or null. `slots` are availability lines ("Thu, Nov 20,
+ * 2 to 5 PM"). `details` are the unit and student lines.
  */
-export function buildTourRequestEmail({ studentLabel, listingLabel, unit, slots = [], details = [], dashboardUrl, completedAccount = true, canReply = false, reminderDay = null }) {
-  const who = studentLabel || "A student";
+export function buildTourRequestEmail({ firstName, listingLabel, unit, slots = [], details = [], dashboardUrl, completedAccount = true, canReply = false, reminderDay = null }) {
+  const who = firstName || "A student";
   const times = slots.length
     ? `I'm free:\n${slots.map((s) => `• ${s}`).join("\n")}\nCould you let me know a time that works?`
     : "Could you let me know a time that works?";
@@ -42,13 +45,12 @@ export function buildTourRequestEmail({ studentLabel, listingLabel, unit, slots 
     lead: reminderDay ? "Reminder, a student is still waiting on your reply about touring." : null,
     messages: [{ body: `Hi, I'd like to tour ${where(unit, listingLabel)}. ${times}` }],
     signature: who,
-    marker: canReply ? (studentLabel || "the student") : null,
     details: [
       "Tour request sent through Proximity (useproximity.org)",
       ...details,
       reminderDay ? "After five days Proxy will tell them there was no answer." : null,
       canReply
-        ? "Pick a day and a start time inside their window in your dashboard, or reply to this email to message the student directly."
+        ? `Pick a day and a start time inside their window in your dashboard, or reply to this email to message ${firstName || "the student"} directly.`
         : "Pick a day and a start time inside their window in your dashboard.",
     ],
     button: { label: completedAccount ? "Confirm a time" : "Create an account to confirm", url: dashboardUrl },
@@ -56,7 +58,7 @@ export function buildTourRequestEmail({ studentLabel, listingLabel, unit, slots 
   });
   return {
     subject: `Tour request for ${listingLabel}`,
-    fromName: studentLabel || "A student",
+    fromName: who,
     html,
     text,
   };
@@ -84,13 +86,34 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
   };
 }
 
-/** The student cancelled their request. */
-export function buildTourCancelledEmail({ studentLabel, listingLabel, dashboardUrl }) {
+/**
+ * The student cancelled. In their words, signed with their first name, with
+ * the booked time (`when`) when the tour had been confirmed.
+ */
+export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = null, dashboardUrl }) {
+  const who = firstName || "A student";
   const { html, text } = buildInquiryEmail({
-    messages: [{ body: `${studentLabel || "A student"} cancelled their tour request for ${listingLabel}.` }],
+    messages: [{ body: when
+      ? `Hi, I need to cancel my tour of ${where(unit, listingLabel)} on ${when}.`
+      : `Hi, I need to cancel my tour request for ${where(unit, listingLabel)}.` }],
+    signature: who,
     details: ["Tour request sent through Proximity (useproximity.org)", "Nothing else is needed from you."],
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
-  return { subject: `Tour request cancelled: ${listingLabel}`, html, text };
+  return { subject: `Tour cancelled: ${listingLabel}`, fromName: who, html, text };
+}
+
+/** The landlord's confirmation that they cancelled (Wyatt, 2026-11-20). */
+export function buildTourCancelledByLandlordEmail({ firstName, listingLabel, unit, when = null, dashboardUrl }) {
+  const whose = firstName ? `${firstName}'s` : "a student's";
+  const { html, text } = buildInquiryEmail({
+    messages: [{ body: when
+      ? `You cancelled ${whose} tour of ${where(unit, listingLabel)} on ${when}. We let ${firstName || "them"} know.`
+      : `You cancelled ${whose} tour request for ${where(unit, listingLabel)}. We let ${firstName || "them"} know.` }],
+    details: ["Tour request sent through Proximity (useproximity.org)", "They can send new times if they still want to tour."],
+    button: { label: "Open your dashboard", url: dashboardUrl },
+    reason: REASON,
+  });
+  return { subject: `You cancelled a tour: ${listingLabel}`, html, text };
 }
