@@ -1,7 +1,7 @@
 # Proximity Terms of Service
 
 **Effective date:** September 18, 2026
-**Last updated:** November 8, 2026
+**Last updated:** November 20, 2026
 
 These Terms of Service ("Terms") are an agreement between you and **Proximity LLC**
 ("Proximity," "we," "us," or "our"), a limited liability company organized under the laws of
@@ -23,17 +23,20 @@ Proximity is an off-campus housing marketplace for university students and the l
 rent to them. We help students find listings near their campus, compare them, and get in
 touch with whoever is renting.
 
-**Proximity is a listing platform. We are not a party to any rental transaction.** We are
-not a real-estate broker, a leasing agent, a property manager, a landlord, or a tenant
+**Proximity LLC is a licensed Missouri real estate brokerage, and it acts only as a
+transaction broker.** That means we do not represent landlords or students as an agent or
+advocate for either side, and we do not negotiate rent or lease terms for anyone. We are not a
+party to any rental transaction, and we are not a property manager, a landlord, or a tenant
 screening service. We do not own, manage, inspect, or control any property listed on the
 Services. Any lease, sublease, application, deposit, or payment is strictly between you and
-the other person. Proximity is not involved and has no obligations under it.
+the other person. Proximity is not a party to it and has no obligations under it. You can read
+our Broker Disclosure Form at [link].
 
 **How Proximity is paid.** Students never pay Proximity anything. Landlords who sign
-Proximity's marketing agreement pay Proximity a commission when a student who found their
+Proximity's marketing agreement pay Proximity a fee when a student who found their
 property through Proximity signs a lease there. That arrangement is between Proximity and the
 landlord, under that agreement (Section 6A). It does not make Proximity a party to your
-lease, and it does not change anything a landlord owes you or you owe a landlord.
+lease or an agent of either side, and it does not change anything a landlord owes you or you owe a landlord.
 
 ## 2. Acceptance and eligibility
 
@@ -86,7 +89,7 @@ This matters more here than on most platforms, so we want to be direct about it.
   landlord. Only your lease and what the landlord agrees with you are.
 - **We are not involved in your money.** We never collect rent, deposits, application fees,
   or any other payment between a student and a landlord, and we will never ask you to send
-  one through us. Any commission a landlord pays us (Sections 1 and 6A) is between us and
+  one through us. Any fee a landlord pays us (Sections 1 and 6A) is between us and
   the landlord, and is never collected from you.
 
 **Use your own judgment.** Visit the property, meet the person, read the lease, and be
@@ -197,7 +200,7 @@ and your published contact details on it are replaced with theirs. See Section 1
 
 **The marketing agreement.** To publish listings, a landlord must have a payment method on
 file and, once we require it, sign Proximity's marketing agreement in their dashboard. The
-agreement sets the commission and its terms; if it conflicts with these Terms on fees, the
+agreement sets the fee and its terms; if it conflicts with these Terms on fees, the
 agreement controls. Exhibit A to the agreement lists the addresses it covers. An address
 covers the whole building, or the units named "and any unit at this address the landlord
 later lists through Proximity". Adding a new address takes a short addendum, signed the same
@@ -689,7 +692,7 @@ enforce it later.
 **Assignment.** You may not assign these Terms without our written consent. We may assign
 them in connection with a merger, acquisition, or sale of assets.
 
-**No agency.** Nothing in these Terms creates a partnership, joint venture, employment, or
+**No agency.** Proximity acts only as a transaction broker (Section 1). Nothing in these Terms creates a partnership, joint venture, employment, or
 agency relationship between you and Proximity.
 
 ## 24. Contact us
