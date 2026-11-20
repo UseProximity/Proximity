@@ -1681,3 +1681,29 @@ export async function sendAgentDigestEmail({ to, day, sections, baseUrl }) {
       </div>`,
   });
 }
+
+/*
+ * The team imported a landlord's website and handed them the drafts
+ * (lib/sourceImport/handOver.js). One email for the whole batch: nothing is
+ * live until the landlord has checked and published it.
+ */
+export async function sendDraftsHandedOverEmail({ to, name, drafts, baseUrl, req = null }) {
+  const count = drafts.length;
+  const items = drafts.slice(0, 40).map((d) => `<li>${escapeHtml(d.title)}</li>`).join("");
+  await sendMailSafe(transporter, {
+    logAs: { kind: "import_drafts_handed_over" },
+    from: `"Proximity" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: count === 1 ? "Your listing draft is ready to check" : `Your ${count} listing drafts are ready to check`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111;font-size:14px">
+        <h2 style="color:#111">${count === 1 ? "Your listing draft is ready" : "Your listing drafts are ready"}</h2>
+        <p>Hi${name ? ` ${escapeHtml(name)}` : ""},</p>
+        <p>We read your website and set up ${count === 1 ? "a draft listing" : `${count} draft listings`} on your Proximity account:</p>
+        <ul style="margin:0 0 12px 18px;padding:0">${items}</ul>
+        <p>${count === 1 ? "It is" : "They are"} not visible to students yet. Please check the units, prices and availability against your website, fix anything we got wrong, and publish when ${count === 1 ? "it looks" : "they look"} right.</p>
+        <p><a href="${baseUrl}/dashboard/landlord?tab=drafts" style="color:#dc2626">Open your drafts</a></p>
+        ${emailFooter({ reason: "You are receiving this because the Proximity team set up listings for you at your request." })}
+      </div>`,
+  }, req ?? undefined);
+}

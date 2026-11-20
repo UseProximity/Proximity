@@ -668,6 +668,12 @@ export async function loadBatch({ batchId, userId }) {
     ? await supabase.from("listings").select("id, title, address, published_at, deleted_at").in("id", ids)
     : { data: [] };
   const byId = new Map((listings ?? []).map((l) => [l.id, l]));
+  // A draft the team handed to its landlord (handOver.js) is no longer this
+  // account's: its tab says so instead of opening an editor.
+  const { data: links } = ids.length ? await supabase.from("listing_landlords").select("listing_id, user_id").in("listing_id", ids) : { data: [] };
+  const ownersOf = new Map();
+  for (const row of links ?? []) ownersOf.set(row.listing_id, [...(ownersOf.get(row.listing_id) ?? []), row.user_id]);
+  const handedOver = (j) => !j.target?.alreadyListed && (ownersOf.get(j.listing_id) ?? []).length > 0 && !ownersOf.get(j.listing_id).includes(userId);
   return {
     batchId,
     // How many buildings are read at once, for the workspace's progress line.
@@ -677,7 +683,7 @@ export async function loadBatch({ batchId, userId }) {
       const l = byId.get(j.listing_id);
       return {
         ...j,
-        listing: l ? { id: l.id, title: l.title, address: l.address, isDraft: l.published_at === null, deleted: !!l.deleted_at } : null,
+        listing: l ? { id: l.id, title: l.title, address: l.address, isDraft: l.published_at === null, deleted: !!l.deleted_at, handedOver: handedOver(j) } : null,
       };
     }),
   };

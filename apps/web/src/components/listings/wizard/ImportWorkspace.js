@@ -12,6 +12,7 @@ import EditorUnits from "@/components/listings/editor/EditorUnits";
 import { DraftBadge, PublishButton } from "@/components/listings/editor/DraftControls";
 import ImportGaps from "@/components/listings/editor/ImportGaps";
 import ImportSources from "./ImportSources";
+import HandOverDrafts from "./HandOverDrafts";
 import BackToTop from "@/components/ui/BackToTop";
 
 // The progress bar in 5% steps, as literal classes Tailwind can see (no inline styles).
@@ -470,6 +471,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
   const fresh = jobs.filter((j) => !j.target?.alreadyListed);
   const reading = jobs.filter((j) => ACTIVE.has(j.status)).length;
   const done = jobs.filter((j) => j.status === "done").length;
+  const handed = jobs.filter((j) => j.status === "done" && j.listing?.handedOver).length;
   const published = jobs.filter((j) => j.status === "done" && j.listing && !j.listing.isDraft && j.result?.mode === "import").length;
   // Where they came from: one site by name, or "your links" when the landlord
   // pasted several (one Zillow page per apartment, say).
@@ -490,7 +492,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
    * landlord whose agreement does not cover them yet signs once for all of
    * them instead of once per property. Ones still being read stay drafts.
    */
-  const readyDrafts = jobs.filter((j) => j.status === "done" && j.listing?.isDraft && !j.listing.deleted && !j.target?.alreadyListed);
+  const readyDrafts = jobs.filter((j) => j.status === "done" && j.listing?.isDraft && !j.listing.deleted && !j.listing.handedOver && !j.target?.alreadyListed);
   const publishAllConfirm = `Publish ${readyDrafts.length} properties? Students will see them right away. Any without a price yet stay drafts.${
     reading > 0 ? ` ${reading} still being read will stay drafts too, so you can publish them when they finish.` : ""
   } This can't be undone, but you can still edit or withdraw them.`;
@@ -532,6 +534,9 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
                 onPublished={load}
               />
             )}
+            {user?.role === "super" && readyDrafts.length > 0 && (
+              <HandOverDrafts batchId={batchId} count={readyDrafts.length} reading={reading} onHandedOver={load} />
+            )}
             <button
               type="button"
               onClick={leave}
@@ -541,7 +546,7 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
             </button>
             </div>
             <p className="text-[11px] text-gray-500">
-              {published ? `${published} published, ` : ""}{done - published} draft{done - published === 1 ? "" : "s"} on your Drafts page
+              {published ? `${published} published, ` : ""}{done - published - handed} draft{done - published - handed === 1 ? "" : "s"} on your Drafts page{handed ? `, ${handed} handed to a landlord` : ""}
             </p>
           </div>
         </div>
@@ -642,7 +647,14 @@ export default function ImportWorkspace({ user, batchId, onDone, onCancel }) {
                   </div>
                 </div>
               )}
-              {j.status === "done" && j.listing && (
+              {j.status === "done" && j.listing?.handedOver && (
+                <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
+                  <Building2 className="mx-auto mb-2 h-6 w-6 text-gray-400" />
+                  <p className="font-medium text-gray-900">{nameOf(j)}</p>
+                  <p className="mt-1">Handed to its landlord. It is a draft on their account until they publish it.</p>
+                </div>
+              )}
+              {j.status === "done" && j.listing && !j.listing.handedOver && (
                 <ListingTab key={`${j.id}-${j.listing.isDraft}`} job={j} user={user} onPublished={load} />
               )}
             </div>

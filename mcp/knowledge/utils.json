@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-20T22:24:10.143Z",
-  "count": 364,
+  "_generated": "2026-11-20T22:59:13.644Z",
+  "count": 366,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -1210,6 +1210,14 @@
     {
       "file": "src/lib/sourceImport/describeChange.js",
       "description": "A website change, side by side (Wyatt, 2026-11-05): for every change a"
+    },
+    {
+      "file": "src/lib/sourceImport/handOver.js",
+      "description": "Hand a batch of imported drafts to a landlord."
+    },
+    {
+      "file": "src/lib/sourceImport/handOverRules.js",
+      "description": "The rules for handing imported drafts to a landlord (handOver.js), kept"
     },
     {
       "file": "src/lib/sourceImport/jobs.js",
