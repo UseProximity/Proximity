@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ContactEmailStatus from "@/components/listings/editor/ContactEmailStatus";
 import { normalizeApplicationUrl } from "@/lib/listings/applicationLink";
+import { revealGap } from "@/components/listings/editor/ImportGaps";
 
 const field =
   "mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-red-400 focus:outline-none";
@@ -49,6 +50,24 @@ export default function EditorContact({ listing, onChanged }) {
   useEffect(() => {
     if (!dirty) setDraft(savedContact(listing));
   }, [listing, dirty]);
+
+  /*
+   * Arriving from a chat that refused an application link
+   * (?focus=application-link): scroll to the field and highlight it, once.
+   * The param is dropped so a reload does not do it again.
+   */
+  const hasLeases = mine.length > 0;
+  useEffect(() => {
+    if (!hasLeases || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("focus") !== "application-link") return;
+    const timer = setTimeout(() => {
+      revealGap("application-link");
+      params.delete("focus");
+      window.history.replaceState(null, "", `?${params.toString()}${window.location.hash}`);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [hasLeases]);
 
   if (!mine.length) return null;
 
@@ -132,7 +151,7 @@ export default function EditorContact({ listing, onChanged }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             Application link <span className="normal-case tracking-normal text-gray-400">(optional)</span>
           </span>
-          <input type="url" inputMode="url" className={field} value={draft.applicationUrl}
+          <input type="url" inputMode="url" className={field} value={draft.applicationUrl} data-gap="application-link"
             placeholder="https://yourportal.com/apply"
             onChange={(e) => set({ applicationUrl: e.target.value })} />
           <span className="mt-1 block text-[11px] leading-4 text-gray-500">

@@ -709,6 +709,57 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
 }
 
 /*
+ * Sent when a landlord's emailed reply carried an application link (Wyatt,
+ * 2026-11-20). The link was cut from what the student saw; the rest of the
+ * reply, if any, was delivered. Says why and links straight to the dashboard
+ * field. `delivered` is false when the reply was nothing but the link.
+ */
+export function buildApplicationLinkNoticeEmail({ otherFirst, message, settingsUrl, hasLink, delivered, baseUrl }) {
+  const who = displayName(otherFirst, "the student");
+  const what = delivered
+    ? `Your reply to ${who} was delivered, but the application link in it was removed.`
+    : `Your reply to ${who} was not delivered, because it only contained an application link.`;
+  const url = `${baseUrl}${settingsUrl}`;
+  const label = hasLink ? "View your application link" : "Add your application link";
+  return {
+    subject: "Application links go on your listing, not in chat",
+    text: `${what}\n\n${message}\n\n${label}:\n${url}\n\n${POSTAL_ADDRESS}`,
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
+        <p style="margin:0 0 14px">${escapeHtml(what)}</p>
+        <p style="margin:0 0 18px">${escapeHtml(message)}</p>
+        <p style="margin:0 0 18px"><a href="${url}" style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:8px">${escapeHtml(label)}</a></p>
+        <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
+          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message alert.</p>
+          <p style="margin:0">${POSTAL_ADDRESS}</p>
+        </div>
+      </div>
+    `,
+  };
+}
+
+export async function sendApplicationLinkNoticeEmail({ to, ...rest }) {
+  const built = buildApplicationLinkNoticeEmail(rest);
+  const message = {
+    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
+    to,
+    subject: built.subject,
+    headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
+    text: built.text,
+    html: built.html,
+  };
+  if (sesTransporter) {
+    try {
+      await sendMailSafe(sesTransporter, { logAs: { kind: "application_link_notice" }, ...message, ses: SES_SEND_OPTIONS });
+      return;
+    } catch (err) {
+      console.error("sendApplicationLinkNoticeEmail: SES send failed, falling back to Gmail:", err);
+    }
+  }
+  await sendMailSafe(transporter, { logAs: { kind: "application_link_notice" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+}
+
+/*
  * Ask a landlord whether someone else may reply by email on their behalf
  * (lib/chat/replySenderApproval.js, Wyatt, 2026-10-24). Sent to the landlord's
  * own account email, once per sender, when a reply from an address that is not

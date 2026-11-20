@@ -25,7 +25,10 @@ export async function POST(req, { params }) {
     // A super "viewing as" a landlord acts as that landlord.
     const landlordId = resolveDashboardUserId(session, new URL(req.url).searchParams);
     const result = await landlordAct({ tourId, landlordId, action: body?.action, day: body?.day ?? null, time: body?.time ?? null, body: body?.body ?? "" });
-    if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
+    if (result.error) {
+      const { error, code, settingsUrl, hasLink } = result;
+      return NextResponse.json({ error, code, settingsUrl, hasLink }, { status: result.status ?? 400 });
+    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("POST /api/landlord/tours/[id] failed:", err);

@@ -47,6 +47,7 @@ const REASON_LABELS = {
   contact_email: "email address",
   contact_phone: "phone number",
   external_link: "outside link",
+  application_link: "application link",
   social_handle: "social handle",
   off_platform_request: "asked to move off Proximity",
   irreversible_payment_rail: "risky payment method",

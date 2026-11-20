@@ -61,6 +61,8 @@ import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { requestSenderApproval } from "@/lib/chat/replySenderRequest";
 import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
+import { findApplicationLinks, stripApplicationLinks, APPLICATION_LINK_REASON } from "@/lib/chat/applicationLinks";
+import { emailApplicationLinkNotice } from "@/lib/chat/applicationLinkNotice";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
@@ -385,7 +387,7 @@ async function processOne({ bucket, key, recipients }) {
 
     const { data: participant } = await supabase
       .from("chat_participants")
-      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id)")
+      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id, listing_id)")
       .eq("reply_token_hash", hashReplyToken(found.token))
       .maybeSingle();
     if (!participant || participant.users?.deleted_at) {
@@ -468,21 +470,57 @@ async function processOne({ bucket, key, recipients }) {
       fromName: parsed.from?.value?.[0]?.name,
     });
     /*
+     * A landlord's application link is cut out, whatever else the reply says,
+     * and they are emailed where to put it instead (Wyatt, 2026-11-20). The
+     * rest of the reply goes through the usual screening below.
+     */
+    const thread = participant.chat_threads ?? {};
+    const appLinks = thread.landlord_id === userId ? findApplicationLinks(extracted) : [];
+    const sendAppLinkNotice = async ({ delivered }) => {
+      if (appLinks.length === 0) return;
+      // Never to a leasing assistant: it would answer the notice (see below).
+      if (fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" })) return;
+      await emailApplicationLinkNotice({
+        to: fromEmail,
+        landlordId: userId,
+        listingId: thread.listing_id,
+        studentId: thread.interested_user_id,
+        delivered,
+      });
+    };
+    const screenedText = appLinks.length > 0 ? stripApplicationLinks(extracted) : extracted;
+    const onlyAppLink = appLinks.length > 0 && !screenedText.replace(/\[removed\]/g, "").replace(/[\s:.,;!-]+/g, "");
+
+    /*
      * Contact details are delivered as written and the sender is emailed about
      * it (Wyatt, 2026-10-12). Abuse, fraud and phishing still lose the sentence.
      * Text that was removed in full is nothing to post; a photo sent with it
      * still is.
      */
-    const verdict = screenChatText(extracted);
+    const verdict = screenChatText(screenedText);
     const reasons = verdict.action === "block" ? verdict.reasons : [];
     const removed = reasons.some((r) => !CONTACT_REASONS.has(r));
-    let body = extracted.trim();
-    if (removed) {
-      const { text: redacted } = redactChatText(extracted);
+    let body = onlyAppLink ? "" : screenedText.trim();
+    if (removed && !onlyAppLink) {
+      const { text: redacted } = redactChatText(screenedText);
       body = redacted.trim() === "[removed]" ? "" : redacted.trim();
     }
     const files = emailAttachments(parsed);
     if (!body && files.length === 0) {
+      if (onlyAppLink) {
+        await supabase.rpc("rpc_log_chat_moderation_event", {
+          p_user_id: userId,
+          p_action: "block",
+          p_reasons: [APPLICATION_LINK_REASON, "from_email"],
+          p_body: extracted,
+          p_thread_id: threadId,
+          p_message_id: null,
+          p_listing_id: thread.listing_id ?? null,
+        });
+        await finish(logId, { ...base, status: "empty", reason: "only an application link", thread_id: threadId });
+        await sendAppLinkNotice({ delivered: false });
+        return { status: "empty", reason: "only an application link" };
+      }
       return notice("empty", reasons.length ? "only removed content" : "no new text", threadId);
     }
     if (body.length > MAX_BODY) body = `${body.slice(0, MAX_BODY - 1)}…`;
@@ -542,11 +580,12 @@ async function processOne({ bucket, key, recipients }) {
     // Flag-tier signals (a scam narrative, an SSN request) are recorded as they
     // are in the app, whether or not something was also removed.
     const flagReasons = verdict.action === "block" ? verdict.flags ?? [] : verdict.action === "flag" ? verdict.reasons : [];
-    if (reasons.length > 0 || flagReasons.length > 0) {
+    if (reasons.length > 0 || flagReasons.length > 0 || appLinks.length > 0) {
+      const appReasons = appLinks.length > 0 ? [APPLICATION_LINK_REASON] : [];
       await supabase.rpc("rpc_log_chat_moderation_event", {
         p_user_id: userId,
         p_action: "flag",
-        p_reasons: [...reasons, ...flagReasons, removed ? "redacted_from_email" : "delivered_from_email"],
+        p_reasons: [...appReasons, ...reasons, ...flagReasons, removed || appLinks.length > 0 ? "redacted_from_email" : "delivered_from_email"],
         p_body: extracted,
         p_thread_id: threadId,
         p_message_id: sent.messageId,
@@ -576,6 +615,8 @@ async function processOne({ bucket, key, recipients }) {
         console.error("inbound email: guidelines notice failed:", err);
       }
     }
+
+    await sendAppLinkNotice({ delivered: true });
 
     await finish(logId, { ...base, status: "posted", thread_id: threadId, chat_message_id: sent.messageId });
 

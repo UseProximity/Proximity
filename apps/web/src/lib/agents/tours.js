@@ -26,6 +26,7 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { screenApplicationLinks } from "@/lib/chat/sendGuards";
 import { sandboxViewFor } from "./sandbox";
 import { detectTourProposal } from "./tourProposals";
 import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
@@ -310,6 +311,10 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
   if (action === "message") {
     const text = String(body ?? "").trim().slice(0, 4000);
     if (!text) return { error: "Write a message to the student first.", status: 400 };
+    // An application link goes on the listing, not to the student (Wyatt,
+    // 2026-11-20). An emailed reply has had its links cut already (replyEmail.js).
+    const refusal = await screenApplicationLinks({ userId: landlordId, body: text, threadId: t.thread_id ?? null, listingId: t.listing_id, isLandlord: true });
+    if (refusal) return { error: refusal.message, status: 422, code: refusal.code, settingsUrl: refusal.settingsUrl, hasLink: refusal.hasLink };
     const threadId = await openDirectThread(t);
     await sendDirectMessage({ threadId, listingId: t.listing_id, senderId: landlordId, body: text, metadata: { tourId: t.id }, via });
     // Already talking (or confirmed): the message is all; the student heard the rest the first time.

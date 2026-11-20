@@ -8,6 +8,13 @@
  */
 import supabase from "@/lib/supabase";
 import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
+import {
+  hasApplicationLink,
+  applicationLinkMessage,
+  applicationLinkSettingsPath,
+  APPLICATION_LINK_CODE,
+  APPLICATION_LINK_REASON,
+} from "@/lib/chat/applicationLinks";
 
 export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
 const CONFIRMED_REASON = "confirmed_in_app";
@@ -113,6 +120,58 @@ export async function screenOutgoingChat({
   }
 
   return { blocked: false, flagged: false, reasons: [] };
+}
+
+/**
+ * Does this landlord already have an application link on this listing? Read
+ * off their own leases there, the same rows the dashboard's contact block
+ * writes. A failed read answers false: the copy then just says to add one.
+ */
+export async function landlordHasApplicationLink(landlordId, listingId) {
+  if (!landlordId || !listingId) return false;
+  const { data, error } = await supabase
+    .from("unit_leases")
+    .select("id, listing_units!inner(listing_id, deleted_at)")
+    .eq("owner_id", landlordId)
+    .eq("listing_units.listing_id", listingId)
+    .is("listing_units.deleted_at", null)
+    .is("deleted_at", null)
+    .not("application_url", "is", null)
+    .limit(1);
+  if (error) {
+    console.error("application link lookup failed:", error);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Refuse a landlord's message that carries an application link (Wyatt,
+ * 2026-11-20). No "send anyway": the link belongs on the listing, where the
+ * Apply button opens it. Applies in every thread, tour threads included.
+ * Only the thread's landlord is screened; a student has no dashboard to send
+ * the link to. Recorded as a block so admins can see it was tried.
+ *
+ * @returns {Promise<null | {code: string, message: string, settingsUrl: string, hasLink: boolean}>}
+ *   null when the message may go on to the usual screening
+ */
+export async function screenApplicationLinks({ userId, body, threadId = null, listingId = null, isLandlord }) {
+  if (!isLandlord || !hasApplicationLink(body)) return null;
+  const hasLink = await landlordHasApplicationLink(userId, listingId);
+  await logModeration({
+    userId,
+    action: "block",
+    reasons: [APPLICATION_LINK_REASON],
+    body,
+    threadId,
+    listingId,
+  });
+  return {
+    code: APPLICATION_LINK_CODE,
+    message: applicationLinkMessage({ hasLink }),
+    settingsUrl: applicationLinkSettingsPath(listingId),
+    hasLink,
+  };
 }
 
 /**

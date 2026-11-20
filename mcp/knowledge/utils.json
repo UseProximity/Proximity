@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-19T22:57:39.116Z",
-  "count": 361,
+  "_generated": "2026-11-20T22:48:32.676Z",
+  "count": 363,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -602,6 +602,14 @@
     {
       "file": "src/lib/chat/alertRoutes.js",
       "description": "Where a thread's chat alert emails go for one participant, for admin views."
+    },
+    {
+      "file": "src/lib/chat/applicationLinkNotice.js",
+      "description": "Tell a landlord, by email, that the application link in their emailed reply"
+    },
+    {
+      "file": "src/lib/chat/applicationLinks.js",
+      "description": "Application links in chat (Wyatt, 2026-11-20)."
     },
     {
       "file": "src/lib/chat/attachments.js",

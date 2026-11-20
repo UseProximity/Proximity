@@ -10,7 +10,7 @@ import SetPasswordPrompt from "@/components/chat/SetPasswordPrompt";
 import NoReplyNote from "@/components/chat/NoReplyNote";
 import HeldRepliesBanner from "@/components/chat/HeldRepliesBanner";
 import TourProposalCard from "@/components/chat/TourProposalCard";
-import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
+import { useMessages, CHAT_CONFIRM_SEND_CODE, CHAT_APPLICATION_LINK_CODE } from "@/context/MessagesContext";
 import { formatListingRentLabel } from "@/utils/listingFormatters";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -153,6 +153,8 @@ export default function ChatTranscript({
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [confirmPrompt, setConfirmPrompt] = useState(null);
+  // { message, settingsUrl, hasLink } when an application link was refused.
+  const [applicationNotice, setApplicationNotice] = useState(null);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -271,6 +273,7 @@ export default function ChatTranscript({
     if ((!text && files.length === 0) || sending || !thread?.threadId) return;
     setSending(true);
     setConfirmPrompt(null);
+    setApplicationNotice(null);
     setInput("");
     setPendingFiles([]);
     try {
@@ -280,6 +283,8 @@ export default function ChatTranscript({
       setPendingFiles(files);
       if (err?.code === CHAT_CONFIRM_SEND_CODE) {
         setConfirmPrompt(err.message);
+      } else if (err?.code === CHAT_APPLICATION_LINK_CODE) {
+        setApplicationNotice({ message: err.message, settingsUrl: err.settingsUrl, hasLink: err.hasLink === true });
       } else {
         toast.error(err?.message || "Failed to send message. Please try again.");
       }
@@ -550,6 +555,35 @@ export default function ChatTranscript({
             listingId={thread.listingId}
             listingUnavailable={thread.noReply.listingUnavailable}
           />
+        )}
+        {applicationNotice && (
+          <div
+            role="alert"
+            className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] leading-5 text-red-900"
+          >
+            <p>{applicationNotice.message}</p>
+            <div className="mt-2 flex items-center gap-2">
+              {applicationNotice.settingsUrl && (
+                // A plain <a>: the dashboard reads its property and focus params on a fresh load.
+                <a
+                  href={applicationNotice.settingsUrl}
+                  className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {applicationNotice.hasLink ? "View your application link" : "Add your application link"}
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setApplicationNotice(null);
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+                className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-200 bg-white text-red-900 hover:bg-red-100"
+              >
+                Edit message
+              </button>
+            </div>
+          </div>
         )}
         {confirmPrompt && (
           <div
