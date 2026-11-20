@@ -36,6 +36,10 @@
 
 const QUOTE_MARKERS = [
   /^\s*Reply above this line to message\b/i,
+  // The first details line of a landlord email (lib/inquiryEmail.js), for a
+  // client that pastes the original without a quote header.
+  /^\s*(Message sent|Tour request sent|Tour booked|Booked) through Proximity\b/i,
+  /^\s*Asked through Proxy, the assistant\b/i,
   /^\s*-{2,}\s*Original Message\s*-{2,}/i,
   /^\s*-{2,}\s*Forwarded message\s*-{2,}/i,
   /^\s*Begin forwarded message:/i,

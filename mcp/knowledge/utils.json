@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-19T22:57:39.116Z",
-  "count": 361,
+  "_generated": "2026-11-20T22:24:10.143Z",
+  "count": 364,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -194,6 +194,10 @@
     {
       "file": "src/lib/agents/threads.js",
       "description": "Proxy threads (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/tourEmails.js",
+      "description": "The tour emails a landlord gets, in the inquiry layout of lib/inquiryEmail.js"
     },
     {
       "file": "src/lib/agents/tourNotify.js",
@@ -648,6 +652,10 @@
       "description": "Post an emailed reply into its chat conversation."
     },
     {
+      "file": "src/lib/chat/inquiryDetails.js",
+      "description": "The detail lines under a student's message in a landlord email"
+    },
+    {
       "file": "src/lib/chat/landlordCanChat.js",
       "description": "Server-side gate for in-app listing chat: can this landlord be reached?"
     },
@@ -790,6 +798,10 @@
     {
       "file": "src/lib/guides.js",
       "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/inquiryEmail.js",
+      "description": "The layout of every email a landlord gets about a student: a chat message, a"
     },
     {
       "file": "src/lib/jsonLd.js",
