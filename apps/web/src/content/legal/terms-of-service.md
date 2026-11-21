@@ -30,7 +30,7 @@ party to any rental transaction, and we are not a property manager, a landlord, 
 screening service. We do not own, manage, inspect, or control any property listed on the
 Services. Any lease, sublease, application, deposit, or payment is strictly between you and
 the other person. Proximity is not a party to it and has no obligations under it. You can read
-our Broker Disclosure Form at [link].
+our [Broker Disclosure Form](/legal/missouri-broker-disclosure-form.pdf).
 
 **How Proximity is paid.** Students never pay Proximity anything. Landlords who sign
 Proximity's marketing agreement pay Proximity a fee when a student who found their
