@@ -1,6 +1,6 @@
 {
   "_description": "Core domain knowledge for the Proximity housing marketplace.",
-  "_generated": "2026-11-14T19:07:35.249Z",
+  "_generated": "2026-11-21T21:42:58.597Z",
   "app": {
     "name": "Proximity",
     "purpose": "Off-campus housing marketplace for WashU (Washington University in St. Louis) students",
@@ -98,6 +98,7 @@
       "After approval, push the branch and open a PR into `staging`."
     ],
     "knowledgeMaintenance": "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. NOTE: domain.json is REGENERATED from the template in mcp/scripts/generate-knowledge.mjs — edit the script, not the JSON, or your change is wiped on the next run. Only db-schema.json and active-tasks.json are edited as files.",
+    "fieldFindings": "Log what you learn the hard way. The moment you discover something empirical the code does not say — an approach that turns out to be broken, a service that blocks us, a data source that is capped or empty, a cost or limit measured in practice, a heuristic that produced confident false positives — record it with the log-task tool using type 'finding'. It lands in active-tasks.json, which is committed, so every machine and future session gets it. Read proximity://active-tasks and check its findings BEFORE starting anything involving external data, scraping, costs or third-party services. Write it so it can be acted on without repeating the experiment: what was tried, what actually happened with the concrete numbers, and what to do instead. Log it when it happens, not at the end of the task.",
     "knowledgeSyncCi": {
       "workflow": ".github/workflows/update-knowledge.yml",
       "trigger": "push to `staging` or `main` touching `apps/web/src/**` or `mcp/scripts/generate-knowledge.mjs`. Note it does NOT run on a knowledge-only change.",

@@ -148,15 +148,22 @@ export const TOOLS = [
   {
     name: "log-task",
     description:
-      "Log an active task, architectural decision, known bug, or migration status to active-tasks.json. " +
-      "Use this to keep a living record of ongoing work and important decisions.",
+      "Log an active task, architectural decision, known bug, migration status, or FIELD FINDING to " +
+      "active-tasks.json. Use this to keep a living record of ongoing work and important decisions.\n\n" +
+      "Use type 'finding' for anything learned by trying it that the code does not already say — an " +
+      "approach that turned out to be broken, a service that blocks us, a data source that is empty or " +
+      "capped, a cost or rate limit measured in practice, a matching rule that produced false positives. " +
+      "These are the things a future session would otherwise rediscover by burning the same tokens, " +
+      "credits and time. Log the finding at the moment it is learned, not at the end of the task.",
     inputSchema: {
       type: "object",
       properties: {
         type: {
           type: "string",
-          enum: ["task", "decision", "bug", "migration"],
-          description: "The kind of entry to log",
+          enum: ["task", "decision", "bug", "migration", "finding"],
+          description:
+            "The kind of entry to log. 'finding' = something learned empirically that would otherwise " +
+            "be rediscovered the hard way (a dead end, a block, a measured cost, a bad heuristic).",
         },
         title: {
           type: "string",
@@ -164,7 +171,10 @@ export const TOOLS = [
         },
         description: {
           type: "string",
-          description: "Full description of the task, decision rationale, bug symptoms, or migration scope",
+          description:
+            "Full description of the task, decision rationale, bug symptoms, or migration scope. " +
+            "For a finding: what was tried, what actually happened (with the concrete numbers), and what " +
+            "to do instead — so the next reader can act on it without repeating the experiment.",
         },
         status: {
           type: "string",
@@ -343,7 +353,12 @@ function handleLogTask({ type, title, description, status, context }) {
     return { isError: true, content: [{ type: "text", text: `Failed to parse active-tasks.json: ${err.message}` }] };
   }
 
-  const arrayKey = type === "decision" ? "decisions" : type === "bug" ? "bugs" : type === "migration" ? "migrations" : "tasks";
+  const arrayKey =
+    type === "decision" ? "decisions"
+    : type === "bug" ? "bugs"
+    : type === "migration" ? "migrations"
+    : type === "finding" ? "findings"
+    : "tasks";
   if (!Array.isArray(doc[arrayKey])) doc[arrayKey] = [];
 
   const id = `${type}-${Date.now()}`;
