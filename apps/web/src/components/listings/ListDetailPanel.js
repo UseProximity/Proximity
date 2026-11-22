@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import ListingModalInfo, { scrollParent } from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
 
 export default function ListDetailPanel({
   listing,
@@ -47,11 +48,11 @@ export default function ListDetailPanel({
               : "-translate-y-full opacity-0 [&_*]:!pointer-events-none"
           }`}
         >
-          <Pills onBack={onBack} listingId={listing._id} />
+          <Pills onBack={onBack} listingId={listing._id} title={listing.title} />
         </div>
       </div>
       <div className={`absolute inset-x-0 top-[var(--apply-check-h,0px)] z-30 ${pills.original ? "" : "invisible"}`}>
-        <Pills onBack={onBack} listingId={listing._id} />
+        <Pills onBack={onBack} listingId={listing._id} title={listing.title} />
       </div>
       <ListingModalInfo
         listing={listing}
@@ -68,7 +69,7 @@ export default function ListDetailPanel({
   );
 }
 
-function Pills({ onBack, listingId }) {
+function Pills({ onBack, listingId, title }) {
   return (
     <div className="pointer-events-none flex items-center justify-between p-3">
       <button
@@ -87,7 +88,8 @@ function Pills({ onBack, listingId }) {
         </svg>
         <span className="text-xs font-semibold">Back to listings</span>
       </button>
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto flex items-center gap-2">
+        <ShareButton title={title} />
         <HeartIcon listingId={listingId} />
       </div>
     </div>

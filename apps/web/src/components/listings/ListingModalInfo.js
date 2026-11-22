@@ -19,6 +19,7 @@ import {
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
@@ -2239,9 +2240,10 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10 flex items-center gap-2`}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <ShareButton title={listing.title} />
                   <HeartIcon listingId={listing._id} />
                 </div>
               )}

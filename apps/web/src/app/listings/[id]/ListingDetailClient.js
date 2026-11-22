@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
 import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
 export default function ListingDetailClient({
@@ -101,7 +102,8 @@ export default function ListingDetailClient({
           {listing.title || listing.address?.split(",")[0]}
         </span>
         {/* Below 1280px the heart on the photo is the only one. */}
-        <div className="flex-shrink-0 max-xl:hidden">
+        <div className="flex flex-shrink-0 items-center gap-2 max-xl:hidden">
+          <ShareButton title={listing.title} />
           <HeartIcon listingId={listing._id} />
         </div>
       </div>
