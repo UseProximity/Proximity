@@ -9,6 +9,7 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { cancelOwnSigning, cleanPayerInput, endPayerFor, namePayer } from "@/lib/billing/payers";
 import { activePayerLink } from "@/lib/billing/payerLinks";
 import { sendPayerAssigned, sendPayerDocumentCancelled, sendPayerInvite } from "@/lib/billing/payerServices";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 /*
  * An admin sets who signs and pays for landlord accounts (Project B, Wyatt
@@ -46,7 +47,9 @@ export async function POST(req) {
         if (!landlord) throw new BillingError("not_found", "Landlord not found.", 404);
         // Their own copy in progress is cancelled first: if that fails, nothing is named.
         await cancelOwnSigning(db, documenso, landlord.id);
-        const { link } = await namePayer(db, { landlord, ...input, createdBy: session.user.id });
+        const { link, created } = await namePayer(db, { landlord, ...input, createdBy: session.user.id });
+        // Writable means this is the site's own database, where the attribution tables live.
+        if (created) await stampSignup(req, { userId: link.payer_id, role: "landlord", label: "invite" });
         payerId = link.payer_id;
         assigned.push(landlord.id);
       } catch (err) {

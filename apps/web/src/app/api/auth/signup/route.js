@@ -11,6 +11,8 @@ import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 import { emailMatchPattern, normalizeEmail } from "@/lib/auth/email";
 import { SIGNUP_ROLES } from "@/lib/auth/roles";
 import { isRestorable } from "@/lib/auth/accountRestore";
+import { stampSignup } from "@/lib/marketing/accounts";
+import { looksLikeAppRequest } from "@/lib/marketing/signup";
 
 export async function POST(req) {
   try {
@@ -165,6 +167,14 @@ export async function POST(req) {
         { status: 500 }
       );
     }
+
+    // Stamped now, not at verification: the link may open in another browser
+    // (PRD 7.4, edge case 2). The app calls this route too and is labelled "app".
+    await stampSignup(req, {
+      userId: newUser.id,
+      role: signupRole,
+      label: looksLikeAppRequest(req.headers) ? "app" : null,
+    });
 
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();

@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { WEEK_OPTIONS } from "@/lib/analytics/periods";
 
-/* Title, data-source line, tab bar and period picker for every /analytics tab. */
+/*
+ * Title, data-source line, tab bar and period picker for every tab of the admin Analytics
+ * page. hrefFor(slug, weeks) builds each link, so the open tab and period live in the address.
+ */
 
-export default function AnalyticsHeader({ tabs, activeSlug, weeks, sourceLine }) {
+export default function AnalyticsHeader({ tabs, activeSlug, weeks, sourceLine, hrefFor, weekOptions = WEEK_OPTIONS }) {
   return (
     <header className="space-y-4">
       <div className="space-y-2">
@@ -20,7 +23,7 @@ export default function AnalyticsHeader({ tabs, activeSlug, weeks, sourceLine })
           {tabs.map((t) => (
             <Link
               key={t.slug}
-              href={`/analytics/${t.slug}?weeks=${weeks}`}
+              href={hrefFor(t.slug, weeks)}
               aria-current={t.slug === activeSlug ? "page" : undefined}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
                 t.slug === activeSlug
@@ -36,10 +39,10 @@ export default function AnalyticsHeader({ tabs, activeSlug, weeks, sourceLine })
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-gray-600">Period:</span>
-        {WEEK_OPTIONS.map((w) => (
+        {weekOptions.map((w) => (
           <Link
             key={w}
-            href={`/analytics/${activeSlug}?weeks=${w}`}
+            href={hrefFor(activeSlug, w)}
             className={`rounded-md border px-3 py-1 ${
               w === weeks
                 ? "border-gray-900 bg-gray-900 text-white"

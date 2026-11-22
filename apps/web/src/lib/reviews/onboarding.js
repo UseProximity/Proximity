@@ -31,6 +31,7 @@ import { hashToken } from "@/lib/auth/tokenHash";
 import { sendPasswordReset } from "@/lib/auth/passwordReset";
 import { schoolForEmail } from "@/lib/schools";
 import { referralSourceLabel } from "./source";
+import { stampSignup } from "@/lib/marketing/accounts";
 
 export const PROFILE_SETUP_TTL_DAYS = 7;
 
@@ -366,6 +367,10 @@ export async function ensureReviewerAccount({
     console.error("[reviewOnboarding] account insert failed:", insertError?.message);
     return { error: "Couldn't create your account. Please try again." };
   }
+
+  // Review-flow and waitlist shell accounts keep the source they arrived with
+  // (PRD edge case 3). Always the visitor's own browser, so the cookie applies.
+  await stampSignup(null, { userId: created.id, role: "student" });
 
   return {
     userId: created.id,

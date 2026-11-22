@@ -45,6 +45,9 @@ async function browseCount(browse) {
 const VISITOR_RUN_CAP = 10;
 // Signed-out searches an hour from one network address (Wyatt, 2026-11-17).
 const FYP_IP_LIMIT = 200;
+// Failed searches recorded an hour from one network address: a script posting
+// junk must not fill the events table or skew the failure share (PR 462 review).
+const FAILED_EVENT_LIMIT = 20;
 
 // Searches this device has run, over every Find Your Place row it started
 // (claimed ones too: signing up does not refill a later signed-out run).
@@ -70,8 +73,11 @@ export async function POST(request) {
   let actor = null;
   let visitor = null;
   let retry = false;
-  const failed = (reason) =>
+  const ip = clientIp(request.headers);
+  const failed = (reason) => {
+    if (ipLimited(ip, { bucket: "find-your-place-failed", limit: FAILED_EVENT_LIMIT })) return;
     after(() => recordFypEvent({ name: "search_failed", userId: actor?.id ?? null, visitorId: visitor, metadata: { reason, retry } }));
+  };
   try {
     const requestUser = await getRequestUser(request);
     if (requestUser?.email) {
@@ -131,7 +137,7 @@ export async function POST(request) {
      * error, so the team is emailed the first time and as it keeps happening
      * (Wyatt, 2026-11-17).
      */
-    if (!actor && !existing && ipLimited(clientIp(request.headers), { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
+    if (!actor && !existing && ipLimited(ip, { bucket: "find-your-place", limit: FYP_IP_LIMIT })) {
       after(() =>
         recordError({
           source: "server",
@@ -202,6 +208,9 @@ export async function POST(request) {
       if (error) console.error("[find-your-place] session insert failed:", error.message);
       sessionId = data?.id ?? null;
     }
+
+    // Every search that answered, so failures can be read as a share of all searches.
+    after(() => recordFypEvent({ name: "searched", userId: actor?.id ?? null, visitorId: visitor, metadata: { retry, rerun: !!existing } }));
 
     const u = result.usage;
     console.log(

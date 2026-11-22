@@ -319,7 +319,7 @@ export default function AgreementCard({ gate, hasActivePaymentMethod, onChanged,
 
         {paidFor}
 
-        {agreement.status === "on_paper" && agreement.paper && (
+        {agreement.paper && (
           <div className="space-y-2 rounded-md bg-amber-50 px-3 py-3 text-sm text-amber-900">
             <p>
               We sent you this agreement to sign on paper on {dateOnly(agreement.paper.sentAt)}. Once we receive your signed copy, these properties can

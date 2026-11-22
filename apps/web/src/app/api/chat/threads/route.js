@@ -3,6 +3,7 @@ import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { stagingEmailHeader } from "@/lib/outreach";
+import { recordOutcome } from "@/lib/marketing/record";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import {
@@ -232,6 +233,12 @@ export async function POST(req) {
         reasons: screen.reasons,
         body: trimmedBody,
       });
+    }
+
+    // Marketing: a new landlord thread is the student's first message about
+    // this listing (PRD section 6, landlord_message). Never fails the send.
+    if (data?.isNew && authUser.role !== "landlord") {
+      await recordOutcome(req, { outcome: "landlord_message", userId: authUser.id, userRole: authUser.role ?? null, subjectId: listingId.trim() });
     }
 
     // Read the request headers here: after() runs once the response is on its way.

@@ -63,9 +63,22 @@ const PENDING = ["not_sent", "sent"];
 export const PAPER = "paper";
 export const PAPER_OUT_MESSAGE =
   "Your marketing agreement was sent to you to sign on paper. Once we receive your signed copy, the properties on it can go live. To change anything, email info@useproximity.org.";
-export const isPaperOut = (state) => state?.pending?.provider === PAPER && state.pending.status === "sent";
-export function assertNoPaperOut(state) {
+// A signer's paper copy holds only the account it was printed for (Wyatt,
+// 2026-11-19): read for another account they sign for, it is `paperElsewhere`.
+export const isPaperOut = (state) => state?.pending?.provider === PAPER && state.pending.status === "sent" && !state.paperElsewhere;
+export const PAPER_ELSEWHERE_MESSAGE =
+  "Your marketing agreement is out to sign on paper for another account. Once we receive the signed copy, this account can be added with an addendum. To change anything sooner, email info@useproximity.org.";
+// Changing who signs would void a paper copy the team is waiting on (Wyatt, 2026-11-19).
+export const PAPER_HOLD_MESSAGE =
+  "Your marketing agreement is out to sign on paper, so the authorized signer can't be changed until we receive the signed copy. To change anything sooner, email info@useproximity.org.";
+/*
+ * Refuse while a paper copy holds this account. `elsewhere: true` also refuses
+ * while the signer's copy is out for another account: they can't start a new
+ * agreement or addendum until it is recorded (one pending agreement per signer).
+ */
+export function assertNoPaperOut(state, { elsewhere = true } = {}) {
   if (isPaperOut(state)) throw new BillingError("paper_out", PAPER_OUT_MESSAGE, 409);
+  if (elsewhere && state?.paperElsewhere) throw new BillingError("paper_elsewhere", PAPER_ELSEWHERE_MESSAGE, 409);
 }
 
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
@@ -169,12 +182,24 @@ export async function agreementState(db, userId, now = new Date(), { own = false
     resignCutoff(db),
     pendingAmendmentOf(db, userId),
   ]);
+  const summary = summarizeAgreementRows(rows, { liveVersion, cutoff, now });
   return {
-    ...summarizeAgreementRows(rows, { liveVersion, cutoff, now }),
+    ...summary,
     pendingAmendment: own && pendingAmendment?.signer_id && pendingAmendment.signer_id !== userId ? null : pendingAmendment,
     holderId,
     payerLink,
+    paperElsewhere: payerLink ? await paperForOtherAccount(db, summary.pending, userId) : false,
   };
+}
+
+// The signer's paper copy out, printed for another account than `userId`: none
+// of this account's properties are held on it.
+async function paperForOtherAccount(db, pending, userId) {
+  if (pending?.provider !== PAPER || pending.status !== "sent") return false;
+  const { data, error } = await db.from("agreement_coverage").select("id").eq("agreement_id", pending.id).eq("user_id", userId).eq("status", "proposed").limit(1);
+  if (missingSchema(error)) return false;
+  if (error) throw error;
+  return !data?.length;
 }
 
 /*
@@ -212,6 +237,9 @@ export async function takeoverCoverage(db, userId, now = new Date()) {
   const signerCovered = coveredMap(rows, { master: signerState.signed, masterValid: signerState.valid });
   return {
     state,
+    // The signer's own agreement state: a paper copy of theirs out for this
+    // account holds the takeover off too.
+    signerState,
     properties,
     rows,
     covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }),
@@ -344,7 +372,9 @@ export function agreementView(state, { signingAvailable = true, properties = [],
     hasSignedExhibit: !!signed?.signed_exhibit_file_key,
     liveVersionLabel: liveVersion?.label ?? null,
     // Out on paper: the properties printed on it, waiting for the signed copy.
-    paper: paperOut ? { sentAt: pending.created_at, properties: (pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
+    // A signer's copy may be for another account they sign for, so an account
+    // with a signer is never shown what is on it.
+    paper: paperOut ? { sentAt: pending.created_at, properties: (state.payerLink ? [] : pending.exhibit ?? []).map((e) => ({ listingId: e.listingId, address: e.address, wholeBuilding: e.wholeBuilding !== false, units: e.wholeBuilding !== false ? [] : e.units ?? [] })) } : null,
     canSign: !paperOut && (!valid || !!state.negotiatedOffer) && signingAvailable && !!liveVersion?.provider_template_id && !!liveVersion?.provider_recipient_id,
     // A version made for them alone went live after they signed: signing it
     // replaces the one they have. Worded like any updated agreement, so nothing
@@ -656,6 +686,8 @@ export async function startSigning(
       const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
       const { state } = loaded;
       assertNoPaperOut(state);
+      // Taking over: the signer's copy for another account does not touch this one.
+      assertNoPaperOut(loaded.signerState, { elsewhere: false });
       let rows = loaded.rows;
       // Which account each property belongs to, so its coverage row is that account's.
       const accountOf = new Map(loaded.properties.map((p) => [p.listingId, account]));
@@ -832,7 +864,7 @@ async function currentStatus(db, doc) {
 }
 
 // Withdraw a copy in Documenso, best effort: cancelled if it was opened, deleted if still a draft.
-async function cancelInDocumenso(documenso, row, reason) {
+export async function cancelInDocumenso(documenso, row, reason) {
   if (!row?.provider_envelope_id) return;
   const withdraw = documenso.discard ? documenso.discard.bind(documenso) : documenso.cancel.bind(documenso);
   await withdraw(row.provider_envelope_id, reason).catch(() => {});
@@ -1390,11 +1422,11 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
  *     master is cancelled too. The signed PDFs are kept.
  * Returns { id, kind, status: "voided", released } (properties released).
  */
-export async function voidDocument(db, documenso, { userId, kind, id, now = new Date() }) {
+export async function voidDocument(db, documenso, { userId, kind, id, paper = false, now = new Date() }) {
   if (!TABLE[kind]) throw new BillingError("bad_kind", "Choose the agreement or an amendment.");
   const { data: row, error } = await db
     .from(TABLE[kind])
-    .select("id, user_id, status, provider_envelope_id")
+    .select(kind === "master" ? "id, user_id, status, provider, provider_envelope_id" : "id, user_id, status, provider_envelope_id")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -1402,6 +1434,12 @@ export async function voidDocument(db, documenso, { userId, kind, id, now = new 
   if (!row) throw new BillingError("not_found", "That document was not found.", 404);
   if (row.status !== "signed" && !PENDING.includes(row.status)) {
     throw new BillingError("already_ended", "That document has already ended.", 409);
+  }
+  // A paper copy out is voided only on purpose, by an admin (`paper: true`):
+  // anything that cancels documents along the way (a change of signer, a
+  // takeover) must never end the hold quietly (PR 462 review).
+  if (row.provider === PAPER && row.status !== "signed" && !paper) {
+    throw new BillingError("paper_out", "This agreement is out to sign on paper. An admin voids it from the landlord's row.", 409);
   }
   const nowIso = now.toISOString();
   const reason = "voided by an admin";

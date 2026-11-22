@@ -31,6 +31,7 @@ import supabase from "@/lib/supabase";
 import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
 import { ensureReviewerAccount } from "@/lib/reviews/onboarding";
 import { readVisitorId, newVisitorId, setVisitorCookie } from "@/lib/visitorCookie";
+import { recordOutcome } from "@/lib/marketing/record";
 
 // Checked before the query so a hand-typed path is a 404 and not a Postgres
 // "invalid input syntax for type uuid" surfacing as a 500.
@@ -161,6 +162,7 @@ export async function GET(req, { params }) {
       phone: phone || null,
       referrer: req.headers.get("referer"),
     });
+    await recordOutcome(req, { outcome: "waitlist_click", userId, subjectId: listing.id });
 
     const res = NextResponse.redirect(destination, 302);
 
@@ -261,6 +263,7 @@ export async function POST(req, { params }) {
       phone: phone || null,
       referrer: req.headers.get("referer"),
     });
+    await recordOutcome(req, { outcome: "waitlist_click", userId, subjectId: listing.id });
 
     const res = NextResponse.json({
       url: destination,

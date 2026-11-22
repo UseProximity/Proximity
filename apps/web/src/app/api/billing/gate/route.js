@@ -38,7 +38,7 @@ export async function GET(req) {
     return NextResponse.json({
       allowed: gate.allowed,
       missing: gate.missing,
-      message: gate.allowed ? null : gateMessage(gate.missing),
+      message: gate.allowed ? null : gateMessage(gate.missing, [], { signerName: gate.payer?.name ?? null }),
       requirePaymentMethod: gate.requirePaymentMethod,
       requireAgreement: gate.requireAgreement,
       agreement: delegated ? null : agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),

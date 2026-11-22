@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-18T19:48:17.953Z",
-  "count": 344,
+  "_generated": "2026-11-20T22:24:10.143Z",
+  "count": 364,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -196,6 +196,10 @@
       "description": "Proxy threads (PRD v3, milestone 2)."
     },
     {
+      "file": "src/lib/agents/tourEmails.js",
+      "description": "The tour emails a landlord gets, in the inquiry layout of lib/inquiryEmail.js"
+    },
+    {
       "file": "src/lib/agents/tourNotify.js",
       "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
     },
@@ -220,16 +224,12 @@
       "description": "A signed-out visitor's email, given in the chat (Wyatt, 2026-10-27)."
     },
     {
-      "file": "src/lib/analytics/access.js",
-      "description": "Who can open /analytics, and which tabs they see."
-    },
-    {
       "file": "src/lib/analytics/blocks.js",
       "description": "Building blocks shared by every /analytics tab."
     },
     {
       "file": "src/lib/analytics/db.js",
-      "description": "Small read helpers for /analytics. Reads go through the deployment's own database"
+      "description": "Small read helpers for the admin Analytics page. Reads go through the deployment's own database"
     },
     {
       "file": "src/lib/analytics/ga.js",
@@ -240,12 +240,16 @@
       "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
     },
     {
+      "file": "src/lib/analytics/redirect.js",
+      "description": "Where an old /analytics address goes now: the matching tab of the admin Analytics page,"
+    },
+    {
       "file": "src/lib/analytics/tabs/engagement.js",
       "description": "Listing engagement: what students do with listings. Views, saves and contacts come from the"
     },
     {
       "file": "src/lib/analytics/tabs/index.js",
-      "description": "Every /analytics tab, in display order. To add a tab: write a loader in this folder that"
+      "description": "Every tab of the admin Analytics page (/dashboard/admin/analytics), in display order. To add"
     },
     {
       "file": "src/lib/analytics/tabs/landlords.js",
@@ -254,6 +258,10 @@
     {
       "file": "src/lib/analytics/tabs/leaseCheck.js",
       "description": "Lease check: students uploading a lease for review."
+    },
+    {
+      "file": "src/lib/analytics/tabs/marketing.js",
+      "description": "Marketing: sessions and outcomes by source, campaign and campaign link (PRD"
     },
     {
       "file": "src/lib/analytics/tabs/matchmaking.js",
@@ -644,6 +652,10 @@
       "description": "Post an emailed reply into its chat conversation."
     },
     {
+      "file": "src/lib/chat/inquiryDetails.js",
+      "description": "The detail lines under a student's message in a landlord email"
+    },
+    {
       "file": "src/lib/chat/landlordCanChat.js",
       "description": "Server-side gate for in-app listing chat: can this landlord be reached?"
     },
@@ -788,6 +800,10 @@
       "description": "No description. Add a top-of-file comment."
     },
     {
+      "file": "src/lib/inquiryEmail.js",
+      "description": "The layout of every email a landlord gets about a student: a chat message, a"
+    },
+    {
       "file": "src/lib/jsonLd.js",
       "description": "Serialize an object for embedding in a <script type=\"application/ld+json\">"
     },
@@ -844,6 +860,10 @@
       "description": "Who went to apply (listing_applications), server side."
     },
     {
+      "file": "src/lib/listings/filterListings.js",
+      "description": "Browse filtering, evaluated against the property → unit → lease model."
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
@@ -888,6 +908,10 @@
       "description": "The shared \"Proximity\" landlord account."
     },
     {
+      "file": "src/lib/listings/pricedLease.js",
+      "description": "Whether a property is complete enough to go live: some unit still standing"
+    },
+    {
       "file": "src/lib/listings/propertyName.js",
       "description": "Display-name uniqueness for properties."
     },
@@ -918,6 +942,62 @@
     {
       "file": "src/lib/listings/unitNames.js",
       "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
+      "file": "src/lib/marketing/accounts.js",
+      "description": "Account outcomes (PRD 7.4, section 6 tier 1)."
+    },
+    {
+      "file": "src/lib/marketing/classify.js",
+      "description": "Decide which campaign a visit came from (PRD 7.1). Pure: no DB, no request"
+    },
+    {
+      "file": "src/lib/marketing/config.js",
+      "description": "Marketing attribution switches and constants."
+    },
+    {
+      "file": "src/lib/marketing/emailLinks.js",
+      "description": "Campaign tags on links in our own emails (PRD 7.5): utm_source=proximity-email,"
+    },
+    {
+      "file": "src/lib/marketing/links.js",
+      "description": "Campaign link rules (PRD 7.8 and 7.9), shared by the admin form and the API."
+    },
+    {
+      "file": "src/lib/marketing/linksServer.js",
+      "description": "Server-side campaign link storage and the headline numbers the Campaign"
+    },
+    {
+      "file": "src/lib/marketing/outcomes.js",
+      "description": "Canonical marketing outcomes (PRD section 6) and how each is deduplicated."
+    },
+    {
+      "file": "src/lib/marketing/rateLimit.js",
+      "description": "In-memory sliding-window limits on the session beacon."
+    },
+    {
+      "file": "src/lib/marketing/record.js",
+      "description": "recordOutcome: the one server helper every outcome hook calls (PRD 7.3)."
+    },
+    {
+      "file": "src/lib/marketing/report.js",
+      "description": "The Marketing tab's arithmetic (PRD 7.6), kept pure so it can be tested:"
+    },
+    {
+      "file": "src/lib/marketing/retention.js",
+      "description": "Retention for attribution data (PRD section 9): sessions never linked to an"
+    },
+    {
+      "file": "src/lib/marketing/sessions.js",
+      "description": "Server-side reads and writes for marketing_sessions and touchpoints."
+    },
+    {
+      "file": "src/lib/marketing/signup.js",
+      "description": "The source stamped on a new account (PRD 7.4): users.signup_session_id,"
+    },
+    {
+      "file": "src/lib/marketing/tags.js",
+      "description": "The one tag cleaner every campaign value goes through: utm_* parameters, the"
     },
     {
       "file": "src/lib/massEmail/audience.js",

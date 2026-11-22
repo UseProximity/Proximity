@@ -49,6 +49,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
+import { recordOutcome } from "@/lib/marketing/record";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
@@ -796,6 +797,8 @@ export async function POST(req) {
       console.error("reviewReferral: insert failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
+
+    if (review?.id) await recordOutcome(req, { outcome: "review_submitted", userId: reviewerUserId, subjectId: review.id });
 
     /*
      * Spend the invite only now that a review actually exists. Burning it any

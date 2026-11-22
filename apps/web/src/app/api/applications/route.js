@@ -8,6 +8,12 @@
  * The landlord's application itself lives on their own site; this only
  * records who went to it (lib/listings/applications.js).
  *
+ * Marketing attribution (PRD section 6, tier 3): a recorded click is
+ * application_started (once per listing per session); answering "applied" is
+ * application_submitted (once per application), credited to the session of
+ * the first application_started on that listing. "Not applying" records
+ * nothing. Recording never fails the request.
+ *
  * @auth user
  */
 export const dynamic = "force-dynamic";
@@ -16,6 +22,8 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { studentApplications, recordApplyClick, answerApplication } from "@/lib/listings/applications";
 import { UUID_RE as UUID } from "@/lib/users/viewAs";
+import { recordOutcome } from "@/lib/marketing/record";
+import { applicationStartSessionId } from "@/lib/marketing/sessions";
 
 async function body(req) {
   try { return await req.json(); } catch { return {}; }
@@ -44,6 +52,9 @@ export async function POST(req) {
     }
     const result = await recordApplyClick({ studentId: user.id, listingId: b.listingId, leaseId: b.leaseId });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
+    if (result.application) {
+      await recordOutcome(req, { outcome: "application_started", userId: user.id, userRole: user.role ?? null, subjectId: b.listingId });
+    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("POST /api/applications failed:", err);
@@ -59,6 +70,10 @@ export async function PATCH(req) {
     if (!UUID.test(b?.id ?? "")) return NextResponse.json({ error: "id is required" }, { status: 400 });
     const result = await answerApplication({ studentId: user.id, applicationId: b.id, status: b.status });
     if (result.error) return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
+    if (result.application?.status === "applied") {
+      const creditSessionId = await applicationStartSessionId(user.id, result.application.listingId).catch(() => null);
+      await recordOutcome(req, { outcome: "application_submitted", userId: user.id, userRole: user.role ?? null, subjectId: result.application.id, creditSessionId });
+    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("PATCH /api/applications failed:", err);

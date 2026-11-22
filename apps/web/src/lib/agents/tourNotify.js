@@ -2,8 +2,8 @@
  * Emails for tour scheduling. Each one goes through lib/email.js, so off
  * production it is redirected or suppressed like every other email.
  *
- * The landlord sees the student's name and availability (as plain ranges)
- * from the request on. Contact details are never sent (Wyatt, 2026-10-27):
+ * The landlord sees the student's first name and availability (as plain
+ * ranges) from the request on. Contact details are never sent (Wyatt, 2026-10-27):
  * once a tour is confirmed or the landlord reaches out, the two talk in the
  * direct chat, and replying to these emails posts into that chat.
  *
@@ -13,7 +13,9 @@
  * real landlord. A failed lookup throws out of loadTour, so nothing is sent.
  */
 import supabase from "@/lib/supabase";
-import { getBaseUrl, sendTourEmail } from "@/lib/email";
+import { getBaseUrl, sendLandlordTourEmail, sendTourEmail } from "@/lib/email";
+import { buildTourCancelledByLandlordEmail, buildTourCancelledEmail, buildTourConfirmedEmail, buildTourRequestEmail } from "./tourEmails";
+import { studentDetailLine, unitLine } from "@/lib/chat/inquiryDetails";
 import { postProxyMessage } from "./threads";
 import { availabilityText, fmtTourTime } from "./tourTime";
 import { ensureReplyAddress } from "@/lib/chat/replyAddress";
@@ -45,9 +47,12 @@ async function loadTour(tourId) {
   const unit = t.unit_leases?.listing_units;
   const sandbox = (await sandboxIdsAmong([t.student_id, t.landlord_id])).size > 0;
   return {
-    t, student: student.data, landlord: landlord.data, sandbox,
+    t, student: student.data, landlord: landlord.data, sandbox, unit,
     // What the landlord may call the student: their name only once it is shown.
     studentLabel: (nameShown(t) && student.data?.name) || null,
+    // Landlord emails sign with the first name from the request on (Wyatt,
+    // 2026-11-20); the app still says "A student" until nameShown.
+    firstName: String(student.data?.name ?? "").trim().split(/\s+/)[0] || null,
     listingLabel: t.listings?.title || t.listings?.address || "the listing",
     address: t.listings?.address ?? "",
     leaseLabel: unit ? `${unit.name || `${unit.bedrooms ?? "?"} bed, ${unit.bathrooms ?? "?"} bath`}${t.unit_leases?.rent ? ` at $${Number(t.unit_leases.rent).toLocaleString("en-US")}/mo` : ""}` : null,
@@ -73,23 +78,30 @@ function ics({ uid, start, summary, location, description }) {
     `SUMMARY:${esc(summary)}`, `LOCATION:${esc(location)}`, `DESCRIPTION:${esc(description)}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
 }
 
+// The unit and student lines under a landlord tour email (lib/inquiryEmail.js).
+async function landlordDetails(r) {
+  const [unit, student] = await Promise.all([unitLine(r.t.lease_id), studentDetailLine(r.t.student_id)]);
+  return [unit, student].filter(Boolean);
+}
+
+const dashboardTours = () => `${getBaseUrl()}/dashboard/landlord?tab=tours`;
+
 export async function notifyTourRequested({ tourId }) {
   const r = await loadTour(tourId);
   if (!r || !canEmail(r.landlord)) return "no_recipient";
-  await sendTourEmail({
+  // A reply is a message to the student, opening their direct chat (Wyatt, 2026-11-01).
+  const replyTo = tourReplyAddress({ tourId: r.t.id, landlordId: r.landlord.id });
+  const email = buildTourRequestEmail({
+    firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, slots: rangeLines(r.t.student_slots),
+    details: await landlordDetails(r), dashboardUrl: dashboardTours(), completedAccount: completedAccount(r.landlord), canReply: !!replyTo,
+  });
+  await sendLandlordTourEmail({
     sandbox: r.sandbox,
     kind: "tour_request",
     to: await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email }),
-    name: r.landlord.name,
-    subject: `${r.studentLabel || "A student"} wants to tour ${r.listingLabel}`,
-    intro: `${r.studentLabel || "A student"} asked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} and can make any of these times:`,
-    lines: rangeLines(r.t.student_slots),
-    note: "Pick a day and a start time inside their window in your dashboard, or reply to this email to message the student directly.",
-    ctaLabel: completedAccount(r.landlord) ? "Confirm a time" : "Create an account to confirm",
-    ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`,
+    ...email,
     userId: r.landlord.id,
-    // A reply is a message to the student, opening their direct chat (Wyatt, 2026-11-01).
-    replyTo: tourReplyAddress({ tourId: r.t.id, landlordId: r.landlord.id }),
+    replyTo,
   });
   return "sent";
 }
@@ -103,7 +115,7 @@ export async function notifyTourProposed({ tourId }) {
   const replyTo = await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.student.id }).catch(() => null);
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_proposal", to: r.student.email, name: r.student.name,
+    kind: "tour_proposal", to: r.student.email, name: r.student.name, audience: "student",
     subject: `The landlord at ${r.listingLabel} wrote to you about your tour`,
     intro: `The landlord couldn't make the times you offered for ${r.listingLabel}, so they wrote to you directly:`,
     lines: first?.body ? [first.body] : [],
@@ -146,9 +158,21 @@ export async function notifyTourConfirmed({ tourId }) {
     if (!canEmail(u)) continue;
     const file = invite(isStudent);
     const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
+    if (!isStudent) {
+      const email = buildTourConfirmedEmail({
+        studentName: r.student?.name, listingLabel: r.listingLabel, unit: r.unit, when, address: r.address,
+        chatUrl: r.t.thread_id ? chatUrl(r.t.thread_id) : dashboardTours(), canReply: !!replyTo,
+      });
+      await sendLandlordTourEmail({
+        sandbox: r.sandbox, kind: "tour_confirmed", to: u.email, subject: email.subject, html: email.html, text: email.text,
+        attachment: file, userId: u.id, replyTo, threadId: r.t.thread_id,
+      });
+      sent.push("landlord");
+      continue;
+    }
     await sendTourEmail({
       sandbox: r.sandbox,
-      kind: "tour_confirmed", to: u.email, name: u.name,
+      kind: "tour_confirmed", to: u.email, name: u.name, audience: isStudent ? "student" : "landlord",
       subject: isStudent ? `Tour confirmed: ${r.listingLabel}, ${when}` : `Tour confirmed: ${r.student?.name || "a student"}, ${when}`,
       intro: isStudent
         ? `You're booked to tour ${r.listingLabel}${r.leaseLabel ? ` (${r.leaseLabel})` : ""} on ${when}.`
@@ -166,19 +190,41 @@ export async function notifyTourConfirmed({ tourId }) {
 export async function notifyTourCancelled({ tourId, by }) {
   const r = await loadTour(tourId);
   if (!r) return "no_recipient";
-  const target = by === "student" ? r.landlord : r.student;
-  if (!canEmail(target)) return "no_recipient";
-  await sendTourEmail({
-    sandbox: r.sandbox,
-    kind: "tour_cancelled", to: target.email, name: target.name,
-    subject: `Tour request cancelled: ${r.listingLabel}`,
-    intro: by === "student" ? `${r.studentLabel || "The student"} cancelled their tour request for ${r.listingLabel}.` : `The landlord cancelled the tour request for ${r.listingLabel}.`,
-    lines: [], note: by === "student" ? "" : "You can send new times from the calendar button in the chat.",
-    ctaLabel: by === "student" ? "Open your dashboard" : "Back to the listing",
-    ctaUrl: by === "student" ? `${getBaseUrl()}/dashboard/landlord?tab=tours` : `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`,
-    userId: target.id,
-  });
-  return "sent";
+  // The booked time, when the tour had been confirmed (confirmed_slot is only set then).
+  const when = r.t.confirmed_slot ? fmtTourTime(r.t.confirmed_slot) : null;
+  const sent = [];
+  // Either way the landlord hears: the student's cancellation, or a
+  // confirmation of their own (Wyatt, 2026-11-20).
+  if (canEmail(r.landlord)) {
+    const input = { firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, when, dashboardUrl: dashboardTours() };
+    const email = by === "student" ? buildTourCancelledEmail(input) : buildTourCancelledByLandlordEmail(input);
+    await sendLandlordTourEmail({
+      sandbox: r.sandbox,
+      kind: "tour_cancelled",
+      // The student's cancellation goes where the request went; the landlord's
+      // own confirmation to their account.
+      to: by === "student"
+        ? await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email })
+        : r.landlord.email,
+      ...email,
+      userId: r.landlord.id,
+    });
+    sent.push("landlord");
+  }
+  if (by !== "student" && canEmail(r.student)) {
+    await sendTourEmail({
+      sandbox: r.sandbox,
+      kind: "tour_cancelled", to: r.student.email, name: r.student.name, audience: "student",
+      subject: `Tour request cancelled: ${r.listingLabel}`,
+      intro: `The landlord cancelled the tour request for ${r.listingLabel}.`,
+      lines: [], note: "You can send new times from the calendar button in the chat.",
+      ctaLabel: "Back to the listing",
+      ctaUrl: `${getBaseUrl()}/listings/${r.t.listing_id}?listingTab=contact`,
+      userId: r.student.id,
+    });
+    sent.push("student");
+  }
+  return sent.join(",") || "no_recipient";
 }
 
 export async function notifyTourReminder({ tourId, day = null, dayBefore = false }) {
@@ -189,9 +235,17 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
     for (const u of [r.student, r.landlord]) {
       if (!canEmail(u)) continue;
       const replyTo = r.t.thread_id ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: u.id }).catch(() => null) : null;
+      if (u === r.landlord) {
+        const email = buildTourConfirmedEmail({
+          studentName: r.student?.name, listingLabel: r.listingLabel, unit: r.unit, when, address: r.address,
+          chatUrl: r.t.thread_id ? chatUrl(r.t.thread_id) : dashboardTours(), canReply: !!replyTo, dayBefore: true,
+        });
+        await sendLandlordTourEmail({ sandbox: r.sandbox, kind: "tour_reminder", to: u.email, ...email, userId: u.id, replyTo, threadId: r.t.thread_id });
+        continue;
+      }
       await sendTourEmail({
         sandbox: r.sandbox,
-        kind: "tour_reminder", to: u.email, name: u.name, subject: `Reminder: tour of ${r.listingLabel} ${when}`,
+        kind: "tour_reminder", to: u.email, name: u.name, audience: u === r.student ? "student" : "landlord", subject: `Reminder: tour of ${r.listingLabel} ${when}`,
         intro: `Your tour of ${r.listingLabel} is ${when}.`,
         lines: [`Address: ${r.address}`],
         note: replyTo ? "Reply to this email to message the other side." : "",
@@ -201,14 +255,20 @@ export async function notifyTourReminder({ tourId, day = null, dayBefore = false
     return "sent";
   }
   if (!canEmail(r.landlord)) return "no_recipient";
-  await sendTourEmail({
+  // Same as the request, with the reminder line on top, to the same routed inbox.
+  const replyTo = tourReplyAddress({ tourId: r.t.id, landlordId: r.landlord.id });
+  const email = buildTourRequestEmail({
+    firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, slots: rangeLines(r.t.student_slots),
+    details: await landlordDetails(r), dashboardUrl: dashboardTours(), completedAccount: completedAccount(r.landlord),
+    canReply: !!replyTo, reminderDay: day || 1,
+  });
+  await sendLandlordTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_reminder", to: r.landlord.email, name: r.landlord.name,
-    subject: `Reminder: ${r.studentLabel || "a student"} is waiting to tour ${r.listingLabel}`,
-    intro: `${r.studentLabel || "A student"} asked ${day === 1 ? "yesterday" : `${day} days ago`} to tour ${r.listingLabel} and is still waiting. They're available:`,
-    lines: rangeLines(r.t.student_slots),
-    note: "After five days Proxy will tell them there was no answer.",
-    ctaLabel: "Confirm a time", ctaUrl: `${getBaseUrl()}/dashboard/landlord?tab=tours`, userId: r.landlord.id,
+    kind: "tour_reminder",
+    to: await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email }),
+    ...email,
+    userId: r.landlord.id,
+    replyTo,
   });
   return "sent";
 }
@@ -224,7 +284,7 @@ export async function notifyTourNoAnswer({ tourId }) {
   if (!canEmail(r.student)) return "posted";
   await sendTourEmail({
     sandbox: r.sandbox,
-    kind: "tour_no_answer", to: r.student.email, name: r.student.name,
+    kind: "tour_no_answer", to: r.student.email, name: r.student.name, audience: "student",
     subject: `No answer yet on your tour request for ${r.listingLabel}`,
     intro: `The landlord hasn't responded to your tour request for ${r.listingLabel} yet.`,
     lines: [], note: "If you're still interested, keep the request open, try other times, or browse similar places.",

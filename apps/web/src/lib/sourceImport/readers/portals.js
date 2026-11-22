@@ -15,7 +15,7 @@
  *   fromKnown(known)     coordinates from what an earlier read learned
  *   sameBuilding(portal, known)
  *   resolve(portal, known) -> { id, learned } or null
- *   appUrl(target), walkScript({ skip, budgetMs }), waitMs
+ *   appUrl(target), walkScript({ skip, budgetMs, resumeAt, last }), waitMs
  */
 import { realpageOllPortal } from "./realpageOll.js";
 

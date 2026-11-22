@@ -180,7 +180,7 @@ export default async function WashuLandingPage({ params }) {
             href="/find-your-place"
             className="relative inline-flex items-center justify-center rounded-xl bg-white px-7 py-3.5 font-bold text-red-600 hover:bg-red-50 transition shadow-lg"
           >
-            Find my apartment
+            Find Your Place
           </Link>
         </section>
 
