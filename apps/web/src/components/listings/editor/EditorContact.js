@@ -38,6 +38,31 @@ function savedContact(listing) {
   };
 }
 
+/*
+ * A landlord with no leases of their own at this property (Wyatt, 2026-11-20).
+ * The application link is stored on their own leases, so there is nothing to
+ * save it on yet. The field still shows, greyed out with the reason, because a
+ * chat that refused their application link sends them here to find it.
+ */
+function ApplicationLinkUnavailable() {
+  return (
+    <div className="rounded-xl bg-white p-4 shadow-sm">
+      <label className="block" aria-disabled="true">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+          Application link <span className="normal-case tracking-normal text-gray-400">(optional)</span>
+        </span>
+        <input type="url" disabled className={`${field} cursor-not-allowed bg-gray-100 text-gray-400`}
+          placeholder="https://yourportal.com/apply" data-gap="application-link" />
+        <span className="mt-1 block text-[11px] leading-4 text-gray-500">
+          Unavailable because you don&apos;t have any leases of your own at this property. Your
+          application link is saved on your leases, so add a lease here first. Then you can add
+          the link, and students will see an Apply button in the listing&apos;s Contact tab.
+        </span>
+      </label>
+    </div>
+  );
+}
+
 export default function EditorContact({ listing, onChanged }) {
   const listingId = listing?._id || listing?.id;
   const mine = listing?.myLeases ?? [];
@@ -56,9 +81,8 @@ export default function EditorContact({ listing, onChanged }) {
    * (?focus=application-link): scroll to the field and highlight it, once.
    * The param is dropped so a reload does not do it again.
    */
-  const hasLeases = mine.length > 0;
   useEffect(() => {
-    if (!hasLeases || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("focus") !== "application-link") return;
     const timer = setTimeout(() => {
@@ -67,9 +91,9 @@ export default function EditorContact({ listing, onChanged }) {
       window.history.replaceState(null, "", `?${params.toString()}${window.location.hash}`);
     }, 400);
     return () => clearTimeout(timer);
-  }, [hasLeases]);
+  }, []);
 
-  if (!mine.length) return null;
+  if (!mine.length) return <ApplicationLinkUnavailable />;
 
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
   const discard = () => { setDraft(savedContact(listing)); setDirty(false); };
