@@ -56,19 +56,36 @@ const IGNORE = [
 ];
 
 /*
- * A browser error whose every stack frame points at the page itself rather
- * than a script file came from code a browser, extension or in-app browser
- * put into the page (Brave's crypto wallet, share and reader tools). Our own
- * code always runs from /_next/ script files. An error with no stack at all
- * is kept, since we cannot tell where it came from.
+ * A browser error whose every stack frame is the page's own address (not a
+ * script file, a blob: worker or another site) came from code a browser,
+ * extension or in-app browser ran inside the page: Brave's crypto wallet,
+ * share and reader tools. Only real frame lines count ("at ..." in Chrome,
+ * "name@url" in Safari and Firefox), never the message line. An error with
+ * no frames is kept, since we cannot tell where it came from.
+ * Limit: an inline <script> of our own would look the same, so its errors
+ * would not alert. Our code ships as /_next/ script files today.
  */
-function injectedScript(stack) {
-  const frames = String(stack ?? "").split("\n").map((l) => l.trim()).filter((l) => /https?:\/\//.test(l));
-  return frames.length > 0 && frames.every((l) => !/\.(m?js|cjs)(\?|:|\)|$)/.test(l));
+function injectedScript(stack, path) {
+  if (!path) return false;
+  const page = String(path).split(/[?#]/)[0];
+  const urls = String(stack ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .map((l) => (/^at /.test(l) ? l.match(/\(?(\S+?):\d+:\d+\)?$/) : /@/.test(l) ? l.match(/@(\S+?):\d+:\d+$/) : null))
+    .filter(Boolean)
+    .map((m) => m[1]);
+  return urls.length > 0 && urls.every((u) => {
+    try {
+      const url = new URL(u);
+      return /^https?:$/.test(url.protocol) && url.pathname === page;
+    } catch {
+      return false;
+    }
+  });
 }
 
-export function ignorable(message = "", stack = "", source = null) {
-  if (source === "browser" && injectedScript(stack)) return true;
+export function ignorable(message = "", stack = "", source = null, path = null) {
+  if (source === "browser" && injectedScript(stack, path)) return true;
   return IGNORE.some((re) => re.test(message) || re.test(stack));
 }
 
@@ -150,7 +167,7 @@ export async function recordError({ source, where = null, error = null, message 
     }
     const msg = String(message ?? error?.message ?? error ?? "Unknown error").slice(0, 2000);
     const stk = stack ?? (error && typeof error === "object" ? error.stack : null) ?? null;
-    if (!msg || ignorable(msg, stk ?? "", source)) return null;
+    if (!msg || ignorable(msg, stk ?? "", source, sample?.url)) return null;
     const fingerprint = createHash("sha256")
       .update([source, where ?? "", normalize(msg), topFrame(stk)].join("|"))
       .digest("hex")
