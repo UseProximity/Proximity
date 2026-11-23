@@ -63,6 +63,7 @@ import {
   Star,
   Mail,
   Flag,
+  Heart,
   Share as ShareIcon,
 } from "lucide-react-native";
 import {
@@ -95,7 +96,6 @@ import { ReviewCard } from "../../src/components/listings/ReviewCard";
 import { SectionNav } from "../../src/components/listings/SectionNav";
 import { UnitLeases } from "../../src/components/listings/UnitLeases";
 import { ListingDetailMap } from "../../src/components/listings/ListingDetailMap";
-import { HeartIcon } from "../../src/components/ui/HeartIcon";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { colors, shadows } from "../../src/theme/tokens";
@@ -555,24 +555,55 @@ export default function ListingDetailScreen() {
                 <ChevronLeft size={20} color={colors.textPrimary} strokeWidth={2.5} />
               </Animated.View>
             </Pressable>
-            {/* Share: built like Back, with the same crossfade from photo to app bar. */}
-            <Pressable
-              onPress={handleShare}
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityLabel="Share this listing"
-              className="w-10 h-10 items-center justify-center"
-            >
-              <Animated.View
-                className="absolute w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: "rgba(0,0,0,0.4)", opacity: heroPhase }}
+            <View className="flex-row items-center gap-2">
+              {/* Share: built like Back, with the same crossfade from photo to app bar. */}
+              <Pressable
+                onPress={handleShare}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Share this listing"
+                className="w-10 h-10 items-center justify-center"
               >
-                <ShareIcon size={20} color="#ffffff" strokeWidth={2.5} />
-              </Animated.View>
-              <Animated.View className="items-center justify-center" style={{ opacity: solidPhase }}>
-                <ShareIcon size={20} color={colors.textPrimary} strokeWidth={2.5} />
-              </Animated.View>
-            </Pressable>
+                <Animated.View
+                  className="absolute w-10 h-10 rounded-full items-center justify-center"
+                  style={{ backgroundColor: "rgba(0,0,0,0.4)", opacity: heroPhase }}
+                >
+                  <ShareIcon size={20} color="#ffffff" strokeWidth={2.5} />
+                </Animated.View>
+                <Animated.View className="items-center justify-center" style={{ opacity: solidPhase }}>
+                  <ShareIcon size={20} color={colors.textPrimary} strokeWidth={2.5} />
+                </Animated.View>
+              </Pressable>
+              {/* Save: same build and crossfade as Share; red fill when saved in both layers. */}
+              <Pressable
+                onPress={handleHeartPress}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={isSaved ? "Remove from saved" : "Save listing"}
+                accessibilityState={{ selected: isSaved }}
+                className="w-10 h-10 items-center justify-center"
+              >
+                <Animated.View
+                  className="absolute w-10 h-10 rounded-full items-center justify-center"
+                  style={{ backgroundColor: "rgba(0,0,0,0.4)", opacity: heroPhase }}
+                >
+                  <Heart
+                    size={20}
+                    color="#ffffff"
+                    fill={isSaved ? colors.primary : "transparent"}
+                    strokeWidth={2.5}
+                  />
+                </Animated.View>
+                <Animated.View className="items-center justify-center" style={{ opacity: solidPhase }}>
+                  <Heart
+                    size={20}
+                    color={isSaved ? colors.primary : colors.textPrimary}
+                    fill={isSaved ? colors.primary : "transparent"}
+                    strokeWidth={2.5}
+                  />
+                </Animated.View>
+              </Pressable>
+            </View>
           </View>
           {showNav ? (
             <SectionNav
@@ -620,15 +651,6 @@ export default function ListingDetailScreen() {
                 <Text className="text-gray-400">No image</Text>
               </View>
             )}
-
-            {/* No background container behind the heart: same thick white
-                outline as ListingCard, sitting directly on the photo, with
-                fill (not the outline) distinguishing saved from unsaved.
-                HeartIcon's own Pressable still carries the 44x44 touch
-                target via inline style. */}
-            <View className="absolute top-3 right-3">
-              <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="lg" onImage />
-            </View>
 
             {listing.images?.length > 1 && (
               <View className="absolute bottom-3 right-3 bg-black/50 rounded-full px-2.5 py-1">
