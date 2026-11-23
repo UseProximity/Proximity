@@ -12,9 +12,11 @@
  * moderation.js. A link counts as an application link when:
  *
  *   - its host is a leasing or application portal (APPLICATION_PORTAL_HOSTS), or
- *   - the URL itself says apply / application / applicant, or
- *   - the sentence it sits in (or the line just before a link on its own line,
- *     as in "Here is our application:\nhttps://...") talks about applying.
+ *   - the URL itself says apply / application / applicant.
+ *
+ * Words around a link no longer count on their own (Wyatt, 2026-11-23): "photos
+ * are at ..., let me know if you apply" is not an application, so a link that
+ * only sits near the word "apply" gets the ordinary "send anyway?" prompt.
  *
  * Pure: no imports beyond moderation's allowlist, so it can be unit tested.
  */
@@ -66,10 +68,6 @@ const URL_CANDIDATE =
 // "applynow"), and "rental-app" / "rentalapp".
 const URL_KEYWORD = /apply|application|applicant|rental-?app\b/i;
 
-// In the words around it.
-const TEXT_KEYWORD =
-  /\b(?:apply|applying|application|applications|applicant|applicants|app fee|application fee|rental app|fill(?:ing)? out (?:the|an|our|my) app)\b/i;
-
 function hostOf(url) {
   const withScheme = /^https?:\/\//i.test(url) ? url : `https://${url}`;
   try {
@@ -83,29 +81,6 @@ const onHost = (host, list) => list.some((h) => host === h || host.endsWith(`.${
 
 // Trailing punctuation a sentence puts after a link is not part of it.
 const trimUrl = (raw) => raw.replace(/[.,;:!?]+$/, "");
-
-/*
- * The sentence holding the match, and the one before it when the link stands
- * alone ("Our application:" then the link on the next line).
- */
-function contextFor(text, start, end) {
-  const before = text.slice(0, start);
-  const after = text.slice(end);
-  // A sentence ends at a newline or at . ! ? followed by whitespace. URLs hold
-  // no whitespace, so their own dots never split them.
-  const lead = before.split(/\n|[.!?](?=\s)/).pop() ?? "";
-  const tail = after.split(/\n|[.!?](?=\s)/)[0] ?? "";
-  const own = `${lead} ${tail}`;
-  if (own.replace(/[\s:;,\-()]+/g, "").length > 0) return own;
-  // The link is alone: take the previous non-empty sentence or line.
-  const previous = before
-    .split(/\n|[.!?](?=\s)/)
-    .slice(0, -1)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .pop();
-  return previous ?? "";
-}
 
 /*
  * Every application link in a message, with where it sits: { url, start, end }.
@@ -123,11 +98,7 @@ function applicationLinkSpans(text) {
     if (!host || onHost(host, ALLOWED_LINK_HOSTS)) continue;
     const start = match.index;
     const end = start + url.length;
-    const isApplication =
-      onHost(host, APPLICATION_PORTAL_HOSTS) ||
-      URL_KEYWORD.test(url) ||
-      TEXT_KEYWORD.test(contextFor(body, start, end));
-    if (isApplication) found.push({ url, start, end });
+    if (onHost(host, APPLICATION_PORTAL_HOSTS) || URL_KEYWORD.test(url)) found.push({ url, start, end });
   }
   return found;
 }
@@ -168,13 +139,61 @@ export function applicationLinkSettingsPath(listingId) {
   return `/dashboard/landlord?${p.toString()}`;
 }
 
-/**
- * What the landlord is told. `hasLink`: they already have an application link
- * on this listing, so students can already apply from it.
+/*
+ * Where the landlord stands on this listing, which decides what they are told
+ * (Wyatt, 2026-11-23):
+ *
+ *   live       a link is saved on a lease students can see, so the Apply button shows
+ *   saved      a link is saved, but none of those leases are live yet
+ *   missing    they have leases here, none with a link
+ *   no_leases  no leases of their own here, so the dashboard field is greyed out
  */
-export function applicationLinkMessage({ hasLink = false } = {}) {
-  const rule = "Sending applications through chat isn't allowed.";
-  return hasLink
-    ? `${rule} Your application link is already on this listing, so students can fill out your application directly from the listing's Contact tab. You can change the link in your dashboard.`
-    : `${rule} Add your application link to this listing in your dashboard instead, and students can fill out your application directly from the listing's Contact tab.`;
+export const APPLICATION_LINK_STATES = ["live", "saved", "missing", "no_leases"];
+
+const RULE = "Sending applications through chat isn't allowed.";
+const CONTACT_TAB = "students can fill out your application directly from the listing's Contact tab";
+
+const COPY = {
+  live: {
+    message: `${RULE} Your application link is already on this listing, so ${CONTACT_TAB}. You can change the link in your dashboard.`,
+    actionLabel: "View your application link",
+  },
+  saved: {
+    message: `${RULE} Your application link is saved, but none of your units at this property are live yet, so students don't see an Apply button. Publish a unit and ${CONTACT_TAB}.`,
+    actionLabel: "Open this property",
+  },
+  missing: {
+    message: `${RULE} Add your application link to this listing in your dashboard instead, and ${CONTACT_TAB}.`,
+    actionLabel: "Add your application link",
+  },
+  no_leases: {
+    message: `${RULE} Add a lease for this property in your dashboard first, then add your application link to it, and ${CONTACT_TAB}.`,
+    actionLabel: "Open this property",
+  },
+};
+
+/**
+ * What the landlord is told, and the label for the dashboard button.
+ *
+ * @param {"live"|"saved"|"missing"|"no_leases"} state
+ * @returns {{ message: string, actionLabel: string }}
+ */
+export function applicationLinkCopy(state = "missing") {
+  return COPY[state] ?? COPY.missing;
+}
+
+/**
+ * The state from the landlord's own leases at the property, each with its
+ * unit: { application_url, is_active, unavailable, published_at,
+ * listing_units: { published_at, deleted_at } }. Pure so it can be tested.
+ */
+export function applicationLinkStateOf(leases) {
+  const rows = (leases ?? []).filter((l) => !l?.deleted_at && !l?.listing_units?.deleted_at);
+  if (rows.length === 0) return "no_leases";
+  const withLink = rows.filter((l) => String(l.application_url ?? "").trim());
+  if (withLink.length === 0) return "missing";
+  const live = withLink.some(
+    (l) => l.is_active && !l.unavailable && l.published_at !== null && l.listing_units?.published_at !== null
+  );
+  return live ? "live" : "saved";
 }

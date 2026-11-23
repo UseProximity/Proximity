@@ -45,7 +45,7 @@ function sendErrorToast(data, fallback) {
     <span className="text-sm">
       {message}{" "}
       <a href={data.settingsUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-red-700 underline">
-        {data.hasLink ? "View your application link" : "Add your application link"}
+        {data.actionLabel || "Open your dashboard"}
       </a>
     </span>,
     { duration: 12000 }

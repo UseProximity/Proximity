@@ -35,8 +35,9 @@ import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { getThread, PROXY_USER_ID } from "./threads";
 import { handleStudentMessage } from "./proxy";
 import { recordOutcome } from "@/lib/marketing/record";
-import { findApplicationLinks, stripApplicationLinks, APPLICATION_LINK_REASON } from "@/lib/chat/applicationLinks";
-import { emailApplicationLinkNotice } from "@/lib/chat/applicationLinkNotice";
+import { findApplicationLinks, stripApplicationLinks } from "@/lib/chat/applicationLinks";
+import { recordApplicationLinkFromEmail } from "@/lib/chat/sendGuards";
+import { emailReplyNote } from "@/lib/chat/replyNote";
 
 export { tourReplyAddress, proxyReplyAddress } from "./replyTokens";
 
@@ -102,19 +103,20 @@ async function tourReply({ parsed, fromEmail, token, logId, finish }) {
    */
   const appLinks = findApplicationLinks(written);
   const text = appLinks.length > 0 ? stripApplicationLinks(written).trim() : written;
-  const notifyAppLink = async (delivered) => {
+  // Recorded against the conversation and message, so the admin view labels
+  // it (a reply that was only the link has neither yet).
+  const notifyAppLink = async ({ delivered, threadId = null, messageId = null }) => {
     if (appLinks.length === 0) return;
-    await supabase.rpc("rpc_log_chat_moderation_event", {
-      p_user_id: t.landlord_id, p_action: delivered ? "flag" : "block",
-      p_reasons: [APPLICATION_LINK_REASON, "from_email"], p_body: written,
-      p_thread_id: null, p_message_id: null, p_listing_id: t.listing_id,
-    }).then(({ error }) => error && console.error("tour reply: moderation log failed:", error.message));
+    await recordApplicationLinkFromEmail({ userId: t.landlord_id, threadId, messageId, listingId: t.listing_id, body: written, delivered });
     if (fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" })) return;
-    await emailApplicationLinkNotice({ to: fromEmail, landlordId: t.landlord_id, listingId: t.listing_id, studentId: t.student_id, delivered });
+    await emailReplyNote({
+      to: fromEmail, audience: "landlord", senderId: t.landlord_id, otherId: t.student_id, listingId: t.listing_id,
+      threadId, delivered, applicationLink: true, unrestricted: true,
+    });
   };
-  if (appLinks.length > 0 && !text.replace(/\[removed\]/g, "").replace(/[\s:.,;!-]+/g, "")) {
+  if (appLinks.length > 0 && !text.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) {
     await finish(logId, { user_id: t.landlord_id, status: "empty", reason: "only an application link" });
-    await notifyAppLink(false);
+    await notifyAppLink({ delivered: false });
     return { status: "empty" };
   }
   // Exactly "Message the student": opens their direct chat, or writes in it.
@@ -124,7 +126,7 @@ async function tourReply({ parsed, fromEmail, token, logId, finish }) {
     return { status: "rejected", reason: r.error };
   }
   await finish(logId, { user_id: t.landlord_id, thread_id: r.threadId ?? null, status: "posted", reason: "tour reply to student", body_preview: text.slice(0, 2000) });
-  await notifyAppLink(true);
+  await notifyAppLink({ delivered: true, threadId: r.threadId ?? null, messageId: r.messageId ?? null });
   return { status: "posted" };
 }
 

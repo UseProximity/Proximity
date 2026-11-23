@@ -110,7 +110,7 @@ function rejectionError(errBody, fallback) {
   if (Array.isArray(errBody?.reasons)) err.reasons = errBody.reasons;
   // An application link refused in chat: where the landlord adds it instead.
   if (typeof errBody?.settingsUrl === "string") err.settingsUrl = errBody.settingsUrl;
-  if (typeof errBody?.hasLink === "boolean") err.hasLink = errBody.hasLink;
+  if (typeof errBody?.actionLabel === "string") err.actionLabel = errBody.actionLabel;
   return err;
 }
 

@@ -251,7 +251,7 @@ export async function sendLandlordMessage({ userId, isAdmin = false, listingId, 
   if (tourId) {
     // A reply on a tour card goes to the student in their direct chat; a copy stays on the card.
     const r = await landlordAct({ tourId, landlordId: userId, action: "message", body });
-    if (r.error) return { error: r.error, status: r.status, code: r.code, settingsUrl: r.settingsUrl, hasLink: r.hasLink };
+    if (r.error) return { error: r.error, status: r.status, code: r.code, settingsUrl: r.settingsUrl, actionLabel: r.actionLabel };
     await note(userId, listingId, { sender: "landlord", body, tour_id: tourId });
     return { kind: "tour", threadId: r.threadId };
   }

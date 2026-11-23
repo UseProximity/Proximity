@@ -10,7 +10,8 @@ import supabase from "@/lib/supabase";
 import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
 import {
   hasApplicationLink,
-  applicationLinkMessage,
+  applicationLinkCopy,
+  applicationLinkStateOf,
   applicationLinkSettingsPath,
   APPLICATION_LINK_CODE,
   APPLICATION_LINK_REASON,
@@ -123,26 +124,38 @@ export async function screenOutgoingChat({
 }
 
 /**
- * Does this landlord already have an application link on this listing? Read
- * off their own leases there, the same rows the dashboard's contact block
- * writes. A failed read answers false: the copy then just says to add one.
+ * Where this landlord stands on this listing's application link: "live",
+ * "saved", "missing" or "no_leases" (see applicationLinkStateOf). Read off
+ * their own leases there, the same rows the dashboard's contact block writes.
+ * A failed read answers "missing": the copy then just says to add one.
  */
-export async function landlordHasApplicationLink(landlordId, listingId) {
-  if (!landlordId || !listingId) return false;
+export async function landlordApplicationLinkState(landlordId, listingId) {
+  if (!landlordId || !listingId) return "missing";
   const { data, error } = await supabase
     .from("unit_leases")
-    .select("id, listing_units!inner(listing_id, deleted_at)")
+    .select("application_url, is_active, unavailable, published_at, deleted_at, listing_units!inner(listing_id, published_at, deleted_at)")
     .eq("owner_id", landlordId)
     .eq("listing_units.listing_id", listingId)
     .is("listing_units.deleted_at", null)
-    .is("deleted_at", null)
-    .not("application_url", "is", null)
-    .limit(1);
+    .is("deleted_at", null);
   if (error) {
     console.error("application link lookup failed:", error);
-    return false;
+    return "missing";
   }
-  return (data ?? []).length > 0;
+  return applicationLinkStateOf(data);
+}
+
+/** The refusal a landlord sees, with the button into their dashboard. */
+export async function applicationLinkRefusal(landlordId, listingId) {
+  const state = await landlordApplicationLinkState(landlordId, listingId);
+  const { message, actionLabel } = applicationLinkCopy(state);
+  return {
+    code: APPLICATION_LINK_CODE,
+    message,
+    settingsUrl: applicationLinkSettingsPath(listingId),
+    actionLabel,
+    state,
+  };
 }
 
 /**
@@ -152,12 +165,11 @@ export async function landlordHasApplicationLink(landlordId, listingId) {
  * Only the thread's landlord is screened; a student has no dashboard to send
  * the link to. Recorded as a block so admins can see it was tried.
  *
- * @returns {Promise<null | {code: string, message: string, settingsUrl: string, hasLink: boolean}>}
+ * @returns {Promise<null | {code: string, message: string, settingsUrl: string, actionLabel: string, state: string}>}
  *   null when the message may go on to the usual screening
  */
 export async function screenApplicationLinks({ userId, body, threadId = null, listingId = null, isLandlord }) {
   if (!isLandlord || !hasApplicationLink(body)) return null;
-  const hasLink = await landlordHasApplicationLink(userId, listingId);
   await logModeration({
     userId,
     action: "block",
@@ -166,12 +178,20 @@ export async function screenApplicationLinks({ userId, body, threadId = null, li
     threadId,
     listingId,
   });
-  return {
-    code: APPLICATION_LINK_CODE,
-    message: applicationLinkMessage({ hasLink }),
-    settingsUrl: applicationLinkSettingsPath(listingId),
-    hasLink,
-  };
+  return applicationLinkRefusal(userId, listingId);
+}
+
+/** Record an application link cut from an emailed reply (or a whole reply refused for it). */
+export async function recordApplicationLinkFromEmail({ userId, threadId, messageId = null, listingId = null, body, delivered }) {
+  await logModeration({
+    userId,
+    action: delivered ? "flag" : "block",
+    reasons: [APPLICATION_LINK_REASON, delivered ? "redacted_from_email" : "from_email"],
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
 }
 
 /**

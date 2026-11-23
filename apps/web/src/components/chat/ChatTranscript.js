@@ -153,7 +153,7 @@ export default function ChatTranscript({
   const [pendingFiles, setPendingFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [confirmPrompt, setConfirmPrompt] = useState(null);
-  // { message, settingsUrl, hasLink } when an application link was refused.
+  // { message, settingsUrl, actionLabel } when an application link was refused.
   const [applicationNotice, setApplicationNotice] = useState(null);
 
   // Both prompts belong to the conversation they were raised in. The
@@ -292,7 +292,7 @@ export default function ChatTranscript({
       if (err?.code === CHAT_CONFIRM_SEND_CODE) {
         setConfirmPrompt(err.message);
       } else if (err?.code === CHAT_APPLICATION_LINK_CODE) {
-        setApplicationNotice({ message: err.message, settingsUrl: err.settingsUrl, hasLink: err.hasLink === true });
+        setApplicationNotice({ message: err.message, settingsUrl: err.settingsUrl, actionLabel: err.actionLabel });
       } else {
         toast.error(err?.message || "Failed to send message. Please try again.");
       }
@@ -579,7 +579,7 @@ export default function ChatTranscript({
                   rel="noopener noreferrer"
                   className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
                 >
-                  {applicationNotice.hasLink ? "View your application link" : "Add your application link"}
+                  {applicationNotice.actionLabel || "Open your dashboard"}
                 </a>
               )}
               <button

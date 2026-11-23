@@ -13,7 +13,7 @@
  *
  * Pure string work, so each one can be tested and previewed without sending.
  */
-import { buildInquiryEmail } from "../inquiryEmail.js";
+import { buildInquiryEmail, landlordReplyNotice } from "../inquiryEmail.js";
 
 const REASON = "You are receiving this because of a tour request on Proximity.";
 
@@ -55,6 +55,7 @@ export function buildTourRequestEmail({ firstName, listingLabel, unit, slots = [
     ],
     button: { label: completedAccount ? "Confirm a time" : "Create an account to confirm", url: dashboardUrl },
     reason: REASON,
+    replyNotice: canReply ? landlordReplyNotice({ tour: true }) : null,
   });
   return {
     subject: `Tour request for ${listingLabel}`,
@@ -78,6 +79,7 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
     ],
     button: chatUrl ? { label: "Open the chat", url: chatUrl } : null,
     reason: REASON,
+    replyNotice: canReply ? landlordReplyNotice({ tour: true }) : null,
   });
   return {
     subject: dayBefore ? `Reminder: tour of ${listingLabel} ${when}` : `Tour confirmed: ${who}, ${when}`,

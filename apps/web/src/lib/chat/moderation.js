@@ -13,8 +13,9 @@
  *      through a rail that cannot be reversed, usually before any viewing.
  *   2. Taking the conversation off Proximity (Wyatt, 2026-10-03). Contact
  *      details in text are no longer refused outright (Wyatt, 2026-10-12): in
- *      the app the sender confirms first ("Send anyway"), by email the reply is
- *      delivered as written, and either way the message is flagged. See
+ *      the app the sender confirms first ("Send anyway") and the message is
+ *      flagged; by email they are cut out and the sender is told (Wyatt,
+ *      2026-11-23). See
  *      CONTACT_REASONS and lib/chat/sendGuards.js.
  *
  * Harassment and violent threats are blocked for the obvious reason.
@@ -195,10 +196,12 @@ const SSN_REQUEST = /\b(social\s*security|ssn)\b/i;
 /*
  * Hosts in the text that are not on the allowlist. Emails are stripped first
  * so an address does not also report as a link, and the TLD list is explicit
- * so "St. Louis", "1.5 baths" and "sq.ft" do not read as domains.
+ * so "St. Louis", "1.5 baths" and "sq.ft" do not read as domains. A link
+ * written with http(s):// counts whatever its ending ("https://forms.gle/x",
+ * "https://bit.ly/x"), since the scheme already says it is one (2026-11-23).
  */
 const LINK_CANDIDATE =
-  /\b(?:https?:\/\/)?((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b/gi;
+  /\bhttps?:\/\/((?:[a-z0-9-]+\.)+[a-z]{2,})|\b((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b/gi;
 
 function disallowedLinkHosts(text) {
   const withoutEmails = text
@@ -207,7 +210,7 @@ function disallowedLinkHosts(text) {
 
   const hosts = [];
   for (const match of withoutEmails.matchAll(LINK_CANDIDATE)) {
-    const host = match[1].toLowerCase();
+    const host = (match[1] ?? match[2]).toLowerCase();
     const allowed = ALLOWED_LINK_HOSTS.some(
       (ok) => host === ok || host.endsWith(`.${ok}`)
     );
@@ -321,8 +324,8 @@ function blockMessage(reasons) {
 
 /*
  * The reasons that are about moving the conversation elsewhere, as opposed to
- * abuse, fraud or phishing. By email these are delivered in full and the sender
- * is told why to stop (Wyatt, 2026-10-12); the others still lose the sentence.
+ * abuse, fraud or phishing. By email they are cut out where they stand (Wyatt,
+ * 2026-11-23); the others lose the whole sentence.
  * In the app they are not blocked either: the composer asks the sender to
  * confirm, and a confirmed send goes through flagged (Wyatt, 2026-10-12).
  */
@@ -387,7 +390,7 @@ const REDACTED = "[removed]";
 
 // The link pattern plus any path, so the whole URL goes and not just its host.
 const LINK_WITH_PATH =
-  /\b(?:https?:\/\/)?((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b(?:\/[^\s)\]>]*)?/gi;
+  /\bhttps?:\/\/((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s)\]>]*)?|\b((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop))\b(?:\/[^\s)\]>]*)?/gi;
 
 // Rules where removing the matched words is not enough: the sentence around
 // them is the problem ("send the deposit by gift card before Friday").
@@ -414,9 +417,9 @@ function redactSentences(text, patterns) {
  * abuse, fraud or phishing: the person cannot be shown an error and asked to
  * edit, and a whole reply should not vanish because of one sentence. Contact
  * details are cut out where they stand, and the offending sentences go. If the
- * result would still be blocked, nothing of it is kept. A reply whose only
- * problem is contact details is delivered as written and the sender is emailed
- * about it instead (CONTACT_REASONS, Wyatt, 2026-10-12).
+ * result would still be blocked, nothing of it is kept. Contact details are
+ * removed too (Wyatt, 2026-11-23), except in a tour conversation, where the
+ * caller does not ask for them to be.
  *
  * @returns {{ text: string, reasons: string[] }} reasons is empty when nothing changed
  */
@@ -436,8 +439,8 @@ export function redactChatText(text) {
     .replace(new RegExp(EMAIL_PLAIN.source, "gi"), REDACTED)
     .replace(new RegExp(EMAIL_OBFUSCATED.source, "gi"), REDACTED)
     .replace(new RegExp(PHONE.source, "g"), REDACTED)
-    .replace(LINK_WITH_PATH, (match, host) => {
-      const h = host.toLowerCase();
+    .replace(LINK_WITH_PATH, (match, schemed, bare) => {
+      const h = (schemed ?? bare).toLowerCase();
       return ALLOWED_LINK_HOSTS.some((ok) => h === ok || h.endsWith(`.${ok}`)) ? match : REDACTED;
     });
 

@@ -60,7 +60,7 @@ const REASON_LABELS = {
   platform_mentioned: "other platform mentioned",
   ssn_mentioned: "SSN mentioned",
   delivered_from_email: "delivered as written (email reply)",
-  redacted_from_email: "sentence removed (email reply)",
+  redacted_from_email: "parts removed (email reply)",
   confirmed_in_app: "sent after confirming",
   from_email: "email reply",
   attachments_removed: "attachments removed",

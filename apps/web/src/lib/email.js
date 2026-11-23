@@ -14,7 +14,7 @@ import { buildVerifyUrl } from "./auth/verifyUrl";
 import { stayOnProximityNote } from "./chat/moderation";
 import { escapeHtml } from "./escapeHtml";
 import { emailFooter, OPT_OUT_INBOX, POSTAL_ADDRESS } from "./emailFooter";
-import { buildInquiryEmail, stripOwnerGreeting } from "./inquiryEmail";
+import { buildInquiryEmail, landlordReplyNotice, stripOwnerGreeting } from "./inquiryEmail";
 
 export { emailFooter };
 import { MREC_FORM_FILENAME, MREC_FORM_KIND, MREC_FORM_SUBJECT } from "./users/mrecForm";
@@ -423,6 +423,7 @@ function buildLandlordChatEmail({
       ? { text: `Reply to this email and ${otherFirst} sees it on Proximity, or`, link: { label: "open the conversation.", url: threadUrl } }
       : { text: "Reply on Proximity:", link: { label: "open the conversation.", url: threadUrl } },
     reason: "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.",
+    replyNotice: canReply ? landlordReplyNotice() : null,
   });
   return { subject: `Inquiry about ${listingLabel}`, fromName: named || "Proximity", html, text };
 }
@@ -637,8 +638,6 @@ const NOT_DELIVERED_REASONS = {
     "We could not find a new message in your reply. Type your message above the quoted email and send it again.",
   rejected:
     "The conversation is no longer available, or too many messages were sent in a short time. Please try again in a few minutes.",
-  attachments_removed:
-    "The attached file could not be posted. Files that share contact details or ask for payment are not allowed in Proximity conversations.",
   awaiting_approval:
     "This address is not set up to reply for this landlord yet, so we have asked them to approve it. Your reply will be delivered as soon as they do.",
 };
@@ -682,66 +681,95 @@ export async function sendReplyNotDeliveredEmail({ to, reason, baseUrl }) {
   await sendMailSafe(transporter, { logAs: { kind: "reply_not_delivered" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
-// What an emailed reply contained, in words the sender recognises. Keyed by
-// the reasons from lib/chat/moderation.js.
-const GUIDELINE_REASONS = {
-  contact_email: "an email address",
-  contact_phone: "a phone number",
-  external_link: "a link to an outside website",
-  social_handle: "a social media handle",
-  off_platform_request: "a request to continue outside Proximity",
-  irreversible_payment_rail: "a request for payment through gift cards, wire or cryptocurrency",
-  off_platform_payment_request: "a request for payment through an app Proximity cannot protect",
-  credential_phishing: "a request for login details",
-  slur: "abusive language",
-  threat: "a threat",
+// What was taken out of an emailed reply, in words the sender recognises.
+// Keyed by the reasons from lib/chat/moderation.js.
+const REMOVED_LABELS = {
+  contact_email: "An email address",
+  contact_phone: "A phone number",
+  external_link: "A link to an outside website",
+  social_handle: "A social media handle",
+  off_platform_request: "A request to continue outside Proximity",
+  irreversible_payment_rail: "A request for payment through gift cards, wire or cryptocurrency",
+  off_platform_payment_request: "A request for payment through an app Proximity cannot protect",
+  credential_phishing: "A request for login details",
+  slur: "Abusive language",
+  threat: "A threat",
 };
 
-function listReasons(reasons) {
-  const parts = [...new Set(reasons.map((r) => GUIDELINE_REASONS[r]).filter(Boolean))];
-  if (parts.length === 0) return "contact details";
-  if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
-
 /*
- * Sent right after an emailed reply that broke the conversation rules was
- * posted (Wyatt, 2026-10-12): by email the message is delivered and flagged,
- * not blocked, and the sender is told what it contained and why to keep the
- * conversation on Proximity. `removed` is true when part of the message was
- * cut (abuse, fraud or phishing) rather than delivered in full. Marked
- * Auto-Submitted so an out-of-office does not answer it.
+ * One email for everything Proximity took out of an emailed reply (Wyatt,
+ * 2026-11-23): application links, contact details, payment and login
+ * requests, abuse, and attachments that could not be posted. Says what
+ * happened to the reply, lists what was removed, keeps a standing list of
+ * what is always removed, then why and how. Sent every time, straight away,
+ * from lib/chat/replyNote.js. Marked Auto-Submitted so an out-of-office does
+ * not answer it.
+ *
+ * applicationLink: { message, actionLabel, url } when a landlord's application
+ *   link was removed; the message is the same tailored copy the app shows.
+ * unrestricted: a tour conversation, where contact details are allowed.
  */
-export function buildReplyGuidelinesEmail({ otherFirst, reasons, removed, baseUrl, audience = "student" }) {
-  const who = displayName(otherFirst, "the other person");
-  const what = listReasons(reasons);
-  const inboxUrl = `${baseUrl}/messages`;
-  const future = "In the future, please refrain from taking conversations outside of Proximity, unless it is to finalize a deal.";
-  const delivered = removed
-    ? `Your reply to ${who} was delivered, but part of it was removed because it contained ${what}. ${future}`
-    : `Your reply to ${who} was delivered. It contained ${what}, which Proximity conversations are meant to keep out. ${future}`;
+export function buildReplyNoteEmail({
+  audience = "student",
+  otherFirst,
+  delivered,
+  reasons = [],
+  attachmentsRemoved = false,
+  applicationLink = null,
+  unrestricted = false,
+  conversationUrl,
+}) {
+  const landlord = audience === "landlord";
+  const who = displayName(otherFirst, landlord ? "the student" : "the landlord");
+  const opening = delivered
+    ? `Your reply to ${who} was delivered, with some parts removed.`
+    : `Your reply to ${who} wasn't delivered, because everything in it was removed.`;
+
+  const items = [];
+  if (applicationLink) items.push("Your application link");
+  for (const label of [...new Set(reasons.map((r) => REMOVED_LABELS[r]).filter(Boolean))]) items.push(label);
+  if (attachmentsRemoved) items.push("An attached file that shares contact details or asks for payment");
+
+  const always = [
+    ...(landlord ? ["application links"] : []),
+    ...(unrestricted ? [] : ["phone numbers, email addresses, outside links and social media handles", "requests to continue outside Proximity"]),
+    "requests for payment through gift cards, wire, cryptocurrency or apps Proximity cannot protect",
+    "requests for login details",
+    "abusive language and threats",
+    "attachments that do any of these",
+  ];
+  const standing = `Proximity always removes ${always.slice(0, -1).join("; ")}; and ${always[always.length - 1]}.`;
+  const tourNote = unrestricted ? " Contact details are fine in this conversation, since your tour is booked." : "";
   const why = stayOnProximityNote(audience, "email");
-  const how = `Please reply to the message emails from Proximity the way you would reply to ${who} directly, and your words land in the conversation. Replies that keep including contact details may stop being delivered.`;
-  return {
-    subject: "A note about your reply",
-    text: `${delivered}\n\n${why}\n\n${how}\n\nThe conversation on Proximity:\n${inboxUrl}\n\n${POSTAL_ADDRESS}`,
-    html: `
+  const how = `Reply to Proximity's emails the way you would reply to ${who} directly, and your words land in the conversation.`;
+
+  const listText = items.map((i) => `- ${i}`).join("\n");
+  const linkText = applicationLink ? `\n\n${applicationLink.message}\n${applicationLink.actionLabel}: ${applicationLink.url}` : "";
+  const text = `${opening}\n\nWhat we removed:\n${listText}${linkText}\n\n${standing}${tourNote}\n\n${why}\n\n${how}\n\nThe conversation on Proximity:\n${conversationUrl}\n\n${POSTAL_ADDRESS}`;
+
+  const p = (body, extra = "") => `<p style="margin:0 0 14px${extra}">${body}</p>`;
+  const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
-        <p style="margin:0 0 14px">${escapeHtml(delivered)}</p>
-        <p style="margin:0 0 14px">${escapeHtml(why)}</p>
-        <p style="margin:0 0 14px">${escapeHtml(how)}</p>
-        <p style="margin:0 0 14px"><a href="${inboxUrl}" style="color:#6b7280">The conversation on Proximity</a></p>
+        ${p(escapeHtml(opening))}
+        <p style="margin:0 0 6px;font-weight:600">What we removed</p>
+        <ul style="margin:0 0 14px;padding-left:20px">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>
+        ${applicationLink ? `${p(escapeHtml(applicationLink.message))}
+        <p style="margin:0 0 18px"><a href="${applicationLink.url}" style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:8px">${escapeHtml(applicationLink.actionLabel)}</a></p>` : ""}
+        ${p(escapeHtml(`${standing}${tourNote}`), ";color:#4b5563")}
+        ${p(escapeHtml(why))}
+        ${p(escapeHtml(how))}
+        ${p(`<a href="${conversationUrl}" style="color:#6b7280">The conversation on Proximity</a>`)}
         <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
-          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message alert.</p>
+          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message email.</p>
           <p style="margin:0">${POSTAL_ADDRESS}</p>
         </div>
       </div>
-    `,
-  };
+    `;
+  return { subject: "A note about your reply", text, html };
 }
 
-export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, removed, baseUrl, audience = "student" }) {
-  const built = buildReplyGuidelinesEmail({ otherFirst, reasons, removed, baseUrl, audience });
+export async function sendReplyNoteEmail({ to, ...rest }) {
+  const built = buildReplyNoteEmail(rest);
   const message = {
     from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
     to,
@@ -752,64 +780,13 @@ export async function sendReplyGuidelinesEmail({ to, otherFirst, reasons, remove
   };
   if (sesTransporter) {
     try {
-      await sendMailSafe(sesTransporter, { logAs: { kind: "reply_guidelines" }, ...message, ses: SES_SEND_OPTIONS });
+      await sendMailSafe(sesTransporter, { logAs: { kind: "reply_note" }, ...message, ses: SES_SEND_OPTIONS });
       return;
     } catch (err) {
-      console.error("sendReplyGuidelinesEmail: SES send failed, falling back to Gmail:", err);
+      console.error("sendReplyNoteEmail: SES send failed, falling back to Gmail:", err);
     }
   }
-  await sendMailSafe(transporter, { logAs: { kind: "reply_guidelines" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
-}
-
-/*
- * Sent when a landlord's emailed reply carried an application link (Wyatt,
- * 2026-11-20). The link was cut from what the student saw; the rest of the
- * reply, if any, was delivered. Says why and links straight to the dashboard
- * field. `delivered` is false when the reply was nothing but the link.
- */
-export function buildApplicationLinkNoticeEmail({ otherFirst, message, settingsUrl, hasLink, delivered, baseUrl }) {
-  const who = displayName(otherFirst, "the student");
-  const what = delivered
-    ? `Your reply to ${who} was delivered, but the application link in it was removed.`
-    : `Your reply to ${who} was not delivered, because it only contained an application link.`;
-  const url = `${baseUrl}${settingsUrl}`;
-  const label = hasLink ? "View your application link" : "Add your application link";
-  return {
-    subject: "Application links go on your listing, not in chat",
-    text: `${what}\n\n${message}\n\n${label}:\n${url}\n\n${POSTAL_ADDRESS}`,
-    html: `
-      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:16px 20px;color:#111827;font-size:15px;line-height:1.6">
-        <p style="margin:0 0 14px">${escapeHtml(what)}</p>
-        <p style="margin:0 0 18px">${escapeHtml(message)}</p>
-        <p style="margin:0 0 18px"><a href="${url}" style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:8px">${escapeHtml(label)}</a></p>
-        <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;line-height:1.5">
-          <p style="margin:0 0 6px">You are receiving this because you replied to a Proximity message alert.</p>
-          <p style="margin:0">${POSTAL_ADDRESS}</p>
-        </div>
-      </div>
-    `,
-  };
-}
-
-export async function sendApplicationLinkNoticeEmail({ to, ...rest }) {
-  const built = buildApplicationLinkNoticeEmail(rest);
-  const message = {
-    from: `"Proximity" <${CHAT_FROM_ADDRESS}>`,
-    to,
-    subject: built.subject,
-    headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All" },
-    text: built.text,
-    html: built.html,
-  };
-  if (sesTransporter) {
-    try {
-      await sendMailSafe(sesTransporter, { logAs: { kind: "application_link_notice" }, ...message, ses: SES_SEND_OPTIONS });
-      return;
-    } catch (err) {
-      console.error("sendApplicationLinkNoticeEmail: SES send failed, falling back to Gmail:", err);
-    }
-  }
-  await sendMailSafe(transporter, { logAs: { kind: "application_link_notice" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
+  await sendMailSafe(transporter, { logAs: { kind: "reply_note" }, ...message, from: `"Proximity" <${process.env.EMAIL_USER || CHAT_FROM_ADDRESS}>` });
 }
 
 /*
