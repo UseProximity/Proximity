@@ -10,7 +10,7 @@
  *   open      waiting on the team (new, or the landlord replied)
  *   answered  the team replied; waiting on the landlord
  *   accepted  the team agreed. An admin uploads a version for this landlord only
- *             (agreement_versions.landlord_id, change_request_id) and makes it live.
+ *             (a custom version for them, with change_request_id) and makes it live.
  *   resolved  the landlord signed that version (resolveChangeRequestOnSigned)
  *   declined  the team said no. The landlord can sign the standard agreement or ask again.
  *   withdrawn the landlord closed it
@@ -236,18 +236,26 @@ async function storeAttachment(file, userId, storeFile) {
 
 // The document the landlord is asking about must be theirs (or the standard one).
 async function checkTargets(db, userId, { agreementId, amendmentId, versionId }) {
-  const owned = async (table, id, column = "user_id") => {
+  const owned = async (table, id) => {
     if (!id) return;
-    const { data, error } = await db.from(table).select(`id, ${column}`).eq("id", id).maybeSingle();
+    const { data, error } = await db.from(table).select("id, user_id").eq("id", id).maybeSingle();
     if (error) throw error;
-    const owner = data?.[column];
-    if (!data || (column === "landlord_id" ? owner && owner !== userId : owner !== userId)) {
-      throw new BillingError("bad_document", "That document was not found.", 404);
-    }
+    if (!data || data.user_id !== userId) throw new BillingError("bad_document", "That document was not found.", 404);
   };
   await owned("landlord_agreements", agreementId);
   await owned("agreement_amendments", amendmentId);
-  await owned("agreement_versions", versionId, "landlord_id");
+  if (versionId) {
+    // A version: the standard one, or a custom one they are (or were) on.
+    const { data, error } = await db.from("agreement_versions").select("id, audience").eq("id", versionId).maybeSingle();
+    if (error) throw error;
+    let ok = !!data && data.audience !== "selected";
+    if (data && !ok) {
+      const { data: on, error: onError } = await db.from("agreement_version_landlords").select("id").eq("version_id", versionId).eq("landlord_id", userId).limit(1);
+      if (onError) throw onError;
+      ok = (on ?? []).length > 0;
+    }
+    if (!ok) throw new BillingError("bad_document", "That document was not found.", 404);
+  }
 }
 
 async function safely(fn) {
@@ -521,11 +529,12 @@ export async function resolveChangeRequestOnSigned(db, { userId, versionId, now 
   if (!versionId) return "unchanged";
   const { data: version, error } = await db
     .from("agreement_versions")
-    .select("id, landlord_id, change_request_id")
+    .select("id, change_request_id")
     .eq("id", versionId)
     .maybeSingle();
   if (error) throw error;
-  if (!version?.change_request_id || (version.landlord_id && version.landlord_id !== userId)) return "unchanged";
+  // The request must be this landlord's (the update below matches user_id too).
+  if (!version?.change_request_id) return "unchanged";
   const { data, error: uErr } = await db
     .from("agreement_change_requests")
     .update({ status: "resolved", resolution_version_id: version.id, closed_at: now.toISOString() })

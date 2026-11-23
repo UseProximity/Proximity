@@ -126,7 +126,7 @@ export async function paperPreview(db, landlordId, now = new Date()) {
     properties: preview.kind === "none" ? [] : preview.properties,
     company: await lastCompany(db, state.holderId),
     versionLabel: version.label,
-    negotiated: !!version.landlord_id,
+    negotiated: version.audience === "selected",
     signer: state.payerLink ? { name: state.payerLink.signer_name } : null,
   };
 }
