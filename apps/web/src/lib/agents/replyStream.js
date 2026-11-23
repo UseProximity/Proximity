@@ -129,7 +129,9 @@ export function replyStreamer({ onDelta, isUsedKey, canAsk }) {
       const used = (Array.isArray(done.answered_keys) ? done.answered_keys : []).filter(isUsedKey);
       const asks = (Array.isArray(done.unanswered_questions) ? done.unanswered_questions : []).filter((u) => String(u?.question ?? "").trim());
       // Mirrors "nothingAnswered" in proxy.js: that reply is replaced by one fixed line.
-      show = !(canAsk && asks.length && !used.length && !KEEPS_OWN_REPLY.has(done.intent));
+      // Nothing can go to the landlord: any reply may carry a claim that it did, which is
+      // cut before saving, so show nothing until the saved reply (no claim flashing up).
+      show = canAsk && !(asks.length && !used.length && !KEEPS_OWN_REPLY.has(done.intent));
     }
     if (!show || !reply) return;
     // Trailing spaces wait for the next word: "online " becomes "online, "
@@ -141,4 +143,72 @@ export function replyStreamer({ onDelta, isUsedKey, canAsk }) {
       sent = clean;
     }
   };
+}
+
+/*
+ * Sentences claiming Proxy asked (or will ask) the landlord, cut from a reply
+ * when nothing can be sent: a landlord testing their own listing, a visitor
+ * over the daily limit. The model is told not to say it and sometimes does
+ * anyway (Rosebury, 2026-11-18). Returns { text, removed }.
+ *
+ * The asking verb has to point at the landlord, so "I've checked the listing
+ * and the landlord doesn't allow pets" stays. A sentence that says nothing was
+ * sent ("I can't pass this on to the landlord") is true and stays too.
+ */
+const WHO = String.raw`(?:landlord|owner|property manager|leasing office|management)`;
+const ASK_CLAIMS = [
+  // "I've passed your question about parking to the landlord", "I'm checking with the owner"
+  new RegExp(String.raw`\b(?:I|I've|I have|I'll|I will|I'm|I am|we've|we have|we'll|we will)\b[^.!?]*?\b(?:ask(?:ed|ing)?|pass(?:ed|ing)?|sen[dt]|sending|forward(?:ed|ing)?|relay(?:ed|ing)?|reach(?:ed|ing)? out to|contact(?:ed|ing)?|check(?:ed|ing)? with|let(?:ting)? (?:the |your )?${WHO} know)\b\s+(?:[\w$',]+\s+){0,20}?(?:the |your |this )?${WHO}\b`, "i"),
+  // "I've passed it along"
+  /\b(?:I|I've|I have|I'll|I will|I'm|I am)\b[^.!?]*?\bpass(?:ed|ing)? (?:it|this|that|your \w+) (?:along|on)\b/i,
+  // "Your question has been sent to the landlord", "The owner has been notified"
+  new RegExp(String.raw`\b(?:has|have|had)? ?(?:been|was|were|is being)\s+(?:sent|passed|forwarded|shared|relayed)\b[^.!?]*\b${WHO}\b`, "i"),
+  new RegExp(String.raw`\b${WHO}\s+(?:has been|have been|was|is being)\s+(?:asked|notified|contacted|told|messaged)\b`, "i"),
+  /(?:\bwill|'ll) (?:post|let you know|share|update you)\b[^.!?]*\b(?:answer|respond|response|reply|hear)/i,
+  /\b(?:when|once) (?:they|the landlord|the owner) (?:respond|reply|answer|get back)/i,
+];
+const SAYS_NOT_SENT = /\b(?:can'?t|cannot|unable|not able|won'?t|haven'?t|hasn'?t|didn'?t|wasn'?t|isn'?t|nothing (?:was|is|has been))\b/i;
+const LEAD_IN = /^(\s*)(?:in the meantime|meanwhile|until then|while you wait),?\s+(\w)/i;
+// A full stop after these is not the end of a sentence ("St. Louis", "Apt. 3").
+const ABBREV = /(?:^|[\s(])(?:St|Ave|Apt|Blvd|Rd|Dr|Ct|Ln|Ste|Bldg|Mr|Mrs|Ms|Jr|Sr|No|approx|vs|etc|e\.g|i\.e|[A-Z])\.$/;
+
+// Sentences, splitting only where a full stop is followed by a space and a capital
+// (or a new line), so prices, decimals and abbreviations stay whole.
+function sentencesOf(text) {
+  const out = [];
+  const re = /[.!?]+["')\]]*\s+|\n+/g;
+  let start = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    const end = m.index + m[0].length;
+    if (m[0][0] !== "\n") {
+      if (end < text.length && !/[A-Z0-9"'(\[$]/.test(text[end])) continue;
+      if (ABBREV.test(text.slice(start, m.index + 1))) continue;
+    }
+    out.push(text.slice(start, end));
+    start = end;
+  }
+  if (start < text.length) out.push(text.slice(start));
+  return out;
+}
+
+export function withoutAskClaims(text) {
+  const src = String(text ?? "");
+  // Curly apostrophes read as straight ones; the kept text keeps its own.
+  const isClaim = (s) => {
+    const flat = s.replace(/[‘’]/g, "'");
+    return ASK_CLAIMS.some((re) => re.test(flat)) && !SAYS_NOT_SENT.test(flat);
+  };
+  const kept = [];
+  let removed = false;
+  let afterCut = false;
+  for (const s of sentencesOf(src)) {
+    if (/^\n+$/.test(s)) { kept.push(s); continue; }
+    if (isClaim(s)) { removed = true; afterCut = true; continue; }
+    // "In the meantime, tour first" means nothing once the asking before it is gone.
+    kept.push(afterCut ? s.replace(LEAD_IN, (_, sp, c) => sp + c.toUpperCase()) : s);
+    afterCut = false;
+  }
+  if (!removed) return { text: src, removed };
+  return { text: kept.join("").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), removed };
 }

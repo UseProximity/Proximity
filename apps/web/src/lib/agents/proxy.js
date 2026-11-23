@@ -25,7 +25,7 @@
 import supabase from "@/lib/supabase";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
-import { replyStreamer, normalizeFinal, KEEPS_OWN_REPLY } from "./replyStream";
+import { replyStreamer, normalizeFinal, KEEPS_OWN_REPLY, withoutAskClaims } from "./replyStream";
 import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_USER_ID } from "./threads";
 import { sanitizeStudentText, screenStudentText, CONTACT_NOTE } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
@@ -45,6 +45,7 @@ Rules:
 - Never name a source, URL, website, portal, document or "per the website". Never include phone numbers, emails or links. If asked for the landlord's contact details, say that booking a tour through Proximity puts them in touch.
 - Never tell the student to confirm, check or verify anything with the landlord: you are their way to the landlord. Just give the facts.
 - Do not quote a special that is past its valid-until date.
+- A lease shown as "available now (no date set)" is available now, unless its notes give a later start date or say it is fully leased: then go by the notes and do not call it available now.
 - If the student asks about a different listing, say you can only help with this one.
 - Judgement questions (is the area safe, what are the neighbours like, is the landlord good, who lives here) are not facts about the building: say you cannot answer those and point to the listing's reviews.
 - Small talk ("thanks", "ok") gets one friendly line and no questions for the landlord.
@@ -146,6 +147,16 @@ async function countInquiry({ listingId, userId }) {
 }
 
 /*
+ * What to say when cutting a false "I've asked the landlord" left nothing,
+ * worded by what the student was after rather than one line for everything.
+ */
+function emptyReplyFor(intent, ctx) {
+  if (["apply", "negotiate"].includes(intent) && !ctx.hasLiveLease) return "Nothing here is on offer right now, so there's no one to apply to.";
+  if (intent === "small_talk") return "Happy to help. What would you like to know about this place?";
+  return "I don't have that information.";
+}
+
+/*
  * Returns { messages: [new chat_messages rows], outcome, questionIds, error? }.
  * `testMode`: a landlord trying their own listing, or staff on one not live yet. Real answers, but
  * nothing is logged as a student question, counted or sent to a landlord.
@@ -155,7 +166,7 @@ async function countInquiry({ listingId, userId }) {
  * it seconds sooner (Wyatt, 2026-11-01). A route passes next/server's after;
  * without it the work runs before returning, as it always did.
  */
-export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false, defer = null, onReplyDelta = null }) {
+export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false, testAs = null, defer = null, onReplyDelta = null }) {
   const started = Date.now();
   const timings = {};
   const mark = (step) => { timings[step] = Date.now() - started; };
@@ -214,7 +225,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     `Today is ${shortDate(new Date())}.`,
     chosenLease ? `The student chose lease ${chosenLease.index} (${chosenLease.label}, ${chosenLease.ownerLabel}).` : `The student has not chosen a lease.${ctx.ownerCount > 1 ? " This listing has leases from several owners." : ""}`,
     ctx.hasLiveLease ? "Availability: leases are on offer." : "Availability: nothing is on offer right now; do not send questions to the landlord.",
-    canAsk ? "Questions you cannot answer will be sent to the landlord." : "Questions you cannot answer cannot be sent to the landlord right now; say you do not have that information.",
+    canAsk ? "Questions you cannot answer will be sent to the landlord." : "Questions you cannot answer cannot be sent to the landlord right now; say you do not have that information. Never say you have asked, will ask or are passing anything on to the landlord.",
     `nudge_allowed: ${allowNudge}`,
     userId ? "The student is signed in." : "The student is not signed in.",
     thread.proxy_state?.offer ? `You offered to ask the landlord: "${thread.proxy_state.offer}". If the student agrees, send it.` : "No offer to ask the landlord is pending.",
@@ -276,6 +287,16 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     }
   } else {
     reply = String(final.reply).trim();
+    // Nothing can reach the landlord, so a reply saying it did is wrong whatever the model meant.
+    if (!canAsk) {
+      const cut = withoutAskClaims(reply);
+      if (cut.removed) {
+        const why = !ctx.hasLiveLease ? ""
+          : testMode ? (testAs === "staff" ? "This is a test chat, so nothing was sent to the landlord." : "This is a test chat on your own listing, so nothing was sent to the landlord.")
+          : !userId ? "Sign in and I can ask the landlord for you." : "";
+        reply = `${cut.text} ${why}`.trim() || emptyReplyFor(final.intent, ctx);
+      }
+    }
     const usedKeys = (final.answered_keys ?? []).filter((k) => factByKey.has(k));
     const updatedAt = usedKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
 
