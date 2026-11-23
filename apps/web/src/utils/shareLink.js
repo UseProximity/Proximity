@@ -1,28 +1,29 @@
 /*
- * The link a listing share sends. It is the page the visitor is on, tagged
- * src=share so the marketing beacon (lib/marketing/tags.js reads src) can count
- * visits that came from a share. `src` joins an existing query string with &
- * and replaces a src already there rather than doubling it. The landlord's
- * ?preview=1 and the #hash are dropped: they mean nothing to the recipient.
+ * The link a listing share sends: always the public listing page,
+ * <origin>/listings/<id>, whatever page the sharer is on. That page opens for
+ * anyone (an admin sharing from /dashboard/admin sends a link a student can
+ * open) and carries the listing's photo and title for chat link previews.
+ * Only the selected ?unit= is carried over from the sharer's address. Every
+ * other param is left behind: ?preview=1 means nothing to the recipient, and
+ * utm_* / gclid would credit the friend's visit to the sharer's ad campaign.
+ * Tagged src=share so the marketing beacon counts it as a share
+ * (lib/marketing/classify.js).
  * Plain module, no "@/" imports, so the Node test runner can load it.
  */
 export const SHARE_SRC = "share";
 
-export function buildShareUrl(href) {
-  let url;
+export function buildShareUrl({ origin, listingId, currentHref } = {}) {
+  if (!origin || !listingId) return "";
+  const params = new URLSearchParams();
+  let unit = null;
   try {
-    url = new URL(href);
+    unit = new URL(currentHref).searchParams.get("unit");
   } catch {
-    return String(href ?? "");
+    // No readable address: share the listing without a unit.
   }
-  url.hash = "";
-  url.searchParams.delete("preview");
-  url.searchParams.delete("src");
-  // Appended last, and by hand, so the other params keep their order and
-  // spelling (URLSearchParams.toString would re-encode them).
-  const rest = url.search;
-  url.search = "";
-  return `${url.toString()}${rest ? `${rest}&` : "?"}src=${SHARE_SRC}`;
+  if (unit) params.set("unit", unit);
+  params.set("src", SHARE_SRC);
+  return `${origin.replace(/\/+$/, "")}/listings/${encodeURIComponent(listingId)}?${params}`;
 }
 
 /** Targets that send straight from the panel, for a link and a one-line message. */

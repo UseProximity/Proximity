@@ -2,44 +2,46 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildShareUrl, shareTargets } from "./shareLink.js";
 
-test("adds src with ? when there is no query string", () => {
-  assert.equal(buildShareUrl("https://useproximity.org/page"), "https://useproximity.org/page?src=share");
+const O = "https://useproximity.org";
+const share = (currentHref, listingId = "abc") => buildShareUrl({ origin: O, listingId, currentHref });
+
+test("always links the public listing page, tagged src=share", () => {
+  assert.equal(share(`${O}/browse?listing=abc`), `${O}/listings/abc?src=share`);
 });
 
-test("adds src with & when a query string exists", () => {
+test("an admin dashboard address still sends the public page", () => {
+  assert.equal(share(`${O}/dashboard/admin?listing=abc&tab=listings`), `${O}/listings/abc?src=share`);
+});
+
+test("keeps the selected unit", () => {
+  assert.equal(share(`${O}/browse?listing=abc&unit=u1`), `${O}/listings/abc?unit=u1&src=share`);
+  assert.equal(share(`${O}/listings/abc?unit=u1`), `${O}/listings/abc?unit=u1&src=share`);
+});
+
+test("drops the sharer's utm tags, gclid, src, preview and hash", () => {
   assert.equal(
-    buildShareUrl("https://useproximity.org/browse?beds=2"),
-    "https://useproximity.org/browse?beds=2&src=share"
+    share(`${O}/browse?utm_source=ig&utm_medium=paid-social&utm_campaign=x&utm_content=a&utm_term=b&gclid=Cj0abc&src=lease-push&preview=1&listing=abc#top`),
+    `${O}/listings/abc?src=share`
   );
 });
 
-test("keeps ?listing= and other params in order", () => {
+test("encodes the listing id and unit", () => {
+  assert.equal(share(`${O}/browse?unit=a%20b`, "x/y"), `${O}/listings/x%2Fy?unit=a+b&src=share`);
+});
+
+test("uses the sharer's origin, without a trailing slash", () => {
   assert.equal(
-    buildShareUrl("https://useproximity.org/browse?listing=abc&unit=u1"),
-    "https://useproximity.org/browse?listing=abc&unit=u1&src=share"
+    buildShareUrl({ origin: "http://localhost:3000/", listingId: "abc", currentHref: "http://localhost:3000/browse" }),
+    "http://localhost:3000/listings/abc?src=share"
   );
 });
 
-test("replaces an existing src instead of doubling it", () => {
-  assert.equal(
-    buildShareUrl("https://useproximity.org/browse?src=lease-push-duc&beds=2"),
-    "https://useproximity.org/browse?beds=2&src=share"
-  );
+test("an unreadable address still shares the listing", () => {
+  assert.equal(share("not a url"), `${O}/listings/abc?src=share`);
 });
 
-test("drops preview and hash", () => {
-  assert.equal(
-    buildShareUrl("https://useproximity.org/browse?listing=abc&preview=1#top"),
-    "https://useproximity.org/browse?listing=abc&src=share"
-  );
-});
-
-test("a bare origin", () => {
-  assert.equal(buildShareUrl("https://useproximity.org/"), "https://useproximity.org/?src=share");
-});
-
-test("an unparseable value comes back as text", () => {
-  assert.equal(buildShareUrl("not a url"), "not a url");
+test("no listing id gives no link", () => {
+  assert.equal(buildShareUrl({ origin: O, currentHref: `${O}/browse` }), "");
 });
 
 test("share targets encode the message", () => {

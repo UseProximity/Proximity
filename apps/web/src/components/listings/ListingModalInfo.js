@@ -2243,7 +2243,7 @@ export default function ListingModalInfo({
                   className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10 flex items-center gap-2`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <ShareButton title={listing.title} />
+                  <ShareButton listingId={listing._id} title={listing.title} />
                   <HeartIcon listingId={listing._id} />
                 </div>
               )}

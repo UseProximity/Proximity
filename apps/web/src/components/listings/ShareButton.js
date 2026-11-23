@@ -110,16 +110,17 @@ function SharePanel({ link, title, onClose }) {
   );
 }
 
-export default function ShareButton({ title }) {
+export default function ShareButton({ listingId, title }) {
   const [link, setLink] = useState(null);
 
-  // The link is read when the panel opens, so it carries whatever the page's
-  // address is then (a ?listing= modal, a selected ?unit=, a /listings/ page).
+  // Built when the panel opens, so it picks up the unit selected then.
   const open = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setLink(buildShareUrl(window.location.href));
+    setLink(buildShareUrl({ origin: window.location.origin, listingId, currentHref: window.location.href }));
   };
+
+  if (!listingId) return null;
 
   return (
     <>

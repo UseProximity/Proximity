@@ -89,7 +89,7 @@ function Pills({ onBack, listingId, title }) {
         <span className="text-xs font-semibold">Back to listings</span>
       </button>
       <div className="pointer-events-auto flex items-center gap-2">
-        <ShareButton title={title} />
+        <ShareButton listingId={listingId} title={title} />
         <HeartIcon listingId={listingId} />
       </div>
     </div>

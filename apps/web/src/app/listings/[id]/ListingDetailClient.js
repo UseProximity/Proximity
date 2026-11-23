@@ -103,7 +103,7 @@ export default function ListingDetailClient({
         </span>
         {/* Below 1280px the heart on the photo is the only one. */}
         <div className="flex flex-shrink-0 items-center gap-2 max-xl:hidden">
-          <ShareButton title={listing.title} />
+          <ShareButton listingId={listing._id} title={listing.title} />
           <HeartIcon listingId={listing._id} />
         </div>
       </div>
