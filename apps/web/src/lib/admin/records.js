@@ -15,6 +15,7 @@
  */
 import { stripSecrets } from "@/lib/security/secretColumns";
 import { loadLandlordOverview } from "@/lib/billing/landlordOverview";
+import { HIDDEN_RENT_MAX_AGE_DAYS } from "@/lib/listings/hiddenRents";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v) => UUID.test(String(v ?? ""));
@@ -176,7 +177,7 @@ export async function loadListingRecord(db, id, { isSuper = false } = {}) {
   if (!listing) return null;
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [agent, factCount, monitors, threadRows, tourRows, questions, metrics, coverage, activity] = await Promise.all([
+  const [agent, factCount, monitors, threadRows, tourRows, questions, metrics, coverage, activity, hiddenRents] = await Promise.all([
     db.from("listing_agents").select("status, seeded_at, last_sync_at").eq("listing_id", id).maybeSingle(),
     db.from("listing_facts").select("id", { count: "exact", head: true }).eq("listing_id", id).eq("is_current", true),
     db.from("listing_source_monitors").select("id, source_url, source_kind, enabled, last_status, last_error, last_checked_at, consecutive_failures, next_check_at, muted_until").eq("listing_id", id),
@@ -186,7 +187,10 @@ export async function loadListingRecord(db, id, { isSuper = false } = {}) {
     db.from("listing_metrics_daily").select("count, metric_types!metric_type_id(name)").eq("listing_id", id).gte("recorded_date", since).limit(2000),
     isSuper ? db.from("agreement_coverage").select("id, user_id, status, covered_at, whole_building, units").eq("listing_id", id) : { data: [] },
     db.from("action_log").select("id, table_name, record_id, event_type, changed_fields, changed_at, changed_by_id").eq("table_name", "listings").eq("record_id", id).order("changed_at", { ascending: false }).limit(15),
+    // Website prices kept hidden on unpriced leases (lib/listings/hiddenRents.js). Admins only.
+    db.from("lease_hidden_rents").select("lease_id, rent, rent_is_per_person, seen_at, unit_leases!lease_id(rent, unavailable, listing_units!unit_id(name, bedrooms, bathrooms))").eq("listing_id", id).limit(200),
   ]);
+  const hiddenFresh = Date.now() - HIDDEN_RENT_MAX_AGE_DAYS * 86400000;
 
   const people = await namesFor(db, [
     ...rows(threadRows).flatMap((t) => [t.interested_user_id, t.landlord_id]),
@@ -212,6 +216,22 @@ export async function loadListingRecord(db, id, { isSuper = false } = {}) {
     numbers,
     coverage: isSuper ? rows(coverage).map((c) => ({ id: c.id, owner: people.get(c.user_id) ?? { id: c.user_id }, status: c.status, coveredAt: c.covered_at, wholeBuilding: !!c.whole_building, units: c.units ?? null })) : null,
     activity: rows(activity).map((a) => ({ ...shapeActivity(a), by: a.changed_by_id ? people.get(a.changed_by_id) ?? { id: a.changed_by_id } : null })),
+    hiddenPrices: rows(hiddenRents)
+      .map((h) => {
+        const u = h.unit_leases?.listing_units;
+        return {
+          leaseId: h.lease_id,
+          unit: u?.name || (u ? `${u.bedrooms ?? "?"} bed / ${u.bathrooms ?? "?"} bath` : "Unit"),
+          rent: Number(h.rent),
+          perPerson: h.rent_is_per_person,
+          seenAt: h.seen_at,
+          stale: new Date(h.seen_at).getTime() < hiddenFresh,
+          // A public price now set by the landlord wins; the hidden one is unused.
+          overridden: Number(h.unit_leases?.rent) > 0,
+          withdrawn: !!h.unit_leases?.unavailable,
+        };
+      })
+      .sort((a, b) => a.unit.localeCompare(b.unit, undefined, { numeric: true })),
   };
 }
 
