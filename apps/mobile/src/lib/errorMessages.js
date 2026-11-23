@@ -86,6 +86,7 @@ export const ERROR_MESSAGES = {
     FLOOR_PLAN_LOAD: "Couldn't show this floor plan here.",
     FLOOR_PLAN_OPEN: "Couldn't open this floor plan. Please try again.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
+    SHARE: "Couldn't open sharing. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
     MINE_DELETE: "Couldn't delete this listing. Please try again.",
