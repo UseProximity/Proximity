@@ -15,10 +15,12 @@
  * Two kinds, each with its own live version (decisions of 2026-11-04):
  *   master     the marketing agreement, signed once with Exhibit A attached
  *   amendment  the short amendment signed when a landlord adds a property later
- * A version with landlord_id is negotiated with that one landlord (an accepted
- * change request): it is live for them only, and they sign it instead of the
- * standard one. The admin enters the commission rate with each upload; it fills
- * the document's "Commission rate" box and shows on invoices.
+ * A version's audience is "everyone" (the standard one) or "selected": a custom
+ * version (different wording or fee agreed with them) for the landlords listed in
+ * agreement_version_landlords. The admin picks them at upload and can add or
+ * remove them at any time (Wyatt, 2026-11-22). Each landlord is on at most one
+ * live custom version per kind, and signs it instead of the standard one.
+ * (agreement_versions.landlord_id, one landlord per version, is no longer written.)
  *
  * Every read tolerates the table being missing (the code can reach an environment
  * before the migration does): no table reads as no version.
@@ -31,11 +33,13 @@ import { DocumensoError, splitExhibit, templateEditorUrl, templateFieldSummary }
 import { preparePlaceholders } from "./placeholders.js";
 
 export const VERSION_COLUMNS =
-  "id, label, kind, landlord_id, commission_rate_percent, change_request_id, based_on_version_id, file_key, file_name, file_bytes, status, requires_resign, provider_template_id, provider_recipient_id, provider_title_field_id, provider_rate_field_id, provider_address_field_id, provider_brokerage_field_id, provider_license_field_id, provider_editor_url, provider_error, fields_checked_at, published_at, created_at";
+  "id, label, kind, audience, commission_rate_percent, change_request_id, based_on_version_id, file_key, file_name, file_bytes, status, requires_resign, provider_template_id, provider_recipient_id, provider_title_field_id, provider_rate_field_id, provider_address_field_id, provider_brokerage_field_id, provider_license_field_id, provider_editor_url, provider_error, fields_checked_at, published_at, created_at";
 
 export const VERSION_KINDS = ["master", "amendment"];
 
 const missingTable = (error) => error?.code === "PGRST205" || error?.code === "42P01";
+
+export const isCustom = (v) => v?.audience === "selected";
 
 export async function listVersions(db) {
   const { data, error } = await db.from("agreement_versions").select(VERSION_COLUMNS).order("created_at", { ascending: false });
@@ -52,28 +56,20 @@ export async function getVersion(db, id) {
 }
 
 /*
- * The version a landlord signs now: their own negotiated version of this kind when
- * one is live, otherwise the standard one. Without a landlord, the standard one.
+ * The version a landlord signs now: the custom version of this kind they are on
+ * when one is live, otherwise the standard one. Without a landlord, the standard one.
  */
 export async function getLiveVersion(db, { kind = "master", landlordId = null } = {}) {
   if (landlordId) {
-    const { data, error } = await db
-      .from("agreement_versions")
-      .select(VERSION_COLUMNS)
-      .eq("status", "live")
-      .eq("kind", kind)
-      .eq("landlord_id", landlordId)
-      .maybeSingle();
-    if (missingTable(error)) return null;
-    if (error) throw error;
-    if (data) return data;
+    const own = (await liveLandlordVersions(db, { kind, landlordIds: [landlordId] })).get(landlordId);
+    if (own) return own;
   }
   const { data, error } = await db
     .from("agreement_versions")
     .select(VERSION_COLUMNS)
     .eq("status", "live")
     .eq("kind", kind)
-    .is("landlord_id", null)
+    .neq("audience", "selected")
     .maybeSingle();
   if (missingTable(error)) return null;
   if (error) throw error;
@@ -81,20 +77,28 @@ export async function getLiveVersion(db, { kind = "master", landlordId = null } 
 }
 
 /*
- * Every landlord's own live version of this kind, by landlord id: the ones made
- * for a single landlord. Lets a list of landlords pick each one's version in one
- * query instead of one getLiveVersion each.
+ * Each landlord's live custom version of this kind, by landlord id (all landlords
+ * on one, or only `landlordIds`). Lets a list of landlords pick each one's version
+ * in two queries instead of one getLiveVersion each.
  */
-export async function liveLandlordVersions(db, { kind = "master" } = {}) {
-  const { data, error } = await db
-    .from("agreement_versions")
-    .select(VERSION_COLUMNS)
-    .eq("status", "live")
-    .eq("kind", kind)
-    .not("landlord_id", "is", null);
+export async function liveLandlordVersions(db, { kind = "master", landlordIds = null } = {}) {
+  let q = db.from("agreement_version_landlords").select("version_id, landlord_id").eq("kind", kind).eq("live", true);
+  if (landlordIds) {
+    if (!landlordIds.length) return new Map();
+    q = q.in("landlord_id", landlordIds);
+  }
+  const { data: on, error } = await q;
   if (missingTable(error)) return new Map();
   if (error) throw error;
-  return new Map(data.map((v) => [v.landlord_id, v]));
+  if (!on.length) return new Map();
+  const { data: versions, error: vError } = await db
+    .from("agreement_versions")
+    .select(VERSION_COLUMNS)
+    .in("id", [...new Set(on.map((r) => r.version_id))])
+    .eq("status", "live");
+  if (vError) throw vError;
+  const byId = new Map(versions.map((v) => [v.id, v]));
+  return new Map(on.filter((r) => byId.has(r.version_id)).map((r) => [r.landlord_id, byId.get(r.version_id)]));
 }
 
 /*
@@ -109,7 +113,7 @@ export async function resignCutoff(db) {
     .select("published_at")
     .eq("requires_resign", true)
     .eq("kind", "master")
-    .is("landlord_id", null)
+    .neq("audience", "selected")
     .in("status", ["live", "retired"])
     .order("published_at", { ascending: false })
     .limit(1);
@@ -132,23 +136,24 @@ export const formatRate = (rate) => (rate == null ? null : `${Number(rate).toLoc
 
 /*
  * Step 1. `storePdf(bytes)` stores the file and returns its key
- * (agreementFiles.storeAgreementVersion). A negotiated version names its landlord
- * and, when it answers one, the change request.
+ * (agreementFiles.storeAgreementVersion). A custom version (`audience:
+ * "selected"`) starts with `landlordIds`, which may be empty: landlords can be
+ * added later. `landlordId` (one landlord, from a change request) is the same
+ * as a list of one. A custom version names, when it answers one, the change request.
  */
 export async function uploadVersion(
   db,
   documenso,
-  { adminId, label, fileName, bytes, storePdf, kind = "master", landlordId = null, changeRequestId = null, basedOnVersionId = null }
+  { adminId, label, fileName, bytes, storePdf, kind = "master", audience = "everyone", landlordIds = [], landlordId = null, changeRequestId = null, basedOnVersionId = null }
 ) {
   const name = String(label ?? "").trim();
   if (!name) throw new BillingError("label_required", "Give this version a name, like \"December 2026\".");
   if (name.length > LABEL_MAX) throw new BillingError("label_too_long", `Keep the name under ${LABEL_MAX} characters.`);
   if (!VERSION_KINDS.includes(kind)) throw new BillingError("bad_kind", "Choose whether this is the agreement or the amendment.");
-  if (landlordId) {
-    const { data: landlord, error } = await db.from("users").select("id, deleted_at").eq("id", landlordId).maybeSingle();
-    if (error) throw error;
-    if (!landlord || landlord.deleted_at) throw new BillingError("not_found", "That landlord was not found.", 404);
-  }
+  const ids = [...new Set([...(landlordIds ?? []), ...(landlordId ? [landlordId] : [])].filter(Boolean))];
+  const custom = audience === "selected" || ids.length > 0;
+  if (!custom && changeRequestId) throw new BillingError("bad_audience", "A version answering a change request is for chosen landlords.");
+  await assertLandlords(db, ids);
 
   const fileKey = await storePdf(bytes);
   const { data: version, error } = await db
@@ -156,9 +161,9 @@ export async function uploadVersion(
     .insert({
       label: name,
       kind,
+      audience: custom ? "selected" : "everyone",
       // The commission rate lives only in the document's wording (Wyatt, 2026-11-06).
       commission_rate_percent: null,
-      landlord_id: landlordId || null,
       change_request_id: changeRequestId || null,
       based_on_version_id: basedOnVersionId || null,
       file_key: fileKey,
@@ -170,9 +175,120 @@ export async function uploadVersion(
     .select(VERSION_COLUMNS)
     .single();
   if (error) throw error;
+  if (ids.length) await insertAssignments(db, version, ids, adminId);
   return connectVersion(db, documenso, version, bytes);
 }
 
+// Every id must be a landlord account that still exists.
+async function assertLandlords(db, ids) {
+  if (!ids.length) return;
+  const { data, error } = await db.from("users").select("id, deleted_at, roles!role_id(name)").in("id", ids);
+  if (error) throw error;
+  const ok = new Set((data ?? []).filter((u) => !u.deleted_at && (u.roles?.name ?? "landlord") === "landlord").map((u) => u.id));
+  if (ids.some((id) => !ok.has(id))) throw new BillingError("not_found", "One of those landlords was not found.", 404);
+}
+
+async function insertAssignments(db, version, ids, adminId, now = new Date()) {
+  if (!ids.length) return;
+  const { error } = await db.from("agreement_version_landlords").insert(
+    ids.map((landlordId) => ({ version_id: version.id, landlord_id: landlordId, kind: version.kind, live: false, added_by_id: adminId, added_at: now.toISOString() }))
+  );
+  if (error) {
+    if (error.code === "23505") throw new BillingError("status_changed", "That landlord was just added. Refresh and try again.", 409);
+    throw error;
+  }
+}
+
+// The landlords on a version now (not taken off), oldest first.
+export async function versionLandlordRows(db, versionIds) {
+  const ids = [].concat(versionIds).filter(Boolean);
+  if (!ids.length) return [];
+  const { data, error } = await db
+    .from("agreement_version_landlords")
+    .select("id, version_id, landlord_id, kind, live, added_at, removed_at")
+    .in("version_id", ids)
+    .order("added_at", { ascending: true });
+  if (missingTable(error)) return [];
+  if (error) throw error;
+  return data;
+}
+
+const activeOn = (rows) => rows.filter((r) => !r.removed_at);
+
+/*
+ * Put these landlords on a live custom version (it becomes the one they sign):
+ * each is taken off any other live custom version of the same kind first (one
+ * live per landlord per kind). A custom version left with nobody that way is
+ * retired, as replacing a landlord's version always did. Returns the ids of the
+ * other versions they left.
+ */
+async function goLive(db, version, ids, adminId, now) {
+  if (!ids.length) return [];
+  const nowIso = now.toISOString();
+  const { data: others, error } = await db
+    .from("agreement_version_landlords")
+    .select("id, version_id, landlord_id")
+    .eq("kind", version.kind)
+    .eq("live", true)
+    .in("landlord_id", ids);
+  if (error) throw error;
+  const replaced = (others ?? []).filter((r) => r.version_id !== version.id);
+  if (replaced.length) {
+    const { error: offError } = await db
+      .from("agreement_version_landlords")
+      .update({ live: false, removed_at: nowIso, removed_by_id: adminId })
+      .in("id", replaced.map((r) => r.id));
+    if (offError) throw offError;
+  }
+  const { error: onError } = await db
+    .from("agreement_version_landlords")
+    .update({ live: true })
+    .eq("version_id", version.id)
+    .in("landlord_id", ids)
+    .is("removed_at", null);
+  if (onError) {
+    if (onError.code === "23505") throw new BillingError("status_changed", "Another custom version was just made live for one of them. Refresh and try again.", 409);
+    throw onError;
+  }
+  const left = [...new Set(replaced.map((r) => r.version_id))];
+  for (const id of left) {
+    if (activeOn(await versionLandlordRows(db, id)).length) continue;
+    const { error: retireError } = await db.from("agreement_versions").update({ status: "retired" }).eq("id", id).eq("status", "live");
+    if (retireError) throw retireError;
+  }
+  return left;
+}
+
+/*
+ * Add or take off landlords on a custom version (Wyatt, 2026-11-22). Before the
+ * version is live the change waits for Make live; on a live version it applies
+ * now. Taking someone off never touches what they signed: they sign the standard
+ * version next. Returns { version, changed }: the landlords whose version to sign
+ * changed now (their open copies are cancelled by the caller).
+ */
+export async function setVersionLandlords(db, { versionId, add = [], remove = [], adminId, now = new Date() }) {
+  const version = await getVersion(db, versionId);
+  if (!isCustom(version)) throw new BillingError("not_custom", "The standard version is for everyone. Upload a custom version to choose landlords.", 409);
+  if (version.status === "retired") throw new BillingError("retired", "This version is retired. Upload it again to use it.", 409);
+  const current = new Set(activeOn(await versionLandlordRows(db, versionId)).map((r) => r.landlord_id));
+  const adding = [...new Set(add.filter((id) => id && !current.has(id)))];
+  const removing = [...new Set(remove.filter((id) => id && current.has(id) && !adding.includes(id)))];
+  await assertLandlords(db, adding);
+
+  if (removing.length) {
+    const { error } = await db
+      .from("agreement_version_landlords")
+      .update({ live: false, removed_at: now.toISOString(), removed_by_id: adminId })
+      .eq("version_id", versionId)
+      .in("landlord_id", removing)
+      .is("removed_at", null);
+    if (error) throw error;
+  }
+  await insertAssignments(db, version, adding, adminId, now);
+  const live = version.status === "live";
+  if (live) await goLive(db, version, adding, adminId, now);
+  return { version, changed: live ? [...adding, ...removing] : [] };
+}
 /*
  * Push a draft to Documenso as a template (step 1, or retrying it). A failure is
  * saved on the version for the admin to see instead of losing the upload.
@@ -187,7 +303,7 @@ export async function connectVersion(db, documenso, version, bytes = null, { rea
     const { bytes: pdfBytes, boxes } = await preparePlaceholders(original);
     const what = version.kind === "amendment" ? "Exhibit A amendment" : "marketing agreement";
     const templateId = await documenso.createTemplate({
-      title: `Proximity ${what} (${version.label})${version.landlord_id ? " [one landlord]" : ""}`,
+      title: `Proximity ${what} (${version.label})${isCustom(version) ? " [custom]" : ""}`,
       pdfBytes,
       fileName: version.file_name || "marketing-agreement.pdf",
       externalId: `agreement-version:${version.id}`,
@@ -320,24 +436,33 @@ export async function checkVersionFields(db, documenso, versionId, { quick = fal
 }
 
 /*
- * Step 4. The live version of the same kind (and the same landlord, for a
- * negotiated one) is retired first; the unique indexes allow one of each. The
- * re-sign choice applies to standard master versions only: an amendment never
- * asks anyone to re-sign, and a negotiated version is signed by its landlord anyway.
+ * Step 4. The standard version of the same kind is retired first (one live per
+ * kind). A custom version goes live for the landlords on it, each leaving any
+ * other live custom version of that kind. The re-sign choice applies to standard
+ * master versions only: an amendment never asks anyone to re-sign, and a custom
+ * version is signed by its landlords anyway. Returns the version; the landlords
+ * whose version changed are `versionLandlordRows` of it (the caller cancels their
+ * open copies).
  */
 export async function publishVersion(db, { versionId, adminId, requiresResign, now = new Date() }) {
   const version = await getVersion(db, versionId);
-  const asksResign = version.kind === "master" && !version.landlord_id;
+  const custom = isCustom(version);
+  const asksResign = version.kind === "master" && !custom;
   if (asksResign && typeof requiresResign !== "boolean") {
     throw new BillingError("resign_choice_required", "Choose whether existing signers must sign this version again.");
   }
   if (version.status !== "ready") {
     throw new BillingError("not_ready", "Check the signature boxes before making this version live.", 409);
   }
-  let retire = db.from("agreement_versions").update({ status: "retired" }).eq("status", "live").eq("kind", version.kind);
-  retire = version.landlord_id ? retire.eq("landlord_id", version.landlord_id) : retire.is("landlord_id", null);
-  const { error: retireError } = await retire;
-  if (retireError) throw retireError;
+  if (!custom) {
+    const { error: retireError } = await db
+      .from("agreement_versions")
+      .update({ status: "retired" })
+      .eq("status", "live")
+      .eq("kind", version.kind)
+      .neq("audience", "selected");
+    if (retireError) throw retireError;
+  }
   const { data, error } = await db
     .from("agreement_versions")
     .update({ status: "live", requires_resign: asksResign ? requiresResign : false, published_at: now.toISOString(), published_by_id: adminId })
@@ -350,6 +475,7 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
     throw error;
   }
   if (!data) throw new BillingError("status_changed", "This version changed meanwhile. Refresh and try again.", 409);
+  if (custom) await goLive(db, data, activeOn(await versionLandlordRows(db, versionId)).map((r) => r.landlord_id), adminId, now);
   return data;
 }
 
@@ -365,14 +491,27 @@ export async function discardVersion(db, versionId) {
   return { discarded: versionId };
 }
 
-// For the admin list: what each version looks like, without storage keys.
-export function versionView(v, signedCounts = new Map(), landlordNames = new Map()) {
+/*
+ * For the admin list: what each version looks like, without storage keys.
+ * `landlordRows` are this version's agreement_version_landlords rows and
+ * `landlordNames` names by user id.
+ */
+export function versionView(v, signedCounts = new Map(), landlordNames = new Map(), landlordRows = []) {
+  const custom = isCustom(v);
+  // A retired version lists who it was for; any other, who is on it now.
+  const shown = custom ? (v.status === "retired" ? landlordRows : activeOn(landlordRows)) : [];
+  const landlords = [...new Map(shown.map((r) => [r.landlord_id, r])).values()].map((r) => ({
+    id: r.landlord_id,
+    name: landlordNames.get(r.landlord_id) ?? null,
+    live: !!r.live,
+    addedAt: r.added_at ?? null,
+  }));
   return {
     id: v.id,
     label: v.label,
     kind: v.kind ?? "master",
-    landlordId: v.landlord_id ?? null,
-    landlordName: v.landlord_id ? landlordNames.get(v.landlord_id) ?? null : null,
+    custom,
+    landlords,
     changeRequestId: v.change_request_id ?? null,
     commissionRatePercent: v.commission_rate_percent == null ? null : Number(v.commission_rate_percent),
     hasRateBox: !!v.provider_rate_field_id,

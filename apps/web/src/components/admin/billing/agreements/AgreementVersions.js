@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge, fmtDate } from "@/components/admin/adminShared";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
-import LandlordPicker, { landlordName } from "@/components/admin/billing/LandlordPicker";
+import { AppliesTo, LandlordToggles, useLiveSummary } from "./VersionLandlords";
 
 const STATUS = {
   draft: ["gray", "Draft"],
@@ -90,12 +90,15 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
   }, [version.id, version.connected]);
 
   // Only the standard agreement asks the re-sign question: an amendment never makes
-  // anyone sign again, and a negotiated version is signed by its one landlord.
-  const asksResign = version.kind === "master" && !version.landlordId;
+  // anyone sign again, and a custom version is signed by its landlords anyway.
+  const asksResign = version.kind === "master" && !version.custom;
+  const liveSummary = useLiveSummary(version);
   const publish = () => {
     if (asksResign && requiresResign === null) return;
-    const text = !asksResign
-      ? `Make "${version.label}" live${version.landlordName ? ` for ${version.landlordName}` : ""}?`
+    const text = version.custom
+      ? `Make "${version.label}" live for the landlords on it?\n\n${liveSummary()}`
+      : !asksResign
+      ? `Make "${version.label}" live?`
       : requiresResign
         ? `Make "${version.label}" live and require every landlord who signed an earlier version to sign this one?\n\nUntil they do, they cannot publish new properties while the agreement requirement is on. Their covered properties carry over to the new Exhibit A.`
         : `Make "${version.label}" live? Earlier signatures stay valid; only landlords who have not signed will sign this version.`;
@@ -262,6 +265,13 @@ const KIND_LABEL = { master: "Agreement", amendment: "Exhibit A amendment" };
 
 const landlords = (n) => `${n} ${n === 1 ? "landlord" : "landlords"}`;
 
+// "Victor Alston, Jessica Nelson" for a custom version's landlords.
+const namesOf = (v) => (v.landlords ?? []).map((l) => l.name || "a landlord").join(", ");
+function CustomNote({ v }) {
+  if (!v.custom) return null;
+  return <span className="text-xs font-normal text-gray-500"> (custom{v.landlords?.length ? `: ${namesOf(v)}` : ", nobody on it"})</span>;
+}
+
 // The version landlords sign now: the one sent to anyone who signs from today.
 function LiveRow({ v, kindLabel, busy, run }) {
   const summary = useQuickSummary(v);
@@ -270,10 +280,10 @@ function LiveRow({ v, kindLabel, busy, run }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-gray-900">
           {kindLabel}: {v.label}
-          {v.landlordName ? <span className="text-xs font-normal text-gray-500"> (only for {v.landlordName})</span> : null}
+          <CustomNote v={v} />
         </p>
         <p className="text-xs text-gray-600">
-          {v.landlordName ? `Sent to ${v.landlordName} when they sign` : "Sent to every landlord who signs from now on"} ·
+          {v.custom ? "Sent to the landlords below when they sign" : "Sent to every landlord who signs from now on"} ·
           current since {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} signed it
           {v.requiresResign ? " · everyone had to re-sign" : ""}
         </p>
@@ -287,34 +297,40 @@ function LiveRow({ v, kindLabel, busy, run }) {
       <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(`/api/admin/billing/agreement-versions/${v.id}`))}>
         View PDF
       </button>
+      {v.custom && (
+        <div className="w-full">
+          <AppliesTo version={v} busy={busy} run={run} />
+        </div>
+      )}
     </div>
   );
 }
 
 /*
  * The agreement documents: the standard agreement and the standard Exhibit A
- * amendment, each with its own live version, plus versions for one landlord (a
- * different fee or wording agreed with them). Upload a PDF as a new version, take
- * it through Documenso, make it live. A landlord's own version looks exactly like
- * the standard one to them (Wyatt, 2026-11-08): same flow, same wording, and its
- * name defaults to the standard version's because the landlord sees it.
+ * amendment, each with its own live version, plus custom versions for chosen
+ * landlords (a different fee or wording agreed with them), whose landlords can be
+ * changed at any time (Wyatt, 2026-11-22). Upload a PDF as a new version, take it
+ * through Documenso, make it live. A custom version looks exactly like the
+ * standard one to its landlords (Wyatt, 2026-11-08): same flow, same wording, and
+ * its name defaults to the standard version's because the landlord sees it.
  */
 export default function AgreementVersions({ versions, documensoConnected, busy, run }) {
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState("master");
   const [file, setFile] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [forOne, setForOne] = useState(false);
-  const [landlord, setLandlord] = useState(null);
-  const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.landlordId);
+  const [custom, setCustom] = useState(false);
+  const [chosen, setChosen] = useState([]);
+  const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.custom);
   const live = liveStandard("master");
   const liveAmendment = liveStandard("amendment");
-  const ownLive = versions.filter((v) => v.status === "live" && v.landlordId);
+  const ownLive = versions.filter((v) => v.status === "live" && v.custom);
   // A landlord sees the version's name, so theirs starts as the standard one's.
   const standardLabel = liveStandard(kind)?.label ?? "";
   useEffect(() => {
-    if (forOne) setLabel(standardLabel);
-  }, [forOne, standardLabel]);
+    if (custom) setLabel(standardLabel);
+  }, [custom, standardLabel]);
   const drafts = versions.filter((v) => v.status === "draft" || v.status === "ready");
   const retired = versions.filter((v) => v.status === "retired");
   const inForce = retired.filter((v) => v.stillInForce);
@@ -325,16 +341,17 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
     const form = new FormData();
     form.set("label", label);
     form.set("kind", kind);
-    if (forOne && landlord) form.set("landlordId", landlord.id);
+    form.set("audience", custom ? "selected" : "everyone");
+    if (custom) for (const l of chosen) form.append("landlordIds", l.id);
     if (file) form.set("file", file);
     return run(async () => {
       await call("/api/admin/billing/agreement-versions", { method: "POST", body: form });
       setLabel("");
       setFile(null);
       setFileInputKey((k) => k + 1);
-      setForOne(false);
-      setLandlord(null);
-    }, forOne ? `Uploaded for ${landlordName(landlord)}. Follow the steps below to make it live for them.` : "Uploaded. Follow the steps below to make it live.");
+      setCustom(false);
+      setChosen([]);
+    }, custom ? "Uploaded. Follow the steps below to make it live for the landlords on it." : "Uploaded. Follow the steps below to make it live.");
   };
 
   const discard = (v) => {
@@ -388,7 +405,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-900">
                   {KIND_LABEL[v.kind] ?? "Agreement"}: {v.label}
-                  {v.landlordName ? <span className="text-xs text-gray-500"> (only for {v.landlordName})</span> : null}
+                  <CustomNote v={v} />
                 </p>
                 <p className="text-xs text-gray-600">
                   Became current {fmtDate(v.publishedAt)} · {landlords(v.signedCount)} still signed on it
@@ -410,7 +427,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             <div className="flex flex-wrap items-center gap-2">
               <p className="min-w-0 flex-1 text-sm font-medium text-gray-900">
                 {KIND_LABEL[v.kind] ?? "Agreement"}: {v.label}
-                {v.landlordName ? <span className="text-xs font-normal text-gray-500"> (only for {v.landlordName})</span> : null}{" "}
+                <CustomNote v={v} />{" "}
                 <span className="text-xs font-normal text-gray-400">
                   uploaded {fmtDate(v.createdAt)}
                 </span>
@@ -423,6 +440,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
                 Discard
               </button>
             </div>
+            {v.custom && <AppliesTo version={v} busy={busy} run={run} />}
             <DraftSteps version={v} busy={busy} run={run} documensoConnected={documensoConnected} />
           </div>
         );
@@ -431,9 +449,9 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
       <form onSubmit={upload} className="space-y-2 border-t border-gray-100 pt-4">
         <p className="text-sm font-medium text-gray-900">Upload a new version</p>
         <p className="text-xs text-gray-500">
-          For everyone, it replaces the standard version once it is live. For one landlord (a different fee or wording agreed with
-          them), only they sign it, and they see it exactly like the standard one. If they already signed, they are asked to sign
-          their new version and their current agreement keeps counting until they do.
+          For everyone, it replaces the standard version once it is live. For specific landlords (a different fee or wording agreed
+          with them), only they sign it, and they see it exactly like the standard one. You can add or remove landlords at any
+          time. If one already signed, they are asked to sign the new version and their current agreement keeps counting until they do.
         </p>
         <details className="rounded-md border border-gray-200 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium text-gray-700">Boxes to place in Documenso, and their labels</summary>
@@ -446,18 +464,18 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             Who signs it
             <select
               className={`${FIELD} mt-1`}
-              value={forOne ? "one" : "everyone"}
+              value={custom ? "selected" : "everyone"}
               onChange={(e) => {
-                const one = e.target.value === "one";
-                setForOne(one);
-                if (!one) {
-                  setLandlord(null);
+                const selected = e.target.value === "selected";
+                setCustom(selected);
+                if (!selected) {
+                  setChosen([]);
                   setLabel("");
                 }
               }}
             >
               <option value="everyone">Everyone (standard)</option>
-              <option value="one">One landlord</option>
+              <option value="selected">Specific landlords</option>
             </select>
           </label>
           <label className="block w-48 text-sm text-gray-700">
@@ -470,7 +488,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
             Name
             <input className={`${FIELD} mt-1`} value={label} maxLength={80} placeholder="December 2026" onChange={(e) => setLabel(e.target.value)} required />
-            {forOne && <span className="mt-1 block text-xs text-gray-500">The landlord sees this name. Keep it like the standard version&apos;s.</span>}
+            {custom && <span className="mt-1 block text-xs text-gray-500">Landlords see this name. Keep it like the standard version&apos;s.</span>}
           </label>
           <label className="block flex-1 min-w-[12rem] text-sm text-gray-700">
             PDF (up to 4 MB)
@@ -484,16 +502,16 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
             />
           </label>
         </div>
-        {forOne && (
+        {custom && (
           <div className="text-sm text-gray-700">
-            Landlord
-            <div className="mt-1 max-w-md">
-              <LandlordPicker value={landlord} onChange={setLandlord} disabled={busy} />
+            Landlords it applies to
+            <div className="mt-1 max-w-xl">
+              <LandlordToggles value={chosen} onChange={setChosen} kind={kind} disabled={busy} />
             </div>
           </div>
         )}
-        <button type="submit" disabled={busy || !file || (forOne && !landlord)} className={PRIMARY}>
-          {busy ? "Working..." : forOne && landlord ? `Upload for ${landlordName(landlord)}` : "Upload"}
+        <button type="submit" disabled={busy || !file} className={PRIMARY}>
+          {busy ? "Working..." : custom && chosen.length ? `Upload for ${chosen.length} ${chosen.length === 1 ? "landlord" : "landlords"}` : "Upload"}
         </button>
       </form>
 
@@ -505,7 +523,7 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
               <li key={v.id} className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                 <span className="flex-1">
                   {KIND_LABEL[v.kind] ?? "Agreement"}: {v.label}
-                  {v.landlordName ? ` (for ${v.landlordName})` : ""} · became current {fmtDate(v.publishedAt)}
+                  {v.custom && v.landlords?.length ? ` (for ${namesOf(v)})` : ""} · became current {fmtDate(v.publishedAt)}
                 </span>
                 <button type="button" disabled={busy} className={BUTTON} onClick={() => run(() => openFile(`/api/admin/billing/agreement-versions/${v.id}`))}>
                   View PDF

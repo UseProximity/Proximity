@@ -8,9 +8,13 @@ import {
   connectVersion,
   discardVersion,
   getVersion,
+  isCustom,
   publishVersion,
+  setVersionLandlords,
+  versionLandlordRows,
   versionView,
 } from "@/lib/billing/agreementVersions";
+import { cancelOpenCopies } from "@/lib/billing/versionLandlords";
 import { readAgreementFile, signedAgreementUrl } from "@/lib/billing/agreementFiles";
 import { documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
@@ -26,6 +30,9 @@ import { billingErrorResponse, isUuid } from "@/lib/billing/http";
  *                    signature boxes; a version that passes becomes ready
  *         "publish"  make it live. Needs { requiresResign: boolean }: whether
  *                    landlords who signed an earlier version must sign this one.
+ *         "landlords" a custom version: { add: [ids], remove: [ids] } landlords it
+ *                    applies to. On a live version it applies now, and an unsigned
+ *                    copy a changed landlord has open is cancelled.
  *         "discard"  delete a version that was never live
  *
  * @auth admin
@@ -71,12 +78,20 @@ export async function POST(req, { params }) {
     }
     if (body.action === "publish") {
       const version = await publishVersion(supabase, { versionId: id, adminId: session.user.id, requiresResign: body.requiresResign });
-      return NextResponse.json({ version: versionView(version) });
+      const rows = isCustom(version) ? await versionLandlordRows(supabase, id) : [];
+      const cancelled = await cancelOpenCopies(supabase, documenso, { landlordIds: rows.filter((r) => r.live).map((r) => r.landlord_id), kind: version.kind });
+      return NextResponse.json({ version: versionView(version, new Map(), new Map(), rows), cancelled });
+    }
+    if (body.action === "landlords") {
+      const ids = (list) => (Array.isArray(list) ? list : []).filter((x) => typeof x === "string" && isUuid(x));
+      const { version, changed } = await setVersionLandlords(supabase, { versionId: id, add: ids(body.add), remove: ids(body.remove), adminId: session.user.id });
+      const cancelled = await cancelOpenCopies(supabase, documenso, { landlordIds: changed, kind: version.kind });
+      return NextResponse.json({ version: versionView(await getVersion(supabase, id), new Map(), new Map(), await versionLandlordRows(supabase, id)), cancelled });
     }
     if (body.action === "discard") {
       return NextResponse.json(await discardVersion(supabase, id));
     }
-    throw new BillingError("bad_action", "Choose connect, check, publish or discard.");
+    throw new BillingError("bad_action", "Choose connect, check, publish, landlords or discard.");
   } catch (err) {
     if (err?.name === "DocumensoError") {
       console.error("billing: agreement version action failed", err.message);

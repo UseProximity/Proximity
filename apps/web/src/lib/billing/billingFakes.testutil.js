@@ -13,8 +13,13 @@ const UNIQUE = {
     (r) => (["not_sent", "sent"].includes(r.status) ? `pending:${r.user_id}` : null),
     (r) => (r.status === "signed" ? `signed:${r.user_id}` : null),
   ],
-  // One live standard version per kind, one live negotiated version per kind per landlord.
-  agreement_versions: [(r) => (r.status === "live" ? `live:${r.kind ?? "master"}:${r.landlord_id ?? "standard"}` : null)],
+  // One live standard version per kind (202611220001).
+  agreement_versions: [(r) => (r.status === "live" && (r.audience ?? "everyone") === "everyone" ? `live:${r.kind ?? "master"}` : null)],
+  // A landlord on a version once at a time; one live custom version per kind per landlord.
+  agreement_version_landlords: [
+    (r) => (r.removed_at ? null : `on:${r.version_id}:${r.landlord_id}`),
+    (r) => (r.live ? `live:${r.kind}:${r.landlord_id}` : null),
+  ],
   agreement_amendments: [(r) => (r.status === "sent" ? `pending:${r.user_id}` : null)],
   agreement_coverage: [(r) => (r.status !== "released" ? `${r.agreement_id}:${r.listing_id}:${r.amendment_id ?? ""}` : null)],
 };
@@ -208,3 +213,15 @@ export function fakeDocumenso() {
   };
 }
 
+
+// A live custom version for these landlords (agreement_versions + agreement_version_landlords).
+export function addCustomVersion(db, version, landlordIds) {
+  const v = { status: "live", kind: "master", ...version, audience: "selected" };
+  db.tables.agreement_versions ??= [];
+  db.tables.agreement_versions.push(v);
+  db.tables.agreement_version_landlords ??= [];
+  for (const id of landlordIds) {
+    db.tables.agreement_version_landlords.push({ id: `avl-${v.id}-${id}`, version_id: v.id, landlord_id: id, kind: v.kind, live: v.status === "live", removed_at: null, added_at: "2026-11-01T00:00:00.000Z" });
+  }
+  return v;
+}

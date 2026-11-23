@@ -43,7 +43,7 @@ import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
 import { activePayerLink, clearDocumentRequests, clearPayerDeclined, declineDocumentRequests, markPayerDeclined, payeeLinks, stampRequests } from "./payerLinks.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
-const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at, commission_rate_percent)";
+const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, audience, published_at, commission_rate_percent)";
 const COLUMNS = `id, user_id, version, version_id, status, signed_at, signer_name, signer_title, authorized_at, signed_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_start, term_end, exhibit, exhibit_file_key, signed_exhibit_file_key, commission_rate_percent, license_prefill, signer_details, created_at, updated_at, ${VERSION_JOIN}`;
 // Before the coverage migration (202611050001).
 const PRE_COVERAGE_COLUMNS =
@@ -119,7 +119,7 @@ export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null
   const signed = rows.find((r) => r.status === "signed") ?? null;
   const pending = rows.find((r) => PENDING.includes(r.status)) ?? null;
   const lastEnded = rows.find((r) => r.status === "voided") ?? null;
-  const negotiated = !!signed?.agreement_version?.landlord_id;
+  const negotiated = signed?.agreement_version?.audience === "selected";
   const versionOk = !!signed && (negotiated || signatureStillValid(signed.agreement_version?.published_at ?? null, cutoff));
   const expired = false;
   const valid = !!signed && versionOk;
@@ -127,7 +127,7 @@ export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null
   // accepted change request): offered to sign, replacing the agreement they have,
   // which keeps counting until then (review of 2026-11-07).
   const negotiatedOffer =
-    valid && liveVersion?.landlord_id && signed.version_id !== liveVersion.id ? liveVersion : null;
+    valid && liveVersion?.audience === "selected" && signed.version_id !== liveVersion.id ? liveVersion : null;
   return {
     signed,
     pending,
@@ -301,7 +301,7 @@ export async function listAgreementDocuments(db, userId, { admin = false } = {})
       kind: "master",
       status: m.status,
       versionLabel: m.agreement_version?.label ?? m.version ?? null,
-      negotiated: !!m.agreement_version?.landlord_id,
+      negotiated: m.agreement_version?.audience === "selected",
       commissionRatePercent: m.commission_rate_percent == null ? null : Number(m.commission_rate_percent),
       signedAt: m.signed_at,
       signerName: m.signer_name,
@@ -321,7 +321,7 @@ export async function listAgreementDocuments(db, userId, { admin = false } = {})
       kind: "amendment",
       status: a.status,
       versionLabel: a.agreement_version?.label ?? null,
-      negotiated: !!a.agreement_version?.landlord_id,
+      negotiated: a.agreement_version?.audience === "selected",
       commissionRatePercent: null,
       signedAt: a.signed_at,
       signerName: a.signer_name,

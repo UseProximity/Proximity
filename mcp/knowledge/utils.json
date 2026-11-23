@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-23T01:41:49.113Z",
-  "count": 365,
+  "_generated": "2026-11-23T20:10:22.055Z",
+  "count": 366,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -586,6 +586,10 @@
     {
       "file": "src/lib/billing/stripe.js",
       "description": "The one Stripe client for the app, and the three env vars it reads:"
+    },
+    {
+      "file": "src/lib/billing/versionLandlords.js",
+      "description": "Who a custom agreement version applies to, seen from the admin dashboard"
     },
     {
       "file": "src/lib/billing/viewer.js",
