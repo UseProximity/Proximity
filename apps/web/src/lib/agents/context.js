@@ -81,7 +81,9 @@ export async function buildProxyContext(listingId) {
     for (const l of live) {
       const ownerKey = l.owner_id ?? UNCLAIMED_OWNER_ID;
       const ownerLabel = owners.get(ownerKey) ?? "Unclaimed leases";
-      const rent = Number(l.rent) > 0 ? `${money(l.rent)} a month${l.rent_is_per_person ? " per person" : ""}` : "price on request";
+      // Say the basis both ways: a bare price read as unknown, so Proxy asked landlords what the data already said.
+      const basis = l.rent_is_per_person === true ? " per person" : l.rent_is_per_person === false ? " for the whole unit" : " (not stated whether this is per person or for the whole unit)";
+      const rent = Number(l.rent) > 0 ? `${money(l.rent)} a month${basis}` : "price on request";
       const bits = [rent, termLabel(l.lease_term_months), l.available_from ? `available ${shortDate(l.available_from)}` : "available now",
         l.furnished === true ? "furnished" : l.furnished === false ? "unfurnished" : null, l.sublease ? "a sublease" : null].filter(Boolean);
       const idx = leases.length + 1;
