@@ -36,7 +36,7 @@ material = true when something they could act on changed: an amount, a date or t
 material = false when it is the same information in other words, or only adds or drops detail that changes nothing they were told.`;
 
 // Exported for the test harness.
-export async function isMaterialChange({ listingId = null, oldSummary, summary }) {
+export async function isMaterialChange({ listingId = null, oldSummary, summary, failOpen = false }) {
   if (!oldSummary) return true;
   if (numbersOf(oldSummary) !== numbersOf(summary)) return true;
   try {
@@ -44,16 +44,19 @@ export async function isMaterialChange({ listingId = null, oldSummary, summary }
       model: HAIKU, system: CHECK, schema: Verdict, maxTokens: 100, tag: "correction_check", listingId, kind: "correction_check",
       messages: [{ role: "user", content: `Told before: ${oldSummary}\nNow: ${summary}` }],
     });
-    return parsed?.material ?? false;
+    if (typeof parsed?.material === "boolean") return parsed.material;
+    console.error("[agents] correction check gave no answer");
+    return failOpen;
   } catch (err) {
-    // Unsure means no note: a missed rewording note costs nothing, a false
-    // one tells a student something changed when it did not.
+    // Unsure: a website read stays quiet (a missed rewording note costs
+    // nothing), a landlord's own words still go out (failOpen), so a real
+    // correction is never lost to an API outage (PR 475 review).
     console.error("[agents] correction check failed:", err?.message ?? err);
-    return false;
+    return failOpen;
   }
 }
 
-export async function postCorrections({ listingId, changes }) {
+export async function postCorrections({ listingId, changes, failOpen = true }) {
   const list = (changes ?? []).filter((c) => c.key && c.summary);
   if (!list.length) return 0;
   const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -64,7 +67,7 @@ export async function postCorrections({ listingId, changes }) {
       .contains("metadata", { factKeys: [c.key] }).gte("created_at", since).is("deleted_at", null).limit(500);
     const threads = [...new Set((msgs ?? []).map((m) => m.thread_id))];
     if (!threads.length) continue;
-    if (!(await isMaterialChange({ listingId, oldSummary: c.oldSummary, summary: c.summary }))) continue;
+    if (!(await isMaterialChange({ listingId, oldSummary: c.oldSummary, summary: c.summary, failOpen }))) continue;
     for (const threadId of threads) {
       // Once per thread per change.
       const { data: already } = await supabase.from("chat_messages").select("id").eq("thread_id", threadId)

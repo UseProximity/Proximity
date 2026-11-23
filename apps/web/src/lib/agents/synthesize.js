@@ -280,7 +280,11 @@ export async function synthesizeKnowledge({
     if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
   if (result.changes.length && cause !== "seed") {
-    postCorrections({ listingId, changes: result.changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    // Awaited: a job that returns first can be frozen before the notes go
+    // out. When the material-change check cannot decide, only a website
+    // read stays quiet; a landlord's own words still reach the student
+    // (PR 475 review).
+    await postCorrections({ listingId, changes: result.changes, failOpen: sourceKind !== "page" }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return result;
 }
@@ -300,14 +304,17 @@ export async function synthesizeKnowledge({
  *     same thing under a new key (misc.design-details beside misc.design),
  *     which piled up near-copies every week. A duplicate changes nothing; a
  *     fuller version of an existing fact replaces it under the existing key;
- *   - any proposal that only rewords the current fact keeps it (the site
- *     still says it), so nothing is written and no student is told;
- *   - a fact a batch confirmed is still on its page (a 'keep', `confirmed`)
- *     is kept too: when two pages disagree (Grove Lofts' About page and its
- *     Residents page give different office hours) the fact stays as it is
- *     instead of flipping between them every week;
- *   - otherwise the fullest proposal (the longest summary) is written, so a
- *     page that mentions something briefly never replaces a fuller version.
+ *   - a proposal that carries a change (different amounts, times or dates,
+ *     or a negation or "only" the current fact does not have) is written,
+ *     the fullest of them, whatever other pages say: a brief mention on the
+ *     FAQ, or an old footer still saying the old hours, never holds back a
+ *     price change on the pricing page (PR 475 review);
+ *   - otherwise, any proposal that only rewords the current fact, or a batch
+ *     confirming it is still on its page (a 'keep', `confirmed`), keeps it,
+ *     so nothing is written and no student is told;
+ *   - a noticeably shorter proposal that says nothing the current fact does
+ *     not (its meaning words are a subset) keeps it too: a page saying less;
+ *   - otherwise the fullest proposal (the longest summary) is written.
  *
  * Returns { written, unchanged, held, merged, touched }.
  */
@@ -315,7 +322,21 @@ const scopeKey = (scopeLevel, scopeId) => `${scopeLevel}|${scopeLevel === "prope
 const factId = (section, key, scopeLevel, scopeId) => `${section}|${key}|${scopeKey(scopeLevel, scopeId)}`;
 const len = (t) => String(t ?? "").length;
 
-export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set() }) {
+// Words that turn a statement around. A proposal that adds or drops one is a
+// change, even with the same numbers ("Dogs and cats welcome, up to 2 pets"
+// against "Only cats allowed, up to 2 pets").
+const TURNING = /\b(no|not|never|none|only|except|without|cannot|can't|isn't|aren't|won't|prohibited|banned|closed|unavailable|discontinued|ended|longer)\b/g;
+const turningWords = (t) => [...new Set(String(t ?? "").toLowerCase().match(TURNING) ?? [])].sort().join(",");
+export function carriesChange(current, proposal) {
+  if ((current.valid_until ?? null) !== (proposal.validUntil ?? null)) return true;
+  return numbersOf(proposal.summary) !== numbersOf(current.summary) || turningWords(proposal.summary) !== turningWords(current.summary);
+}
+const saysNothingNew = (current, proposal) => {
+  const was = meaningWords(current.summary);
+  return [...meaningWords(proposal.summary)].every((w) => was.has(w));
+};
+
+export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set(), skipDuplicateCheck = false }) {
   const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [] };
   if (!proposals?.length) return out;
   const facts = await currentFacts(listingId);
@@ -327,10 +348,13 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     groups.get(id).props.push(p);
   }
 
-  // New keys checked against what the listing already knows.
+  // New keys checked against what the listing already knows. Facts the
+  // landlord set or wrote in their description are left out: a website's
+  // wording never lands on them (PR 475 review).
   const fresh = [...groups.entries()].filter(([, g]) => !g.current);
-  const others = facts.filter((f) => f.section !== "core" && f.section !== "specials");
-  if (fresh.length && (others.length || fresh.length > 1)) {
+  const protectedSources = await descriptionSourceIds(listingId);
+  const others = facts.filter((f) => f.section !== "core" && f.section !== "specials" && !f.landlord_set && !protectedSources.has(f.source_id));
+  if (!skipDuplicateCheck && fresh.length && (others.length || fresh.length > 1)) {
     const verdicts = await findDuplicates({ listingId, facts: others, fresh: fresh.map(([, g]) => g) });
     fresh.forEach(([id, g], i) => {
       const v = verdicts[i];
@@ -358,22 +382,29 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     });
   }
 
+  const fullest = (list) => list.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
   const changes = [];
   for (const g of groups.values()) {
     const { section, key, scopeLevel, scopeId, current, props } = g;
     if (!props.length) continue;
-    const best = props.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
-    const keep = current && (confirmed.has(current.id) || props.some((p) => sameFactReworded(current, p))
-      // A fact found under another key only replaces the existing one when
-      // it is the fuller of the two.
-      || (g.fromMerge && len(best.summary) < len(current.summary))
-      // A noticeably shorter version with the same amounts, times and dates
-      // is a page saying less, not a change (11/23: 38 facts lost detail).
-      || (len(best.summary) < len(current.summary) * 0.8 && numbersOf(best.summary) === numbersOf(current.summary)));
-    if (keep) {
-      out.unchanged++;
-      out.touched.push(current.id);
-      continue;
+    let best = fullest(props);
+    if (current) {
+      const changing = props.filter((p) => carriesChange(current, p));
+      if (changing.length) {
+        best = fullest(changing);
+      } else {
+        const keep = confirmed.has(current.id) || props.some((p) => sameFactReworded(current, p))
+          // A fact found under another key only replaces the existing one
+          // when it is the fuller of the two.
+          || (g.fromMerge && len(best.summary) < len(current.summary))
+          // A page saying less (11/23: 38 facts lost detail this way).
+          || (len(best.summary) < len(current.summary) * 0.8 && saysNothingNew(current, best));
+        if (keep) {
+          out.unchanged++;
+          out.touched.push(current.id);
+          continue;
+        }
+      }
     }
     const r = await setFact({
       listingId, section, fieldKey: key, value: best.value, summary: best.summary, scopeLevel, scopeId,
@@ -384,10 +415,16 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     if (r.fact?.id) out.touched.push(r.fact.id);
     if (r.changed && r.event?.previous_fact_id) changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
+  // Awaited: a job that returns first can be frozen before the notes go out.
   if (changes.length && cause !== "seed") {
-    postCorrections({ listingId, changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    await postCorrections({ listingId, changes, failOpen: false }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return out;
+}
+
+async function descriptionSourceIds(listingId) {
+  const { data } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
+  return new Set((data ?? []).map((r) => r.id));
 }
 
 const DupVerdict = z.object({
@@ -403,7 +440,7 @@ const DUP_SYSTEM = `You keep the knowledge base of one rental listing tidy. You 
 - update: it is about the very same subject as one existing fact (or earlier new fact) and is a fuller or newer statement of it that could replace it without losing anything that fact says.
 - new: anything else, including a separate detail on a related subject (a restricted-breeds list beside a general pet policy is new unless the pet policy already gives it).
 
-Only match facts that apply to the same thing (the same scope). When unsure, answer new.`;
+Only match facts in the same section that apply to the same thing (the same scope). When unsure, answer new.`;
 
 /*
  * One model call per read: which facts under new keys are already known.
@@ -438,12 +475,13 @@ export async function findDuplicates({ listingId, facts, fresh }) {
       const g = fresh[i];
       if (m[1].toUpperCase() === "E") {
         const f = facts[j];
-        // Never across scopes: a lease's fee is not the building's.
-        if (!f || scopeKey(f.scope_level, f.scope_id) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
+        // Never across scopes (a lease's fee is not the building's) or
+        // sections (a fee folded into a policy loses the fee row).
+        if (!f || f.section !== g.section || scopeKey(f.scope_level, f.scope_id) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
         res[i] = { verdict: v.verdict, target: { kind: "fact", fact: f } };
       } else {
         const t = fresh[j];
-        if (!t || j >= i || scopeKey(t.scopeLevel, t.scopeId) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
+        if (!t || j >= i || t.section !== g.section || scopeKey(t.scopeLevel, t.scopeId) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
         res[i] = { verdict: v.verdict, target: { kind: "new", index: j } };
       }
     }
@@ -479,7 +517,9 @@ Leave out facts that merely touch the same topic but each say different things (
  * touched. No student is told: nothing a renter was told has changed.
  * Runs after each whole-site read; `dryRun` only reports.
  *
- * Returns [{ keep: { key, summary }, merged, removed: [{ key, summary }] }].
+ * Returns [{ keep: { id, key, summary }, factId, merged, removed: [{ id, key, summary }] }],
+ * factId being the merged fact's id now (the weekly read counts it as still
+ * said).
  */
 export async function tidyDuplicates({ listingId, cause = "sync", actorId = null, dryRun = false }) {
   const { data: protectedRows } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
@@ -519,18 +559,31 @@ export async function tidyDuplicates({ listingId, cause = "sync", actorId = null
     if (members.some((f) => nums(f.summary).some((n) => !have.has(n)))) continue;
     const removed = members.filter((f) => f.id !== keep.id);
     for (const f of members) used.add(f.id);
+    let factIdNow = keep.id;
     if (!dryRun) {
-      if (merged !== keep.summary) {
-        await setFact({
-          listingId, section: keep.section, fieldKey: keep.field_key, value: keep.value ?? {}, summary: merged,
-          scopeLevel: keep.scope_level, scopeId: keep.scope_id, sourceId: keep.source_id, sourceRef: keep.source_ref,
-          excerpt: keep.excerpt, confidence: keep.confidence, validFrom: keep.valid_from, validUntil: keep.valid_until,
-          cause, actorId, detail: { sourceKind: "page", reason: "merged repeated facts", mergedKeys: removed.map((f) => f.field_key) },
-        });
+      // One group at a time: a failed write leaves the other groups to go
+      // ahead, and is logged (PR 475 review).
+      try {
+        if (merged !== keep.summary) {
+          // The structured details of every member, the kept fact's winning
+          // where two say the same field.
+          const value = Object.assign({}, ...removed.map((f) => f.value ?? {}), keep.value ?? {});
+          const r = await setFact({
+            listingId, section: keep.section, fieldKey: keep.field_key, value, summary: merged,
+            scopeLevel: keep.scope_level, scopeId: keep.scope_id, sourceId: keep.source_id, sourceRef: keep.source_ref,
+            excerpt: keep.excerpt, confidence: keep.confidence, validFrom: keep.valid_from, validUntil: keep.valid_until,
+            cause, actorId, detail: { sourceKind: "page", reason: "merged repeated facts", mergedKeys: removed.map((f) => f.field_key) },
+          });
+          if (r.held || !r.fact?.id) continue;
+          factIdNow = r.fact.id;
+        }
+        for (const f of removed) await retireFact({ factId: f.id, cause, actorId, detail: { reason: "merged into another fact", keptKey: keep.field_key } });
+      } catch (err) {
+        console.error(`[agents] duplicate tidy on ${listingId} (${keep.field_key}) failed:`, err?.message ?? err);
+        continue;
       }
-      for (const f of removed) await retireFact({ factId: f.id, cause, actorId, detail: { reason: "merged into another fact", keptKey: keep.field_key } });
     }
-    out.push({ keep: { id: keep.id, key: keep.field_key, summary: keep.summary }, merged, removed: removed.map((f) => ({ id: f.id, key: f.field_key, summary: f.summary })) });
+    out.push({ keep: { id: keep.id, key: keep.field_key, summary: keep.summary }, factId: factIdNow, merged, removed: removed.map((f) => ({ id: f.id, key: f.field_key, summary: f.summary })) });
   }
   return out;
 }
