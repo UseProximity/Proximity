@@ -40,7 +40,9 @@ import {
   splitFor,
   parseGroupRange,
   extractCardData,
+  perPersonRentOf,
 } from "@/lib/matchmaking/listingFilter";
+import { loadHiddenRents, withHiddenRents } from "@/lib/listings/hiddenRents";
 import { PRIORITY_WEIGHTS } from "@/lib/matchmaking/questionScript";
 import { neighborhoodOfListing } from "@/lib/geo/neighborhoods";
 import { parsePreferences } from "./parsePreferences";
@@ -314,10 +316,25 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 // known, so the caller can count it while commute times and the model pick
 // are still running (PR 447 review).
 export async function findMatches({ answers, text, chips, viewerGender = null, onBrowse = null }) {
-  const [{ parsed, usage: parseUsage, source: parseSource }, everything] = await Promise.all([
+  // All three reads at once: the hidden prices do not wait on the listings.
+  const [{ parsed, usage: parseUsage, source: parseSource }, rows, hidden] = await Promise.all([
     parsePreferences(text, chips),
     fetchActiveListings(),
+    loadHiddenRents(),
   ]);
+  const published = { rows, hidden };
+  /*
+   * Hidden website prices (lib/listings/hiddenRents.js): an unpriced lease is
+   * ranked at the price its landlord's own website shows, but that figure is
+   * never shown. Everything a student sees (the card price, the note, the
+   * model's reason, the saved card data) comes from the published listing or
+   * leaves the price out.
+   */
+  const { listings: everything, hiddenLeaseIds } = withHiddenRents(published.rows, published.hidden);
+  const publishedById = Object.fromEntries(published.rows.map((l) => [l.id, l]));
+  const hasHidden = new Set(
+    everything.filter((l) => (l.listing_units ?? []).some((u) => (u.unit_leases ?? []).some((x) => hiddenLeaseIds.has(x.id)))).map((l) => l.id)
+  );
   const { preferences, weights } = toRankingInputs(answers, parsed, text, viewerGender);
 
   const cutoff = answers.moveIn && answers.moveIn !== NO_PREFERENCE ? moveInCutoff(answers.moveIn) : null;
@@ -374,6 +391,20 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
    * the caps = a close match. Anything else is left out.
    */
   const perPersonOf = (id) => perPersonById[id] ?? null;
+  // The price this place was ranked at came from a hidden website price, not
+  // the listing: the matched lease's, or (no lease resolved) a cheapest price
+  // the published listing does not have.
+  const hiddenPriced = (id) => {
+    if (perPersonById[id] == null || !hasHidden.has(id)) return false;
+    // A matched lease with a price of its own: hidden or not by that lease.
+    // An unpriced match is ranked at the listing's cheapest price instead,
+    // which is judged below like a listing with no lease resolved.
+    const offer = offerById[id];
+    if (offer?.leaseId && offer.perPerson != null) return hiddenLeaseIds.has(offer.leaseId);
+    const pub = publishedById[id];
+    return !pub || perPersonRentOf(pub) !== Math.round(perPersonById[id]);
+  };
+  const budgetText = preferences.budget_max ? money(preferences.budget_max) : null;
   const missesById = {};
   const closeOk = {};
   const offById = {};
@@ -385,7 +416,9 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
     let offBy = 0;
     const relax = relaxById[l.id];
     for (const r of relax ? relax.all ?? [relax] : []) {
-      misses.push({ kind: r.constraint, detail: r.detail });
+      // Over budget on a hidden price: say so without the figure.
+      const hiddenOver = r.constraint === "budget" && hiddenPriced(l.id);
+      misses.push({ kind: r.constraint, detail: hiddenOver ? `likely runs over your ${budgetText ?? "budget"}${budgetText ? " budget" : ""}` : r.detail });
       const pp = perPersonOf(l.id);
       if (r.constraint === "budget" && preferences.budget_max && pp != null) {
         const over = pp / preferences.budget_max - 1;
@@ -470,10 +503,13 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
     const utilities = Object.entries((Array.isArray(l.listing_utilities) ? l.listing_utilities[0] : l.listing_utilities) ?? {})
       .filter(([, v]) => v === true)
       .map(([k]) => k.replace(/_/g, " "));
+    const hiddenPrice = hiddenPriced(l.id);
     return {
       ...slimCandidate(l, offerById[l.id]),
+      // A hidden price never reaches the model, so its reason cannot quote it.
+      ...(hiddenPrice ? { per_person_rent: null, unit_rent: null, rent_basis: null } : {}),
       score: Math.round(scoreById[l.id] * 100) / 100,
-      price_listed: perPersonById[l.id] != null,
+      price_listed: perPersonById[l.id] != null && !hiddenPrice,
       near_miss: missesById[l.id].map((m) => m.detail).join("; ") || null,
       neighborhood: neighborhoodOfListing(l)?.displayName ?? null,
       requires_unit_split: !!splitById[l.id],
@@ -560,14 +596,17 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
   for (const l of ordered) if (reasonById[l.id] === undefined) ranked.push(l);
 
   const chosen = [];
-  // At most one pick without a listed rent while priced places are still
-  // available (the chat ranker's rule): one strong unpriced lead is worth a
-  // message to the owner, a page of them is guesswork.
-  const priced = (l) => perPersonById[l.id] != null;
+  /*
+   * At most two picks without a price on the card while priced places are
+   * still available (Wyatt, 2026-11-23; it was one before hidden prices). A
+   * hidden-priced place counts as one: the student sees no price for it.
+   */
+  const MAX_NO_PRICE_CARDS = 2;
+  const priced = (l) => perPersonById[l.id] != null && !hiddenPriced(l.id);
   const take = (listing, relaxed = false) => {
     if (!listing || chosen.length >= MATCH_COUNT) return false;
     if (chosen.some((c) => c.listing.id === listing.id || sameComplex(c.listing, listing))) return false;
-    if (!relaxed && !priced(listing) && chosen.some((c) => !priced(c.listing))) return false;
+    if (!relaxed && !priced(listing) && chosen.filter((c) => !priced(c.listing)).length >= MAX_NO_PRICE_CARDS) return false;
     chosen.push({ listing, reason: reasonById[listing.id] || null });
     return true;
   };
@@ -624,7 +663,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
   const fallbackReason = (l) => {
     const parts = [];
     const pp = perPersonById[l.id];
-    if (pp != null) parts.push(`${money(pp)} per person`);
+    if (pp != null && !hiddenPriced(l.id)) parts.push(`${money(pp)} per person`);
     const minutes = minutesOf(l.id);
     if (minutes != null) parts.push(`${aOrAn(minutes)} ${minutes} min ${commute.mode.unit}`);
     const furnished = offerById[l.id]?.furnished ?? l.furnished ?? null;
@@ -642,6 +681,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
    * across units is priced per person. No price = "Contact for Pricing".
    */
   const priceFor = (id) => {
+    if (hiddenPriced(id)) return null;
     const offer = offerById[id];
     if (offer) {
       if (!offer.priced) return null;
@@ -661,6 +701,14 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
     if (splitById[id]) notes.push(`Your group would take ${splitById[id].count} units in the same building.`);
     if (roomShareById[id]) notes.push("This is a private room in a place with current tenants.");
     if (perPersonById[id] == null) notes.push("Rent isn't listed, so confirm it with the owner.");
+    else if (hiddenPriced(id)) {
+      // Only when the matched unit's own lease has the hidden price: a
+      // building's cheapest other unit says nothing about this one.
+      const offer = offerById[id];
+      const ownPrice = !offer?.leaseId || (hiddenLeaseIds.has(offer.leaseId) && offer.perPerson != null);
+      const inBudget = ownPrice && preferences.budget_max != null && perPersonById[id] <= preferences.budget_max;
+      notes.push(inBudget ? "Rent isn't listed, but it's likely in your budget. Confirm it with the owner." : "Rent isn't listed, so confirm it with the owner.");
+    }
     return {
       listing_id: id,
       score: Math.round(scoreById[id] * 100) / 100,
@@ -669,7 +717,8 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
       price: priceFor(id),
       near_miss: missesById[id].length > 0,
       unit_split: splitById[id] ?? null,
-      card_data: extractCardData(listing),
+      // From the published listing, so a hidden price never lands in saved card data.
+      card_data: extractCardData(hasHidden.has(id) ? publishedById[id] ?? listing : listing),
     };
   });
 
