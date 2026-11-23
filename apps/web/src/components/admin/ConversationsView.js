@@ -283,7 +283,8 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
   const agent = thread.kind === "agent";
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
   const landlord = people.find((p) => p.side === "landlord");
-  const student = people.find((p) => p.side === "student");
+  // An asker who left the thread has no participant row but is still the student.
+  const student = people.find((p) => p.side === "student") ?? people.find((p) => p.id === thread.studentId);
 
   // Messages and blocked attempts on one timeline.
   const timeline = useMemo(() => {
@@ -312,7 +313,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
         </div>
         <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
           <p>
-            <Badge color={student?.testing ? "amber" : "gray"}>{student?.testing ? `${student.testing} testing own listing` : student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
+            <Badge color={student?.testing ? "amber" : "gray"}>{student?.testing === "landlord" ? "landlord testing own listing" : student?.testing ? "staff testing" : student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
             <span className="font-medium text-gray-900">{student || !thread.visitor ? <PersonLink id={student?.id}>{personLabel(student)}</PersonLink> : visitorLabel(thread.visitor)}</span>
             {student?.email && <span className="text-gray-400"> · {student.email}</span>}
             {student?.emailMode && <span className="text-purple-700"> · replying by email</span>}

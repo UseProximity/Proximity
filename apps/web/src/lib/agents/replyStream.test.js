@@ -100,3 +100,49 @@ test("replyStreamer holds the reply when nothing can be sent to the landlord", (
   feed('{"intent":"question","answered_keys":["a"],"unanswered_questions":[{"question":"Sublets?"}],"reply":"Unfurnished. I\'ve asked the landlord');
   assert.equal(shown, "");
 });
+
+// Cases from the PR 473 review.
+test("withoutAskClaims catches curly apostrophes, passive and pass-along claims", () => {
+  for (const t of [
+    "Sure. I’ve asked the landlord about parking.",
+    "Good question! Your question has been sent to the landlord.",
+    "The landlord has been notified.",
+    "Thanks, I've passed it along.",
+    "I've passed your question about parking to the landlord.",
+  ]) {
+    const r = withoutAskClaims(t);
+    assert.equal(r.removed, true, t);
+    assert.ok(!/landlord|passed/i.test(r.text), `${t} -> ${r.text}`);
+  }
+});
+
+test("withoutAskClaims keeps answers that only mention the landlord", () => {
+  for (const t of [
+    "I've checked the listing and the landlord doesn't allow pets.",
+    "I am happy to let you know the owner covers water.",
+    "I can't pass this on to the landlord right now.",
+    "Want me to ask the landlord?",
+  ]) assert.deepEqual(withoutAskClaims(t), { text: t, removed: false }, t);
+});
+
+test("withoutAskClaims does not split at St. Louis or a price", () => {
+  const r = withoutAskClaims("Rent is $1,295.50 a month. I've asked the landlord whether the St. Louis parking permit is included.");
+  assert.equal(r.text, "Rent is $1,295.50 a month.");
+});
+
+test("withoutAskClaims drops a dangling lead-in after a cut, not only at the start", () => {
+  const r = withoutAskClaims("Apt N is unfurnished. I've asked the landlord about subletting. In the meantime, tap the calendar button to tour.");
+  assert.equal(r.text, "Apt N is unfurnished. Tap the calendar button to tour.");
+});
+
+test("replyStreamer shows nothing live when nothing can be sent, even a full answer", () => {
+  let shown = "";
+  const feed = replyStreamer({ onDelta: (d) => { shown += d; }, isUsedKey: () => true, canAsk: false });
+  feed('{"intent":"question","answered_keys":["fees.application"],"unanswered_questions":[],"reply":"The fee is $50. I\'ve passed your other question to the landlord.');
+  assert.equal(shown, "");
+});
+
+test("withoutAskClaims catches a long gap before the landlord and \"I'll post their answer\"", () => {
+  const r = withoutAskClaims("I'm passing your Early Access request for Apt N with a July 1, 2027 start on to the landlord. I'll post their answer here.");
+  assert.equal(r.text, "");
+});

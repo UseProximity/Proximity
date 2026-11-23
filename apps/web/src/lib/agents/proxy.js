@@ -147,6 +147,16 @@ async function countInquiry({ listingId, userId }) {
 }
 
 /*
+ * What to say when cutting a false "I've asked the landlord" left nothing,
+ * worded by what the student was after rather than one line for everything.
+ */
+function emptyReplyFor(intent, ctx) {
+  if (["apply", "negotiate"].includes(intent) && !ctx.hasLiveLease) return "Nothing here is on offer right now, so there's no one to apply to.";
+  if (intent === "small_talk") return "Happy to help. What would you like to know about this place?";
+  return "I don't have that information.";
+}
+
+/*
  * Returns { messages: [new chat_messages rows], outcome, questionIds, error? }.
  * `testMode`: a landlord trying their own listing, or staff on one not live yet. Real answers, but
  * nothing is logged as a student question, counted or sent to a landlord.
@@ -156,7 +166,7 @@ async function countInquiry({ listingId, userId }) {
  * it seconds sooner (Wyatt, 2026-11-01). A route passes next/server's after;
  * without it the work runs before returning, as it always did.
  */
-export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false, defer = null, onReplyDelta = null }) {
+export async function handleStudentMessage({ thread, body, userId = null, visitorId = null, ip = null, leaseId = null, testMode = false, testAs = null, defer = null, onReplyDelta = null }) {
   const started = Date.now();
   const timings = {};
   const mark = (step) => { timings[step] = Date.now() - started; };
@@ -281,8 +291,10 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     if (!canAsk) {
       const cut = withoutAskClaims(reply);
       if (cut.removed) {
-        const why = !ctx.hasLiveLease ? "" : testMode ? "This is a test chat on your own listing, so nothing was sent to the landlord." : !userId ? "Sign in and I can ask the landlord for you." : "";
-        reply = `${cut.text} ${why}`.trim() || "I don't have that information.";
+        const why = !ctx.hasLiveLease ? ""
+          : testMode ? (testAs === "staff" ? "This is a test chat, so nothing was sent to the landlord." : "This is a test chat on your own listing, so nothing was sent to the landlord.")
+          : !userId ? "Sign in and I can ask the landlord for you." : "";
+        reply = `${cut.text} ${why}`.trim() || emptyReplyFor(final.intent, ctx);
       }
     }
     const usedKeys = (final.answered_keys ?? []).filter((k) => factByKey.has(k));

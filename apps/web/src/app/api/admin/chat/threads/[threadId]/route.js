@@ -171,13 +171,6 @@ export async function GET(req, { params }) {
         : null;
     }
 
-    // A landlord (or staff member) trying Proxy on their own listing is not a student.
-    const asker = people.get(thread.interested_user_id);
-    if (isProxy && asker && thread.listing_id) {
-      const { data: owns } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", thread.listing_id).eq("user_id", asker.id).limit(1);
-      asker.testing = testingAs(asker, (owns ?? []).length > 0);
-    }
-
     // A sender who left the thread has no participant row; name them from users.
     const missing = [...new Set((messages ?? []).map((m) => m.sender_id))].filter((id) => id && !people.has(id));
     if (missing.length > 0) {
@@ -185,6 +178,17 @@ export async function GET(req, { params }) {
       for (const u of extra ?? []) {
         people.set(u.id, { id: u.id, name: u.name, email: u.email, role: u.roles?.name ?? null, side: "other" });
       }
+    }
+
+    // A landlord or staff member trying Proxy is not a student. Read after the
+    // senders who left are added, so a tester who left keeps the label.
+    const asker = people.get(thread.interested_user_id);
+    if (isProxy && asker && thread.listing_id) {
+      const [{ data: tests }, { data: owns }] = await Promise.all([
+        supabase.from("listing_agent_questions").select("id").eq("thread_id", threadId).eq("outcome", "test").limit(1),
+        supabase.from("listing_landlords").select("user_id").eq("listing_id", thread.listing_id).eq("user_id", asker.id).limit(1),
+      ]);
+      asker.testing = testingAs(asker, { wasTest: (tests ?? []).length > 0, ownsThisListing: (owns ?? []).length > 0 });
     }
 
     const attachmentsByMessage = new Map();
