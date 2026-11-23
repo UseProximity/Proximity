@@ -23,7 +23,7 @@ import { createHash } from "crypto";
 import supabase from "@/lib/supabase";
 import { fetchPage, fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent, retireFact } from "./store";
-import { synthesizeKnowledge, applyProposals } from "./synthesize";
+import { synthesizeKnowledge, applyProposals, tidyDuplicates } from "./synthesize";
 import { crawlSite, MAX_CRAWL_PAGES, isLanguageCopy, twinKey } from "./crawl";
 import { foundUrlSet } from "./foundRead";
 import { MAX_FOUND_PAGES } from "./foundUrls";
@@ -198,6 +198,13 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     await supabase.from("listing_sources").update({ last_checked_at: readAt, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash, next_check_at: new Date(Date.now() + 7 * 86400000).toISOString() }).eq("id", p.source.id);
   }
   totals.copies = copyIds.length;
+  totals.merged = applied.merged;
+  // Near-copies stored by earlier reads, once the site was actually read.
+  if (readPages.length) {
+    onStep("Tidying repeated facts");
+    const tidied = await tidyDuplicates({ listingId, cause, actorId }).catch(() => []);
+    totals.tidied = tidied.reduce((n, g) => n + g.removed.length, 0);
+  }
 
   // Known pages that failed for another reason: counted, so after
   // STALE_AFTER_FAILURES in a row their facts read as stale.

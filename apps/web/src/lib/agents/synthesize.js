@@ -29,7 +29,7 @@ import supabase from "@/lib/supabase";
 import { currentFacts, setFact, retireFact } from "./store";
 import { buildProxyContext } from "./context";
 import { SECTIONS, UNCLAIMED_OWNER_ID } from "./sections";
-import { postCorrections } from "./corrections";
+import { postCorrections, numbersOf } from "./corrections";
 
 const Operation = z.object({
   op: z.enum(["set", "retire", "keep"]).describe("'keep' only when asked to confirm facts the pages still say unchanged."),
@@ -295,6 +295,11 @@ export async function synthesizeKnowledge({
  *
  * Here every batch's proposals for one fact are weighed together, once,
  * against the facts as they are now:
+ *   - a proposal under a key the listing does not have yet is first checked
+ *     against the facts it has (findDuplicates): the model often files the
+ *     same thing under a new key (misc.design-details beside misc.design),
+ *     which piled up near-copies every week. A duplicate changes nothing; a
+ *     fuller version of an existing fact replaces it under the existing key;
  *   - any proposal that only rewords the current fact keeps it (the site
  *     still says it), so nothing is written and no student is told;
  *   - a fact a batch confirmed is still on its page (a 'keep', `confirmed`)
@@ -304,28 +309,72 @@ export async function synthesizeKnowledge({
  *   - otherwise the fullest proposal (the longest summary) is written, so a
  *     page that mentions something briefly never replaces a fuller version.
  *
- * Returns { written, unchanged, held, touched }.
+ * Returns { written, unchanged, held, merged, touched }.
  */
+const scopeKey = (scopeLevel, scopeId) => `${scopeLevel}|${scopeLevel === "property" ? "" : scopeId ?? ""}`;
+const factId = (section, key, scopeLevel, scopeId) => `${section}|${key}|${scopeKey(scopeLevel, scopeId)}`;
+const len = (t) => String(t ?? "").length;
+
 export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set() }) {
-  const out = { written: 0, unchanged: 0, held: 0, touched: [] };
+  const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [] };
   if (!proposals?.length) return out;
   const facts = await currentFacts(listingId);
+  const byId = new Map(facts.map((f) => [factId(f.section, f.field_key, f.scope_level, f.scope_id), f]));
   const groups = new Map();
   for (const p of proposals) {
-    const id = `${p.section}|${p.key}|${p.scopeLevel}|${p.scopeLevel === "property" ? "" : p.scopeId ?? ""}`;
-    if (!groups.has(id)) groups.set(id, []);
-    groups.get(id).push(p);
+    const id = factId(p.section, p.key, p.scopeLevel, p.scopeId);
+    if (!groups.has(id)) groups.set(id, { section: p.section, key: p.key, scopeLevel: p.scopeLevel, scopeId: p.scopeId, current: byId.get(id) ?? null, props: [] });
+    groups.get(id).props.push(p);
   }
+
+  // New keys checked against what the listing already knows.
+  const fresh = [...groups.entries()].filter(([, g]) => !g.current);
+  const others = facts.filter((f) => f.section !== "core" && f.section !== "specials");
+  if (fresh.length && (others.length || fresh.length > 1)) {
+    const verdicts = await findDuplicates({ listingId, facts: others, fresh: fresh.map(([, g]) => g) });
+    fresh.forEach(([id, g], i) => {
+      const v = verdicts[i];
+      if (!v || v.verdict === "new") return;
+      const target = v.target;
+      if (target?.kind === "fact") {
+        const f = target.fact;
+        const tid = factId(f.section, f.field_key, f.scope_level, f.scope_id);
+        groups.delete(id);
+        out.merged++;
+        if (v.verdict === "duplicate") {
+          if (!groups.has(tid)) { out.unchanged++; out.touched.push(f.id); }
+          return;
+        }
+        if (!groups.has(tid)) groups.set(tid, { section: f.section, key: f.field_key, scopeLevel: f.scope_level, scopeId: f.scope_id, current: f, props: [] });
+        groups.get(tid).props.push(...g.props);
+        groups.get(tid).fromMerge = true;
+      } else if (target?.kind === "new") {
+        const [tid, tg] = fresh[target.index];
+        if (!groups.has(tid) || tid === id) return;
+        groups.delete(id);
+        out.merged++;
+        tg.props.push(...g.props);
+      }
+    });
+  }
+
   const changes = [];
-  for (const group of groups.values()) {
-    const { section, key, scopeLevel, scopeId } = group[0];
-    const current = facts.find((f) => f.field_key === key && f.section === section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null));
-    if (current && (confirmed.has(current.id) || group.some((p) => sameFactReworded(current, p)))) {
+  for (const g of groups.values()) {
+    const { section, key, scopeLevel, scopeId, current, props } = g;
+    if (!props.length) continue;
+    const best = props.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
+    const keep = current && (confirmed.has(current.id) || props.some((p) => sameFactReworded(current, p))
+      // A fact found under another key only replaces the existing one when
+      // it is the fuller of the two.
+      || (g.fromMerge && len(best.summary) < len(current.summary))
+      // A noticeably shorter version with the same amounts, times and dates
+      // is a page saying less, not a change (11/23: 38 facts lost detail).
+      || (len(best.summary) < len(current.summary) * 0.8 && numbersOf(best.summary) === numbersOf(current.summary)));
+    if (keep) {
       out.unchanged++;
       out.touched.push(current.id);
       continue;
     }
-    const best = group.reduce((a, b) => (String(b.summary ?? "").length > String(a.summary ?? "").length ? b : a));
     const r = await setFact({
       listingId, section, fieldKey: key, value: best.value, summary: best.summary, scopeLevel, scopeId,
       sourceId: best.sourceId, sourceRef: best.sourceRef, excerpt: best.excerpt, confidence: best.confidence,
@@ -337,6 +386,151 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
   }
   if (changes.length && cause !== "seed") {
     postCorrections({ listingId, changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+  }
+  return out;
+}
+
+const DupVerdict = z.object({
+  verdicts: z.array(z.object({
+    n: z.number().int().describe("The N number of the new fact."),
+    verdict: z.enum(["new", "duplicate", "update"]),
+    target: z.string().nullable().describe("For duplicate or update: the E number of the existing fact (E4) or the N number of an earlier new fact (N2). Null for new."),
+  })),
+});
+const DUP_SYSTEM = `You keep the knowledge base of one rental listing tidy. You get the facts it already has (E1, E2...) and new facts just read from the listing's website (N1, N2...), each under a key the base does not have yet. For every new fact decide:
+
+- duplicate: an existing fact (or an earlier new fact) already says this; the new one adds nothing a renter would want. Rewordings, and narrower mentions of something a fuller fact covers, are duplicates.
+- update: it is about the very same subject as one existing fact (or earlier new fact) and is a fuller or newer statement of it that could replace it without losing anything that fact says.
+- new: anything else, including a separate detail on a related subject (a restricted-breeds list beside a general pet policy is new unless the pet policy already gives it).
+
+Only match facts that apply to the same thing (the same scope). When unsure, answer new.`;
+
+/*
+ * One model call per read: which facts under new keys are already known.
+ * Returns, per fresh group, { verdict, target: { kind: "fact", fact } |
+ * { kind: "new", index } | null }. A failed call treats everything as new,
+ * as before this check.
+ */
+export async function findDuplicates({ listingId, facts, fresh }) {
+  const show = (scopeLevel, scopeId, section, key, summary) => `[${section}] ${key}${scopeLevel !== "property" ? ` (${scopeLevel} ${scopeId})` : ""}: ${summary}`;
+  const text = [
+    "EXISTING FACTS",
+    facts.length ? facts.map((f, i) => `E${i + 1}. ${show(f.scope_level, f.scope_id, f.section, f.field_key, f.summary)}`).join("\n") : "(none)",
+    "",
+    "NEW FACTS",
+    fresh.map((g, i) => {
+      const best = g.props.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
+      return `N${i + 1}. ${show(g.scopeLevel, g.scopeId, g.section, g.key, best.summary)}`;
+    }).join("\n"),
+  ].join("\n");
+  try {
+    const { parsed } = await parseStructured({
+      model: SONNET, system: DUP_SYSTEM, messages: [{ role: "user", content: text }],
+      schema: DupVerdict, maxTokens: 4000, tag: "dedupe:page", listingId, kind: "synthesize",
+    });
+    const res = fresh.map(() => null);
+    for (const v of parsed?.verdicts ?? []) {
+      const i = v.n - 1;
+      if (i < 0 || i >= fresh.length || v.verdict === "new") continue;
+      const m = String(v.target ?? "").trim().match(/^([EN])(\d+)$/i);
+      if (!m) continue;
+      const j = Number(m[2]) - 1;
+      const g = fresh[i];
+      if (m[1].toUpperCase() === "E") {
+        const f = facts[j];
+        // Never across scopes: a lease's fee is not the building's.
+        if (!f || scopeKey(f.scope_level, f.scope_id) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
+        res[i] = { verdict: v.verdict, target: { kind: "fact", fact: f } };
+      } else {
+        const t = fresh[j];
+        if (!t || j >= i || scopeKey(t.scopeLevel, t.scopeId) !== scopeKey(g.scopeLevel, g.scopeId)) continue;
+        res[i] = { verdict: v.verdict, target: { kind: "new", index: j } };
+      }
+    }
+    return res;
+  } catch (err) {
+    console.error("[agents] duplicate check failed:", err?.message ?? err);
+    return fresh.map(() => null);
+  }
+}
+
+const TidyGroups = z.object({
+  groups: z.array(z.object({
+    members: z.array(z.string()).describe("F numbers of the facts that repeat each other, at least two."),
+    merged: z.string().describe("One summary that keeps every detail of every member, in plain words, adding nothing none of them says. One or two sentences."),
+    missing: z.array(z.string()).describe("Any detail of any member that 'merged' leaves out. Empty when it keeps everything."),
+  })),
+});
+const TIDY_SYSTEM = `You keep the knowledge base of one rental listing tidy. Earlier reads of its website sometimes stored the same thing two or three times under different keys (misc.design and misc.design-details, policy.pets and policy.restricted-breeds, misc.transit and misc.nearby-hospitals saying the same walk to the hospitals).
+
+Find groups of facts that are about the same subject and largely repeat each other. For each group write one summary that keeps every detail of every member: every name, amount, time, condition, place and step. Add nothing that none of them says, and say each point once, in words a student reads naturally. No names of people, phone numbers, emails, links or source names. Never use an em dash.
+
+Then check your summary against each member and list in 'missing' anything you left out.
+
+Leave out facts that merely touch the same topic but each say different things (parking fees and parking availability are separate). Only group facts in the same section ([fees] with [fees], [misc] with [misc]) that apply to the same thing (the same scope). When unsure, leave them out.`;
+
+/*
+ * Near-duplicates already stored (Wyatt, 2026-11-23): one model call per
+ * listing finds facts that repeat each other and merges each group into one
+ * fact under the fullest member's key, the others taken out. A group is
+ * merged only when the model's own check finds nothing left out and the
+ * merged text is at least as long as its longest member. What the landlord
+ * set or wrote in their description, core values and specials are never
+ * touched. No student is told: nothing a renter was told has changed.
+ * Runs after each whole-site read; `dryRun` only reports.
+ *
+ * Returns [{ keep: { key, summary }, merged, removed: [{ key, summary }] }].
+ */
+export async function tidyDuplicates({ listingId, cause = "sync", actorId = null, dryRun = false }) {
+  const { data: protectedRows } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
+  const protectedSources = new Set((protectedRows ?? []).map((r) => r.id));
+  const facts = (await currentFacts(listingId))
+    .filter((f) => f.section !== "core" && f.section !== "specials" && !f.landlord_set && !protectedSources.has(f.source_id));
+  if (facts.length < 2) return [];
+  const text = facts.map((f, i) => `F${i + 1}. [${f.section}] ${f.field_key}${f.scope_level !== "property" ? ` (${f.scope_level} ${f.scope_id})` : ""}: ${f.summary}`).join("\n");
+  let parsed = null;
+  try {
+    ({ parsed } = await parseStructured({
+      model: SONNET, system: TIDY_SYSTEM, messages: [{ role: "user", content: text }],
+      schema: TidyGroups, maxTokens: 6000, tag: "tidy:duplicates", listingId, kind: "synthesize",
+    }));
+  } catch (err) {
+    console.error("[agents] duplicate tidy failed:", err?.message ?? err);
+    return [];
+  }
+  const pick = (ref) => { const m = String(ref ?? "").trim().match(/^F(\d+)$/i); return m ? facts[Number(m[1]) - 1] ?? null : null; };
+  const out = [];
+  const used = new Set();
+  for (const g of parsed?.groups ?? []) {
+    if ((g.missing ?? []).length) continue;
+    const members = [...new Set((g.members ?? []).map(pick).filter(Boolean))].filter((f) => !used.has(f.id));
+    if (members.length < 2) continue;
+    if (new Set(members.map((f) => scopeKey(f.scope_level, f.scope_id))).size > 1) continue;
+    // Never across sections: a fee folded into a policy loses the fee row
+    // the listing's fee list and Proxy's fee answers read.
+    if (new Set(members.map((f) => f.section)).size > 1) continue;
+    const merged = String(g.merged ?? "").trim();
+    const keep = members.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
+    if (!merged || len(merged) < len(keep.summary) || len(merged) > 900) continue;
+    // Every amount, time or date in the members must still be in the merged
+    // text.
+    const nums = (t) => String(t ?? "").replace(/(\d),(\d{3})\b/g, "$1$2").match(/\d+(?:\.\d+)?/g) ?? [];
+    const have = new Set(nums(merged));
+    if (members.some((f) => nums(f.summary).some((n) => !have.has(n)))) continue;
+    const removed = members.filter((f) => f.id !== keep.id);
+    for (const f of members) used.add(f.id);
+    if (!dryRun) {
+      if (merged !== keep.summary) {
+        await setFact({
+          listingId, section: keep.section, fieldKey: keep.field_key, value: keep.value ?? {}, summary: merged,
+          scopeLevel: keep.scope_level, scopeId: keep.scope_id, sourceId: keep.source_id, sourceRef: keep.source_ref,
+          excerpt: keep.excerpt, confidence: keep.confidence, validFrom: keep.valid_from, validUntil: keep.valid_until,
+          cause, actorId, detail: { sourceKind: "page", reason: "merged repeated facts", mergedKeys: removed.map((f) => f.field_key) },
+        });
+      }
+      for (const f of removed) await retireFact({ factId: f.id, cause, actorId, detail: { reason: "merged into another fact", keptKey: keep.field_key } });
+    }
+    out.push({ keep: { id: keep.id, key: keep.field_key, summary: keep.summary }, merged, removed: removed.map((f) => ({ id: f.id, key: f.field_key, summary: f.summary })) });
   }
   return out;
 }
