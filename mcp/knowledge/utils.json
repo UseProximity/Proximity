@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-23T01:41:49.113Z",
-  "count": 365,
+  "_generated": "2026-11-23T20:50:10.517Z",
+  "count": 366,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -866,6 +866,10 @@
     {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
+    },
+    {
+      "file": "src/lib/listings/hiddenRents.js",
+      "description": "Hidden website prices (Wyatt, 2026-11-20; table lease_hidden_rents)."
     },
     {
       "file": "src/lib/listings/imageRefs.js",

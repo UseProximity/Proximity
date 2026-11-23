@@ -48,7 +48,7 @@ export default function ListingRecord({ id, dbTarget, isProd, isReadOnly, refres
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!row || !extra) return <div className="py-20 text-center text-sm text-gray-400">Loading record...</div>;
 
-  const { listing, agent, monitors, threads, tours, questions, numbers, coverage, activity } = extra;
+  const { listing, agent, monitors, threads, tours, questions, numbers, coverage, activity, hiddenPrices = [] } = extra;
   const avail = availability(row);
   const owners = row.listing_landlords || [];
   const openQuestions = questions.open ?? 0;
@@ -139,6 +139,7 @@ export default function ListingRecord({ id, dbTarget, isProd, isReadOnly, refres
               ))}
             </ul>
           )}
+          {hiddenPrices.length > 0 && <HiddenPrices prices={hiddenPrices} />}
         </Card>
       </div>
 
@@ -171,6 +172,36 @@ export default function ListingRecord({ id, dbTarget, isProd, isReadOnly, refres
       <Card title="Recent changes to this listing" count={activity.length}>
         <ActivityList rows={activity} showWho />
       </Card>
+    </div>
+  );
+}
+
+/*
+ * Website prices the sync keeps hidden on unpriced leases (Wyatt, 2026-11-20).
+ * Admins only: matchmaking ranks with them and Proxy gives a rough range, but
+ * students and landlords never see the figures.
+ */
+function HiddenPrices({ prices }) {
+  const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+  return (
+    <div className="mt-3 border-t border-gray-100 pt-3">
+      <p className="text-xs font-semibold text-gray-700">Website prices (hidden)</p>
+      <p className="mb-1.5 text-xs text-gray-500">Used for matching only. Students and landlords never see these.</p>
+      <ul className="space-y-1">
+        {prices.map((p) => (
+          <li key={p.leaseId} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-gray-800">{p.unit}</span>
+            <span className="font-medium text-gray-900">
+              {money(p.rent)}
+              {p.perPerson === true ? "/person" : p.perPerson === false ? "/unit" : ""}
+            </span>
+            {p.overridden && <Badge color="gray">landlord price set</Badge>}
+            {p.withdrawn && <Badge color="gray">withdrawn</Badge>}
+            {p.stale && !p.overridden && <Badge color="amber">stale, unused</Badge>}
+            <span className="ml-auto text-xs text-gray-500">seen {dayTime(p.seenAt)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

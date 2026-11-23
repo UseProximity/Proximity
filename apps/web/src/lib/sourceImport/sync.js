@@ -33,6 +33,7 @@ import { syncSpecials, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
 import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
 import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
+import { touchHiddenRents } from "@/lib/listings/hiddenRents";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -232,6 +233,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     const images = goDeep || force || gaps.overdue;
     const unchanged = !force && m.last_fingerprint === fp && !(images && gaps.any);
     let result = null;
+    // Same website as last time: its prices are still showing, so the hidden
+    // copies taken from them stay fresh for matchmaking.
+    if (unchanged) await touchHiddenRents(listing.id);
     if (!unchanged) {
       onStep("Saving");
       result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });

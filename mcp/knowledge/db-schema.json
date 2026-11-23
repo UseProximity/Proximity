@@ -1284,6 +1284,22 @@
         }
       },
       {
+        "table": "lease_hidden_rents",
+        "status": "unreleased",
+        "description": "Hidden website prices (feat/hidden-price, Wyatt 2026-11-20, migration 202611230001_lease_hidden_rents.sql). A lease with no public rent is the landlord's choice; when the landlord's own website shows a price anyway, the source sync (lib/sourceImport/apply.js planChanges -> applySnapshot) keeps it here instead of filling unit_leases.rent, on every sync read whether the run is held or auto-apply is off, and refreshes seen_at when the page is unchanged (sync.js). Read by lib/listings/hiddenRents.js: Find Your Place ranks with it (withHiddenRents in lib/findYourPlace/match.js) but never shows the figure (card price null, note 'likely in your budget', model candidates get no number, card_data from the published listing); Proxy's context (lib/agents/context.js proxyText only) gets a range rounded out to $100. Admin listing record shows it as 'Website prices (hidden)'. Rows older than 30 days (HIDDEN_RENT_MAX_AGE_DAYS) are ignored; a lease's public rent always wins.",
+        "columns": [
+          "lease_id:uuid",
+          "listing_id:uuid",
+          "rent:numeric",
+          "rent_is_per_person:bool",
+          "source_url:text",
+          "seen_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk lease_id; fk lease_id->unit_leases.id (cascade); listing_id->listings.id (cascade); index (listing_id); check rent > 0 and rent < 100000; rls: service role only (no policies, revoked from public, anon, authenticated)"
+      },
+      {
         "table": "lease_redlines",
         "status": "unused",
         "description": "Suggested lease edits with rationale + approval state. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
