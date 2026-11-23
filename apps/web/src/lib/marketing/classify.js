@@ -7,7 +7,8 @@
  *   1. src matches a registered campaign link: use the link's labels and
  *      store its id. A link wins over any UTMs on the same URL.
  *   2. utm_* present: use them as given (cleaned).
- *   3. src present but not registered: qr / offline / <src>.
+ *   3. src=share (the listing Share button): share / referral. Any other
+ *      unregistered src: qr / offline / <src>.
  *   4. gclid present with no UTMs: google / cpc.
  *   5. Nothing tagged: classify from the referring host; our own domain or
  *      no referrer is direct / none.
@@ -16,6 +17,9 @@
  * Shared by client and server; no "@/" imports (Node test runner loads it).
  */
 import { cleanTag, normalizeTag } from "./tags.js";
+
+// The tag utils/shareLink.js puts on every shared listing link.
+const SHARE_SRC_TAG = "share";
 
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
@@ -177,7 +181,11 @@ export function classifyVisit({ params, referrer, link = null, ownHosts = DEFAUL
     };
   }
 
-  // 3. Unregistered src (printed review QR codes, typos).
+  // 3. A listing shared by a visitor (components/listings/ShareButton), then
+  //    any other unregistered src (printed review QR codes, typos).
+  if (srcTag === SHARE_SRC_TAG) {
+    return { ...base, source: "share", medium: "referral", campaign: null, content: null, term: null, classified_from: "src" };
+  }
   if (srcTag) {
     return { ...base, source: "qr", medium: "offline", campaign: srcTag, content: null, term: null, classified_from: "src" };
   }

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-20T22:59:13.644Z",
-  "count": 366,
+  "_generated": "2026-11-23T04:44:13.183Z",
+  "count": 367,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -1438,6 +1438,10 @@
     {
       "file": "src/utils/reviewAddress.js",
       "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
+      "file": "src/utils/shareLink.js",
+      "description": "The link a listing share sends: always the public listing page,"
     },
     {
       "file": "src/utils/unitCounts.js",

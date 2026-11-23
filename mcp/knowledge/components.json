@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-19T22:51:42.977Z",
-  "count": 227,
+  "_generated": "2026-11-23T04:44:13.123Z",
+  "count": 228,
   "components": [
     {
       "name": "ErrorReporter",
@@ -791,6 +791,11 @@
     {
       "name": "ReviewsSection",
       "file": "src/components/listings/ReviewsSection.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ShareButton",
+      "file": "src/components/listings/ShareButton.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
