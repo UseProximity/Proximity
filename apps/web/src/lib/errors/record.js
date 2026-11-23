@@ -49,9 +49,26 @@ const IGNORE = [
   // they are not in, messaging about their own listing, an empty or too long
   // message. The app answers these properly; they are not breakages.
   /not a participant in this conversation|cannot start a chat about your own listing|message body (is required|exceeds)/i,
+  // Microsoft's email link scanner (Outlook Safe Links) opening links from our
+  // emails in a headless browser. Seen on /unsubscribe, /privacy and
+  // /review/finish; no real visitor is involved.
+  /Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+/,
 ];
 
-export function ignorable(message = "", stack = "") {
+/*
+ * A browser error whose every stack frame points at the page itself rather
+ * than a script file came from code a browser, extension or in-app browser
+ * put into the page (Brave's crypto wallet, share and reader tools). Our own
+ * code always runs from /_next/ script files. An error with no stack at all
+ * is kept, since we cannot tell where it came from.
+ */
+function injectedScript(stack) {
+  const frames = String(stack ?? "").split("\n").map((l) => l.trim()).filter((l) => /https?:\/\//.test(l));
+  return frames.length > 0 && frames.every((l) => !/\.(m?js|cjs)(\?|:|\)|$)/.test(l));
+}
+
+export function ignorable(message = "", stack = "", source = null) {
+  if (source === "browser" && injectedScript(stack)) return true;
   return IGNORE.some((re) => re.test(message) || re.test(stack));
 }
 
@@ -133,7 +150,7 @@ export async function recordError({ source, where = null, error = null, message 
     }
     const msg = String(message ?? error?.message ?? error ?? "Unknown error").slice(0, 2000);
     const stk = stack ?? (error && typeof error === "object" ? error.stack : null) ?? null;
-    if (!msg || ignorable(msg, stk ?? "")) return null;
+    if (!msg || ignorable(msg, stk ?? "", source)) return null;
     const fingerprint = createHash("sha256")
       .update([source, where ?? "", normalize(msg), topFrame(stk)].join("|"))
       .digest("hex")
