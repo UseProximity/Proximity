@@ -81,7 +81,7 @@ function LandlordVersionUpload({ request, busy, run, onOpenAgreements }) {
     let live = true;
     call("/api/admin/billing/agreement-versions")
       .then((r) => {
-        const standard = (r.versions ?? []).find((v) => v.status === "live" && v.kind === kind && !v.landlordId);
+        const standard = (r.versions ?? []).find((v) => v.status === "live" && v.kind === kind && !v.custom);
         if (live && standard) setLabel((prev) => prev || standard.label);
       })
       .catch(() => {});

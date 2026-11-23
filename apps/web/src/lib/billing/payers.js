@@ -138,15 +138,20 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, n
   if (state.signed && state.valid) {
     throw new BillingError("already_signed", "You already signed your marketing agreement. Contact us to void it before handing it to someone else.", 409);
   }
-  const own = await getLiveVersion(db, { kind: "master", landlordId: landlord.id });
-  if (own?.landlord_id) {
-    throw new BillingError("negotiated_terms", "Your agreement has terms made for your account, so it can't be handed to someone else. Contact us and we'll sort it out.", 409);
-  }
   if ((await payeeLinks(db, landlord.id)).length) {
     throw new BillingError("you_pay_for_others", "You are the authorized signer for other accounts, so you sign for yourself.", 409);
   }
 
   let payer = await userByEmail(db, input.email);
+  // Custom terms stay with the accounts they were made for, unless the signer is
+  // on the same custom version (Wyatt, 2026-11-22): then nothing changes hands.
+  const own = await getLiveVersion(db, { kind: "master", landlordId: landlord.id });
+  if (own?.audience === "selected") {
+    const theirs = payer ? await getLiveVersion(db, { kind: "master", landlordId: payer.id }) : null;
+    if (theirs?.id !== own.id) {
+      throw new BillingError("negotiated_terms", "Your agreement has terms made for your account, so it can't be handed to someone else. Contact us and we'll sort it out.", 409);
+    }
+  }
   let created = false;
   if (payer) {
     const role = payer.roles?.name ?? null;

@@ -192,6 +192,12 @@ begin
              status = case when status = 'live' then 'retired' else status end
        where provider_template_id is not null or status = 'live';
       update public.agreement_versions set status = 'draft' where status = 'ready';
+      -- A landlord is no longer on a custom version that was just retired.
+      if pg_temp.scrub_ok('agreement_version_landlords') then
+        update public.agreement_version_landlords l set live = false
+          from public.agreement_versions v
+         where l.version_id = v.id and l.live and v.status <> 'live';
+      end if;
     end if;
   end if;
 end $$;

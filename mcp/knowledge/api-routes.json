@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-19T22:46:04.591Z",
-  "count": 284,
+  "_generated": "2026-11-23T01:55:30.099Z",
+  "count": 285,
   "routes": [
     {
       "path": "/api/account",
@@ -188,6 +188,18 @@
       },
       "tables": [],
       "file": "src/app/api/admin/billing/agreement-versions/[id]/route.js"
+    },
+    {
+      "path": "/api/admin/billing/agreement-versions/landlord-flags",
+      "methods": [
+        "GET"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/agreement-versions/landlord-flags/route.js"
     },
     {
       "path": "/api/admin/billing/agreements",
