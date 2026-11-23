@@ -156,12 +156,15 @@ function knowledgeIndex(facts) {
  * replaced; one it refuses is kept and counted in `kept`.
  * `ownerDefault` scopes everything the text does not scope itself to one
  * owner's offer (an answer from a non-primary owner, PRD: "Ownership").
+ * `collect`, when given (an array), takes the 'set' operations instead of
+ * writing them: the weekly read runs several batches of pages at once and
+ * decides each fact once, after all of them (applyProposals below).
  */
 export async function synthesizeKnowledge({
   listingId, text, sourceKind, sourceId = null, sourceRef = null, cause,
   landlordSet = false, setBy = null, actorId = null, ownerDefault = null,
   question = null, observedAt = null, noRetire = false, pageSources = null,
-  canReplace = null, onlySections = null,
+  canReplace = null, onlySections = null, collect = null,
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty", touched: [] };
@@ -248,6 +251,14 @@ export async function synthesizeKnowledge({
     // From a batch of pages: the fact's own page is its source.
     const page = pageSources?.find((p) => p.n === op.page_number) ?? null;
     const validUntil = op.valid_until || null;
+    if (collect) {
+      collect.push({
+        section: op.section, key, scopeLevel, scopeId, value: parseValue(op.value_json), summary: op.summary,
+        sourceId: page?.sourceId ?? sourceId, sourceRef: page?.url ?? sourceRef, excerpt: op.excerpt, confidence: op.confidence,
+        validFrom: op.valid_from || null, validUntil,
+      });
+      continue;
+    }
     if (sourceKind === "page" && !landlordSet) {
       const current = facts.find((f) => f.field_key === key && f.section === op.section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null));
       if (current && sameFactReworded(current, { value: parseValue(op.value_json), summary: op.summary, validUntil })) {
@@ -266,10 +277,66 @@ export async function synthesizeKnowledge({
     if (r.fact?.id) result.touched.push(r.fact.id);
     // A fact that replaced an earlier one is a correction students may have
     // been told the old value of.
-    if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary });
+    if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
   if (result.changes.length && cause !== "seed") {
     postCorrections({ listingId, changes: result.changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return result;
+}
+
+/*
+ * The weekly read's write step (Wyatt, 2026-11-23). On 11/23 the read
+ * replaced 262 facts, 171 of them a fact the same run had written minutes
+ * earlier: the same text sits on many pages of a site (the About page in
+ * three languages, a footer on every floor plan page), batches of pages run
+ * three at a time, and each batch compared against the facts as they were
+ * when it started, so each copy wrote its own wording over the last.
+ *
+ * Here every batch's proposals for one fact are weighed together, once,
+ * against the facts as they are now:
+ *   - any proposal that only rewords the current fact keeps it (the site
+ *     still says it), so nothing is written and no student is told;
+ *   - a fact a batch confirmed is still on its page (a 'keep', `confirmed`)
+ *     is kept too: when two pages disagree (Grove Lofts' About page and its
+ *     Residents page give different office hours) the fact stays as it is
+ *     instead of flipping between them every week;
+ *   - otherwise the fullest proposal (the longest summary) is written, so a
+ *     page that mentions something briefly never replaces a fuller version.
+ *
+ * Returns { written, unchanged, held, touched }.
+ */
+export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set() }) {
+  const out = { written: 0, unchanged: 0, held: 0, touched: [] };
+  if (!proposals?.length) return out;
+  const facts = await currentFacts(listingId);
+  const groups = new Map();
+  for (const p of proposals) {
+    const id = `${p.section}|${p.key}|${p.scopeLevel}|${p.scopeLevel === "property" ? "" : p.scopeId ?? ""}`;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(p);
+  }
+  const changes = [];
+  for (const group of groups.values()) {
+    const { section, key, scopeLevel, scopeId } = group[0];
+    const current = facts.find((f) => f.field_key === key && f.section === section && f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null));
+    if (current && (confirmed.has(current.id) || group.some((p) => sameFactReworded(current, p)))) {
+      out.unchanged++;
+      out.touched.push(current.id);
+      continue;
+    }
+    const best = group.reduce((a, b) => (String(b.summary ?? "").length > String(a.summary ?? "").length ? b : a));
+    const r = await setFact({
+      listingId, section, fieldKey: key, value: best.value, summary: best.summary, scopeLevel, scopeId,
+      sourceId: best.sourceId, sourceRef: best.sourceRef, excerpt: best.excerpt, confidence: best.confidence,
+      validFrom: best.validFrom, validUntil: best.validUntil, cause, actorId, detail: { sourceKind: "page" },
+    });
+    if (r.held) out.held++; else if (r.changed) out.written++; else out.unchanged++;
+    if (r.fact?.id) out.touched.push(r.fact.id);
+    if (r.changed && r.event?.previous_fact_id) changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
+  }
+  if (changes.length && cause !== "seed") {
+    postCorrections({ listingId, changes }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+  }
+  return out;
 }

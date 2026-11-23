@@ -21,6 +21,53 @@ const SKIP = /\.(pdf|jpe?g|png|gif|webp|svg|ico|css|js|xml|zip|mp4|mov|mp3|docx?
 const PRIORITY = /(amenit|faq|question|fee|pricing|price|pet|parking|garage|polic|rule|utilit|neighbo|location|area|features|floor|plan|availab|special|offer|concession|contact|about|gallery|tour|lease|move|package|accessib)/i;
 const SITE_WIDE = /(faq|question|polic|rule|fee|pet|parking|contact|about|amenit)/i;
 
+/*
+ * A translated copy of a page (/es-cl/about, /it/about, ?lang=fr): the same
+ * facts as the English page in other words, so reading it only rewrites
+ * them (Grove Lofts, 2026-11-23: one office-hours fact written three times
+ * in one run, and a student told twice). English copies (/en/, /en-us/) are
+ * kept. The listing's own start URL is never skipped.
+ */
+// Codes that are also everyday path words or English sites (no, id, hi, uk)
+// are left out, and a suffix must be a region (es-cl) or a script (zh-hans),
+// so /no-pets and /it-support are still read.
+const LANGS = "es|fr|de|it|pt|zh|ja|ko|ru|ar|nl|pl|tr|vi|sv|da|fi|el|cs|ro|hu|fa|ur|bn";
+const LANG_PATH = new RegExp(`^/(?:${LANGS})(?:[-_](?:[a-z]{2}|hans|hant|latn))?(?:/|$)`, "i");
+export function isTranslatedCopy(url) {
+  try {
+    const u = new URL(url);
+    if (LANG_PATH.test(u.pathname)) return true;
+    for (const k of ["lang", "hl", "locale", "language"]) {
+      const v = u.searchParams.get(k);
+      if (v && !/^en\b/i.test(v)) return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+/*
+ * Sites with many languages (frontdoorstl.com has /pa/, /sl/, /es-cl/...)
+ * link every page's copies from a language menu. A link /xx/<path> whose
+ * /<path> the read already has is one of those copies, whatever the code.
+ * Returns the English twin's URL, or null.
+ */
+export function localeTwin(url) {
+  try {
+    const u = new URL(url);
+    const m = u.pathname.match(/^\/([a-z]{2,3}(?:[-_][a-z]{2,4})?)(\/.*)?$/i);
+    if (!m) return null;
+    u.pathname = m[2] || "/";
+    return u.toString().replace(/\/$/, "");
+  } catch { return null; }
+}
+const twinKey = (u) => String(u ?? "").replace(/[#?].*$/, "").replace(/\/+$/, "").toLowerCase();
+export function isLanguageCopy(url, haveUrl) {
+  if (isTranslatedCopy(url)) return true;
+  const twin = localeTwin(url);
+  return !!twin && haveUrl(twinKey(twin));
+}
+export { twinKey };
+
 function normalize(raw, base) {
   try {
     const u = new URL(raw, base);
@@ -66,7 +113,7 @@ export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () =
   const prefix = propertyPrefix(start);
   const inScope = (u) => {
     try {
-      if (host(u) !== site || SKIP.test(u)) return false;
+      if (host(u) !== site || SKIP.test(u) || isTranslatedCopy(u)) return false;
       if (allowUrl && !allowUrl(u)) return false;
       if (!prefix) return true;
       const path = new URL(u).pathname;
@@ -75,6 +122,7 @@ export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () =
   };
 
   const seen = new Set([start]);
+  const seenKeys = new Set([twinKey(start)]);
   const queue = [start];
   const pages = [];
   while (queue.length && pages.length < max) {
@@ -95,7 +143,9 @@ export async function crawlSite(startUrl, { max = MAX_CRAWL_PAGES, onPage = () =
       onPage(pages.length, p.url);
       for (const link of linksIn(p.html, p.url)) {
         if (seen.has(link) || !inScope(link)) continue;
+        if (isLanguageCopy(link, (k) => seenKeys.has(k))) continue;
         seen.add(link);
+        seenKeys.add(twinKey(link));
         queue.push(link);
       }
     }

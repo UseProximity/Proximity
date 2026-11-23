@@ -23,8 +23,8 @@ import { createHash } from "crypto";
 import supabase from "@/lib/supabase";
 import { fetchPage, fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent, retireFact } from "./store";
-import { synthesizeKnowledge } from "./synthesize";
-import { crawlSite, MAX_CRAWL_PAGES } from "./crawl";
+import { synthesizeKnowledge, applyProposals } from "./synthesize";
+import { crawlSite, MAX_CRAWL_PAGES, isLanguageCopy, twinKey } from "./crawl";
 import { foundUrlSet } from "./foundRead";
 import { MAX_FOUND_PAGES } from "./foundUrls";
 import { givenUrlsFor, givenSiteFilter } from "@/lib/sourceSync/givenSites";
@@ -98,7 +98,8 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
 
   // Pages the agent knows from earlier reads that this crawl did not reach.
   const crawled = new Set(pages.map((p) => sameUrl(p.url)));
-  const known = await knownPageUrls(listingId).catch(() => []);
+  const have = new Set([...pages.map((p) => twinKey(p.url))]);
+  const known = (await knownPageUrls(listingId).catch(() => [])).filter((u) => !isLanguageCopy(u, (k) => have.has(k)));
   const gonePages = [];
   const failedPages = [];
   for (const url of known.filter((u) => !crawled.has(sameUrl(u))).slice(0, MAX_RECHECKS)) {
@@ -111,6 +112,14 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
 
   const changed = [];
   const unchangedIds = [];
+  // Pages not sent to the model because another page says the same: an exact
+  // copy (the same page at two addresses), or a page in another language
+  // (2026-11-23). Facts already filed under one are left as they are: the
+  // missed-reads rule only counts pages that were read, and the page that
+  // says the same may be unchanged this week, so counting the copy could take
+  // out a fact the site still says.
+  const copyIds = [];
+  const seenText = new Set();
   // Everything the site says this week, whole pages, changed or not: a fact
   // whose own words are still on the site has not gone (noteMissingFacts).
   const siteText = [];
@@ -120,6 +129,12 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     const source = await findOrCreateSource({ listingId, kind: "page", url: p.url, label: p.url, checkIntervalDays: 7 });
     if (text.length < 80) continue;
     siteText.push(normText(full));
+    const copyOf = createHash("sha256").update(normText(full)).digest("hex");
+    if (sameUrl(p.url) !== sameUrl(startUrl) && (seenText.has(copyOf) || isLanguageCopy(p.url, (k) => have.has(k) && k !== twinKey(p.url)))) {
+      copyIds.push(source.id);
+      continue;
+    }
+    seenText.add(copyOf);
     const hash = createHash("sha256").update(text).digest("hex").slice(0, 32);
     if (!force && source.last_fingerprint === hash) {
       await supabase.from("listing_sources").update({ last_checked_at: new Date().toISOString(), last_status: "unchanged", last_error: null, consecutive_failures: 0 }).eq("id", source.id);
@@ -140,6 +155,10 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const totals = { pages: pages.length, read: changed.length, written: 0, held: 0, unchanged: 0, retired: 0, missed: 0, gone: gonePages.length };
   const touched = new Set();
   const readIds = [];
+  // What every batch proposes, written once after all of them
+  // (synthesize.js applyProposals), and the pages to mark read after that.
+  const proposals = [];
+  const readPages = [];
   let done = 0;
   const runBatch = async (batch) => {
     const text = batch.map((p, i) => `=== PAGE ${i + 1}: ${p.url} ===\n${p.text}`).join("\n\n");
@@ -147,17 +166,13 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     // noRetire: a batch is a few pages of the site, so a fact it does not
     // mention may well be on another page. Taking facts out is left to the
     // missed-reads rule below, which sees the whole site.
-    const r = await synthesizeKnowledge({ listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url, cause, actorId, pageSources, noRetire: true });
+    const r = await synthesizeKnowledge({ listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url, cause, actorId, pageSources, noRetire: true, collect: proposals });
     totals.written += r.written ?? 0; totals.held += r.held ?? 0; totals.unchanged += r.unchanged ?? 0; totals.retired += r.retired ?? 0;
     for (const id of r.touched ?? []) touched.add(id);
     // A batch the model could not read says nothing about what is missing,
     // and its pages are read again next week.
     if (r.failed) return;
-    const now = new Date().toISOString();
-    for (const p of batch) {
-      readIds.push(p.source.id);
-      await supabase.from("listing_sources").update({ last_checked_at: now, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash, next_check_at: new Date(Date.now() + 7 * 86400000).toISOString() }).eq("id", p.source.id);
-    }
+    readPages.push(...batch);
     done++;
     onStep(`Saving what the site says (${done} of ${batches.length})`);
   };
@@ -170,6 +185,19 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     }
     await Promise.all(batches.slice(i, i + 3).map(runBatch));
   }
+  // Each fact decided once, against the facts as they are now.
+  onStep("Saving what the site says");
+  const applied = await applyProposals({ listingId, proposals, cause, actorId, confirmed: touched });
+  totals.written += applied.written; totals.held += applied.held; totals.unchanged += applied.unchanged;
+  for (const id of applied.touched) touched.add(id);
+  // Only now are the pages marked read: a run cut off before the write above
+  // leaves them to be read again.
+  const readAt = new Date().toISOString();
+  for (const p of readPages) {
+    readIds.push(p.source.id);
+    await supabase.from("listing_sources").update({ last_checked_at: readAt, last_status: "changed", last_error: null, consecutive_failures: 0, last_fingerprint: p.hash, next_check_at: new Date(Date.now() + 7 * 86400000).toISOString() }).eq("id", p.source.id);
+  }
+  totals.copies = copyIds.length;
 
   // Known pages that failed for another reason: counted, so after
   // STALE_AFTER_FAILURES in a row their facts read as stale.
