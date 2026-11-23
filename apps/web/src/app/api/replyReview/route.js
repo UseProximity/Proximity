@@ -6,14 +6,16 @@ import { checkReviewText } from "@/lib/contentRules";
 import { reviewEditRateLimited } from "@/lib/reviews/rateLimit";
 
 /*
- * POST   /api/replyReview { reviewId, reply }  primary landlord replies to a review
- * PATCH  /api/replyReview { replyId, reply }   author edits their reply
- * DELETE /api/replyReview { replyId }          author deletes their reply
+ * POST   /api/replyReview { reviewId, reply }  a landlord on the listing replies to a review
+ * PATCH  /api/replyReview { replyId, reply }   a landlord on the listing edits the reply
+ * DELETE /api/replyReview { replyId }          a landlord on the listing deletes the reply
  *
- * PATCH and DELETE are author only: the reply's user_id is read from the row
- * and compared with the session. Edits keep the no-names rule and stamp
- * edited_at for the "Edited" label. Delete is a hard delete so the landlord can
- * reply again later (review_id is unique); action_log keeps a copy.
+ * The reply speaks for the listing, so every landlord linked to it (primary or
+ * co-landlord) can post, edit and delete it, not just whoever wrote it. That way
+ * a team keeps control of its replies when the person who wrote one leaves.
+ * Edits keep the no-names rule and stamp edited_at for the "Edited" label.
+ * Delete is a hard delete so the team can reply again later (review_id is
+ * unique); action_log keeps a copy and records who made each change.
  *
  * @auth user
  */
@@ -54,16 +56,12 @@ export async function POST(req) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    const { data: landlordLink } = await supabase
-      .from("listing_landlords")
-      .select("is_primary")
-      .eq("listing_id", review.listing_id)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-
-    if (!landlordLink?.is_primary) {
+    if (!(await isListingLandlord(review.listing_id, session.user.id))) {
       console.log("POST /api/reviewReply failed: User not authorized to reply");
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Only landlords on this listing can reply to its reviews." },
+        { status: 403 }
+      );
     }
 
     const { data: newReply, error } = await insertAsUser(supabase, {
@@ -77,10 +75,16 @@ export async function POST(req) {
     });
 
     if (error) {
-      // review_id is unique: a review gets one reply.
+      // review_id is unique: a review gets one reply. When a teammate got
+      // there first, send theirs back so the card can show it.
       if (error.code === "23505") {
+        const { data: existing } = await supabase
+          .from("listing_review_replies")
+          .select("id, reply, created_at, updated_at, edited_at, user_id")
+          .eq("review_id", reviewId)
+          .maybeSingle();
         return NextResponse.json(
-          { error: "This review already has a reply" },
+          { error: "A reply to this review was already posted.", reply: existing ?? null },
           { status: 409 }
         );
       }
@@ -98,14 +102,26 @@ export async function POST(req) {
   }
 }
 
+// Any landlord linked to the listing, primary or not. Billing-only accounts
+// hold no listing links, so they never pass.
+async function isListingLandlord(listingId, userId) {
+  const { data } = await supabase
+    .from("listing_landlords")
+    .select("user_id")
+    .eq("listing_id", listingId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /*
  * Shared gate for PATCH and DELETE: signed in, valid id, under the rate limit,
- * and the reply exists and was written by this account. Returns { reply } or
- * { response } to send back as-is.
+ * and the reply exists on a listing this account is a landlord of. Returns
+ * { reply } or { response } to send back as-is.
  */
-async function loadOwnReply(replyId) {
+async function loadTeamReply(replyId) {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
@@ -127,7 +143,7 @@ async function loadOwnReply(replyId) {
 
   const { data: reply, error } = await supabase
     .from("listing_review_replies")
-    .select("id, user_id, reply")
+    .select("id, user_id, reply, review:listing_reviews!review_id(listing_id)")
     .eq("id", replyId)
     .maybeSingle();
 
@@ -135,8 +151,12 @@ async function loadOwnReply(replyId) {
     console.error("[replyReview] reply lookup failed:", error.message);
     return { response: NextResponse.json({ error: "Server error" }, { status: 500 }) };
   }
-  // Someone else's reply gets the same answer as a missing one.
-  if (!reply || reply.user_id !== userId) {
+  // A reply on someone else's listing gets the same answer as a missing one.
+  // Access follows the listing, so an author removed from it loses it too.
+  const allowed =
+    reply?.review?.listing_id &&
+    (await isListingLandlord(reply.review.listing_id, userId));
+  if (!allowed) {
     return { response: NextResponse.json({ error: "Reply not found" }, { status: 404 }) };
   }
 
@@ -146,7 +166,7 @@ async function loadOwnReply(replyId) {
 export async function PATCH(req) {
   try {
     const { replyId, reply: text } = await req.json().catch(() => ({}));
-    const { reply, userId, response } = await loadOwnReply(replyId);
+    const { reply, userId, response } = await loadTeamReply(replyId);
     if (response) return response;
 
     const trimmed = typeof text === "string" ? text.trim() : "";
@@ -186,7 +206,7 @@ export async function PATCH(req) {
 export async function DELETE(req) {
   try {
     const { replyId } = await req.json().catch(() => ({}));
-    const { reply, userId, response } = await loadOwnReply(replyId);
+    const { reply, userId, response } = await loadTeamReply(replyId);
     if (response) return response;
 
     const { error } = await deleteAsUser(supabase, {
