@@ -155,7 +155,7 @@ export async function validSignerIds(db, ids) {
   const rows = await inChunks(ids, async (chunk) => {
     const withVersion = await db
       .from("landlord_agreements")
-      .select("user_id, agreement_version:agreement_versions!version_id(published_at, landlord_id)")
+      .select("user_id, agreement_version:agreement_versions!version_id(published_at, audience)")
       .in("user_id", chunk)
       .eq("status", "signed");
     if (!withVersion.error) return withVersion.data;
@@ -169,7 +169,7 @@ export async function validSignerIds(db, ids) {
   // date in the app, so a signed one never lapses.
   return new Set(
     rows
-      .filter((r) => r.agreement_version?.landlord_id || signatureStillValid(r.agreement_version?.published_at ?? null, cutoff))
+      .filter((r) => r.agreement_version?.audience === "selected" || signatureStillValid(r.agreement_version?.published_at ?? null, cutoff))
       .map((r) => r.user_id)
   );
 }
