@@ -304,7 +304,7 @@ async function dropStreetViewCover(listingId) {
  *            new plan goes up without them, and Sunday's read fills them in
  *            (a unit with no photos or no drawing is always topped up).
  */
-export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null, shadowedBy = new Map(), images = true, hidden = null }) {
+export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync = new Set(), takeover = null, shadowedBy = new Map(), images = true, hidden = null, syncBlanks = new Set() }) {
   const changes = [];
   const push = (c) => changes.push({ auto: true, ...c });
   const p = snapshot.property;
@@ -390,26 +390,35 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   const listingBasis = mode === "sync" ? basisAgreed(listingLeases) : null;
   const withBasis = (offers) => (listingBasis === null ? offers : offers.map((o) => (o.rent != null && o.rentIsPerPerson == null ? { ...o, rentIsPerPerson: listingBasis } : o)));
   /*
-   * Hidden prices (Wyatt, 2026-11-20). A lease with no public rent is the
-   * landlord's choice. On a sync, the website's price for it goes to the
-   * server-only hidden store (lib/listings/hiddenRents.js, pushed onto
-   * `hidden`), never to the public rent, and is neither a new lease nor a
-   * reason to withdraw that lease. On a listing where every lease is
-   * unpriced, a new plan from the website goes in unpriced too, with its
+   * Hidden prices (Wyatt, 2026-11-20; PR 474 review answers 2026-11-23). A
+   * lease with no public rent is the landlord's choice, unless the sync
+   * itself wrote it blank (a "call for price" read, `syncBlanks`): that is
+   * only a price not known yet, and a later read may publish one. On a
+   * sync, the website's price for a chosen blank goes to the server-only
+   * hidden store (lib/listings/hiddenRents.js, pushed onto `hidden`), never
+   * to the public rent, and is neither a new lease nor a reason to withdraw
+   * that lease. A listing whose landlord chose no prices at all keeps every
+   * plan unpriced, new ones and sold-out ones included, with the website
    * price hidden. A plan the website marks sold out is still withdrawn.
    */
   const hideFor = mode === "sync" && !pricesUnknown;
-  const listingAllBlank = hideFor && listingLeases.length > 0 && listingLeases.every((l) => l.rent == null);
-  const cheapestOffer = (offers) =>
-    (offers ?? []).filter((o) => o.rent != null).reduce((best, o) => (!best || o.rent < best.rent ? o : best), null);
-  const hiddenFrom = (o, basis) => ({ rent: o.rent, perPerson: o.rentIsPerPerson ?? basis ?? null });
+  const listingNoPrice =
+    hideFor && listingLeases.some((l) => l.rent == null && !syncBlanks.has(l.id)) && !listingLeases.some((l) => l.rent != null);
+  const blankIsChoice = (l) => l.rent == null && (listingNoPrice || !syncBlanks.has(l.id));
+  // Cheapest per person: a whole-unit price is split across its bedrooms
+  // before comparing, so the basis never decides which price wins.
+  const cheapestOffer = (offers, beds) => {
+    const each = (o) => (o.rentIsPerPerson === false ? o.rent / Math.max(1, Number(beds) || 1) : o.rent);
+    return (offers ?? []).filter((o) => o.rent != null).reduce((best, o) => (!best || each(o) < each(best) ? o : best), null);
+  };
+  const hiddenFrom = (o, basis, lease = null) => ({ rent: o.rent, perPerson: o.rentIsPerPerson ?? basis ?? lease?.rent_is_per_person ?? null });
   for (const { snap, db } of pairs) {
     const label = snap.name ?? `${snap.bedrooms ?? "?"} bed / ${snap.bathrooms ?? "?"} bath`;
     if (!db) {
       if (mode === "sync" && bareCoveredPlan(snap, state.listing_units)) continue;
       const misshapen = mode === "sync" && formatConflict(listingFormat, snap.name);
-      const hiddenNew = listingAllBlank && snap.available ? cheapestOffer(snap.offers) : null;
-      const noPublicPrice = pricesUnknown || !!hiddenNew;
+      const hiddenNew = listingNoPrice ? cheapestOffer(snap.offers, snap.bedrooms) : null;
+      const noPublicPrice = pricesUnknown || listingNoPrice;
       push({
         ...(misshapen ? { note: `listed as ${listingFormat === "plan" ? "floor plans" : "apartments"} here, so added as a draft` } : {}),
         kind: "unit_new",
@@ -482,15 +491,48 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       if (!byKey.has(k) || (byKey.get(k).unavailable && !l.unavailable)) byKey.set(k, l);
     }
     const offers = snap.available ? snap.offers : [];
-    // The landlord's unpriced leases on this plan take the website's cheapest
-    // price as their hidden price. When the plan has no public price at all,
-    // nothing public changes here.
-    const blankLive = hideFor ? mine.filter((l) => l.rent == null && !l.unavailable) : [];
-    const hiddenOffer = blankLive.length ? cheapestOffer(offers) : null;
+    /*
+     * The landlord's unpriced leases on this plan, live or withdrawn, take
+     * the website's cheapest price as their hidden price. One withdrawn
+     * while the plan was off the website comes back unpriced. When the plan
+     * has no public price at all, nothing else public changes here.
+     */
+    const blankMine = hideFor ? mine.filter(blankIsChoice) : [];
+    const hiddenOffer = blankMine.length ? cheapestOffer(offers, snap.bedrooms) : null;
     if (hiddenOffer) {
       const basis = basisAgreed(mine) ?? listingBasis;
-      for (const l of blankLive) hidden?.push({ leaseId: l.id, ...hiddenFrom(hiddenOffer, basis) });
+      for (const l of blankMine) hidden?.push({ leaseId: l.id, ...hiddenFrom(hiddenOffer, basis, l) });
+      if (!blankMine.some((l) => !l.unavailable)) {
+        const l = blankMine[0];
+        push({
+          kind: "unit_relisted",
+          unitKey: snap.key,
+          unitId: db.id,
+          leaseId: l.id,
+          field: "unavailable",
+          old: true,
+          new: false,
+          auto: withdrawnBySync.has(l.id),
+          judge: !withdrawnBySync.has(l.id),
+          detail: { op: "lease_update", leaseId: l.id, label, patch: { unavailable: false, is_active: true } },
+        });
+      }
       if (!mine.some((l) => l.rent != null && !l.unavailable)) continue;
+    }
+    // A plan with none of the owner's leases on a listing that shows no
+    // prices: it gets one unpriced lease, its website price hidden.
+    const noLeaseOffer = listingNoPrice && !mine.length ? cheapestOffer(offers, snap.bedrooms) : null;
+    if (noLeaseOffer) {
+      push({
+        kind: "lease_new",
+        unitKey: snap.key,
+        unitId: db.id,
+        field: "rent",
+        old: null,
+        new: { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] },
+        detail: { op: "lease_insert", unitId: db.id, label, offer: askForPrice, draft: false, hiddenRent: hiddenFrom(noLeaseOffer, listingBasis) },
+      });
+      continue;
     }
     /*
      * A price the website gives no basis for (per person or whole unit) is
@@ -529,7 +571,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
      * a price loses one. An import still creates one lease per price.
      */
     // An unpriced lease the website prices is kept: its price went to hidden.
-    const goneLeases = mine.filter((l) => !l.unavailable && !seen.has(leaseKey(l.rent, l.rent_is_per_person)) && !(hiddenOffer && l.rent == null));
+    const goneLeases = mine.filter((l) => !l.unavailable && !seen.has(leaseKey(l.rent, l.rent_is_per_person)) && !(hiddenOffer && blankIsChoice(l)));
     if (mode === "sync") {
       const byRent = (a, b) => (a.rent ?? 0) - (b.rent ?? 0);
       const pairsOffers = unmatchedOffers.filter((o) => o.rent != null).sort(byRent);
@@ -919,6 +961,7 @@ export async function executeChange(change, { state, userId }) {
       const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: row.id, values: row }] };
+      if (d.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
     case "lease_update": {
@@ -1190,14 +1233,20 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     const of = learnings.synced.get(`unit:${u.id}`)?.lookalikeOf;
     if (of && !u.published_at) shadowedBy.set(of, u.name ?? "unit");
   }
-  const hidden = [];
-  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover, shadowedBy, images, hidden });
-  // Hidden prices change nothing a student or landlord sees, so they are
-  // saved on every sync read, held run or not, auto-apply or not.
-  if (mode === "sync" && hidden.length) {
-    const saved = await saveHiddenRents({ listingId, rows: hidden, sourceUrl: snapshot.sourceUrl ?? state.source_url ?? null });
-    if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+  /*
+   * Leases the sync itself wrote with no rent and nobody has priced since:
+   * a "call for price" read, not the landlord's choice (learn.js keeps what
+   * the sync wrote).
+   */
+  const syncBlanks = new Set();
+  for (const u of state.listing_units) {
+    for (const l of u.unit_leases) {
+      const wrote = learnings.synced.get(`lease:${l.id}`);
+      if (l.rent == null && wrote && "rent" in wrote && wrote.rent == null) syncBlanks.add(l.id);
+    }
   }
+  const hidden = [];
+  const changes = planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync, takeover, shadowedBy, images, hidden, syncBlanks });
   const label = listingLabel ?? state.title ?? state.address;
   // The website's own name for a unit the landlord calls something else,
   // learned only from a run that was not skipped (learnableSiteName).
@@ -1332,6 +1381,18 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
     churn = churnCheck({ changes, existingLeases: existing, existingUnits: state.listing_units.length, policyRun, portalPriced });
     if (churn) holdReason = "churn_hold";
+  }
+
+  /*
+   * Hidden prices change nothing a student or landlord sees, so they do not
+   * wait on auto-apply or a high-confidence read (the reader rates most of
+   * LOCAL on Delmar's correct reads low). A run held because too much
+   * changed at once, the usual sign of a wrong website or a misread, saves
+   * none (Wyatt, 2026-11-23); the next good read fills them in.
+   */
+  if (mode === "sync" && hidden.length && holdReason !== "churn_hold") {
+    const saved = await saveHiddenRents({ listingId, rows: hidden, sourceUrl: snapshot.sourceUrl ?? state.source_url ?? null });
+    if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
   }
 
   // The units the website showed this time, stamped unless the read is held.

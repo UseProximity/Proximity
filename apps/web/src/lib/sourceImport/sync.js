@@ -33,7 +33,7 @@ import { syncSpecials, markStaleSources } from "@/lib/agents/pages";
 import { ensureAgent } from "@/lib/agents/store";
 import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
 import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
-import { touchHiddenRents } from "@/lib/listings/hiddenRents";
+import { hiddenRentsMissing, touchHiddenRents } from "@/lib/listings/hiddenRents";
 
 export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
   .split(",")
@@ -231,11 +231,14 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     // stops there as usual.
     const gaps = await photoGaps(listing.id, snapshot).catch(() => ({ any: false, overdue: false }));
     const images = goDeep || force || gaps.overdue;
-    const unchanged = !force && m.last_fingerprint === fp && !(images && gaps.any);
+    // An unpriced listing with no hidden prices yet takes one full pass even
+    // on an unchanged page, so its website prices get saved (PR 474 review).
+    const sameAsLast = !force && m.last_fingerprint === fp && !(images && gaps.any);
+    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id));
     let result = null;
     // Same website as last time: its prices are still showing, so the hidden
-    // copies taken from them stay fresh for matchmaking.
-    if (unchanged) await touchHiddenRents(listing.id);
+    // copies taken from it stay fresh for matchmaking.
+    if (unchanged) await touchHiddenRents(listing.id, [snapshot.sourceUrl, m.source_url]);
     if (!unchanged) {
       onStep("Saving");
       result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });

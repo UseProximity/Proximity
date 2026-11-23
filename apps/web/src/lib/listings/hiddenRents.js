@@ -22,15 +22,28 @@ const freshSince = () => new Date(Date.now() - HIDDEN_RENT_MAX_AGE_DAYS * 864000
  * Fresh hidden prices for the given listings: Map leaseId -> { rent, perPerson, seenAt }.
  * A failed read is an empty map, so ranking carries on without them.
  */
-export async function loadHiddenRents(listingIds) {
+// Pages of this many rows, under PostgREST's default 1,000 row cap.
+const PAGE = 1000;
+
+/*
+ * Fresh hidden prices: Map leaseId -> { rent, perPerson, seenAt }. For the
+ * given listings, or every listing when none are given (Find Your Place reads
+ * them all alongside the active listings). Paged, so none are silently cut
+ * off. A failed read is an empty map, so ranking carries on without them.
+ */
+export async function loadHiddenRents(listingIds = null) {
   const out = new Map();
-  const ids = [...new Set((listingIds ?? []).filter(Boolean))];
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await supabase
+  const ids = listingIds ? [...new Set(listingIds.filter(Boolean))] : null;
+  if (ids && !ids.length) return out;
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
       .from("lease_hidden_rents")
       .select("lease_id, rent, rent_is_per_person, seen_at")
-      .in("listing_id", ids.slice(i, i + 200))
-      .gte("seen_at", freshSince());
+      .gte("seen_at", freshSince())
+      .order("lease_id")
+      .range(from, from + PAGE - 1);
+    if (ids) q = q.in("listing_id", ids);
+    const { data, error } = await q;
     if (error) {
       console.error("[hiddenRents] read failed:", error.message);
       return new Map();
@@ -39,8 +52,8 @@ export async function loadHiddenRents(listingIds) {
       const rent = Number(r.rent);
       if (rent > 0) out.set(r.lease_id, { rent, perPerson: r.rent_is_per_person ?? null, seenAt: r.seen_at });
     }
+    if ((data ?? []).length < PAGE) return out;
   }
-  return out;
 }
 
 /*
@@ -68,25 +81,39 @@ export function withHiddenRents(listings, hidden) {
 }
 
 /*
- * A rough price range for Proxy: the cheapest to the priciest hidden price,
- * rounded out to the nearest $100 (Wyatt, 2026-11-20: a range, never the
- * exact figure). Per person and whole-unit prices are kept apart. A single
- * price still reads as a $100 band, so the figure itself never shows.
+ * The $100 band around some prices, always strictly wider than them: the
+ * low end is below the cheapest and the high end above the priciest, so
+ * neither end is ever a real price (a $1,500 price reads "$1,400 to $1,600",
+ * never "$1,500 to $1,600"). Returns { low, high } or null.
+ */
+export function roughBand(rents) {
+  const clean = (rents ?? []).map(Number).filter((n) => n > 0);
+  if (!clean.length) return null;
+  const low = Math.max(0, Math.floor((Math.min(...clean) - 1) / 100) * 100);
+  const high = Math.ceil((Math.max(...clean) + 1) / 100) * 100;
+  return { low, high };
+}
+
+/*
+ * A rough price range for Proxy (Wyatt, 2026-11-20: a range, never the exact
+ * figure). Per person, whole unit and unstated prices are kept apart, and an
+ * unstated one is never called per person or whole unit.
  * Returns e.g. "about $1,300 to $2,100 a month per person", or null.
  */
 export function roughRangeText(prices) {
   const dollars = (n) => `$${n.toLocaleString("en-US")}`;
-  const band = (rents) => {
-    if (!rents.length) return null;
-    let low = Math.floor(Math.min(...rents) / 100) * 100;
-    let high = Math.ceil(Math.max(...rents) / 100) * 100;
-    if (high <= low) high = low + 100;
-    if (low <= 0) low = 100;
-    return `${dollars(low)} to ${dollars(high)}`;
+  const text = (rents) => {
+    const b = roughBand(rents);
+    return b ? `${dollars(b.low)} to ${dollars(b.high)}` : null;
   };
-  const per = band(prices.filter((p) => p.perPerson === true).map((p) => p.rent));
-  const whole = band(prices.filter((p) => p.perPerson !== true).map((p) => p.rent));
-  const parts = [per && `about ${per} a month per person`, whole && `about ${whole} a month${per ? " for a whole unit" : ""}`].filter(Boolean);
+  const per = text(prices.filter((p) => p.perPerson === true).map((p) => p.rent));
+  const whole = text(prices.filter((p) => p.perPerson === false).map((p) => p.rent));
+  const unstated = text(prices.filter((p) => p.perPerson == null).map((p) => p.rent));
+  const parts = [
+    per && `about ${per} a month per person`,
+    whole && `about ${whole} a month for a whole unit`,
+    unstated && `about ${unstated} a month (not stated whether per person or for the whole unit)`,
+  ].filter(Boolean);
   return parts.length ? parts.join(", and ") : null;
 }
 
@@ -118,11 +145,39 @@ export async function saveHiddenRents({ listingId, rows, sourceUrl = null }) {
 }
 
 /*
- * The sync read the website and it had not changed since the last read: the
- * prices it showed then are still showing, so their hidden copies are fresh.
+ * The sync read a website and it had not changed since the last read: the
+ * prices it showed then are still showing, so the hidden copies taken from
+ * THAT website are fresh. Copies from another of the listing's sources are
+ * left to age out on their own.
  */
-export async function touchHiddenRents(listingId) {
-  if (!listingId) return;
-  const { error } = await supabase.from("lease_hidden_rents").update({ seen_at: new Date().toISOString() }).eq("listing_id", listingId);
+export async function touchHiddenRents(listingId, sourceUrls) {
+  const urls = [...new Set((sourceUrls ?? []).filter(Boolean))];
+  if (!listingId || !urls.length) return;
+  const { error } = await supabase
+    .from("lease_hidden_rents")
+    .update({ seen_at: new Date().toISOString() })
+    .eq("listing_id", listingId)
+    .in("source_url", urls);
   if (error) console.error("[hiddenRents] touch failed:", error.message);
+}
+
+/*
+ * Whether a listing has an unpriced live lease and no hidden price at all:
+ * then an unchanged page still needs one full pass to save them (the first
+ * read after this feature shipped, or after a held run saved none).
+ */
+export async function hiddenRentsMissing(listingId) {
+  if (!listingId) return false;
+  const [{ count: blanks, error: e1 }, { count: rows, error: e2 }] = await Promise.all([
+    supabase
+      .from("unit_leases")
+      .select("id, listing_units!inner(listing_id)", { count: "exact", head: true })
+      .eq("listing_units.listing_id", listingId)
+      .is("rent", null)
+      .is("deleted_at", null)
+      .eq("unavailable", false),
+    supabase.from("lease_hidden_rents").select("lease_id", { count: "exact", head: true }).eq("listing_id", listingId),
+  ]);
+  if (e1 || e2) return false;
+  return (blanks ?? 0) > 0 && (rows ?? 0) === 0;
 }

@@ -151,10 +151,13 @@ export async function buildProxyContext(listingId) {
   const hiddenOnRequest = units
     .flatMap((u) => (u.unit_leases ?? []).filter(isLiveLease))
     .filter((l) => !(Number(l.rent) > 0) && hidden.has(l.id))
-    .map((l) => hidden.get(l.id));
+    .map((l) => {
+      const h = hidden.get(l.id);
+      return { ...h, perPerson: h.perPerson ?? l.rent_is_per_person ?? null };
+    });
   const range = roughRangeText(hiddenOnRequest);
   const priceRangeLine = range
-    ? `ROUGH PRICE ESTIMATE for the leases shown as "price on request": ${range}. The landlord has not published a price. Only when a student asks about the price or rent of those leases, say the exact price is not listed and give this as a rough range ("roughly ..."). Never give a narrower or more exact figure, never say where the range comes from, and still send the exact price to the landlord as an unanswered question.`
+    ? `ROUGH PRICE ESTIMATE for the leases shown as "price on request": ${range}. The landlord has not published a price. Only when a student asks about the price or rent of those leases, say the exact price is not listed and give this as a rough range ("roughly ..."). Never give a narrower or more exact figure and never say where the range comes from. Still send the student's question about the exact price to the landlord as an unanswered question, in the student's words, with no figure or range in it.`
     : null;
   const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
   // How to apply is an instruction to Proxy alone, not listing data for the

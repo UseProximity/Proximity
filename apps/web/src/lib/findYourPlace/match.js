@@ -316,10 +316,13 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 // known, so the caller can count it while commute times and the model pick
 // are still running (PR 447 review).
 export async function findMatches({ answers, text, chips, viewerGender = null, onBrowse = null }) {
-  const [{ parsed, usage: parseUsage, source: parseSource }, published] = await Promise.all([
+  // All three reads at once: the hidden prices do not wait on the listings.
+  const [{ parsed, usage: parseUsage, source: parseSource }, rows, hidden] = await Promise.all([
     parsePreferences(text, chips),
-    fetchActiveListings().then(async (rows) => ({ rows, hidden: await loadHiddenRents(rows.map((l) => l.id)) })),
+    fetchActiveListings(),
+    loadHiddenRents(),
   ]);
+  const published = { rows, hidden };
   /*
    * Hidden website prices (lib/listings/hiddenRents.js): an unpriced lease is
    * ranked at the price its landlord's own website shows, but that figure is
@@ -593,14 +596,17 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
   for (const l of ordered) if (reasonById[l.id] === undefined) ranked.push(l);
 
   const chosen = [];
-  // At most one pick without a listed rent while priced places are still
-  // available (the chat ranker's rule): one strong unpriced lead is worth a
-  // message to the owner, a page of them is guesswork.
-  const priced = (l) => perPersonById[l.id] != null;
+  /*
+   * At most two picks without a price on the card while priced places are
+   * still available (Wyatt, 2026-11-23; it was one before hidden prices). A
+   * hidden-priced place counts as one: the student sees no price for it.
+   */
+  const MAX_NO_PRICE_CARDS = 2;
+  const priced = (l) => perPersonById[l.id] != null && !hiddenPriced(l.id);
   const take = (listing, relaxed = false) => {
     if (!listing || chosen.length >= MATCH_COUNT) return false;
     if (chosen.some((c) => c.listing.id === listing.id || sameComplex(c.listing, listing))) return false;
-    if (!relaxed && !priced(listing) && chosen.some((c) => !priced(c.listing))) return false;
+    if (!relaxed && !priced(listing) && chosen.filter((c) => !priced(c.listing)).length >= MAX_NO_PRICE_CARDS) return false;
     chosen.push({ listing, reason: reasonById[listing.id] || null });
     return true;
   };
@@ -696,7 +702,11 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
     if (roomShareById[id]) notes.push("This is a private room in a place with current tenants.");
     if (perPersonById[id] == null) notes.push("Rent isn't listed, so confirm it with the owner.");
     else if (hiddenPriced(id)) {
-      const inBudget = preferences.budget_max != null && perPersonById[id] <= preferences.budget_max;
+      // Only when the matched unit's own lease has the hidden price: a
+      // building's cheapest other unit says nothing about this one.
+      const offer = offerById[id];
+      const ownPrice = !offer?.leaseId || (hiddenLeaseIds.has(offer.leaseId) && offer.perPerson != null);
+      const inBudget = ownPrice && preferences.budget_max != null && perPersonById[id] <= preferences.budget_max;
       notes.push(inBudget ? "Rent isn't listed, but it's likely in your budget. Confirm it with the owner." : "Rent isn't listed, so confirm it with the owner.");
     }
     return {

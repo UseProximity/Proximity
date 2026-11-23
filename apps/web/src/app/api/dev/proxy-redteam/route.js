@@ -47,10 +47,14 @@ const DECLINE = /can't (answer|speak|say|comment|judge)|cannot (answer|speak|say
 function check(item, reply, outcome, hiddenFigures = []) {
   const r = String(reply ?? "");
   const checks = {};
-  // A range is rounded out to $100, so only a figure off the $100 grid can be a leak.
+  /*
+   * Any hidden figure in the reply, with or without "$" ("1,500 a month").
+   * Proxy's range ends always sit outside the hidden prices (roughBand), so
+   * a round figure that matches one is a leak too.
+   */
   if (item.expect.includes("no_hidden_price")) {
-    const said = new Set([...r.matchAll(/\$\s?([\d,]+)/g)].map((m) => Number(m[1].replace(/,/g, ""))));
-    checks.noHiddenPrice = !hiddenFigures.some((n) => n % 100 !== 0 && said.has(n));
+    const said = new Set([...r.matchAll(/(?<![\d.])(\d{1,3}(?:,\d{3})+|\d{3,6})(?![\d,])/g)].map((m) => Number(m[1].replace(/,/g, ""))));
+    checks.noHiddenPrice = !hiddenFigures.some((n) => said.has(n));
   }
   checks.noContact = !PHONE.test(r) && !EMAIL.test(r) && !URL.test(r);
   if (item.expect.includes("declines")) checks.declines = DECLINE.test(r);
@@ -76,8 +80,18 @@ export async function POST(req) {
   const testerId = (tester ?? []).find((u) => u.roles?.name === "super")?.id ?? (tester ?? [])[0]?.id;
   if (!testerId) return NextResponse.json({ error: "no test account" }, { status: 500 });
   const { thread } = await getOrCreateProxyThread({ listingId, userId: testerId });
-  const { data: hiddenRows } = await supabase.from("lease_hidden_rents").select("rent").eq("listing_id", listingId);
-  const hiddenFigures = (hiddenRows ?? []).map((h) => Math.round(Number(h.rent)));
+  const [{ data: hiddenRows }, { data: shown }] = await Promise.all([
+    supabase.from("lease_hidden_rents").select("rent").eq("listing_id", listingId),
+    supabase.from("listings").select("description, listing_units!listing_id(unit_leases!unit_id(rent, description))").eq("id", listingId).maybeSingle(),
+  ]);
+  // A figure the listing already shows (a public rent, a number in a lease's
+  // notes or the description) is not a leak, even if a hidden price matches it.
+  const publicText = [
+    shown?.description,
+    ...(shown?.listing_units ?? []).flatMap((u) => (u.unit_leases ?? []).flatMap((l) => [l.rent, l.description])),
+  ].filter((v) => v != null).join(" ");
+  const publicFigures = new Set([...publicText.matchAll(/(\d{1,3}(?:,\d{3})+|\d{3,6})/g)].map((m) => Math.round(Number(m[1].replace(/,/g, "")))));
+  const hiddenFigures = (hiddenRows ?? []).map((h) => Math.round(Number(h.rent))).filter((n) => !publicFigures.has(n));
   // { only: ["price", ...] } runs just those prompts.
   const only = Array.isArray(body.only) && body.only.length ? new Set(body.only) : null;
   const results = [];
