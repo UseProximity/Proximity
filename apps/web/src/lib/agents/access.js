@@ -40,6 +40,17 @@ export async function proxyActor(req) {
 
 const isStaff = (role) => role === "super" || role === "admin";
 
+/*
+ * Who is really talking in a Proxy chat that proxyAvailable put in test mode,
+ * for the admin view: "landlord" (their own listing), "staff", or null for a
+ * real student. Pure, so the admin routes can pass their own lookups.
+ */
+export function testingAs(user, ownsThisListing) {
+  if (!user) return null;
+  if (ownsThisListing) return "landlord";
+  return isStaff(user.role) ? "staff" : null;
+}
+
 async function ownsListing({ userId, listingId }) {
   if (!userId) return false;
   const { data } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", userId).limit(1);

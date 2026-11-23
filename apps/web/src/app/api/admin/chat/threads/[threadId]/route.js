@@ -6,6 +6,7 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { domainApprovable } from "@/lib/chat/replySenders";
 import { PROXY_USER_ID } from "@/lib/agents/threads";
 import { alertEmailsFor } from "@/lib/chat/alertRoutes";
+import { testingAs } from "@/lib/agents/access";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -168,6 +169,13 @@ export async function GET(req, { params }) {
       landlordPerson.lastAlert = last
         ? { to: last.to_email, kind: last.kind, status: last.status, at: last.created_at }
         : null;
+    }
+
+    // A landlord (or staff member) trying Proxy on their own listing is not a student.
+    const asker = people.get(thread.interested_user_id);
+    if (isProxy && asker && thread.listing_id) {
+      const { data: owns } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", thread.listing_id).eq("user_id", asker.id).limit(1);
+      asker.testing = testingAs(asker, (owns ?? []).length > 0);
     }
 
     // A sender who left the thread has no participant row; name them from users.

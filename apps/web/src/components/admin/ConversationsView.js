@@ -131,6 +131,7 @@ function ThreadRow({ t, selected, onSelect }) {
       <div className="flex items-center gap-2">
         <p className="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">
           {agent ? (t.student ? personLabel(t.student) : visitorLabel(t.visitor)) : personLabel(t.student)}{" "}
+          {agent && t.student?.testing && <span className="text-amber-700 font-normal">({t.student.testing}, testing) </span>}
           <span className="text-gray-400 font-normal">{agent ? "with" : "and"}</span> {agent ? "Proxy" : personLabel(t.landlord)}
         </p>
         {t.fromTour && <Badge color="green" title="Opened when a tour was confirmed or the landlord wrote to the student">From a tour</Badge>}
@@ -162,7 +163,7 @@ function Message({ m, sender, isLandlord, visitor = null }) {
   const flagged = m.flags.length > 0;
   const reasons = [...new Set(m.flags.flatMap((f) => f.reasons))];
   const who = m.fromProxy ? "Proxy" : sender ? personLabel(sender) : visitor ? visitorLabel(visitor) : "Unknown";
-  const role = m.fromProxy ? "agent" : sender?.side === "landlord" ? "landlord" : sender?.side === "student" ? "student" : !sender && visitor ? "visitor" : sender?.role || "user";
+  const role = m.fromProxy ? "agent" : sender?.testing ? `${sender.testing} (testing)` : sender?.side === "landlord" ? "landlord" : sender?.side === "student" ? "student" : !sender && visitor ? "visitor" : sender?.role || "user";
   return (
     <div
       className={`rounded-lg border px-3 py-2 ${
@@ -311,7 +312,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
         </div>
         <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
           <p>
-            <Badge color="gray">{student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
+            <Badge color={student?.testing ? "amber" : "gray"}>{student?.testing ? `${student.testing} testing own listing` : student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
             <span className="font-medium text-gray-900">{student || !thread.visitor ? <PersonLink id={student?.id}>{personLabel(student)}</PersonLink> : visitorLabel(thread.visitor)}</span>
             {student?.email && <span className="text-gray-400"> · {student.email}</span>}
             {student?.emailMode && <span className="text-purple-700"> · replying by email</span>}

@@ -129,7 +129,9 @@ export function replyStreamer({ onDelta, isUsedKey, canAsk }) {
       const used = (Array.isArray(done.answered_keys) ? done.answered_keys : []).filter(isUsedKey);
       const asks = (Array.isArray(done.unanswered_questions) ? done.unanswered_questions : []).filter((u) => String(u?.question ?? "").trim());
       // Mirrors "nothingAnswered" in proxy.js: that reply is replaced by one fixed line.
-      show = !(canAsk && asks.length && !used.length && !KEEPS_OWN_REPLY.has(done.intent));
+      show = !(canAsk && asks.length && !used.length && !KEEPS_OWN_REPLY.has(done.intent))
+        // Nothing can go to the landlord: a claim that it did is cut from the saved reply, so wait for that.
+        && !(!canAsk && (asks.length || ["apply", "negotiate"].includes(done.intent)));
     }
     if (!show || !reply) return;
     // Trailing spaces wait for the next word: "online " becomes "online, "
@@ -141,4 +143,25 @@ export function replyStreamer({ onDelta, isUsedKey, canAsk }) {
       sent = clean;
     }
   };
+}
+
+/*
+ * Sentences claiming Proxy asked (or will ask) the landlord, cut from a reply
+ * when nothing can be sent: a landlord testing their own listing, a visitor
+ * over the daily limit. The model is told not to say it and sometimes does
+ * anyway (Rosebury, 2026-11-18). Returns { text, removed }.
+ */
+const ASK_CLAIMS = [
+  /\b(I'?ve|I have|I'?ll|I will|I'?m|I am)\b[^.!?]*\b(ask|asked|asking|pass|passed|passing|send|sent|sending|forward\w*|check\w*|let)\b[^.!?]*\b(landlord|owner)\b/i,
+  /\bwill (post|let you know|share|update you)\b[^.!?]*\b(answer|respond|response|reply|hear)/i,
+  /\bwhen (they|the landlord|the owner) (respond|reply|answer|get back)/i,
+];
+export function withoutAskClaims(text) {
+  const sentences = String(text ?? "").match(/[^.!?\n]+[.!?]*\s*|\n+/g) ?? [];
+  const kept = sentences.filter((s) => !ASK_CLAIMS.some((re) => re.test(s)));
+  const removed = kept.length !== sentences.length;
+  if (!removed) return { text: String(text ?? ""), removed };
+  // "In the meantime, tour first" means nothing once the asking before it is gone.
+  const out = kept.join("").replace(/[ \t]+\n/g, "\n").trim().replace(/^(in the meantime|meanwhile),?\s+(\w)/i, (_, __, c) => c.toUpperCase());
+  return { text: out, removed };
 }

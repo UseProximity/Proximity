@@ -1,7 +1,7 @@
 // node --test apps/web/src/lib/agents/replyStream.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { scanFinalJson, replyStreamer, normalizeFinal } from "./replyStream.js";
+import { scanFinalJson, replyStreamer, normalizeFinal, withoutAskClaims } from "./replyStream.js";
 
 const FULL = JSON.stringify({
   intent: "question", answered_keys: ["fees.application"], unanswered_questions: [], clarifier_reply: false,
@@ -79,4 +79,24 @@ test("normalizeFinal fixes fields of the wrong type", () => {
   assert.deepEqual(f.unanswered_questions, [{ question: "Pets?", lease_number: 0 }, { question: "Parking?", lease_number: 2 }]);
   assert.equal(f.reply, "");
   assert.equal(f.intent, "question");
+});
+
+test("withoutAskClaims cuts claims that the landlord was asked", () => {
+  const r = withoutAskClaims("Apt N is unfurnished. I don't have information on subletting. I've asked the landlord about both and will post the answer here.");
+  assert.equal(r.removed, true);
+  assert.equal(r.text, "Apt N is unfurnished. I don't have information on subletting.");
+  const e = withoutAskClaims("I'm passing your Early Access request on to the landlord, and I'll post their answer here. In the meantime, tap the calendar button to tour.");
+  assert.equal(e.text, "Tap the calendar button to tour.");
+});
+
+test("withoutAskClaims leaves ordinary answers alone", () => {
+  const t = "Yes, you can tour in person. Booking a tour through Proximity also puts you in touch with the owner directly.";
+  assert.deepEqual(withoutAskClaims(t), { text: t, removed: false });
+});
+
+test("replyStreamer holds the reply when nothing can be sent to the landlord", () => {
+  let shown = "";
+  const feed = replyStreamer({ onDelta: (d) => { shown += d; }, isUsedKey: () => true, canAsk: false });
+  feed('{"intent":"question","answered_keys":["a"],"unanswered_questions":[{"question":"Sublets?"}],"reply":"Unfurnished. I\'ve asked the landlord');
+  assert.equal(shown, "");
 });
