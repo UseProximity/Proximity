@@ -1302,6 +1302,22 @@
         }
       },
       {
+        "table": "lease_hidden_rents",
+        "status": "unreleased",
+        "description": "Hidden website prices (feat/hidden-price, Wyatt 2026-11-20, migration 202611230001_lease_hidden_rents.sql). A lease with no public rent is the landlord's choice, unless the sync itself wrote it blank (a 'call for price' read, known from listing_sync_learnings synced rows), which is just a price not known yet. When the landlord's own website shows a price for a chosen blank, the source sync (lib/sourceImport/apply.js planChanges -> applySnapshot) keeps it here instead of filling unit_leases.rent; a listing whose landlord chose no prices keeps new, sold-out and lease-less plans unpriced too (the insert carries detail.hiddenRent). Saved whether or not auto-apply is on or the read is low confidence, but never from a run held for churn (PR 474 review, Wyatt 2026-11-23). An unchanged page refreshes seen_at only for rows from that same source_url, and a listing with unpriced live leases and no rows forces one full pass (sync.js hiddenRentsMissing). Read by lib/listings/hiddenRents.js: Find Your Place ranks with it (withHiddenRents in lib/findYourPlace/match.js) but never shows the figure (card price null, note 'likely in your budget' only when the matched unit's own lease is hidden-priced and within budget, at most two no-visible-price cards, model candidates get no number, card_data from the published listing); Proxy's context (lib/agents/context.js proxyText only) gets a $100 band strictly wider than the prices (roughBand), so neither end is a real price. Admin listing record shows it as 'Website prices (hidden)'. Rows older than 30 days (HIDDEN_RENT_MAX_AGE_DAYS) are ignored; a lease's public rent always wins.",
+        "columns": [
+          "lease_id:uuid",
+          "listing_id:uuid",
+          "rent:numeric",
+          "rent_is_per_person:bool",
+          "source_url:text",
+          "seen_at:timestamptz",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "status=unreleased; pk lease_id; fk lease_id->unit_leases.id (cascade); listing_id->listings.id (cascade); index (listing_id); check rent > 0 and rent < 100000; rls: service role only (no policies, revoked from public, anon, authenticated)"
+      },
+      {
         "table": "lease_redlines",
         "status": "unused",
         "description": "Suggested lease edits with rationale + approval state. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation. Part of the May 2026 lease pipeline that was never wired up (no code on any branch). Retirement pending confirmation.",
