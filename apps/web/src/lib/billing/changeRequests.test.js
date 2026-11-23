@@ -175,7 +175,8 @@ describe("opening a request", () => {
       () => createChangeRequest(db, { user: OTHER, body: "x", agreementId: "agreement-lana" }),
       (e) => e.code === "bad_document"
     );
-    db.tables.agreement_versions.push({ id: "v-other", landlord_id: OTHER.id });
+    db.tables.agreement_versions.push({ id: "v-other", audience: "selected" });
+    (db.tables.agreement_version_landlords ??= []).push({ version_id: "v-other", landlord_id: OTHER.id, kind: "master", live: true, removed_at: null });
     await assert.rejects(() => open(db, { versionId: "v-other" }), (e) => e.code === "bad_document");
     assert.equal(db.tables.agreement_change_requests?.length ?? 0, 0);
   });
@@ -260,7 +261,7 @@ describe("an accepted request", () => {
     assert.equal(accepted.status, "accepted");
     assert.equal(sent[0][1].outcome, "accepted");
 
-    db.tables.agreement_versions.push({ id: "v-lana", landlord_id: LANDLORD.id, change_request_id: id });
+    db.tables.agreement_versions.push({ id: "v-lana", audience: "selected", change_request_id: id });
     // Signing the standard version does not resolve it.
     assert.equal(await resolveChangeRequestOnSigned(db, { userId: LANDLORD.id, versionId: "v-standard" }), "unchanged");
     // Another landlord signing something cannot resolve it.

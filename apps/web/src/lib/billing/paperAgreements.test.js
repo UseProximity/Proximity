@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
+import { addCustomVersion, fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { agreementState, coverageFor, startSigning, voidDocument } from "./agreements.js";
 import { assertNoPaperHold, cancelPayerDocuments, changePayer, endPayerFor } from "./payers.js";
 import { paperOutIds } from "./enrollment.js";
@@ -260,7 +260,7 @@ describe("paper agreements", () => {
     const first = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
     await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k1", signedAt: now, now });
     // Pat is offered their own version and it is printed to sign on paper.
-    db.tables.agreement_versions.push({ ...MASTER, id: "vn", label: "Pat's own", landlord_id: "u1", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" });
+    addCustomVersion(db, { ...MASTER, id: "vn", label: "Pat's own", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" }, ["u1"]);
     const later = new Date("2027-02-10T18:00:00Z");
     const { id } = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now: later });
     // The covered rows can't be written.
@@ -346,7 +346,7 @@ describe("paper agreements", () => {
     const first = await printPaperAgreement(db, { landlordId: "u1", exhibit: L3_OFF, now });
     await recordPaperAgreement(db, { landlordId: "u1", id: first.id, exhibit: L3_OFF, signerName: "Pat Landlord", signedFileKey: "k", signedAt: now, now });
     // A version made for Pat alone goes live: they may sign it, in the app or on paper.
-    db.tables.agreement_versions.push({ ...MASTER, id: "vn", label: "Pat's own", landlord_id: "u1", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" });
+    addCustomVersion(db, { ...MASTER, id: "vn", label: "Pat's own", published_at: "2027-02-01T00:00:00Z", file_key: "billing/versions/vn.pdf" }, ["u1"]);
     const later = new Date("2027-02-10T18:00:00Z");
     await paperPreview(db, "u1", later);
     db.tables.agreement_amendments = [{ id: "am1", user_id: "u1", agreement_id: first.id, status: "sent", proposed_exhibit: [], created_at: later.toISOString() }];

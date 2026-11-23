@@ -535,7 +535,7 @@
       {
         "table": "agreement_versions",
         "status": "unreleased",
-        "description": "Versions of the commission agreement document. An admin uploads each as a PDF (stored in R2 under billing/agreement-versions/), it is pushed to Documenso as a template, the admin places signature boxes in Documenso's editor, checks them, then makes it live. status draft|ready|live|retired; exactly one live. requires_resign, chosen when made live, invalidates signatures on every earlier version. Since 202611050001: kind (master | amendment, one live standard version each), landlord_id (a version negotiated with one landlord), commission_rate_percent (filled into the document and shown on invoices).",
+        "description": "Versions of the commission agreement document. An admin uploads each as a PDF (stored in R2 under billing/agreement-versions/), it is pushed to Documenso as a template, the admin places signature boxes in Documenso's editor, checks them, then makes it live. status draft|ready|live|retired; exactly one live. requires_resign, chosen when made live, invalidates signatures on every earlier version. Since 202611050001: kind (master | amendment, one live standard version each), landlord_id (a version negotiated with one landlord), commission_rate_percent (filled into the document and shown on invoices). Since 202611220001: audience (everyone = the standard version, one live per kind; selected = a custom version for the landlords in agreement_version_landlords, changeable after upload). landlord_id is legacy: no longer written by the app, mirrored into agreement_version_landlords by trigger.",
         "columns": [
           "id:uuid",
           "label:text",
@@ -564,9 +564,27 @@
           "based_on_version_id:uuid",
           "provider_address_field_id:int4",
           "provider_brokerage_field_id:text",
-          "provider_license_field_id:text"
+          "provider_license_field_id:text",
+          "audience:text"
         ],
-        "notes": "Migration 202611030002_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team)."
+        "notes": "Migration 202611030002_agreement_versions (applied to dev 2026-11-02; prod with billing). pk id; unique provider_template_id; partial unique index on (true) where status = live; check live/retired rows have published_at; fk published_by_id/created_by_id->users.id (set null). updated_at trigger and fn_action_log audit. rls: service role only. The prod->dev snapshot clears the provider ids and retires the live version (dev uses its own Documenso team). 202611220001: check audience in (everyone, selected); uq_agreement_versions_live_standard is now (kind) where status = live and audience = everyone; triggers trg_agreement_versions_legacy_audience / trg_agreement_versions_legacy_landlord keep code that writes landlord_id working; uq_agreement_versions_live_landlord dropped (one live custom version per landlord is enforced on agreement_version_landlords)."
+      },
+      {
+        "table": "agreement_version_landlords",
+        "status": "unreleased",
+        "description": "Which landlords a custom agreement version (agreement_versions.audience = selected) applies to. One row each time a landlord is put on a version; the admin adds or removes them at upload and any time after (Wyatt, 2026-11-22). live = the version they sign now (version is live and they are on it). removed_at/removed_by_id record taking them off, including when another custom version replaces it for them.",
+        "columns": [
+          "id:uuid",
+          "version_id:uuid",
+          "landlord_id:uuid",
+          "kind:text",
+          "live:bool",
+          "added_by_id:uuid",
+          "added_at:timestamptz",
+          "removed_by_id:uuid",
+          "removed_at:timestamptz"
+        ],
+        "notes": "Migration 202611220001_agreement_version_landlords. pk id; fk version_id->agreement_versions.id (cascade), landlord_id->users.id (cascade), added_by_id/removed_by_id->users.id (set null); check kind in (master, amendment); check removed rows are not live; unique (version_id, landlord_id) where removed_at is null; unique (kind, landlord_id) where live (one live custom version per landlord per kind). rls: service role only (no policies). Backfilled from agreement_versions.landlord_id. Changed only through agreement_version_set_landlords (one transaction)."
       },
       {
         "table": "landlord_agreements",
@@ -4103,6 +4121,15 @@
         "called_from": "trigger trg_marketing_links_lock_slug",
         "defined_in": "202611180001_marketing_attribution.sql",
         "description": "Rejects a change to marketing_links.slug (check_violation): slugs are printed on paper and in QR codes. Not SECURITY DEFINER; search_path set; execute revoked from public."
+      },
+      {
+        "name": "agreement_version_set_landlords",
+        "kind": "rpc",
+        "args": "p_version_id uuid, p_add uuid[], p_remove uuid[], p_admin_id uuid, p_publish boolean, p_now timestamptz",
+        "touches": "agreement_version_landlords, agreement_versions",
+        "called_from": "apps/web/src/lib/billing/agreementVersions.js (setVersionLandlords, publishVersion for a custom version)",
+        "defined_in": "supabase/migrations/202611220001_agreement_version_landlords.sql",
+        "description": "Adds and takes off landlords on a custom agreement version and, when it is live (or p_publish makes it live from ready), moves each landlord on it off their other live custom version of the same kind, retiring a version left with nobody. One transaction. Returns { changed, left }. Raises not_found, not_custom, retired or not_ready; a concurrent change surfaces as a unique violation. SECURITY INVOKER; execute is service_role only."
       }
     ],
     "triggers": {
