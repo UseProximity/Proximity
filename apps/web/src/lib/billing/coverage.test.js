@@ -361,6 +361,24 @@ describe("negotiated versions", () => {
     assert.equal(db.tables.landlord_agreements.find((m) => m.version_id === "vm").status, "superseded");
   });
 
+  it("an admin changing the landlord's version while their copy is being made: the old copy is never opened (PR #472 review)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    const prepare = documenso.prepareSigningCopy.bind(documenso);
+    documenso.prepareSigningCopy = async (input) => {
+      // The admin puts Pat on a custom version right now; Pat's copy row (standard) is already saved.
+      addCustomVersion(db, { ...MASTER, id: "vneg", provider_template_id: "envelope_neg" }, ["u1"]);
+      documenso.prepareSigningCopy = prepare;
+      return prepare(input);
+    };
+    await assert.rejects(() => sign(db, documenso), (e) => e.code === "status_changed");
+    const stale = db.tables.landlord_agreements.find((m) => m.version_id === "vm");
+    assert.equal(stale.status, "voided", "the copy of the standard version is ended");
+    assert.deepEqual(documenso.calls.cancelled, [stale.provider_envelope_id]);
+    await sign(db, documenso);
+    assert.equal(documenso.calls.lastCopy.templateId, "envelope_neg", "trying again signs the custom version");
+  });
+
   it("a negotiated signature is flagged, not invalidated, when the standard version asks everyone to re-sign", () => {
     const rows = [{ status: "signed", agreement_version: { audience: "selected", published_at: "2026-12-01" } }];
     const state = summarizeAgreementRows(rows, { cutoff: "2027-01-01" });

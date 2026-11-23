@@ -28,7 +28,9 @@ async function read(build) {
  *   liveCustom    { master, amendment }: the live custom version each kind is on
  *                 ({ versionId, label }), or null
  *   signed        their signed master ({ versionId, label, custom, signedAt }), or null
- *   inProgress    an unsigned copy open in Documenso (cancelled if their version changes)
+ *   inProgress    an unsigned copy open in Documenso
+ *   openCopies    { master, amendment }: the version ids of those copies, by kind
+ *                 (cancelOpenCopies cancels one when their version of that kind changes)
  *   paperOut      a paper copy out to sign (it keeps the wording it was printed with)
  *   signer        their authorized signer ({ id, name }): they sign for this account,
  *                 so a custom version only reaches it through the signer
@@ -43,13 +45,13 @@ export async function landlordFlags(db, landlordIds) {
     read(db.from("users").select("id, name, email, company_name").in("id", ids)),
     read(db.from("agreement_version_landlords").select("version_id, landlord_id, kind").eq("live", true).in("landlord_id", ids)),
     read(db.from("landlord_agreements").select("id, user_id, status, provider, provider_envelope_id, version_id, signed_at").in("user_id", ids).in("status", ["signed", ...PENDING])),
-    read(db.from("agreement_amendments").select("id, user_id, signer_id, status, provider_envelope_id").eq("status", "sent")),
+    read(db.from("agreement_amendments").select("id, user_id, signer_id, status, version_id, provider_envelope_id").eq("status", "sent")),
     read(db.from("billing_payers").select("landlord_id, payer_id, signer_name").eq("status", "active").is("listing_id", null).in("landlord_id", ids)),
     read(db.from("billing_payers").select("landlord_id, payer_id").eq("status", "active").in("payer_id", ids)),
   ]);
 
   const versionIds = [...new Set([...onVersions.map((r) => r.version_id), ...masters.map((m) => m.version_id)].filter(Boolean))];
-  const versions = versionIds.length ? await read(db.from("agreement_versions").select("id, label, audience").in("id", versionIds)) : [];
+  const versions = versionIds.length ? await read(db.from("agreement_versions").select("id, label, audience, status").in("id", versionIds)) : [];
   const versionById = new Map(versions.map((v) => [v.id, v]));
   const payeeIds = [...new Set(asPayer.map((r) => r.landlord_id))];
   const payees = payeeIds.length ? await read(db.from("users").select("id, name, email, company_name").in("id", payeeIds)) : [];
@@ -58,12 +60,15 @@ export async function landlordFlags(db, landlordIds) {
   for (const id of ids) {
     const u = userById.get(id);
     const live = (kind) => {
-      const r = onVersions.find((x) => x.landlord_id === id && x.kind === kind);
+      // A live row on a version no longer live (after a snapshot retires everything) is not theirs.
+      const r = onVersions.find((x) => x.landlord_id === id && x.kind === kind && versionById.get(x.version_id)?.status === "live");
       return r ? { versionId: r.version_id, label: versionById.get(r.version_id)?.label ?? null } : null;
     };
     const signedRow = masters.find((m) => m.user_id === id && m.status === "signed");
     const signedVersion = signedRow?.version_id ? versionById.get(signedRow.version_id) : null;
     const pending = masters.filter((m) => m.user_id === id && PENDING.includes(m.status));
+    const openMasters = pending.filter((m) => m.provider !== PAPER && m.provider !== "manual");
+    const openAmendments = amendments.filter((a) => (a.signer_id ?? a.user_id) === id);
     const link = asLandlord.find((r) => r.landlord_id === id);
     out.set(id, {
       id,
@@ -73,9 +78,8 @@ export async function landlordFlags(db, landlordIds) {
       signed: signedRow
         ? { versionId: signedRow.version_id ?? null, label: signedVersion?.label ?? null, custom: isCustom(signedVersion), signedAt: signedRow.signed_at ?? null }
         : null,
-      inProgress:
-        pending.some((m) => m.provider !== PAPER && m.provider !== "manual") ||
-        amendments.some((a) => (a.signer_id ?? a.user_id) === id),
+      inProgress: openMasters.length > 0 || openAmendments.length > 0,
+      openCopies: { master: openMasters.map((m) => m.version_id ?? null), amendment: openAmendments.map((a) => a.version_id ?? null) },
       paperOut: pending.some((m) => m.provider === PAPER && m.status === "sent"),
       signer: link ? { id: link.payer_id, name: link.signer_name || nameOf(userById.get(link.payer_id)) } : null,
       signsFor: asPayer.filter((r) => r.payer_id === id).map((r) => ({ id: r.landlord_id, name: nameOf(userById.get(r.landlord_id)) })),

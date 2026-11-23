@@ -835,6 +835,16 @@ export async function startSigning(
         storeExhibit,
         landlordAddress,
       });
+      // An admin may have changed which version this landlord signs while the copy
+      // was being made (PR #472 review). The copy's record was saved first, so
+      // either that change's cancelOpenCopies finds it, or this check sees the new
+      // version: a copy of the old one is never opened for signing.
+      const nowLive = await getLiveVersion(db, { kind: plan.kind, landlordId: state.holderId ?? user.id });
+      if (nowLive?.id !== version.id) {
+        await cancelInDocumenso(documenso, made.row, "Replaced by an updated agreement");
+        await endDocument(db, plan.kind, made.row, "replaced by an updated agreement", now);
+        throw new BillingError("status_changed", "Your agreement was just updated. Try again to sign the current one.", 409);
+      }
       await lockIn(plan.kind, made.row.id, requested);
       // Nothing from the license answer goes on the document (2026-11-06), so it is
       // opened (distributed) straight away, while the landlord answers; the call

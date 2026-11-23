@@ -134,6 +134,12 @@ describe("changing who a version applies to", () => {
     assert.equal((await getLiveVersion(db, { landlordId: "jess" })).id, "vc");
   });
 
+  it("making a custom version live that is not ready is refused", async () => {
+    const db = world();
+    const v = await upload(db, { audience: "selected", landlordIds: ["jess"] });
+    await assert.rejects(() => publishVersion(db, { versionId: v.id, adminId: "admin" }), (e) => e.code === "not_ready");
+  });
+
   it("refuses the standard version and a retired one", async () => {
     const db = world();
     await assert.rejects(() => setVersionLandlords(db, { versionId: "vstd", add: ["jess"], adminId: "admin" }), (e) => e.code === "not_custom");
@@ -190,5 +196,14 @@ describe("what to flag about a landlord", () => {
     assert.equal(flags.get("pat").signed.custom, false);
     assert.equal(flags.get("pat").signed.label, "November 2026");
     assert.equal(flags.get("pat").inProgress, true);
+    assert.deepEqual(flags.get("pat").openCopies, { master: ["vc"], amendment: [] });
+  });
+
+  it("a live row left on a retired version (after a snapshot) is not shown as their custom version", async () => {
+    const db = world();
+    addCustomVersion(db, { id: "vr", label: "Retired one", status: "retired" }, []);
+    db.tables.agreement_version_landlords.push({ id: "x", version_id: "vr", landlord_id: "pat", kind: "master", live: true, removed_at: null });
+    const flags = await landlordFlags(db, ["pat"]);
+    assert.equal(flags.get("pat").liveCustom.master, null);
   });
 });

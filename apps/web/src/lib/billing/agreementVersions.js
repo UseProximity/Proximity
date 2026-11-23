@@ -22,8 +22,9 @@
  * live custom version per kind, and signs it instead of the standard one.
  * (agreement_versions.landlord_id, one landlord per version, is no longer written.)
  *
- * Every read tolerates the table being missing (the code can reach an environment
- * before the migration does): no table reads as no version.
+ * Needs migration 202611220001 (the audience column and the
+ * agreement_version_landlords table) wherever this code runs. Reads tolerate the
+ * agreement tables being missing altogether: no table reads as no version.
  *
  * `db` is a service-role Supabase client and `documenso` a client from
  * documenso.js, passed in so this stays testable.
@@ -199,7 +200,8 @@ async function insertAssignments(db, version, ids, adminId, now = new Date()) {
   }
 }
 
-// The landlords on a version now (not taken off), oldest first.
+// Every landlord row of these versions, oldest first, including landlords taken off
+// (removed_at set): filter with activeOn for who is on it now.
 export async function versionLandlordRows(db, versionIds) {
   const ids = [].concat(versionIds).filter(Boolean);
   if (!ids.length) return [];
@@ -215,48 +217,39 @@ export async function versionLandlordRows(db, versionIds) {
 
 const activeOn = (rows) => rows.filter((r) => !r.removed_at);
 
+// What agreement_version_set_landlords raises, as an error the admin can read.
+const MOVE_ERRORS = {
+  not_found: ["not_found", "That agreement version was not found.", 404],
+  not_custom: ["not_custom", "The standard version is for everyone. Upload a custom version to choose landlords.", 409],
+  retired: ["retired", "This version is retired. Upload it again to use it.", 409],
+  not_ready: ["not_ready", "Check the signature boxes before making this version live.", 409],
+};
+
 /*
- * Put these landlords on a live custom version (it becomes the one they sign):
- * each is taken off any other live custom version of the same kind first (one
- * live per landlord per kind). A custom version left with nobody that way is
- * retired, as replacing a landlord's version always did. Returns the ids of the
- * other versions they left.
+ * Adds and takes off landlords and, when the version is live (or `publish`
+ * makes it live), moves everyone on it onto it: each leaves any other live
+ * custom version of the same kind (one live per landlord per kind), and a custom
+ * version left with nobody that way is retired, as replacing a landlord's version
+ * always did. One database transaction (agreement_version_set_landlords,
+ * 202611220001), so a failure part way changes nothing. Returns { changed, left }:
+ * the landlords whose version to sign changed now, and the versions they left.
  */
-async function goLive(db, version, ids, adminId, now) {
-  if (!ids.length) return [];
-  const nowIso = now.toISOString();
-  const { data: others, error } = await db
-    .from("agreement_version_landlords")
-    .select("id, version_id, landlord_id")
-    .eq("kind", version.kind)
-    .eq("live", true)
-    .in("landlord_id", ids);
-  if (error) throw error;
-  const replaced = (others ?? []).filter((r) => r.version_id !== version.id);
-  if (replaced.length) {
-    const { error: offError } = await db
-      .from("agreement_version_landlords")
-      .update({ live: false, removed_at: nowIso, removed_by_id: adminId })
-      .in("id", replaced.map((r) => r.id));
-    if (offError) throw offError;
+async function moveLandlords(db, { versionId, add = [], remove = [], adminId, publish = false, now }) {
+  const { data, error } = await db.rpc("agreement_version_set_landlords", {
+    p_version_id: versionId,
+    p_add: add,
+    p_remove: remove,
+    p_admin_id: adminId ?? null,
+    p_publish: publish,
+    p_now: now.toISOString(),
+  });
+  if (error) {
+    const known = MOVE_ERRORS[error.message];
+    if (known) throw new BillingError(...known);
+    if (error.code === "23505") throw new BillingError("status_changed", "Another custom version was just made live for one of them. Refresh and try again.", 409);
+    throw error;
   }
-  const { error: onError } = await db
-    .from("agreement_version_landlords")
-    .update({ live: true })
-    .eq("version_id", version.id)
-    .in("landlord_id", ids)
-    .is("removed_at", null);
-  if (onError) {
-    if (onError.code === "23505") throw new BillingError("status_changed", "Another custom version was just made live for one of them. Refresh and try again.", 409);
-    throw onError;
-  }
-  const left = [...new Set(replaced.map((r) => r.version_id))];
-  for (const id of left) {
-    if (activeOn(await versionLandlordRows(db, id)).length) continue;
-    const { error: retireError } = await db.from("agreement_versions").update({ status: "retired" }).eq("id", id).eq("status", "live");
-    if (retireError) throw retireError;
-  }
-  return left;
+  return { changed: data?.changed ?? [], left: data?.left ?? [] };
 }
 
 /*
@@ -268,26 +261,14 @@ async function goLive(db, version, ids, adminId, now) {
  */
 export async function setVersionLandlords(db, { versionId, add = [], remove = [], adminId, now = new Date() }) {
   const version = await getVersion(db, versionId);
-  if (!isCustom(version)) throw new BillingError("not_custom", "The standard version is for everyone. Upload a custom version to choose landlords.", 409);
-  if (version.status === "retired") throw new BillingError("retired", "This version is retired. Upload it again to use it.", 409);
+  if (!isCustom(version)) throw new BillingError(...MOVE_ERRORS.not_custom);
+  if (version.status === "retired") throw new BillingError(...MOVE_ERRORS.retired);
   const current = new Set(activeOn(await versionLandlordRows(db, versionId)).map((r) => r.landlord_id));
   const adding = [...new Set(add.filter((id) => id && !current.has(id)))];
   const removing = [...new Set(remove.filter((id) => id && current.has(id) && !adding.includes(id)))];
   await assertLandlords(db, adding);
-
-  if (removing.length) {
-    const { error } = await db
-      .from("agreement_version_landlords")
-      .update({ live: false, removed_at: now.toISOString(), removed_by_id: adminId })
-      .eq("version_id", versionId)
-      .in("landlord_id", removing)
-      .is("removed_at", null);
-    if (error) throw error;
-  }
-  await insertAssignments(db, version, adding, adminId, now);
-  const live = version.status === "live";
-  if (live) await goLive(db, version, adding, adminId, now);
-  return { version, changed: live ? [...adding, ...removing] : [] };
+  const { changed } = await moveLandlords(db, { versionId, add: adding, remove: removing, adminId, now });
+  return { version, changed };
 }
 /*
  * Push a draft to Documenso as a template (step 1, or retrying it). A failure is
@@ -440,9 +421,8 @@ export async function checkVersionFields(db, documenso, versionId, { quick = fal
  * kind). A custom version goes live for the landlords on it, each leaving any
  * other live custom version of that kind. The re-sign choice applies to standard
  * master versions only: an amendment never asks anyone to re-sign, and a custom
- * version is signed by its landlords anyway. Returns the version; the landlords
- * whose version changed are `versionLandlordRows` of it (the caller cancels their
- * open copies).
+ * version is signed by its landlords anyway. Returns the version, with `changed`:
+ * the landlords a custom version now applies to (the caller cancels their open copies).
  */
 export async function publishVersion(db, { versionId, adminId, requiresResign, now = new Date() }) {
   const version = await getVersion(db, versionId);
@@ -454,15 +434,17 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
   if (version.status !== "ready") {
     throw new BillingError("not_ready", "Check the signature boxes before making this version live.", 409);
   }
-  if (!custom) {
-    const { error: retireError } = await db
-      .from("agreement_versions")
-      .update({ status: "retired" })
-      .eq("status", "live")
-      .eq("kind", version.kind)
-      .neq("audience", "selected");
-    if (retireError) throw retireError;
+  if (custom) {
+    const { changed } = await moveLandlords(db, { versionId, adminId, publish: true, now });
+    return { ...(await getVersion(db, versionId)), changed };
   }
+  const { error: retireError } = await db
+    .from("agreement_versions")
+    .update({ status: "retired" })
+    .eq("status", "live")
+    .eq("kind", version.kind)
+    .neq("audience", "selected");
+  if (retireError) throw retireError;
   const { data, error } = await db
     .from("agreement_versions")
     .update({ status: "live", requires_resign: asksResign ? requiresResign : false, published_at: now.toISOString(), published_by_id: adminId })
@@ -475,8 +457,7 @@ export async function publishVersion(db, { versionId, adminId, requiresResign, n
     throw error;
   }
   if (!data) throw new BillingError("status_changed", "This version changed meanwhile. Refresh and try again.", 409);
-  if (custom) await goLive(db, data, activeOn(await versionLandlordRows(db, versionId)).map((r) => r.landlord_id), adminId, now);
-  return data;
+  return { ...data, changed: [] };
 }
 
 // A draft (or ready) version that will not be used. The Documenso template is left

@@ -109,8 +109,69 @@ export function fakeDb(tables = {}) {
     };
     return api;
   }
-  return { tables, from: query };
+  // The database functions the billing code calls, as the migrations define them.
+  async function rpc(name, args) {
+    const fn = RPC[name];
+    if (!fn) return { data: null, error: { code: "PGRST202", message: `no function ${name}` } };
+    // One transaction: a failure part way leaves every table as it was.
+    const before = structuredClone(tables);
+    try {
+      return { data: await fn({ tables, from: query }, args), error: null };
+    } catch (error) {
+      for (const k of Object.keys(tables)) delete tables[k];
+      Object.assign(tables, before);
+      return { data: null, error: { code: error.code ?? "P0001", message: error.message } };
+    }
+  }
+  return { tables, from: query, rpc };
 }
+
+const raise = (message, code) => Object.assign(new Error(message), { code });
+
+// agreement_version_set_landlords (202611220001), step for step.
+async function setLandlordsFn(db, { p_version_id, p_add, p_remove, p_admin_id, p_publish = false, p_now }) {
+  const t = db.tables;
+  t.agreement_version_landlords ??= [];
+  const v = (t.agreement_versions ?? []).find((x) => x.id === p_version_id);
+  if (!v) throw raise("not_found");
+  if (v.audience !== "selected") throw raise("not_custom");
+  if (v.status === "retired") throw raise("retired");
+  if (p_publish && v.status !== "ready") throw raise("not_ready");
+  const add = [...new Set((p_add ?? []).filter(Boolean))];
+  const unique = async (q) => {
+    const { error } = await q;
+    if (error) throw raise("unique", error.code);
+  };
+  const removed = [];
+  for (const r of t.agreement_version_landlords) {
+    if (r.version_id === v.id && !r.removed_at && (p_remove ?? []).includes(r.landlord_id) && !add.includes(r.landlord_id)) {
+      Object.assign(r, { live: false, removed_at: p_now, removed_by_id: p_admin_id });
+      removed.push(r.landlord_id);
+    }
+  }
+  for (const id of add) {
+    if (t.agreement_version_landlords.some((r) => r.version_id === v.id && r.landlord_id === id && !r.removed_at)) continue;
+    await unique(db.from("agreement_version_landlords").insert({ version_id: v.id, landlord_id: id, kind: v.kind, live: false, added_by_id: p_admin_id, added_at: p_now, removed_at: null }));
+  }
+  if (v.status !== "live" && !p_publish) return { changed: [], left: [] };
+  const moving = t.agreement_version_landlords.filter((r) => r.version_id === v.id && !r.removed_at && !r.live).map((r) => r.landlord_id);
+  const left = [];
+  for (const r of t.agreement_version_landlords) {
+    if (r.kind === v.kind && r.live && r.version_id !== v.id && moving.includes(r.landlord_id)) {
+      Object.assign(r, { live: false, removed_at: p_now, removed_by_id: p_admin_id });
+      if (!left.includes(r.version_id)) left.push(r.version_id);
+    }
+  }
+  for (const id of left) {
+    const other = t.agreement_versions.find((x) => x.id === id);
+    if (other?.status === "live" && !t.agreement_version_landlords.some((r) => r.version_id === id && !r.removed_at)) other.status = "retired";
+  }
+  if (p_publish) Object.assign(v, { status: "live", requires_resign: false, published_at: p_now, published_by_id: p_admin_id });
+  await unique(db.from("agreement_version_landlords").update({ live: true }).eq("version_id", v.id).is("removed_at", null).eq("live", false));
+  return { changed: [...moving, ...removed], left };
+}
+
+const RPC = { agreement_version_set_landlords: setLandlordsFn };
 
 const DEFAULT_TEMPLATE = (id) => ({
   id,

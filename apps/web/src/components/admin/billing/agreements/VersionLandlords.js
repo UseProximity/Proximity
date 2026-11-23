@@ -13,6 +13,9 @@ import { BUTTON, FIELD, PRIMARY, call, postJson } from "./shared";
  * upload) and on each custom version (`AppliesTo`, saved with a confirmation).
  */
 
+// The flags route takes this many ids per request.
+const FLAG_BATCH = 50;
+
 // What we know about each landlord id, refreshed when the ids change.
 function useLandlordFlags(ids, tick = 0) {
   const [flags, setFlags] = useState({});
@@ -20,9 +23,12 @@ function useLandlordFlags(ids, tick = 0) {
   useEffect(() => {
     if (!key) return undefined;
     let live = true;
-    call(`/api/admin/billing/agreement-versions/landlord-flags?ids=${key}`)
-      .then((r) => live && setFlags((prev) => ({ ...prev, ...(r.landlords ?? {}) })))
-      .catch(() => {});
+    const all = key.split(",");
+    for (let i = 0; i < all.length; i += FLAG_BATCH) {
+      call(`/api/admin/billing/agreement-versions/landlord-flags?ids=${all.slice(i, i + FLAG_BATCH).join(",")}`)
+        .then((r) => live && setFlags((prev) => ({ ...prev, ...(r.landlords ?? {}) })))
+        .catch(() => {});
+    }
     return () => {
       live = false;
     };
@@ -35,6 +41,16 @@ function useLandlordFlags(ids, tick = 0) {
  * Returns [{ color, text, title }] plus `addSigner` when the account has an
  * authorized signer who is not chosen yet.
  */
+/*
+ * Whether changing this landlord's version cancels an unsigned copy they have
+ * open (cancelOpenCopies): only a copy of the version's own kind, and only one
+ * on another version when they are added (on this one when they are taken off).
+ */
+export function cancelsCopy(flag, { kind, versionId, adding }) {
+  const open = flag?.openCopies?.[kind] ?? [];
+  return adding ? open.some((v) => v !== versionId) : open.some((v) => v === versionId);
+}
+
 export function flagBadges(flag, { kind = "master", versionId = null, chosenIds = [] } = {}) {
   if (!flag) return { badges: [] };
   const badges = [];
@@ -174,8 +190,10 @@ function changeSummary({ version, adding, removing, flags }) {
     const notes = [];
     const other = f?.liveCustom?.[version.kind];
     if (other && other.versionId !== version.id) notes.push(`replaces their custom version "${other.label}"`);
-    if (f?.signed && f.signed.versionId !== version.id) notes.push(`they signed ${f.signed.custom ? "a custom" : "the standard"} agreement, which keeps counting until they sign this one`);
-    if (f?.inProgress && live) notes.push("their open unsigned copy is cancelled");
+    if (version.kind === "master" && f?.signed && f.signed.versionId !== version.id) {
+      notes.push(`they signed ${f.signed.custom ? "a custom" : "the standard"} agreement, which keeps counting until they sign this one`);
+    }
+    if (live && cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: true })) notes.push("their open unsigned copy is cancelled");
     if (f?.paperOut) notes.push("their paper copy out keeps its old wording");
     if (f?.signer && !adding.concat(version.landlords).some((x) => x.id === f.signer.id)) notes.push(`${f.signer.name} signs for them, so this only applies if they sign themselves`);
     if (f?.signsFor?.length) notes.push(`also covers ${f.signsFor.map((s) => s.name).join(", ")}, whom they sign for`);
@@ -185,7 +203,7 @@ function changeSummary({ version, adding, removing, flags }) {
     const f = flags[l.id];
     const notes = ["signs the standard version next"];
     if (f?.signed?.versionId === version.id) notes.push("the agreement they signed on this version stays in force (void it separately if needed)");
-    if (f?.inProgress && live) notes.push("their open unsigned copy is cancelled");
+    if (live && cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: false })) notes.push("their open unsigned copy is cancelled");
     lines.push(`- ${f?.name || landlordName(l)}: ${notes.join("; ")}`);
   }
   const when = live ? "This applies now." : "Nothing changes for them until you make the version live.";
@@ -197,7 +215,7 @@ function changeSummary({ version, adding, removing, flags }) {
  * then Save (with a confirmation naming what happens to each). Retired versions
  * only list who they were for.
  */
-export function AppliesTo({ version, busy, run }) {
+export function AppliesTo({ version, busy, run, onDirtyChange }) {
   const saved = version.landlords ?? [];
   const [draft, setDraft] = useState(saved);
   const [adding, setAdding] = useState(false);
@@ -214,6 +232,9 @@ export function AppliesTo({ version, busy, run }) {
   const addList = draft.filter((l) => !saved.some((s) => s.id === l.id));
   const removeList = saved.filter((s) => !draft.some((l) => l.id === s.id));
   const dirty = addList.length > 0 || removeList.length > 0;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const save = () => {
     if (!window.confirm(changeSummary({ version, adding: addList, removing: removeList, flags }))) return;
@@ -223,7 +244,7 @@ export function AppliesTo({ version, busy, run }) {
         add: addList.map((l) => l.id),
         remove: removeList.map((l) => l.id),
       });
-      return r;
+      return r?.warning ?? null;
     }, version.status === "live" ? "Saved. It applies to them now." : "Saved. It applies to them once it is live.");
   };
 
@@ -291,8 +312,8 @@ export function useLiveSummary(version) {
       const notes = [];
       const other = f?.liveCustom?.[version.kind];
       if (other && other.versionId !== version.id) notes.push(`replaces their custom version "${other.label}"`);
-      if (f?.signed) notes.push(`signed ${f.signed.custom ? "a custom" : "the standard"} agreement, which keeps counting until they sign this one`);
-      if (f?.inProgress) notes.push("their open unsigned copy is cancelled");
+      if (version.kind === "master" && f?.signed) notes.push(`signed ${f.signed.custom ? "a custom" : "the standard"} agreement, which keeps counting until they sign this one`);
+      if (cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: true })) notes.push("their open unsigned copy is cancelled");
       if (f?.paperOut) notes.push("their paper copy out keeps its old wording");
       if (f?.signer && !ids.includes(f.signer.id)) notes.push(`${f.signer.name} signs for them, so this only applies if they sign themselves`);
       return `- ${f?.name || l.name || "Landlord"}${notes.length ? `: ${notes.join("; ")}` : ""}`;

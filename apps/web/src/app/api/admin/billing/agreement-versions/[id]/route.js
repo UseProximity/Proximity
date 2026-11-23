@@ -43,6 +43,20 @@ async function versionId(params) {
   return id;
 }
 
+/*
+ * The version change is already saved when this runs, so a failure cancelling an
+ * old copy is reported as a warning, not as the change failing. A copy left open
+ * is on the wrong version: the landlord's next Review and sign replaces it.
+ */
+async function cancelCopies(supabase, documenso, landlordIds, kind) {
+  try {
+    return { cancelled: await cancelOpenCopies(supabase, documenso, { landlordIds, kind }) };
+  } catch (err) {
+    console.error("billing: could not cancel open agreement copies", err?.message);
+    return { cancelled: 0, warning: "Saved, but an unsigned copy a landlord had open could not be cancelled. It is replaced when they next sign." };
+  }
+}
+
 export async function GET(req, { params }) {
   const session = await requireDbRole(["super"]);
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -79,14 +93,14 @@ export async function POST(req, { params }) {
     if (body.action === "publish") {
       const version = await publishVersion(supabase, { versionId: id, adminId: session.user.id, requiresResign: body.requiresResign });
       const rows = isCustom(version) ? await versionLandlordRows(supabase, id) : [];
-      const cancelled = await cancelOpenCopies(supabase, documenso, { landlordIds: rows.filter((r) => r.live).map((r) => r.landlord_id), kind: version.kind });
-      return NextResponse.json({ version: versionView(version, new Map(), new Map(), rows), cancelled });
+      const copies = await cancelCopies(supabase, documenso, version.changed ?? [], version.kind);
+      return NextResponse.json({ version: versionView(version, new Map(), new Map(), rows), ...copies });
     }
     if (body.action === "landlords") {
       const ids = (list) => (Array.isArray(list) ? list : []).filter((x) => typeof x === "string" && isUuid(x));
       const { version, changed } = await setVersionLandlords(supabase, { versionId: id, add: ids(body.add), remove: ids(body.remove), adminId: session.user.id });
-      const cancelled = await cancelOpenCopies(supabase, documenso, { landlordIds: changed, kind: version.kind });
-      return NextResponse.json({ version: versionView(await getVersion(supabase, id), new Map(), new Map(), await versionLandlordRows(supabase, id)), cancelled });
+      const copies = await cancelCopies(supabase, documenso, changed, version.kind);
+      return NextResponse.json({ version: versionView(await getVersion(supabase, id), new Map(), new Map(), await versionLandlordRows(supabase, id)), ...copies });
     }
     if (body.action === "discard") {
       return NextResponse.json(await discardVersion(supabase, id));

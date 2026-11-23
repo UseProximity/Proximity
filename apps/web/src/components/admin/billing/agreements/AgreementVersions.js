@@ -65,10 +65,13 @@ function useQuickSummary(version) {
 }
 
 // A version that is not live yet: the steps from upload to live, with the action for each.
-function DraftSteps({ version, busy, run, documensoConnected }) {
+// `unsaved`: the version's Applies to list has changes not saved yet, so Make live waits.
+function DraftSteps({ version, busy, run, documensoConnected, unsaved = false }) {
   const [requiresResign, setRequiresResign] = useState(null);
   const [summary, setSummary] = useState(null);
-  const act = (body, success) => run(() => postJson(`/api/admin/billing/agreement-versions/${version.id}`, body), success);
+  // A warning in the reply (the change saved, something after it did not) replaces the success notice.
+  const act = (body, success) =>
+    run(async () => (await postJson(`/api/admin/billing/agreement-versions/${version.id}`, body))?.warning ?? success, success);
 
   const check = () =>
     run(async () => {
@@ -176,12 +179,13 @@ function DraftSteps({ version, busy, run, documensoConnected }) {
         )}
         <button
           type="button"
-          disabled={busy || version.status !== "ready" || (asksResign && requiresResign === null)}
+          disabled={busy || unsaved || version.status !== "ready" || (asksResign && requiresResign === null)}
           className={`${PRIMARY} mt-2`}
           onClick={publish}
         >
           Make live
         </button>
+        {unsaved && <p className="mt-1 text-xs text-amber-700">Save or undo the changes to who it applies to first.</p>}
       </Step>
     </ol>
   );
@@ -322,6 +326,9 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
   const [fileInputKey, setFileInputKey] = useState(0);
   const [custom, setCustom] = useState(false);
   const [chosen, setChosen] = useState([]);
+  // Drafts whose Applies to list has unsaved changes, by version id (Make live waits for them).
+  const [unsaved, setUnsaved] = useState({});
+  const markUnsaved = (id) => (dirty) => setUnsaved((m) => (!!m[id] === dirty ? m : { ...m, [id]: dirty }));
   const liveStandard = (k) => versions.find((v) => v.status === "live" && v.kind === k && !v.custom);
   const live = liveStandard("master");
   const liveAmendment = liveStandard("amendment");
@@ -440,8 +447,8 @@ export default function AgreementVersions({ versions, documensoConnected, busy, 
                 Discard
               </button>
             </div>
-            {v.custom && <AppliesTo version={v} busy={busy} run={run} />}
-            <DraftSteps version={v} busy={busy} run={run} documensoConnected={documensoConnected} />
+            {v.custom && <AppliesTo version={v} busy={busy} run={run} onDirtyChange={markUnsaved(v.id)} />}
+            <DraftSteps version={v} busy={busy} run={run} documensoConnected={documensoConnected} unsaved={!!unsaved[v.id]} />
           </div>
         );
       })}
