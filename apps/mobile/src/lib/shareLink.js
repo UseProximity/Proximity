@@ -1,6 +1,7 @@
-// The link a listing share sends, built the same way as web's
-// apps/web/src/utils/shareLink.js: the public listing page,
-// <origin>/listings/<id>?src=share. The src=share tag is what makes the web
+// The link a listing share sends. It matches web's link
+// (apps/web/src/utils/shareLink.js), the public listing page
+// <origin>/listings/<id>?src=share, except that it carries no ?unit=, so the
+// listing opens on its default unit. The src=share tag is what makes the web
 // marketing beacon count the recipient's visit as a share rather than a QR scan
 // (apps/web/src/lib/marketing/classify.js). The link always opens on the web:
 // /listings is not a universal-link path, so the beacon runs and the visit is counted.
@@ -32,7 +33,8 @@ function buildShareUrl({ origin, listingId } = {}) {
   return `${origin.replace(/\/+$/, "")}/listings/${encodeURIComponent(listingId)}?src=${SHARE_SRC}`;
 }
 
-// The line sent with the link, worded as on web.
+// The line sent with the link. It matches web's wording, with a mobile-only
+// fallback to the address when there is no title.
 function shareMessage({ title, address } = {}) {
   const name = (typeof title === "string" && title.trim()) || (typeof address === "string" && address.trim()) || "";
   return name ? `${name} on Proximity` : "Check out this listing on Proximity";

@@ -407,6 +407,8 @@ export default function ListingDetailScreen() {
   // (src/lib/shareLink.js has the link rules). iOS takes the link as `url`, so it
   // appears once with its preview; Android ignores `url`, so the link goes in the text.
   // Dismissing the sheet resolves normally and is not an error.
+  // sharingRef stops repeat taps while the sheet is open on iOS. On Android it is
+  // best-effort: the promise can resolve as soon as the chooser opens.
   async function handleShare() {
     if (!listing || sharingRef.current) return;
     // Literal process.env read: Expo only inlines EXPO_PUBLIC_* written out like this.
