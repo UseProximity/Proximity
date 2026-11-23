@@ -705,8 +705,9 @@ export default function ConversationsView({ search, dbTarget }) {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
   // Hides threads opened and left without a word: a Proxy chat a student
-  // started but never typed in (Wyatt, 2026-11-18).
-  const [withMessagesOnly, setWithMessagesOnly] = useState(false);
+  // started but never typed in (Wyatt, 2026-11-18). On by default so the
+  // list opens on real conversations (Wyatt, 2026-11-22).
+  const [withMessagesOnly, setWithMessagesOnly] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [siteDb, setSiteDb] = useState(null);
 
