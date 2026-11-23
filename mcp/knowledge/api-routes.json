@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-23T22:58:03.034Z",
+  "_generated": "2026-11-23T23:15:03.278Z",
   "count": 286,
   "routes": [
     {
@@ -670,7 +670,9 @@
         "users",
         "listings",
         "chat_messages",
-        "chat_moderation_events"
+        "chat_moderation_events",
+        "listing_agent_questions",
+        "listing_landlords"
       ],
       "file": "src/app/api/admin/chat/threads/route.js"
     },
@@ -693,7 +695,9 @@
         "chat_inbound_emails",
         "landlord_reply_senders",
         "chat_email_log",
-        "users"
+        "users",
+        "listing_agent_questions",
+        "listing_landlords"
       ],
       "file": "src/app/api/admin/chat/threads/[threadId]/route.js"
     },

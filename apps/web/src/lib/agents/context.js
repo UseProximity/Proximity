@@ -15,6 +15,8 @@ import supabase from "@/lib/supabase";
 import { isLiveLease, publicUnits } from "@/lib/listings/unitAvailability";
 import { studentFacts, ownerLabels } from "./studentView";
 import { UNCLAIMED_OWNER_ID, money, shortDate } from "./sections";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
 import { loadHiddenRents, roughRangeText } from "@/lib/listings/hiddenRents";
 
 const AMENITY_LABELS = {
@@ -75,6 +77,7 @@ export async function buildProxyContext(listingId) {
 
   const leases = [];
   const unitLines = [];
+  const roomShare = isRoomShareListing(row);
   for (const u of units) {
     const live = (u.unit_leases ?? []).filter(isLiveLease);
     const unitName = u.name || `${u.bedrooms ?? "?"} bed, ${u.bathrooms ?? "?"} bath`;
@@ -83,8 +86,17 @@ export async function buildProxyContext(listingId) {
     for (const l of live) {
       const ownerKey = l.owner_id ?? UNCLAIMED_OWNER_ID;
       const ownerLabel = owners.get(ownerKey) ?? "Unclaimed leases";
-      const rent = Number(l.rent) > 0 ? `${money(l.rent)} a month${l.rent_is_per_person ? " per person" : ""}` : "price on request";
-      const bits = [rent, termLabel(l.lease_term_months), l.available_from ? `available ${shortDate(l.available_from)}` : "available now",
+      // Say the basis both ways: a bare price read as unknown, so Proxy asked landlords what the data already said.
+      // Not recorded (older leases): use the same estimate the listing page shows, marked as one.
+      const guess = l.rent_is_per_person == null ? leaseRentBasis({ rent: l.rent, bedrooms: u.bedrooms }, roomShare) : null;
+      const basis = l.rent_is_per_person === true ? " per person" : l.rent_is_per_person === false ? " for the whole unit"
+        // A studio or one-bed is one person's rent either way.
+        : guess && guess.beds <= 1 && !roomShare ? " for the whole unit"
+        : guess?.basis === "person" ? " per person (estimated from the price, not stated by the landlord)"
+        : guess?.basis === "unit" ? ` for the whole unit, about ${money(Math.round(guess.perPerson))} per person (estimated from the price, not stated by the landlord)`
+        : " (not stated whether this is per person or for the whole unit)";
+      const rent = Number(l.rent) > 0 ? `${money(l.rent)} a month${basis}` : "price on request";
+      const bits = [rent, termLabel(l.lease_term_months), l.available_from ? `available ${shortDate(l.available_from)}` : "available now (no date set)",
         l.furnished === true ? "furnished" : l.furnished === false ? "unfurnished" : null, l.sublease ? "a sublease" : null].filter(Boolean);
       const idx = leases.length + 1;
       leases.push({
