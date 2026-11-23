@@ -65,7 +65,7 @@ async function agreementRows(db, ids) {
     const full = await db
       .from("landlord_agreements")
       .select(
-        "id, user_id, version, status, signed_at, signer_name, signer_title, signed_file_key, signed_exhibit_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_end, commission_rate_percent, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, kind, landlord_id, published_at)"
+        "id, user_id, version, status, signed_at, signer_name, signer_title, signed_file_key, signed_exhibit_file_key, provider, provider_envelope_id, ended_reason, ended_at, term_end, commission_rate_percent, created_at, updated_at, agreement_version:agreement_versions!version_id(id, label, kind, audience, published_at)"
       )
       .in("user_id", chunk)
       .neq("status", "superseded")
@@ -280,7 +280,7 @@ export function agreementSummary(state) {
     // A copy printed for paper signing, still out: its id and when it was printed.
     // holderId: whose record it is (the authorized signer's, for an account with one).
     paper: paperOut ? { id: pending.id, sentAt: pending.created_at, holderId: pending.user_id } : null,
-    negotiated: !!signed?.agreement_version?.landlord_id,
+    negotiated: signed?.agreement_version?.audience === "selected",
     // Signed, and a version made for them alone has gone live since: they are asked to sign it.
     newVersionReady: !!state.negotiatedOffer,
     flaggedForReview: !!state.flaggedForReview,

@@ -9,7 +9,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
-import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
+import { addCustomVersion, fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, cleanSignerDetails, cleanSignerName, coverageFor, coverageLine, exhibitText, documentFileKeys, coveringAgreement, markAgreementSigned, startSigning, summarizeAgreementRows, voidAgreement, voidDocument } from "./agreements.js";
 import { coveredMap, coversProperty, refreshCoverageNames, displayAddress, exhibitChoice, missingUnits, planCoverage, uncoveredAmong } from "./coverage.js";
 import { buildExhibitPdf, pdfSafe } from "./exhibitPdf.js";
@@ -326,7 +326,7 @@ describe("Exhibit A amendments", () => {
 describe("negotiated versions", () => {
   it("a landlord's own live version is used instead of the standard one", async () => {
     const db = world();
-    db.tables.agreement_versions.push({ ...MASTER, id: "vneg", landlord_id: "u1", provider_template_id: "envelope_neg", commission_rate_percent: 6 });
+    addCustomVersion(db, { ...MASTER, id: "vneg", provider_template_id: "envelope_neg", commission_rate_percent: 6 }, ["u1"]);
     assert.equal((await getLiveVersion(db, { kind: "master", landlordId: "u1" })).id, "vneg");
     assert.equal((await getLiveVersion(db, { kind: "master", landlordId: "u2" })).id, "vm");
     const documenso = fakeDocumenso();
@@ -342,7 +342,7 @@ describe("negotiated versions", () => {
     documenso.complete("envelope_1", "2027-01-05T12:00:00.000Z");
     await applyEnvelope(db, documenso, await documenso.getEnvelope("envelope_1"), { storeSigned });
     // The team accepts a change request and makes Pat's own version live.
-    db.tables.agreement_versions.push({ ...MASTER, id: "vneg", landlord_id: "u1", provider_template_id: "envelope_neg", commission_rate_percent: 6 });
+    addCustomVersion(db, { ...MASTER, id: "vneg", provider_template_id: "envelope_neg", commission_rate_percent: 6 }, ["u1"]);
     const before = await coverageFor(db, "u1", new Date("2027-02-01"));
     assert.equal(before.state.valid, true, "the signed agreement keeps counting meanwhile");
     assert.equal(before.state.negotiatedOffer.id, "vneg");
@@ -361,12 +361,30 @@ describe("negotiated versions", () => {
     assert.equal(db.tables.landlord_agreements.find((m) => m.version_id === "vm").status, "superseded");
   });
 
+  it("an admin changing the landlord's version while their copy is being made: the old copy is never opened (PR #472 review)", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    const prepare = documenso.prepareSigningCopy.bind(documenso);
+    documenso.prepareSigningCopy = async (input) => {
+      // The admin puts Pat on a custom version right now; Pat's copy row (standard) is already saved.
+      addCustomVersion(db, { ...MASTER, id: "vneg", provider_template_id: "envelope_neg" }, ["u1"]);
+      documenso.prepareSigningCopy = prepare;
+      return prepare(input);
+    };
+    await assert.rejects(() => sign(db, documenso), (e) => e.code === "status_changed");
+    const stale = db.tables.landlord_agreements.find((m) => m.version_id === "vm");
+    assert.equal(stale.status, "voided", "the copy of the standard version is ended");
+    assert.deepEqual(documenso.calls.cancelled, [stale.provider_envelope_id]);
+    await sign(db, documenso);
+    assert.equal(documenso.calls.lastCopy.templateId, "envelope_neg", "trying again signs the custom version");
+  });
+
   it("a negotiated signature is flagged, not invalidated, when the standard version asks everyone to re-sign", () => {
-    const rows = [{ status: "signed", agreement_version: { landlord_id: "u1", published_at: "2026-12-01" } }];
+    const rows = [{ status: "signed", agreement_version: { audience: "selected", published_at: "2026-12-01" } }];
     const state = summarizeAgreementRows(rows, { cutoff: "2027-01-01" });
     assert.equal(state.valid, true);
     assert.equal(state.flaggedForReview, true);
-    const standard = summarizeAgreementRows([{ status: "signed", agreement_version: { landlord_id: null, published_at: "2026-12-01" } }], { cutoff: "2027-01-01" });
+    const standard = summarizeAgreementRows([{ status: "signed", agreement_version: { audience: "everyone", published_at: "2026-12-01" } }], { cutoff: "2027-01-01" });
     assert.equal(standard.valid, false);
     assert.equal(standard.needsResign, true);
   });

@@ -17,6 +17,7 @@ import { studentFacts, ownerLabels } from "./studentView";
 import { UNCLAIMED_OWNER_ID, money, shortDate } from "./sections";
 import { leaseRentBasis } from "@/lib/listings/rentBasis";
 import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
+import { loadHiddenRents, roughRangeText } from "@/lib/listings/hiddenRents";
 
 const AMENITY_LABELS = {
   air_conditioning: "air conditioning", dishwasher: "dishwasher", gym: "gym", laundry: "laundry", mailroom: "mailroom",
@@ -64,10 +65,11 @@ export async function buildProxyContext(listingId) {
   // Read at once rather than one after another: every second counts while a student waits.
   // The owner labels are read once and shared with studentFacts.
   const ownersRead = ownerLabels(listingId);
-  const [{ data: row, error }, owners, facts] = await Promise.all([
+  const [{ data: row, error }, owners, facts, hidden] = await Promise.all([
     supabase.from("listings").select(SELECT).eq("id", listingId).maybeSingle(),
     ownersRead,
     studentFacts(listingId, ownersRead),
+    loadHiddenRents([listingId]),
   ]);
   if (error) throw new Error(`proxy context: ${error.message}`);
   if (!row || row.deleted_at) return null;
@@ -152,10 +154,27 @@ export async function buildProxyContext(listingId) {
     leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
   ];
   const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
+  /*
+   * Hidden website prices (Wyatt, 2026-11-20): for leases shown as "price on
+   * request", Proxy may give a rough range rounded out to $100, never the
+   * figure. Proxy's copy only: the landlord agent and knowledge synthesis
+   * read `text`, which never carries it.
+   */
+  const hiddenOnRequest = units
+    .flatMap((u) => (u.unit_leases ?? []).filter(isLiveLease))
+    .filter((l) => !(Number(l.rent) > 0) && hidden.has(l.id))
+    .map((l) => {
+      const h = hidden.get(l.id);
+      return { ...h, perPerson: h.perPerson ?? l.rent_is_per_person ?? null };
+    });
+  const range = roughRangeText(hiddenOnRequest);
+  const priceRangeLine = range
+    ? `ROUGH PRICE ESTIMATE for the leases shown as "price on request": ${range}. The landlord has not published a price. Only when a student asks about the price or rent of those leases, say the exact price is not listed and give this as a rough range ("roughly ..."). Never give a narrower or more exact figure and never say where the range comes from. Still send the student's question about the exact price to the landlord as an unanswered question, in the student's words, with no figure or range in it.`
+    : null;
   const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
   // How to apply is an instruction to Proxy alone, not listing data for the
   // landlord agent or the knowledge synthesis that also read `text`.
-  const proxyText = [factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text, applyLine(units)]
+  const proxyText = [factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text, priceRangeLine, applyLine(units)]
     .filter(Boolean).join("\n\n");
 
   const factKeys = new Set();
