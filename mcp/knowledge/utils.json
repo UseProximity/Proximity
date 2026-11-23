@@ -1,6 +1,6 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-22T23:58:22.526Z",
+  "_generated": "2026-11-23T20:10:22.055Z",
   "count": 366,
   "utils": [
     {
@@ -588,6 +588,10 @@
       "description": "The one Stripe client for the app, and the three env vars it reads:"
     },
     {
+      "file": "src/lib/billing/versionLandlords.js",
+      "description": "Who a custom agreement version applies to, seen from the admin dashboard"
+    },
+    {
       "file": "src/lib/billing/viewer.js",
       "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
     },
@@ -606,14 +610,6 @@
     {
       "file": "src/lib/chat/alertRoutes.js",
       "description": "Where a thread's chat alert emails go for one participant, for admin views."
-    },
-    {
-      "file": "src/lib/chat/applicationLinkNotice.js",
-      "description": "Tell a landlord, by email, that the application link in their emailed reply"
-    },
-    {
-      "file": "src/lib/chat/applicationLinks.js",
-      "description": "Application links in chat (Wyatt, 2026-11-20)."
     },
     {
       "file": "src/lib/chat/attachments.js",
@@ -1438,6 +1434,10 @@
     {
       "file": "src/utils/reviewAddress.js",
       "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
+      "file": "src/utils/shareLink.js",
+      "description": "The link a listing share sends: always the public listing page,"
     },
     {
       "file": "src/utils/unitCounts.js",

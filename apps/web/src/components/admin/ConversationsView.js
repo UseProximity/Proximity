@@ -706,8 +706,9 @@ export default function ConversationsView({ search, dbTarget }) {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
   // Hides threads opened and left without a word: a Proxy chat a student
-  // started but never typed in (Wyatt, 2026-11-18).
-  const [withMessagesOnly, setWithMessagesOnly] = useState(false);
+  // started but never typed in (Wyatt, 2026-11-18). On by default so the
+  // list opens on real conversations (Wyatt, 2026-11-22).
+  const [withMessagesOnly, setWithMessagesOnly] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [siteDb, setSiteDb] = useState(null);
 
@@ -818,7 +819,9 @@ export default function ConversationsView({ search, dbTarget }) {
     return (threads ?? []).filter((t) => {
       if (flaggedOnly && t.flagged === 0 && t.blocked === 0) return false;
       if (!includeDeleted && t.deletedAt) return false;
-      if (withMessagesOnly && !(t.messages > 0)) return false;
+      // A blocked send saves no message, so a thread whose only sends were
+      // blocked has 0 messages. Keep it: abuse attempts never hide by default.
+      if (withMessagesOnly && !(t.messages > 0) && !(t.flagged > 0 || t.blocked > 0)) return false;
       if (!q) return true;
       return [
         t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.landlord?.alertEmail, t.visitor?.email,

@@ -138,13 +138,13 @@ describe("agreementView", () => {
   });
 
   it("a version made for one landlord reads like any updated agreement, with nothing saying it is theirs alone (2026-11-08)", () => {
-    const own = { ...live, id: "v9", landlord_id: "u1", label: "December 2026" };
+    const own = { ...live, id: "v9", audience: "selected", label: "December 2026" };
     const v = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: own }));
     assert.equal(v.status, "signed", "their signed agreement keeps counting until they sign the new one");
     assert.equal(v.newVersionReady, true);
     assert.equal(v.canSign, true);
     assert.equal(v.liveVersionLabel, "December 2026");
-    assert.doesNotMatch(JSON.stringify(v), /negotiat|landlord_id/i);
+    assert.doesNotMatch(JSON.stringify(v), /negotiat|custom|audience|selected/i);
     const standard = agreementView(summarizeAgreementRows([signedRow()], { liveVersion: live }));
     assert.equal(standard.newVersionReady, false);
   });
