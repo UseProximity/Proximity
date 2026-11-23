@@ -1,6 +1,6 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-23T23:07:33.461Z",
+  "_generated": "2026-11-23T23:28:20.071Z",
   "count": 285,
   "routes": [
     {
@@ -3675,8 +3675,8 @@
       },
       "tables": [
         "listing_reviews",
-        "listing_landlords",
-        "listing_review_replies"
+        "listing_review_replies",
+        "listing_landlords"
       ],
       "file": "src/app/api/replyReview/route.js"
     },
