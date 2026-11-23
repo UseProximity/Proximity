@@ -818,7 +818,9 @@ export default function ConversationsView({ search, dbTarget }) {
     return (threads ?? []).filter((t) => {
       if (flaggedOnly && t.flagged === 0 && t.blocked === 0) return false;
       if (!includeDeleted && t.deletedAt) return false;
-      if (withMessagesOnly && !(t.messages > 0)) return false;
+      // A blocked send saves no message, so a thread whose only sends were
+      // blocked has 0 messages. Keep it: abuse attempts never hide by default.
+      if (withMessagesOnly && !(t.messages > 0) && !(t.flagged > 0 || t.blocked > 0)) return false;
       if (!q) return true;
       return [
         t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.landlord?.alertEmail, t.visitor?.email,
