@@ -57,8 +57,10 @@ export const APPLICATION_PORTAL_HOSTS = [
 
 // A web address: an explicit http(s) URL, or a bare host on a known TLD with
 // any path. The TLD list is explicit so "St. Louis" and "1.5 baths" do not count.
+// Further labels after the TLD are part of the host ("mysite.co.uk"), so the
+// whole link is matched and removed, never just its front.
 const URL_CANDIDATE =
-  /\bhttps?:\/\/[^\s<>()"']+|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|us|app|dev|me|biz|site|online|link|rentals|apartments|properties|homes|management|ai)\b(?:\/[^\s<>()"']*)?/gi;
+  /\bhttps?:\/\/[^\s<>()"']+|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|co|info|xyz|ru|cn|edu|gov|us|app|dev|me|biz|site|online|link|shop|rentals|apartments|properties|homes|management|ai)(?:\.[a-z]{2,})*\b(?:\/[^\s<>()"']*)?/gi;
 
 // In the URL: "apply", "application", "applicant" anywhere ("/onlineapplication",
 // "applynow"), and "rental-app" / "rentalapp".
@@ -105,13 +107,12 @@ function contextFor(text, start, end) {
   return previous ?? "";
 }
 
-/**
- * Every application link in a message, as written.
- *
- * @param {string} text
- * @returns {string[]}
+/*
+ * Every application link in a message, with where it sits: { url, start, end }.
+ * `url` is the whole link as written, from its scheme (if any) to the end of
+ * its path, less trailing sentence punctuation.
  */
-export function findApplicationLinks(text) {
+function applicationLinkSpans(text) {
   const body = String(text ?? "");
   const found = [];
   for (const match of body.matchAll(URL_CANDIDATE)) {
@@ -120,25 +121,42 @@ export function findApplicationLinks(text) {
     if (body[match.index - 1] === "@") continue;
     const host = hostOf(url);
     if (!host || onHost(host, ALLOWED_LINK_HOSTS)) continue;
+    const start = match.index;
+    const end = start + url.length;
     const isApplication =
       onHost(host, APPLICATION_PORTAL_HOSTS) ||
       URL_KEYWORD.test(url) ||
-      TEXT_KEYWORD.test(contextFor(body, match.index, match.index + url.length));
-    if (isApplication) found.push(url);
+      TEXT_KEYWORD.test(contextFor(body, start, end));
+    if (isApplication) found.push({ url, start, end });
   }
   return found;
 }
 
-export const hasApplicationLink = (text) => findApplicationLinks(text).length > 0;
+/**
+ * Every application link in a message, as written.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function findApplicationLinks(text) {
+  return applicationLinkSpans(text).map((s) => s.url);
+}
+
+export const hasApplicationLink = (text) => applicationLinkSpans(text).length > 0;
 
 /**
- * The message with its application links cut out, for replies that arrive by
- * email (which cannot be bounced back for an edit). Other links are left as
- * they are; the usual contact-details handling still applies to them.
+ * The message with each application link replaced by "[removed]", for replies
+ * that arrive by email (which cannot be bounced back for an edit). Only the
+ * link itself goes, whole, at the exact place it was found: no surrounding
+ * words, and never the same text inside another link (Wyatt, 2026-11-22).
  */
 export function stripApplicationLinks(text) {
-  let out = String(text ?? "");
-  for (const url of findApplicationLinks(out)) out = out.split(url).join("[removed]");
+  const body = String(text ?? "");
+  let out = body;
+  // From the end, so earlier positions stay valid.
+  for (const { start, end } of applicationLinkSpans(body).reverse()) {
+    out = `${out.slice(0, start)}[removed]${out.slice(end)}`;
+  }
   return out;
 }
 

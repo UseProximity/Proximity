@@ -155,6 +155,14 @@ export default function ChatTranscript({
   const [confirmPrompt, setConfirmPrompt] = useState(null);
   // { message, settingsUrl, hasLink } when an application link was refused.
   const [applicationNotice, setApplicationNotice] = useState(null);
+
+  // Both prompts belong to the conversation they were raised in. The
+  // transcript stays mounted when another conversation is opened, so clear
+  // them, or a notice would follow the landlord there with the wrong listing.
+  useEffect(() => {
+    setApplicationNotice(null);
+    setConfirmPrompt(null);
+  }, [thread?.threadId]);
   const [swipeReveal, setSwipeReveal] = useState(0);
   const bottomRef = useRef(null);
   const listRef = useRef(null);
@@ -564,9 +572,11 @@ export default function ChatTranscript({
             <p>{applicationNotice.message}</p>
             <div className="mt-2 flex items-center gap-2">
               {applicationNotice.settingsUrl && (
-                // A plain <a>: the dashboard reads its property and focus params on a fresh load.
+                // A new tab, so the draft and any attached files stay here (Wyatt, 2026-11-22).
                 <a
                   href={applicationNotice.settingsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
                 >
                   {applicationNotice.hasLink ? "View your application link" : "Add your application link"}

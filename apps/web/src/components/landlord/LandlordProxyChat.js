@@ -35,8 +35,8 @@ import { openCoverageDialog } from "@/components/listings/CoverageSignDialog";
 
 /*
  * A refused send. An application link refused for the student's chat (Wyatt,
- * 2026-11-20) gets a link to the dashboard field. A plain <a>, not Link: the
- * dashboard reads its property and focus params only on a fresh load.
+ * 2026-11-20) gets a link to the dashboard field, in a new tab so the reply
+ * being written here is not lost (Wyatt, 2026-11-22).
  */
 function sendErrorToast(data, fallback) {
   const message = data?.error || fallback;
@@ -44,7 +44,7 @@ function sendErrorToast(data, fallback) {
   return toast.error(
     <span className="text-sm">
       {message}{" "}
-      <a href={data.settingsUrl} className="font-semibold text-red-700 underline">
+      <a href={data.settingsUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-red-700 underline">
         {data.hasLink ? "View your application link" : "Add your application link"}
       </a>
     </span>,

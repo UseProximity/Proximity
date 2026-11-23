@@ -66,3 +66,22 @@ test("message names the Contact tab, either way", () => {
   assert.match(applicationLinkMessage({ hasLink: true }), /already on this listing.*Contact tab/);
   assert.doesNotMatch(applicationLinkMessage(), /\u2014/);
 });
+
+test("strip never cuts into another link that contains the same text", () => {
+  assert.equal(
+    stripApplicationLinks("Apply at westpine.com. Photos: https://westpine.com/gallery"),
+    "Apply at [removed]. Photos: https://westpine.com/gallery"
+  );
+  assert.equal(
+    stripApplicationLinks("Apply here https://a.com/x. Photos at https://a.com/x/gallery"),
+    "Apply here [removed]. Photos at https://a.com/x/gallery"
+  );
+});
+
+test("strip removes the whole link, scheme to path, two-part domains included", () => {
+  assert.equal(stripApplicationLinks("Our application is at mysite.co.uk/apply"), "Our application is at [removed]");
+  assert.equal(
+    stripApplicationLinks("Apply: https://westpine.rentcafe.com/onlineleasing/apply?unit=4#top thanks"),
+    "Apply: [removed] thanks"
+  );
+});
