@@ -35,7 +35,7 @@ import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { bareCoveredPlan, churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
 import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
-import { applyAliases, convertRentBasis, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
+import { applyAliases, convertRentBasis, isSyncBlank, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
@@ -431,6 +431,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: images ? snap.floorPlanImageUrl : null },
           offers: noPublicPrice ? [askForPrice] : withBasis(snap.offers),
+          // A blank written because the website prices nothing, marked so a
+          // later read can tell it from a landlord's blank (learnRules.js).
+          ...(pricesUnknown ? { askForPrice: true } : {}),
           ...(hiddenNew ? { hiddenRent: hiddenFrom(hiddenNew, listingBasis) } : {}),
           available: pricesUnknown ? true : snap.available,
           photos: images ? snap.photos : [],
@@ -937,7 +940,7 @@ export async function executeChange(change, { state, userId }) {
         await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: leaseRows[0].id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
       }
       // What the sync wrote, so a landlord's later edit can be told apart (learn.js).
-      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r })) };
+      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r, ...(d.askForPrice ? { askForPrice: true } : {}) })) };
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
@@ -1234,15 +1237,16 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     if (of && !u.published_at) shadowedBy.set(of, u.name ?? "unit");
   }
   /*
-   * Leases the sync itself wrote with no rent and nobody has priced since:
-   * a "call for price" read, not the landlord's choice (learn.js keeps what
-   * the sync wrote).
+   * Leases the sync itself created blank on a "call for price" read and
+   * nobody has priced since: not the landlord's choice. Told by the marker
+   * that read left (learnRules.js isSyncBlank), never by a blank rent in
+   * what the sync last wrote: any later sync write to a landlord's blank
+   * lease (a relist, new dates) records its blank rent too (PR 478 review).
    */
   const syncBlanks = new Set();
   for (const u of state.listing_units) {
     for (const l of u.unit_leases) {
-      const wrote = learnings.synced.get(`lease:${l.id}`);
-      if (l.rent == null && wrote && "rent" in wrote && wrote.rent == null) syncBlanks.add(l.id);
+      if (isSyncBlank(l, learnings.synced.get(`lease:${l.id}`))) syncBlanks.add(l.id);
     }
   }
   const hidden = [];
