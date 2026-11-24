@@ -84,6 +84,7 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 // ---------------------------------------------------------------- matching
 
 import { matchUnits, sameName, nameMatchAliases, norm } from "./match.js";
+import { saveShadowScores } from "./shadowStore.js";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1330,6 +1331,10 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     churn = churnCheck({ changes, existingLeases: existing, existingUnits: state.listing_units.length, policyRun, portalPriced });
     if (churn) holdReason = "churn_hold";
   }
+
+  // Shadow scores (stage 1): the ledger's verdict on each change, saved next
+  // to today's. Writes only listing_sync_scores; never changes the run.
+  if (policyRun) await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason });
 
   /*
    * Hidden prices change nothing a student or landlord sees, so they do not
