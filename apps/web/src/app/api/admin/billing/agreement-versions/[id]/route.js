@@ -16,7 +16,7 @@ import {
 } from "@/lib/billing/agreementVersions";
 import { cancelOpenCopies } from "@/lib/billing/versionLandlords";
 import { readAgreementFile, signedAgreementUrl } from "@/lib/billing/agreementFiles";
-import { documensoClient } from "@/lib/billing/agreementServices";
+import { agreementServices, documensoClient } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 
@@ -50,7 +50,9 @@ async function versionId(params) {
  */
 async function cancelCopies(supabase, documenso, landlordIds, kind) {
   try {
-    return { cancelled: await cancelOpenCopies(supabase, documenso, { landlordIds, kind }) };
+    // A copy found already signed or declined is applied as the webhook would.
+    const { options: envelopeOptions } = agreementServices();
+    return { cancelled: await cancelOpenCopies(supabase, documenso, { landlordIds, kind, envelopeOptions }) };
   } catch (err) {
     console.error("billing: could not cancel open agreement copies", err?.message);
     return { cancelled: 0, warning: "Saved, but an unsigned copy a landlord had open could not be cancelled. It is replaced when they next sign." };

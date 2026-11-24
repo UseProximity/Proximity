@@ -177,6 +177,69 @@ describe("open copies when a landlord's version changes (cancelled right away)",
   });
 });
 
+describe("an open copy that finished in Documenso before the version changed", () => {
+  const signer = (extra = {}) => [{ id: 1, role: "SIGNER", name: "Jessica Nelson", email: "j@example.com", ...extra }];
+  function withCopy(status, recipients = signer()) {
+    const db = world();
+    addCustomVersion(db, { id: "vc", label: "Custom" }, ["jess"]);
+    db.tables.agreement_coverage = [];
+    db.tables.landlord_agreements.push({ id: "m-jess", user_id: "jess", status: "sent", provider: "documenso", version_id: "vstd", provider_envelope_id: "env_jess" });
+    const documenso = fakeDocumenso();
+    documenso.envelopes.set("env_jess", { id: "env_jess", status, envelopeItems: [{ id: "item_1", order: 1 }], recipients });
+    return { db, documenso, row: () => db.tables.landlord_agreements.find((m) => m.id === "m-jess") };
+  }
+
+  it("a copy signed a moment ago is recorded as signed, not voided", async () => {
+    const { db, documenso, row } = withCopy("COMPLETED", signer({ signedAt: "2026-11-22T15:00:00.000Z", signingStatus: "SIGNED" }));
+    assert.equal(await cancelOpenCopies(db, documenso, { landlordIds: ["jess"], kind: "master" }), 0);
+    assert.equal(row().status, "signed");
+    assert.deepEqual(documenso.calls.cancelled, [], "nothing withdrawn in Documenso");
+  });
+
+  it("a copy declined a moment ago is recorded as declined", async () => {
+    const { db, documenso, row } = withCopy("REJECTED", signer({ rejectionReason: "Wrong rate" }));
+    assert.equal(await cancelOpenCopies(db, documenso, { landlordIds: ["jess"], kind: "master" }), 0);
+    assert.equal(row().status, "voided");
+    assert.match(row().ended_reason, /^declined/);
+    assert.deepEqual(documenso.calls.cancelled, []);
+  });
+
+  it("a draft copy is deleted rather than cancelled", async () => {
+    const { db, documenso, row } = withCopy("DRAFT");
+    const discarded = [];
+    documenso.discard = async (id) => {
+      discarded.push(id);
+    };
+    assert.equal(await cancelOpenCopies(db, documenso, { landlordIds: ["jess"], kind: "master" }), 1);
+    assert.deepEqual(discarded, ["env_jess"]);
+    assert.equal(row().status, "voided");
+  });
+
+  it("when Documenso will not cancel it, the copy stays open, the others still go, and the caller hears", async () => {
+    const { db, documenso, row } = withCopy("PENDING");
+    db.tables.agreement_version_landlords.push({ id: "avl-vc-pat", version_id: "vc", landlord_id: "pat", kind: "master", live: true, removed_at: null });
+    db.tables.landlord_agreements.push({ id: "m-pat", user_id: "pat", status: "sent", provider: "documenso", version_id: "vstd", provider_envelope_id: "env_pat" });
+    documenso.envelopes.set("env_pat", { id: "env_pat", status: "PENDING", recipients: signer() });
+    const realCancel = documenso.cancel.bind(documenso);
+    documenso.cancel = async (id, reason) => {
+      if (id === "env_jess") throw Object.assign(new Error("Documenso is down"), { name: "DocumensoError" });
+      return realCancel(id, reason);
+    };
+    await assert.rejects(() => cancelOpenCopies(db, documenso, { landlordIds: ["jess", "pat"], kind: "master" }), /Documenso is down/);
+    assert.equal(row().status, "sent", "not voided while Documenso still has it out for signing");
+    assert.equal(db.tables.landlord_agreements.find((m) => m.id === "m-pat").status, "voided");
+  });
+
+  it("when Documenso cannot be read, nothing is voided", async () => {
+    const { db, documenso, row } = withCopy("PENDING");
+    documenso.getEnvelope = async () => {
+      throw Object.assign(new Error("timeout"), { name: "DocumensoError" });
+    };
+    await assert.rejects(() => cancelOpenCopies(db, documenso, { landlordIds: ["jess"], kind: "master" }));
+    assert.equal(row().status, "sent");
+  });
+});
+
 describe("what to flag about a landlord", () => {
   it("signer, accounts they sign for, a signed agreement, another custom version, copies out", async () => {
     const db = world();
