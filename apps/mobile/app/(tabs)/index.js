@@ -13,6 +13,7 @@ import {
   countActiveFilters,
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
+import { accessTokenNeedsRefresh } from "../../src/lib/accessTokenExpiry";
 import { useAuthStore } from "../../src/store/authStore";
 import { useBrowseHandoffStore } from "../../src/store/browseHandoffStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
@@ -104,19 +105,22 @@ export default function BrowseScreen() {
     const fetchIds = () =>
       apiClient.listings.getSuggestedListings().then((data) => (Array.isArray(data?.ids) ? data.ids : []));
     (async () => {
-      let ids = await fetchIds();
       // The route answers an expired access token as signed out ({ ids: [] },
-      // not a 401), so the client never refreshes it. On an empty answer,
-      // refresh once and ask again. Refresh tokens are stateless, so this is
-      // safe alongside any other refresh, and it never signs the user out.
-      if (ids.length === 0 && current) {
+      // not a 401), so the client never refreshes it. Check the expiry first
+      // rather than retrying on an empty answer: empty is also the normal
+      // answer for a student with no history, and refreshing for them wasted
+      // a call and a SecureStore write on every visit. Refresh tokens are
+      // stateless, so this is safe alongside any other refresh, and it never
+      // signs the user out. The refresh stays inline, not apiClient's
+      // refresh(), so a sign-out meanwhile is not undone by setTokens.
+      if (accessTokenNeedsRefresh(useAuthStore.getState().accessToken)) {
         const { refreshToken, user } = useAuthStore.getState();
         const { accessToken } = await apiClient.auth.refresh(refreshToken);
         if (!current || typeof accessToken !== "string" || !accessToken) return;
         await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
         if (!current) return;
-        ids = await fetchIds();
       }
+      const ids = await fetchIds();
       if (current) setSuggestedIds(ids);
     })()
       // Suggestions are an enhancement: on failure there are none.
