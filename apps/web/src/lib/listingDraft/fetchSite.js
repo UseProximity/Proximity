@@ -479,15 +479,14 @@ export function extractJsonLd(html, cap = 6000) {
  * passed the SSRF checks in fetchPage. Each is a no-op without its key and
  * fails soft (null) on any error, including exhausted free credits, so the
  * import degrades to whatever the plain fetch got instead of breaking.
- * Order: Firecrawl (best anti-bot) -> Jina Reader -> Tavily Extract
- * (renewing monthly free tier, returns text + images, wrapped as pseudo-HTML).
+ * Firecrawl only, with its backup key when the main one runs dry.
  */
 /*
  * How many paid render calls have been made in this process, by service.
  * A job reads this before and after its work to report what it cost in
  * credits; Firecrawl charges one credit per scrape (five with a wait).
  */
-export const renderCounts = { firecrawl: 0, jina: 0, tavily: 0 };
+export const renderCounts = { firecrawl: 0 };
 export const cacheCounts = { hits: 0, misses: 0 };
 
 /*
@@ -620,111 +619,13 @@ async function renderPageViaFirecrawl(rawUrl, waitMs = 0) {
   }
 }
 
-/*
- * Jina, with more than one way to stay alive.
- *
- * Three facts learned by testing it rather than reading about it:
- *
- *  - A key can run out. Ours has: it authenticates and then returns 402
- *    InsufficientBalanceError on every call.
- *  - WITHOUT a key the reader still answers, free, and it is not a toy: asked
- *    for loftsateuclid.com/floorplans it returns eleven kilobytes of markdown
- *    naming every floor plan.
- *  - But browser rendering is the paid part. Ask a key-less call for
- *    "X-Engine: browser" and it returns 401, which is what makes a key worth
- *    having: the pages we fall back on are usually the ones that need JS.
- *
- * So: try each key we were given with the browser engine, drop a key that says
- * it is empty and move to the next, and when none are left ask anyway without
- * one. A cached snapshot of the page beats nothing, which is what this returned
- * before. Set JINA_READER_KEY_2 to a second account's key and it is used when
- * the first runs dry.
- */
-const spentJinaKeys = new Set();
-
-async function jinaFetch(rawUrl, key) {
-  const headers = { "X-Return-Format": "html" };
-  // The browser engine is the paid feature; asking for it without a key is a
-  // guaranteed 401, so a key-less call asks for the readable version instead.
-  if (key) {
-    headers.Authorization = `Bearer ${key}`;
-    headers["X-Engine"] = "browser";
-  }
-  return fetch(`https://r.jina.ai/${rawUrl}`, {
-    headers,
-    signal: AbortSignal.timeout(60000),
-  });
-}
-
-async function renderPageViaJina(rawUrl) {
-  if (!renderAllowed("jina")) return null;
-  // JINA_API_KEY is the name people reach for (and the one the PR notes gave
-  // out); accept it too so a mis-set key degrades to "wrong name, still works"
-  // rather than a render fallback that silently never runs.
-  const keys = [
-    process.env.JINA_READER_KEY,
-    process.env.JINA_API_KEY,
-    process.env.JINA_READER_KEY_2,
-  ].filter((k) => k && !spentJinaKeys.has(k));
-
-  for (const key of [...keys, null]) {
-    try {
-      bump("render", "jina");
-      const res = await jinaFetch(rawUrl, key);
-      if (key && (res.status === 402 || res.status === 401 || res.status === 403)) {
-        spentJinaKeys.add(key);
-        console.log(
-          `[listing-draft] a Jina key is not usable (HTTP ${res.status}); ` +
-            `402 means that account is out of balance, not that the key is wrong. ` +
-            `Trying the next one, then the free key-less reader.`
-        );
-        continue;
-      }
-      if (!res.ok) return null;
-      const html = await res.text();
-      if (!html) return null;
-      return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-async function renderPageViaTavily(rawUrl) {
-  if (!renderAllowed("tavily")) return null;
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return null;
-  bump("render", "tavily");
-  try {
-    const res = await fetch("https://api.tavily.com/extract", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ urls: rawUrl, include_images: true, extract_depth: "advanced" }),
-      signal: AbortSignal.timeout(60000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const r = data?.results?.[0];
-    if (!r?.raw_content) return null;
-    // Tavily returns markdown text + an image URL list, not HTML — wrap it so
-    // the downstream text/image extraction sees a normal page shape.
-    const imgs = (r.images ?? [])
-      .slice(0, 40)
-      .map((u) => `<img src="${String(u).replace(/"/g, "")}" alt="">`)
-      .join("\n");
-    const html = `<html><body><div>${r.raw_content}</div>\n${imgs}</body></html>`;
-    return { html: html.slice(0, MAX_BYTES * 2), finalUrl: rawUrl };
-  } catch {
-    return null;
-  }
-}
-
-const RENDER_FALLBACKS = [renderPageViaFirecrawl, renderPageViaJina, renderPageViaTavily];
+// Firecrawl only (Wyatt, 2026-11-24): two Firecrawl keys cover it, so Jina
+// and Tavily are gone.
+const RENDER_FALLBACKS = [renderPageViaFirecrawl];
 
 /*
  * The render chain is scored on stripped-text length, which quietly punishes
- * the sources that preserve structure. Tavily returns raw markdown wrapped in a
+ * the sources that preserve structure. Tavily (since removed) returned markdown in a
  * single <div>: on macapartments.com that scored 4,703 characters against
  * Firecrawl's 1,638, so the markdown blob won and extractLinks() came back with
  * ZERO links, leaving the model no site navigation to offer as area folders.

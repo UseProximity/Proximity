@@ -1331,7 +1331,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     // What this read spent: model dollars (extraction only; the photo sort
     // and flyer reads are logged separately) and paid render calls.
     modelCostUsd: Math.round(modelCost * 1000) / 1000,
-    renders: { firecrawl: 0, jina: 0, tavily: 0, ...(readCounters.getStore()?.render ?? {}) },
+    renders: { firecrawl: 0, ...(readCounters.getStore()?.render ?? {}) },
     // The pages the model chose to open, and what it hoped to find there.
     explored: exploredLog,
     // Pages reused from another building of the batch, and fetched fresh.
