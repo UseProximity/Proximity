@@ -608,8 +608,14 @@ function ReviewsTab({
   }
 
   const userId = session?.user?.id;
-  const isLandlord =
-    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  // Any landlord linked to the listing, not just the primary one: getListing
+  // says so for the signed-in viewer without sending the landlord list.
+  const isLandlord = Boolean(
+    userId &&
+      (listing?.owner?._id === userId ||
+        listing?.owner?.id === userId ||
+        listing?.viewerIsLandlord)
+  );
 
   async function handleReport(review) {
     const res = await fetch("/api/reviewReport", {

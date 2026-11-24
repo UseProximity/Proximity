@@ -39,7 +39,9 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
   const [reportMsg, setReportMsg] = useState("");
 
   const reviewId = review.id || review._id; // Support both review.id and review._id for flexibility
-  const canManage = Boolean(viewerId && isLandlord);
+  // The reply's author keeps Edit and Delete even where the page cannot tell
+  // they are a landlord here (the API checks the link either way).
+  const canManage = Boolean(viewerId && (isLandlord || landlordReply?.userId === viewerId));
 
   // A public reply must not name the student who wrote the review.
   const replyProblem = checkReviewText(replyText);
