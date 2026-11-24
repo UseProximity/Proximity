@@ -43,7 +43,7 @@
 
 import { minPerPersonRent } from "@/lib/listings/rentBasis";
 import { stLouisDay } from "@/utils/calendarDate";
-import { DEFAULT_FILTERS, matchListing, moveInDeadline } from "@/lib/listings/filterListings";
+import { DEFAULT_FILTERS, matchListing, moveInDeadline } from "@proximity/shared";
 import { neighborhoodScore } from "@/lib/geo/neighborhoods";
 import {
   isListingExcludedForViewer,

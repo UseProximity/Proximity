@@ -20,7 +20,7 @@ function rangeLabel(values) {
   return min === max ? String(min) : `${min}-${max}`;
 }
 
-function WalkBadge({ minutes, label }) {
+export function WalkBadge({ minutes, label }) {
   if (minutes == null) return null;
   const isCampus = label === "campus";
   const filled = isCampus
@@ -44,7 +44,7 @@ function WalkBadge({ minutes, label }) {
 // count is the gate; nothing renders without a real rating.
 const RED_400 = "#f87171";
 
-function RatingBadge({ listing }) {
+export function RatingBadge({ listing }) {
   const numReviews = Number(listing.numReviews) || 0;
   const rating = Number(listing.rating);
   if (!(numReviews > 0 && Number.isFinite(rating) && rating > 0)) return null;

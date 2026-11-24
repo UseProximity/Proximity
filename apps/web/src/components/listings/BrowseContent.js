@@ -4,7 +4,7 @@
  * round-trips. Manages the full filter state (rent range, bed/bath counts, walk times,
  * move-in date, home type, lease structure, amenities, utilities, sublease flag, and
  * saved-only toggle) as well as a free-text search across address and description fields.
- * The matching itself lives in lib/listings/filterListings.js, which evaluates each
+ * The matching itself lives in @proximity/shared (formatters/listingFilters.js), which evaluates each
  * listing unit-by-unit and lease-by-lease rather than against listing-level aggregates.
  * Reads an initial ?search= query param from the URL so the Header's search bar can
  * deep-link into a pre-filtered browse view. Passes the filtered listing array down to
@@ -24,7 +24,7 @@ import {
   filterListings,
   filtersActive,
   fittingRents,
-} from "@/lib/listings/filterListings";
+} from "@proximity/shared";
 import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
 export default function BrowseContent({ session, initialListings = null }) {

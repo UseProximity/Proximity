@@ -69,6 +69,18 @@ export async function registerForPushNotificationsAsync(devicePushToken) {
   // the simulator at all, so getExpoPushTokenAsync has nothing to succeed at.
   if (!Device.isDevice && Platform.OS !== "android") return null;
 
+  // The Android channel is created before asking for permission: on Android 13+
+  // the system notification prompt is not shown until the app has at least one
+  // channel. Creating it only after a grant meant a fresh install never got the
+  // prompt, so permission was never granted. Having the channel when the user
+  // declines is harmless.
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "default",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+
   const existing = await Notifications.getPermissionsAsync();
   let status = existing.status;
   if (status !== "granted") {
@@ -76,13 +88,6 @@ export async function registerForPushNotificationsAsync(devicePushToken) {
     status = requested.status;
   }
   if (status !== "granted") return null;
-
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId;
   const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId, devicePushToken });

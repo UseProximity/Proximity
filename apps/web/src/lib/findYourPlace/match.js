@@ -127,7 +127,7 @@ const live = (lease) => lease.is_active && !lease.unavailable;
 
 /*
  * MOVE-IN GATE. Same rule as the browse "Move in by" filter (leaseMatches in
- * lib/listings/filterListings.js): an offering counts when it opens on or
+ * packages/shared/src/formatters/listingFilters.js): an offering counts when it opens on or
  * before the date, and an offering with no date on file is not a late one.
  * A unit whose offerings ALL open too late drops out; a listing left with no
  * units drops out. Units that never had an offering are left alone.

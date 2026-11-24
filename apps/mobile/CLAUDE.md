@@ -7,7 +7,7 @@ Expo SDK 56, React Native 0.85, expo-router (file routes in `app/`), NativeWind 
 ## Running and verifying
 
 - Needs a development build (Mapbox, Apple sign-in and other native modules), not Expo Go. Start Metro with `npm run dev:mobile` from the root. Build and install the native app with `npm run ios` or `npm run android` inside `apps/mobile`.
-- There is no lint, typecheck or build script, and the `test` script points at a folder that does not exist. Verify changes on a dev build, and say plainly what you could not check.
+- There is no lint, typecheck or build script. `npm test` runs the unit tests in `src/lib/__tests__/` (Node's built-in runner). Verify changes on a dev build, and say plainly what you could not check.
 - Do not run `eas build`, `eas submit` or `eas credentials` unless the user asks.
 - `apps/mobile/.env.local` is gitignored (names are in `.env.example`, all `EXPO_PUBLIC_*`). A phone cannot reach `localhost`: to test against local web, use the computer's LAN IP.
 
