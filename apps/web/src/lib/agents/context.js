@@ -88,7 +88,10 @@ export async function buildProxyContext(listingId) {
       const ownerLabel = owners.get(ownerKey) ?? "Unclaimed leases";
       // Say the basis both ways: a bare price read as unknown, so Proxy asked landlords what the data already said.
       // Not recorded (older leases): use the same estimate the listing page shows, marked as one.
-      const guess = l.rent_is_per_person == null ? leaseRentBasis({ rent: l.rent, bedrooms: u.bedrooms }, roomShare) : null;
+      // Only with a known bedroom count (a room-share is per person whatever it is): an
+      // unsized unit read as a one-bed and was stated as "for the whole unit".
+      const guess = l.rent_is_per_person == null && (u.bedrooms != null || roomShare)
+        ? leaseRentBasis({ rent: l.rent, bedrooms: u.bedrooms }, roomShare) : null;
       const basis = l.rent_is_per_person === true ? " per person" : l.rent_is_per_person === false ? " for the whole unit"
         // A studio or one-bed is one person's rent either way.
         : guess && guess.beds <= 1 && !roomShare ? " for the whole unit"
