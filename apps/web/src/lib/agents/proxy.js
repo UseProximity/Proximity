@@ -218,6 +218,8 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
   const factByKey = new Map();
   for (const f of facts) factByKey.set(f.key, [...(factByKey.get(f.key) ?? []), f]);
   const scopeText = (f) => (f.scope.level === "property" ? "whole property" : `${f.scope.level}: ${f.scope.label}`);
+  // A key a reply may cite: a fact, or the rough hidden-price range (context.js).
+  const isUsedKey = (k) => factByKey.has(k) || (!!ctx.priceRangeKey && k === ctx.priceRangeKey);
 
   const canAsk = ctx.hasLiveLease && !testMode && (userId ? true : await visitorCanAskLandlord(visitorId));
   const allowNudge = nudgeAllowed(thread.proxy_state, studentTurns);
@@ -253,7 +255,7 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
   let result;
   try {
     // The reply shows as it is written when the caller can take it (the chat streams it).
-    const onFinalInput = onReplyDelta ? replyStreamer({ onDelta: onReplyDelta, isUsedKey: (k) => factByKey.has(k), canAsk }) : null;
+    const onFinalInput = onReplyDelta ? replyStreamer({ onDelta: onReplyDelta, isUsedKey, canAsk }) : null;
     result = await runTools({
       // Low effort: a short, rule-bound answer from facts in the prompt needs
       // little deliberation, and thinking time is time the student waits.
@@ -297,8 +299,10 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
         reply = `${cut.text} ${why}`.trim() || emptyReplyFor(final.intent, ctx);
       }
     }
-    const usedKeys = (final.answered_keys ?? []).filter((k) => factByKey.has(k));
-    const updatedAt = usedKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
+    // Cited keys route the reply; only real facts are recorded as what it drew on.
+    const usedKeys = (final.answered_keys ?? []).filter(isUsedKey);
+    const factKeys = usedKeys.filter((k) => factByKey.has(k));
+    const updatedAt = factKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
 
     if (pending && final.clarifier_reply) {
       later.push(() => studentReplyToClarifier({ question: pending, thread, body: text, userId }));
@@ -328,11 +332,11 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     } else if (asking) {
       // Partly answered: the answer already says the rest went to the landlord; only how the answer arrives is added.
       const body = `${reply} ${await askedLine({ thread, userId })}`.trim();
-      const posted = await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds: [], factKeys: usedKeys, updatedAt, intent: final.intent } });
+      const posted = await postProxyMessage({ threadId: thread.id, listingId, body, type: "proxy_asked", metadata: { questionIds: [], factKeys, updatedAt, intent: final.intent } });
       out.push(posted);
       later.push(() => askInBackground({ ctx, thread, studentMsg, posted, asks, userId, visitorId }));
     } else {
-      out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_answer", metadata: { factKeys: usedKeys, updatedAt, intent: final.intent } }));
+      out.push(await postProxyMessage({ threadId: thread.id, listingId, body: reply, type: "proxy_answer", metadata: { factKeys, updatedAt, intent: final.intent } }));
     }
     outcome = final.intent === "small_talk" ? "chit_chat"
       : final.intent === "tour" ? "tour"

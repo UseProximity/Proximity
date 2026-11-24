@@ -42,6 +42,12 @@ const SELECT = `
 // About 5,000 tokens. The largest knowledge base in Nov 2026 is under 10,000 characters.
 const FULL_FACTS_LIMIT = 20000;
 
+/*
+ * The key Proxy cites (in answered_keys) when it gives a hidden-price range,
+ * so a reply carrying the range counts as partly answered and is posted.
+ */
+export const PRICE_RANGE_KEY = "price.rough_range";
+
 function termLabel(months) {
   const t = [...new Set((months ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0))].sort((a, b) => a - b);
   if (!t.length) return null;
@@ -77,12 +83,16 @@ export async function buildProxyContext(listingId) {
 
   const leases = [];
   const unitLines = [];
+  // Proxy's copy of the unit lines: the same, plus each lease's rough hidden-price estimate.
+  const proxyUnitLines = [];
+  let estimated = 0;
   const roomShare = isRoomShareListing(row);
   for (const u of units) {
     const live = (u.unit_leases ?? []).filter(isLiveLease);
     const unitName = u.name || `${u.bedrooms ?? "?"} bed, ${u.bathrooms ?? "?"} bath`;
     const specs = [u.bedrooms != null ? `${u.bedrooms} bed` : null, u.bathrooms != null ? `${u.bathrooms} bath` : null, u.area ? `${Number(u.area).toLocaleString()} sq ft` : null].filter(Boolean).join(", ");
     const lines = [`- Unit "${unitName}"${specs ? ` (${specs})` : ""}${live.length ? "" : ": no lease on offer right now"}`];
+    const proxyLines = [lines[0]];
     for (const l of live) {
       const ownerKey = l.owner_id ?? UNCLAIMED_OWNER_ID;
       const ownerLabel = owners.get(ownerKey) ?? "Unclaimed leases";
@@ -106,9 +116,20 @@ export async function buildProxyContext(listingId) {
         id: l.id, unitId: u.id, unitName, ownerId: l.owner_id ?? null, ownerKey, ownerLabel, rent: Number(l.rent) > 0 ? Number(l.rent) : null,
         label: `${unitName}${Number(l.rent) > 0 ? ` at ${money(l.rent)}` : ""}`, index: idx,
       });
-      lines.push(`  - Lease ${idx} [${ownerLabel}]: ${bits.join(", ")}${l.description ? `. Notes: ${String(l.description).trim().slice(0, 300)}` : ""}`);
+      const notes = l.description ? `. Notes: ${String(l.description).trim().slice(0, 300)}` : "";
+      lines.push(`  - Lease ${idx} [${ownerLabel}]: ${bits.join(", ")}${notes}`);
+      /*
+       * Hidden website price (Wyatt, 2026-11-20): on this lease's own line, so
+       * it is never quoted for another price-on-request lease.
+       */
+      const h = Number(l.rent) > 0 ? null : hidden.get(l.id);
+      const range = h ? roughRangeText([{ ...h, perPerson: h.perPerson ?? l.rent_is_per_person ?? null }]) : null;
+      if (range) estimated += 1;
+      const proxyBits = range ? [`price on request (rough estimate [${PRICE_RANGE_KEY}]: ${range})`, ...bits.slice(1)] : bits;
+      proxyLines.push(`  - Lease ${idx} [${ownerLabel}]: ${proxyBits.join(", ")}${notes}`);
     }
     unitLines.push(lines.join("\n"));
+    proxyUnitLines.push(proxyLines.join("\n"));
   }
 
   const amen = Object.entries(row.listing_amenities ?? {}).filter(([, v]) => v === true).map(([k]) => AMENITY_LABELS[k]).filter(Boolean);
@@ -146,7 +167,7 @@ export async function buildProxyContext(listingId) {
   const fullFacts = factSections(fullSection).join("\n\n");
   const factsInFull = fullFacts.length <= FULL_FACTS_LIMIT;
 
-  const head = [
+  const headFor = (unitLines) => [
     `LISTING: ${row.title || row.address}${row.title ? `, ${row.address}` : ""}. Type: ${row.home_types?.label ?? "other"}.`,
     row.twenty_one_plus ? "Residents must be 21 or older." : null,
     row.sublease_friendly ? "Subletting is allowed by the property." : null,
@@ -156,6 +177,7 @@ export async function buildProxyContext(listingId) {
     `UNITS AND LEASES (a lease is one owner's offering; several owners can offer the same building):\n${unitLines.join("\n") || "- no units listed"}`,
     leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
   ];
+  const head = headFor(unitLines);
   const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
   /*
    * Hidden website prices (Wyatt, 2026-11-20): for leases shown as "price on
@@ -163,21 +185,14 @@ export async function buildProxyContext(listingId) {
    * figure. Proxy's copy only: the landlord agent and knowledge synthesis
    * read `text`, which never carries it.
    */
-  const hiddenOnRequest = units
-    .flatMap((u) => (u.unit_leases ?? []).filter(isLiveLease))
-    .filter((l) => !(Number(l.rent) > 0) && hidden.has(l.id))
-    .map((l) => {
-      const h = hidden.get(l.id);
-      return { ...h, perPerson: h.perPerson ?? l.rent_is_per_person ?? null };
-    });
-  const range = roughRangeText(hiddenOnRequest);
-  const priceRangeLine = range
-    ? `ROUGH PRICE ESTIMATE for the leases shown as "price on request": ${range}. The landlord has not published a price. Only when a student asks about the price or rent of those leases, say the exact price is not listed and give this as a rough range ("roughly ..."). Never give a narrower or more exact figure and never say where the range comes from. Still send the student's question about the exact price to the landlord as an unanswered question, in the student's words, with no figure or range in it.`
+  const priceRangeLine = estimated
+    ? `ROUGH PRICE ESTIMATES [${PRICE_RANGE_KEY}]: some leases shown as "price on request" carry a rough estimate on their own lease line. The landlord has not published a price. Only when a student asks about the price or rent of one of those leases, say the exact price is not listed, give that lease's estimate as a rough range ("roughly ..."), and put ${PRICE_RANGE_KEY} in answered_keys. Never quote one lease's estimate for another lease. A lease shown as "price on request" with no estimate on its line has none: say its price is not listed. Never give a narrower or more exact figure and never say where the range comes from. Still send the student's question about the exact price to the landlord as an unanswered question, in the student's words, with no figure or range in it.`
     : null;
   const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
   // How to apply is an instruction to Proxy alone, not listing data for the
   // landlord agent or the knowledge synthesis that also read `text`.
-  const proxyText = [factsInFull ? [...head, fullFacts, tail].filter(Boolean).join("\n\n") : text, priceRangeLine, applyLine(units)]
+  const proxyHead = headFor(proxyUnitLines);
+  const proxyText = [factsInFull ? [...proxyHead, fullFacts, tail].filter(Boolean).join("\n\n") : [...proxyHead, ...factSections(sectionText), tail].filter(Boolean).join("\n\n"), priceRangeLine, applyLine(units)]
     .filter(Boolean).join("\n\n");
 
   const factKeys = new Set();
@@ -199,6 +214,8 @@ export async function buildProxyContext(listingId) {
     primaryOwner,
     contactEmail: row.contact_email ?? null,
     factKeys: [...factKeys],
+    // Set when some lease carries a rough hidden-price estimate Proxy may cite.
+    priceRangeKey: estimated ? PRICE_RANGE_KEY : null,
     facts,
   };
 }
