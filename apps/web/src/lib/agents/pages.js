@@ -24,6 +24,7 @@ import supabase from "@/lib/supabase";
 import { fetchPage, fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent, retireFact } from "./store";
 import { synthesizeKnowledge, applyProposals, tidyDuplicates } from "./synthesize";
+import { postCorrections } from "./corrections";
 import { copyReadStatus } from "./pageStatus";
 import { crawlSite, MAX_CRAWL_PAGES, isLanguageCopy, twinKey, languageTwinUrl } from "./crawl";
 import { foundUrlSet } from "./foundRead";
@@ -80,6 +81,9 @@ const BATCH_DEADLINE_MS = 170000;
 // next the tidy of repeated facts: both wait for next week's read.
 const DUPLICATE_CHECK_DEADLINE_MS = 200000;
 const TIDY_DEADLINE_MS = 225000;
+// Student notes for the facts the read changed go out last, after the pages
+// are marked read, and stop being started past this (PR 478 review).
+const CORRECTIONS_DEADLINE_MS = 255000;
 
 /*
  * The whole-site read: the first import, every landlord-triggered sync, and
@@ -282,6 +286,17 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const missing = await noteMissingFacts({ listingId, touched, readIds, unchangedIds, goneIds, siteText: siteText.join("\n"), cause, actorId });
   totals.missed = missing.missed;
   totals.retired += missing.retired;
+
+  // The student notes for what changed, now that everything above is saved
+  // (PR 478 review: awaited inside the write step, a long run of notes could
+  // see the job killed before its pages were marked read).
+  if (applied.changes?.length && cause !== "seed") {
+    const budgetMs = Math.max(10000, CORRECTIONS_DEADLINE_MS - (Date.now() - started));
+    totals.notes = await postCorrections({ listingId, changes: applied.changes, failOpen: false, budgetMs }).catch((err) => {
+      console.error("[agents] corrections failed:", err?.message ?? err);
+      return 0;
+    });
+  }
 
   totals.seconds = Math.round((Date.now() - started) / 1000);
   const now = new Date().toISOString();

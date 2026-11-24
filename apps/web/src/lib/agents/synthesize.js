@@ -132,12 +132,15 @@ function knowledgeIndex(facts) {
  * decides each fact once, after all of them (applyProposals below).
  * `keptFrom` in the result is each 'keep' with the page that gave it
  * ({ factId, sourceId }), so the write step knows which page confirmed what.
+ * `deferCorrections` leaves the student notes to the caller: the changes are
+ * in `changes`, for postCorrections once the caller's own work is saved
+ * (a landlord's answer relayed first, PR 478 review).
  */
 export async function synthesizeKnowledge({
   listingId, text, sourceKind, sourceId = null, sourceRef = null, cause,
   landlordSet = false, setBy = null, actorId = null, ownerDefault = null,
   question = null, observedAt = null, noRetire = false, pageSources = null,
-  canReplace = null, onlySections = null, collect = null,
+  canReplace = null, onlySections = null, collect = null, deferCorrections = false,
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty", touched: [] };
@@ -257,12 +260,13 @@ export async function synthesizeKnowledge({
     // been told the old value of.
     if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
-  if (result.changes.length && cause !== "seed") {
+  // When the material-change check cannot decide, only a website read stays
+  // quiet; a landlord's own words still reach the student (PR 475 review).
+  result.failOpen = sourceKind !== "page";
+  if (result.changes.length && cause !== "seed" && !deferCorrections) {
     // Awaited: a job that returns first can be frozen before the notes go
-    // out. When the material-change check cannot decide, only a website
-    // read stays quiet; a landlord's own words still reach the student
-    // (PR 475 review).
-    await postCorrections({ listingId, changes: result.changes, failOpen: sourceKind !== "page" }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    // out.
+    await postCorrections({ listingId, changes: result.changes, failOpen: result.failOpen }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return result;
 }
@@ -293,14 +297,16 @@ export async function synthesizeKnowledge({
  *
  * `confirmed` is the ids of the facts a batch kept, `keptFrom` a map from a
  * fact id to the ids of the pages that kept it.
- * Returns { written, unchanged, held, merged, touched }.
+ * Returns { written, unchanged, held, merged, touched, changes }: `changes`
+ * are the facts that changed, for the caller to post the student notes once
+ * its pages are saved (pages.js, PR 478 review).
  */
 const scopeKey = (scopeLevel, scopeId) => `${scopeLevel}|${scopeLevel === "property" ? "" : scopeId ?? ""}`;
 const factId = (section, key, scopeLevel, scopeId) => `${section}|${key}|${scopeKey(scopeLevel, scopeId)}`;
 const len = (t) => String(t ?? "").length;
 
 export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set(), keptFrom = new Map(), skipDuplicateCheck = false }) {
-  const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [] };
+  const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [], changes: [] };
   if (!proposals?.length) return out;
   const facts = await currentFacts(listingId);
   const byId = new Map(facts.map((f) => [factId(f.section, f.field_key, f.scope_level, f.scope_id), f]));
@@ -334,7 +340,6 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     for (const r of data ?? []) previous.set(r.superseded_by, r);
   }
 
-  const changes = [];
   for (const g of groups.values()) {
     const { section, key, scopeLevel, scopeId, current, props } = g;
     if (!props.length) continue;
@@ -357,11 +362,7 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     });
     if (r.held) out.held++; else if (r.changed) out.written++; else out.unchanged++;
     if (r.fact?.id) out.touched.push(r.fact.id);
-    if (r.changed && r.event?.previous_fact_id) changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
-  }
-  // Awaited: a job that returns first can be frozen before the notes go out.
-  if (changes.length && cause !== "seed") {
-    await postCorrections({ listingId, changes, failOpen: false }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    if (r.changed && r.event?.previous_fact_id) out.changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
   return out;
 }

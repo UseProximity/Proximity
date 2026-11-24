@@ -58,29 +58,66 @@ export async function isMaterialChange({ listingId = null, oldSummary, summary, 
   }
 }
 
-export async function postCorrections({ listingId, changes, failOpen = true }) {
+/*
+ * Posts the notes for a set of changes. Callers run it after their own work
+ * is saved (the landlord's answer relayed, the read's pages marked), never
+ * before it (PR 478 review: a landlord's answer could time out before the
+ * waiting students got it). Threads go out a few at a time, and no new
+ * thread is started past `budgetMs`: the rest are logged and skipped, since
+ * a missed update note costs less than a route or job cut off midway.
+ */
+const THREADS_AT_ONCE = 4;
+
+export async function postCorrections({ listingId, changes, failOpen = true, budgetMs = 20000 }) {
   const list = (changes ?? []).filter((c) => c.key && c.summary);
   if (!list.length) return 0;
+  const started = Date.now();
+  const outOfTime = () => Date.now() - started > budgetMs;
   const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  let posted = 0;
+  // Per thread, the changes it gets: one thread's notes go out in turn, so
+  // its one email a day is decided once.
+  const work = new Map();
+  let checked = 0;
   for (const c of list) {
+    if (outOfTime()) break;
+    checked++;
     const { data: msgs } = await supabase.from("chat_messages").select("thread_id")
       .eq("listing_id", listingId).eq("sender_id", PROXY_USER_ID).eq("message_type", "proxy_answer")
       .contains("metadata", { factKeys: [c.key] }).gte("created_at", since).is("deleted_at", null).limit(500);
     const threads = [...new Set((msgs ?? []).map((m) => m.thread_id))];
     if (!threads.length) continue;
     if (!(await isMaterialChange({ listingId, oldSummary: c.oldSummary, summary: c.summary, failOpen }))) continue;
-    for (const threadId of threads) {
-      // Once per thread per change.
-      const { data: already } = await supabase.from("chat_messages").select("id").eq("thread_id", threadId)
-        .eq("message_type", "proxy_note").contains("metadata", { correction: c.key, summary: c.summary }).limit(1);
-      if (already?.length) continue;
-      await postProxyMessage({ threadId, listingId, type: "proxy_note", body: `Quick update from the landlord: ${c.summary}`, metadata: { correction: c.key, summary: c.summary } });
-      posted++;
-      const { data: todays } = await supabase.from("sent_emails").select("id").eq("thread_id", threadId)
-        .in("kind", ["proxy_answer", "proxy_relay", "proxy_clarifier", "proxy_correction", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);
-      if (!todays?.length) await notifyStudentThread({ threadId, kind: "proxy_correction", quietMs: 0 }).catch(() => {});
-    }
+    for (const threadId of threads) work.set(threadId, [...(work.get(threadId) ?? []), c]);
   }
+  const threads = [...work.entries()];
+  let posted = 0;
+  let done = 0;
+  for (let i = 0; i < threads.length; i += THREADS_AT_ONCE) {
+    if (outOfTime()) break;
+    const results = await Promise.all(threads.slice(i, i + THREADS_AT_ONCE).map(([threadId, cs]) => noteThread({ listingId, threadId, changes: cs })
+      .catch((err) => { console.error("[agents] correction note failed:", err?.message ?? err); return 0; })));
+    posted += results.reduce((n, r) => n + r, 0);
+    done += results.length;
+  }
+  if (checked < list.length || done < threads.length) {
+    console.error(`[agents] corrections on ${listingId}: out of time, ${list.length - checked} changes not checked, ${threads.length - done} threads not told`);
+  }
+  return posted;
+}
+
+async function noteThread({ listingId, threadId, changes }) {
+  let posted = 0;
+  for (const c of changes) {
+    // Once per thread per change.
+    const { data: already } = await supabase.from("chat_messages").select("id").eq("thread_id", threadId)
+      .eq("message_type", "proxy_note").contains("metadata", { correction: c.key, summary: c.summary }).limit(1);
+    if (already?.length) continue;
+    await postProxyMessage({ threadId, listingId, type: "proxy_note", body: `Quick update from the landlord: ${c.summary}`, metadata: { correction: c.key, summary: c.summary } });
+    posted++;
+  }
+  if (!posted) return 0;
+  const { data: todays } = await supabase.from("sent_emails").select("id").eq("thread_id", threadId)
+    .in("kind", ["proxy_answer", "proxy_relay", "proxy_clarifier", "proxy_correction", "proxy_no_answer"]).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).limit(1);
+  if (!todays?.length) await notifyStudentThread({ threadId, kind: "proxy_correction", quietMs: 0 }).catch(() => {});
   return posted;
 }
