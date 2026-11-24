@@ -183,6 +183,7 @@ function activeLeasesOf(listing) {
     (u.unit_leases ?? [])
       .filter((l) => l.is_active && !l.unavailable && l.rent > 0)
       .map((l) => ({
+        id: l.id ?? null,
         rent: Number(l.rent),
         rent_is_per_person: l.rent_is_per_person ?? null,
         bedrooms: u.bedrooms,
@@ -403,7 +404,10 @@ function furnishedOk(listing, furnishedPref) {
 function rentBreakdown(listing) {
   const isRoomShare = isRoomShareListing(listing);
   const rows = activeLeasesOf(listing)
-    .map((l) => leaseRentBasis(l, isRoomShare))
+    .map((l) => {
+      const r = leaseRentBasis(l, isRoomShare);
+      return r && { ...r, leaseId: l.id };
+    })
     .filter(Boolean);
   if (rows.length === 0) return null;
   return rows.reduce((best, r) => (r.perPerson < best.perPerson ? r : best));
@@ -411,6 +415,13 @@ function rentBreakdown(listing) {
 
 function minPerPerson(listing) {
   return rentBreakdown(listing)?.perPerson ?? null;
+}
+
+// The lease that sets a listing's cheapest per-person rent (the price
+// buildRankContext ranks a listing at when no offer is resolved), so a caller
+// can tell whose price it is. null when nothing is priced.
+export function cheapestLeaseIdOf(listing) {
+  return rentBreakdown(listing)?.leaseId ?? null;
 }
 
 // Per-person rent for a listing, for callers outside this module (the chat
