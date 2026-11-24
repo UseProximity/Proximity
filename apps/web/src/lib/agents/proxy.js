@@ -25,7 +25,7 @@
 import supabase from "@/lib/supabase";
 import { runTools, SONNET } from "./model";
 import { buildProxyContext } from "./context";
-import { replyStreamer, normalizeFinal, KEEPS_OWN_REPLY, withoutAskClaims } from "./replyStream";
+import { replyStreamer, normalizeFinal, KEEPS_OWN_REPLY, withoutAskClaims, saysNothingSent } from "./replyStream";
 import { listMessages, postMessage, postProxyMessage, updateProxyState, PROXY_USER_ID } from "./threads";
 import { sanitizeStudentText, screenStudentText, CONTACT_NOTE } from "./screen";
 import { checkMessageAllowed, visitorCanAskLandlord } from "./limits";
@@ -150,7 +150,9 @@ async function countInquiry({ listingId, userId }) {
  * What to say when cutting a false "I've asked the landlord" left nothing,
  * worded by what the student was after rather than one line for everything.
  */
-function emptyReplyFor(intent, ctx) {
+function emptyReplyFor(intent, ctx, answered = []) {
+  // The facts it drew on still answer the student; never "I don't have that" over them.
+  if (answered.length) return answered.join(" ");
   if (["apply", "negotiate"].includes(intent) && !ctx.hasLiveLease) return "Nothing here is on offer right now, so there's no one to apply to.";
   if (intent === "small_talk") return "Happy to help. What would you like to know about this place?";
   return "I don't have that information.";
@@ -227,7 +229,8 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     `Today is ${shortDate(new Date())}.`,
     chosenLease ? `The student chose lease ${chosenLease.index} (${chosenLease.label}, ${chosenLease.ownerLabel}).` : `The student has not chosen a lease.${ctx.ownerCount > 1 ? " This listing has leases from several owners." : ""}`,
     ctx.hasLiveLease ? "Availability: leases are on offer." : "Availability: nothing is on offer right now; do not send questions to the landlord.",
-    canAsk ? "Questions you cannot answer will be sent to the landlord." : "Questions you cannot answer cannot be sent to the landlord right now; say you do not have that information. Never say you have asked, will ask or are passing anything on to the landlord.",
+    canAsk ? "Questions you cannot answer will be sent to the landlord."
+      : `Questions you cannot answer cannot be sent to the landlord right now; say you do not have that information. Never say you have asked, will ask or are passing anything on to the landlord.${pending ? " The one exception: the student's reply to the landlord's pending clarifying question is passed on, so for that reply follow the clarifying question rule." : ""}`,
     `nudge_allowed: ${allowNudge}`,
     userId ? "The student is signed in." : "The student is not signed in.",
     thread.proxy_state?.offer ? `You offered to ask the landlord: "${thread.proxy_state.offer}". If the student agrees, send it.` : "No offer to ask the landlord is pending.",
@@ -289,22 +292,28 @@ export async function handleStudentMessage({ thread, body, userId = null, visito
     }
   } else {
     reply = String(final.reply).trim();
+    // Cited keys route the reply; only real facts are recorded as what it drew on.
+    const usedKeys = (final.answered_keys ?? []).filter(isUsedKey);
+    const factKeys = usedKeys.filter((k) => factByKey.has(k));
+    const updatedAt = factKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
+    // A reply to a landlord's clarifying question is passed on whatever canAsk says, so saying so is true.
+    const passesClarifier = !!(pending && final.clarifier_reply);
     // Nothing can reach the landlord, so a reply saying it did is wrong whatever the model meant.
-    if (!canAsk) {
+    if (!canAsk && !passesClarifier) {
       const cut = withoutAskClaims(reply);
       if (cut.removed) {
         const why = !ctx.hasLiveLease ? ""
           : testMode ? (testAs === "staff" ? "This is a test chat, so nothing was sent to the landlord." : "This is a test chat on your own listing, so nothing was sent to the landlord.")
           : !userId ? "Sign in and I can ask the landlord for you." : "";
-        reply = `${cut.text} ${why}`.trim() || emptyReplyFor(final.intent, ctx);
+        // The model sometimes says it was a test chat itself; say it once.
+        const add = why && !(testMode && saysNothingSent(cut.text)) && !cut.text.includes(why) ? why : "";
+        const answered = [...new Set(factKeys.flatMap((k) => factByKey.get(k).map((f) => (f.scope.level === "property" ? f.summary : `${f.summary} (${f.scope.label})`))))]
+          .slice(0, 3).map((t) => (/[.!?]$/.test(t) ? t : `${t}.`));
+        reply = `${cut.text} ${add}`.trim() || emptyReplyFor(final.intent, ctx, answered);
       }
     }
-    // Cited keys route the reply; only real facts are recorded as what it drew on.
-    const usedKeys = (final.answered_keys ?? []).filter(isUsedKey);
-    const factKeys = usedKeys.filter((k) => factByKey.has(k));
-    const updatedAt = factKeys.flatMap((k) => factByKey.get(k).map((f) => f.updatedAt)).filter(Boolean).sort().pop() ?? null;
 
-    if (pending && final.clarifier_reply) {
+    if (passesClarifier) {
       later.push(() => studentReplyToClarifier({ question: pending, thread, body: text, userId }));
     }
 
