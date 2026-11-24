@@ -145,10 +145,48 @@ export async function saveHiddenRents({ listingId, rows, sourceUrl = null }) {
 }
 
 /*
+ * A full read of one website settles that website's hidden prices (PR 478
+ * review): what it priced is saved, and a row it read last time but no
+ * longer prices (the plan went to "Call for pricing", sold out, or the lease
+ * got a public rent) is deleted. A read that may have missed some of the
+ * website's plans (`complete` false) cannot say a price is gone, so such a
+ * row is only detached from the website instead (see unconfirmHiddenRents).
+ * Rows from the listing's other websites are left alone, and a failed save
+ * changes nothing else. Returns the number saved.
+ */
+export async function replaceHiddenRents({ listingId, rows, sourceUrl = null, complete = true }) {
+  const clean = (rows ?? []).filter((r) => r.leaseId && Number(r.rent) > 0 && Number(r.rent) < 100000);
+  const saved = clean.length ? await saveHiddenRents({ listingId, rows: clean, sourceUrl }) : 0;
+  if (!listingId || !sourceUrl || (clean.length && !saved)) return saved;
+  const table = supabase.from("lease_hidden_rents");
+  let q = (complete ? table.delete() : table.update({ source_url: null })).eq("listing_id", listingId).eq("source_url", sourceUrl);
+  if (clean.length) q = q.not("lease_id", "in", `(${[...new Set(clean.map((r) => r.leaseId))].join(",")})`);
+  const { error } = await q;
+  if (error) console.error("[hiddenRents] prune failed:", error.message);
+  return saved;
+}
+
+/*
+ * A read held for churn (too much changed at once, the usual sign of a
+ * misread) neither saves nor deletes: what that website showed before is no
+ * longer confirmed, so its rows are detached from it (source_url cleared).
+ * An unchanged page after that never refreshes them, and they age out after
+ * HIDDEN_RENT_MAX_AGE_DAYS unless a good read saves them again.
+ */
+export async function unconfirmHiddenRents(listingId, sourceUrls) {
+  const urls = [...new Set((sourceUrls ?? []).filter(Boolean))];
+  if (!listingId || !urls.length) return;
+  const { error } = await supabase.from("lease_hidden_rents").update({ source_url: null }).eq("listing_id", listingId).in("source_url", urls);
+  if (error) console.error("[hiddenRents] unconfirm failed:", error.message);
+}
+
+/*
  * The sync read a website and it had not changed since the last read: the
  * prices it showed then are still showing, so the hidden copies taken from
- * THAT website are fresh. Copies from another of the listing's sources are
- * left to age out on their own.
+ * THAT website are fresh. The last full read of it left only the rows it
+ * saved under its URL (replaceHiddenRents, unconfirmHiddenRents), so only
+ * those are refreshed. Copies from another of the listing's sources are left
+ * to age out on their own.
  */
 export async function touchHiddenRents(listingId, sourceUrls) {
   const urls = [...new Set((sourceUrls ?? []).filter(Boolean))];
@@ -162,9 +200,10 @@ export async function touchHiddenRents(listingId, sourceUrls) {
 }
 
 /*
- * Whether a listing has an unpriced live lease and no hidden price at all:
+ * Whether a listing has an unpriced live lease and no fresh hidden price:
  * then an unchanged page still needs one full pass to save them (the first
- * read after this feature shipped, or after a held run saved none).
+ * read after this feature shipped, after a held run saved none, or once the
+ * ones it had have aged out).
  */
 export async function hiddenRentsMissing(listingId) {
   if (!listingId) return false;
@@ -176,7 +215,7 @@ export async function hiddenRentsMissing(listingId) {
       .is("rent", null)
       .is("deleted_at", null)
       .eq("unavailable", false),
-    supabase.from("lease_hidden_rents").select("lease_id", { count: "exact", head: true }).eq("listing_id", listingId),
+    supabase.from("lease_hidden_rents").select("lease_id", { count: "exact", head: true }).eq("listing_id", listingId).gte("seen_at", freshSince()),
   ]);
   if (e1 || e2) return false;
   return (blanks ?? 0) > 0 && (rows ?? 0) === 0;

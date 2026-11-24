@@ -39,7 +39,7 @@ import { applyAliases, convertRentBasis, isSyncBlank, learnableSiteName, rentBas
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
-import { saveHiddenRents } from "@/lib/listings/hiddenRents";
+import { replaceHiddenRents, saveHiddenRents, unconfirmHiddenRents } from "@/lib/listings/hiddenRents";
 
 const REJECTED_QUIET_DAYS = 30;
 // A floor plan priced by a leasing portal carries a lease per apartment per
@@ -1397,11 +1397,18 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
    * wait on auto-apply or a high-confidence read (the reader rates most of
    * LOCAL on Delmar's correct reads low). A run held because too much
    * changed at once, the usual sign of a wrong website or a misread, saves
-   * none (Wyatt, 2026-11-23); the next good read fills them in.
+   * none (Wyatt, 2026-11-23); the next good read fills them in. Any other
+   * read replaces that website's hidden prices, so one it no longer shows
+   * is deleted, and a held read leaves the old ones to age out rather than
+   * be kept fresh by unchanged pages after it (PR 478 review).
    */
-  if (mode === "sync" && hidden.length && holdReason !== "churn_hold") {
-    const saved = await saveHiddenRents({ listingId, rows: hidden, sourceUrl: snapshot.sourceUrl ?? state.source_url ?? null });
-    if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+  if (mode === "sync") {
+    const hiddenUrl = snapshot.sourceUrl ?? state.source_url ?? null;
+    if (holdReason === "churn_hold") await unconfirmHiddenRents(listingId, [hiddenUrl, state.source_url]);
+    else {
+      const saved = await replaceHiddenRents({ listingId, rows: hidden, sourceUrl: hiddenUrl, complete: !!snapshot.unitListComplete });
+      if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+    }
   }
 
   // The units the website showed this time, stamped unless the read is held.

@@ -237,7 +237,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id));
     let result = null;
     // Same website as last time: its prices are still showing, so the hidden
-    // copies taken from it stay fresh for matchmaking.
+    // copies the last full read of it saved stay fresh for matchmaking (that
+    // read deleted or detached the rest; applySnapshot).
     if (unchanged) await touchHiddenRents(listing.id, [snapshot.sourceUrl, m.source_url]);
     if (!unchanged) {
       onStep("Saving");
