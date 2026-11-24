@@ -90,7 +90,10 @@ export function extractUrls(text, max = 3) {
   return [...seen];
 }
 
-export async function ingestLinks({ listingId, text, cause = "landlord_answer", landlordSet = false, actorId = null, ownerDefault = null, question = null }) {
+// `changes`, when given (an array), takes each page's fact changes instead of
+// posting the student notes, for the caller to post after its own work
+// (synthesizeKnowledge deferCorrections, PR 478 review).
+export async function ingestLinks({ listingId, text, cause = "landlord_answer", landlordSet = false, actorId = null, ownerDefault = null, question = null, changes = null }) {
   const results = [];
   for (const url of extractUrls(text)) {
     try {
@@ -100,8 +103,9 @@ export async function ingestLinks({ listingId, text, cause = "landlord_answer", 
       const source = await findOrCreateSource({ listingId, kind: "page", url, label: page?.title || url });
       const synthesis = await synthesizeKnowledge({
         listingId, text: body.slice(0, 20000), sourceKind: "page", sourceId: source.id, sourceRef: url,
-        cause, landlordSet, setBy: landlordSet ? actorId : null, actorId, ownerDefault, question,
+        cause, landlordSet, setBy: landlordSet ? actorId : null, actorId, ownerDefault, question, deferCorrections: !!changes,
       });
+      if (changes) changes.push(...(synthesis.changes ?? []).map((c) => ({ ...c, failOpen: synthesis.failOpen })));
       results.push({ url, written: synthesis.written, retired: synthesis.retired });
     } catch (err) {
       results.push({ url, error: String(err?.message ?? err).slice(0, 200) });

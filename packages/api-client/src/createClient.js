@@ -1,7 +1,7 @@
 import { createListingsResource } from "./resources/listings.js";
 import { createDormReviewsResource } from "./resources/dormReviews.js";
 import { createTestimonialsResource } from "./resources/testimonials.js";
-import { createMatchmakingResource } from "./resources/matchmaking.js";
+import { createFindYourPlaceResource } from "./resources/findYourPlace.js";
 import { createLandlordResource } from "./resources/landlord.js";
 import { AuthResource } from "./resources/auth.js";
 import { UserResource } from "./resources/user.js";
@@ -18,7 +18,7 @@ import { ChatResource } from "./resources/chat.js";
 // getToken/getRefreshToken/onTokenExpired/onTokenRefreshed stay pluggable:
 // when there's no logged-in user, getToken()/getRefreshToken() return null
 // and requests just go out unauthenticated (used by every public resource:
-// listings, dormReviews, testimonials, matchmaking).
+// listings, dormReviews, testimonials).
 //
 // testEmailTo is the mobile equivalent of web's `staging_email_to` cookie
 // (the "📧 Test emails →" picker): mobile has no cookies, so it sends the
@@ -45,7 +45,7 @@ class ApiClient {
     this.listings = createListingsResource(this);
     this.dormReviews = createDormReviewsResource(this);
     this.testimonials = createTestimonialsResource(this);
-    this.matchmaking = createMatchmakingResource(this);
+    this.findYourPlace = createFindYourPlaceResource(this);
     this.landlord = createLandlordResource(this);
     this.auth = new AuthResource(this);
     this.user = new UserResource(this);

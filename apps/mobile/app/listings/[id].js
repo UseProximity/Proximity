@@ -45,6 +45,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   Text,
   TextInput,
   View,
@@ -62,6 +63,8 @@ import {
   Star,
   Mail,
   Flag,
+  Heart,
+  Share as ShareIcon,
 } from "lucide-react-native";
 import {
   getRentRangeLabel,
@@ -88,11 +91,11 @@ import { ErrorMessage, ErrorState } from "../../src/components/ui/ErrorMessage";
 import { getErrorMessage } from "../../src/lib/apiError";
 import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
 import { showError } from "../../src/lib/showError";
+import { buildShareUrl, shareMessage, shareOriginFor } from "../../src/lib/shareLink";
 import { ReviewCard } from "../../src/components/listings/ReviewCard";
 import { SectionNav } from "../../src/components/listings/SectionNav";
 import { UnitLeases } from "../../src/components/listings/UnitLeases";
 import { ListingDetailMap } from "../../src/components/listings/ListingDetailMap";
-import { HeartIcon } from "../../src/components/ui/HeartIcon";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import { useAuthStore } from "../../src/store/authStore";
 import { colors, shadows } from "../../src/theme/tokens";
@@ -156,7 +159,10 @@ function DetailCard({ children }) {
 }
 
 export default function ListingDetailScreen() {
-  const { id } = useLocalSearchParams();
+  // `section=message` (Contact on a Find Your Place match) opens the screen at the
+  // Contact card. Only once, and only when the listing has one.
+  const { id, section } = useLocalSearchParams();
+  const jumpedToSection = useRef(false);
   const router = useRouter();
 
   const [listing, setListing] = useState(null);
@@ -207,6 +213,8 @@ export default function ListingDetailScreen() {
   const activeLockUntil = useRef(0);
   const heroHeightRef = useRef(280);
   heroHeightRef.current = heroHeight;
+  // True while the share sheet is open, so a second tap does not open another.
+  const sharingRef = useRef(false);
 
   const user = useAuthStore((state) => state.user);
   const isSaved = useFavoritesStore((state) => state.isSaved(id));
@@ -395,6 +403,28 @@ export default function ListingDetailScreen() {
     }
   };
 
+  // Shares the public web listing page through the system share sheet
+  // (src/lib/shareLink.js has the link rules). iOS takes the link as `url`, so it
+  // appears once with its preview; Android ignores `url`, so the link goes in the text.
+  // Dismissing the sheet resolves normally and is not an error.
+  // sharingRef stops repeat taps while the sheet is open on iOS. On Android it is
+  // best-effort: the promise can resolve as soon as the chooser opens.
+  async function handleShare() {
+    if (!listing || sharingRef.current) return;
+    // Literal process.env read: Expo only inlines EXPO_PUBLIC_* written out like this.
+    const link = buildShareUrl({ origin: shareOriginFor(process.env.EXPO_PUBLIC_API_URL), listingId: listing._id });
+    if (!link) return;
+    const text = shareMessage({ title: listing.title, address: listing.address });
+    sharingRef.current = true;
+    try {
+      await Share.share(Platform.OS === "ios" ? { message: text, url: link } : { message: `${text}: ${link}`, title: text });
+    } catch {
+      showError(ERROR_MESSAGES.LISTINGS.SHARE);
+    } finally {
+      sharingRef.current = false;
+    }
+  }
+
   function handleScroll(e) {
     const y = e.nativeEvent.contentOffset.y;
     // Setting the same boolean again is a no-op, so this does not re-render on
@@ -425,6 +455,11 @@ export default function ListingDetailScreen() {
   function measureSection(key) {
     return (e) => {
       sectionY.current[key] = e.nativeEvent.layout.y;
+      if (key === section && !jumpedToSection.current) {
+        jumpedToSection.current = true;
+        // A beat later, so the cards above it (the map, the reviews) have their size.
+        setTimeout(() => scrollToSection(key), 400);
+      }
     };
   }
 
@@ -510,7 +545,7 @@ export default function ListingDetailScreen() {
             className="absolute top-0 left-0 right-0 bottom-0 border-b border-gray-100"
             style={{ backgroundColor: colors.white, opacity: solidPhase }}
           />
-          <View className="flex-row items-center h-14 px-3">
+          <View className="flex-row items-center justify-between h-14 px-3">
             <Pressable onPress={() => router.back()} hitSlop={4} className="w-10 h-10 items-center justify-center">
               <Animated.View
                 className="absolute w-10 h-10 rounded-full items-center justify-center"
@@ -522,6 +557,55 @@ export default function ListingDetailScreen() {
                 <ChevronLeft size={20} color={colors.textPrimary} strokeWidth={2.5} />
               </Animated.View>
             </Pressable>
+            <View className="flex-row items-center gap-2">
+              {/* Share: built like Back, with the same crossfade from photo to app bar. */}
+              <Pressable
+                onPress={handleShare}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Share this listing"
+                className="w-10 h-10 items-center justify-center"
+              >
+                <Animated.View
+                  className="absolute w-10 h-10 rounded-full items-center justify-center"
+                  style={{ backgroundColor: "rgba(0,0,0,0.4)", opacity: heroPhase }}
+                >
+                  <ShareIcon size={20} color="#ffffff" strokeWidth={2.5} />
+                </Animated.View>
+                <Animated.View className="items-center justify-center" style={{ opacity: solidPhase }}>
+                  <ShareIcon size={20} color={colors.textPrimary} strokeWidth={2.5} />
+                </Animated.View>
+              </Pressable>
+              {/* Save: same build and crossfade as Share; red fill when saved in both layers. */}
+              <Pressable
+                onPress={handleHeartPress}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={isSaved ? "Remove from saved" : "Save listing"}
+                accessibilityState={{ selected: isSaved }}
+                className="w-10 h-10 items-center justify-center"
+              >
+                <Animated.View
+                  className="absolute w-10 h-10 rounded-full items-center justify-center"
+                  style={{ backgroundColor: "rgba(0,0,0,0.4)", opacity: heroPhase }}
+                >
+                  <Heart
+                    size={20}
+                    color="#ffffff"
+                    fill={isSaved ? colors.primary : "transparent"}
+                    strokeWidth={2.5}
+                  />
+                </Animated.View>
+                <Animated.View className="items-center justify-center" style={{ opacity: solidPhase }}>
+                  <Heart
+                    size={20}
+                    color={isSaved ? colors.primary : colors.textPrimary}
+                    fill={isSaved ? colors.primary : "transparent"}
+                    strokeWidth={2.5}
+                  />
+                </Animated.View>
+              </Pressable>
+            </View>
           </View>
           {showNav ? (
             <SectionNav
@@ -569,15 +653,6 @@ export default function ListingDetailScreen() {
                 <Text className="text-gray-400">No image</Text>
               </View>
             )}
-
-            {/* No background container behind the heart: same thick white
-                outline as ListingCard, sitting directly on the photo, with
-                fill (not the outline) distinguishing saved from unsaved.
-                HeartIcon's own Pressable still carries the 44x44 touch
-                target via inline style. */}
-            <View className="absolute top-3 right-3">
-              <HeartIcon isSaved={isSaved} onPress={handleHeartPress} size="lg" onImage />
-            </View>
 
             {listing.images?.length > 1 && (
               <View className="absolute bottom-3 right-3 bg-black/50 rounded-full px-2.5 py-1">

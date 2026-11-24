@@ -21,7 +21,10 @@ function toCardReply(row) {
   };
 }
 
-// readOnly: the owner's "View as Student" preview, where nothing is wired.
+// readOnly: the owner's "View as Student" preview and an admin's view-as,
+// where nothing is wired.
+// isLandlord: the viewer is a landlord on this listing. The reply speaks for
+// the listing, so any of its landlords can post, edit or delete it.
 export default function ReviewReplySection({ review, owner, isLandlord, readOnly = false }) {
   const { data: session } = useSession();
   const viewerId = session?.user?.id;
@@ -36,7 +39,9 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
   const [reportMsg, setReportMsg] = useState("");
 
   const reviewId = review.id || review._id; // Support both review.id and review._id for flexibility
-  const isAuthor = Boolean(viewerId && landlordReply?.userId === viewerId);
+  // The reply's author keeps Edit and Delete even where the page cannot tell
+  // they are a landlord here (the API checks the link either way).
+  const canManage = Boolean(viewerId && (isLandlord || landlordReply?.userId === viewerId));
 
   // A public reply must not name the student who wrote the review.
   const replyProblem = checkReviewText(replyText);
@@ -65,6 +70,12 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
       });
 
       const data = await res.json().catch(() => ({}));
+      // A teammate replied first: show theirs, not an error, and clear the draft.
+      if (res.status === 409 && data?.reply) {
+        setLandlordReply(toCardReply(data.reply));
+        setReplyText("");
+        return;
+      }
       if (!res.ok) {
         toast.error(data?.error || "Failed to post reply");
         return;
@@ -141,7 +152,7 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
 
   const menuItems = readOnly
     ? []
-    : isAuthor
+    : canManage
     ? [
         { label: "Edit", onClick: () => setEditing(true) },
         { label: "Delete", onClick: () => setConfirmDelete(true), destructive: true },
@@ -155,7 +166,7 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
       {confirmDelete && (
         <ConfirmDialog
           title="Delete reply?"
-          message="Your reply will be removed from this review. You can write a new one afterwards."
+          message="This reply will be removed from the review. You or anyone on your team can write a new one afterwards."
           busy={deleting}
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(false)}
@@ -205,7 +216,7 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
           {reportMsg && <p className="mt-2 text-xs text-gray-500">{reportMsg}</p>}
         </div>
       )}
-      {isLandlord && !landlordReply && (
+      {isLandlord && !readOnly && !landlordReply && (
         <div className="mt-4 border-t border-gray-100 pt-3">
           <textarea
             value={replyText}

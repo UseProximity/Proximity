@@ -1,18 +1,25 @@
 // Browse listings tab (home screen).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "expo-router";
 import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
 import {
   DEFAULT_FILTERS,
   filterListings,
+  filtersActive,
+  fittingRents,
   rankBrowseListings,
   countActiveFilters,
 } from "@proximity/shared";
 import apiClient from "../../src/lib/apiClient";
+import { accessTokenNeedsRefresh } from "../../src/lib/accessTokenExpiry";
+import { useAuthStore } from "../../src/store/authStore";
+import { useBrowseHandoffStore } from "../../src/store/browseHandoffStore";
 import { ListingCard } from "../../src/components/listings/ListingCard";
 import { FilterSheet } from "../../src/components/listings/FilterSheet";
 import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
+import { SuggestedSection } from "../../src/components/listings/SuggestedSection";
 import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
 import { ErrorState } from "../../src/components/ui/ErrorMessage";
 import { getErrorMessage } from "../../src/lib/apiError";
@@ -36,14 +43,46 @@ export default function BrowseScreen() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  // Find Your Place's nice-to-haves, marked in the filter sheet but switched off.
+  // { furnished, amenities } or null; gone after Clear All.
+  const [suggestedFilters, setSuggestedFilters] = useState(null);
   const [view, setView] = useState("list");
   const listRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  // "Suggested for you" ids, best first, fetched once per visit while signed
+  // in, as web's Browse does. They feed the list's suggested section and the
+  // map's badged pins.
+  const userId = useAuthStore((state) => state.user?.id);
+  const [suggestedIds, setSuggestedIds] = useState([]);
 
   // The list remounts at the top when returning from the map.
   useEffect(() => {
     if (view !== "list") setShowBackToTop(false);
   }, [view]);
+
+  // Arriving from Find Your Place's "Browse All Matches": its answers become the
+  // filters (each one shown, and removable, in the filter sheet), as on web.
+  const handoff = useBrowseHandoffStore((state) => state.pending);
+  // Only the Browse on screen takes it: a hidden one (for example under the
+  // stack after a sign-in) must not use it up. `handoff` and focus only wake
+  // this effect; the store is read once, here, and an empty read does nothing.
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    if (!isFocused) return;
+    const next = useBrowseHandoffStore.getState().take();
+    if (!next) return;
+    const { filters: handed, suggested } = next;
+    setFilters({ ...DEFAULT_FILTERS, ...(handed ?? {}) });
+    setSearch("");
+    setSuggestedFilters(
+      suggested
+        ? {
+            furnished: typeof suggested.furnished === "string" ? suggested.furnished : null,
+            amenities: Array.isArray(suggested.amenities) ? suggested.amenities.filter((a) => typeof a === "string") : [],
+          }
+        : null
+    );
+  }, [handoff, isFocused]);
 
   async function load() {
     try {
@@ -59,6 +98,38 @@ export default function BrowseScreen() {
     load().finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setSuggestedIds([]);
+    if (!userId) return undefined;
+    let current = true;
+    const fetchIds = () =>
+      apiClient.listings.getSuggestedListings().then((data) => (Array.isArray(data?.ids) ? data.ids : []));
+    (async () => {
+      // The route answers an expired access token as signed out ({ ids: [] },
+      // not a 401), so the client never refreshes it. Check the expiry first
+      // rather than retrying on an empty answer: empty is also the normal
+      // answer for a student with no history, and refreshing for them wasted
+      // a call and a SecureStore write on every visit. Refresh tokens are
+      // stateless, so this is safe alongside any other refresh, and it never
+      // signs the user out. The refresh stays inline, not apiClient's
+      // refresh(), so a sign-out meanwhile is not undone by setTokens.
+      if (accessTokenNeedsRefresh(useAuthStore.getState().accessToken)) {
+        const { refreshToken, user } = useAuthStore.getState();
+        const { accessToken } = await apiClient.auth.refresh(refreshToken);
+        if (!current || typeof accessToken !== "string" || !accessToken) return;
+        await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
+        if (!current) return;
+      }
+      const ids = await fetchIds();
+      if (current) setSuggestedIds(ids);
+    })()
+      // Suggestions are an enhancement: on failure there are none.
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [userId]);
+
   async function onRefresh() {
     setRefreshing(true);
     await load();
@@ -71,6 +142,34 @@ export default function BrowseScreen() {
   }, [listings, filters, search]);
 
   const activeFilterCount = countActiveFilters(filters);
+
+  // For the filter sheet's price histogram: the rents of the available
+  // listings that fit the given filters, as on web.
+  const rentsFor = useCallback(
+    (forFilters) => fittingRents(listings, { filters: forFilters, search }),
+    [listings, search]
+  );
+
+  // Web's rule (BrowseContent): suggestions show only on the unfiltered view,
+  // once a student narrows the list their own question is the ranking. Only
+  // listings still in the feed count, kept to an even number.
+  const suggestedListings = useMemo(() => {
+    if (search.trim() || filtersActive(filters)) return [];
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    return found.slice(0, found.length - (found.length % 2));
+  }, [listings, suggestedIds, search, filters]);
+  const suggestedIdSet = useMemo(
+    () => new Set(suggestedListings.map((l) => String(l._id))),
+    [suggestedListings]
+  );
+  // As on web, the suggested listings leave the list below while they show,
+  // so no card appears twice, but still count as results.
+  const listData = useMemo(
+    () => visibleListings.filter((l) => !suggestedIdSet.has(String(l._id))),
+    [visibleListings, suggestedIdSet]
+  );
+  const resultCount = listData.length + suggestedIdSet.size;
 
   if (loading) {
     return (
@@ -139,7 +238,7 @@ export default function BrowseScreen() {
             not an arbitrary pairing. */}
         <View className="flex-row items-center justify-between mt-3">
           <Text className="text-xs text-gray-500">
-            {visibleListings.length} listing{visibleListings.length === 1 ? "" : "s"}
+            {resultCount} listing{resultCount === 1 ? "" : "s"}
           </Text>
           <View className="flex-row bg-gray-100 rounded-full p-1">
             {[
@@ -162,25 +261,28 @@ export default function BrowseScreen() {
       </View>
 
       {view === "map" ? (
-        <BrowseMapView listings={visibleListings} />
+        <BrowseMapView listings={visibleListings} suggestedIds={suggestedIdSet} />
       ) : (
         <View className="flex-1">
           <FlatList
             ref={listRef}
-            data={visibleListings}
+            data={listData}
             keyExtractor={(item) => item._id}
             contentContainerStyle={{ padding: 16, paddingTop: 0 }}
             renderItem={({ item }) => <ListingCard listing={item} />}
+            ListHeaderComponent={<SuggestedSection listings={suggestedListings} />}
             onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > BACK_TO_TOP_OFFSET)}
             scrollEventThrottle={100}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             ListEmptyComponent={
-              <View className="items-center justify-center mt-20">
-                <View className="mb-3">
-                  <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+              suggestedListings.length > 0 ? null : (
+                <View className="items-center justify-center mt-20">
+                  <View className="mb-3">
+                    <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+                  </View>
+                  <Text className="text-gray-500">No listings match your search.</Text>
                 </View>
-                <Text className="text-gray-500">No listings match your search.</Text>
-              </View>
+              )
             }
           />
           {showBackToTop ? (
@@ -192,8 +294,21 @@ export default function BrowseScreen() {
       <FilterSheet
         visible={filterSheetVisible}
         filters={filters}
+        suggested={suggestedFilters}
+        rentsFor={rentsFor}
         onApply={(next) => {
           setFilters(next);
+          // As on web, the applied filters feed the student's filter summary
+          // (a "Suggested for you" signal). Fire-and-forget.
+          if (userId) apiClient.listings.saveFilterSummary(next).catch(() => {});
+          setFilterSheetVisible(false);
+        }}
+        // Clear All: as on web it clears the filters, the search and Find Your
+        // Place's hints; unlike web it also closes the sheet.
+        onReset={() => {
+          setFilters(DEFAULT_FILTERS);
+          setSearch("");
+          setSuggestedFilters(null);
           setFilterSheetVisible(false);
         }}
         onClose={() => setFilterSheetVisible(false)}

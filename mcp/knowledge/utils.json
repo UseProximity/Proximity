@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-19T22:57:39.116Z",
-  "count": 361,
+  "_generated": "2026-11-24T03:16:08.355Z",
+  "count": 368,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -76,6 +76,10 @@
       "description": "A student who already talks with this listing's landlord in Messages is"
     },
     {
+      "file": "src/lib/agents/factCompare.js",
+      "description": "Comparing a fact with a new statement of it: the pure part of the weekly"
+    },
+    {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
     },
@@ -122,6 +126,10 @@
     {
       "file": "src/lib/agents/pages.js",
       "description": "Pages into knowledge (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/pageStatus.js",
+      "description": "The weekly read's status for a page it did not send to the model because"
     },
     {
       "file": "src/lib/agents/proxy.js",
@@ -194,6 +202,10 @@
     {
       "file": "src/lib/agents/threads.js",
       "description": "Proxy threads (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/tourEmails.js",
+      "description": "The tour emails a landlord gets, in the inquiry layout of lib/inquiryEmail.js"
     },
     {
       "file": "src/lib/agents/tourNotify.js",
@@ -584,6 +596,10 @@
       "description": "The one Stripe client for the app, and the three env vars it reads:"
     },
     {
+      "file": "src/lib/billing/versionLandlords.js",
+      "description": "Who a custom agreement version applies to, seen from the admin dashboard"
+    },
+    {
       "file": "src/lib/billing/viewer.js",
       "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
     },
@@ -646,6 +662,10 @@
     {
       "file": "src/lib/chat/inboundEmail.js",
       "description": "Post an emailed reply into its chat conversation."
+    },
+    {
+      "file": "src/lib/chat/inquiryDetails.js",
+      "description": "The detail lines under a student's message in a landlord email"
     },
     {
       "file": "src/lib/chat/landlordCanChat.js",
@@ -792,6 +812,10 @@
       "description": "No description. Add a top-of-file comment."
     },
     {
+      "file": "src/lib/inquiryEmail.js",
+      "description": "The layout of every email a landlord gets about a student: a chat message, a"
+    },
+    {
       "file": "src/lib/jsonLd.js",
       "description": "Serialize an object for embedding in a <script type=\"application/ld+json\">"
     },
@@ -848,12 +872,12 @@
       "description": "Who went to apply (listing_applications), server side."
     },
     {
-      "file": "src/lib/listings/filterListings.js",
-      "description": "Browse filtering, evaluated against the property → unit → lease model."
-    },
-    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
+    },
+    {
+      "file": "src/lib/listings/hiddenRents.js",
+      "description": "Hidden website prices (Wyatt, 2026-11-20; table lease_hidden_rents)."
     },
     {
       "file": "src/lib/listings/imageRefs.js",
@@ -1418,6 +1442,10 @@
     {
       "file": "src/utils/reviewAddress.js",
       "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
+      "file": "src/utils/shareLink.js",
+      "description": "The link a listing share sends: always the public listing page,"
     },
     {
       "file": "src/utils/unitCounts.js",

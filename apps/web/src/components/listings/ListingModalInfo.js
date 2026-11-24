@@ -19,6 +19,7 @@ import {
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
 import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
@@ -607,8 +608,14 @@ function ReviewsTab({
   }
 
   const userId = session?.user?.id;
-  const isLandlord =
-    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  // Any landlord linked to the listing, not just the primary one: getListing
+  // says so for the signed-in viewer without sending the landlord list.
+  const isLandlord = Boolean(
+    userId &&
+      (listing?.owner?._id === userId ||
+        listing?.owner?.id === userId ||
+        listing?.viewerIsLandlord)
+  );
 
   async function handleReport(review) {
     const res = await fetch("/api/reviewReport", {
@@ -1534,7 +1541,7 @@ export default function ListingModalInfo({
   compact = false,
   tabBarAction = null,
   // The unit that satisfied the browse filters, if the renter arrived from a
-  // filtered search. See lib/listings/filterListings.js.
+  // filtered search. See packages/shared/src/formatters/listingFilters.js.
   initialUnitId = null,
   /*
    * True while the caller is still fetching the full listing. The browse panel
@@ -2239,9 +2246,10 @@ export default function ListingModalInfo({
                   it there. */}
               {!compact && !preview && (
                 <div
-                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10`}
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10 flex items-center gap-2`}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <ShareButton listingId={listing._id} title={listing.title} />
                   <HeartIcon listingId={listing._id} />
                 </div>
               )}

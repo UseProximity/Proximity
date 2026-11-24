@@ -78,6 +78,8 @@ export async function handleQuestionEmail({ parsed, fromEmail, token, attachment
   const text = extractReplyText({
     text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "",
     senderName: q.users?.name, senderCompany: q.users?.company_name, fromName: parsed.from?.value?.[0]?.name,
+    // The email led with the student's question, so a pasted original stops there.
+    quoted: [q.question],
   }).trim();
 
   // Flyers and attachments go straight into the knowledge base.

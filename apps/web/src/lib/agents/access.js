@@ -40,6 +40,20 @@ export async function proxyActor(req) {
 
 const isStaff = (role) => role === "super" || role === "admin";
 
+/*
+ * Who was really talking in a Proxy chat, for the admin view: "landlord" or
+ * "staff" when the chat ran in test mode, null for a real student. Whether it
+ * was a test comes from the outcome recorded with each question at the time
+ * (listing_agent_questions.outcome = "test"), not from who owns the listing
+ * now, so staff asking on a live listing (questions really sent) and someone
+ * who claims a listing after chatting on it as a student keep their true label.
+ * Pure, so the admin routes can pass their own lookups.
+ */
+export function testingAs(user, { wasTest, ownsThisListing }) {
+  if (!user || !wasTest) return null;
+  return isStaff(user.role) && !ownsThisListing ? "staff" : "landlord";
+}
+
 async function ownsListing({ userId, listingId }) {
   if (!userId) return false;
   const { data } = await supabase.from("listing_landlords").select("listing_id").eq("listing_id", listingId).eq("user_id", userId).limit(1);
@@ -48,7 +62,7 @@ async function ownsListing({ userId, listingId }) {
 
 /*
  * Whether this person may talk to Proxy on this listing. Returns
- * { ok, testMode, listing } or { ok: false, status, error }.
+ * { ok, testMode, testAs, listing } or { ok: false, status, error }.
  */
 export async function proxyAvailable({ listingId, userId, role }) {
   if (!agentsEnabled()) return { ok: false, status: 404, error: "Proxy is not available yet." };
@@ -59,5 +73,6 @@ export async function proxyAvailable({ listingId, userId, role }) {
   const testMode = owner || (!!userId && isStaff(role) && !live);
   if (!listing.published_at && !testMode) return { ok: false, status: 404, error: "Listing not found." };
   if (!agentIsLive(agent) && !testMode) return { ok: false, status: 404, error: "Proxy is not available on this listing yet." };
-  return { ok: true, testMode, listing, agent };
+  // Who the test is for decides how Proxy words "nothing was sent" (staff do not own the listing).
+  return { ok: true, testMode, testAs: !testMode ? null : owner ? "landlord" : "staff", listing, agent };
 }

@@ -7,7 +7,7 @@
  * what it learned, exactly as it did before, never that it stops.
  */
 import supabase from "@/lib/supabase";
-import { syncedLeaseValues } from "./learnRules.js";
+import { syncedLeaseRecord, syncedLeaseValues } from "./learnRules.js";
 
 export const emptyLearnings = () => ({ synced: new Map(), aliases: new Map(), rentBasis: null, ok: false });
 
@@ -52,7 +52,7 @@ export function writtenRows(changes, { learnings, state }) {
     for (const l of w.leases ?? []) {
       // An update writes some fields: the rest are what was there.
       const before = learnings.synced.get(`lease:${l.id}`) ?? syncedLeaseValues(leases.get(l.id));
-      rows.push({ kind: "synced", source_key: `lease:${l.id}`, lease_id: l.id, value: { ...before, ...syncedLeaseValues(l.values) }, learned_from: c.kind });
+      rows.push({ kind: "synced", source_key: `lease:${l.id}`, lease_id: l.id, value: syncedLeaseRecord(before, l, leases.get(l.id)), learned_from: c.kind });
     }
     if (w.unit) {
       rows.push({ kind: "synced", source_key: `unit:${w.unit.id}`, unit_id: w.unit.id, value: { name: w.unit.name ?? null, siteKey: w.unit.siteKey ?? null, ...(w.unit.lookalikeOf ? { lookalikeOf: w.unit.lookalikeOf } : {}) }, learned_from: c.kind });

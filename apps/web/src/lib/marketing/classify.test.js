@@ -57,6 +57,22 @@ test("a link whose slug does not match the src is ignored", () => {
   assert.equal(v.link_id, null);
 });
 
+test("src=share (the listing Share button) is a share, not a QR scan", () => {
+  const v = classifyVisit({ params: "?unit=u1&src=share" });
+  assert.equal(v.classified_from, "src");
+  assert.equal(v.source, "share");
+  assert.equal(v.medium, "referral");
+  assert.equal(v.campaign, null);
+  assert.equal(v.src_tag, "share");
+});
+
+test("any other unregistered src is still a QR scan", () => {
+  const v = classifyVisit({ params: "?src=flyer-x" });
+  assert.equal(v.source, "qr");
+  assert.equal(v.medium, "offline");
+  assert.equal(v.campaign, "flyer-x");
+});
+
 // --- rule 2: UTMs -----------------------------------------------------------
 
 test("full UTMs are stored normalized (acceptance 1)", () => {

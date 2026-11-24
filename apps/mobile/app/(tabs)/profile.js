@@ -18,12 +18,10 @@ import {
   Lock,
   Mail,
   Pencil,
-  Plus,
   ShieldCheck,
   Info,
   Trash2,
 } from "lucide-react-native";
-import { isLandlord } from "@proximity/auth-core";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useFavoritesStore } from "../../src/store/favoritesStore";
 import apiClient from "../../src/lib/apiClient";
@@ -222,19 +220,6 @@ export default function ProfileScreen() {
             />
           </View>
         </Pressable>
-
-        {/* Landlords (and admins, matching Add Listing's own role gate) start a
-            new property listing from here; the wizard lives at /listings/add. */}
-        {isLandlord(user.role) && (
-          <ProfileSection title="Property Management">
-            <MenuItem
-              label="Add Listing"
-              icon={Plus}
-              onPress={() => router.push("/listings/add")}
-              showBorder={false}
-            />
-          </ProfileSection>
-        )}
 
         {/* Account Section */}
         <ProfileSection title="Account">

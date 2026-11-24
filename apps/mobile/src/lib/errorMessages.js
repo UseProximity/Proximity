@@ -7,6 +7,8 @@
 // Messages are short, plain and say what happened. Nothing here contains a status
 // code, an error code or any other internal detail.
 
+import { Platform } from "react-native";
+
 export const ERROR_MESSAGES = {
   NETWORK: "No internet connection. Check your connection and try again.",
   GENERIC: "Something went wrong. Please try again.",
@@ -35,7 +37,12 @@ export const ERROR_MESSAGES = {
     ACCOUNT_DELETED: "This account has been deleted.",
     VERIFY_SIGN_IN: "Couldn't verify your sign-in. Please try again.",
     EMAIL_EXISTS: "An account with this email already exists.",
-    APPLE_ACCOUNT: "This email is linked to an Apple account. Please sign in with Apple.",
+    // Android has no Sign in with Apple, so "sign in with Apple" would be a dead end there.
+    APPLE_ACCOUNT: Platform.select({
+      android:
+        "This email is linked to an Apple account, which can't be used on Android. If your email also works with Google, tap Continue with Google, or contact info@useproximity.org.",
+      default: "This email is linked to an Apple account. Please sign in with Apple.",
+    }),
     GOOGLE_ACCOUNT: "This email is linked to a Google account. Please sign in with Google.",
     SET_PASSWORD_EMAILED: "This email is already on Proximity but has no password yet. Check your inbox for a link to set one.",
     EMAIL_RECENTLY_DELETED:
@@ -76,16 +83,13 @@ export const ERROR_MESSAGES = {
     REPORT_REVIEW: "Couldn't send your report. Please try again.",
     REPORT_LISTING: "Couldn't send your report. Please try again.",
     REPORT_OWN_LISTING: "You can't report your own listing.",
+    FLOOR_PLAN_LOAD: "Couldn't show this floor plan here.",
+    FLOOR_PLAN_OPEN: "Couldn't open this floor plan. Please try again.",
     BLOCK_USER: "Couldn't block this user. Please try again.",
+    SHARE: "Couldn't open sharing. Please try again.",
     MINE_LOAD: "Couldn't load your listings. Please try again.",
     MINE_AVAILABILITY: "Couldn't update availability. Please try again.",
     MINE_DELETE: "Couldn't delete this listing. Please try again.",
-    PUBLISH: "Couldn't publish your listing. Please try again.",
-    PHOTOS_ADD: "Couldn't add those photos. Please try again.",
-    PHOTOS_PARTIAL_TITLE: "Listing published",
-    photosPartial: (count) =>
-      `${count} photo${count === 1 ? "" : "s"} failed to upload. You can re-add them from the listing later.`,
-    PHOTOS_FAILED: "Photos failed to upload. You can re-add them from the listing later.",
     CREATE_NOT_ALLOWED: "Your account can't create listings.",
     FIELDS_REQUIRED: "Fill in all the required fields.",
     NAME_TAKEN: "That property name is already taken. Choose a different name.",
@@ -101,17 +105,6 @@ export const ERROR_MESSAGES = {
     SUBLET_CONSENT: "Please confirm you have the right to sublet this place.",
     UNITS_NEGATIVE: "Bedrooms and bathrooms can't be negative.",
     ADDRESS_NOT_FOUND: "We couldn't find that address. Check it and try again.",
-    // Add Listing steps.
-    STEP_ADDRESS: "Enter the property address to continue.",
-    STEP_MOVE_IN: "Pick the date it becomes available, or choose Available now.",
-    STEP_UNITS_NONE: "Add at least one unit.",
-    STEP_UNIT_BEDS_BATHS: "Each unit needs bedrooms and bathrooms.",
-    STEP_UNIT_LEASE_TERM: "Pick at least one lease term for each available unit.",
-    STEP_DESCRIPTION: "A short description is required.",
-    REVIEW_ADDRESS: "Address needed",
-    REVIEW_UNIT_BEDS_BATHS: "Bedrooms and bathrooms needed",
-    REVIEW_UNIT_LEASE_TERM: "Pick lease terms for each available unit",
-    REVIEW_DESCRIPTION: "A short description is needed",
   },
 
   CHAT: {
@@ -181,14 +174,25 @@ export const ERROR_MESSAGES = {
     IMAGE_TAP_TRY_AGAIN: "Tap to try again",
   },
 
-  MATCHMAKING: {
-    LOAD: "Couldn't reach Proxy. Pull to try again.",
-    START: "Couldn't start a chat with Proxy. Pull to try again.",
-    OFFLINE: "No internet connection. Pull to try again.",
-    LISTING_LOAD: "Couldn't load this listing.",
-    // Said by Proxy in the conversation, in its own voice.
-    CONTACT: "I couldn't reach out just now, please try again in a bit.",
-    TURN: "I couldn't get that through just now, please try again in a bit.",
+  // Find Your Place's matches page. The same wording as the website
+  // (apps/web/src/components/findYourPlace/FindYourPlaceClient.js), plus OFFLINE.
+  FIND_YOUR_PLACE: {
+    BUSY: {
+      title: "We're getting a lot of searches right now",
+      body: "Give it a minute and try again.",
+    },
+    INVALID: {
+      title: "Some of your answers need another look",
+      body: "Go back to the first page and check them, then search again.",
+    },
+    OFFLINE: {
+      title: "No internet connection",
+      body: "Your answers are saved. Check your connection and try again.",
+    },
+    GENERIC: {
+      title: "Something went wrong finding your matches",
+      body: "Your answers are saved. Try again in a moment.",
+    },
   },
 };
 

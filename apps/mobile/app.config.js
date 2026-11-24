@@ -43,19 +43,20 @@ module.exports = {
       // Adds the com.apple.developer.applesignin entitlement (iOS only).
       "expo-apple-authentication",
       ["@rnmapbox/maps", { RNMapboxMapsVersion: "11.20.1" }],
-      // Library-only picking for Add Listing photos with no live camera capture,
+      // Library-only picking for chat photos with no live camera capture,
       // so camera/microphone permissions are declined rather than requested.
       [
         "expo-image-picker",
         {
-          photosPermission: "Proximity uses your photo library to let landlords add listing photos.",
+          photosPermission: "Proximity uses your photo library so you can send photos in your messages.",
           cameraPermission: false,
           microphonePermission: false,
         },
       ],
-      // Registers the APNs entitlement (iOS) and default notification
-      // channel (Android) at build time. There is no local ios/android project to
-      // hand-edit, this is the only place that config is set.
+      // Registers the APNs entitlement (iOS) at build time. It does not create an
+      // Android notification channel: the "default" channel is created at runtime
+      // in src/lib/pushNotifications.js. There is no local ios/android project to
+      // hand-edit, this is the only place native config is set.
       "expo-notifications",
       // Excludes SecureStore's encrypted values from Android Auto Backup.
       // Face ID is disabled (faceIDPermission: false): src/lib/secureStorage.js

@@ -39,6 +39,7 @@ import { ensureReplyAddress } from "@/lib/chat/replyAddress";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
 import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 import { pendingProposalFor, proposalKey } from "@/lib/agents/tourProposals";
+import { chatInquiryDetails } from "@/lib/chat/inquiryDetails";
 
 const SES_MESSAGE_ID_DOMAIN = "email.amazonses.com";
 const MAX_REFERENCES = 20;
@@ -233,18 +234,21 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbo
   // working credential either: no magic link is minted, no reply address is created
   // (nothing is written to the real recipient's participant row), and no tour confirm
   // link is looked up below. The email is still built so sent_emails shows what happened.
-  const rawToken = !sandbox && (await isAccountInbox(data.recipientId, data.recipientEmail))
+  const accountInbox = await isAccountInbox(data.recipientId, data.recipientEmail);
+  const rawToken = !sandbox && accountInbox
     ? await mintChatAccessToken({ userId: data.recipientId, threadId: data.threadId })
     : null;
   const threadUrl = rawToken
     ? `${baseUrl}/chat-link?token=${encodeURIComponent(rawToken)}&t=${encodeURIComponent(data.threadId)}`
     : `${baseUrl}/messages?thread=${data.threadId}`;
 
-  const [replyTo, references, proposal] = await Promise.all([
+  const [replyTo, references, proposal, inquiry] = await Promise.all([
     sandbox ? null : ensureReplyAddress({ threadId: data.threadId, userId: data.recipientId }),
     earlierAlertIds({ threadId: data.threadId, recipientId: data.recipientId }),
     // No tour confirm link in a sandbox alert: it would act as the real recipient.
     sandbox ? null : pendingProposalFor({ threadId: data.threadId, userId: data.recipientId }).catch(() => null),
+    // The landlord side gets the inquiry layout, with the unit and the student under the message.
+    data.recipientIsInterestedUser ? null : chatInquiryDetails({ threadId: data.threadId, recipientId: data.recipientId }),
   ]);
   // A tour time suggested to this person: confirm it from the email (Wyatt, 2026-11-02).
   const key = proposal ? proposalKey({ messageId: proposal.messageId, userId: data.recipientId }) : null;
@@ -272,6 +276,9 @@ async function sendAlert(data, { baseUrl, reminder, testEmailTo, attempt, sandbo
     testEmailTo,
     sandbox,
     action,
+    details: inquiry?.details ?? [],
+    // "Hi Yuki," is only wrong in a leasing inbox the alert is routed to, not Yuki's own.
+    ownerFirst: accountInbox ? null : inquiry?.ownerFirst ?? null,
   });
 
   if (sent && !sent.suppressed) {

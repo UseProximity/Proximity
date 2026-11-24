@@ -1,10 +1,8 @@
 import { Pressable } from "react-native";
 import { ArrowRight } from "lucide-react-native";
 
-// Shared circular submit-affordance for matchmaking's typed-answer controls
-// (ChoiceChips, MultiChoiceChips, BudgetInput, ConfirmOrReplace,
-// OpenTextInput); each previously hand-rolled this exact Pressable
-// (design-system/pages/chat.md). A distinct component from ui/Chip.js: this
+// Circular send button for the chat composer (app/chat/[threadId].js). A
+// distinct component from ui/Chip.js: this
 // is a submit action, not an option picker, even though both are
 // pill/circle shapes sharing the same red/gray coloring. `className` lets
 // call sites add their own layout positioning (e.g. `self-end`, `ml-auto`)

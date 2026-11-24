@@ -1,4 +1,4 @@
-// Canonical design tokens for new mobile screens (Add Listing onward).
+// Canonical design tokens for new mobile screens.
 // `primary` mirrors web's actual brand color (apps/web/src/components/ui/
 // Button.js's default variant, bg-red-600) and the value already dominant
 // across the app (Badge.js, FilterSheet.js), not the gray-900/#111827
@@ -32,6 +32,7 @@ export const colors = {
   infoBg: "#eff6ff", // blue-50: informational tips (e.g. password requirements)
   infoBorder: "#bfdbfe", // blue-200
   infoText: "#1e3a8a", // blue-900
+  suggestedBadge: "#F5B301", // the gold "Suggested for you" badge, as on web and the map pins
 };
 
 export const spacing = {

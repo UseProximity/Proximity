@@ -131,6 +131,7 @@ function ThreadRow({ t, selected, onSelect }) {
       <div className="flex items-center gap-2">
         <p className="flex-1 min-w-0 text-sm font-medium text-gray-900 truncate">
           {agent ? (t.student ? personLabel(t.student) : visitorLabel(t.visitor)) : personLabel(t.student)}{" "}
+          {agent && t.student?.testing && <span className="text-amber-700 font-normal">({t.student.testing}, testing) </span>}
           <span className="text-gray-400 font-normal">{agent ? "with" : "and"}</span> {agent ? "Proxy" : personLabel(t.landlord)}
         </p>
         {t.fromTour && <Badge color="green" title="Opened when a tour was confirmed or the landlord wrote to the student">From a tour</Badge>}
@@ -162,7 +163,7 @@ function Message({ m, sender, isLandlord, visitor = null }) {
   const flagged = m.flags.length > 0;
   const reasons = [...new Set(m.flags.flatMap((f) => f.reasons))];
   const who = m.fromProxy ? "Proxy" : sender ? personLabel(sender) : visitor ? visitorLabel(visitor) : "Unknown";
-  const role = m.fromProxy ? "agent" : sender?.side === "landlord" ? "landlord" : sender?.side === "student" ? "student" : !sender && visitor ? "visitor" : sender?.role || "user";
+  const role = m.fromProxy ? "agent" : sender?.testing ? `${sender.testing} (testing)` : sender?.side === "landlord" ? "landlord" : sender?.side === "student" ? "student" : !sender && visitor ? "visitor" : sender?.role || "user";
   return (
     <div
       className={`rounded-lg border px-3 py-2 ${
@@ -282,7 +283,8 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
   const agent = thread.kind === "agent";
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
   const landlord = people.find((p) => p.side === "landlord");
-  const student = people.find((p) => p.side === "student");
+  // An asker who left the thread has no participant row but is still the student.
+  const student = people.find((p) => p.side === "student") ?? people.find((p) => p.id === thread.studentId);
 
   // Messages and blocked attempts on one timeline.
   const timeline = useMemo(() => {
@@ -311,7 +313,7 @@ function ThreadDetail({ detail, dbTarget, siteDb, onChanged, onOpenThread }) {
         </div>
         <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
           <p>
-            <Badge color="gray">{student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
+            <Badge color={student?.testing ? "amber" : "gray"}>{student?.testing === "landlord" ? "landlord testing own listing" : student?.testing ? "staff testing" : student || !thread.visitor ? "student" : "visitor"}</Badge>{" "}
             <span className="font-medium text-gray-900">{student || !thread.visitor ? <PersonLink id={student?.id}>{personLabel(student)}</PersonLink> : visitorLabel(thread.visitor)}</span>
             {student?.email && <span className="text-gray-400"> · {student.email}</span>}
             {student?.emailMode && <span className="text-purple-700"> · replying by email</span>}
@@ -705,8 +707,9 @@ export default function ConversationsView({ search, dbTarget }) {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(true);
   // Hides threads opened and left without a word: a Proxy chat a student
-  // started but never typed in (Wyatt, 2026-11-18).
-  const [withMessagesOnly, setWithMessagesOnly] = useState(false);
+  // started but never typed in (Wyatt, 2026-11-18). On by default so the
+  // list opens on real conversations (Wyatt, 2026-11-22).
+  const [withMessagesOnly, setWithMessagesOnly] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [siteDb, setSiteDb] = useState(null);
 
@@ -817,7 +820,9 @@ export default function ConversationsView({ search, dbTarget }) {
     return (threads ?? []).filter((t) => {
       if (flaggedOnly && t.flagged === 0 && t.blocked === 0) return false;
       if (!includeDeleted && t.deletedAt) return false;
-      if (withMessagesOnly && !(t.messages > 0)) return false;
+      // A blocked send saves no message, so a thread whose only sends were
+      // blocked has 0 messages. Keep it: abuse attempts never hide by default.
+      if (withMessagesOnly && !(t.messages > 0) && !(t.flagged > 0 || t.blocked > 0)) return false;
       if (!q) return true;
       return [
         t.student?.name, t.student?.email, t.landlord?.name, t.landlord?.email, t.landlord?.alertEmail, t.visitor?.email,

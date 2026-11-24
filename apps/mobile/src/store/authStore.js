@@ -43,17 +43,29 @@ export const useAuthStore = create((set, get) => ({
     const { useFavoritesStore } = await import("./favoritesStore");
     useFavoritesStore.getState().clear();
 
-    // Matchmaking's own chatStore reacts to this store's user?.id changing
-    // (see the effect in app/(tabs)/matchmaking.js), so no explicit reset
-    // needed here.
+    // Find Your Place's store reacts to this store's user?.id changing (see
+    // store/findYourPlaceStore.js), so no explicit reset needed here.
   },
 
   hydrate: async () => {
-    const [accessToken, refreshToken, userJson] = await Promise.all([
-      secureStorage.get("access_token"),
-      secureStorage.get("refresh_token"),
-      secureStorage.get("user"),
-    ]);
+    let accessToken;
+    let refreshToken;
+    let userJson;
+    try {
+      [accessToken, refreshToken, userJson] = await Promise.all([
+        secureStorage.get("access_token"),
+        secureStorage.get("refresh_token"),
+        secureStorage.get("user"),
+      ]);
+    } catch (err) {
+      // A failed read (on Android, a Keystore error) must not leave isHydrated false
+      // forever: push registration and the launch-notification check wait on it.
+      // Treat the user as signed out for this launch only. Nothing is removed or
+      // written here, so the stored values survive and the next launch can read them.
+      console.warn("hydrate: could not read stored credentials", err?.message);
+      set({ accessToken: null, refreshToken: null, user: null, isHydrated: true });
+      return;
+    }
     let user = null;
     if (userJson) {
       try {
