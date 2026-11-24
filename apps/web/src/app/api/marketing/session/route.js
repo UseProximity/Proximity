@@ -17,6 +17,8 @@
  * Public by design (signed-out visitors are most of the traffic). Rate limited
  * per session (per IP without one), body capped at 2 KB. Always answers 204
  * and never reports internal errors: a failed beacon must not affect the page.
+ *
+ * @auth public (the signed-in user, when there is one, is only attached)
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
