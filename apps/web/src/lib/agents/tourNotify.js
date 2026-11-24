@@ -48,8 +48,6 @@ async function loadTour(tourId) {
   const sandbox = (await sandboxIdsAmong([t.student_id, t.landlord_id])).size > 0;
   return {
     t, student: student.data, landlord: landlord.data, sandbox, unit,
-    // What the landlord may call the student: their name only once it is shown.
-    studentLabel: (nameShown(t) && student.data?.name) || null,
     // Landlord emails sign with the first name from the request on (Wyatt,
     // 2026-11-20); the app still says "A student" until nameShown.
     firstName: String(student.data?.name ?? "").trim().split(/\s+/)[0] || null,
@@ -60,9 +58,11 @@ async function loadTour(tourId) {
 }
 
 /*
- * Whether the landlord may see who the student is (Wyatt, 2026-10-29): only
- * once the tour is confirmed or the two are put in touch in a direct chat.
- * Until then the student is "A student", in the app and in emails.
+ * Whether the app shows the landlord who the student is (Wyatt, 2026-10-29):
+ * only once the tour is confirmed or the two are put in touch in a direct
+ * chat. Until then the app says "A student". Landlord emails do not wait for
+ * this: they sign with the student's first name from the request on (Wyatt,
+ * 2026-11-20, see firstName in loadTour).
  */
 export const nameShown = (t) => !!t.thread_id || ["confirmed", "messaging"].includes(t.status);
 
