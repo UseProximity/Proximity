@@ -24,6 +24,7 @@ import supabase from "@/lib/supabase";
 import { fetchPage, fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent, retireFact } from "./store";
 import { synthesizeKnowledge, applyProposals, tidyDuplicates } from "./synthesize";
+import { copyReadStatus } from "./pageStatus";
 import { crawlSite, MAX_CRAWL_PAGES, isLanguageCopy, twinKey, languageTwinUrl } from "./crawl";
 import { foundUrlSet } from "./foundRead";
 import { MAX_FOUND_PAGES } from "./foundUrls";
@@ -106,11 +107,16 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const crawled = new Set(pages.map((p) => sameUrl(p.url)));
   const have = new Set([...pages.map((p) => twinKey(p.url))]);
   const knownAll = await knownPageUrls(listingId).catch(() => []);
-  const known = knownAll.filter((u) => !isLanguageCopy(u, (k) => have.has(k)));
   // Copies the agent knows from earlier reads (the 11/23 read filed facts
   // under /es-cl/about and the like): not fetched, but their facts follow
-  // the English page's read below.
-  const knownCopies = knownAll.filter((u) => isLanguageCopy(u, (k) => have.has(k)));
+  // the English page's read below. Only when that English page was crawled:
+  // a translated slug (/es/sobre-nosotros beside /about-us) has no English
+  // twin to follow, so it is fetched again like any known page and its
+  // facts are counted from its own text (PR 478 review).
+  const twinCrawled = (u) => have.has(twinKey(languageTwinUrl(u) ?? ""));
+  const isKnownCopy = (u) => isLanguageCopy(u, (k) => have.has(k)) && twinCrawled(u);
+  const known = knownAll.filter((u) => !isKnownCopy(u));
+  const knownCopies = knownAll.filter(isKnownCopy);
   const gonePages = [];
   const failedPages = [];
   for (const url of known.filter((u) => !crawled.has(sameUrl(u))).slice(0, MAX_RECHECKS)) {
@@ -127,10 +133,10 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const status = new Map();
   // Pages not sent to the model because another page says the same: an exact
   // copy (the same page at two addresses), or a page in another language
-  // (2026-11-23). Facts filed under one follow the page it copies: counted
-  // as read when that page was read, as unchanged when it was unchanged, so
-  // they are taken out in the usual two weeks once the site stops saying
-  // them, and never just because a copy was skipped (PR 475 review).
+  // (2026-11-23). Facts filed under one follow the page it copies, so they
+  // are taken out in the usual two weeks once the site stops saying them,
+  // and never just because a copy was skipped (PR 475 review). A copy is
+  // unchanged only when its own text is too (pageStatus.js, PR 478 review).
   const copies = [];
   const seenText = new Map();
   // Everything the site says this week, whole pages, changed or not: a fact
@@ -143,12 +149,15 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     if (text.length < 80) continue;
     siteText.push(normText(full));
     const copyOf = createHash("sha256").update(normText(full)).digest("hex");
+    const hash = createHash("sha256").update(text).digest("hex").slice(0, 32);
     if (sameUrl(p.url) !== sameUrl(startUrl)) {
-      if (seenText.has(copyOf)) { copies.push({ sourceId: source.id, twin: seenText.get(copyOf) }); continue; }
-      if (isLanguageCopy(p.url, (k) => have.has(k) && k !== twinKey(p.url))) { copies.push({ sourceId: source.id, twin: languageTwinUrl(p.url) }); continue; }
+      // The copy's own fingerprint is left as it was: saving it would make a
+      // changed copy look unchanged next week.
+      const copy = { url: p.url, sourceId: source.id, fetched: true, ownUnchanged: source.last_fingerprint === hash };
+      if (seenText.has(copyOf)) { copies.push({ ...copy, twin: seenText.get(copyOf) }); continue; }
+      if (isLanguageCopy(p.url, (k) => have.has(k) && k !== twinKey(p.url))) { copies.push({ ...copy, twin: languageTwinUrl(p.url) }); continue; }
     }
     seenText.set(copyOf, p.url);
-    const hash = createHash("sha256").update(text).digest("hex").slice(0, 32);
     if (!force && source.last_fingerprint === hash) {
       await supabase.from("listing_sources").update({ last_checked_at: new Date().toISOString(), last_status: "unchanged", last_error: null, consecutive_failures: 0 }).eq("id", source.id);
       unchangedIds.push(source.id);
@@ -214,10 +223,23 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   }
   for (const url of knownCopies) {
     const source = await findOrCreateSource({ listingId, kind: "page", url, label: url, checkIntervalDays: 7 });
-    copies.push({ sourceId: source.id, twin: languageTwinUrl(url) });
+    copies.push({ url, sourceId: source.id, twin: languageTwinUrl(url), fetched: false, ownUnchanged: false });
   }
+  // A copy's twin can itself be a copy (/es/about of /about, an exact copy
+  // of /about-us): its status is worked out first.
+  const copyAt = new Map(copies.map((c) => [sameUrl(c.url), c]));
+  const settled = new Map();
+  const settle = (c, seen = new Set()) => {
+    if (settled.has(c)) return settled.get(c);
+    seen.add(sameUrl(c.url));
+    const twin = sameUrl(c.twin);
+    const twinStatus = status.get(twin) ?? (copyAt.has(twin) && !seen.has(twin) ? settle(copyAt.get(twin), seen) : null);
+    const s = copyReadStatus({ twinStatus, fetched: c.fetched, ownUnchanged: c.ownUnchanged });
+    settled.set(c, s);
+    return s;
+  };
   for (const c of copies) {
-    const s = status.get(sameUrl(c.twin));
+    const s = settle(c);
     if (s === "read") readIds.push(c.sourceId);
     else if (s === "unchanged") unchangedIds.push(c.sourceId);
   }
