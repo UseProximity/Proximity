@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-24T00:17:35.361Z",
-  "count": 366,
+  "_generated": "2026-11-24T03:16:08.355Z",
+  "count": 368,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -76,6 +76,10 @@
       "description": "A student who already talks with this listing's landlord in Messages is"
     },
     {
+      "file": "src/lib/agents/factCompare.js",
+      "description": "Comparing a fact with a new statement of it: the pure part of the weekly"
+    },
+    {
       "file": "src/lib/agents/flags.js",
       "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
     },
@@ -122,6 +126,10 @@
     {
       "file": "src/lib/agents/pages.js",
       "description": "Pages into knowledge (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/pageStatus.js",
+      "description": "The weekly read's status for a page it did not send to the model because"
     },
     {
       "file": "src/lib/agents/proxy.js",
