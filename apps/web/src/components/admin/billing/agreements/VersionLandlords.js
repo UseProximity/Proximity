@@ -201,6 +201,25 @@ export function LandlordToggles({ value, onChange, kind, disabled }) {
   );
 }
 
+const namesOf = (list) => list.map((s) => s.name).join(", ");
+
+/*
+ * What taking a landlord off this version does. Off a draft, nothing changes for
+ * them now. Off a live version they go back to their other live custom version if
+ * they have one, otherwise to the standard version, and so do the accounts they
+ * sign for (those accounts follow their signer's version).
+ */
+function removalNotes(f, version) {
+  const other = f?.liveCustom?.[version.kind];
+  const onOther = other && other.versionId !== version.id ? other : null;
+  const stays = onOther ? `their custom version "${onOther.label ?? "another version"}"` : "the standard version";
+  if (version.status !== "live") return [`will not get this version once it is live; stays on ${stays}`];
+  if (onOther) return [`stays on ${stays}`];
+  const notes = ["signs the standard version next"];
+  if (f?.signsFor?.length) notes.push(`${namesOf(f.signsFor)}, whom they sign for, go back to the standard version too`);
+  return notes;
+}
+
 // The words for the confirmation: what happens to each landlord added or taken off.
 function changeSummary({ version, adding, removing, flags }) {
   const live = version.status === "live";
@@ -216,12 +235,12 @@ function changeSummary({ version, adding, removing, flags }) {
     if (live && cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: true })) notes.push("their open unsigned copy is cancelled");
     if (f?.paperOut) notes.push("their paper copy out keeps its old wording");
     if (f?.signer && !adding.concat(version.landlords).some((x) => x.id === f.signer.id)) notes.push(`${f.signer.name} signs for them, so this only applies if they sign themselves`);
-    if (f?.signsFor?.length) notes.push(`also covers ${f.signsFor.map((s) => s.name).join(", ")}, whom they sign for`);
+    if (f?.signsFor?.length) notes.push(`also covers ${namesOf(f.signsFor)}, whom they sign for`);
     lines.push(`+ ${f?.name || landlordName(l)}${notes.length ? `: ${notes.join("; ")}` : ""}`);
   }
   for (const l of removing) {
     const f = flags[l.id];
-    const notes = ["signs the standard version next"];
+    const notes = removalNotes(f, version);
     if (f?.signed?.versionId === version.id) notes.push("the agreement they signed on this version stays in force (void it separately if needed)");
     if (live && cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: false })) notes.push("their open unsigned copy is cancelled");
     lines.push(`- ${f?.name || landlordName(l)}: ${notes.join("; ")}`);
@@ -352,6 +371,7 @@ export function useLiveSummary(version) {
       if (cancelsCopy(f, { kind: version.kind, versionId: version.id, adding: true })) notes.push("their open unsigned copy is cancelled");
       if (f?.paperOut) notes.push("their paper copy out keeps its old wording");
       if (f?.signer && !ids.includes(f.signer.id)) notes.push(`${f.signer.name} signs for them, so this only applies if they sign themselves`);
+      if (f?.signsFor?.length) notes.push(`also covers ${namesOf(f.signsFor)}, whom they sign for`);
       return `- ${f?.name || l.name || "Landlord"}${notes.length ? `: ${notes.join("; ")}` : ""}`;
     });
     return lines.length ? lines.join("\n") : "Nobody is on it yet. It applies to nobody until you add landlords.";
