@@ -16,7 +16,25 @@ import { BUTTON, FIELD, PRIMARY, call, postJson } from "./shared";
 // The flags route takes this many ids per request.
 const FLAG_BATCH = 50;
 
-// What we know about each landlord id, refreshed when the ids change.
+const flagsUrl = (ids) => `/api/admin/billing/agreement-versions/landlord-flags?ids=${ids.join(",")}`;
+
+// The flags for these ids, read fresh: a confirmation is built from these, not
+// from what the page loaded earlier (another version may have gone live since).
+async function fetchFlags(ids) {
+  const all = [...new Set(ids)];
+  const out = {};
+  for (let i = 0; i < all.length; i += FLAG_BATCH) {
+    const r = await call(flagsUrl(all.slice(i, i + FLAG_BATCH)));
+    Object.assign(out, r.landlords ?? {});
+  }
+  return out;
+}
+
+/*
+ * What we know about each landlord id, refreshed when the ids change, for the
+ * chips. `loaded` is true once every id has its flags, so a button that confirms
+ * with them can wait until then.
+ */
 function useLandlordFlags(ids, tick = 0) {
   const [flags, setFlags] = useState({});
   const key = [...ids].sort().join(",");
@@ -25,7 +43,7 @@ function useLandlordFlags(ids, tick = 0) {
     let live = true;
     const all = key.split(",");
     for (let i = 0; i < all.length; i += FLAG_BATCH) {
-      call(`/api/admin/billing/agreement-versions/landlord-flags?ids=${all.slice(i, i + FLAG_BATCH).join(",")}`)
+      call(flagsUrl(all.slice(i, i + FLAG_BATCH)))
         .then((r) => live && setFlags((prev) => ({ ...prev, ...(r.landlords ?? {}) })))
         .catch(() => {});
     }
@@ -33,8 +51,10 @@ function useLandlordFlags(ids, tick = 0) {
       live = false;
     };
   }, [key, tick]);
-  return flags;
+  return { flags, loaded: ids.every((id) => flags[id]) };
 }
+
+const CHECK_FAILED = "Couldn't check these landlords just now. Try again.";
 
 /*
  * The flags for one landlord on version `versionId` of `kind` (null while uploading).
@@ -155,7 +175,7 @@ const toggle = (list, l) => (list.some((x) => x.id === l.id) ? list.filter((x) =
 // The upload form's picker: `value` is the chosen landlords ({ id, name, email, company }).
 export function LandlordToggles({ value, onChange, kind, disabled }) {
   const ids = value.map((l) => l.id);
-  const flags = useLandlordFlags(ids);
+  const { flags } = useLandlordFlags(ids);
   return (
     <div className="space-y-2">
       {value.length > 0 ? (
@@ -227,7 +247,8 @@ export function AppliesTo({ version, busy, run, onDirtyChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
   const ids = draft.map((l) => l.id);
-  const flags = useLandlordFlags([...new Set([...ids, ...saved.map((l) => l.id)])], savedKey);
+  const { flags, loaded } = useLandlordFlags([...new Set([...ids, ...saved.map((l) => l.id)])], savedKey);
+  const [checking, setChecking] = useState(false);
   const editable = version.status !== "retired";
   const addList = draft.filter((l) => !saved.some((s) => s.id === l.id));
   const removeList = saved.filter((s) => !draft.some((l) => l.id === s.id));
@@ -236,8 +257,18 @@ export function AppliesTo({ version, busy, run, onDirtyChange }) {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
 
-  const save = () => {
-    if (!window.confirm(changeSummary({ version, adding: addList, removing: removeList, flags }))) return;
+  const save = async () => {
+    let fresh;
+    setChecking(true);
+    try {
+      fresh = await fetchFlags([...addList, ...removeList].map((l) => l.id));
+    } catch {
+      window.alert(CHECK_FAILED);
+      return;
+    } finally {
+      setChecking(false);
+    }
+    if (!window.confirm(changeSummary({ version, adding: addList, removing: removeList, flags: fresh }))) return;
     return run(async () => {
       const r = await postJson(`/api/admin/billing/agreement-versions/${version.id}`, {
         action: "landlords",
@@ -290,8 +321,8 @@ export function AppliesTo({ version, busy, run, onDirtyChange }) {
       {adding && <SearchToggles chosenIds={ids} onToggle={(l) => setDraft(toggle(draft, l))} disabled={busy} />}
       {dirty && (
         <div className="flex gap-2">
-          <button type="button" disabled={busy} className={PRIMARY} onClick={save}>
-            Save changes
+          <button type="button" disabled={busy || checking || !loaded} className={PRIMARY} onClick={save}>
+            {checking ? "Checking..." : "Save changes"}
           </button>
           <button type="button" disabled={busy} className={BUTTON} onClick={() => setDraft(saved)}>
             Undo
@@ -302,11 +333,16 @@ export function AppliesTo({ version, busy, run, onDirtyChange }) {
   );
 }
 
-// For the Make live confirmation: what happens to each landlord on the version.
+/*
+ * For the Make live confirmation: what happens to each landlord on the version.
+ * `ready` once every landlord's flags have loaded; `build()` reads them fresh and
+ * returns the text (it throws when the check fails).
+ */
 export function useLiveSummary(version) {
   const ids = (version.landlords ?? []).map((l) => l.id);
-  const flags = useLandlordFlags(ids);
-  return () => {
+  const { loaded } = useLandlordFlags(ids);
+  const build = async () => {
+    const flags = await fetchFlags(ids);
     const lines = (version.landlords ?? []).map((l) => {
       const f = flags[l.id];
       const notes = [];
@@ -320,4 +356,5 @@ export function useLiveSummary(version) {
     });
     return lines.length ? lines.join("\n") : "Nobody is on it yet. It applies to nobody until you add landlords.";
   };
+  return { ready: loaded, build };
 }

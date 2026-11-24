@@ -96,10 +96,24 @@ function DraftSteps({ version, busy, run, documensoConnected, unsaved = false })
   // anyone sign again, and a custom version is signed by its landlords anyway.
   const asksResign = version.kind === "master" && !version.custom;
   const liveSummary = useLiveSummary(version);
-  const publish = () => {
+  const [checking, setChecking] = useState(false);
+  const publish = async () => {
     if (asksResign && requiresResign === null) return;
+    // A custom version's confirmation is built from each landlord's flags read now.
+    let landlordLines = "";
+    if (version.custom) {
+      setChecking(true);
+      try {
+        landlordLines = await liveSummary.build();
+      } catch {
+        window.alert("Couldn't check the landlords on this version just now. Try again.");
+        return;
+      } finally {
+        setChecking(false);
+      }
+    }
     const text = version.custom
-      ? `Make "${version.label}" live for the landlords on it?\n\n${liveSummary()}`
+      ? `Make "${version.label}" live for the landlords on it?\n\n${landlordLines}`
       : !asksResign
       ? `Make "${version.label}" live?`
       : requiresResign
@@ -179,11 +193,18 @@ function DraftSteps({ version, busy, run, documensoConnected, unsaved = false })
         )}
         <button
           type="button"
-          disabled={busy || unsaved || version.status !== "ready" || (asksResign && requiresResign === null)}
+          disabled={
+            busy ||
+            unsaved ||
+            checking ||
+            (version.custom && !liveSummary.ready) ||
+            version.status !== "ready" ||
+            (asksResign && requiresResign === null)
+          }
           className={`${PRIMARY} mt-2`}
           onClick={publish}
         >
-          Make live
+          {checking ? "Checking..." : "Make live"}
         </button>
         {unsaved && <p className="mt-1 text-xs text-amber-700">Save or undo the changes to who it applies to first.</p>}
       </Step>
