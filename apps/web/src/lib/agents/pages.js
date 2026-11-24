@@ -177,6 +177,8 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   if (cur.length) batches.push(cur);
   const totals = { pages: pages.length, read: changed.length, written: 0, held: 0, unchanged: 0, retired: 0, missed: 0, gone: gonePages.length };
   const touched = new Set();
+  // Which pages kept which fact, for the write step (applyProposals).
+  const keptFrom = new Map();
   const readIds = [];
   // What every batch proposes, written once after all of them
   // (synthesize.js applyProposals), and the pages to mark read after that.
@@ -192,6 +194,10 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     const r = await synthesizeKnowledge({ listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url, cause, actorId, pageSources, noRetire: true, collect: proposals });
     totals.written += r.written ?? 0; totals.held += r.held ?? 0; totals.unchanged += r.unchanged ?? 0; totals.retired += r.retired ?? 0;
     for (const id of r.touched ?? []) touched.add(id);
+    for (const k of r.keptFrom ?? []) {
+      if (!keptFrom.has(k.factId)) keptFrom.set(k.factId, new Set());
+      if (k.sourceId) keptFrom.get(k.factId).add(k.sourceId);
+    }
     // A batch the model could not read says nothing about what is missing,
     // and its pages are read again next week.
     if (r.failed) return;
@@ -210,7 +216,7 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   }
   // Each fact decided once, against the facts as they are now.
   onStep("Saving what the site says");
-  const applied = await applyProposals({ listingId, proposals, cause, actorId, confirmed: touched, skipDuplicateCheck: Date.now() - started > DUPLICATE_CHECK_DEADLINE_MS });
+  const applied = await applyProposals({ listingId, proposals, cause, actorId, confirmed: touched, keptFrom, skipDuplicateCheck: Date.now() - started > DUPLICATE_CHECK_DEADLINE_MS });
   totals.written += applied.written; totals.held += applied.held; totals.unchanged += applied.unchanged;
   for (const id of applied.touched) touched.add(id);
   // Only now are the pages marked read: a run cut off before the write above

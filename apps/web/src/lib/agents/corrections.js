@@ -12,22 +12,22 @@
  *
  * Only a change a student would act on is posted (Wyatt, 2026-11-23): a
  * website saying the same thing in new words ("7 days a week" read again as
- * "seven days a week") is not. A change in any amount, time or date always
- * counts; with the same numbers, a quick model check decides.
+ * "seven days a week", "9am" as "9:00 AM") is not. A new or different
+ * amount, time or date always counts; with the same numbers, or only fewer
+ * of them, a quick model check decides.
  */
 import supabase from "@/lib/supabase";
 import { postProxyMessage, PROXY_USER_ID } from "./threads";
 import { notifyStudentThread } from "./notify";
 import { z } from "zod";
 import { parseStructured, HAIKU } from "./model";
+import { numbersOf, numbersWithin } from "./factCompare";
 
 const WINDOW_DAYS = 30;
 
-const WORD_NUMBERS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, hundred: 100 };
-export const numbersOf = (text) => [...new Set(String(text ?? "").toLowerCase()
-  .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred)\b/g, (w) => String(WORD_NUMBERS[w]))
-  .replace(/(\d),(\d{3})\b/g, "$1$2")
-  .match(/\d+(?:\.\d+)?/g) ?? [])].map((n) => String(Number(n))).sort().join(",");
+// Amounts, times and dates written one way (factCompare.js), so "9am" read
+// again as "9:00 AM" is not a change (PR 478 review).
+export { numbersOf };
 
 const Verdict = z.object({ material: z.boolean() });
 const CHECK = `A student was earlier told one thing about a rental listing. The listing's knowledge now says something else. Decide whether the student needs to be told.
@@ -38,7 +38,9 @@ material = false when it is the same information in other words, or only adds or
 // Exported for the test harness.
 export async function isMaterialChange({ listingId = null, oldSummary, summary, failOpen = false }) {
   if (!oldSummary) return true;
-  if (numbersOf(oldSummary) !== numbersOf(summary)) return true;
+  // A new or different number is a change. The same numbers, or only some
+  // of the old ones (a briefer statement), go to the model.
+  if (numbersOf(oldSummary) !== numbersOf(summary) && !numbersWithin(summary, oldSummary)) return true;
   try {
     const { parsed } = await parseStructured({
       model: HAIKU, system: CHECK, schema: Verdict, maxTokens: 100, tag: "correction_check", listingId, kind: "correction_check",
