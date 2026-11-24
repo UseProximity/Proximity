@@ -421,6 +421,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const noPublicPrice = pricesUnknown || listingNoPrice;
       push({
         ...(misshapen ? { note: `listed as ${listingFormat === "plan" ? "floor plans" : "apartments"} here, so added as a draft` } : {}),
+        // On the change, never in `detail`: detail is saved on the event,
+        // which landlords can read (PR 478 review).
+        ...(hiddenNew ? { hiddenRent: hiddenFrom(hiddenNew, listingBasis) } : {}),
         kind: "unit_new",
         unitKey: snap.key,
         field: "unit",
@@ -434,7 +437,6 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           // A blank written because the website prices nothing, marked so a
           // later read can tell it from a landlord's blank (learnRules.js).
           ...(pricesUnknown ? { askForPrice: true } : {}),
-          ...(hiddenNew ? { hiddenRent: hiddenFrom(hiddenNew, listingBasis) } : {}),
           available: pricesUnknown ? true : snap.available,
           photos: images ? snap.photos : [],
           draft: misshapen,
@@ -533,7 +535,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         field: "rent",
         old: null,
         new: { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] },
-        detail: { op: "lease_insert", unitId: db.id, label, offer: askForPrice, draft: false, hiddenRent: hiddenFrom(noLeaseOffer, listingBasis) },
+        hiddenRent: hiddenFrom(noLeaseOffer, listingBasis),
+        detail: { op: "lease_insert", unitId: db.id, label, offer: askForPrice, draft: false },
       });
       continue;
     }
@@ -935,9 +938,11 @@ export async function executeChange(change, { state, userId }) {
         leaseRows = inserted ?? [];
       }
       // A new plan on a listing with no public prices: its website price is
-      // kept hidden on the unpriced lease it got.
-      if (d.hiddenRent && leaseRows[0]) {
-        await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: leaseRows[0].id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
+      // kept hidden on the unpriced lease it got. It rides on the change, not
+      // its detail, so a change applied later from its saved event has none:
+      // the next read saves it then.
+      if (change.hiddenRent && leaseRows[0]) {
+        await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: leaseRows[0].id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       }
       // What the sync wrote, so a landlord's later edit can be told apart (learn.js).
       change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r, ...(d.askForPrice ? { askForPrice: true } : {}) })) };
@@ -964,7 +969,7 @@ export async function executeChange(change, { state, userId }) {
       const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: row.id, values: row }] };
-      if (d.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
+      if (change.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
     case "lease_update": {

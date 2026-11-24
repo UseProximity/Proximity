@@ -25,7 +25,12 @@ export async function GET(req, { params }) {
     .order("created_at", { ascending: true });
   // Each change as what Proximity shows now next to the website (Wyatt, 2026-11-05).
   const views = await describeChanges(events ?? []);
-  const withView = (e) => ({ ...e, view: views.get(e.id) ?? null });
+  // A hidden website price is never the landlord's to see. The sync no
+  // longer saves one on an event; this drops any an older run did.
+  const withView = (e) => {
+    const { hiddenRent, ...detail } = e.detail ?? {};
+    return { ...e, detail: e.detail ? detail : e.detail, view: views.get(e.id) ?? null };
+  };
   return NextResponse.json({
     listing,
     proposed: (events ?? []).filter((e) => e.detail?.op && e.detail.op !== "none").map(withView),
