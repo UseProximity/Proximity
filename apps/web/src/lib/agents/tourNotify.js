@@ -196,7 +196,17 @@ export async function notifyTourCancelled({ tourId, by }) {
   // Either way the landlord hears: the student's cancellation, or a
   // confirmation of their own (Wyatt, 2026-11-20).
   if (canEmail(r.landlord)) {
-    const input = { firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, when, dashboardUrl: dashboardTours() };
+    /*
+     * The student's cancellation is in their voice, so a reply to it must reach
+     * them: it carries the landlord's reply address on the tour's chat, like
+     * the other tour emails. With no chat (or no address) a reply could only
+     * land in our own inbox, so it comes From "Proximity" rather than the
+     * student's name (PR #478 review).
+     */
+    const replyTo = by === "student" && r.t.thread_id
+      ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.landlord.id }).catch(() => null)
+      : null;
+    const input = { firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, when, dashboardUrl: dashboardTours(), canReply: !!replyTo };
     const email = by === "student" ? buildTourCancelledEmail(input) : buildTourCancelledByLandlordEmail(input);
     await sendLandlordTourEmail({
       sandbox: r.sandbox,
@@ -207,7 +217,10 @@ export async function notifyTourCancelled({ tourId, by }) {
         ? await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email })
         : r.landlord.email,
       ...email,
+      ...(replyTo ? {} : { fromName: "Proximity" }),
       userId: r.landlord.id,
+      replyTo,
+      threadId: r.t.thread_id,
     });
     sent.push("landlord");
   }

@@ -94,6 +94,9 @@ test("a cancellation is in the student's words, with the booked time when there 
   assert.ok(booked.text.startsWith("Hi, I need to cancel my tour of the 2 bed at The Ceylon on Thursday 11/20 at 3 PM.\n\nJordan\n"));
   assert.equal(booked.fromName, "Jordan");
   assert.ok(buildTourCancelledEmail(base).text.startsWith("Hi, I need to cancel my tour request for the 2 bed at The Ceylon."));
+  // With the chat's reply address it says a reply reaches the student; without, it doesn't promise one.
+  assert.match(buildTourCancelledEmail({ ...base, canReply: true }).text, /Reply to this email to message Jordan\./);
+  assert.doesNotMatch(buildTourCancelledEmail(base).text, /Reply to this email/);
   const mine = buildTourCancelledByLandlordEmail({ ...base, when: "Thursday 11/20 at 3 PM" });
   assert.ok(mine.text.startsWith("You cancelled Jordan's tour of the 2 bed at The Ceylon on Thursday 11/20 at 3 PM. We let Jordan know."));
 });

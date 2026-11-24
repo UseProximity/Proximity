@@ -88,16 +88,20 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
 
 /**
  * The student cancelled. In their words, signed with their first name, with
- * the booked time (`when`) when the tour had been confirmed.
+ * the booked time (`when`) when the tour had been confirmed. `canReply` when
+ * the email carries the chat's reply address.
  */
-export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = null, dashboardUrl }) {
+export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = null, dashboardUrl, canReply = false }) {
   const who = firstName || "A student";
   const { html, text } = buildInquiryEmail({
     messages: [{ body: when
       ? `Hi, I need to cancel my tour of ${where(unit, listingLabel)} on ${when}.`
       : `Hi, I need to cancel my tour request for ${where(unit, listingLabel)}.` }],
     signature: who,
-    details: ["Tour request sent through Proximity (useproximity.org)", "Nothing else is needed from you."],
+    details: [
+      "Tour request sent through Proximity (useproximity.org)",
+      canReply ? `Nothing else is needed from you. Reply to this email to message ${firstName || "the student"}.` : "Nothing else is needed from you.",
+    ],
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
