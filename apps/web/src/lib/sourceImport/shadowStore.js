@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
 import { shadowRows } from "./shadow.js";
+import { jevPass } from "./jevPass.js";
 
 export const shadowScoresOn = () => String(process.env.SYNC_SHADOW_SCORES ?? "").toLowerCase() !== "false";
 
@@ -55,8 +56,9 @@ export async function saveShadowScores({ listingId, monitorId, changes, snapshot
   if (!shadowScoresOn() || !changes?.length) return 0;
   try {
     const [landlordEdits, { priorRuns, priorRunsSeen }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
-    const rows = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, holdReason });
-    if (!rows.length) return 0;
+    const scored = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, holdReason });
+    if (!scored.length) return 0;
+    const rows = (await jevPass({ rows: scored, snapshot, state })).map(({ _in, ...r }) => r);
     const runId = randomUUID();
     const runAt = new Date().toISOString();
     const { error } = await supabase.from("listing_sync_scores").insert(rows.map((r) => ({ ...r, run_id: runId, run_at: runAt, listing_id: listingId, monitor_id: monitorId ?? null })));
@@ -67,3 +69,4 @@ export async function saveShadowScores({ listingId, monitorId, changes, snapshot
     return 0;
   }
 }
+

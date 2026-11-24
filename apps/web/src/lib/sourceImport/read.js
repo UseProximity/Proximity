@@ -43,6 +43,7 @@ import {
 } from "@/lib/listingDraft/fetchSite";
 import { pageCacheStore } from "./pageCache.js";
 import { isDocumentUrl, readDocument } from "./readers/document.js";
+import { collectEvidence } from "./evidence.js";
 
 // Every read shares fetched pages with the rest of its batch
 // (IMPORT_PAGE_CACHE=0 turns it off, for measuring or debugging).
@@ -1401,6 +1402,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   });
   snapshot.model = modelUsed;
   snapshot.trace = trace;
+  // The text each unit was read from, for Jev (evidence.js); never stored.
+  snapshot.evidence = collectEvidence(crawl.fetched.map((f) => ({ url: f.finalUrl, text: htmlToText(f.html) })), snapshot.units);
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
   snapshot.portal = portalFor(learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null));

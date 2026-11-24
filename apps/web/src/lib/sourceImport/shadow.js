@@ -196,12 +196,75 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_apply: holdReason ? false : !!c.verdict?.apply,
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
+      // What decide() was given, so a Jev pass can score it again (never stored).
+      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated" },
     });
   }
   return rows;
 }
 
 const round = (n) => Math.round(Number(n) * 1000) / 1000;
+
+/*
+ * Sources whose facts Jev checks against the page text. A feed, portal or
+ * unit page is taken as read (1.0), and so is structured data (embedded JSON
+ * such as RentCafe's), which is not in the visible text Jev reads.
+ */
+export const PAGE_READ_SOURCES = new Set(["model", "pattern", "recipe", "portalSite"]);
+
+/*
+ * Score a row again with Jev's answers (jev.js).
+ *   jev  { status: "ok" | "failed" | "no_text" | "skipped", parts: [{ part, p, choice, rough, rightThing }], model, error }
+ * Read quality is the lowest probability Jev gives a fact code read; a
+ * starting-at or range price, or (for a basis change) an unstated basis, caps
+ * it at ROUGH_CAP; the right-building answer scales right thing. A page-read
+ * change Jev could not check waits for the next read (PRD).
+ */
+export function rescoreWithJev(row, jev) {
+  const inp = row._in;
+  const stored = { status: jev.status, model: jev.model ?? null, parts: jev.parts ?? [], error: jev.error ?? null };
+  if (!inp) return { ...row, jev: stored };
+  const pageRead = PAGE_READ_SOURCES.has(row.source);
+  let readQuality = inp.claim.readQuality;
+  let rightThing = inp.claim.rightThing;
+  let rentType = inp.rentType;
+  for (const part of jev.parts ?? []) {
+    if (part.p == null) continue;
+    if (part.rightThing) {
+      rightThing *= part.p;
+      continue;
+    }
+    if (!pageRead) continue;
+    if (part.rough) {
+      if (part.part === "rentType" && part.choice && part.choice !== "exact") {
+        rentType = part.choice;
+        readQuality = Math.min(readQuality, ROUGH_CAP);
+      }
+      if (part.part === "basis" && part.choice === "not_stated" && inp.field === "rentIsPerPerson") readQuality = Math.min(readQuality, ROUGH_CAP);
+      continue;
+    }
+    readQuality = Math.min(readQuality, part.invert ? 1 - part.p : part.p);
+  }
+  const claim = { ...inp.claim, readQuality, rightThing };
+  let verdict = decide({ ...inp, rentType, claim }, inp.current);
+  if (pageRead && jev.status !== "ok" && jev.status !== "skipped") {
+    verdict = { ...verdict, apply: false, borderline: false, reason: jev.status === "no_text" ? "Jev had no page text to check this against; it waits for the next read" : "Jev could not check this read; it waits for the next read" };
+  }
+  if (inp.weekly) verdict = { ...verdict, apply: false, borderline: false, reason: "descriptions and specials change on the weekly read, not the daily sync" };
+  return {
+    ...row,
+    read_quality: round(readQuality),
+    right_thing: round(rightThing),
+    score: round(verdict.score),
+    current_score: round(verdict.current),
+    need: round(verdict.need),
+    ledger_apply: !!verdict.apply,
+    ledger_hidden: !!verdict.hidden,
+    ledger_reason: verdict.reason ?? null,
+    borderline: !!verdict.borderline,
+    jev: stored,
+  };
+}
 
 /* The same change across runs: kind, unit, lease, field and new value. */
 export function changeKey(c) {

@@ -128,7 +128,7 @@ export async function monitorFor(listingId) {
 async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
   // The snapshot minus photo lists, which are long and not what a diff needs.
   const normalized = snapshot
-    ? { ...snapshot, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
+    ? { ...snapshot, evidence: undefined, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
     : null;
   await supabase.from("listing_source_snapshots").insert({
     monitor_id: monitorId,
