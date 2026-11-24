@@ -1561,10 +1561,21 @@ export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, thre
  * details), then what Proxy is and how to answer below the "-- " line. The
  * student's reply to a clarifying question leads its own email with the
  * original question quoted under it, and a reminder adds one line on top.
- * Every variant has the same "Question about <listing>" subject so they stack.
- * No student's name in it, unlike the other landlord emails: one question can
+ * Every variant of one question has the same subject so they stack:
+ * "Question about <listing>: <first words of the question>". The excerpt keeps
+ * two questions about one listing apart in Outlook (Wyatt, 2026-11-24). No
+ * student's name in it, unlike the other landlord emails: one question can
  * stand for several students, and the email never names them.
  */
+const QUESTION_EXCERPT_MAX = 40;
+export function questionExcerpt(question) {
+  const flat = String(question ?? "").replace(/\s+/g, " ").trim();
+  if (flat.length <= QUESTION_EXCERPT_MAX) return flat;
+  const cut = flat.slice(0, QUESTION_EXCERPT_MAX);
+  const atWord = cut.lastIndexOf(" ");
+  return `${(atWord > 15 ? cut.slice(0, atWord) : cut).replace(/[\s,.;:!?]+$/, "")}...`;
+}
+
 export function buildProxyLandlordQuestionEmail({
   listingLabel, question, queueUrl, hasAccount = true, studentReply = null, reminderDay = null, canReply = false,
 }) {
@@ -1587,7 +1598,9 @@ export function buildProxyLandlordQuestionEmail({
     button: { label: hasAccount ? "Answer in the app" : "Create an account to answer", url: queueUrl },
     reason: "You are receiving this because you are the contact for a listing on Proximity.",
   });
-  return { subject: `Question about ${listingLabel}`, html, text };
+  // Always the original question, so the reply and reminder variants keep its subject.
+  const excerpt = questionExcerpt(question);
+  return { subject: excerpt ? `Question about ${listingLabel}: ${excerpt}` : `Question about ${listingLabel}`, html, text };
 }
 
 export async function sendProxyLandlordQuestionEmail({
