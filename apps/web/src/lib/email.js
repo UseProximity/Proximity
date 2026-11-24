@@ -393,9 +393,13 @@ export function buildChatMessageEmail({
  * A student's chat message, emailed to the landlord (or the listing contact the
  * alert is routed to) in the inquiry layout of lib/inquiryEmail.js (Wyatt,
  * 2026-11-18): their words first, signed with their name, From their name, and
- * the Proximity details under the "-- " line. The subject is a plain
- * "Inquiry about <listing>", the same for every alert in the conversation so
- * they stack into one email thread. Never the student's contact details.
+ * the Proximity details under the "-- " line. The subject is "Inquiry about
+ * <listing> from <first name>", the same for every alert and reminder in the
+ * conversation so they stack into one email thread. The first name keeps two
+ * students' conversations about the same listing apart: Outlook groups a
+ * conversation by subject, and a reply to the wrong one would post into the
+ * other student's chat (Wyatt, 2026-11-23). "Inquiry about <listing>" when the
+ * student has no name. Never the student's contact details.
  */
 function buildLandlordChatEmail({
   senderName, listingTitle, listingAddress, subject: threadSubject, messages, earlierCount = 0,
@@ -424,7 +428,7 @@ function buildLandlordChatEmail({
       : { text: "Reply on Proximity:", link: { label: "open the conversation.", url: threadUrl } },
     reason: "You are receiving this because a student messaged you about a listing on Proximity. You can turn off message emails in your account settings.",
   });
-  return { subject: `Inquiry about ${listingLabel}`, fromName: named || "Proximity", html, text };
+  return { subject: `Inquiry about ${listingLabel}${named ? ` from ${otherFirst}` : ""}`, fromName: named || "Proximity", html, text };
 }
 
 export async function sendChatMessageEmail({
@@ -1558,6 +1562,8 @@ export async function sendProxyConfirmEmail({ to, listingLabel, confirmUrl, thre
  * student's reply to a clarifying question leads its own email with the
  * original question quoted under it, and a reminder adds one line on top.
  * Every variant has the same "Question about <listing>" subject so they stack.
+ * No student's name in it, unlike the other landlord emails: one question can
+ * stand for several students, and the email never names them.
  */
 export function buildProxyLandlordQuestionEmail({
   listingLabel, question, queueUrl, hasAccount = true, studentReply = null, reminderDay = null, canReply = false,

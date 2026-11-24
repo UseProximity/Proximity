@@ -26,6 +26,15 @@ function unitPhrase(unit) {
   return unit.bedrooms ? `the ${unit.bedrooms} bed` : "";
 }
 
+/*
+ * Each subject carries the student's first name, as the body does, so Outlook
+ * (which groups a conversation by subject) never merges two students' emails
+ * about one listing, where a reply could reach the wrong student (Wyatt,
+ * 2026-11-23). Without a name the subject is the plain one.
+ */
+const first = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
+const fromFirst = (firstName) => (first(firstName) ? ` from ${first(firstName)}` : "");
+
 const where = (unit, listingLabel) => {
   const u = unitPhrase(unit);
   return u ? `${u} at ${listingLabel}` : listingLabel;
@@ -57,7 +66,7 @@ export function buildTourRequestEmail({ firstName, listingLabel, unit, slots = [
     reason: REASON,
   });
   return {
-    subject: `Tour request for ${listingLabel}`,
+    subject: `Tour request for ${listingLabel}${fromFirst(firstName)}`,
     fromName: who,
     html,
     text,
@@ -80,7 +89,7 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
     reason: REASON,
   });
   return {
-    subject: dayBefore ? `Reminder: tour of ${listingLabel} ${when}` : `Tour confirmed: ${who}, ${when}`,
+    subject: dayBefore ? `Reminder: tour of ${listingLabel} ${when}${studentName ? ` with ${first(studentName)}` : ""}` : `Tour confirmed: ${who}, ${when}`,
     html,
     text,
   };
@@ -105,7 +114,7 @@ export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = 
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
-  return { subject: `Tour cancelled: ${listingLabel}`, fromName: who, html, text };
+  return { subject: `Tour cancelled for ${listingLabel}${fromFirst(firstName)}`, fromName: who, html, text };
 }
 
 /** The landlord's confirmation that they cancelled (Wyatt, 2026-11-20). */
@@ -119,5 +128,5 @@ export function buildTourCancelledByLandlordEmail({ firstName, listingLabel, uni
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
-  return { subject: `You cancelled a tour: ${listingLabel}`, html, text };
+  return { subject: `You cancelled a tour for ${listingLabel}${fromFirst(firstName)}`, html, text };
 }
