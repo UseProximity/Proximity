@@ -70,13 +70,14 @@ export default function ReviewReplySection({ review, owner, isLandlord, readOnly
       });
 
       const data = await res.json().catch(() => ({}));
+      // A teammate replied first: show theirs, not an error, and clear the draft.
+      if (res.status === 409 && data?.reply) {
+        setLandlordReply(toCardReply(data.reply));
+        setReplyText("");
+        return;
+      }
       if (!res.ok) {
         toast.error(data?.error || "Failed to post reply");
-        // A teammate replied first: show theirs and keep the draft out of the way.
-        if (res.status === 409 && data?.reply) {
-          setLandlordReply(toCardReply(data.reply));
-          setReplyText("");
-        }
         return;
       }
 
