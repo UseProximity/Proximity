@@ -4,8 +4,15 @@
  *
  * Removed, in order:
  *   1. Everything from the quoted original down: our own "Reply above this line"
- *      marker, "On <date>, <name> wrote:", Outlook's "From: / Sent:" header block,
- *      "-----Original Message-----", and any ">" quoted lines.
+ *      marker, "On <date>, <name> wrote:", Outlook's "From: / Sent:" header block
+ *      (and its German, French, Spanish, Portuguese, Italian, Dutch and
+ *      Scandinavian versions), "-----Original Message-----", and any ">" quoted
+ *      lines. A landlord email leads with the student's own words and has no
+ *      marker above them (lib/inquiryEmail.js), so a client that pastes the
+ *      original with no header (a CRM, a leasing assistant) would post them
+ *      back as the landlord's answer. The caller passes the message bodies the
+ *      email carried (`quoted`), and the reply is cut at the first line that
+ *      starts one of them, along with our reminder lead above it.
  *   2. The signature: everything after a "-- " delimiter, "Sent from my iPhone"
  *      style footers, and a trailing block of lines that are only the sender's
  *      name, company, job title, phone, email, website or street address.
@@ -36,6 +43,13 @@
 
 const QUOTE_MARKERS = [
   /^\s*Reply above this line to message\b/i,
+  // The reminder line on top of a landlord email, and the opening of a tour
+  // request or cancellation in the student's voice (lib/agents/tourEmails.js).
+  // Our own wording, so a landlord never types it.
+  /^\s*Reminder, .{1,60}? is still waiting on your (reply|answer)\b/i,
+  /^\s*Reminder: .{1,60}? is touring\b/i,
+  /^\s*Hi, I'd like to tour\b/i,
+  /^\s*Hi, I need to cancel my tour\b/i,
   // The first details line of a landlord email (lib/inquiryEmail.js), for a
   // client that pastes the original without a quote header.
   /^\s*(Message sent|Tour request sent|Tour booked|Booked) through Proximity\b/i,
@@ -55,18 +69,85 @@ const LEGAL_FOOTER_MARKERS = [
 ];
 
 // "On Tue, Oct 9, 2026 at 4:12 PM Angela Clayton <...> wrote:", which Gmail and
-// Apple Mail can wrap over two or three lines.
-const ON_WROTE = /^\s*On\s[^\n]{0,300}?(\n[^\n]{0,300}?){0,2}\bwrote:\s*$/im;
+// Apple Mail can wrap over two or three lines, and the same line in German
+// ("Am ... schrieb ...:"), French ("Le ... a écrit :"), Spanish ("El ...
+// escribió:"), Portuguese ("Em ... escreveu:"), Italian ("Il ... ha scritto:")
+// and Dutch ("Op ... schreef ...:").
+const ON_WROTE = /^\s*(On|Am|Le|El|Em|Il|Op)\s[^\n]{0,300}?(\n[^\n]{0,300}?){0,2}\b(wrote|a écrit|escribió|escreveu|ha scritto|(schrieb|schreef)\s[^\n]{0,160}?)\s?:\s*$/im;
+
+// Outlook's header block in the languages a leasing office is likely to use:
+// "From:" / "Sent:" in English, "Von:" / "Gesendet:" in German, "De :" /
+// "Envoyé :" in French, "De:" / "Enviado el:" in Spanish, and so on.
+const OUTLOOK_FROM = /^\s*\*?(From|Von|De|Da|Van|Från|Fra|Od)\s?:\*?\s/i;
+const OUTLOOK_SENT = /^\s*\*?(Sent|Date|Gesendet|Datum|Envoy[ée](\s?\(e\))?|Enviad[oa]( el)?|Data|Inviato|Verzonden|Skickat|Sendt|Wysłano|Odesláno)\s?:\*?\s/i;
 
 // Outlook: a "From:" line followed within a few lines by "Sent:" or "Date:".
 function outlookHeaderIndex(lines) {
   for (let i = 0; i < lines.length; i++) {
-    if (!/^\s*\*?From:\*?\s/i.test(lines[i])) continue;
+    if (!OUTLOOK_FROM.test(lines[i])) continue;
     for (let j = i + 1; j <= i + 4 && j < lines.length; j++) {
-      if (/^\s*\*?(Sent|Date):\*?\s/i.test(lines[j])) return i;
+      if (OUTLOOK_SENT.test(lines[j])) return i;
     }
   }
   return -1;
+}
+
+/*
+ * A line for comparing a reply against the messages the email carried: no
+ * quote marks or bold, the opening greeting dropped ("Hi Yuki," was emailed as
+ * "Hi,"), spaces collapsed, lower case.
+ */
+function comparable(line) {
+  return unbold(String(line ?? "").replace(/^\s*(>\s?)+/, ""))
+    .replace(/^(hi|hey|hello|dear)\b[^,!.\n]{0,30}[,!.]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+// Shorter lines ("Thanks!", "Is it open?") are too likely to be the landlord's
+// own words to cut on.
+const MIN_QUOTED_LINE = 12;
+
+/*
+ * The first line of each emailed message worth matching on: the first one
+ * that is not just a greeting and is long enough to be that message's own.
+ */
+function quotedStarts(quoted) {
+  const out = [];
+  for (const body of quoted ?? []) {
+    const first = normalize(body).split("\n").map(comparable).find((l) => l.length >= MIN_QUOTED_LINE);
+    if (first) out.push(first);
+  }
+  return out;
+}
+
+/*
+ * Where the student's quoted message starts in the reply, or -1. A client may
+ * rewrap a long line, so a reply line that is the start of an emailed line
+ * counts too, once it is long enough. A reply line that only begins with the
+ * student's line ("Is parking included? Yes, one spot.") does not, so an
+ * answer that repeats the question is kept. The cut then moves up over the
+ * greeting, time labels and blank lines that sat above the message.
+ */
+function quotedMessageIndex(lines, quoted) {
+  const starts = quotedStarts(quoted);
+  if (starts.length === 0) return -1;
+  const at = lines.findIndex((l) => {
+    const c = comparable(l);
+    if (c.length < MIN_QUOTED_LINE) return false;
+    return starts.some((s) => c === s || (c.length >= 20 && s.startsWith(c)));
+  });
+  if (at === -1) return -1;
+  let top = at;
+  while (top > 0) {
+    const above = unbold(lines[top - 1]);
+    const greeting = /^(hi|hey|hello|dear)( [a-z][\w'-]*)?\s*[,!.]?$/i.test(above);
+    const timeLabel = /^([A-Z][a-z]{2} \d{1,2}, )?\d{1,2}:\d{2}\s?[AP]M$/.test(above);
+    if (above && !greeting && !timeLabel) break;
+    top--;
+  }
+  return top;
 }
 
 const MOBILE_FOOTERS = [
@@ -266,12 +347,14 @@ function nameVariants(value) {
 }
 
 /**
- * @param {{ text?: string, html?: string, senderName?: string, senderCompany?: string, fromName?: string }} input
+ * @param {{ text?: string, html?: string, senderName?: string, senderCompany?: string, fromName?: string, quoted?: string[] }} input
  *   fromName is the display name on the email itself, which can differ from
  *   the account name (a leasing office mailbox, a personal signature).
+ *   quoted is the message bodies the email being answered carried (the other
+ *   side's recent messages), so a pasted original is cut at the first of them.
  * @returns {string} the reply as the person wrote it, possibly empty
  */
-export function extractReplyText({ text, html, senderName, senderCompany, fromName } = {}) {
+export function extractReplyText({ text, html, senderName, senderCompany, fromName, quoted = [] } = {}) {
   let body = normalize(text && String(text).trim() ? text : htmlToPlainText(html));
 
   // 1. cut at the quoted original
@@ -280,8 +363,9 @@ export function extractReplyText({ text, html, senderName, senderCompany, fromNa
 
   let lines = body.split("\n");
   let cut = lines.findIndex((l) => QUOTE_MARKERS.some((re) => re.test(l)));
-  const outlook = outlookHeaderIndex(lines);
-  if (outlook !== -1 && (cut === -1 || outlook < cut)) cut = outlook;
+  for (const at of [outlookHeaderIndex(lines), quotedMessageIndex(lines, quoted)]) {
+    if (at !== -1 && (cut === -1 || at < cut)) cut = at;
+  }
   if (cut !== -1) lines = lines.slice(0, cut);
   const footer = lines.findIndex((l, i) => i > 0 && LEGAL_FOOTER_MARKERS.some((re) => re.test(l)));
   if (footer !== -1) lines = lines.slice(0, footer);
