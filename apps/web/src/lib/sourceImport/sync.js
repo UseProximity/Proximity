@@ -208,6 +208,13 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     // The recipe this read used or worked out (recipeStore.js).
     await noteRecipeRun({ info: snapshot.recipe });
     await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
+    // A site no recipe can read: the daily sync leaves the listing as it is.
+    if (snapshot.dailySkipped) {
+      const note = "This website is read on the weekly deep read only: code cannot read its units, and the daily sync uses no model";
+      await supabase.from("listing_source_monitors").update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date(Date.now() + interval * 86400000).toISOString() }).eq("id", m.id);
+      console.log(`[source-sync] ${label}: ${note}`);
+      return { listingId: listing.id, listing: label, status: "ok", platform: "none", confidence: "low", seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: null, pages: [], unitPages: [], note, dailySkipped: true };
+    }
     /*
      * A leasing portal too large to walk in one run: what it has so far is
      * on the monitor and the listing is due again at once, so the next run

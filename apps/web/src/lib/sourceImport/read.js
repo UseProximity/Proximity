@@ -1129,7 +1129,22 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   if (recipeFor) {
     recipeInfo.platformKey = detectPlatform(crawl.fetched.map((f) => ({ url: f.finalUrl, html: f.html })));
     const saved = await recipeFor(recipeInfo.platformKey);
-    const pick = saved?.listing ? { scope: "listing", row: saved.listing } : saved?.platform ? { scope: "platform", row: saved.platform } : null;
+    /*
+     * A site code could not learn to read (prose, prices in pictures) is
+     * marked so (kind "none"). The daily sync leaves it alone, with no model
+     * call, and the weekly read keeps it current (Wyatt, 2026-11-20: the
+     * daily sync uses no Haiku at all; one rebuild try is the exception).
+     */
+    if (daily && !readerUnits.length && saved?.listing?.recipe?.kind === "none") {
+      const snapshot = makeSnapshot({ sourceUrl: propPage?.finalUrl ?? main.finalUrl, indexUrl: null, platform: "none", confidence: "low", unitListComplete: false, property: { name: target.name ?? null, address: target.address ?? null }, units: [], notes: [] });
+      snapshot.trace = { pages: crawl.fetched.map((f) => ({ url: f.finalUrl })), refused: crawl.refused, reader: "none", codeOnly: true };
+      snapshot.recipe = { ...recipeInfo, used: "listing", usedId: saved.listing.id, version: saved.listing.version };
+      snapshot.dailySkipped = true;
+      console.log(`[source-import] ${target.name}: no recipe can read this site; left for the weekly read`);
+      return snapshot;
+    }
+    const usable = (row) => (row?.recipe?.kind && row.recipe.kind !== "none" ? row : null);
+    const pick = usable(saved?.listing) ? { scope: "listing", row: saved.listing } : usable(saved?.platform) ? { scope: "platform", row: saved.platform } : null;
     if (pick && !readerUnits.length) {
       const recipe = pick.row.recipe;
       // The pages the recipe reads, opened if this read has not reached them.
@@ -1486,11 +1501,14 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     if (made) {
       const check = compareReads(replayRecipe(made, texts).units, snapshot.units);
       recipeInfo.check = { matched: check.matched, total: check.total, diffs: check.diffs.slice(0, 12) };
-      if (check.ok) {
-        recipeInfo.made = made;
-        recipeInfo.madeFrom = recipeInfo.broken ? "rebuild" : daily ? "first_daily_read" : deep ? "weekly_read" : "import_read";
-      }
+      const from = recipeInfo.broken ? "rebuild" : daily ? "first_daily_read" : deep ? "weekly_read" : "import_read";
+      // Kept only when code reproduces the read; otherwise the site is marked as one code cannot read.
+      recipeInfo.made = check.ok ? made : { v: made.v, kind: "none" };
+      recipeInfo.madeFrom = check.ok ? from : `${from}: code could not reproduce it`;
       console.log(`[source-import] ${target.name}: recipe ${check.ok ? "made" : "not kept"} (${check.matched} of ${check.total} units reproduced by code${check.diffs.length ? `; ${check.diffs.slice(0, 3).join("; ")}` : ""})`);
+    } else {
+      recipeInfo.made = { v: 1, kind: "none" };
+      recipeInfo.madeFrom = "units not found in the page text";
     }
   }
   snapshot.recipe = recipeInfo;
