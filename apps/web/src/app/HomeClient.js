@@ -342,10 +342,32 @@ function CTABand() {
  */
 // `suppressed`: the visitor is already answering in the hero bar, which asks
 // the same question, so the popup stays out of the way.
+// On phones it also waits while the bar is on screen: the popup is fixed to
+// the bottom of the screen, which is where the stacked bar sits, and would
+// cover it.
 function FindYourPlacePopup({ suppressed = false }) {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [barInView, setBarInView] = useState(false);
+  const shownRef = useRef(false);
+
+  useEffect(() => {
+    const bar = document.querySelector("[data-home-match-bar]");
+    if (!bar || !window.matchMedia("(max-width: 639px)").matches) return;
+    const observer = new IntersectionObserver(([entry]) => setBarInView(entry.isIntersecting));
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  const showing = visible && !dismissed && !suppressed && !barInView;
+  // Counted when it is really on screen, not when the timer runs out.
+  useEffect(() => {
+    if (!showing || shownRef.current) return;
+    shownRef.current = true;
+    trackEvent("Find Your Place Popup Shown");
+    recordFyp("popup_shown", {}, "/");
+  }, [showing]);
 
   useEffect(() => {
     try {
@@ -355,11 +377,7 @@ function FindYourPlacePopup({ suppressed = false }) {
       // Unreadable storage: show it.
     }
     if (suppressed) return;
-    const t = setTimeout(() => {
-      setVisible(true);
-      trackEvent("Find Your Place Popup Shown");
-      recordFyp("popup_shown", {}, "/");
-    }, 3000);
+    const t = setTimeout(() => setVisible(true), 3000);
     return () => clearTimeout(t);
   }, [suppressed]);
 
@@ -371,7 +389,7 @@ function FindYourPlacePopup({ suppressed = false }) {
 
   return (
     <AnimatePresence>
-      {visible && !dismissed && !suppressed && (
+      {showing && (
         <motion.div
           initial={{ opacity: 0, y: 16, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}

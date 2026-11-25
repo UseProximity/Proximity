@@ -154,7 +154,7 @@ export default function HowItWorks({ sideMargin }) {
           </div>
         </motion.div>
 
-        <ol className="grid gap-5 lg:grid-cols-3">
+        <ol className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           {STEPS.map(({ title, Mock, href, link }, i) => (
             <motion.li
               key={title}

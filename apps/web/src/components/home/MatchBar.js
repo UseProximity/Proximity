@@ -42,7 +42,7 @@ function Field({ icon: Icon, label, value, open, onToggle, panelLabel, children 
         <span className={`min-w-0 flex-1 truncate text-[15px] ${value ? "font-semibold text-gray-900" : "text-gray-600"}`}>
           {value || (
             <>
-              <span className="xl:hidden min-[1400px]:inline">Your </span>
+              <span className="min-[1200px]:hidden min-[1400px]:inline">Your </span>
               {label}
             </>
           )}
@@ -104,7 +104,8 @@ export default function MatchBar({ onEngage = null }) {
 
   const start = (e) => {
     e.preventDefault();
-    const params = new URLSearchParams({ src: "home" });
+    // "from", not "src": ?src= is the printed QR campaign tag marketing records.
+    const params = new URLSearchParams({ from: "home" });
     if (group) params.set("group", group);
     // An amount Find Your Place would turn away is left for its own page to ask.
     if (budgetOk) params.set("budget", String(budgetNum));
@@ -121,6 +122,7 @@ export default function MatchBar({ onEngage = null }) {
   return (
     <form
       ref={rootRef}
+      data-home-match-bar
       onSubmit={start}
       className="flex w-full max-w-[660px] flex-col gap-1 rounded-3xl border border-gray-200 bg-white p-2 shadow-[0_6px_28px_rgba(0,0,0,0.10)] sm:flex-row sm:items-center sm:gap-0.5 sm:rounded-full sm:p-1.5 sm:pl-2"
     >

@@ -223,7 +223,7 @@ export default function FindYourPlaceClient() {
     const asked = (params.get("modes") ?? "").split(",");
     const modes = COMMUTE_MODES.map((m) => m.id).filter((id) => asked.includes(id));
     if (modes.length) given.modes = modes;
-    const fromBar = params.get("src") === "home";
+    const fromBar = params.get("from") === "home";
     if (Object.keys(given).length) {
       fromPopupRef.current = true;
       viaPopupRef.current = !fromBar;
@@ -237,7 +237,8 @@ export default function FindYourPlaceClient() {
       setStep(1);
     }
     if (Object.keys(given).length || fromBar) {
-      for (const key of ["group", "budget", "modes", "src"]) params.delete(key);
+      for (const key of ["group", "budget", "modes"]) params.delete(key);
+      if (fromBar) params.delete("from");
       const qs = params.toString();
       window.history.replaceState(null, "", `/find-your-place${qs ? `?${qs}` : ""}`);
     }
@@ -320,7 +321,11 @@ export default function FindYourPlaceClient() {
     setSettled(true);
     const intent = readClaimIntent();
     if (owner && owner !== viewer) {
+      // The answers they just gave on the homepage are theirs: they stay
+      // when someone else's run is cleared away (as "Not mine" does).
+      const given = givenRef.current;
       wipe();
+      if (Object.keys(given).length) setAnswers({ ...EMPTY_ANSWERS, ...given });
       setOwner(viewer);
       return;
     }

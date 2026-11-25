@@ -4,9 +4,10 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 /*
- * Homepage FAQ. The questions are from the homepage design; the answers are
- * DRAFTS awaiting Wyatt's review (2026-11-23), kept to what the product does
- * today. Change them here.
+ * Homepage FAQ. The questions are from the homepage design; the answers were
+ * agreed with Wyatt (2026-11-24) and kept to what the product does today:
+ * reviews need a signed-in account with a confirmed school email
+ * (api/submitReview, lib/schools.js) and post straight away. Change them here.
  */
 const FAQS = [
   {
@@ -19,11 +20,11 @@ const FAQS = [
   },
   {
     q: "Are the reviews from real WashU students?",
-    a: "Reviews are written by students with a Proximity account about places they have lived, and our team reads each one before it is published. Landlords can reply to a review, but they cannot edit it.",
+    a: "Yes. Every review comes from a verified student: you need a confirmed school email address, like @wustl.edu, to leave one. Reviews are posted as soon as they are submitted. Landlords can reply to a review, but they cannot edit it, and if a review looks wrong you can report it and our team will look into it.",
   },
   {
     q: "How do I know a listing is real?",
-    a: "Listings come from the landlords and property managers we work with, and from students posting their own subleases. If anything looks off, report the listing from its page and we will look into it.",
+    a: "Most listings come from the landlords and property managers we work with, or from students posting their own subleases. Some listings are created when a student reviews a place that isn't on the site yet, so those show reviews without a landlord behind them. If anything looks off, report the listing from its page and we will look into it.",
   },
   {
     q: "Can I find roommates on Proximity?",
