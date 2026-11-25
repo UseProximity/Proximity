@@ -114,6 +114,8 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     if (fieldGroup(field) === "rent" && rentType !== "exact") readQuality = Math.min(readQuality, ROUGH_CAP);
     const offer = snapUnit?.offers?.find((o) => String(o.rent ?? "") === String(c.new?.rent ?? "")) ?? snapUnit?.offers?.[0];
     const inferred = (field === "leaseTermMonths" && !!offer?.termsInferred) || (field === "availableFrom" && offer && !offer.dateStated);
+    // A unit missing from a read that did not see the whole list is not taken as let.
+    if (action === "withdraw" && !snapshot?.unitListComplete && !c.detail?.fromUnitPage && !c.detail?.unitPageGone) readQuality = Math.min(readQuality, ROUGH_CAP);
 
     // Right thing: a unit matched by name (or its own page) is sure; by layout
     // only, less so; and a read that adds more than 4 units, or more than half
@@ -205,7 +207,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
       // What decide() was given, so a Jev pass can score it again (never stored).
-      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked },
+      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null },
     });
   }
   return rows;

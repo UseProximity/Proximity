@@ -60,3 +60,22 @@ test("with Jev off nothing changes", async () => {
   const after = await jevPass({ rows: before, snapshot, state, on: false });
   assert.equal(after, before);
 });
+
+test("a unit's window stops at the next unit, and IvaS1 is not found inside IvaS10", () => {
+  const text = "IvaS10\nStudio\n$1,165 per month\n12mo lease\nView Details\nIvaS1\nStudio\nFrom\n$1,185 per month\nView Details\nIvaS2\nStudio\n$1,225 per month";
+  const us = [{ key: "n:ivas10", name: "IvaS10", offers: [] }, { key: "n:ivas1", name: "IvaS1", offers: [] }, { key: "n:ivas2", name: "IvaS2", offers: [] }];
+  const ev = collectEvidence([{ url: "u", text: text + " ".repeat(400) }], us);
+  assert.ok(ev.units["n:ivas1"].text.includes("$1,185"));
+  assert.ok(!ev.units["n:ivas10"].text.includes("From"));
+});
+
+test("a withdrawn unit no page names is gone by code, without asking Jev", async () => {
+  const w = { kind: "lease_withdrawn", unitId: "u1", leaseId: "l1", field: "unavailable", old: false, new: true, facts: { fromModel: true }, verdict: { apply: true } };
+  const snap = { trace: { reader: "generic" }, unitListComplete: true, units: [], evidence: collectEvidence([{ url: "u", text: "6100 Delmar Blvd. " + "Only the London plan is available today. ".repeat(10) }], [], state.address) };
+  const scored = shadowRows({ changes: [w], snapshot: snap, state, learnings, priorRuns: new Map([[`lease_withdrawn||l1|unavailable|true`, 1]]), now: NOW });
+  let asked = 0;
+  const [r] = await jevPass({ rows: scored, snapshot: snap, state, on: true, ask: async () => { asked++; return { answers: {}, costUsd: 0, model: "m" }; } });
+  assert.equal(asked, 0);
+  assert.equal(r.jev.model, "code");
+  assert.equal(r.read_quality, 1);
+});

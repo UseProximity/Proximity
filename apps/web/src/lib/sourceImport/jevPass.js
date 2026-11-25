@@ -5,7 +5,7 @@
 
 import { rescoreWithJev, PAGE_READ_SOURCES } from "./shadow.js";
 import { askJev, jevOn, questionsFor, expectedProbability, JEV_MODEL } from "./jev.js";
-import { textHasAddress } from "./evidence.js";
+import { textHasAddress, unitWindow } from "./evidence.js";
 
 // At most this many Jev calls per sync run (one per unit with changes).
 export const JEV_CALLS_PER_RUN = 40;
@@ -38,7 +38,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
   const building = state?.title ?? null;
   const address = state?.address ?? null;
   const pageText = ev?.page?.text ?? "";
-  if (pageText && building && address && !textHasAddress(pageText, address)) {
+  if (pageText && building && address && !ev?.addressSeen && !textHasAddress(pageText, address)) {
     try {
       const r = await ask(pageText, [{ type: "predicate", name: "building", instructions: `Is this text about ${building} at ${address}?` }]);
       calls += 1;
@@ -52,17 +52,36 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
 
   // Group the page-read changes by the unit they are about.
   const groups = new Map();
+  const windows = new Map();
+  const results = new Map(); // row index -> jev result
+  const snapNames = (snapshot?.units ?? []).map((u) => u?.name).filter(Boolean);
   rows.forEach((row, i) => {
     if (!PAGE_READ_SOURCES.has(row.source) || row._in?.weekly || row.kind === "photos_added") return;
-    const key = row.kind === "lease_withdrawn" ? "__page__" : row.unit_key ?? "__page__";
+    if (row.kind === "lease_withdrawn") {
+      // The withdrawn unit's own block, wherever a page still names it. A
+      // unit no page names is off the website: code knows, Jev is not asked.
+      const name = row._in?.unitName ?? null;
+      const w = name ? unitWindow(ev?.pages ?? [], { name }, snapNames.filter((n) => n !== name)) : null;
+      if (!name || !(ev?.pages ?? []).length) return;
+      if (!w) {
+        results.set(i, { status: "ok", model: "code", parts: [{ part: "listed", p: 0, invert: true, question: `${name} is named on none of the pages read` }] });
+        return;
+      }
+      const key = `gone:${name}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(i);
+      windows.set(key, w);
+      return;
+    }
+    const key = row.unit_key ?? "__page__";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(i);
   });
 
-  const results = new Map(); // row index -> jev result
   for (const [key, idxs] of groups) {
-    const text = key === "__page__" ? pageText : ev?.units?.[key]?.text ?? "";
-    const asks = idxs.flatMap((i) => questionsFor(rows[i], i, { unitLabel: label(rows[i].unit_key) }).map((q) => ({ ...q, row: i })));
+    const win = key === "__page__" ? ev?.page : windows.get(key) ?? ev?.units?.[key];
+    const text = win?.text ?? "";
+    const asks = idxs.flatMap((i) => questionsFor(rows[i], i, { unitLabel: rows[i].kind === "lease_withdrawn" ? `the ${rows[i]._in.unitName} unit` : label(rows[i].unit_key) }).map((q) => ({ ...q, row: i })));
     if (!asks.length) continue;
     if (!text) {
       for (const i of idxs) results.set(i, { status: "no_text", model: JEV_MODEL, parts: [] });
@@ -76,7 +95,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
       const r = await ask(text, asks.map((a) => a.question));
       calls += 1;
       cost += r.costUsd;
-      for (const i of idxs) results.set(i, { status: "ok", model: r.model, parts: [], text: text.slice(0, KEEP_TEXT), url: key === "__page__" ? ev?.page?.url ?? null : ev?.units?.[key]?.url ?? null });
+      for (const i of idxs) results.set(i, { status: "ok", model: r.model, parts: [], text: text.slice(0, KEEP_TEXT), url: win?.url ?? null });
       for (const a of asks) {
         const ans = r.answers[a.question.name];
         results.get(a.row).parts.push({ part: a.part, p: expectedProbability(ans, a.expect), choice: ans?.choice ?? null, rough: !!a.expect.rough, invert: !!a.expect.invert, question: a.question.instructions });

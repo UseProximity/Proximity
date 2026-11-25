@@ -42,9 +42,12 @@ test("a landlord-chosen blank rent goes hidden", () => {
 
 test("a withdrawal needs the second read in a row", () => {
   const w = { kind: "lease_withdrawn", unitKey: "n:pershing", unitId: "u1", leaseId: "l1", field: "unavailable", old: null, new: { unavailable: true }, verdict: { apply: true } };
-  const [first] = shadowRows({ changes: [w], snapshot, state, learnings, now: NOW });
+  const full = { ...snapshot, unitListComplete: true };
+  const [first] = shadowRows({ changes: [w], snapshot: full, state, learnings, now: NOW });
   assert.equal(first.ledger_apply, false);
-  const [second] = shadowRows({ changes: [w], snapshot, state, learnings, priorRuns: new Map([[changeKey(w), 1]]), now: NOW });
+  const [partial] = shadowRows({ changes: [w], snapshot, state, learnings, priorRuns: new Map([[changeKey(w), 1]]), now: NOW });
+  assert.equal(partial.ledger_apply, false); // the read did not see the whole list
+  const [second] = shadowRows({ changes: [w], snapshot: full, state, learnings, priorRuns: new Map([[changeKey(w), 1]]), now: NOW });
   assert.equal(second.ledger_apply, true);
 });
 

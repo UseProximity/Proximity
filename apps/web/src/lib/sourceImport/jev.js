@@ -54,9 +54,9 @@ export function questionsFor(row, idx, { unitLabel, building, address } = {}) {
   const q = (part, question, expect) => out.push({ question: { ...question, name: `${idx}.${part}` }, part, expect });
   const field = row.field;
   if (row.kind === "lease_withdrawn") {
-    // Two plain questions, not one: is this the whole list, and is the unit on it.
-    q("complete", { type: "predicate", instructions: "Does this page show the building's complete current list of available units or floor plans?" }, { kind: "predicate" });
-    q("listed", { type: "predicate", instructions: `Does this text list ${u} as available?` }, { kind: "predicate", invert: true });
+    // Whether the page is the whole list is the reader's to say (unitListComplete);
+    // Jev's answer to that tracked nothing (0.16 to 0.58 on every page, 2026-11-24).
+    q("listed", { type: "predicate", instructions: `Does this text show ${u} as currently available to rent?` }, { kind: "predicate", invert: true });
     return out;
   }
   if (n.rent != null && (field === "rent" || row.action === "add")) {
