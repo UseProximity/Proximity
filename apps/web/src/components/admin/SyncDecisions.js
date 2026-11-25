@@ -58,6 +58,37 @@ function Row({ r, busy, act, readOnly }) {
   );
 }
 
+/* The sync's health over the week: per platform, Jev, and how often people overrule it. */
+function Health({ h }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-left">
+        <span className="font-semibold text-gray-900">Last {h.days} days</span>
+        <span className="tabular-nums">{h.changes.total} changes scored</span>
+        <span className="tabular-nums">rules and scores disagree on {h.changes.disagree}</span>
+        <span className="tabular-nums">Jev failed {Math.round(h.jev.failRate * 1000) / 10}% of {h.jev.asked}</span>
+        <span className="tabular-nums">{h.overruled.undone} undone of {h.overruled.applied} applied</span>
+        <span className="tabular-nums">{h.recipes.listings} listing recipes, {h.recipes.platforms} platform recipes</span>
+        <span className="ml-auto underline">{open ? "Hide" : "By platform"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left tabular-nums">
+            <thead><tr className="text-gray-500"><th className="py-1 pr-3 font-medium">Read by</th><th className="pr-3 font-medium">Changes</th><th className="pr-3 font-medium">Scores apply</th><th className="pr-3 font-medium">Rules apply</th><th className="pr-3 font-medium">Disagree</th><th className="pr-3 font-medium">Borderline</th><th className="font-medium">Avg read quality</th></tr></thead>
+            <tbody>
+              {h.byPlatform.map((p) => (
+                <tr key={p.platform} className="border-t border-gray-100"><td className="py-1 pr-3">{p.platform}</td><td className="pr-3">{p.changes}</td><td className="pr-3">{p.scoringApplies}</td><td className="pr-3">{p.rulesApply}</td><td className="pr-3">{p.disagree}</td><td className="pr-3">{p.borderline}</td><td>{p.readQuality ?? ""}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-gray-500">Applied by a person after the sync left it: {h.overruled.appliedByPerson}. Recipes rebuilt: {h.recipes.rebuiltThisWindow}. Jev had no page text for {h.jev.noText}.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SyncDecisions({ search = "", readOnly = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -108,6 +139,7 @@ export default function SyncDecisions({ search = "", readOnly = false }) {
           <div key={k} className="rounded-xl border border-gray-200 bg-white p-3"><div className="text-xs text-gray-500">{k}</div><div className="text-lg font-semibold tabular-nums text-gray-900">{v}</div></div>
         ))}
       </div>
+      {data.health && <Health h={data.health} />}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTERS.map(([k, label]) => (
           <button key={k} type="button" onClick={() => setFilter(k)} className={`rounded-full border px-3 py-1 text-xs ${filter === k ? "border-gray-900 bg-gray-900 font-semibold text-white" : "border-gray-300 bg-white text-gray-700"}`}>{label}</button>

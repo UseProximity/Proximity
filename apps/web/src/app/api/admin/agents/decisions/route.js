@@ -13,7 +13,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { requireDbRole } from "@/lib/userRole";
-import { recentDecisions, undoChange, applyNow } from "@/lib/sourceImport/decisions";
+import { recentDecisions, undoChange, applyNow, syncHealth } from "@/lib/sourceImport/decisions";
 import { ledgerDecides } from "@/lib/sourceImport/shadowStore";
 
 async function requireTeam() {
@@ -29,11 +29,12 @@ export async function GET(req) {
   try {
     const url = new URL(req.url);
     const days = Math.min(14, Math.max(1, Number(url.searchParams.get("days")) || 2));
-    const rows = await recentDecisions({ listingId: url.searchParams.get("listingId") || null, days });
+    const [rows, health] = await Promise.all([recentDecisions({ listingId: url.searchParams.get("listingId") || null, days }), syncHealth({ days: Math.max(7, days) })]);
     return NextResponse.json({
       days,
       decidedBy: ledgerDecides() ? "scores" : "rules",
       counts: { applied: rows.filter((r) => r.status === "applied").length, notApplied: rows.filter((r) => r.status === "not_applied").length, borderline: rows.filter((r) => r.borderline).length, undone: rows.filter((r) => r.status === "undone").length },
+      health,
       rows,
     });
   } catch (err) {

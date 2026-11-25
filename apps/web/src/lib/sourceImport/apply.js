@@ -1473,13 +1473,15 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   const applied = [];
   const held = [];
-  // On a building just claimed, the stub's prose, contact and photos are
-  // replaced at once; what it says about units and leases is still offered
-  // as changes to tick.
-  const TAKEOVER_KINDS = new Set(["property_updated", "photos_added"]);
+  /*
+   * A landlord claiming a building applies everything their website shows,
+   * units and leases included, the way a first import does (Wyatt,
+   * 2026-11-24); each change can be undone from their Agent tab. Only what
+   * the listing gate stops (billing, the agreement) still waits.
+   */
   if (takeover && (!autoApply || holdReason)) {
     for (const c of changes) {
-      if (!TAKEOVER_KINDS.has(c.kind)) {
+      if (c.gated && c.kind !== "unit_new") {
         held.push(c);
         continue;
       }

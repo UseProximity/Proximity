@@ -14,6 +14,7 @@
  * digest and the admin queue. To turn the notices back on, set
  * LANDLORD_GONE_NOTICES to true.
  */
+import { syncHealth } from "@/lib/sourceImport/decisions";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, portalUnreadLine, sendAgentDigestEmail, sendTourEmail } from "@/lib/email";
 import { ALERT_TO } from "@/lib/sourceImport/sync";
@@ -22,10 +23,11 @@ import { syncTeamReview } from "./flags";
 const DAY = 24 * 3600 * 1000;
 const LANDLORD_GONE_NOTICES = false;
 
-function window(now = new Date()) {
+function window(now = new Date(), days = 1) {
   const end = new Date(now);
-  const start = new Date(now.getTime() - DAY);
-  return { start: start.toISOString(), end: end.toISOString(), label: start.toLocaleDateString("en-US", { timeZone: "America/Chicago", weekday: "long", month: "long", day: "numeric" }) };
+  const start = new Date(now.getTime() - days * DAY);
+  const day = (d) => d.toLocaleDateString("en-US", { timeZone: "America/Chicago", weekday: "long", month: "long", day: "numeric" });
+  return { start: start.toISOString(), end: end.toISOString(), label: days > 1 ? `the week of ${day(start)}` : day(start) };
 }
 
 const countOf = async (table, mod) => {
@@ -43,8 +45,8 @@ const median = (arr) => {
 };
 const hours = (ms) => (ms == null ? "n/a" : ms < 3600000 ? `${Math.round(ms / 60000)} min` : `${(ms / 3600000).toFixed(1)} h`);
 
-export async function buildDigest({ now = new Date() } = {}) {
-  const w = window(now);
+export async function buildDigest({ now = new Date(), days = 1 } = {}) {
+  const w = window(now, days);
   const since = (q) => q.gte("created_at", w.start).lt("created_at", w.end);
   const baseUrl = getBaseUrl();
   const sections = [];
@@ -251,6 +253,36 @@ export async function buildDigest({ now = new Date() } = {}) {
   const { data: leftRows } = await supabase.from("listing_source_events").select("detail, listing_id, listings!listing_id(title, address)").eq("kind", "missing_unit").eq("status", "rejected").contains("detail", { notFromSite: true }).gte("created_at", w.start).lt("created_at", w.end).limit(500);
   sections.push({ title: "Gone from a website", rows: [["Units withdrawn because their website stopped showing them", gone.length], ["Not on the website, left as is (first noticed today)", (leftRows ?? []).length]], list: [...gone.map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), ...(leftRows ?? []).map((e) => `Not on the website, left as is: ${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`)], note: gone.length ? `Their leases are marked unavailable, never deleted, and come back on their own if the website shows them again; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
 
+  /*
+   * How the website sync is doing (decisions.js syncHealth): by platform,
+   * Jev, recipes, and how often people overrule it. The live version, with
+   * every change and its score, is the admin Agents page, Sync decisions.
+   */
+  try {
+    const h = await syncHealth({ days: Math.max(7, days) });
+    sections.push({
+      title: "Website sync: scoring and readers",
+      rows: [
+        ["Changes scored", h.changes.total],
+        ["The new scoring would apply", h.changes.scoringApplies],
+        ["The old rules would apply", h.changes.rulesApply],
+        ["Changes they disagree on", h.changes.disagree],
+        ["Borderline calls", h.changes.borderline],
+        ["Jev questions asked", h.jev.asked],
+        ["Jev failures", `${h.jev.failed} (${Math.round(h.jev.failRate * 1000) / 10}%)`],
+        ["Applied changes undone by a person", `${h.overruled.undone} of ${h.overruled.applied}`],
+        ["Applied by a person after the sync left it", h.overruled.appliedByPerson],
+        ["Listings read by their own recipe", h.recipes.listings],
+        ["Platform recipes", h.recipes.platforms],
+        ["Recipes rebuilt", h.recipes.rebuiltThisWindow],
+      ],
+      list: h.byPlatform.slice(0, 25).map((p) => `${p.platform}: ${p.changes} changes, scores apply ${p.scoringApplies}, rules apply ${p.rulesApply}, disagree ${p.disagree}, borderline ${p.borderline}, average read quality ${p.readQuality ?? "n/a"}`),
+      note: "Every change, with its source, score and reason, is on the admin Agents page under Sync decisions, where each can be applied or undone.",
+    });
+  } catch (err) {
+    console.error("[agent-digest] sync health failed:", err?.message ?? err);
+  }
+
   return { day: w.label, sections, gone: gone ?? [], baseUrl, inquiries: L.length, syncs: syncs.length };
 }
 
@@ -276,8 +308,8 @@ export async function notifyGone(gone) {
   return sent;
 }
 
-export async function runDigest({ now = new Date(), email = true } = {}) {
-  const digest = await buildDigest({ now });
+export async function runDigest({ now = new Date(), email = true, days = 1 } = {}) {
+  const digest = await buildDigest({ now, days });
   let landlordsTold = 0;
   if (LANDLORD_GONE_NOTICES) try { landlordsTold = await notifyGone(digest.gone); } catch (err) { console.error("[agent-digest] gone notices failed:", err?.message ?? err); }
   if (email) await sendAgentDigestEmail({ to: ALERT_TO, day: digest.day, sections: digest.sections, baseUrl: digest.baseUrl });

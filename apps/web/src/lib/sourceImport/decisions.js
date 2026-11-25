@@ -130,3 +130,53 @@ export async function applyNow({ listingId, eventId, userId, isAdmin = false }) 
   if (!r) return { error: "That change is no longer there, or was already decided." };
   return r.ok ? { ok: true, note: r.note } : { error: r.error };
 }
+
+/*
+ * How the sync is doing over the last `days` (Wyatt, 2026-11-24: track Jev,
+ * each platform, and how often people overrule the sync, in a form a person
+ * or an AI can read at a glance). Plain numbers, no judgement.
+ * Returns { days, changes, byPlatform: [...], jev, overruled, recipes }.
+ */
+export async function syncHealth({ days = 7 } = {}) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const [{ data: sc }, { data: ev }, { data: rc }] = await Promise.all([
+    supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).order("run_at", { ascending: false }).limit(20000),
+    supabase.from("listing_source_events").select("applied, status, verdict_by, verdict_at, detail, created_at").or(`created_at.gte.${since},verdict_at.gte.${since}`).limit(20000),
+    supabase.from("source_recipes").select("scope, status, uses, failures, made_from, created_at").limit(5000),
+  ]);
+  // One row per change: the newest score.
+  const seen = new Set();
+  const rows = [];
+  for (const r of sc ?? []) {
+    const k = `${r.listing_id}|${r.change_key}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    rows.push(r);
+  }
+  const plat = new Map();
+  for (const r of rows) {
+    const p = plat.get(r.platform) ?? { platform: r.platform, source: r.source, changes: 0, scoringApplies: 0, rulesApply: 0, disagree: 0, borderline: 0, readQuality: 0 };
+    p.changes += 1;
+    p.scoringApplies += r.ledger_apply ? 1 : 0;
+    p.rulesApply += r.policy_apply ? 1 : 0;
+    p.disagree += r.ledger_apply !== r.policy_apply ? 1 : 0;
+    p.borderline += r.borderline ? 1 : 0;
+    p.readQuality += Number(r.read_quality ?? 0);
+    plat.set(r.platform, p);
+  }
+  const asked = (sc ?? []).filter((r) => r.jev && r.jev.model !== "code");
+  const by = (st) => asked.filter((r) => r.jev.status === st).length;
+  const undone = (ev ?? []).filter((e) => e.detail?.undone && e.detail.undone.at >= since).length;
+  const appliedByPerson = (ev ?? []).filter((e) => e.applied && e.verdict_by && e.detail?.autoDenied && e.verdict_at >= since).length;
+  const applied = (ev ?? []).filter((e) => e.applied && e.created_at >= since).length;
+  const active = (rc ?? []).filter((r) => r.status === "active");
+  return {
+    days,
+    changes: { total: rows.length, scoringApplies: rows.filter((r) => r.ledger_apply).length, rulesApply: rows.filter((r) => r.policy_apply).length, disagree: rows.filter((r) => r.ledger_apply !== r.policy_apply).length, borderline: rows.filter((r) => r.borderline).length },
+    byPlatform: [...plat.values()].map((p) => ({ ...p, readQuality: p.changes ? Math.round((p.readQuality / p.changes) * 100) / 100 : null })).sort((a, b) => b.changes - a.changes),
+    jev: { asked: asked.length, answered: by("ok"), failed: by("failed"), noText: by("no_text"), failRate: asked.length ? Math.round((by("failed") / asked.length) * 1000) / 1000 : 0 },
+    // How often people overrule the sync: a rising share means the scoring needs another look.
+    overruled: { applied, undone, appliedByPerson, undoRate: applied ? Math.round((undone / applied) * 1000) / 1000 : 0 },
+    recipes: { listings: active.filter((r) => r.scope === "listing").length, platforms: active.filter((r) => r.scope === "platform").length, retired: (rc ?? []).length - active.length, rebuiltThisWindow: (rc ?? []).filter((r) => r.made_from === "rebuild" && r.created_at >= since).length },
+  };
+}
