@@ -85,6 +85,7 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 
 import { matchUnits, sameName, nameMatchAliases, norm } from "./match.js";
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
+import { checkStuck } from "./checker.js";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1374,6 +1375,15 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       if (holdReason === "churn_hold") {
         holdReason = null;
         churn = null;
+      }
+      // The rare checker: a change stuck just under what it needs, read after read.
+      const checked = await checkStuck({ listingId, listingLabel: label, rows: scored, changes });
+      for (const [i, v] of checked) {
+        const c = changes[i];
+        if (!c || c.undoneAt || (c.gated && c.kind !== "unit_new")) continue;
+        c.verdict = { apply: v.verdict === "apply", reason: v.reason };
+        if (v.verdict === "apply") c.note = v.reason;
+        c.ledger = { ...c.ledger, checker: v.verdict };
       }
     }
   }

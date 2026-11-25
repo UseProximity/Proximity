@@ -117,6 +117,15 @@ export default function SyncDecisions({ search = "", readOnly = false }) {
     } catch (err) { toast.error(err.message); } finally { setBusy(null); }
   };
 
+  const closeFix = async (fixId) => {
+    try {
+      const r = await fetch("/api/admin/agents/decisions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "closeFix", fixId }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "Could not close that");
+      toast.success("Marked built");
+      await load();
+    } catch (err) { toast.error(err.message); }
+  };
+
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!data) return <div className="py-20 text-center text-sm text-gray-400">Loading the sync&apos;s decisions...</div>;
 
@@ -140,6 +149,22 @@ export default function SyncDecisions({ search = "", readOnly = false }) {
         ))}
       </div>
       {data.health && <Health h={data.health} />}
+      {(data.fixItems ?? []).length > 0 && (
+        <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <h3 className="mb-1 text-sm font-semibold text-amber-900">Fixes to build ({data.fixItems.length})</h3>
+          <p className="mb-2 text-xs text-amber-800">Changes the sync could not settle by itself, so Claude was asked once. Each says what the code should catch next time.</p>
+          <ul className="space-y-2">
+            {data.fixItems.map((f) => (
+              <li key={f.id} className="rounded-lg bg-white p-3 text-sm">
+                <p className="text-gray-900">{f.listing}: {f.change} <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">Claude said {f.verdict === "apply" ? "apply" : "leave it"}</span></p>
+                <p className="mt-1 text-xs text-gray-600">{f.reason}</p>
+                <p className="mt-1 text-xs text-gray-900"><span className="text-gray-500">Fix: </span>{f.fix}</p>
+                <button type="button" disabled={readOnly} onClick={() => closeFix(f.id)} className="mt-2 rounded-lg border border-gray-300 px-3 py-1 text-xs text-gray-700 disabled:opacity-50">Mark built</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTERS.map(([k, label]) => (
           <button key={k} type="button" onClick={() => setFilter(k)} className={`rounded-full border px-3 py-1 text-xs ${filter === k ? "border-gray-900 bg-gray-900 font-semibold text-white" : "border-gray-300 bg-white text-gray-700"}`}>{label}</button>
