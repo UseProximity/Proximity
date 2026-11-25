@@ -83,7 +83,7 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 
 // ---------------------------------------------------------------- matching
 
-import { matchUnits, sameName, nameMatchAliases, norm } from "./match.js";
+import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName } from "./match.js";
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
 import { checkStuck } from "./checker.js";
 export { matchUnits, sameName, nameMatchAliases };
@@ -312,7 +312,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
   const ordered = [...snapshot.units].sort(
     (a, b) => (a.bedrooms ?? 99) - (b.bedrooms ?? 99) || (a.bathrooms ?? 99) - (b.bathrooms ?? 99) || (a.area ?? 0) - (b.area ?? 0) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
   );
-  const { pairs, unmatched } = matchUnits(ordered, state.listing_units);
+  const place = `${state.address ?? ""} ${state.title ?? ""}`;
+  const { pairs, unmatched } = matchUnits(ordered, state.listing_units, { place });
   /*
    * A site that prices nothing ("Call For Price" on every plan, LOCAL on
    * Delmar, Wyatt 2026-11-09) says nothing about which plans are let, even
@@ -663,6 +664,22 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
        * call. Publishing or deleting the draft settles it.
        */
       const shadow = shadowedBy.get(u.id);
+      /*
+       * Two cases where the unit's absence is certain whatever the page read
+       * missed (Wyatt, 2026-11-25):
+       *   a duplicate   another unit on the listing, which the website does
+       *                 show, has this unit's name plus the address and the
+       *                 same leases (7350 Lindell: "302" beside "7350
+       *                 Lindell Blvd. -302")
+       *   superseded    the unit is named for its layout alone ("1 Bedroom")
+       *                 and the website now names its plans of that layout
+       *                 (5655 Pershing: Azure, Ruby and seven more)
+       */
+      const layoutOf = (x) => Number(x.bedrooms) === Number(u.bedrooms) && Number(x.bathrooms) === Number(u.bathrooms);
+      const twin = lookalike || shadow ? null : pairs.find(({ db }) => db && db.id !== u.id && layoutOf(db) && nameWithin(u.name, db.name, place)
+        && live.every((l) => (db.unit_leases ?? []).some((x) => !x.unavailable && Number(x.rent) === Number(l.rent) && sameTerms(x.lease_term_months, l.lease_term_months))))?.db ?? null;
+      const namedPlans = lookalike || shadow || twin || !genericName(u.name) ? []
+        : pairs.filter(({ snap, db }) => db && db.id !== u.id && norm(snap.name) && !genericName(snap.name) && Number(snap.bedrooms) === Number(u.bedrooms) && (snap.offers ?? []).some((o) => o.rent != null)).map(({ snap }) => snap.name);
       for (const l of live) {
         push({
           kind: "lease_withdrawn",
@@ -673,7 +690,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           new: true,
           ...(lookalike ? { auto: false, judge: false, lookalike: true, note: `the website's new ${lookalike.detail?.label ?? "unit"} has the same layout and may be this unit renamed` } : {}),
           ...(!lookalike && shadow ? { auto: false, judge: false, lookalike: true, note: `the draft ${shadow} may be this unit renamed; publishing or deleting that draft settles it` } : {}),
-          detail: { op: "lease_withdraw", leaseId: l.id, unitId: u.id, label, rent: l.rent, unitGone: true },
+          ...(twin ? { note: `a duplicate of ${twin.name}, which the website shows with the same lease` } : {}),
+          ...(namedPlans.length ? { note: `the website now names its ${label} plans (${namedPlans.slice(0, 4).join(", ")}${namedPlans.length > 4 ? " and more" : ""})` } : {}),
+          detail: { op: "lease_withdraw", leaseId: l.id, unitId: u.id, label, rent: l.rent, unitGone: true, ...(twin ? { duplicateOf: twin.id, duplicateOfName: twin.name } : {}), ...(namedPlans.length ? { supersededBy: namedPlans } : {}) },
         });
       }
     }

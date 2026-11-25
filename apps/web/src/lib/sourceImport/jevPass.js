@@ -70,6 +70,12 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
       // The withdrawn unit's own block, wherever a page still names it. A
       // unit no page names is off the website: code knows, Jev is not asked.
       const name = row._in?.unitName ?? null;
+      // A duplicate, or a layout-named unit the site's named plans replaced:
+      // code settled it, and the page still showing that layout proves nothing.
+      if (row._in?.settled) {
+        results.set(i, { status: "ok", model: "code", parts: [{ part: "listed", p: 0, invert: true, question: row._in.settledBy ?? `${name} is ${row._in.settled}` }] });
+        return;
+      }
       let w = name ? unitWindow(ev?.pages ?? [], { name }, snapNames.filter((n) => n !== name)) : null;
       if (!name || !(ev?.pages ?? []).length) return;
       if (!w && row._in.unitSiteNamed) {

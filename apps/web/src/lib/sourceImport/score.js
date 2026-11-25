@@ -27,6 +27,7 @@ export const TRUST = {
   landlord: 0.95,
   feed: 0.9, // a leasing portal or platform feed, or a unit's own page
   structured: 0.85, // structured data on the page (JSON-LD, embedded JSON)
+  records: 0.9, // the listing's own records: a duplicate of another unit on it
   recipe: 0.8,
   portalSite: 0.7, // Zillow, Apartments.com
   pattern: 0.6, // the pattern parser

@@ -117,7 +117,12 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     const snapUnit = c.unitKey ? snapByKey.get(c.unitKey) : null;
     const field = primaryField(c);
     const action = actionOf(c);
-    const { source, trust, platform } = sourceOf(c, snapUnit, snapshot);
+    const from = sourceOf(c, snapUnit, snapshot);
+    const { source, platform } = from;
+    // A duplicate is settled by the listing's own records; a layout-named unit
+    // the website's named plans replaced, by the read that named them.
+    const settled = c.kind === "lease_withdrawn" ? (c.detail?.duplicateOf ? "duplicate" : c.detail?.supersededBy?.length ? "superseded" : null) : null;
+    const trust = settled === "duplicate" ? Math.max(from.trust, TRUST.records) : from.trust;
 
     // Read quality: what the reader said about this fact (Jev from stage 2).
     let readQuality = 1;
@@ -126,7 +131,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     const offer = snapUnit?.offers?.find((o) => String(o.rent ?? "") === String(c.new?.rent ?? "")) ?? snapUnit?.offers?.[0];
     const inferred = (field === "leaseTermMonths" && !!offer?.termsInferred) || (field === "availableFrom" && offer && !offer.dateStated);
     // A unit missing from a read that did not see the whole list is not taken as let.
-    if (action === "withdraw" && !snapshot?.unitListComplete && !c.detail?.fromUnitPage && !c.detail?.unitPageGone) readQuality = Math.min(readQuality, ROUGH_CAP);
+    if (action === "withdraw" && !settled && !snapshot?.unitListComplete && !c.detail?.fromUnitPage && !c.detail?.unitPageGone) readQuality = Math.min(readQuality, ROUGH_CAP);
 
     // Right thing: a unit matched by name (or its own page) is sure; by layout
     // only, less so; and a read that adds more than 4 units, or more than half
@@ -219,7 +224,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
       // What decide() was given, so a Jev pass can score it again (never stored).
-      _in: { action, field, rentType, onlyUnit: c.facts?.rentOnlyUnit === true, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
+      _in: { action, field, rentType, settled, settledBy: c.note ?? null, onlyUnit: c.facts?.rentOnlyUnit === true, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
         // Whether the website itself has used this unit's name (the sync made it, or an alias was learned).
         unitSiteNamed: !!db && (String(learnings?.synced?.get(`unit:${db.id}`)?.siteKey ?? "").startsWith("n:") || [...(learnings?.aliases?.values?.() ?? [])].includes(db.id)),
         unitLayout: db ? [db.bedrooms != null ? `${Number(db.bedrooms) === 0 ? "studio" : `${db.bedrooms} bed`}` : null, db.bathrooms != null ? `${db.bathrooms} bath` : null, Number(db.area) > 0 ? `${Number(db.area).toLocaleString("en-US")} sq ft` : null].filter(Boolean).join(", ") : null },

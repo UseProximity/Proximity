@@ -108,3 +108,12 @@ test("a landlord edit loses only once the website has said something different b
   const [moved] = shadowRows({ changes: [c], snapshot: { ...snapshot, trace: { reader: "g5" } }, state, learnings: none, landlordEdits: edits, priorValues: before, now: NOW });
   assert.equal(moved.ledger_apply, true); // the site said $1,500 before and now says $1,450; the edit is 115 days old
 });
+
+test("a duplicate unit's lease is withdrawn on the second read, whatever the read missed", () => {
+  const w = { kind: "lease_withdrawn", unitId: "u1", leaseId: "l1", field: "unavailable", old: null, new: { unavailable: true }, verdict: { apply: false }, note: "a duplicate of 7350 Lindell Blvd. -302", detail: { duplicateOf: "u9" } };
+  const [first] = shadowRows({ changes: [w], snapshot, state, learnings, now: NOW });
+  assert.equal(first.ledger_apply, false);
+  const [second] = shadowRows({ changes: [w], snapshot, state, learnings, priorRuns: new Map([[changeKey(w), 1]]), now: NOW });
+  assert.equal(second.ledger_apply, true);
+  assert.equal(second.trust, 0.9);
+});

@@ -10,13 +10,31 @@ export const norm = (s) => String(s ?? "").replace(/[^a-z0-9]/gi, "").toLowerCas
 const words = (s) => String(s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(" ");
 export const sameName = (a, b) => !!norm(a) && (norm(a) === norm(b) || words(a) === words(b));
 
+const tokens = (s) => String(s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/*
+ * One name is the other plus words of the place: the listing's "302" is the
+ * website's "7350 Lindell Blvd. -302" (Wyatt, 2026-11-25: the two sat side by
+ * side as separate units). place is the listing's address and title.
+ */
+export function nameWithin(a, b, place = "") {
+  const ta = tokens(a);
+  const tb = tokens(b);
+  if (!ta.length || !tb.length || ta.length === tb.length) return false;
+  const [short, long] = ta.length < tb.length ? [ta, tb] : [tb, ta];
+  if (!short.every((t) => long.includes(t))) return false;
+  const placeTokens = new Set(tokens(place));
+  return long.filter((t) => !short.includes(t)).every((t) => placeTokens.has(t));
+}
+// A unit named for its layout alone: "Studio", "1 Bedroom", "2 Bed / 2 Bath".
+export const genericName = (n) => /^(?:studio|\d+\s*(?:bed(?:room)?s?|br|bd)(?:\s*[\/,|]?\s*\d+(?:\.\d)?\s*(?:bath(?:room)?s?|ba))?)$/i.test(String(n ?? "").trim());
+
 /*
  * Pair the snapshot's units with the listing's. Name first; then, among units
  * of the same layout, the closest size within 5%; then the only unit of that
  * layout on each side. Returns [{ snap, db }] with db null for new units, plus
  * the listing's units nothing claimed.
  */
-export function matchUnits(snapUnits, dbUnits) {
+export function matchUnits(snapUnits, dbUnits, { place = "" } = {}) {
   const pool = dbUnits.map((u) => ({ u, used: false }));
   /*
    * Names first, across every plan, then layout for what is left. One plan
@@ -40,6 +58,16 @@ export function matchUnits(snapUnits, dbUnits) {
     if (hit) {
       hit.used = true;
       byName.set(s, hit.u);
+    }
+  }
+  // Then a name that is the other plus the address, when one unit only fits.
+  const sameLayout = (p, s) => (s.bedrooms == null || Number(p.u.bedrooms) === Number(s.bedrooms)) && (s.bathrooms == null || Number(p.u.bathrooms) === Number(s.bathrooms));
+  for (const s of snapUnits) {
+    if (byName.has(s) || s.pinnedUnitId || !norm(s.name) || !place) continue;
+    const fits = pool.filter((p) => !p.used && nameWithin(p.u.name, s.name, place) && sameLayout(p, s));
+    if (fits.length === 1) {
+      fits[0].used = true;
+      byName.set(s, fits[0].u);
     }
   }
   const pairs = [];

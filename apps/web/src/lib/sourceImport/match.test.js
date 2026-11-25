@@ -39,3 +39,24 @@ test("of two names for one plan, the word wins over the code", () => {
   assert.equal(naturalName("Plan 3", "The Musial"), "The Musial");
   assert.equal(naturalName("London", "Paris"), "London");
 });
+
+test("a name that is the other plus the address is the same unit", async () => {
+  const { nameWithin, matchUnits, genericName } = await import("./match.js");
+  const place = "7350 Lindell Blvd, St. Louis, MO 63130";
+  assert.equal(nameWithin("302", "7350 Lindell Blvd. -302", place), true);
+  assert.equal(nameWithin("307", "7350 Lindell -307", place), true);
+  assert.equal(nameWithin("302", "7350 Lindell Blvd. -307", place), false);
+  assert.equal(nameWithin("A1", "A1 Renovated", place), false);
+  assert.equal(nameWithin("A1", "A10", place), false);
+  const units = [{ id: "a", name: "302", bedrooms: 0, bathrooms: 1 }, { id: "b", name: "307", bedrooms: 1, bathrooms: 1 }];
+  const { pairs, unmatched } = matchUnits([{ name: "7350 Lindell Blvd. -302", bedrooms: 0, bathrooms: 1 }], units, { place });
+  assert.equal(pairs[0].db.id, "a");
+  assert.deepEqual(unmatched.map((u) => u.id), ["b"]);
+  // With both on the listing, the exact name wins and the short one is left over.
+  const both = matchUnits([{ name: "7350 Lindell Blvd. -302", bedrooms: 0, bathrooms: 1 }], [units[0], { id: "c", name: "7350 Lindell Blvd. -302", bedrooms: 0, bathrooms: 1 }], { place });
+  assert.equal(both.pairs[0].db.id, "c");
+  assert.deepEqual(both.unmatched.map((u) => u.id), ["a"]);
+  assert.equal(genericName("1 Bedroom"), true);
+  assert.equal(genericName("Studio"), true);
+  assert.equal(genericName("Ruby"), false);
+});
