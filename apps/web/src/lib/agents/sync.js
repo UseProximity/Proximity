@@ -134,7 +134,7 @@ export async function runWeeklyKnowledge({ limit = 500 } = {}) {
 }
 
 /* "Sync now" from a landlord's or admin's dashboard. */
-export async function manualSync({ listingId, userId, isAdmin = false }) {
+export async function manualSync({ listingId, userId, isAdmin = false, daily = false }) {
   if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
   const agent = await ensureAgent(listingId);
   // A sync already waiting or running: hand it back without spending a sync.
@@ -148,7 +148,9 @@ export async function manualSync({ listingId, userId, isAdmin = false }) {
   }
   // An admin's sync is a deep read, the weekly kind, so the team can try it
   // on a listing any day (Wyatt, 2026-11-11).
-  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? true : null });
+  // An admin can also ask for the daily kind (daily: true), to see exactly
+  // what the nightly run would do: code only, no model.
+  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? !daily : null });
 }
 
 /*

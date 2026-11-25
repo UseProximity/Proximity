@@ -887,6 +887,7 @@ export async function executeChange(change, { state, userId }) {
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
+      change.undo = { op: "unit_remove", unitId: unit.id, leaseIds: leaseRows.map((r) => r.id) };
       return `${offers.length} lease${offers.length === 1 ? "" : "s"}${photos ? `, ${photos} photos` : ""}`;
     }
     case "unit_update": {
@@ -898,8 +899,10 @@ export async function executeChange(change, { state, userId }) {
         } else patch[k] = v;
       }
       if (Object.keys(patch).length) {
+        const was = state.listing_units.find((u) => u.id === d.unitId) ?? {};
         const { error } = await supabase.from("listing_units").update(patch).eq("id", d.unitId);
         if (error) throw new Error(`unit: ${error.message}`);
+        change.undo = { op: "unit_restore", unitId: d.unitId, values: Object.fromEntries(Object.keys(patch).map((k) => [k, was[k] ?? null])), wrote: patch };
       }
       return Object.keys(patch).join(", ") || "nothing";
     }
@@ -907,21 +910,26 @@ export async function executeChange(change, { state, userId }) {
       const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: row.id, values: row }] };
+      change.undo = { op: "lease_remove", leaseId: row.id };
       if (change.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
     case "lease_update": {
+      const was = state.listing_units.flatMap((u) => u.unit_leases).find((l) => l.id === d.leaseId) ?? {};
       const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
       // The database keeps a lease withdrawn for an overdue invoice off the market
       // until an admin restores it (202611010003_billing_holds.sql).
       if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: d.leaseId, values: d.patch }] };
+      // What was there before, so the change can be undone to the last different value.
+      change.undo = { op: "lease_restore", leaseId: d.leaseId, values: Object.fromEntries(Object.keys(d.patch).map((k) => [k, was[k] ?? null])), wrote: d.patch };
       return Object.keys(d.patch).join(", ");
     }
     case "lease_withdraw": {
       const { error } = await supabase.from("unit_leases").update({ unavailable: true }).eq("id", d.leaseId);
       if (error) throw new Error(`lease: ${error.message}`);
+      change.undo = { op: "lease_restore", leaseId: d.leaseId, values: { unavailable: false }, wrote: { unavailable: true } };
       return "withdrawn";
     }
     default:
@@ -1032,6 +1040,8 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
       note: c.note ?? null,
       judge: c.judgeResult ?? null,
       ...(c.ledger ? { ledger: c.ledger } : {}),
+      ...(applied && c.undo ? { undo: c.undo } : {}),
+      ...(c.rulesVerdict ? { rules: { apply: !!c.rulesVerdict.apply, reason: c.rulesVerdict.reason ?? null } } : {}),
       unitId: c.unitId ?? c.detail.unitId ?? null,
       leaseId: c.leaseId ?? c.detail.leaseId ?? null,
       ...(status === "rejected" ? { autoDenied: c.denyReason ?? "denied" } : {}),
@@ -1305,11 +1315,18 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   }
 
   // The policy's verdict on every change, before the churn guard counts them.
+  const undone = mode === "sync" ? await undoneKeysFor(listingId) : new Map();
   if (policyRun) {
     for (const c of changes) {
       const v = decideSyncChange(c, { snapshot });
       c.verdict = v;
       if (v.reason && v.apply) c.note = v.reason;
+      // Undone by a person: not made again while the website still says the same.
+      const u = undone.get(undoKey(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new));
+      if (u) {
+        c.undoneAt = u;
+        c.verdict = { apply: false, reason: `undone on ${u.slice(0, 10)}, and the website still says the same` };
+      }
     }
   }
 
@@ -1352,6 +1369,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         c.verdict = { apply: r.ledger_apply, reason: r.ledger_apply ? c.verdict?.reason ?? null : r.ledger_reason ?? "the score did not reach what this change needs" };
         c.ledger = { score: r.score, need: r.need, bar: r.bar, current: r.current_score, trust: r.trust, readQuality: r.read_quality, rightThing: r.right_thing, freshness: r.freshness, readsInRow: r.reads_in_row, borderline: r.borderline, source: r.source, platform: r.platform, hidden: r.ledger_hidden };
         if (c.protected && r.ledger_apply) c.protected = false;
+        if (c.undoneAt) c.verdict = { apply: false, reason: `undone on ${c.undoneAt.slice(0, 10)}, and the website still says the same` };
       });
       if (holdReason === "churn_hold") {
         holdReason = null;
@@ -1540,7 +1558,7 @@ export function changedSinceRead(e, lease) {
  * an existing listing's import tab, or a reviewed sync hold. Events already
  * applied are skipped; each success is marked applied with the verdict.
  */
-export async function applyEvents({ listingId, eventIds, userId, verdictBy = null }) {
+export async function applyEvents({ listingId, eventIds, userId, verdictBy = null, allowUnapplied = false }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied, status").in("id", eventIds).eq("listing_id", listingId);
@@ -1566,7 +1584,10 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
   const protectedIds = !ownerDecides && (events ?? []).some((e) => e.detail?.churnHeld) ? await landlordSetScopes(listingId) : new Set();
   for (const e of events ?? []) {
     // A dismissed change stays dismissed (PR #365 review).
-    if (e.applied || e.status === "rejected" || e.detail?.op === "none") continue;
+    // Apply now (allowUnapplied) also takes a change the sync itself left
+    // unapplied; one a person rejected stays rejected.
+    const leftBySync = e.status === "rejected" && !e.verdict_by && !!e.detail?.autoDenied;
+    if (e.applied || (e.status === "rejected" && !(allowUnapplied && leftBySync)) || e.detail?.op === "none") continue;
     /*
      * A change is applied only to the listing it was read against. Anything
      * edited on Proximity since (a rent, a move-in date, a lease taken down
@@ -1605,7 +1626,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
       const done = await executeChange(change, { state, userId: owner });
       written.push(change);
       const note = gatedNote ? `${done}; ${gatedNote}` : done;
-      await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note } }).eq("id", e.id);
+      await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note, ...(change.undo ? { undo: change.undo } : {}) } }).eq("id", e.id);
       results.push({ id: e.id, ok: true, note });
     } catch (err) {
       results.push({ id: e.id, ok: false, error: err.message });
@@ -1621,4 +1642,76 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
 
 export async function rejectEvents({ listingId, eventIds, verdictBy = null }) {
   await supabase.from("listing_source_events").update({ status: "rejected", verdict: "rejected", verdict_by: verdictBy, verdict_at: new Date().toISOString() }).in("id", eventIds).eq("listing_id", listingId).eq("applied", false);
+}
+
+// ---------------------------------------------------------------- undo
+
+const undoKey = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${stableJson(value ?? null)}`;
+
+/* Changes a person undid: key -> when. A new value on the website is a new key. */
+async function undoneKeysFor(listingId) {
+  const { data, error } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail")
+    .eq("listing_id", listingId).not("detail->undone", "is", null).limit(1000);
+  if (error) {
+    console.error(`[source-sync] undone changes for ${listingId}: ${error.message}`);
+    return new Map();
+  }
+  return new Map((data ?? []).map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), e.detail.undone.at]));
+}
+
+/*
+ * Undo changes the sync applied (Wyatt, 2026-11-22): each goes back to the
+ * value it replaced, the last different value, however many reads have seen
+ * the new one since. An undo is the person's own edit: the sync does not make
+ * the change again while the website still says the same thing. Refused when
+ * the listing has been edited since, so an undo never overwrites newer work.
+ * Returns [{ id, ok, note | error }].
+ */
+export async function undoEvents({ listingId, eventIds, userId }) {
+  const { data: events, error } = await supabase.from("listing_source_events").select("*").in("id", eventIds).eq("listing_id", listingId);
+  if (error) throw new Error(error.message);
+  const results = [];
+  for (const e of events ?? []) {
+    const u = e.detail?.undo;
+    if (!e.applied || !u) {
+      results.push({ id: e.id, ok: false, error: "This change cannot be undone here. Edit the listing instead." });
+      continue;
+    }
+    if (e.detail?.undone) {
+      results.push({ id: e.id, ok: false, error: "This change was already undone." });
+      continue;
+    }
+    try {
+      let note = "undone";
+      if (u.op === "lease_restore" || u.op === "unit_restore") {
+        const table = u.op === "lease_restore" ? "unit_leases" : "listing_units";
+        const id = u.op === "lease_restore" ? u.leaseId : u.unitId;
+        const cols = Object.keys(u.wrote ?? {});
+        const { data: now, error: readError } = await supabase.from(table).select(["id", ...cols].join(", ")).eq("id", id).maybeSingle();
+        if (readError) throw new Error(readError.message);
+        if (!now) throw new Error("It is no longer on the listing.");
+        const moved = cols.filter((k) => stableJson(now[k] ?? null) !== stableJson(u.wrote[k] ?? null));
+        if (moved.length) throw new Error("This has been edited since the website change was applied, so there is nothing left to undo.");
+        const { error: writeError } = await supabase.from(table).update(u.values).eq("id", id);
+        if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
+        if (writeError) throw new Error(writeError.message);
+        note = `back to what it was (${cols.join(", ")})`;
+      } else if (u.op === "lease_remove") {
+        const { error: writeError } = await supabase.from("unit_leases").update({ unavailable: true }).eq("id", u.leaseId);
+        if (writeError) throw new Error(writeError.message);
+        note = "the lease the website added was taken down";
+      } else if (u.op === "unit_remove") {
+        if ((u.leaseIds ?? []).length) {
+          const { error: writeError } = await supabase.from("unit_leases").update({ unavailable: true }).in("id", u.leaseIds);
+          if (writeError) throw new Error(writeError.message);
+        }
+        note = "the unit the website added had its leases taken down";
+      } else throw new Error("This kind of change cannot be undone here.");
+      await supabase.from("listing_source_events").update({ detail: { ...e.detail, undone: { by: userId ?? null, at: new Date().toISOString(), note } } }).eq("id", e.id);
+      results.push({ id: e.id, ok: true, note });
+    } catch (err) {
+      results.push({ id: e.id, ok: false, error: err.message });
+    }
+  }
+  return results;
 }

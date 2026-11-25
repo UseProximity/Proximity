@@ -49,7 +49,7 @@ export async function saveMadeRecipe({ listingId, info }) {
   if (!recipesOn() || !info?.made) return;
   try {
     await saveOne({ scope: "listing", listingId, recipe: info.made, madeFrom: info.madeFrom, checked: info.check });
-    if (info.platformKey && info.made.kind === "named" && info.made.after) {
+    if (info.platformKey && info.made.kind === "named" && (info.made.after ?? []).length) {
       const paths = [...new Set((info.made.pages ?? []).map((u) => { try { return new URL(u).pathname.replace(/\/+$/, "") || "/"; } catch { return null; } }).filter(Boolean))];
       await saveOne({ scope: "platform", platformKey: info.platformKey, recipe: { v: info.made.v, kind: "named", pages: [], paths, after: info.made.after, names: [] }, madeFrom: `listing ${listingId}`, checked: info.check });
     }

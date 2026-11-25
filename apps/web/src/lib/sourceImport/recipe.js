@@ -82,6 +82,7 @@ export function parseBlock(text, today = new Date()) {
   return { bedrooms, bathrooms, area, available: offers.length ? true : !waitlist, offers };
 }
 
+const LAYOUT_SHAPE = /studio|#\s*(?:bed|br|bd)|bed(?:room)?s?\b|\$#|# ?sq|starting at|from \$/;
 const lines = (text) => String(text ?? "").split("\n");
 /* A line's shape: digits and case set aside, so "1 Bed" and "2 Bed" are one shape. */
 export const lineShape = (line) => String(line ?? "").trim().toLowerCase().replace(/[\d,.]+/g, "#").replace(/\s+/g, " ").slice(0, 40);
@@ -132,8 +133,11 @@ export function induceRecipe({ pages, units }) {
     const shape = lineShape(ls[s.at.line + 1]);
     if (shape) shapes.set(shape, (shapes.get(shape) ?? 0) + 1);
   }
-  const top = [...shapes.entries()].sort((a, b) => b[1] - a[1])[0];
-  const after = top && alone >= spots.length * 0.8 && top[1] >= Math.max(2, spots.length * 0.6) ? top[0] : null;
+  // Only shapes that read like a layout or a price ("studio", "# bed", "starting at $#"),
+  // each shared by several units, and together covering most of them.
+  const good = [...shapes.entries()].filter(([shape, n]) => LAYOUT_SHAPE.test(shape) && n >= Math.max(2, spots.length * 0.1)).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const covered = good.reduce((n, [, c]) => n + c, 0);
+  const after = alone >= spots.length * 0.8 && covered >= Math.max(2, spots.length * 0.7) ? good.map(([shape]) => shape) : null;
   return {
     v: RECIPE_VERSION,
     kind: "named",
@@ -178,13 +182,14 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
   }
   // Units the site has added: a short line followed by a line of the learned shape.
   const added = [];
-  if (recipe.after) {
+  const afters = Array.isArray(recipe.after) ? recipe.after : recipe.after ? [recipe.after] : [];
+  if (afters.length) {
     for (const p of use) {
       const ls = lines(p.text);
       for (let i = 0; i + 1 < ls.length; i++) {
         const line = ls[i].trim();
         if (!line || line.length > 40 || have.has(norm(line)) || !norm(line) || NOT_A_NAME.test(line) || /\$/.test(line)) continue;
-        if (lineShape(ls[i + 1]) !== recipe.after) continue;
+        if (!afters.includes(lineShape(ls[i + 1]))) continue;
         have.add(norm(line));
         names.push(line);
         added.push(line);

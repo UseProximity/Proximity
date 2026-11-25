@@ -43,7 +43,7 @@ test("a recipe made from one read replays it, and IvaS1 is not IvaS10", () => {
   ];
   const recipe = induceRecipe({ pages: page(UNION), units: truth });
   assert.equal(recipe.kind, "named");
-  assert.equal(recipe.after, "studio");
+  assert.deepEqual(recipe.after, ["studio"]);
   const replay = replayRecipe(recipe, page(UNION), { today: TODAY });
   const check = compareReads(replay.units, truth);
   assert.equal(check.ok, true, check.diffs.join("; "));

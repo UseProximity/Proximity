@@ -2,7 +2,9 @@
  * The landlord's "Sync now" and sync status for one listing's agent.
  *   GET   status: source, last run, next run, failures, a running job,
  *         manual syncs left today
- *   POST  queue a sync now (3 a day per listing; admins unlimited)
+ *   POST  queue a sync now (3 a day per listing; admins unlimited). An
+ *         admin's is the weekly deep read, or with { daily: true } the
+ *         daily kind (code only, no model)
  *
  * Owners of the listing (any owner may sync their own offer; the source is
  * the property's) and supers.
@@ -41,12 +43,13 @@ export async function GET(_req, { params }) {
   }
 }
 
-export async function POST(_req, { params }) {
+export async function POST(req, { params }) {
   const { listingId } = await params;
   const g = await gate(listingId);
   if (g.res) return g.res;
   try {
-    const r = await manualSync({ listingId, userId: g.userId, isAdmin: g.isAdmin });
+    const body = await req.json().catch(() => ({}));
+    const r = await manualSync({ listingId, userId: g.userId, isAdmin: g.isAdmin, daily: g.isAdmin && body?.daily === true });
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
     // Start it now rather than waiting for the import-jobs cron, which only
     // runs on production (previews and local never pick a queued job up).

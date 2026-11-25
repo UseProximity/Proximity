@@ -28,6 +28,14 @@ async function landlordEditTimes(listingId) {
     if ((f.scope_level === "lease" || f.scope_level === "unit") && f.scope_id) later(f.scope_id, f.updated_at);
     else if (f.scope_level === "property" && f.field_key.startsWith("core.property.")) later(`property:${f.field_key.slice("core.property.".length)}`, f.updated_at);
   }
+  // An Undo, and a landlord's own Apply now, are that person's edits too.
+  const { data: acted } = await supabase.from("listing_source_events").select("detail, verdict_by, verdict_at")
+    .eq("listing_id", listingId).or("verdict_by.not.is.null,detail->undone.not.is.null").limit(1000);
+  for (const e of acted ?? []) {
+    const scope = e.detail?.leaseId ?? e.detail?.unitId ?? null;
+    const at = e.detail?.undone?.at ?? (e.verdict_by ? e.verdict_at : null);
+    if (scope && at) later(scope, at);
+  }
   return out;
 }
 
