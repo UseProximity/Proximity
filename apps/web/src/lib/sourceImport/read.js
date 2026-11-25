@@ -45,6 +45,7 @@ import { pageCacheStore } from "./pageCache.js";
 import { isDocumentUrl, readDocument } from "./readers/document.js";
 import { collectEvidence } from "./evidence.js";
 import { naturalName } from "./match.js";
+import { startingAtTerm } from "./score.js";
 import { induceRecipe, replayRecipe, compareReads, recipeBroken, detectPlatform, deeperLinks, deepenUnits } from "./recipe.js";
 
 // Every read shares fetched pages with the rest of its batch
@@ -1480,6 +1481,21 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
   const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
+  /*
+   * A starting-at price whose real prices could not be found by digging
+   * deeper goes on the most obvious lease length: 12 months, or the longest
+   * the unit offers (Wyatt, 2026-11-24). Marked as inferred, so it only ever
+   * fills an empty lease length.
+   */
+  for (const u of units) {
+    const known = (u.offers ?? []).flatMap((o) => o.leaseTermMonths ?? []);
+    for (const o of u.offers ?? []) {
+      if (o.rent != null && o.rentIsExact === false && !(o.leaseTermMonths ?? []).length) {
+        o.leaseTermMonths = [startingAtTerm(known)];
+        o.termsInferred = true;
+      }
+    }
+  }
   // A portal that was not read in full never applies on its own.
   if (portalMissed) confidence = "low";
   const snapshot = makeSnapshot({

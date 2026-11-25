@@ -17,6 +17,7 @@
  * draft. Its job reads the site the same way and records every difference as
  * an open change for the landlord to accept on that tab.
  */
+import { importHints } from "./hints.js";
 import { loadRecipes, saveMadeRecipe } from "./recipeStore.js";
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
@@ -516,7 +517,8 @@ export async function runJob(jobId) {
           confidence: snapshot.confidence,
           sourceUrl: snapshot.sourceUrl,
           summary,
-          notes: snapshot.notes,
+          // Field-by-field hints first (hints.js), then what the read itself noted.
+          notes: mode === "import" ? [...new Set([...importHints(snapshot), ...(snapshot.notes ?? [])])].slice(0, 8) : snapshot.notes,
           applied: result.applied.length,
           held: result.held.length,
           holdReason: result.holdReason,
