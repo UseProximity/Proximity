@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nameMatchAliases } from "./match.js";
+import { nameMatchAliases, naturalName } from "./match.js";
 
 const db = [
   { id: "u1", name: "Pershing", bedrooms: 2, bathrooms: 2, area: 900 },
@@ -31,4 +31,11 @@ test("a key the read lists twice is ambiguous and never pinned", () => {
 test("a unit read off its own page is pinned to that unit", () => {
   const rows = nameMatchAliases([{ key: "n:apt4", name: "Apt 4", pinnedUnitId: "u3", bedrooms: 3, bathrooms: 2, area: 1200 }], db);
   assert.deepEqual(rows.map((r) => r.unit_id), ["u3"]);
+});
+
+test("of two names for one plan, the word wins over the code", () => {
+  assert.equal(naturalName("A012", "London"), "London");
+  assert.equal(naturalName("Pershing", "B.22"), "Pershing");
+  assert.equal(naturalName("Plan 3", "The Musial"), "The Musial");
+  assert.equal(naturalName("London", "Paris"), "London");
 });

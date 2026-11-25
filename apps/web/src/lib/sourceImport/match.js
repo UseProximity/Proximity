@@ -90,3 +90,17 @@ export function nameMatchAliases(snapUnits, dbUnits, aliases = new Map()) {
   return out;
 }
 
+
+/*
+ * Of two names for one plan, the one a person would say: a word ("London",
+ * "Pershing") over a code ("A012", "B.22"). Ties keep the first.
+ */
+export function naturalName(a, b) {
+  const score = (n) => {
+    const s = String(n ?? "").trim();
+    if (!s) return -5;
+    const words = s.split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(unit|plan|floor|floorplan|apartment|bedroom|bath|studio)$/i.test(w));
+    return (words.length ? 2 : 0) - (/\d/.test(s) ? 1 : 0) - (/^[A-Za-z]{0,2}[.\-]?\d+[A-Za-z]?$/.test(s) ? 2 : 0);
+  };
+  return score(b) > score(a) ? b : a;
+}

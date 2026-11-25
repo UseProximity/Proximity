@@ -44,6 +44,7 @@ import {
 import { pageCacheStore } from "./pageCache.js";
 import { isDocumentUrl, readDocument } from "./readers/document.js";
 import { collectEvidence } from "./evidence.js";
+import { naturalName } from "./match.js";
 import { induceRecipe, replayRecipe, compareReads, recipeBroken, detectPlatform, deeperLinks, deepenUnits } from "./recipe.js";
 
 // Every read shares fetched pages with the rest of its batch
@@ -457,6 +458,18 @@ export const planKey = (s) =>
 const sameLayout = (a, b) =>
   a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) <= 2;
 
+/* Equal beds and baths, sizes within 3%. */
+const closeLayout = (a, b) =>
+  a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) / Math.max(a.area, b.area) <= 0.03;
+
+/* The same set of prices on both, and at least one. */
+function sameOfferings(a, b) {
+  const set = (u) => [...new Set((u.offers ?? []).map((o) => o.rent).filter((n) => n != null))].sort((x, y) => x - y);
+  const x = set(a);
+  const y = set(b);
+  return x.length > 0 && x.length === y.length && x.every((n, i) => n === y[i]);
+}
+
 /*
  * One entry per floor plan. Two entries with the same name (after "Unit",
  * "Plan" and punctuation are set aside) are one plan, their leases pooled.
@@ -490,6 +503,11 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
           break;
         }
         if ((o.source ?? "website") === (u.source ?? "website")) continue;
+        // Same layout and the same prices from two sources: one plan, by code.
+        if (sameOfferings(o, u)) {
+          twin = o;
+          break;
+        }
         const verdict = await judge(o, u);
         console.log(`[source-import] same plan? "${o.name}" (${o.source ?? "website"}) and "${u.name}" (${u.source ?? "website"}): ${verdict.same ? "yes" : "no"}, ${verdict.reason}`);
         if (verdict.same) {
@@ -498,8 +516,16 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
         }
       }
     }
-    if (twin) mergeInto(twin, u);
-    else out.push(u);
+    // Two sources, two names, the same layout (within 3%) and the same prices:
+    // one plan under two names (Wyatt, 2026-11-24).
+    if (!twin && named) {
+      twin = out.find((o) => planKey(o.name) && (o.source ?? "website") !== (u.source ?? "website") && closeLayout(o, u) && sameOfferings(o, u)) ?? null;
+    }
+    if (twin) {
+      const keep = naturalName(twin.name, u.name);
+      mergeInto(twin, u);
+      twin.name = keep;
+    } else out.push(u);
   }
   return out;
 }
