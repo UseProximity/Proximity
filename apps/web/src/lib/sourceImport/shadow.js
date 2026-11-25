@@ -172,6 +172,9 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     let verdict = decide({ action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness } }, current);
     // Descriptions and specials change on the weekly read only (Wyatt, 2026-11-24).
     if (c.kind === "property_updated") verdict = { ...verdict, apply: false, borderline: false, reason: "descriptions and specials change on the weekly read, not the daily sync" };
+    // The listing gate (billing, agreement) and units owned elsewhere stand whatever the score.
+    const blocked = (c.gated && c.kind !== "unit_new") || c.elsewhere ? c.note ?? "blocked by the listing gate" : null;
+    if (blocked) verdict = { ...verdict, apply: false, borderline: false, reason: blocked };
 
     rows.push({
       change_key: key,
@@ -202,7 +205,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
       // What decide() was given, so a Jev pass can score it again (never stored).
-      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated" },
+      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked },
     });
   }
   return rows;
@@ -256,6 +259,7 @@ export function rescoreWithJev(row, jev) {
     verdict = { ...verdict, apply: false, borderline: false, reason: jev.status === "no_text" ? "Jev had no page text to check this against; it waits for the next read" : "Jev could not check this read; it waits for the next read" };
   }
   if (inp.weekly) verdict = { ...verdict, apply: false, borderline: false, reason: "descriptions and specials change on the weekly read, not the daily sync" };
+  if (inp.blocked) verdict = { ...verdict, apply: false, borderline: false, reason: inp.blocked };
   return {
     ...row,
     read_quality: round(readQuality),

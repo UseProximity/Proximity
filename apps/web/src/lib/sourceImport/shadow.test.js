@@ -87,3 +87,10 @@ test("a lease with no synced record (from before 11/11) is not the landlord's", 
   assert.equal(r.landlord_edited, false);
   assert.equal(r.ledger_apply, true);
 });
+
+test("the listing gate stands whatever the score", () => {
+  const c = { kind: "lease_new", gated: true, note: "waiting for the landlord to publish", unitKey: "n:pershing", unitId: "u1", field: "lease", old: null, new: { rent: 1400 }, verdict: { apply: false } };
+  const [r] = shadowRows({ changes: [c], snapshot: { ...snapshot, trace: { reader: "g5" } }, state, learnings, now: NOW });
+  assert.equal(r.ledger_apply, false);
+  assert.equal(r.ledger_reason, "waiting for the landlord to publish");
+});
