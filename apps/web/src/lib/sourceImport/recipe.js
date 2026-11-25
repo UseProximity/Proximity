@@ -87,17 +87,34 @@ const lines = (text) => String(text ?? "").split("\n");
 /* A line's shape: digits and case set aside, so "1 Bed" and "2 Bed" are one shape. */
 export const lineShape = (line) => String(line ?? "").trim().toLowerCase().replace(/[\d,.]+/g, "#").replace(/\s+/g, " ").slice(0, 40);
 
-/* Where a name sits: { page, index (char), line (number) } or null. Whole name only. */
-function locate(pages, name) {
+/*
+ * Where a name sits: { page, index (char), line (number) } or null. Whole
+ * name only. An occurrence with another unit's name on the line before or
+ * after is an entry in a list of plans (a filter, a menu), and is passed
+ * over for the next one; a name found only in such a list is still returned.
+ *   others  Set of the other units' names, normalised
+ */
+function locate(pages, name, others = null) {
   const re = nameRe(name);
   if (!re) return null;
+  let fallback = null;
   for (let p = 0; p < pages.length; p++) {
-    const m = re.exec(pages[p].text);
-    if (!m) continue;
-    const index = m.index + (m[0].length - m[0].replace(/^[^A-Za-z0-9]+/, "").length);
-    return { page: p, index, line: pages[p].text.slice(0, index).split("\n").length - 1 };
+    const text = pages[p].text;
+    const all = new RegExp(re.source, "gi");
+    let m;
+    while ((m = all.exec(text))) {
+      const index = m.index + (m[0].length - m[0].replace(/^[^A-Za-z0-9]+/, "").length);
+      const hit = { page: p, index, line: text.slice(0, index).split("\n").length - 1 };
+      if (!others?.size) return hit;
+      const start = text.lastIndexOf("\n", index) + 1;
+      const prev = text.slice(text.lastIndexOf("\n", start - 2) + 1, Math.max(0, start - 1));
+      const lineEnd = text.indexOf("\n", index);
+      const next = lineEnd < 0 ? "" : text.slice(lineEnd + 1, (text.indexOf("\n", lineEnd + 1) + 1 || text.length + 1) - 1);
+      if (!others.has(norm(prev)) && !others.has(norm(next))) return hit;
+      fallback ??= hit;
+    }
   }
-  return null;
+  return fallback;
 }
 
 const samePath = (a, b) => {
@@ -120,7 +137,8 @@ const samePath = (a, b) => {
 export function induceRecipe({ pages, units }) {
   const named = (units ?? []).filter((u) => norm(u.name));
   if (!named.length) return induceLayoutRecipe({ pages, units });
-  const spots = named.map((u) => ({ u, at: locate(pages ?? [], u.name) })).filter((s) => s.at);
+  const namedSet = (skip) => new Set(named.filter((x) => norm(x.name) !== norm(skip)).map((x) => norm(x.name)));
+  const spots = named.map((u) => ({ u, at: locate(pages ?? [], u.name, namedSet(u.name)) })).filter((s) => s.at);
   if (spots.length < Math.max(1, Math.ceil(named.length * 0.6))) return null;
   const used = [...new Set(spots.map((s) => s.at.page))].sort((a, b) => a - b);
   // The line after a unit's name, when most units share its shape: how a new unit is spotted.
@@ -196,7 +214,7 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
       }
     }
   }
-  const spots = names.map((name) => ({ name, at: locate(use, name) }));
+  const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm))) }));
   const placed = spots.filter((s) => s.at).sort((a, b) => a.at.page - b.at.page || a.at.index - b.at.index);
   const units = placed.map((s, i) => {
     const text = use[s.at.page].text;
@@ -342,25 +360,59 @@ export function deeperLinks({ units, links, visited = new Set(), origin = null, 
 }
 
 /*
- * Lay a deeper page's exact prices over units that had none. A page opened
- * for one unit speaks for that unit; any other page must name the unit.
- * Mutates and returns the units.
+ * Lay a deeper page's exact prices over units that had none. A price is taken
+ * only from a block that belongs to the unit: its name to the next other
+ * unit's name, on any place the page names it. A page that lists every plan
+ * in a filter (The Shelby's availability page) names each unit with no price
+ * of its own, and reading on from there once gave all twenty units the first
+ * price on the page (2026-11-25); so a price that lands on three or more
+ * units from one page is thrown out. Mutates and returns the units.
  */
 export function deepenUnits(units, pages, { today = new Date() } = {}) {
+  const all = (units ?? []).map((u) => u.name).filter((n) => norm(n));
+  const taken = [];
   for (const u of units ?? []) {
     if ((u.offers ?? []).some((o) => o.rentIsExact !== false) || !norm(u.name)) continue;
+    const mine = nameRe(u.name);
+    const others = all.filter((n) => norm(n) !== norm(u.name) && !mine.test(n)).map(nameRe).filter(Boolean);
+    const otherNames = new Set(all.filter((n) => norm(n) !== norm(u.name)).map(norm));
+    let found = null;
     for (const p of pages ?? []) {
-      const at = locate([p], u.name);
-      if (!at && p.forUnit !== u.name) continue;
-      const start = at ? p.text.lastIndexOf("\n", at.index) + 1 : 0;
-      const parsed = parseBlock(p.text.slice(start, start + (p.forUnit === u.name ? 6000 : BLOCK_MAX)), today);
-      const exact = parsed.offers.filter((o) => o.rentIsExact);
-      if (!exact.length) continue;
-      u.offers = exact;
-      u.available = true;
-      u.evidence = { url: p.url, text: p.text.slice(start, start + BLOCK_MAX) };
-      break;
+      const re = new RegExp(mine.source, "gi");
+      let m;
+      while (!found && (m = re.exec(p.text))) {
+        const start = p.text.lastIndexOf("\n", m.index) + 1;
+        const after = m.index + m[0].length;
+        // A name with another unit's name on the line before or after is an
+        // entry in a list of plans (a filter, a menu), not the head of a block.
+        const prev = p.text.slice(p.text.lastIndexOf("\n", start - 2) + 1, Math.max(0, start - 1));
+        const lineEnd = p.text.indexOf("\n", after);
+        const next = lineEnd < 0 ? "" : p.text.slice(lineEnd + 1, (p.text.indexOf("\n", lineEnd + 1) + 1 || p.text.length + 1) - 1);
+        if (otherNames.has(norm(prev)) || otherNames.has(norm(next))) continue;
+        let end = Math.min(p.text.length, after + 800);
+        for (const o of others) {
+          const hit = o.exec(p.text.slice(after, end));
+          if (hit) end = Math.min(end, after + hit.index);
+        }
+        const block = p.text.slice(start, end);
+        const exact = parseBlock(block, today).offers.filter((o) => o.rentIsExact);
+        if (exact.length) found = { offers: exact, evidence: { url: p.url, text: block }, page: p.url };
+      }
+      if (found) break;
     }
+    if (found) taken.push({ u, was: { offers: u.offers, available: u.available, evidence: u.evidence }, ...found });
+  }
+  // The same price on three or more units from one page is the page's, not theirs.
+  const count = new Map();
+  for (const t of taken) {
+    const k = `${t.page}|${t.offers.map((o) => o.rent).join(",")}`;
+    count.set(k, (count.get(k) ?? 0) + 1);
+  }
+  for (const t of taken) {
+    if (count.get(`${t.page}|${t.offers.map((o) => o.rent).join(",")}`) >= 3) continue;
+    t.u.offers = t.offers;
+    t.u.available = true;
+    t.u.evidence = t.evidence;
   }
   return units;
 }

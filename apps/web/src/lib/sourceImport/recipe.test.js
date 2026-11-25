@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseBlock, induceRecipe, replayRecipe, compareReads, recipeBroken } from "./recipe.js";
+import { parseBlock, induceRecipe, replayRecipe, compareReads, recipeBroken, deepenUnits } from "./recipe.js";
 
 const TODAY = new Date("2026-11-24T12:00:00Z");
 // Real page text shapes from the 2026-11-24 preview runs.
@@ -73,4 +73,17 @@ test("plans listed by size alone get a layout recipe", () => {
   assert.equal(recipe.kind, "layout");
   const replay = replayRecipe(recipe, page(icon));
   assert.deepEqual(replay.units.map((u) => [u.bedrooms, u.area, u.offers[0].rent, u.offers[0].rentIsPerPerson]), [[4, 1251, 725, true], [4, 1275, 725, true]]);
+});
+
+test("digging deeper never takes a price from a page that only lists the plans", () => {
+  const mk = (name) => ({ name, offers: [{ rent: 1000, rentIsExact: false }] });
+  const units = ["Olive", "Pine", "Chestnut", "Market"].map(mk);
+  // The Shelby's availability page: every plan in a filter, then one apartment's price.
+  const filter = { url: "https://x.test/availability", text: "Olive\nPine\nChestnut\nMarket\nClear\nDone\nMax Rent\nApartment #\nPlease select an apartment.\n#602\n$1,305.00 / month" };
+  deepenUnits(units, [filter]);
+  assert.ok(units.every((u) => u.offers[0].rent === 1000 && u.offers[0].rentIsExact === false));
+  // A page with each plan's own block and price is taken.
+  const real = { url: "https://x.test/prices", text: "Olive\n1 Bed\n$1,120 / month\nPine\n1 Bed\n$1,180 / month\nChestnut\n1 Bed\nCall for details\nMarket\n1 Bed\n$1,075 / month" };
+  deepenUnits(units, [real]);
+  assert.deepEqual(units.map((u) => [u.offers[0].rent, u.offers[0].rentIsExact]), [[1120, true], [1180, true], [1000, false], [1075, true]]);
 });
