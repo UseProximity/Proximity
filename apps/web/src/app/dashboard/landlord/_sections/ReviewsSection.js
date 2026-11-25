@@ -255,6 +255,7 @@ export default function ReviewsSection({ user, viewAsId }) {
                             review={review}
                             owner={user}
                             isLandlord={true}
+                            readOnly={Boolean(viewAsId)}
                           />
                         </div>
                       </div>

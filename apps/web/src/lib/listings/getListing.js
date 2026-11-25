@@ -7,8 +7,9 @@
  * The increment_listing_metric click RPC intentionally stays in the API route:
  * server page renders (including crawler hits) must not inflate click metrics.
  *
- * currentUserId only affects reviews[].userVote. Server page callers omit it;
- * the API route passes the session user so vote state matches v4 behavior.
+ * currentUserId only affects viewer-only fields (reviews[].userVote, isMine,
+ * viewerIsLandlord). Server page callers omit it; the API route passes the
+ * session user so vote state matches v4 behavior.
  */
 
 import { cache } from "react";
@@ -681,6 +682,10 @@ async function fetchListing(listingId, currentUserId, { includeDrafts, preview =
 
   const built = buildListing(row, ownerUser, reviews);
   await attachListedBy(built);
+  // Viewer-only: true when the signed-in viewer is any landlord linked to this
+  // listing (primary or co-landlord), so the review replies they can manage show
+  // Edit and Delete. A yes or no, never the list of landlords.
+  built.viewerIsLandlord = Boolean(currentUserId && ll.some((x) => x.user_id === currentUserId));
   /*
    * Whether Proxy answers on this listing (per-listing agents, PRD v3). Both
    * switches must be on: the global one and the listing's own status. The

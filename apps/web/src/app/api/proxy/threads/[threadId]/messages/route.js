@@ -55,7 +55,7 @@ export async function POST(req, { params }) {
     try { body = await req.json(); } catch { body = {}; }
     const leaseId = UUID.test(body?.leaseId ?? "") ? body.leaseId : null;
 
-    const args = { thread, body: body?.body, userId: actor.userId, visitorId: actor.visitorId, ip: clientIp(req.headers), leaseId, testMode: avail.testMode };
+    const args = { thread, body: body?.body, userId: actor.userId, visitorId: actor.visitorId, ip: clientIp(req.headers), leaseId, testMode: avail.testMode, testAs: avail.testAs };
     const shape = (result) => ({
       messages: result.messages.map((m) => shapeMessage(m, { userId: actor.userId })),
       outcome: result.outcome,

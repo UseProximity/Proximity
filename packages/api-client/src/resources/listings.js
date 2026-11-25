@@ -5,12 +5,25 @@
 // plus POST /api/addListing (createListing; requires a bearer token and a
 // landlord/student/super role, per addListing/route.js's getRequestUser check).
 // createListing forwards payload as-is; the caller (Add Listing's wizard) shapes
-// it to match AddListingWizard.js's own submit body.
+// it to match AddListingWizard.js's own submit body. saveFilterSummary wraps
+// POST /api/filter-summary (needs a bearer token), as web's Browse does on Apply.
 export function createListingsResource(client) {
   return {
     getListings: () => client.request("/api/listings"),
     getListing: (listingId) => client.request(`/api/listing/${listingId}`),
     getPopularListings: () => client.request("/api/listings/popular"),
+    // GET /api/listings/suggested (auth optional): the signed-in student's
+    // "Suggested for you" listing ids, best first ({ ids: [] } when signed out
+    // or when there is too little to go on).
+    getSuggestedListings: () => client.request("/api/listings/suggested"),
+    // POST /api/filter-summary: records the browse filters a signed-in student
+    // just applied, the lightest signal behind "Suggested for you". The server
+    // keeps only known filter keys and skips an empty set.
+    saveFilterSummary: (filters) =>
+      client.request("/api/filter-summary", {
+        method: "POST",
+        body: JSON.stringify({ filters }),
+      }),
     // Review safety (both need a bearer token). The server resolves the review's
     // author itself, so anonymous reviews can be reported but never blocked.
     reportReview: (reviewId) =>

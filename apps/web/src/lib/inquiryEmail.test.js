@@ -74,13 +74,26 @@ test("a tour request reads like the student asked, and its reminder repeats it",
     slots: ["Thu, Nov 20, 2 to 5 PM"], details: ["WashU student"], dashboardUrl: "https://useproximity.org/dashboard", canReply: true,
   };
   const req = buildTourRequestEmail(input);
-  assert.equal(req.subject, "Tour request for The Ceylon");
+  assert.equal(req.subject, "Tour request for The Ceylon from Jordan");
+  assert.equal(buildTourRequestEmail({ ...input, firstName: null }).subject, "Tour request for The Ceylon");
   assert.equal(req.fromName, "Jordan");
   assert.ok(req.text.startsWith("Hi, I'd like to tour the 2 bed at The Ceylon. I'm free:\n• Thu, Nov 20, 2 to 5 PM\nCould you let me know a time that works?\n\nJordan\n"));
   assert.equal(buildTourRequestEmail({ ...input, firstName: null }).fromName, "A student");
   const rem = buildTourRequestEmail({ ...input, reminderDay: 1 });
   assert.equal(rem.subject, req.subject);
   assert.ok(rem.text.startsWith("Reminder, a student is still waiting on your reply about touring.\n\nHi, I'd like to tour"));
+});
+
+test("each per-student landlord subject names the student's first name, or none without a name", () => {
+  const base = { listingLabel: "The Ceylon", unit: { bedrooms: 2 }, dashboardUrl: "https://x" };
+  assert.equal(buildTourCancelledEmail({ ...base, firstName: "Jordan" }).subject, "Tour cancelled for The Ceylon from Jordan");
+  assert.equal(buildTourCancelledEmail({ ...base, firstName: null }).subject, "Tour cancelled for The Ceylon");
+  assert.equal(buildTourCancelledByLandlordEmail({ ...base, firstName: "Jordan" }).subject, "You cancelled a tour for The Ceylon from Jordan");
+  assert.equal(buildTourCancelledByLandlordEmail({ ...base, firstName: null }).subject, "You cancelled a tour for The Ceylon");
+  const day = { listingLabel: "The Ceylon", when: "Thu, Nov 20 at 3:00 PM", address: "5700 Waterman Blvd", chatUrl: "https://x", dayBefore: true };
+  assert.equal(buildTourConfirmedEmail({ ...day, studentName: "Jordan Lee" }).subject, "Reminder: tour of The Ceylon Thu, Nov 20 at 3:00 PM with Jordan");
+  assert.equal(buildTourConfirmedEmail({ ...day, studentName: null }).subject, "Reminder: tour of The Ceylon Thu, Nov 20 at 3:00 PM");
+  assert.equal(buildTourConfirmedEmail({ ...day, dayBefore: false, studentName: "Jordan Lee" }).subject, "Tour confirmed: Jordan Lee, Thu, Nov 20 at 3:00 PM");
 });
 
 test("tour announcements open with the fact", () => {
@@ -94,6 +107,9 @@ test("a cancellation is in the student's words, with the booked time when there 
   assert.ok(booked.text.startsWith("Hi, I need to cancel my tour of the 2 bed at The Ceylon on Thursday 11/20 at 3 PM.\n\nJordan\n"));
   assert.equal(booked.fromName, "Jordan");
   assert.ok(buildTourCancelledEmail(base).text.startsWith("Hi, I need to cancel my tour request for the 2 bed at The Ceylon."));
+  // With the chat's reply address it says a reply reaches the student; without, it doesn't promise one.
+  assert.match(buildTourCancelledEmail({ ...base, canReply: true }).text, /Reply to this email to message Jordan\./);
+  assert.doesNotMatch(buildTourCancelledEmail(base).text, /Reply to this email/);
   const mine = buildTourCancelledByLandlordEmail({ ...base, when: "Thursday 11/20 at 3 PM" });
   assert.ok(mine.text.startsWith("You cancelled Jordan's tour of the 2 bed at The Ceylon on Thursday 11/20 at 3 PM. We let Jordan know."));
 });

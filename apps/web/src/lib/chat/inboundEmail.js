@@ -420,6 +420,18 @@ async function processOne({ bucket, key, recipients }) {
     const sameCompany =
       !SHARED_DOMAINS.has(fromDomain) && allowed.some((e) => domainOf(e) === fromDomain);
     const forwarded = /^\s*(fwd?|fw)\s*:/i.test(String(parsed.subject ?? ""));
+    // What the other side wrote lately: the messages the email being answered
+    // carried, so a client that pastes them under the reply with no quote
+    // header doesn't post them back into the chat as this person's words.
+    const { data: recent } = await supabase
+      .from("chat_messages")
+      .select("body")
+      .eq("thread_id", threadId)
+      .neq("sender_id", userId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    const quoted = (recent ?? []).map((m) => m.body).filter(Boolean);
     if (!allowed.includes(fromEmail) && !testers.includes(fromEmail) && !sameCompany) {
       // Someone else at the landlord's end may have been approved to reply for
       // them, or is held until the landlord decides (Wyatt, 2026-10-24).
@@ -434,6 +446,7 @@ async function processOne({ bucket, key, recipients }) {
           senderName: participant.users?.name,
           senderCompany: participant.users?.company_name,
           fromName: senderName,
+          quoted,
         }).trim().slice(0, 2000);
         base.body_preview = preview || null;
         base.sender_name = senderName;
@@ -468,6 +481,7 @@ async function processOne({ bucket, key, recipients }) {
       senderName: participant.users?.name,
       senderCompany: participant.users?.company_name,
       fromName: parsed.from?.value?.[0]?.name,
+      quoted,
     });
     /*
      * What an emailed reply loses before the other side sees it (Wyatt,

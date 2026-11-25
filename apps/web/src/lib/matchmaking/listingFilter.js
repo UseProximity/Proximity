@@ -183,6 +183,7 @@ function activeLeasesOf(listing) {
     (u.unit_leases ?? [])
       .filter((l) => l.is_active && !l.unavailable && l.rent > 0)
       .map((l) => ({
+        id: l.id ?? null,
         rent: Number(l.rent),
         rent_is_per_person: l.rent_is_per_person ?? null,
         bedrooms: u.bedrooms,
@@ -209,7 +210,7 @@ function activeLeasesOf(listing) {
  * whole listing and treated the pair as one place. A building with a 1-bed at
  * $800 and a 4-bed at $2,000/person therefore read as "4 bedrooms, $800 each",
  * and was recommended — and quoted — to groups who could never rent it. The
- * browse filters were fixed the same way; see lib/listings/filterListings.js.
+ * browse filters were fixed the same way; see packages/shared/src/formatters/listingFilters.js.
  *
  * A unit with no live offering still yields ONE unpriced offer, because the
  * ranker deliberately keeps listings that have room data but no published
@@ -403,7 +404,10 @@ function furnishedOk(listing, furnishedPref) {
 function rentBreakdown(listing) {
   const isRoomShare = isRoomShareListing(listing);
   const rows = activeLeasesOf(listing)
-    .map((l) => leaseRentBasis(l, isRoomShare))
+    .map((l) => {
+      const r = leaseRentBasis(l, isRoomShare);
+      return r && { ...r, leaseId: l.id };
+    })
     .filter(Boolean);
   if (rows.length === 0) return null;
   return rows.reduce((best, r) => (r.perPerson < best.perPerson ? r : best));
@@ -411,6 +415,13 @@ function rentBreakdown(listing) {
 
 function minPerPerson(listing) {
   return rentBreakdown(listing)?.perPerson ?? null;
+}
+
+// The lease that sets a listing's cheapest per-person rent (the price
+// buildRankContext ranks a listing at when no offer is resolved), so a caller
+// can tell whose price it is. null when nothing is priced.
+export function cheapestLeaseIdOf(listing) {
+  return rentBreakdown(listing)?.leaseId ?? null;
 }
 
 // Per-person rent for a listing, for callers outside this module (the chat

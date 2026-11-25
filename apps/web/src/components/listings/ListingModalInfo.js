@@ -608,8 +608,14 @@ function ReviewsTab({
   }
 
   const userId = session?.user?.id;
-  const isLandlord =
-    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  // Any landlord linked to the listing, not just the primary one: getListing
+  // says so for the signed-in viewer without sending the landlord list.
+  const isLandlord = Boolean(
+    userId &&
+      (listing?.owner?._id === userId ||
+        listing?.owner?.id === userId ||
+        listing?.viewerIsLandlord)
+  );
 
   async function handleReport(review) {
     const res = await fetch("/api/reviewReport", {
@@ -1535,7 +1541,7 @@ export default function ListingModalInfo({
   compact = false,
   tabBarAction = null,
   // The unit that satisfied the browse filters, if the renter arrived from a
-  // filtered search. See lib/listings/filterListings.js.
+  // filtered search. See packages/shared/src/formatters/listingFilters.js.
   initialUnitId = null,
   /*
    * True while the caller is still fetching the full listing. The browse panel

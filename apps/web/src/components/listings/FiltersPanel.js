@@ -2,102 +2,39 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { DEFAULT_FILTERS, TERM_RANGES } from "@/lib/listings/filterListings";
+// The filters' options, labels, steps and price mapping come from the shared
+// package, which the app's filter sheet reads too.
+import {
+  DEFAULT_FILTERS,
+  BED_STEPS,
+  BATH_STEPS,
+  CAMPUS_STEPS,
+  SHUTTLE_STEPS,
+  FILTER_MONTHS as MONTHS,
+  DAYS_IN_MONTH,
+  FILTER_DURATIONS as DURATIONS,
+  FILTER_HOME_TYPES as HOME_TYPES,
+  FILTER_AMENITIES as AMENITIES,
+  FILTER_UTILITIES as UTILITIES,
+  FILTER_FURNISHED as FURNISHED,
+  durationLabel,
+  durationMonths,
+  durationFromMonths,
+  stepIndex,
+  stepLimits,
+  rentRange,
+  rentFilters,
+} from "@proximity/shared";
 import {
   ClearFilter,
   StepRange,
   useLiveFilters,
-  stepIndex,
-  stepLimits,
-  BED_STEPS,
-  BATH_STEPS,
 } from "@/components/listings/FilterComponents";
-import {
-  PriceRangeSlider,
-  rentRange,
-  rentFilters,
-} from "@/components/listings/PriceFilterCard";
+import { PriceRangeSlider } from "@/components/listings/PriceFilterCard";
 
 const ACCENT = "panel";
 // No edit waiting to be sent. One object, so "nothing waiting" is not a change.
 const NO_EDITS = {};
-
-// The design shows one stop fewer than the filter has: its last stop is the
-// open end ("" = any distance), so the "45" and "20" minute values are not
-// offered here (they still filter as before, and show at the last stop).
-const CAMPUS_STEPS = [
-  { label: "10 min", value: "10" },
-  { label: "15 min", value: "15" },
-  { label: "20 min", value: "20" },
-  { label: "30min", value: "30" },
-  { label: "45min+", value: "" },
-];
-const SHUTTLE_STEPS = [
-  { label: "2 min", value: "2" },
-  { label: "5 min", value: "5" },
-  { label: "10 min", value: "10" },
-  { label: "20min", value: "" },
-];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-// February offers the 29th: the filter is for a month of any year.
-const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-// Lease durations always offered. The renter can add others with "Other".
-const DURATIONS = ["6-month", "10-month", "12-month"];
-const MAX_DURATION_MONTHS = 36;
-// "9-month" to "9-Month Lease". The two older values (from filters saved before
-// durations were month counts) keep their names, and the ranges Find Your Place
-// hands over read as ranges.
-const durationLabel = (value) =>
-  TERM_RANGES[value]?.label ||
-  ({ semester: "Semester Lease", summer: "Summer Lease" })[value] ||
-  `${parseInt(value, 10)}-Month Lease`;
-const durationMonths = (value) => TERM_RANGES[value]?.order ?? (parseInt(value, 10) || 0);
-const HOME_TYPES = [
-  { label: "Apartment", value: "apartment" },
-  { label: "House", value: "house" },
-  { label: "Studio", value: "studio" },
-  { label: "Townhouse", value: "townhouse" },
-  { label: "Single Room", value: "single_room" },
-  { label: "Condo", value: "condo" },
-];
-// The labels say what the listing data knows: it records laundry, parking and
-// storage, not whether they are in-unit, private or extra. The values are the
-// filter's older names, kept so saved filters still mean the same thing
-// (filterListings maps them to the data's names).
-const AMENITIES = [
-  { label: "Dishwasher", value: "dishwasher" },
-  { label: "Laundry", value: "in_unit_laundry" },
-  { label: "Air Conditioning", value: "ac_heating" },
-  { label: "Mailroom", value: "mailroom" },
-  { label: "Pets Allowed", value: "pets_allowed" },
-  { label: "Storage", value: "extra_storage" },
-  { label: "Parking", value: "private_parking" },
-  { label: "Pool", value: "pool" },
-  { label: "Study Rooms", value: "study_room" },
-  { label: "Gym / Fitness", value: "gym" },
-];
-// Every value is one the listing data records (the feed's utilitiesRowToArray).
-// The design's Hot Water and Yard Care are not recorded, so they matched
-// nothing; Heat and Cable take their places.
-const UTILITIES = [
-  { label: "Water", value: "water" },
-  { label: "Electric", value: "electric" },
-  { label: "Gas", value: "gas" },
-  { label: "Internet", value: "internet" },
-  { label: "Trash", value: "trash" },
-  { label: "Heat", value: "heat" },
-  { label: "Sewer", value: "sewer" },
-  { label: "Cable", value: "cable" },
-];
-const FURNISHED = [
-  { label: "Any", value: "" },
-  { label: "Furnished", value: "furnished" },
-  { label: "Unfurnished", value: "unfurnished" },
-];
 
 // A titled block. className places it (its top margin), inset is the title's
 // and chips' left padding: the design does not keep one left edge. With
@@ -166,11 +103,9 @@ export default function FiltersPanel({
   // The "Other" box: null when closed, else the text typed so far.
   const [otherMonths, setOtherMonths] = useState(null);
   const addDuration = () => {
-    const months = Number(otherMonths);
+    const value = durationFromMonths(otherMonths);
     setOtherMonths(null);
-    if (!Number.isInteger(months) || months < 1 || months > MAX_DURATION_MONTHS)
-      return;
-    const value = `${months}-month`;
+    if (!value) return;
     if (!DURATIONS.includes(value))
       setAddedDurations((added) => (added.includes(value) ? added : [...added, value]));
     setEdits((e) => {

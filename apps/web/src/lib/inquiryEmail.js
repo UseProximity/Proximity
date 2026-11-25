@@ -21,7 +21,9 @@
  * There is no "Reply above this line" marker (Wyatt, 2026-11-20: it sat under
  * the message, so it read backwards). Inbound parsing
  * (lib/chat/emailReplyText.js) cuts a reply at the quote header ("On ...
- * wrote:", Outlook's From/Sent block), the "-- " line, or the first details
+ * wrote:", Outlook's From/Sent block, in several languages), the reminder
+ * lead, the first line of a message the email carried (the inbound handler
+ * passes the thread's recent messages), the "-- " line, or the first details
  * line ("Message sent through Proximity" and the like).
  *
  * Pure string work, so the layout can be tested and previewed without sending.

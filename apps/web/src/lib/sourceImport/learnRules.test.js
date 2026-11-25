@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { editedFields, trimForLandlord, rentBasisFrom, convertRentBasis, applyAliases, renamedUnitKey, sameValue } from "./learnRules.js";
+import { editedFields, trimForLandlord, rentBasisFrom, convertRentBasis, applyAliases, renamedUnitKey, sameValue, syncedLeaseRecord, isSyncBlank } from "./learnRules.js";
 
 const synced = { rent: 1200, rent_is_per_person: false, lease_term_months: [12], available_from: null, description: "Apt 2B" };
 
@@ -85,4 +85,35 @@ test("a website name is learned only when the name is all that differs", async (
   // Size differs too: a layout match, not a rename.
   assert.equal(learnableSiteName({ ...base, field: "area,name", old: { name: "Holden" }, new: { name: "Horne" } }), false);
   assert.equal(learnableSiteName({ ...base, field: "bedrooms" }), false);
+});
+
+test("only a blank the sync created on a call-for-price read is a sync blank", () => {
+  const blank = { rent: null };
+  // Created by a read that priced nothing on the website: marked.
+  const created = syncedLeaseRecord(null, { values: { rent: null, rent_is_per_person: null, lease_term_months: [] }, askForPrice: true });
+  assert.equal(created.askForPrice, true);
+  assert.equal(isSyncBlank(blank, created), true);
+  // A later sync write (new dates) keeps the marker while the lease stays blank.
+  const later = syncedLeaseRecord(created, { values: { available_from: "2027-01-01" } }, blank);
+  assert.equal(isSyncBlank(blank, later), true);
+  // The landlord's own blank lease, relisted by the sync: its blank rent is
+  // remembered, but that is not a sync blank (PR 478 review).
+  const relisted = syncedLeaseRecord({ rent: null, rent_is_per_person: null }, { values: { unavailable: false, is_active: true } }, blank);
+  assert.equal(relisted.rent, null);
+  assert.equal(isSyncBlank(blank, relisted), false);
+  // No memory at all: the landlord's.
+  assert.equal(isSyncBlank(blank, undefined), false);
+});
+
+test("a sync blank stops being one once it has a rent", () => {
+  const created = syncedLeaseRecord(null, { values: { rent: null }, askForPrice: true });
+  // The website priced it and the sync wrote the price.
+  const priced = syncedLeaseRecord(created, { values: { rent: 1200 } }, { rent: null });
+  assert.equal("askForPrice" in priced, false);
+  // The landlord priced it, then the sync wrote something else.
+  const landlordPriced = syncedLeaseRecord(created, { values: { available_from: "2027-01-01" } }, { rent: 1300 });
+  assert.equal("askForPrice" in landlordPriced, false);
+  assert.equal(isSyncBlank({ rent: null }, landlordPriced), false);
+  // A lease with a rent now is never a sync blank, marker or not.
+  assert.equal(isSyncBlank({ rent: 1200 }, created), false);
 });

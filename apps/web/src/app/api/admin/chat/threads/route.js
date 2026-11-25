@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { alertEmailsFor } from "@/lib/chat/alertRoutes";
+import { testingAs } from "@/lib/agents/access";
 
 /*
  * Every chat thread, summarised for the admin Conversations view: who is
@@ -96,6 +97,17 @@ export async function GET(req) {
         ? alertEmailsFor(supabase, threads.filter((t) => t.landlord_id).map((t) => ({ threadId: t.id, userId: t.landlord_id })))
         : new Map(),
     ]);
+    // Threads that ran in test mode (recorded with each question at the time), and
+    // who owns each listing, so a tester is not shown as a student.
+    const agentIds = kind === "agent" ? threads.map((t) => t.id) : [];
+    const [testRows, owners] = agentIds.length
+      ? await Promise.all([
+          fetchAll(supabase.from("listing_agent_questions").select("thread_id").in("thread_id", agentIds).eq("outcome", "test")),
+          listingIds.length ? fetchAll(supabase.from("listing_landlords").select("listing_id, user_id").in("listing_id", listingIds)) : [],
+        ])
+      : [[], []];
+    const testThreads = new Set(testRows.map((r) => r.thread_id));
+    const ownerKeys = new Set(owners.map((o) => `${o.listing_id}:${o.user_id}`));
 
     const userById = new Map(users.map((u) => [u.id, { id: u.id, name: u.name, email: u.email, role: u.roles?.name ?? null }]));
     const listingById = new Map(listings.map((l) => [l.id, l]));
@@ -130,7 +142,9 @@ export async function GET(req) {
       landlord: userById.has(t.landlord_id)
         ? { ...userById.get(t.landlord_id), alertEmail: alertRoutes.get(t.id) ?? null }
         : null,
-      student: userById.get(t.interested_user_id) ?? null,
+      student: userById.has(t.interested_user_id)
+        ? { ...userById.get(t.interested_user_id), testing: testingAs(userById.get(t.interested_user_id), { wasTest: testThreads.has(t.id), ownsThisListing: ownerKeys.has(`${t.listing_id}:${t.interested_user_id}`) }) }
+        : null,
       // A signed-out visitor talking with Proxy: their cookie id and, once
       // confirmed, the email Proxy writes to.
       visitor: t.interested_user_id || !t.visitor_id ? null : { id: t.visitor_id, email: t.notify_email ?? null },

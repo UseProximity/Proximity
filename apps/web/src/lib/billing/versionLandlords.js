@@ -7,10 +7,12 @@
  * `db` is a service-role Supabase client and `documenso` a client from
  * documenso.js, passed in so this stays testable.
  */
-import { PAPER, cancelInDocumenso, endDocument } from "./agreements.js";
+import { PAPER, applyEnvelope, endDocument } from "./agreements.js";
 import { getLiveVersion, isCustom } from "./agreementVersions.js";
 
 const PENDING = ["not_sent", "sent"];
+// What Documenso says about a copy that is already finished: applied, never voided.
+const SETTLED = ["COMPLETED", "REJECTED", "CANCELLED"];
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
 
 const nameOf = (u) => u?.name || u?.company_name || u?.email || "Landlord";
@@ -89,17 +91,44 @@ export async function landlordFlags(db, landlordIds) {
 }
 
 /*
+ * Withdraw one open copy, and void its row only once Documenso has let it go.
+ * The envelope is read first: a copy the landlord has just signed or declined
+ * (its webhook may not have landed yet) is applied as the webhook would apply
+ * it, so a signature is never thrown away. A copy out for signing is cancelled
+ * and a draft deleted; when that call fails, the row stays open and the error
+ * is passed on. Returns "cancelled", or what applyEnvelope did.
+ */
+async function withdrawCopy(db, documenso, kind, row, { now, envelopeOptions }) {
+  if (row.provider_envelope_id) {
+    const envelope = await documenso.getEnvelope(row.provider_envelope_id);
+    if (SETTLED.includes(envelope?.status)) return applyEnvelope(db, documenso, envelope, { ...envelopeOptions, now });
+    const reason = "Replaced by an updated agreement";
+    // Only a draft is deleted: cancel fails on a copy signed a moment ago, where
+    // discard would fall back to deleting it.
+    if (envelope?.status === "DRAFT" && documenso.discard) await documenso.discard(row.provider_envelope_id, reason);
+    else await documenso.cancel(row.provider_envelope_id, reason);
+  }
+  return (await endDocument(db, kind, row, "replaced by an updated agreement", now)) ? "cancelled" : "unchanged";
+}
+
+/*
  * These landlords' version of `kind` just changed (added to or taken off a live
  * custom version, or one went live for them): an unsigned copy they have open in
  * Documenso on another version is cancelled now, so they get the right one when
  * they next sign (Wyatt, 2026-11-22). Only copies they sign themselves: an
  * account with an authorized signer signs through the signer, whose version did
  * not change. Paper copies keep the wording they were printed with, and a copy
- * the team marked as sent by hand has nothing to cancel. Returns how many were cancelled.
+ * the team marked as sent by hand has nothing to cancel.
+ *
+ * `envelopeOptions` are applyEnvelope's options (agreementServices().options),
+ * for a copy found already signed or declined. Every copy is tried; when any
+ * could not be withdrawn, it stays open and this throws after the rest. Returns
+ * how many were cancelled.
  */
-export async function cancelOpenCopies(db, documenso, { landlordIds, kind, now = new Date() }) {
+export async function cancelOpenCopies(db, documenso, { landlordIds, kind, now = new Date(), envelopeOptions = {} }) {
   const ids = [...new Set((landlordIds ?? []).filter(Boolean))];
   let cancelled = 0;
+  let failed = null;
   for (const id of ids) {
     const version = await getLiveVersion(db, { kind, landlordId: id });
     const open =
@@ -112,9 +141,13 @@ export async function cancelOpenCopies(db, documenso, { landlordIds, kind, now =
           );
     for (const row of open) {
       if (version && row.version_id === version.id) continue;
-      await cancelInDocumenso(documenso, row, "Replaced by an updated agreement");
-      if (await endDocument(db, kind, row, "replaced by an updated agreement", now)) cancelled += 1;
+      try {
+        if ((await withdrawCopy(db, documenso, kind, row, { now, envelopeOptions })) === "cancelled") cancelled += 1;
+      } catch (err) {
+        failed ??= err;
+      }
     }
   }
+  if (failed) throw failed;
   return cancelled;
 }

@@ -26,7 +26,7 @@ const BROWSE_AMENITY = {
 };
 
 // Find Your Place lease answer -> browse's lease ranges (TERM_RANGES in
-// lib/listings/filterListings.js), the same buckets the matcher counts as a fit.
+// packages/shared/src/formatters/listingFilters.js), the same buckets the matcher counts as a fit.
 const BROWSE_LEASE = {
   semester: ["semester-term"],
   academic: ["academic-year"],

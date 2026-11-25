@@ -48,8 +48,6 @@ async function loadTour(tourId) {
   const sandbox = (await sandboxIdsAmong([t.student_id, t.landlord_id])).size > 0;
   return {
     t, student: student.data, landlord: landlord.data, sandbox, unit,
-    // What the landlord may call the student: their name only once it is shown.
-    studentLabel: (nameShown(t) && student.data?.name) || null,
     // Landlord emails sign with the first name from the request on (Wyatt,
     // 2026-11-20); the app still says "A student" until nameShown.
     firstName: String(student.data?.name ?? "").trim().split(/\s+/)[0] || null,
@@ -60,9 +58,11 @@ async function loadTour(tourId) {
 }
 
 /*
- * Whether the landlord may see who the student is (Wyatt, 2026-10-29): only
- * once the tour is confirmed or the two are put in touch in a direct chat.
- * Until then the student is "A student", in the app and in emails.
+ * Whether the app shows the landlord who the student is (Wyatt, 2026-10-29):
+ * only once the tour is confirmed or the two are put in touch in a direct
+ * chat. Until then the app says "A student". Landlord emails do not wait for
+ * this: they sign with the student's first name from the request on (Wyatt,
+ * 2026-11-20, see firstName in loadTour).
  */
 export const nameShown = (t) => !!t.thread_id || ["confirmed", "messaging"].includes(t.status);
 
@@ -196,7 +196,17 @@ export async function notifyTourCancelled({ tourId, by }) {
   // Either way the landlord hears: the student's cancellation, or a
   // confirmation of their own (Wyatt, 2026-11-20).
   if (canEmail(r.landlord)) {
-    const input = { firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, when, dashboardUrl: dashboardTours() };
+    /*
+     * The student's cancellation is in their voice, so a reply to it must reach
+     * them: it carries the landlord's reply address on the tour's chat, like
+     * the other tour emails. With no chat (or no address) a reply could only
+     * land in our own inbox, so it comes From "Proximity" rather than the
+     * student's name (PR #478 review).
+     */
+    const replyTo = by === "student" && r.t.thread_id
+      ? await ensureReplyAddress({ threadId: r.t.thread_id, userId: r.landlord.id }).catch(() => null)
+      : null;
+    const input = { firstName: r.firstName, listingLabel: r.listingLabel, unit: r.unit, when, dashboardUrl: dashboardTours(), canReply: !!replyTo };
     const email = by === "student" ? buildTourCancelledEmail(input) : buildTourCancelledByLandlordEmail(input);
     await sendLandlordTourEmail({
       sandbox: r.sandbox,
@@ -207,7 +217,10 @@ export async function notifyTourCancelled({ tourId, by }) {
         ? await routedInquiryEmail({ landlordId: r.landlord.id, listingId: r.t.listing_id, leaseId: r.t.lease_id, accountEmail: r.landlord.email })
         : r.landlord.email,
       ...email,
+      ...(replyTo ? {} : { fromName: "Proximity" }),
       userId: r.landlord.id,
+      replyTo,
+      threadId: r.t.thread_id,
     });
     sent.push("landlord");
   }
