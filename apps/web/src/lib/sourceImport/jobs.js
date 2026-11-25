@@ -17,6 +17,7 @@
  * draft. Its job reads the site the same way and records every difference as
  * an open change for the landlord to accept on that tab.
  */
+import { loadRecipes, saveMadeRecipe } from "./recipeStore.js";
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
 import { markAlreadyListed } from "./alreadyListed.js";
@@ -463,7 +464,10 @@ export async function runJob(jobId) {
           target: { name: target.name, address: target.address, url: target.url, levelUrl: target.levelUrl },
           onStep,
           knownPortal,
+          // A platform (or this listing's) recipe lets code read the units; the read works a new one out otherwise.
+          recipeFor: (platformKey) => loadRecipes(listing.id, platformKey),
         });
+    if (!grouped) await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
 
     // Cancelled while the site was being read: write nothing.
     const { data: still } = await supabase.from("listing_import_jobs").select("status").eq("id", jobId).maybeSingle();

@@ -22,6 +22,7 @@
  * The interval lives on the monitor (check_interval_days, default 1 since
  * the agents), so moving a landlord to weekly is a column update.
  */
+import { loadRecipes, saveMadeRecipe, noteRecipeRun, recipesOn } from "./recipeStore.js";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, needsLook, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
 import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
@@ -128,7 +129,7 @@ export async function monitorFor(listingId) {
 async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
   // The snapshot minus photo lists, which are long and not what a diff needs.
   const normalized = snapshot
-    ? { ...snapshot, evidence: undefined, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
+    ? { ...snapshot, evidence: undefined, recipe: snapshot.recipe ? { ...snapshot.recipe, made: snapshot.recipe.made ? true : null } : undefined, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
     : null;
   await supabase.from("listing_source_snapshots").insert({
     monitor_id: monitorId,
@@ -194,6 +195,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
       deep: goDeep,
+      // Every day but the weekly deep read: code reads, no model (recipes).
+      daily: !goDeep && recipesOn(),
+      recipeFor: (platformKey) => loadRecipes(listing.id, platformKey),
       deadline: started + READ_BUDGET_MS,
       // Nothing is applied while a portal walk is unfinished, so the read
       // stops there and leaves the run's time to the walk.
@@ -201,6 +205,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    // The recipe this read used or worked out (recipeStore.js).
+    await noteRecipeRun({ info: snapshot.recipe });
+    await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
     /*
      * A leasing portal too large to walk in one run: what it has so far is
      * on the monitor and the listing is due again at once, so the next run

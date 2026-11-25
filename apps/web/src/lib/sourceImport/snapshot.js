@@ -224,6 +224,8 @@ export function cleanUnit(unit) {
   };
   // Read by the model from page text rather than from a feed or portal.
   if (unit.fromModel === true) cleaned.fromModel = true;
+  // Which reader: a recipe replayed by code, the pattern parser, or (absent) the model.
+  if (unit.readBy === "recipe" || unit.readBy === "pattern") cleaned.readBy = unit.readBy;
   cleaned.key = unit.key ?? unitKey(cleaned);
   return cleaned;
 }
@@ -258,6 +260,7 @@ export function makeSnapshot({
     existing.name ??= u.name;
     existing.available = existing.available && u.available;
     if (!u.fromModel) delete existing.fromModel;
+    if (!u.readBy) delete existing.readBy;
     existing.photos = [...new Set([...existing.photos, ...u.photos])];
     existing.offers = consolidateOffers([...existing.offers, ...u.offers]);
   }

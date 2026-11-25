@@ -54,6 +54,10 @@ export function primaryField(c) {
 export function sourceOf(c, snapUnit, snapshot) {
   const platform = String(snapshot?.trace?.reader ?? snapshot?.platform ?? "generic");
   if (c.detail?.fromUnitPage) return { source: "unit_page", trust: TRUST.feed, platform };
+  if (snapUnit?.readBy === "recipe") return { source: "recipe", trust: TRUST.recipe, platform: `recipe${snapshot?.recipe?.platformKey ? `/${snapshot.recipe.platformKey}` : ""}` };
+  if (snapUnit?.readBy === "pattern") return { source: "pattern", trust: TRUST.pattern, platform: "pattern" };
+  // A change with no website unit behind it (a withdrawal) on a read code made.
+  if (!snapUnit && snapshot?.trace?.codeOnly && /^(recipe|pattern)$/.test(platform)) return { source: platform, trust: platform === "recipe" ? TRUST.recipe : TRUST.pattern, platform };
   if (snapUnit?.fromModel || c.facts?.fromModel) return { source: "model", trust: TRUST.haiku, platform: `${platform}/model` };
   if (snapshot?.portal?.walked) return { source: "portal", trust: TRUST.feed, platform };
   if (/^(g5|sightmap|securecafe)/.test(platform)) return { source: "feed", trust: TRUST.feed, platform };

@@ -199,7 +199,7 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
     const start = text.lastIndexOf("\n", s.at.index) + 1;
     const next = placed[i + 1] && placed[i + 1].at.page === s.at.page ? text.lastIndexOf("\n", placed[i + 1].at.index) + 1 : text.length;
     const block = text.slice(start, Math.max(start + s.name.length, Math.min(next, start + BLOCK_MAX)));
-    return { name: s.name, ...parseBlock(block, today), photos: [], floorPlanImageUrl: null, fromPage: true, source: "recipe", evidence: { url: use[s.at.page].url, text: block } };
+    return { name: s.name, ...parseBlock(block, today), photos: [], floorPlanImageUrl: null, fromModel: true, readBy: "recipe", source: "the website, read by its recipe", evidence: { url: use[s.at.page].url, text: block } };
   });
   const recipeNames = new Set((recipe.names ?? []).map(norm));
   return {
@@ -221,7 +221,7 @@ function replayLayout(pages, today) {
       if (parsed.bedrooms == null) return;
       const twin = units.find((u) => u.bedrooms === parsed.bedrooms && u.bathrooms === parsed.bathrooms && u.area === parsed.area);
       if (twin) return;
-      units.push({ name: null, ...parsed, photos: [], floorPlanImageUrl: null, fromPage: true, source: "pattern", evidence: { url: p.url, text: block } });
+      units.push({ name: null, ...parsed, photos: [], floorPlanImageUrl: null, fromModel: true, readBy: "pattern", source: "the website, read by pattern", evidence: { url: p.url, text: block } });
     });
   }
   return { units, found: units.length, missing: [], added: [] };
@@ -268,4 +268,94 @@ export function recipeBroken(recipe, replay) {
   if (recipe.kind === "layout") return replay.units.length === 0;
   const total = (recipe.names ?? []).length;
   return total > 0 && replay.found < Math.max(1, Math.ceil(total * 0.5));
+}
+
+/*
+ * The platform a site is built on, from its pages' HTML: the key platform
+ * recipes are shared under. null for a site of its own.
+ */
+const PLATFORM_HINTS = [
+  ["rentcafe", /rentcafe\.com|securecafe\.com|cdngeneral\.rentcafe/i],
+  ["entrata", /entrata\.com|medialibrarycf\.entrata/i],
+  ["appfolio", /appfolio\.com|appfolioim/i],
+  ["rentfetch", /rent-?fetch|rentfetch/i],
+  ["apartments247", /apartments247\.com/i],
+  ["g5", /g5-?(?:cms|static|search)|getg5\.com/i],
+  ["repli", /repli360|repli\.com/i],
+  ["rentmanager", /rentmanager\.com|rmresident/i],
+  ["buildium", /managebuilding\.com|buildium/i],
+  ["doorloop", /doorloop\.com/i],
+  ["rentvine", /rentvine\.com/i],
+  ["showmojo", /showmojo\.com/i],
+  ["tenantturner", /tenantturner\.com/i],
+  ["knock", /knockrentals|knockcrm/i],
+  ["jonah", /jonahdigital|jd-fp-/i],
+  ["resman", /myresman\.com/i],
+];
+export function detectPlatform(pages) {
+  try {
+    const host = new URL(pages?.[0]?.url ?? "").hostname.replace(/^www\./, "");
+    if (/(^|\.)zillow\.com$/.test(host)) return "zillow";
+    if (/(^|\.)apartments\.com$/.test(host)) return "apartments.com";
+    if (/(^|\.)furnishedfinder\.com$/.test(host)) return "furnishedfinder";
+  } catch {
+    // not a URL: fall through to the HTML hints
+  }
+  const html = (pages ?? []).map((p) => p.html ?? "").join("\n").slice(0, 2_000_000);
+  for (const [key, re] of PLATFORM_HINTS) if (re.test(html)) return key;
+  return null;
+}
+
+/*
+ * Digging deeper (Wyatt, 2026-11-24): the links worth opening for units whose
+ * price is missing or only a starting-at. A link that names the unit comes
+ * first, then availability and pricing pages. Same site only; at most `max`.
+ *   links  [{ url, text }]
+ */
+export function deeperLinks({ units, links, visited = new Set(), origin = null, max = 4 }) {
+  const need = (units ?? []).filter((u) => u.available !== false && (!(u.offers ?? []).length || (u.offers ?? []).every((o) => o.rentIsExact === false)));
+  if (!need.length) return [];
+  const scored = [];
+  for (const l of links ?? []) {
+    if (!l?.url || visited.has(l.url)) continue;
+    let host = null;
+    try { host = new URL(l.url).host; } catch { continue; }
+    if (origin && host.replace(/^www\./, "") !== origin.replace(/^www\./, "")) continue;
+    const hay = `${l.url} ${l.text ?? ""}`.toLowerCase();
+    if (/\.(?:pdf|jpe?g|png|webp|gif)(?:\?|$)|mailto:|tel:|#/.test(l.url)) continue;
+    let score = 0;
+    const unit = need.find((u) => norm(u.name).length >= 3 && norm(hay).includes(norm(u.name)));
+    if (unit) score += 5;
+    if (/availab/.test(hay)) score += 4;
+    if (/pricing|rates|rent\b|lease-?terms/.test(hay)) score += 3;
+    if (/floor-?plans?|units?\b|apartments?\b/.test(hay)) score += 2;
+    if (/apply|contact|tour|schedule|gallery|photo|blog|neighborhood|amenit|login|portal|resident/.test(hay)) score -= 4;
+    if (score >= 3) scored.push({ url: l.url, score, unit: unit?.name ?? null });
+  }
+  const seen = new Set();
+  return scored.sort((a, b) => b.score - a.score).filter((x) => !seen.has(x.url) && seen.add(x.url)).slice(0, max);
+}
+
+/*
+ * Lay a deeper page's exact prices over units that had none. A page opened
+ * for one unit speaks for that unit; any other page must name the unit.
+ * Mutates and returns the units.
+ */
+export function deepenUnits(units, pages, { today = new Date() } = {}) {
+  for (const u of units ?? []) {
+    if ((u.offers ?? []).some((o) => o.rentIsExact !== false) || !norm(u.name)) continue;
+    for (const p of pages ?? []) {
+      const at = locate([p], u.name);
+      if (!at && p.forUnit !== u.name) continue;
+      const start = at ? p.text.lastIndexOf("\n", at.index) + 1 : 0;
+      const parsed = parseBlock(p.text.slice(start, start + (p.forUnit === u.name ? 6000 : BLOCK_MAX)), today);
+      const exact = parsed.offers.filter((o) => o.rentIsExact);
+      if (!exact.length) continue;
+      u.offers = exact;
+      u.available = true;
+      u.evidence = { url: p.url, text: p.text.slice(start, start + BLOCK_MAX) };
+      break;
+    }
+  }
+  return units;
 }
