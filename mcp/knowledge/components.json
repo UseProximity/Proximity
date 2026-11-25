@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-23T20:10:21.951Z",
-  "count": 228,
+  "_generated": "2026-11-25T05:34:25.594Z",
+  "count": 229,
   "components": [
     {
       "name": "ErrorReporter",
@@ -131,6 +131,11 @@
     {
       "name": "SentEmailsView",
       "file": "src/components/admin/SentEmailsView.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "SyncDecisions",
+      "file": "src/components/admin/SyncDecisions.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

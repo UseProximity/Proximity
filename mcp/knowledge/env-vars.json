@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-17T16:41:02.050Z",
-  "count": 111,
+  "_generated": "2026-11-25T05:34:25.757Z",
+  "count": 113,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -17,6 +17,10 @@
     },
     {
       "name": "AIRTABLE_API_KEY",
+      "public": false
+    },
+    {
+      "name": "AI_GATEWAY_API_KEY",
       "public": false
     },
     {
@@ -248,18 +252,6 @@
       "public": false
     },
     {
-      "name": "JINA_API_KEY",
-      "public": false
-    },
-    {
-      "name": "JINA_READER_KEY",
-      "public": false
-    },
-    {
-      "name": "JINA_READER_KEY_2",
-      "public": false
-    },
-    {
       "name": "LEASE_SCANNER_KEY",
       "public": false
     },
@@ -428,7 +420,23 @@
       "public": false
     },
     {
-      "name": "TAVILY_API_KEY",
+      "name": "SYNC_CHECKER",
+      "public": false
+    },
+    {
+      "name": "SYNC_JEV",
+      "public": false
+    },
+    {
+      "name": "SYNC_LEDGER_DECIDES",
+      "public": false
+    },
+    {
+      "name": "SYNC_RECIPES",
+      "public": false
+    },
+    {
+      "name": "SYNC_SHADOW_SCORES",
       "public": false
     },
     {

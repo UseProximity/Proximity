@@ -98,6 +98,8 @@ export function parseEntrataFloorPlans(html, pageUrl) {
     const priceAttr = money(attr(block, "data-price"));
     const priceText = money(block.match(/fp-price-value[^>]*>\s*\$?\s*([\d,]+(?:\.\d{2})?)/i)?.[1]);
     const rent = priceAttr ?? priceText;
+    // "Starting at $1,965" is the plan's lowest price, not a lease's price.
+    const rentIsExact = !/fp-price-label[^>]*>\s*(?:starting|from)/i.test(block);
 
     const id = block.match(/data-id=["'](\d+)["']/)?.[1] ?? block.match(/#unit_(\d+)/)?.[1] ?? null;
     const popup = popupFor(html, id);
@@ -126,7 +128,7 @@ export function parseEntrataFloorPlans(html, pageUrl) {
       floorPlanImageUrl: img ? decode(img) : null,
       available: !waitlisted,
       photos: [],
-      offers: rent == null ? [] : [{ rent, rentIsPerPerson: perPerson, leaseTermMonths: [], availableFrom, apartments: [] }],
+      offers: rent == null ? [] : [{ rent, rentIsPerPerson: perPerson, rentIsExact, leaseTermMonths: [], availableFrom, apartments: [] }],
     });
   }
 

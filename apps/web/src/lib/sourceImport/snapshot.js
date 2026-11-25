@@ -178,6 +178,8 @@ export function consolidateOffers(raw = []) {
         // plan.
         dateStated: raw !== null || o.availableNow === true,
         rentExact: o.rentIsExact !== false,
+        // A starting price taken as the price because one unit is left.
+        rentOnlyUnit: o.onlyUnit === true,
         termsInferred: o.termsInferred === true,
       });
       continue;
@@ -188,6 +190,7 @@ export function consolidateOffers(raw = []) {
     g.availableNow = g.availableNow || o.availableNow === true;
     g.dateStated = g.dateStated || raw !== null || o.availableNow === true;
     g.rentExact = g.rentExact && o.rentIsExact !== false;
+    g.rentOnlyUnit = g.rentOnlyUnit && o.onlyUnit === true;
     g.termsInferred = g.termsInferred || o.termsInferred === true;
     if (date === null) g.availableFrom = null;
     else if (g.availableFrom !== null && date < g.availableFrom) g.availableFrom = date;
@@ -224,6 +227,8 @@ export function cleanUnit(unit) {
   };
   // Read by the model from page text rather than from a feed or portal.
   if (unit.fromModel === true) cleaned.fromModel = true;
+  // Which reader: a recipe replayed by code, the pattern parser, or (absent) the model.
+  if (unit.readBy === "recipe" || unit.readBy === "pattern") cleaned.readBy = unit.readBy;
   cleaned.key = unit.key ?? unitKey(cleaned);
   return cleaned;
 }
@@ -258,6 +263,7 @@ export function makeSnapshot({
     existing.name ??= u.name;
     existing.available = existing.available && u.available;
     if (!u.fromModel) delete existing.fromModel;
+    if (!u.readBy) delete existing.readBy;
     existing.photos = [...new Set([...existing.photos, ...u.photos])];
     existing.offers = consolidateOffers([...existing.offers, ...u.offers]);
   }
