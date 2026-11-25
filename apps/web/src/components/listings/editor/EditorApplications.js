@@ -21,7 +21,7 @@ const Count = ({ data, value }) =>
 
 export default function EditorApplications({ listing, viewAsId = null }) {
   const listingId = listing?._id || listing?.id;
-  const hasLink = (listing?.myLeases ?? []).some((l) => l.applicationUrl);
+  const hasLink = (listing?.contactLeases ?? listing?.myLeases ?? []).some((l) => l.applicationUrl);
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);
 

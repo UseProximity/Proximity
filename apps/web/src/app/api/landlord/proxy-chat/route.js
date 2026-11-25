@@ -86,7 +86,7 @@ export async function POST(req) {
       const questionId = body.questionId && UUID.test(String(body.questionId)) ? String(body.questionId) : null;
       const tourId = !questionId && body.tourId && UUID.test(String(body.tourId)) ? String(body.tourId) : null;
       const r = await sendLandlordMessage({ userId, isAdmin, listingId, text: body.text, questionId, tourId });
-      if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
+      if (r.error) return NextResponse.json({ error: r.error, code: r.code, settingsUrl: r.settingsUrl, actionLabel: r.actionLabel }, { status: r.status ?? 400 });
       return NextResponse.json(r);
     }
     if (body.action === "decide") {
