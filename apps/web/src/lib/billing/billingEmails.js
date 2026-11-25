@@ -135,3 +135,14 @@ export const sendPayerRevokedEmail = (payer, input) =>
   toLandlord("billing_payer_revoked", payer, t.payerRevokedEmail({ name: payer.name, ...input }));
 export const sendPayeeAssignedEmail = (landlord, input) =>
   toLandlord("billing_payee_assigned", landlord, t.payeeAssignedEmail({ name: landlord.name, ...input }));
+// Authorized payer (Wyatt, 2026-11-25).
+export const sendAuthorizedPayerInviteEmail = (payer, input) =>
+  toLandlord("billing_authorized_payer_invite", payer, t.authorizedPayerInviteEmail({ name: payer.name, ...input }));
+export const sendAuthorizedPayerAcceptedEmail = (landlord, input) =>
+  toLandlord("billing_authorized_payer_accepted", landlord, t.authorizedPayerAcceptedEmail({ name: landlord.name, ...input }));
+export const sendAuthorizedPayerDeclinedEmail = (landlord, input) =>
+  toLandlord("billing_authorized_payer_declined", landlord, t.authorizedPayerDeclinedEmail({ name: landlord.name, ...input }));
+export const sendAuthorizedPayerRemovedEmail = (payer, input) =>
+  toLandlord("billing_authorized_payer_removed", payer, t.authorizedPayerRemovedEmail({ name: payer.name, ...input }));
+export const sendAuthorizedPayerAssignedEmail = (landlord, input) =>
+  toLandlord("billing_authorized_payer_assigned", landlord, t.authorizedPayerAssignedEmail({ name: landlord.name, ...input }));

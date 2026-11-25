@@ -3517,15 +3517,17 @@
       {
         "table": "billing_payers",
         "status": "unreleased",
-        "description": "Project B (202611090001): who signs the marketing agreement and pays for a landlord account. One active row per account (listing_id NULL; per-building payers are Project C). The payer holds one master agreement; the account adds properties by addenda the payer signs. declined_at: the payer declined the last document. RLS on, service role only.",
+        "description": "Who signs and who pays for a landlord account (202611090001, 202611250001). role signer: signs the marketing agreement (holds one master; the account adds properties by addenda they sign). role payer: is invoiced, only once accepted_at is set. listing_id NULL is the whole account, else that one listing of the landlord. Who signs for a listing: its own signer, else the account's, else the landlord. Who is invoiced: its own accepted payer, else the account's, else whoever signs, else the landlord (lib/billing/payerLinks.js billedTo). payer_id is the person named whatever the role. One active row per landlord per listing per role (uq_billing_payers_active). declined_at: a signer declined the last document. Not on prod until 202611250001 is applied there. RLS on, service role only.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
           "payer_id:uuid",
           "listing_id:uuid",
+          "role:text",
           "signer_name:text",
           "signer_email:text",
           "status:text",
+          "accepted_at:timestamptz",
           "ended_reason:text",
           "ended_at:timestamptz",
           "created_by:uuid",

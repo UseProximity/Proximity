@@ -74,11 +74,11 @@ export async function POST(req) {
     const many = Array.isArray(body.accountIds) ? [...new Set(body.accountIds.filter((id) => isUuid(id) && id !== user.id))].slice(0, 50) : [];
     const accountId = isUuid(body.accountId) && body.accountId !== user.id ? body.accountId : many[0] ?? null;
     let listingIds = accountId
-      ? (await Promise.all([...new Set([accountId, ...many])].map((id) => waitingRequests(supabase, id)))).flat().map((w) => w.listing_id)
+      ? (await Promise.all([...new Set([accountId, ...many])].map((id) => waitingRequests(supabase, id, { payerId: user.id })))).flat().map((w) => w.listing_id)
       : ownListingIds(body.listingIds);
     // "Add drafts to your agreement": the account's uncovered drafts go on it too.
     if (accountId && body.includeDrafts === true) {
-      for (const id of new Set([accountId, ...many])) listingIds = [...listingIds, ...(await uncoveredDraftIds(supabase, id))];
+      for (const id of new Set([accountId, ...many])) listingIds = [...listingIds, ...(await uncoveredDraftIds(supabase, id, undefined, { holderId: user.id }))];
     }
     if (disclosure) await saveDisclosure(supabase, user.id, disclosure, { source: "signing" });
     const takeover = body.takeover === true && !accountId;

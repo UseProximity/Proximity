@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-25T19:36:40.068Z",
-  "count": 285,
+  "_generated": "2026-11-25T20:16:47.817Z",
+  "count": 289,
   "routes": [
     {
       "path": "/api/account",
@@ -562,6 +562,18 @@
         "users"
       ],
       "file": "src/app/api/admin/billing/payers/route.js"
+    },
+    {
+      "path": "/api/admin/billing/payers/listings",
+      "methods": [
+        "GET"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/billing/payers/listings/route.js"
     },
     {
       "path": "/api/admin/billing/payers/lookup",
@@ -1621,6 +1633,36 @@
       "file": "src/app/api/billing/agreement/units/route.js"
     },
     {
+      "path": "/api/billing/assignments",
+      "methods": [
+        "GET"
+      ],
+      "auth": "public",
+      "methodAuth": {
+        "GET": "public"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/assignments/route.js"
+    },
+    {
+      "path": "/api/billing/authorized-payers",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "public",
+        "POST": "super",
+        "PATCH": "super"
+      },
+      "tables": [
+        "users"
+      ],
+      "file": "src/app/api/billing/authorized-payers/route.js"
+    },
+    {
       "path": "/api/billing/autopay",
       "methods": [
         "GET",
@@ -1645,7 +1687,9 @@
       "methodAuth": {
         "GET": "public"
       },
-      "tables": [],
+      "tables": [
+        "users"
+      ],
       "file": "src/app/api/billing/charges/route.js"
     },
     {
@@ -1754,6 +1798,20 @@
         "listings"
       ],
       "file": "src/app/api/billing/payer/requests/route.js"
+    },
+    {
+      "path": "/api/billing/paying-for",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "auth": "super",
+      "methodAuth": {
+        "GET": "public",
+        "PATCH": "super"
+      },
+      "tables": [],
+      "file": "src/app/api/billing/paying-for/route.js"
     },
     {
       "path": "/api/billing/payment-methods",

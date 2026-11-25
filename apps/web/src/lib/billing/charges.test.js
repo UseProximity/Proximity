@@ -136,7 +136,7 @@ describe("createCharge validation", () => {
 describe("landlord actions", () => {
   // A db that returns no charge for this landlord: someone else's charge looks like no charge.
   const emptyDb = {
-    from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
   };
 
   it("someone else's charge is simply not found", async () => {

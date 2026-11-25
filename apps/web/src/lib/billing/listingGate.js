@@ -47,7 +47,7 @@ import { getBillingSetting } from "./settings.js";
 import { PAPER_OUT_MESSAGE, agreementState, coverageFor, isPaperOut } from "./agreements.js";
 import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
-import { activePayerLink } from "./payerLinks.js";
+import { billedTo, billingLinksFor, linkForListing } from "./payerLinks.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
 export const AGREEMENT_REQUIRED = "agreement_required";
@@ -112,18 +112,30 @@ export function draftedMessage(missing, uncovered = [], { signerName = null } = 
 // the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
   // A paper copy out (the landlord's or their signer's): no popup, no request to the signer.
-  if (gate.payer && !gate.missing.includes("paper_agreement")) {
+  // (Not when the landlord's own payment method is what is missing: that is theirs to add.)
+  if (gate.payer && !gate.missing.includes("paper_agreement") && !gate.ownMethodMissing) {
     const waits = payerCanFix(gate.missing);
+    // Covered already and only a payment method is missing: say whose.
+    const methodOnly = waits && !gate.missing.includes("agreement") && gate.methodWaitsOn?.length;
+    const methodNames = (gate.methodWaitsOn ?? []).map((w) => w.name).filter(Boolean).join(" and ");
     return {
-      error: waits
-        ? `This needs to be added to ${gate.payer.name}'s agreement before it goes live. Your draft is saved.`
-        : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
+      error: methodOnly
+        ? `This goes live once ${methodNames} adds a payment method. Your draft is saved.`
+        : waits
+          ? `This needs to be added to ${gate.payer.name}'s agreement before it goes live. Your draft is saved.`
+          : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
       code: "billing_setup_required",
       missing: gate.missing,
       // Covered but waiting on the payer's payment method: the listings themselves.
-      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing" })),
+      // Each says who signs for it (`signerName`; null: the landlord), so the page
+      // sends each signer their own and opens signing for the rest (Wyatt, 2026-11-25).
+      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing", signerName: gate.signerNameOf?.[listingId] ?? gate.payer.name })),
       payer: gate.payer,
-      drafted: waits ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.` : draftedMessage(gate.missing, gate.uncovered ?? []),
+      drafted: methodOnly
+        ? `Saved as a draft. Once ${methodNames} adds a payment method, you can publish it.`
+        : waits
+          ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.`
+          : draftedMessage(gate.missing, gate.uncovered ?? []),
     };
   }
   const who = { signerName: gate.payer?.name ?? null };
@@ -141,7 +153,7 @@ export function gateResponseBody(gate) {
 export const payerCanFix = (missing = []) => missing.length > 0 && missing.every((m) => m === "agreement" || m === "payment_method");
 
 // Whether signing (or, with a payer, sending to the payer) is all that stands in the way.
-export const coverageOnly = (gate) => (gate.payer ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
+export const coverageOnly = (gate) => (gate.payer && !gate.ownMethodMissing ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
 
 async function userOf(db, userId) {
   const { data, error } = await db
@@ -232,18 +244,37 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
   }
 
-  const [settings, overdueInvoice, payerLink] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), activePayerLink(db, userId)]);
+  const [settings, overdueInvoice, links] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), billingLinksFor(db, userId)]);
+  // Who signs and who is invoiced for each property being published (Wyatt,
+  // 2026-11-25). Signing: its own signer, else the account's, else the landlord.
+  // Invoiced: its authorized payer, else whoever signs. A new property (no
+  // listing yet) and the dashboard's question read the account's.
+  const targets = listingIds?.length ? await resolvePublishedIds(db, listingIds) : [];
+  const scope = targets.length ? targets : [null];
+  const signerOf = new Map(scope.map((id) => [id, linkForListing(links.signers, id)]));
   let hasPaymentMethod = true;
+  // Whose payment method is missing: the landlord's own, or someone else's to add.
+  const methodWaitsOn = [];
   if (settings.requirePaymentMethod) {
-    // The payer's payment method counts for an account they pay for.
+    const billed = new Map(scope.map((id) => [id, billedTo({ landlordId: userId, listingId: id, ...links })]));
+    const ids = [...new Set([...billed.values()].map((b) => b.userId))];
+    // The method of whoever is invoiced counts, never the landlord's in their place.
     const { data, error } = await db
       .from("payment_methods")
-      .select("status, type, exp_month, exp_year, deleted_at")
-      .eq("user_id", payerLink?.payer_id ?? userId)
+      .select("user_id, status, type, exp_month, exp_year, deleted_at")
+      .in("user_id", ids)
       .is("deleted_at", null);
     if (error) throw error;
-    hasPaymentMethod = hasActivePaymentMethod(data, now);
+    const has = new Map(ids.map((id) => [id, hasActivePaymentMethod((data ?? []).filter((m) => m.user_id === id), now)]));
+    hasPaymentMethod = ids.every((id) => has.get(id));
+    for (const b of new Map([...billed.values()].map((x) => [x.userId, x])).values()) if (!has.get(b.userId)) methodWaitsOn.push({ userId: b.userId, name: b.name, via: b.via });
   }
+  // The signers these properties go to. Several (or some the landlord's own) are
+  // never refused: each signer gets their own request for what they hold, and the
+  // landlord signs for the rest (Wyatt, 2026-11-25).
+  const signerLinks = [...new Map([...signerOf.values()].filter(Boolean).map((l) => [l.payer_id, l])).values()];
+  const ownTargets = scope.filter((id) => !signerOf.get(id));
+  const payerLink = signerLinks[0] ?? null;
   let agreementSigned = true;
   let uncovered = [];
   // A paper copy out for signature: nothing to sign in the app, so the publish is
@@ -292,6 +323,9 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     }
   }
 
+  // Who signs for each uncovered property: its signer's name, or null (the landlord).
+  const signerNameFor = (listingId) => (signerOf.get(listingId ?? null) ?? (listingId ? linkForListing(links.signers, listingId) : links.signers.account))?.signer_name ?? null;
+  if (signerLinks.length) uncovered = uncovered.map((u) => ({ ...u, signerName: signerNameFor(u.listingId) }));
   const decision = gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice });
   if (paperOut) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
   return {
@@ -299,10 +333,20 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     ...settings,
     uncovered,
     ...(payerLink && {
-      payer: { name: payerLink.signer_name },
-      // What would wait for the payer: the properties being published.
-      targets: listingIds?.length ? await resolvePublishedIds(db, listingIds) : [],
+      // The signer these go to; with several, the first, and `signers` has each
+      // with the properties that are theirs.
+      payer: { name: signerLinks.length === 1 ? payerLink.signer_name : `${signerLinks.length} authorized signers` },
+      signers: signerLinks.map((l) => ({ name: l.signer_name, listingIds: targets.filter((id) => signerOf.get(id)?.payer_id === l.payer_id) })),
+      // What would wait for a signer: the properties being published that one holds.
+      targets: targets.filter((id) => signerOf.get(id)),
+      // Published in the same go, but the landlord's own to sign for.
+      ownTargets: ownTargets.filter(Boolean),
     }),
+    ...(payerLink && { signerNameOf: Object.fromEntries(targets.filter((id) => signerOf.get(id)).map((id) => [id, signerOf.get(id).signer_name])) }),
+    // A payment method someone else has to add (the authorized payer, or the signer who pays).
+    ...(methodWaitsOn.some((w) => w.via !== "landlord") && { methodWaitsOn: methodWaitsOn.filter((w) => w.via !== "landlord") }),
+    // The landlord's own payment method is missing: theirs to add, nobody else's.
+    ...(methodWaitsOn.some((w) => w.via === "landlord") && { ownMethodMissing: true }),
   };
 }
 

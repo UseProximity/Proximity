@@ -20,7 +20,10 @@ const UNIQUE = {
     (r) => (r.removed_at ? null : `on:${r.version_id}:${r.landlord_id}`),
     (r) => (r.live ? `live:${r.kind}:${r.landlord_id}` : null),
   ],
-  agreement_amendments: [(r) => (r.status === "sent" ? `pending:${r.user_id}` : null)],
+  // One addendum in progress per account per signer (202611250001).
+  agreement_amendments: [(r) => (r.status === "sent" ? `pending:${r.user_id}:${r.signer_id ?? r.user_id}` : null)],
+  // One active link per account per listing per role (202611250001).
+  billing_payers: [(r) => ((r.status ?? "active") === "active" ? `active:${r.landlord_id}:${r.listing_id ?? ""}:${r.role ?? "signer"}` : null)],
   agreement_coverage: [(r) => (r.status !== "released" ? `${r.agreement_id}:${r.listing_id}:${r.amendment_id ?? ""}` : null)],
 };
 
@@ -49,7 +52,8 @@ export function fakeDb(tables = {}) {
     let single = null;
     const api = {
       select() { return api; },
-      eq(c, v) { filters.push((r) => pick(r, c) === v); return api; },
+      // billing_payers.role defaults to "signer" in the database (202611250001).
+      eq(c, v) { filters.push((r) => (pick(r, c) ?? (table === "billing_payers" && c === "role" ? "signer" : undefined)) === v); return api; },
       neq(c, v) { filters.push((r) => pick(r, c) !== v); return api; },
       in(c, vs) { filters.push((r) => vs.includes(r[c])); return api; },
       is(c, v) { filters.push((r) => (r[c] ?? null) === v); return api; },

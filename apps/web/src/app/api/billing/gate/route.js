@@ -29,12 +29,14 @@ export async function GET(req) {
     if (signingAvailable && !reader.viewingAs) await syncAgreement(supabase, documenso, reader.userId, options);
     const [gate, coverage, enrollment, account] = await Promise.all([
       checkListingGate(supabase, reader.userId),
-      coverageFor(supabase, reader.userId),
+      // What the landlord signs for themselves: a listing with its own signer is that signer's.
+      coverageFor(supabase, reader.userId, new Date(), { holderId: reader.userId }),
       getEnrollmentWindow(supabase),
       supabase.from("users").select("name, company_name, billing_only").eq("id", reader.userId).maybeSingle(),
     ]);
     // A landlord with a payer never sees the agreement (Project B): /api/billing/payer has their status.
-    const delegated = !!coverage.state.payerLink;
+    // Only an account-wide signer: with a signer for some listings the landlord still has their own agreement.
+    const delegated = !!coverage.links?.account;
     return NextResponse.json({
       allowed: gate.allowed,
       missing: gate.missing,

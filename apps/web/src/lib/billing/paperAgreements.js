@@ -133,7 +133,8 @@ export async function paperPreview(db, landlordId, now = new Date()) {
 
 // The Exhibit A plan for a main agreement with these choices.
 async function planMaster(db, landlordId, exhibit, now, { requestedExcludable = false } = {}) {
-  const loaded = await coverageFor(db, landlordId, now);
+  // The account-wide holder's document: a listing with its own signer is not on it.
+  const loaded = await coverageFor(db, landlordId, now, { holderId: (await activePayerLink(db, landlordId))?.payer_id ?? landlordId });
   const { state } = loaded;
   const plan = planCoverage({
     properties: loaded.properties,

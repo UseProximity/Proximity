@@ -40,7 +40,7 @@ import { withSettingsLock } from "./settings.js";
 import { getLiveVersion, resignCutoff, signatureStillValid } from "./agreementVersions.js";
 import { copyBoxesByKind, fitExhibit, signerOf, templateFieldSummary } from "./documenso.js";
 import { INITIALS_BOX, buildExhibitPdf, fmtDate } from "./exhibitPdf.js";
-import { activePayerLink, clearDocumentRequests, clearPayerDeclined, declineDocumentRequests, markPayerDeclined, payeeLinks, stampRequests } from "./payerLinks.js";
+import { allLinks, clearDocumentRequests, clearPayerDeclined, declineDocumentRequests, holderForListing, markPayerDeclined, payeeLinks, signerLinksFor, signsForAccount, stampRequests } from "./payerLinks.js";
 import { coveredMap, coversProperty, exhibitChoice, loadCoverageRows, loadLandlordProperties, missingUnits, planCoverage, refreshCoverageNames, resolvePublishedIds, withdrawOfferings, withdrawUnitLeases, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const VERSION_JOIN = "agreement_version:agreement_versions!version_id(id, label, kind, audience, published_at, commission_rate_percent)";
@@ -144,13 +144,13 @@ export function summarizeAgreementRows(rows, { liveVersion = null, cutoff = null
   };
 }
 
-async function pendingAmendmentOf(db, userId) {
-  const { data, error } = await db
-    .from("agreement_amendments")
-    .select(AMENDMENT_COLUMNS)
-    .eq("user_id", userId)
-    .eq("status", "sent")
-    .maybeSingle();
+// The account's addendum in progress with one signer: `signerId` (an authorized
+// signer of it), or the account itself. An account can have one with each of its
+// signers at the same time (202611250001).
+async function pendingAmendmentOf(db, userId, signerId = userId) {
+  let q = db.from("agreement_amendments").select(AMENDMENT_COLUMNS).eq("user_id", userId).eq("status", "sent");
+  q = signerId && signerId !== userId ? q.eq("signer_id", signerId) : q.is("signer_id", null);
+  const { data, error } = await q.maybeSingle();
   if (missingSchema(error)) return null;
   if (error) throw error;
   return data;
@@ -170,24 +170,31 @@ async function pendingAmendmentOf(db, userId) {
  * signer: a landlord signing for themselves to take their listings back (Wyatt,
  * 2026-11-10). The signer's addendum in progress for the account is not theirs,
  * so it is left out.
+ *
+ * `holderId` reads it with one particular holder: a listing's own signer (Wyatt,
+ * 2026-11-25), or the landlord for the listings they sign for themselves. The
+ * default is the account-wide holder: the account's signer, else the landlord.
+ * `links` are the account's signer links ({ account, byListing }).
  */
-export async function agreementState(db, userId, now = new Date(), { own = false } = {}) {
-  const payerLink = own ? null : await activePayerLink(db, userId);
-  const holderId = payerLink?.payer_id ?? userId;
+export async function agreementState(db, userId, now = new Date(), { own = false, holderId: forced = null } = {}) {
+  const links = await signerLinksFor(db, userId);
+  const holderId = own ? userId : forced ?? links.account?.payer_id ?? userId;
+  const payerLink = holderId === userId ? null : allLinks(links).find((l) => l.payer_id === holderId) ?? null;
   const [rows, liveVersion, cutoff, pendingAmendment] = await Promise.all([
     readRows((cols) =>
       db.from("landlord_agreements").select(cols).eq("user_id", holderId).order("created_at", { ascending: false }).limit(20)
     ),
     getLiveVersion(db, { kind: "master", landlordId: holderId }),
     resignCutoff(db),
-    pendingAmendmentOf(db, userId),
+    pendingAmendmentOf(db, userId, holderId),
   ]);
   const summary = summarizeAgreementRows(rows, { liveVersion, cutoff, now });
   return {
     ...summary,
-    pendingAmendment: own && pendingAmendment?.signer_id && pendingAmendment.signer_id !== userId ? null : pendingAmendment,
+    pendingAmendment,
     holderId,
     payerLink,
+    links,
     paperElsewhere: payerLink ? await paperForOtherAccount(db, summary.pending, userId) : false,
   };
 }
@@ -202,19 +209,51 @@ async function paperForOtherAccount(db, pending, userId) {
   return !data?.length;
 }
 
+// Whether one holder's master counts now, for coverage: { signed, valid }.
+async function holderMaster(db, holderId, now) {
+  const [rows, liveVersion, cutoff] = await Promise.all([
+    readRows((cols) => db.from("landlord_agreements").select(cols).eq("user_id", holderId).order("created_at", { ascending: false }).limit(20)),
+    getLiveVersion(db, { kind: "master", landlordId: holderId }),
+    resignCutoff(db),
+  ]);
+  const st = summarizeAgreementRows(rows, { liveVersion, cutoff, now });
+  return { signed: st.signed, valid: st.valid };
+}
+
 /*
  * Everything coverage decisions need for one landlord: their agreement state,
  * their properties, coverage rows, and the Map of listings covered now.
+ *
+ * Each listing is covered by its own holder's agreement (Wyatt, 2026-11-25): the
+ * listing's signer, else the account's signer, else the landlord. `holderOf(
+ * listingId)` says whose, and `masters` has each holder's { signed, valid }.
+ *
+ * `holderId` scopes it to one holder (signing, previewing, their status): only
+ * the properties and rows that holder covers, and the state read with them.
  */
-export async function coverageFor(db, userId, now = new Date(), { own = false } = {}) {
-  const [state, properties, loaded] = await Promise.all([
-    agreementState(db, userId, now, { own }),
+export async function coverageFor(db, userId, now = new Date(), { own = false, holderId = null } = {}) {
+  const [state, allProperties, loaded] = await Promise.all([
+    agreementState(db, userId, now, { own, holderId }),
     loadLandlordProperties(db, userId),
     loadCoverageRows(db, userId),
   ]);
+  const { links } = state;
+  const holderOf = (listingId) => holderForListing(links, userId, listingId);
+  const properties = holderId ? allProperties.filter((p) => holderOf(p.listingId) === holderId) : allProperties;
   // Named units are matched by id: each row names its units as they are called today.
-  const rows = refreshCoverageNames(loaded, properties);
-  return { state, properties, rows, covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }) };
+  const allRows = refreshCoverageNames(loaded, allProperties);
+  const rows = holderId ? allRows.filter((r) => holderOf(r.listing_id) === holderId) : allRows;
+  // A landlord reading their own agreement while they have a signer (`own`): one master, theirs.
+  if (own) return { state, properties, rows, covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }), holderOf, masters: new Map([[userId, { signed: state.signed, valid: state.valid }]]), links };
+  // Every holder this account has, each with their own master.
+  const masters = new Map([[state.holderId, { signed: state.signed, valid: state.valid }]]);
+  for (const h of new Set(rows.map((r) => holderOf(r.listing_id)))) if (!masters.has(h)) masters.set(h, await holderMaster(db, h, now));
+  const covered = new Map();
+  for (const [h, m] of masters) {
+    const theirs = rows.filter((r) => holderOf(r.listing_id) === h);
+    for (const [listingId, row] of coveredMap(theirs, { master: m.signed, masterValid: m.valid })) covered.set(listingId, row);
+  }
+  return { state, properties, rows, covered, holderOf, masters, links };
 }
 
 /*
@@ -233,17 +272,21 @@ export async function takeoverCoverage(db, userId, now = new Date()) {
     db.from("payer_publish_requests").select("listing_id").eq("landlord_id", userId).eq("status", "waiting"),
   ]);
   if (waiting.error && !missingSchema(waiting.error)) throw waiting.error;
-  const rows = refreshCoverageNames(loaded, properties);
+  // A listing with its own signer stays with them: only what the ACCOUNT's signer
+  // holds comes over (Wyatt, 2026-11-25).
+  const theirs = (listingId) => !signerState.links.byListing.has(listingId);
+  const rows = refreshCoverageNames(loaded, properties).filter((r) => theirs(r.listing_id));
   const signerCovered = coveredMap(rows, { master: signerState.signed, masterValid: signerState.valid });
   return {
     state,
     // The signer's own agreement state: a paper copy of theirs out for this
     // account holds the takeover off too.
     signerState,
-    properties,
+    properties: properties.filter((p) => theirs(p.listingId)),
     rows,
     covered: coveredMap(rows, { master: state.signed, masterValid: state.valid }),
-    keep: [...new Set([...signerCovered.keys(), ...(waiting.data ?? []).map((r) => r.listing_id)])],
+    keep: [...new Set([...signerCovered.keys(), ...(waiting.data ?? []).map((r) => r.listing_id)])].filter(theirs),
+    holderOf: (listingId) => (theirs(listingId) ? userId : signerState.links.byListing.get(listingId).payer_id),
   };
 }
 
@@ -636,27 +679,36 @@ export async function startSigning(
   let details = fromAgreement ? null : cleanSignerDetails({ company: signerCompany, email: signerEmail, address1: signerAddress1, address2: signerAddress2, city: signerCity });
   if (!user?.email) throw new BillingError("no_email", "Your account needs an email address to sign.");
 
-  // Who may sign for this account: the account itself when it has no payer; its
-  // payer when it has one, never the account (Wyatt, 2026-11-09).
-  const link = await activePayerLink(db, account);
+  // Who may sign for this account: the account itself when it has no account-wide
+  // signer; its signers otherwise, never the account (Wyatt, 2026-11-09). With a
+  // signer for one listing (Wyatt, 2026-11-25) the landlord still signs for the
+  // rest, and each signer only for what is assigned to them: the document is
+  // built below from just the properties the one signing holds.
+  const links = await signerLinksFor(db, account);
+  const link = links.account;
   // Taking over from their signer: the account signs for itself while the link still stands.
   const own = takeover === true && account === user.id && !!link && !extraAccounts.length;
-  if (own ? false : link ? link.payer_id !== user.id : account !== user.id) {
+  if (own ? false : account === user.id ? !!link : !signsForAccount(links, user.id)) {
     throw new BillingError(
       "payer_signs",
-      link ? `${link.signer_name} signs the agreement for this account. We emailed them a link.` : "You can only sign for your own account or one you pay for.",
+      account === user.id ? `${link.signer_name} signs the agreement for this account. We emailed them a link.` : "You can only sign for your own account or one you sign for.",
       403
     );
   }
+  const signerLinks = new Map([[account, links]]);
   for (const extra of extraAccounts) {
-    const l = await activePayerLink(db, extra);
-    if (!l || l.payer_id !== user.id) throw new BillingError("payer_signs", "You can only sign for accounts you pay for.", 403);
+    const l = await signerLinksFor(db, extra);
+    if (!signsForAccount(l, user.id)) throw new BillingError("payer_signs", "You can only sign for accounts you sign for.", 403);
+    signerLinks.set(extra, l);
   }
   // A signer can't sign for an account whose landlord is signing their own
   // agreement to take over (Wyatt, 2026-11-10). One left unsigned for a week no
   // longer holds them off: it is cancelled, so it can't later release what they cover.
+  // Only the ACCOUNT's signer is ever taken over from: a landlord who signs for
+  // some listings themselves has their own agreement open for ordinary reasons.
   if (account !== user.id) {
     for (const acct of [account, ...extraAccounts]) {
+      if (signerLinks.get(acct).account?.payer_id !== user.id) continue;
       const open = await openTakeover(db, acct, now);
       if (!open) continue;
       if (!open.stale) {
@@ -682,8 +734,12 @@ export async function startSigning(
     async () => {
       // Taking over: what the signer covers for this account now, and what still
       // waits on them, is carried onto the landlord's own agreement and can't be left off.
-      const loaded = own ? await takeoverCoverage(db, account, now) : await coverageFor(db, account, now);
-      const requested = await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])]);
+      // Otherwise only the properties the one signing holds: never another signer's listing.
+      const loaded = own ? await takeoverCoverage(db, account, now) : await coverageFor(db, account, now, { holderId: user.id });
+      // A listing asked for that someone else signs for is not theirs to add.
+      const others = new Set();
+      for (const l of signerLinks.values()) for (const [listingId, x] of l.byListing) if (x.payer_id !== user.id) others.add(listingId);
+      const requested = (await resolvePublishedIds(db, [...listingIds, ...(loaded.keep ?? [])])).filter((id) => !others.has(id));
       const { state } = loaded;
       assertNoPaperOut(state);
       // Taking over: the signer's copy for another account does not touch this one.
@@ -697,7 +753,7 @@ export async function startSigning(
           throw new BillingError("one_account_at_a_time", "Your agreement is signed: each account is added with its own addendum.", 409);
         }
         for (const extra of extraAccounts) {
-          const more = await coverageFor(db, extra, now);
+          const more = await coverageFor(db, extra, now, { holderId: user.id });
           for (const p of more.properties) if (!accountOf.has(p.listingId)) accountOf.set(p.listingId, extra);
           mergedProperties = [...mergedProperties, ...more.properties.filter((p) => accountOf.get(p.listingId) === extra)];
           rows = [...rows, ...more.rows];
@@ -1140,10 +1196,12 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
           .update({ status: "superseded", ended_reason: "replaced by a newer signature", ended_at: nowIso })
           .in("id", old.map((o) => o.id));
         if (error) throw error;
-        const stale = await pendingAmendmentOf(db, row.user_id);
-        if (stale && old.some((o) => o.id === stale.agreement_id)) {
-          await cancelInDocumenso(documenso, stale, "Replaced by a new agreement");
-          await endDocument(db, "amendment", stale, "replaced by a new agreement", now);
+        // Their own, and those of the accounts they sign for.
+        const { data: stale, error: staleError } = await db.from("agreement_amendments").select(AMENDMENT_COLUMNS).in("agreement_id", old.map((o) => o.id)).eq("status", "sent");
+        if (staleError && !missingSchema(staleError)) throw staleError;
+        for (const a of stale ?? []) {
+          await cancelInDocumenso(documenso, a, "Replaced by a new agreement");
+          await endDocument(db, "amendment", a, "replaced by a new agreement", now);
         }
       }
     }
@@ -1175,13 +1233,13 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
     const accounts = {};
     for (const r of coveredRows ?? []) (accounts[r.user_id] ??= []).push(r.listing_id);
     // Signing again after a decline: the landlords no longer see "Declined".
-    await clearPayerDeclined(db, [...Object.keys(accounts), row.user_id]).catch((err) => console.error("billing: clearing a decline failed", err?.message));
+    await clearPayerDeclined(db, [...Object.keys(accounts), row.user_id], { signerId: row.signer_id ?? row.user_id }).catch((err) => console.error("billing: clearing a decline failed", err?.message));
 
     // Live properties left off this document come off the site now that it is
     // signed: the landlord's, or, on an authorized signer's master, the offerings
     // of every account they sign for (Wyatt, 2026-11-09: the signer can leave
     // properties off too).
-    const withdrawFor = kind === "master" ? [row.user_id, ...(await payeeLinks(db, row.user_id)).map((l) => l.landlord_id)] : [row.user_id];
+    const withdrawFor = kind === "master" ? [...new Set([row.user_id, ...(await payeeLinks(db, row.user_id)).map((l) => l.landlord_id)])] : [row.user_id];
     if (row.withdraw_on_sign?.length) {
       for (const accountId of withdrawFor) {
         try {
@@ -1234,7 +1292,7 @@ export async function applyEnvelope(db, documenso, envelope, { storeSigned, noti
         .eq(kind === "amendment" ? "amendment_id" : "agreement_id", row.id)
         .limit(500);
       const payees = [...new Set([...(released ?? []).map((r) => r.user_id), row.user_id])].filter((id) => id !== decliner);
-      await markPayerDeclined(db, payees, now);
+      await markPayerDeclined(db, payees, now, { signerId: decliner });
     } catch (err) {
       console.error("billing: recording a payer's decline failed", err?.message);
     }
@@ -1582,10 +1640,12 @@ export async function documentParts(db, { userId, kind = "master", id = null, ad
  */
 export async function coveringAgreement(db, userId, listingId, now = new Date()) {
   if (!listingId) return null;
-  const [state, rows] = await Promise.all([agreementState(db, userId, now), loadCoverageRows(db, userId)]);
-  const row = coveredMap(rows, { master: state.signed, masterValid: state.valid }).get(listingId);
+  const { covered, holderOf, masters } = await coverageFor(db, userId, now);
+  const row = covered.get(listingId);
   if (!row) return null;
-  const rate = state.signed?.commission_rate_percent ?? state.signed?.agreement_version?.commission_rate_percent ?? null;
-  // Who the agreement belongs to: the landlord, or the payer who signed it for them (invoiced instead).
-  return { agreementId: row.agreement_id, amendmentId: row.amendment_id ?? null, commissionRatePercent: rate == null ? null : Number(rate), holderId: state.holderId ?? userId };
+  // Whose agreement: the listing's own holder (its signer, the account's, or the landlord).
+  const holderId = holderOf(listingId);
+  const signed = masters.get(holderId)?.signed ?? null;
+  const rate = signed?.commission_rate_percent ?? signed?.agreement_version?.commission_rate_percent ?? null;
+  return { agreementId: row.agreement_id, amendmentId: row.amendment_id ?? null, commissionRatePercent: rate == null ? null : Number(rate), holderId };
 }

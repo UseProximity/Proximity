@@ -7,7 +7,7 @@ import { agreementServices } from "@/lib/billing/agreementServices";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { BillingError } from "@/lib/billing/errors";
-import { landlordPayerView, requestPayerCoverage } from "@/lib/billing/payers";
+import { landlordListingSignerViews, landlordPayerView, requestPayerCoverage } from "@/lib/billing/payers";
 import { sendPayerRequest } from "@/lib/billing/payerServices";
 
 /*
@@ -36,13 +36,19 @@ export async function POST(req) {
     }
     if (!own.length) throw new BillingError("nothing_to_add", "Choose your own listings to send.");
     const { documenso } = agreementServices();
-    const { toSign } = await requestPayerCoverage(supabase, documenso, { landlordId: session.user.id, listingIds: own });
-    if (toSign.length) {
-      const { data: listings } = await supabase.from("listings").select("address").in("id", toSign);
+    const { bySigner, own: mine } = await requestPayerCoverage(supabase, documenso, { landlordId: session.user.id, listingIds: own });
+    // One email to each signer, about their own listings only (Wyatt, 2026-11-25).
+    for (const { link, listingIds } of bySigner) {
+      const { data: listings } = await supabase.from("listings").select("address").in("id", listingIds);
       const addresses = (listings ?? []).map((l) => l.address).filter(Boolean);
-      after(() => sendPayerRequest({ landlordId: session.user.id, addresses }).catch((err) => console.error("billing: payer request email failed", err?.message)));
+      after(() => sendPayerRequest({ landlordId: session.user.id, addresses, link }).catch((err) => console.error("billing: payer request email failed", err?.message)));
     }
-    return NextResponse.json({ payer: await landlordPayerView(supabase, session.user.id) });
+    return NextResponse.json({
+      payer: await landlordPayerView(supabase, session.user.id),
+      listingSigners: await landlordListingSignerViews(supabase, session.user.id),
+      // Listings sent along that the landlord signs for themselves: nothing was sent for these.
+      own: mine,
+    });
   } catch (err) {
     return billingErrorResponse(err, "send to payer");
   }
