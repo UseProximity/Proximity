@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-26T20:17:43.415Z",
-  "count": 234,
+  "_generated": "2026-11-26T20:24:13.632Z",
+  "count": 235,
   "components": [
     {
       "name": "ErrorReporter",
@@ -496,6 +496,11 @@
     {
       "name": "FeedbackWidget",
       "file": "src/components/feedback/FeedbackWidget.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "BudgetRange",
+      "file": "src/components/findYourPlace/BudgetRange.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

@@ -342,7 +342,7 @@ function CTABand() {
  */
 // `suppressed`: the visitor is already answering in the hero bar, which asks
 // the same question, so the popup stays out of the way.
-// On phones it also waits while the bar is on screen: the popup is fixed to
+// Below tablet width it also waits while the bar is on screen: the popup is fixed to
 // the bottom of the screen, which is where the stacked bar sits, and would
 // cover it.
 function FindYourPlacePopup({ suppressed = false }) {
@@ -354,7 +354,7 @@ function FindYourPlacePopup({ suppressed = false }) {
 
   useEffect(() => {
     const bar = document.querySelector("[data-home-match-bar]");
-    if (!bar || !window.matchMedia("(max-width: 639px)").matches) return;
+    if (!bar || !window.matchMedia("(max-width: 767px)").matches) return;
     const observer = new IntersectionObserver(([entry]) => setBarInView(entry.isIntersecting));
     observer.observe(bar);
     return () => observer.disconnect();

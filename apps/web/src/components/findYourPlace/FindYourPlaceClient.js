@@ -15,8 +15,9 @@ import {
   LEASE_OPTIONS,
   GROUP_OPTIONS,
   BIG_GROUP_MIN,
-  BUDGET_MIN,
-  BUDGET_MAX,
+  NO_MAX,
+  budgetAmount,
+  budgetRangeLabel,
   COMMUTE_MODES,
   slowestMode,
   answeredCount,
@@ -32,7 +33,7 @@ const STORAGE_KEY = "prx_fyp_v1";
 // this browser is asked first.
 const CLAIM_KEY = "prx_fyp_claim";
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
-const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
+const EMPTY_ANSWERS = { group: null, budget: null, budgetMin: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 const SOURCE = "matchmaking";
 
 // Each page by name, as the analytics page reports where people stop. Page 3
@@ -218,8 +219,16 @@ export default function FindYourPlaceClient() {
     // "5+" is the same as tapping 5+ on page 1: 5, with the exact number open.
     const picked = params.get("group");
     if (GROUP_OPTIONS.includes(picked)) given.group = picked === "5+" ? String(BIG_GROUP_MIN) : picked;
-    const budget = /^\d{1,6}$/.test(params.get("budget") ?? "") ? Number(params.get("budget")) : null;
-    if (budget != null && budget >= BUDGET_MIN && budget <= BUDGET_MAX) given.budget = budget;
+    // The budget range: ?budget= is the top (an amount, or "nomax" for no
+    // top) and ?budgetMin= the bottom. A link with only ?budget=1200 (the
+    // older single amount) reads as "up to $1,200".
+    const rawMax = params.get("budget");
+    const max = rawMax === "nomax" ? NO_MAX : /^\d{1,6}$/.test(rawMax ?? "") ? budgetAmount(rawMax) : null;
+    if (max !== null) {
+      given.budget = max;
+      const min = /^\d{1,6}$/.test(params.get("budgetMin") ?? "") ? budgetAmount(params.get("budgetMin")) : null;
+      if (min !== null && (max === NO_MAX || min < max)) given.budgetMin = min;
+    }
     const asked = (params.get("modes") ?? "").split(",");
     const modes = COMMUTE_MODES.map((m) => m.id).filter((id) => asked.includes(id));
     if (modes.length) given.modes = modes;
@@ -241,7 +250,7 @@ export default function FindYourPlaceClient() {
       setStep(1);
     }
     if (Object.keys(given).length || fromBar) {
-      for (const key of ["group", "budget", "modes"]) params.delete(key);
+      for (const key of ["group", "budget", "budgetMin", "modes"]) params.delete(key);
       if (fromBar) params.delete("from");
       const qs = params.toString();
       window.history.replaceState(null, "", `/find-your-place${qs ? `?${qs}` : ""}`);
@@ -600,7 +609,9 @@ export default function FindYourPlaceClient() {
               onClick={() => {
                 trackEvent("Find Your Place Basics Done", {
                   group: answers.group,
-                  budget: answers.budget === NO_PREFERENCE ? null : answers.budget,
+                  budget: typeof answers.budget === "number" ? answers.budget : null,
+                  budgetMin: typeof answers.budgetMin === "number" ? answers.budgetMin : null,
+                  budgetRange: budgetRangeLabel(answers.budgetMin, answers.budget) || null,
                   lease: LEASE_OPTIONS.some((o) => o.id === answers.lease) ? answers.lease : answers.lease === NO_PREFERENCE ? null : "other",
                   modes: answers.modes.join(","),
                 });

@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Chip, QuietChip, OtherChip, Question, FIELD } from "./ui";
+import BudgetRange from "@/components/findYourPlace/BudgetRange";
 import {
   NO_PREFERENCE,
   GROUP_OPTIONS,
   BIG_GROUP_MIN,
   BIG_GROUP_MAX,
-  BUDGET_MIN,
-  BUDGET_MAX,
   LEASE_OPTIONS,
   LEASE_OTHER_MIN,
   LEASE_OTHER_MAX,
@@ -38,10 +37,6 @@ export default function StepBasics({ answers, onChange }) {
     if (bigGroup) setGroupDraft((d) => (parseInt(d, 10) === groupNum ? d : String(groupNum)));
   }, [bigGroup, groupNum]);
 
-  // ── Budget ────────────────────────────────────────────────────────────────
-  const budgetOutOfRange = typeof answers.budget === "number" && (answers.budget < BUDGET_MIN || answers.budget > BUDGET_MAX);
-  // Said once they leave the box, not on the "1" of "1200".
-  const [budgetFocused, setBudgetFocused] = useState(false);
 
   // ── Lease ─────────────────────────────────────────────────────────────────
   const leaseIsOther = /^\d+$/.test(answers.lease ?? "");
@@ -123,45 +118,18 @@ export default function StepBasics({ answers, onChange }) {
         )}
       </Question>
 
-      <Question title="What's your max monthly rent per person?">
-        <div className="relative">
-          <span
-            className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium ${
-              typeof answers.budget === "number" ? "text-red-600" : "text-gray-400"
-            }`}
-          >
-            $
-          </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={BUDGET_MIN}
-            max={BUDGET_MAX}
-            step={50}
-            placeholder="max / mo"
-            aria-label="Max monthly rent per person, in dollars"
-            value={typeof answers.budget === "number" ? answers.budget : ""}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              set({ budget: Number.isFinite(n) && n > 0 ? n : null });
-            }}
-            aria-invalid={budgetOutOfRange}
-            onFocus={() => setBudgetFocused(true)}
-            onBlur={() => setBudgetFocused(false)}
-            className={`${FIELD(typeof answers.budget === "number")} w-32 pl-7`}
-          />
-        </div>
+      <Question title="What's your monthly budget per person?">
+        <BudgetRange
+          min={typeof answers.budgetMin === "number" ? answers.budgetMin : null}
+          max={answers.budget}
+          onChange={(patch) => set(patch)}
+        />
         <QuietChip
           selected={answers.budget === NO_PREFERENCE}
-          onClick={() => set({ budget: answers.budget === NO_PREFERENCE ? null : NO_PREFERENCE })}
+          onClick={() => set(answers.budget === NO_PREFERENCE ? { budget: null } : { budget: NO_PREFERENCE, budgetMin: null })}
         >
           No Preference
         </QuietChip>
-        {budgetOutOfRange && !budgetFocused && (
-          <p className="w-full text-xs text-red-600">
-            Enter a monthly amount per person between ${BUDGET_MIN.toLocaleString("en-US")} and ${BUDGET_MAX.toLocaleString("en-US")}.
-          </p>
-        )}
       </Question>
 
       <Question title="What lease length are you looking for?">

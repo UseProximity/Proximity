@@ -93,7 +93,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
     <section className="relative overflow-x-clip bg-gradient-to-t from-red-100 via-red-50/60 to-white">
       <div
         className={`mx-auto grid w-full max-w-[1440px] items-center gap-12 ${sideMargin} pb-14 pt-10 sm:pt-14 xl:gap-12 xl:pb-20 xl:pt-16 ${
-          empty ? "" : "min-[1200px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]"
+          empty ? "" : "min-[1280px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]"
         }`}
       >
         <div className="relative z-20 min-w-0">
@@ -101,7 +101,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.05 }}
-            className="text-[2.75rem] font-bold leading-[1.05] tracking-tight text-gray-950 sm:text-6xl min-[1200px]:text-[length:clamp(3.5rem,calc(8vw-2.5rem),4.5rem)]"
+            className="text-[2.75rem] font-bold leading-[1.05] tracking-tight text-gray-950 sm:text-6xl min-[1280px]:text-[length:clamp(3.75rem,calc(10vw-4.25rem),4.5rem)]"
           >
             Find Your Perfect{" "}
             <span className="block">
@@ -120,7 +120,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.22 }}
-            className="mt-10 sm:-ml-3 sm:mt-14"
+            className="mt-10 sm:mt-14 md:-ml-3"
           >
             <MatchBar onEngage={onBarEngage} />
           </motion.div>
@@ -131,7 +131,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.18 }}
-            className="relative z-10 mx-auto w-full min-w-0 max-w-[600px] pr-[5%] pt-4 min-[1200px]:pt-0"
+            className="relative z-10 mx-auto w-full min-w-0 max-w-[600px] pr-[5%] pt-4 min-[1280px]:pt-0"
           >
             <ListingDeck
               listings={deck}
