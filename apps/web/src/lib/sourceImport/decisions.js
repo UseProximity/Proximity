@@ -8,6 +8,8 @@
 
 import supabase from "@/lib/supabase";
 import { applyEvents, undoEvents } from "./apply.js";
+import { markLandlordSet } from "@/lib/agents/coreWrites";
+import { HIDDEN_RENT_MAX_AGE_DAYS } from "@/lib/listings/hiddenRents";
 
 const money = (n) => `$${Math.round(Number(n)).toLocaleString("en-US")}`;
 const FIELD = { rent: "Rent", rentIsPerPerson: "Rent basis", leaseTermMonths: "Lease lengths", availableFrom: "Move-in date", apartments: "Apartments", unavailable: "Availability", area: "Size", bedrooms: "Bedrooms", bathrooms: "Bathrooms", name: "Name" };
@@ -179,4 +181,36 @@ export async function syncHealth({ days = 7 } = {}) {
     overruled: { applied, undone, appliedByPerson, undoRate: applied ? Math.round((undone / applied) * 1000) / 1000 : 0 },
     recipes: { listings: active.filter((r) => r.scope === "listing").length, platforms: active.filter((r) => r.scope === "platform").length, retired: (rc ?? []).length - active.length, rebuiltThisWindow: (rc ?? []).filter((r) => r.made_from === "rebuild" && r.created_at >= since).length },
   };
+}
+
+/*
+ * Prices the landlord's website shows for leases they chose to list with no
+ * price (the hidden price store). The blank is theirs and never fades; this
+ * is only so they can be asked "Show it?" (Wyatt, 2026-11-24). Server only:
+ * the figure goes to the listing's own landlord and admins, nobody else.
+ * Returns [{ leaseId, unit, rent, perPerson, seenAt }].
+ */
+export async function hiddenPricesFor(listingId) {
+  const since = new Date(Date.now() - HIDDEN_RENT_MAX_AGE_DAYS * 86400000).toISOString();
+  const { data, error } = await supabase.from("lease_hidden_rents").select("lease_id, rent, rent_is_per_person, seen_at, unit_leases!inner(id, rent, deleted_at, unavailable, listing_units!inner(name))")
+    .eq("listing_id", listingId).gte("seen_at", since).limit(200);
+  if (error) {
+    console.error(`[source-sync] hidden prices for ${listingId}: ${error.message}`);
+    return [];
+  }
+  return (data ?? []).filter((r) => r.unit_leases && r.unit_leases.rent == null && !r.unit_leases.deleted_at)
+    .map((r) => ({ leaseId: r.lease_id, unit: r.unit_leases.listing_units?.name ?? "A unit", rent: Number(r.rent), perPerson: r.rent_is_per_person, seenAt: r.seen_at }));
+}
+
+/* The landlord chooses to show a hidden price: it becomes the lease's public rent, as their own edit. */
+export async function showHiddenPrice({ listingId, leaseId, userId }) {
+  const { data: row } = await supabase.from("lease_hidden_rents").select("rent, rent_is_per_person").eq("listing_id", listingId).eq("lease_id", leaseId).maybeSingle();
+  if (!row) return { error: "Your website is no longer showing a price for this lease." };
+  const fields = { rent: Number(row.rent), ...(row.rent_is_per_person == null ? {} : { rent_is_per_person: row.rent_is_per_person }) };
+  const { data: saved, error } = await supabase.from("unit_leases").update(fields).eq("id", leaseId).is("rent", null).select("id, updated_at");
+  if (error) return { error: "Could not show that price." };
+  if (!saved?.length) return { error: "This lease already has a price." };
+  await supabase.from("lease_hidden_rents").delete().eq("lease_id", leaseId);
+  await markLandlordSet({ listingId, target: "lease", id: leaseId, fields, userId, cause: "dashboard", detail: { fromHiddenPrice: true }, old: { rent: null }, at: saved[0].updated_at });
+  return { ok: true, note: `now showing $${Math.round(fields.rent).toLocaleString("en-US")}` };
 }

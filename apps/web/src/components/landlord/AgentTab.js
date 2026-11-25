@@ -312,6 +312,7 @@ function ChangeHistory({ listingId, history, onDone }) {
  */
 function WebsiteChanges({ listingId, readOnly, onDone }) {
   const [rows, setRows] = useState(null);
+  const [hidden, setHidden] = useState([]);
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState(false);
   const load = useCallback(async () => {
@@ -319,10 +320,20 @@ function WebsiteChanges({ listingId, readOnly, onDone }) {
       const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes`);
       const d = await r.json().catch(() => ({}));
       setRows(r.ok ? d.rows ?? [] : []);
+      setHidden(r.ok ? d.hidden ?? [] : []);
     } catch { setRows([]); }
   }, [listingId]);
   useEffect(() => { load(); }, [load]);
-  if (!rows?.length) return null;
+  if (!rows?.length && !hidden.length) return null;
+  const show = async (h) => {
+    setBusy(h.leaseId);
+    try {
+      await post(`/api/landlord/listings/${listingId}/agent/changes`, { showPrice: h.leaseId });
+      toast.success("Price shown on your listing");
+      await load();
+      onDone();
+    } catch (err) { toast.error(err.message); } finally { setBusy(null); }
+  };
   const act = async (row, key) => {
     setBusy(row.id);
     try {
@@ -332,13 +343,24 @@ function WebsiteChanges({ listingId, readOnly, onDone }) {
       onDone();
     } catch (err) { toast.error(err.message); } finally { setBusy(null); }
   };
-  const waiting = rows.filter((r) => r.status === "not_applied");
-  const shown = open ? rows : rows.slice(0, 5);
+  const all = rows ?? [];
+  const waiting = all.filter((r) => r.status === "not_applied");
+  const shown = open ? all : all.slice(0, 5);
   const day = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <p className="text-sm font-semibold text-gray-900">Changes from your website</p>
       <p className="mb-3 text-xs text-gray-500">What the daily check of your website changed in the last 30 days, and what it found but did not change{waiting.length ? ` (${waiting.length})` : ""}. You can undo a change or apply one yourself.</p>
+      {hidden.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {hidden.map((h) => (
+            <div key={h.leaseId} className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              <span className="min-w-0 flex-1">Your website shows <strong>${Math.round(h.rent).toLocaleString("en-US")}{h.perPerson ? " per person" : ""}</strong> for {h.unit}. Your listing shows no price, and it stays that way unless you choose to show it.</span>
+              {!readOnly && <button disabled={busy === h.leaseId} onClick={() => show(h)} className="rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Show this price</button>}
+            </div>
+          ))}
+        </div>
+      )}
       <ul className="space-y-2">
         {shown.map((r) => (
           <li key={r.id} className="rounded-lg border border-gray-100 p-3 text-sm">
@@ -360,7 +382,7 @@ function WebsiteChanges({ listingId, readOnly, onDone }) {
           </li>
         ))}
       </ul>
-      {rows.length > 5 && <button onClick={() => setOpen(!open)} className="mt-2 text-xs font-medium text-gray-700 underline">{open ? "Show fewer" : `Show all ${rows.length}`}</button>}
+      {all.length > 5 && <button onClick={() => setOpen(!open)} className="mt-2 text-xs font-medium text-gray-700 underline">{open ? "Show fewer" : `Show all ${all.length}`}</button>}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { collectEvidence, textHasAddress, findUnit } from "./evidence.js";
 
 const NOW = Date.parse("2026-11-24T12:00:00Z");
 const state = { title: "The Lofts", address: "6100 Delmar Blvd, St. Louis, MO", listing_units: [{ id: "u1", name: "Pershing", bedrooms: 2, bathrooms: 2, area: 900, unit_leases: [{ id: "l1", rent: 1500 }] }] };
-const page = "The Lofts at 6100 Delmar Blvd. Floor plans: The Pershing 2 Bed / 2 Bath 900 sq ft $1,450/mo. Available now.";
+const page = "The Lofts at 6100 Delmar Blvd. Floor plans: The Pershing 2 Bed / 2 Bath 900 sq ft $1,450/mo. Available now. " + "Modern apartments with in-unit laundry, a fitness center and covered parking near the Loop. ".repeat(8);
 const units = [{ key: "n:pershing", name: "Pershing", bedrooms: 2, bathrooms: 2, area: 900, offers: [{ rent: 1450, rentExact: true, dateStated: true }] }];
 const snapshot = { trace: { reader: "generic" }, units, evidence: collectEvidence([{ url: "https://x.test/plans", text: page }], units) };
 const change = { kind: "rent_change", unitKey: "n:pershing", unitId: "u1", leaseId: "l1", field: "rent", old: { rent: 1500 }, new: { rent: 1450 }, facts: { rentExact: true }, verdict: { apply: true } };

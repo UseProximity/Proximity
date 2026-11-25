@@ -40,9 +40,15 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
   const building = state?.title ?? null;
   const address = state?.address ?? null;
   const pageText = ev?.page?.text ?? "";
-  if (pageText && building && address && !ev?.addressSeen && !textHasAddress(pageText, address)) {
+  /*
+   * Asked of the fullest page read, not the first: a first page that is a
+   * cookie notice or a bare shell once scored Kirkwood Bluffs' own site 0.02
+   * (2026-11-25). Too little text to judge by is not asked about at all.
+   */
+  const fullest = [...(ev?.pages ?? [])].sort((a, b) => b.text.length - a.text.length)[0]?.text?.slice(0, 8000) ?? pageText;
+  if (fullest.length >= 600 && building && address && !ev?.addressSeen && !textHasAddress(fullest, address)) {
     try {
-      const r = await ask(pageText, [{ type: "predicate", name: "building", instructions: `Is this text about ${building} at ${address}?` }]);
+      const r = await ask(fullest, [{ type: "predicate", name: "building", instructions: `Is this text about ${building} at ${address}?` }]);
       calls += 1;
       cost += r.costUsd;
       const p = expectedProbability(r.answers.building, { kind: "predicate" });
@@ -122,7 +128,10 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
   return rows.map((row, i) => {
     const res = results.get(i) ?? (buildingPart ? { status: "skipped", model: JEV_MODEL, parts: [] } : null);
     if (!res) return row;
-    const parts = buildingPart ? [...res.parts, buildingPart] : res.parts;
+    // A feed, portal or unit page is tied to the listing by its own address or
+    // id, not by the page's words: the answer is kept on the row, not scored.
+    const tiedByFeed = ["feed", "portal", "unit_page"].includes(row.source);
+    const parts = buildingPart ? [...res.parts, tiedByFeed ? { ...buildingPart, rightThing: false, soft: true, note: "not scored for a feed" } : buildingPart] : res.parts;
     const out = rescoreWithJev(row, { ...res, parts });
     return { ...out, jev: { ...out.jev, text: res.text ?? null, url: res.url ?? null } };
   });
