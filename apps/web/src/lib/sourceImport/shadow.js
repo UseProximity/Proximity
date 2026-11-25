@@ -71,6 +71,14 @@ export const UNIT_JUMP_RIGHT = 0.6;
 // More new units than this in one read is the other-building sign (PR #418 review).
 export const MAX_NEW_UNITS = 4;
 
+/* Whether an earlier run saw the website give this field a different value. */
+function saidOtherwiseBefore(priorValues, scope, field, value) {
+  const seen = priorValues?.get?.(`${scope ?? ""}|${field ?? ""}`);
+  if (!seen?.size) return false;
+  const now = JSON.stringify(value ?? null);
+  return [...seen].some((v) => v !== now);
+}
+
 const LEASE_COL = { rent: "rent", rentIsPerPerson: "rent_is_per_person", leaseTermMonths: "lease_term_months", availableFrom: "available_from", apartments: "description" };
 /* The lease's value now differs from what the sync last wrote, on a field this change moves. */
 function leaseFieldsDiffer(lease, synced, changed) {
@@ -94,7 +102,7 @@ function leaseFieldsDiffer(lease, synced, changed) {
  *   holdReason     today's run-level hold, if any
  * Returns rows for listing_sync_scores (no ids, no timestamps).
  */
-export function shadowRows({ changes, snapshot, state, learnings, landlordEdits = new Map(), syncBlanks = new Set(), priorRuns = new Map(), priorRunsSeen = false, holdReason = null, now = Date.now() }) {
+export function shadowRows({ changes, snapshot, state, learnings, landlordEdits = new Map(), syncBlanks = new Set(), priorRuns = new Map(), priorRunsSeen = false, priorValues = new Map(), holdReason = null, now = Date.now() }) {
   const snapByKey = new Map((snapshot?.units ?? []).map((u) => [u.key, u]));
   const unitsById = new Map((state?.listing_units ?? []).map((u) => [u.id, u]));
   const leasesById = new Map((state?.listing_units ?? []).flatMap((u) => u.unit_leases ?? []).map((l) => [l.id, l]));
@@ -102,7 +110,6 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
   const existingUnits = (state?.listing_units ?? []).length;
   const newUnits = (changes ?? []).filter((c) => c.kind === "unit_new").length;
   const runRight = newUnits > MAX_NEW_UNITS || newUnits > Math.max(1, existingUnits * 0.5) ? UNIT_JUMP_RIGHT : 1;
-  const hasHistory = priorRuns.size > 0 || !!priorRunsSeen;
   for (const c of changes ?? []) {
     if (c.kind === "missing_unit") continue; // a note, not a change
     const leaseId = c.leaseId ?? c.detail?.leaseId ?? null;
@@ -152,17 +159,17 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       (!!lease && !!synced && ["rent_change", "lease_updated"].includes(c.kind) && leaseFieldsDiffer(lease, synced, c.new));
     /*
      * Has the website moved since? Against what the sync last wrote when it
-     * wrote this lease; otherwise, once the listing has shadow history, a
-     * change no earlier run planned is news, and one planned before is the
-     * website saying the same thing again. With neither, assume not: the
-     * landlord wins (Wyatt, 2026-11-24).
+     * wrote this lease; otherwise against what earlier runs saw the website
+     * say for this field: a different value before means it has moved. The
+     * first time a value is seen proves nothing (the landlord may have just
+     * edited away from it), so the landlord wins (Wyatt, 2026-11-24).
      */
     const key = changeKey(c);
     const movedSinceLandlord = !landlordEdited
       ? false
       : synced && c.new && typeof c.new === "object" && Object.keys(c.new).some((k) => LEASE_COL[k] in synced)
         ? Object.entries(c.new).some(([k, v]) => LEASE_COL[k] in synced && !sameValue(synced[LEASE_COL[k]], v))
-        : hasHistory && !priorRuns.has(key);
+        : saidOtherwiseBefore(priorValues, leaseId ?? unitId, field, c.new);
     // An edit of unknown age is taken as a year old.
     const daysSinceEdit = editedAt ? Math.max(0, (now - new Date(editedAt).getTime()) / DAY) : 365;
     const empty = action === "fill" || action === "add" || action === "photos";
@@ -183,6 +190,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     if (blocked) verdict = { ...verdict, apply: false, borderline: false, reason: blocked };
 
     rows.push({
+      _i: (changes ?? []).indexOf(c),
       change_key: key,
       kind: c.kind,
       unit_key: c.unitKey ?? null,

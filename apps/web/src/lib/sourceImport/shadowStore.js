@@ -10,6 +10,13 @@ import { jevPass } from "./jevPass.js";
 
 export const shadowScoresOn = () => String(process.env.SYNC_SHADOW_SCORES ?? "").toLowerCase() !== "false";
 
+/*
+ * The switch (stage 3): when on, the ledger's verdict decides each change of
+ * a daily sync in place of the rules in syncPolicy.js and the churn guard.
+ * Off unless SYNC_LEDGER_DECIDES=true.
+ */
+export const ledgerDecides = () => shadowScoresOn() && String(process.env.SYNC_LEDGER_DECIDES ?? "").toLowerCase() === "true";
+
 /* When the landlord last set each lease, unit and property field, by scope id. */
 async function landlordEditTimes(listingId) {
   const { data, error } = await supabase.from("listing_facts").select("field_key, scope_level, scope_id, updated_at")
@@ -26,7 +33,7 @@ async function landlordEditTimes(listingId) {
 
 /* For each change key, how many of the listing's latest runs in a row planned it. */
 async function priorRunsFor(listingId) {
-  const { data, error } = await supabase.from("listing_sync_scores").select("run_id, run_at, change_key")
+  const { data, error } = await supabase.from("listing_sync_scores").select("run_id, run_at, change_key, lease_id, unit_id, field, new_value")
     .eq("listing_id", listingId).gte("run_at", new Date(Date.now() - 21 * 86400000).toISOString())
     .order("run_at", { ascending: false }).limit(5000);
   if (error) throw new Error(`prior runs: ${error.message}`);
@@ -49,24 +56,33 @@ async function priorRunsFor(listingId) {
     }
     if (n) out.set(key, n);
   }
-  return { priorRuns: out, priorRunsSeen: runs.length > 0 };
+  // What the website has said before about each lease or unit field.
+  const priorValues = new Map();
+  for (const r of data ?? []) {
+    const k = `${r.lease_id ?? r.unit_id ?? ""}|${r.field ?? ""}`;
+    if (!priorValues.has(k)) priorValues.set(k, new Set());
+    priorValues.get(k).add(JSON.stringify(r.new_value ?? null));
+  }
+  return { priorRuns: out, priorRunsSeen: runs.length > 0, priorValues };
 }
 
 export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason }) {
-  if (!shadowScoresOn() || !changes?.length) return 0;
+  if (!shadowScoresOn() || !changes?.length) return [];
   try {
-    const [landlordEdits, { priorRuns, priorRunsSeen }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
-    const scored = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, holdReason });
-    if (!scored.length) return 0;
-    const rows = (await jevPass({ rows: scored, snapshot, state })).map(({ _in, ...r }) => r);
+    const [landlordEdits, { priorRuns, priorRunsSeen, priorValues }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
+    const scored = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, priorValues, holdReason });
+    if (!scored.length) return [];
+    const full = await jevPass({ rows: scored, snapshot, state });
+    const rows = full.map(({ _in, _i, ...r }) => ({ ...r, jev: r.jev ?? null }));
     const runId = randomUUID();
     const runAt = new Date().toISOString();
     const { error } = await supabase.from("listing_sync_scores").insert(rows.map((r) => ({ ...r, run_id: runId, run_at: runAt, listing_id: listingId, monitor_id: monitorId ?? null })));
     if (error) throw new Error(error.message);
-    return rows.length;
+    // Each row with the index of the change it scored, for the ledger to decide by.
+    return full.map(({ _in, ...r }) => r);
   } catch (err) {
     console.error(`[source-sync] shadow scores for ${listingId}: ${err?.message ?? err}`);
-    return 0;
+    return [];
   }
 }
 

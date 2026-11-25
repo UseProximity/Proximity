@@ -97,3 +97,14 @@ test("the listing gate stands whatever the score", () => {
   assert.equal(r.ledger_apply, false);
   assert.equal(r.ledger_reason, "waiting for the landlord to publish");
 });
+
+test("a landlord edit loses only once the website has said something different before", () => {
+  const edits = new Map([["l1", "2026-08-01T00:00:00Z"]]);
+  const c = rent({ new: { rent: 1450 } });
+  const none = { synced: new Map() };
+  const [first] = shadowRows({ changes: [c], snapshot: { ...snapshot, trace: { reader: "g5" } }, state, learnings: none, landlordEdits: edits, now: NOW });
+  assert.equal(first.ledger_apply, false); // first sighting: the landlord may have just edited away from it
+  const before = new Map([["l1|rent", new Set([JSON.stringify({ rent: 1500 })])]]);
+  const [moved] = shadowRows({ changes: [c], snapshot: { ...snapshot, trace: { reader: "g5" } }, state, learnings: none, landlordEdits: edits, priorValues: before, now: NOW });
+  assert.equal(moved.ledger_apply, true); // the site said $1,500 before and now says $1,450; the edit is 115 days old
+});

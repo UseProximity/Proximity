@@ -84,7 +84,7 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 // ---------------------------------------------------------------- matching
 
 import { matchUnits, sameName, nameMatchAliases, norm } from "./match.js";
-import { saveShadowScores } from "./shadowStore.js";
+import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1031,6 +1031,7 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
       ...c.detail,
       note: c.note ?? null,
       judge: c.judgeResult ?? null,
+      ...(c.ledger ? { ledger: c.ledger } : {}),
       unitId: c.unitId ?? c.detail.unitId ?? null,
       leaseId: c.leaseId ?? c.detail.leaseId ?? null,
       ...(status === "rejected" ? { autoDenied: c.denyReason ?? "denied" } : {}),
@@ -1334,7 +1335,30 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
 
   // Shadow scores (stage 1): the ledger's verdict on each change, saved next
   // to today's. Writes only listing_sync_scores; never changes the run.
-  if (policyRun) await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason });
+  if (policyRun) {
+    const scored = await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason });
+    /*
+     * The ledger decides (stage 3, SYNC_LEDGER_DECIDES): each change applies
+     * or not by its score, in place of the rules above and the churn guard.
+     * Nothing is held for a person; a change that misses is scored again on
+     * the next read. A run the scores could not be made for keeps the rules.
+     */
+    if (ledgerDecides() && scored.length) {
+      const byIndex = new Map(scored.map((r) => [r._i, r]));
+      changes.forEach((c, i) => {
+        const r = byIndex.get(i);
+        if (!r) return;
+        c.rulesVerdict = c.verdict;
+        c.verdict = { apply: r.ledger_apply, reason: r.ledger_apply ? c.verdict?.reason ?? null : r.ledger_reason ?? "the score did not reach what this change needs" };
+        c.ledger = { score: r.score, need: r.need, bar: r.bar, current: r.current_score, trust: r.trust, readQuality: r.read_quality, rightThing: r.right_thing, freshness: r.freshness, readsInRow: r.reads_in_row, borderline: r.borderline, source: r.source, platform: r.platform, hidden: r.ledger_hidden };
+        if (c.protected && r.ledger_apply) c.protected = false;
+      });
+      if (holdReason === "churn_hold") {
+        holdReason = null;
+        churn = null;
+      }
+    }
+  }
 
   /*
    * Hidden prices change nothing a student or landlord sees, so they do not
