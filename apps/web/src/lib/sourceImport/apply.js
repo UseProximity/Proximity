@@ -1732,7 +1732,8 @@ async function undoneKeysFor(listingId) {
     console.error(`[source-sync] undone changes for ${listingId}: ${error.message}`);
     return new Map();
   }
-  return new Map((data ?? []).filter((e) => !e.detail.undone.expiredAt).map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), { at: e.detail.undone.at, id: e.id, unitId: e.detail?.unitId ?? null, leaseId: e.detail?.leaseId ?? null }]));
+  // A chat change's Undo answers that message alone; the website is decided on its own.
+  return new Map((data ?? []).filter((e) => !e.detail.undone.expiredAt && e.detail?.source !== "chat").map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), { at: e.detail.undone.at, id: e.id, unitId: e.detail?.unitId ?? null, leaseId: e.detail?.leaseId ?? null }]));
 }
 
 async function expireUndo(eventId) {
@@ -1798,7 +1799,7 @@ export async function undoEvents({ listingId, eventIds, userId }) {
         if (readError) throw dbFail("read", readError);
         if (!now) throw new Error("It is no longer on the listing.");
         const moved = cols.filter((k) => stableJson(now[k] ?? null) !== stableJson(u.wrote[k] ?? null));
-        if (moved.length) throw new Error("This has been edited since the website change was applied, so there is nothing left to undo.");
+        if (moved.length) throw new Error("This has been edited since the change was applied, so there is nothing left to undo.");
         const { error: writeError } = await writeAsPerson(table, id, u.values, userId);
         if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
         if (writeError) throw dbFail("write", writeError);
