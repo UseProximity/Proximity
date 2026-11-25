@@ -60,6 +60,15 @@ export function matchUnits(snapUnits, dbUnits, { place = "" } = {}) {
       byName.set(s, hit.u);
     }
   }
+  // Then a plan's other name, kept when two sources' names for it were merged (read.js dedupeLayouts).
+  for (const s of snapUnits) {
+    if (byName.has(s) || s.pinnedUnitId || !(s.aka ?? []).length) continue;
+    const hit = pool.find((p) => !p.used && s.aka.some((a) => sameName(p.u.name, a)));
+    if (hit) {
+      hit.used = true;
+      byName.set(s, hit.u);
+    }
+  }
   // Then a name that is the other plus the address, when one unit only fits.
   const sameLayout = (p, s) => (s.bedrooms == null || Number(p.u.bedrooms) === Number(s.bedrooms)) && (s.bathrooms == null || Number(p.u.bathrooms) === Number(s.bathrooms));
   for (const s of snapUnits) {
@@ -131,4 +140,14 @@ export function naturalName(a, b) {
     return (words.length ? 2 : 0) - (/\d/.test(s) ? 1 : 0) - (/^[A-Za-z]{0,2}[.\-]?\d+[A-Za-z]?$/.test(s) ? 2 : 0);
   };
   return score(b) > score(a) ? b : a;
+}
+
+/* JSON with object keys in order: stored JSON comes back reordered, so equal values compare equal. */
+export function stableJson(value) {
+  const sort = (v) => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, sort(v[k])]));
+    return v;
+  };
+  return JSON.stringify(sort(value ?? null));
 }

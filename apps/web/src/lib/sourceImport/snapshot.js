@@ -181,6 +181,8 @@ export function consolidateOffers(raw = []) {
         // A starting price taken as the price because one unit is left.
         rentOnlyUnit: o.onlyUnit === true,
         termsInferred: o.termsInferred === true,
+        // ...and the length was the one a starting-at price was put on (read.js startingAtTerm).
+        termFromStartingAt: o.termFromStartingAt === true,
       });
       continue;
     }
@@ -192,6 +194,7 @@ export function consolidateOffers(raw = []) {
     g.rentExact = g.rentExact && o.rentIsExact !== false;
     g.rentOnlyUnit = g.rentOnlyUnit && o.onlyUnit === true;
     g.termsInferred = g.termsInferred || o.termsInferred === true;
+    g.termFromStartingAt = g.termFromStartingAt && o.termFromStartingAt === true;
     if (date === null) g.availableFrom = null;
     else if (g.availableFrom !== null && date < g.availableFrom) g.availableFrom = date;
   }
@@ -229,6 +232,9 @@ export function cleanUnit(unit) {
   if (unit.fromModel === true) cleaned.fromModel = true;
   // Which reader: a recipe replayed by code, the pattern parser, or (absent) the model.
   if (unit.readBy === "recipe" || unit.readBy === "pattern") cleaned.readBy = unit.readBy;
+  // Other names the plan goes by (two sources' names merged): pairing only.
+  const aka = (unit.aka ?? []).filter((n) => typeof n === "string" && n.trim()).map((n) => n.trim().slice(0, 80));
+  if (aka.length) cleaned.aka = [...new Set(aka)];
   cleaned.key = unit.key ?? unitKey(cleaned);
   return cleaned;
 }
@@ -261,6 +267,7 @@ export function makeSnapshot({
     existing.area ??= u.area;
     existing.floorPlanImageUrl ??= u.floorPlanImageUrl;
     existing.name ??= u.name;
+    if (u.aka) existing.aka = [...new Set([...(existing.aka ?? []), ...u.aka])];
     existing.available = existing.available && u.available;
     if (!u.fromModel) delete existing.fromModel;
     if (!u.readBy) delete existing.readBy;

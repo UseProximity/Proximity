@@ -101,7 +101,7 @@ export const lineShape = (line) => String(line ?? "").trim().toLowerCase().repla
  * only in a filter has no block of its own to read.
  *   others  Set of the other units' names, normalised
  */
-function locate(pages, name, others = null, listOk = true) {
+function locate(pages, name, others = null, listOk = true, lineStart = false) {
   const re = nameRe(name);
   if (!re) return null;
   let fallback = null;
@@ -111,6 +111,8 @@ function locate(pages, name, others = null, listOk = true) {
     let m;
     while ((m = all.exec(text))) {
       const index = m.index + (m[0].length - m[0].replace(/^[^A-Za-z0-9]+/, "").length);
+      // Only where a line starts with the name, not inside other text.
+      if (lineStart && text.slice(text.lastIndexOf("\n", index - 1) + 1, index).trim()) continue;
       const hit = { page: p, index, line: text.slice(0, index).split("\n").length - 1 };
       if (!others?.size) return hit;
       const start = text.lastIndexOf("\n", index) + 1;
@@ -203,10 +205,23 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
   // A listing's unit called "Studio" or "1 Bedroom" is a layout word, found
   // all over any page; only the recipe's own names of that kind are looked for.
   const generic = (n) => /^(?:studio|\d+\s*(?:bed(?:room)?s?|br|bd)(?:\s*[\/,|]?\s*\d+(?:\.\d)?\s*(?:bath(?:room)?s?|ba))?)$/i.test(String(n).trim());
-  for (const n of [...(recipe.names ?? []), ...known.filter((k) => !generic(k))]) {
+  /*
+   * The listing's own names were never checked against the page the way the
+   * recipe's were, so a short one ("1", "A") would latch onto any text
+   * ("Studio / 1 Bath") and take another plan's price (PR 483 review). They
+   * are looked for only at the start of a line, and only at 3 characters or more.
+   */
+  const fromListing = new Set();
+  for (const n of (recipe.names ?? [])) {
     if (!norm(n) || have.has(norm(n))) continue;
     have.add(norm(n));
     names.push(n);
+  }
+  for (const n of known.filter((k) => !generic(k) && norm(k).replace(/\s+/g, "").length >= 3)) {
+    if (!norm(n) || have.has(norm(n))) continue;
+    have.add(norm(n));
+    names.push(n);
+    fromListing.add(norm(n));
   }
   // Units the site has added: a short line followed by a line of the learned shape.
   const added = [];
@@ -225,7 +240,7 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
     }
   }
   const otherNames = (name) => new Set(names.filter((n) => norm(n) !== norm(name)).map(norm));
-  const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm)), false) }));
+  const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm)), false, fromListing.has(norm(name))) }));
   const placed = spots.filter((s) => s.at).sort((a, b) => a.at.page - b.at.page || a.at.index - b.at.index);
   const units = placed.map((s, i) => {
     const text = use[s.at.page].text;
@@ -314,6 +329,18 @@ export function recipeBroken(recipe, replay) {
   if (recipe.kind === "layout") return replay.units.length === 0;
   const total = (recipe.names ?? []).length;
   return total > 0 && replay.found < Math.max(1, Math.ceil(total * 0.5));
+}
+
+/*
+ * Whether another building's recipe for the same platform reads this site:
+ * it must find most of the listing's own units by name. With fewer than two
+ * named units to check against, it is trusted only for a layout list.
+ */
+export function platformRecipeFits(units, knownNames = []) {
+  const named = [...new Set((knownNames ?? []).map(norm).filter((n) => n && !/^(?:studio|\d+(?:bed|br|bd))/.test(n)))];
+  if (named.length < 2) return false;
+  const got = new Set((units ?? []).map((u) => norm(u.name)).filter(Boolean));
+  return named.filter((n) => got.has(n)).length >= Math.ceil(named.length * 0.5);
 }
 
 /*

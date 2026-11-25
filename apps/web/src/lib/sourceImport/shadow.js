@@ -13,7 +13,7 @@
  */
 
 import { TRUST, ROUGH_CAP, decide, fieldGroup, websiteFreshness } from "./score.js";
-import { sameName } from "./match.js";
+import { sameName, stableJson } from "./match.js";
 import { sameValue } from "./learnRules.js";
 
 /* The action a change is, for its bar. */
@@ -71,12 +71,21 @@ export const UNIT_JUMP_RIGHT = 0.6;
 // More new units than this in one read is the other-building sign (PR #418 review).
 export const MAX_NEW_UNITS = 4;
 
-/* Whether an earlier run saw the website give this field a different value. */
-function saidOtherwiseBefore(priorValues, scope, field, value) {
-  const seen = priorValues?.get?.(`${scope ?? ""}|${field ?? ""}`);
-  if (!seen?.size) return false;
-  const now = JSON.stringify(value ?? null);
-  return [...seen].some((v) => v !== now);
+/*
+ * Whether an earlier run saw the website give this field a different value.
+ *   priorValues  Map scope -> [{ field, value }] (shadowStore.js)
+ * Field by field, whatever order the stored JSON keeps its keys in: a value
+ * with several fields differs only where a field both name differs (PR 483
+ * review: a reordered copy of the same offer counted as the website moving).
+ */
+export function saidOtherwiseBefore(priorValues, scope, field, value) {
+  const seen = priorValues?.get?.(scope ?? "") ?? [];
+  if (!seen.length) return false;
+  const obj = (v) => v && typeof v === "object" && !Array.isArray(v);
+  if (obj(value)) {
+    return Object.entries(value).some(([k, v]) => seen.some((p) => obj(p.value) && k in p.value && stableJson(p.value[k]) !== stableJson(v)));
+  }
+  return seen.some((p) => p.field === field && !obj(p.value) && stableJson(p.value) !== stableJson(value));
 }
 
 const LEASE_COL = { rent: "rent", rentIsPerPerson: "rent_is_per_person", leaseTermMonths: "lease_term_months", availableFrom: "available_from", apartments: "description" };
@@ -127,7 +136,14 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     // Read quality: what the reader said about this fact (Jev from stage 2).
     let readQuality = 1;
     const rentType = c.facts?.rentExact === false || (c.kind === "lease_withdrawn" && c.facts?.rentsExact === false) ? "starting_at" : "exact";
-    if (fieldGroup(field) === "rent" && rentType !== "exact") readQuality = Math.min(readQuality, ROUGH_CAP);
+    /*
+     * A starting-at price where the sync last wrote one from the same website:
+     * like for like, so it is neither capped nor refused (score.js: a
+     * starting-at price can replace another). The sync's value counts as
+     * starting-at when the site now shows this plan only as starting-at.
+     */
+    const roughForRough = fieldGroup(field) === "rent" && rentType !== "exact" && action === "update" && snapUnit && (snapUnit.offers ?? []).every((o) => o.rent == null || o.rentExact === false);
+    if (fieldGroup(field) === "rent" && rentType !== "exact" && !roughForRough) readQuality = Math.min(readQuality, ROUGH_CAP);
     const offer = snapUnit?.offers?.find((o) => String(o.rent ?? "") === String(c.new?.rent ?? "")) ?? snapUnit?.offers?.[0];
     const inferred = (field === "leaseTermMonths" && !!offer?.termsInferred) || (field === "availableFrom" && offer && !offer.dateStated);
     // A unit missing from a read that did not see the whole list is not taken as let.
@@ -141,8 +157,11 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     let rightThing = runRight;
     if (db && snapUnit && !snapUnit.pinnedUnitId && !sameName(snapUnit.name, db.name)) rightThing *= 0.7;
 
-    // Whose value stands today: the landlord's (fading) or the sync's.
-    const scope = leaseId ?? unitId ?? (c.kind === "property_updated" ? `property:description` : null);
+    // Whose value stands today: the landlord's (fading) or the sync's. A
+    // landlord's edit to a unit (its name, its size) speaks for the unit's
+    // own fields, not for a new lease or photos on it (PR 483 review).
+    const unitScoped = ["spec_mismatch", "unit_updated"].includes(c.kind);
+    const scope = leaseId ?? (unitScoped ? unitId : null) ?? (c.kind === "property_updated" ? `property:description` : null);
     const editedAt = scope ? landlordEdits.get(scope) : null;
     const synced = leaseId ? learnings?.synced?.get(`lease:${leaseId}`) : null;
     const lease = leaseId ? leasesById.get(leaseId) : null;
@@ -174,7 +193,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       ? false
       : synced && c.new && typeof c.new === "object" && Object.keys(c.new).some((k) => LEASE_COL[k] in synced)
         ? Object.entries(c.new).some(([k, v]) => LEASE_COL[k] in synced && !sameValue(synced[LEASE_COL[k]], v))
-        : saidOtherwiseBefore(priorValues, leaseId ?? unitId, field, c.new);
+        : saidOtherwiseBefore(priorValues, scope, field, c.new);
     // An edit of unknown age is taken as a year old.
     const daysSinceEdit = editedAt ? Math.max(0, (now - new Date(editedAt).getTime()) / DAY) : 365;
     const empty = action === "fill" || action === "add" || action === "photos";
@@ -183,7 +202,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       ? { empty: true }
       : landlordEdited
         ? { by: "landlord", daysSinceEdit, blankByChoice, rentType: "exact" }
-        : { by: "sync", score: TRUST.pattern, rentType: "exact" };
+        : { by: "sync", score: TRUST.pattern, rentType: roughForRough ? rentType : "exact" };
 
     const freshness = websiteFreshness({ landlordEdited, movedSinceLandlord });
     const readsInRow = 1 + (priorRuns.get(key) ?? 0);
@@ -191,7 +210,8 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
     // Descriptions and specials change on the weekly read only (Wyatt, 2026-11-24).
     if (c.kind === "property_updated") verdict = { ...verdict, apply: false, borderline: false, reason: "descriptions and specials change on the weekly read, not the daily sync" };
     // The listing gate (billing, agreement) and units owned elsewhere stand whatever the score.
-    const blocked = (c.gated && c.kind !== "unit_new") || c.elsewhere ? c.note ?? "blocked by the listing gate" : null;
+    // So does the hold on a unit that may be a new one renamed: neither side is acted on until the landlord settles it.
+    const blocked = (c.gated && c.kind !== "unit_new") || c.elsewhere || c.lookalike ? c.note ?? "blocked by the listing gate" : null;
     if (blocked) verdict = { ...verdict, apply: false, borderline: false, reason: blocked };
 
     rows.push({
@@ -224,7 +244,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
       // What decide() was given, so a Jev pass can score it again (never stored).
-      _in: { action, field, rentType, settled, settledBy: c.note ?? null, onlyUnit: c.facts?.rentOnlyUnit === true, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
+      _in: { action, field, rentType, roughForRough: !!roughForRough, settled, settledBy: c.note ?? null, onlyUnit: c.facts?.rentOnlyUnit === true, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
         // Whether the website itself has used this unit's name (the sync made it, or an alias was learned).
         unitSiteNamed: !!db && (String(learnings?.synced?.get(`unit:${db.id}`)?.siteKey ?? "").startsWith("n:") || [...(learnings?.aliases?.values?.() ?? [])].includes(db.id)),
         unitLayout: db ? [db.bedrooms != null ? `${Number(db.bedrooms) === 0 ? "studio" : `${db.bedrooms} bed`}` : null, db.bathrooms != null ? `${db.bathrooms} bath` : null, Number(db.area) > 0 ? `${Number(db.area).toLocaleString("en-US")} sq ft` : null].filter(Boolean).join(", ") : null },
@@ -268,7 +288,7 @@ export function rescoreWithJev(row, jev) {
     if (part.rough) {
       if (part.part === "rentType" && part.choice && part.choice !== "exact") {
         rentType = part.choice;
-        readQuality = Math.min(readQuality, ROUGH_CAP);
+        if (!inp.roughForRough) readQuality = Math.min(readQuality, ROUGH_CAP);
       }
       if (part.part === "basis" && part.choice === "not_stated" && inp.field === "rentIsPerPerson") readQuality = Math.min(readQuality, ROUGH_CAP);
       continue;

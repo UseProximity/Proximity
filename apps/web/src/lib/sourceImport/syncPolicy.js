@@ -71,6 +71,13 @@ export function decideSyncChange(c, { snapshot }) {
     case "lease_withdrawn": {
       if (c.lookalike) return { apply: false, reason: c.note ?? DENY.unknown };
       if (fromUnitPage || d.unitPageGone) return { apply: true, reason: null };
+      /*
+       * Settled by what the read did see, not by what it missed: a duplicate
+       * whose twin the website shows with the same lease, or a layout-named
+       * unit the website's named plans replaced (Wyatt, 2026-11-25). Only
+       * the leases are withdrawn; the unit row stays.
+       */
+      if (d.unitGone && (d.duplicateOf || (d.supersededBy ?? []).length)) return { apply: true, reason: null };
       if (!snapshot?.unitListComplete) return { apply: false, reason: DENY.partialRead };
       // One price gone from a plan the site still lists: only when the page
       // states that plan's prices exactly (read by a feed, or exact on the page).

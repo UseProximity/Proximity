@@ -18,10 +18,11 @@ import { recentDecisions, undoChange, applyNow, syncHealth } from "@/lib/sourceI
 import { ledgerDecides } from "@/lib/sourceImport/shadowStore";
 import supabase from "@/lib/supabase";
 
+// The role is read from the database, not the session, so a demoted admin is out at once.
 async function requireTeam() {
   const session = await auth();
   if (!session?.user?.id) return { res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  if (!["super", "admin"].includes(session.user.role)) return { res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  if (!(await requireDbRole(["super", "admin"]))) return { res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   return { userId: session.user.id };
 }
 

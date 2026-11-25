@@ -16,3 +16,9 @@ test("hints name the units and the field, calmly", () => {
 test("a read with no units says what to do next", () => {
   assert.equal(importHints({ units: [] }).length, 1);
 });
+
+test("a starting-at hint names the lease the price was put on", () => {
+  const hints = importHints({ units: [{ name: "Elm", bedrooms: 1, bathrooms: 1, area: 600, offers: [{ rent: 1100, rentExact: false, leaseTermMonths: [10], termsInferred: true, termFromStartingAt: true, availableNow: true }] }] });
+  assert.ok(hints[0].includes("on the 10 month lease"));
+  assert.ok(!hints.some((h) => h.includes("general text")));
+});

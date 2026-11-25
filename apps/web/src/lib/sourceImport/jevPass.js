@@ -9,6 +9,10 @@ import { textHasAddress, unitWindow } from "./evidence.js";
 
 // At most this many Jev calls per sync run (one per unit with changes).
 export const JEV_CALLS_PER_RUN = 40;
+// Calls in flight at once, and the most time the pass may take: it runs
+// inside the sync, before anything is applied (PR 483 review).
+const JEV_PARALLEL = 4;
+export const JEV_BUDGET_MS = 60000;
 // Evidence kept on a row for labelling and review, in characters.
 const KEEP_TEXT = 2500;
 // A whole page sent to Jev for a unit the site does not name, in characters.
@@ -22,8 +26,9 @@ const PAGE_ASK_CHARS = 24000;
  * no Jev spend where code already knows). Never throws: a failed call marks
  * that unit's changes, which then wait for the next read.
  */
-export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn() }) {
+export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(), now = Date.now() }) {
   if (!on) return rows;
+  const deadline = now + JEV_BUDGET_MS;
   const ev = snapshot?.evidence ?? null;
   const units = new Map((snapshot?.units ?? []).map((u) => [u.key, u]));
   const label = (key) => {
@@ -103,7 +108,16 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
     groups.get(key).push(i);
   });
 
-  for (const [key, idxs] of groups) {
+  /*
+   * The order the units are asked about turns with the day, so on a listing
+   * with more units than the call cap a different set waits each day rather
+   * than the same last ones forever (PR 483 review).
+   */
+  const entries = [...groups];
+  const turn = entries.length ? (Math.floor(now / 86400000) * JEV_CALLS_PER_RUN) % entries.length : 0;
+  const ordered = [...entries.slice(turn), ...entries.slice(0, turn)];
+  const work = [];
+  for (const [key, idxs] of ordered) {
     const win = key === "__page__" ? ev?.page : windows.get(key) ?? ev?.units?.[key];
     const text = win?.text ?? "";
     const asks = idxs.flatMap((i) => questionsFor(rows[i], i, { unitLabel: rows[i].kind === "lease_withdrawn" ? (layoutAsk.has(i) && rows[i]._in.unitLayout ? `a ${rows[i]._in.unitLayout} plan` : `the ${rows[i]._in.unitName} unit`) : label(rows[i].unit_key) }).map((q) => ({ ...q, row: i })));
@@ -112,9 +126,16 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
       for (const i of idxs) results.set(i, { status: "no_text", model: JEV_MODEL, parts: [] });
       continue;
     }
-    if (calls >= JEV_CALLS_PER_RUN) {
+    if (calls + work.length >= JEV_CALLS_PER_RUN) {
       for (const i of idxs) results.set(i, { status: "failed", model: JEV_MODEL, parts: [], error: "call cap for this run" });
       continue;
+    }
+    work.push({ idxs, asks, text, win });
+  }
+  const askOne = async ({ idxs, asks, text, win }) => {
+    if (Date.now() > deadline) {
+      for (const i of idxs) results.set(i, { status: "failed", model: JEV_MODEL, parts: [], error: "out of time for this run" });
+      return;
     }
     try {
       const r = await ask(text, asks.map((a) => a.question));
@@ -128,7 +149,8 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
     } catch (err) {
       for (const i of idxs) results.set(i, { status: "failed", model: JEV_MODEL, parts: [], error: String(err?.message ?? err).slice(0, 200) });
     }
-  }
+  };
+  for (let i = 0; i < work.length; i += JEV_PARALLEL) await Promise.all(work.slice(i, i + JEV_PARALLEL).map(askOne));
   if (calls) console.log(`[source-sync] Jev: ${calls} call${calls === 1 ? "" : "s"}, $${cost.toFixed(5)} for ${building ?? "a listing"}`);
 
   return rows.map((row, i) => {

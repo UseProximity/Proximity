@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nameMatchAliases, naturalName } from "./match.js";
+import { nameMatchAliases, naturalName, matchUnits, stableJson } from "./match.js";
 
 const db = [
   { id: "u1", name: "Pershing", bedrooms: 2, bathrooms: 2, area: 900 },
@@ -59,4 +59,13 @@ test("a name that is the other plus the address is the same unit", async () => {
   assert.equal(genericName("1 Bedroom"), true);
   assert.equal(genericName("Studio"), true);
   assert.equal(genericName("Ruby"), false);
+});
+
+test("a plan renamed by a merge still pairs with the unit under its other name", () => {
+  const { pairs } = matchUnits([{ key: "n:london", name: "London", aka: ["A012"], bedrooms: 1, bathrooms: 1 }], [{ id: "a12", name: "A012", bedrooms: 1, bathrooms: 1, unit_leases: [] }, { id: "a14", name: "A014", bedrooms: 1, bathrooms: 1, unit_leases: [] }]);
+  assert.equal(pairs.find((p) => p.snap?.name === "London")?.db?.id, "a12");
+});
+
+test("stableJson ignores key order", () => {
+  assert.equal(stableJson({ b: 1, a: [{ d: 2, c: 3 }] }), stableJson({ a: [{ c: 3, d: 2 }], b: 1 }));
 });

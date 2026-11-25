@@ -468,14 +468,13 @@ export async function runJob(jobId) {
           // A platform (or this listing's) recipe lets code read the units; the read works a new one out otherwise.
           recipeFor: (platformKey) => loadRecipes(listing.id, platformKey),
         });
-    if (!grouped) await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
-
-    // Cancelled while the site was being read: write nothing.
+    // Cancelled while the site was being read: write nothing, not even a recipe.
     const { data: still } = await supabase.from("listing_import_jobs").select("status").eq("id", jobId).maybeSingle();
     if (still?.status === "cancelled") {
       console.log(`[source-import] job ${jobId} cancelled during the read; nothing applied`);
       return still;
     }
+    if (!grouped) await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
     await setStep(jobId, "Saving", 82);
     const attached = await attachSourceUrl({ listingId: listing.id, rawUrl: snapshot.sourceUrl, indexUrl: snapshot.indexUrl, userId: job.user_id, portal: snapshot.portal ?? null });
     const monitorId = attached.ok ? await monitorIdFor(listing.id) : null;
