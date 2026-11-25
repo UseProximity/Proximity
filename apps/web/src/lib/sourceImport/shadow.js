@@ -219,7 +219,7 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       policy_reason: holdReason ? `run held: ${holdReason}` : c.verdict?.reason ?? null,
       landlord_edited: landlordEdited,
       // What decide() was given, so a Jev pass can score it again (never stored).
-      _in: { action, field, rentType, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
+      _in: { action, field, rentType, onlyUnit: c.facts?.rentOnlyUnit === true, inferred, readsInRow, claim: { trust, readQuality, rightThing, freshness }, current, weekly: c.kind === "property_updated", blocked, unitName: db?.name ?? snapUnit?.name ?? null,
         // Whether the website itself has used this unit's name (the sync made it, or an alias was learned).
         unitSiteNamed: !!db && (String(learnings?.synced?.get(`unit:${db.id}`)?.siteKey ?? "").startsWith("n:") || [...(learnings?.aliases?.values?.() ?? [])].includes(db.id)),
         unitLayout: db ? [db.bedrooms != null ? `${Number(db.bedrooms) === 0 ? "studio" : `${db.bedrooms} bed`}` : null, db.bathrooms != null ? `${db.bathrooms} bath` : null, Number(db.area) > 0 ? `${Number(db.area).toLocaleString("en-US")} sq ft` : null].filter(Boolean).join(", ") : null },

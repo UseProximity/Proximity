@@ -67,12 +67,17 @@ export function parseBlock(text, today = new Date()) {
     const range = /^\s*(?:-|–|to)\s*\$/.test(after) || /^\s*\+/.test(after) || /\$\s?[\d,]+(?:\.\d{2})?\s*(?:-|–|to)\s*$/.test(before);
     if (/\$\s?[\d,]+(?:\.\d{2})?\s*(?:-|–|to)\s*$/.test(before)) continue; // the high end of a range
     const exact = !range && !STARTING_BEFORE.test(before);
-    if (!rents.some((r) => r.rent === n)) rents.push({ rent: n, exact });
+    if (!rents.some((r) => r.rent === n)) rents.push({ rent: n, exact, range });
   }
+  // "From $1,165 ... Only 1 Unit Available!": with one unit left, the starting
+  // price is that unit's price (Wyatt, 2026-11-25, Union at the Grove BlakeS1).
+  const onlyUnit = rents.length === 1 && !rents[0].exact && !rents[0].range && /(?<![\d,.])(?:only\s+)?(?:1|one)\s+(?:unit|apartment|home)\s+(?:is\s+)?(?:available|left)\b/i.test(t);
+  if (onlyUnit) rents[0].exact = true;
   const waitlist = /wait\s*list|no\s+units\s+available|not\s+available|sold\s+out|fully\s+leased|occupied|unavailable/i.test(t);
   const offers = rents.slice(0, 12).map((r) => ({
     rent: r.rent,
     rentIsExact: r.exact,
+    onlyUnit: onlyUnit || undefined,
     rentIsPerPerson: perPerson,
     leaseTermMonths: terms,
     availableFrom,
@@ -219,13 +224,26 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
       }
     }
   }
+  const otherNames = (name) => new Set(names.filter((n) => norm(n) !== norm(name)).map(norm));
   const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm)), false) }));
   const placed = spots.filter((s) => s.at).sort((a, b) => a.at.page - b.at.page || a.at.index - b.at.index);
   const units = placed.map((s, i) => {
     const text = use[s.at.page].text;
     // From the start of the name's own line to the next unit's name.
     const start = text.lastIndexOf("\n", s.at.index) + 1;
-    const next = placed[i + 1] && placed[i + 1].at.page === s.at.page ? text.lastIndexOf("\n", placed[i + 1].at.index) + 1 : text.length;
+    let next = placed[i + 1] && placed[i + 1].at.page === s.at.page ? text.lastIndexOf("\n", placed[i + 1].at.index) + 1 : text.length;
+    // A page can list its plans twice (Union at the Grove, the Hudson): the
+    // next unit by position may be far below, past a second list whose prices
+    // then landed on this unit (MarshB1 took six, 2026-11-25). So the block
+    // also ends at the first later line that is another unit's name.
+    const ownEnd = text.indexOf("\n", s.at.index);
+    if (ownEnd >= 0) {
+      let at = ownEnd + 1;
+      for (const line of text.slice(at, Math.min(next, start + BLOCK_MAX)).split("\n")) {
+        if (otherNames(s.name).has(norm(line))) { next = at; break; }
+        at += line.length + 1;
+      }
+    }
     const block = text.slice(start, Math.max(start + s.name.length, Math.min(next, start + BLOCK_MAX)));
     return { name: s.name, ...parseBlock(block, today), photos: [], floorPlanImageUrl: null, fromModel: true, readBy: "recipe", source: "the website, read by its recipe", evidence: { url: use[s.at.page].url, text: block } };
   });

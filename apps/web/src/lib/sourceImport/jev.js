@@ -60,8 +60,11 @@ export function questionsFor(row, idx, { unitLabel, building, address } = {}) {
     return out;
   }
   if (n.rent != null && (field === "rent" || row.action === "add")) {
-    q("rent", { type: "predicate", instructions: `Does this text state that ${u} rents for ${money(n.rent)}?` }, { kind: "predicate" });
-    q("rentType", { type: "choice", instructions: `Is ${money(n.rent)} the price itself, a starting-at price, or a range?`, choices: [{ value: "exact" }, { value: "starting_at" }, { value: "range" }] }, { kind: "choice", value: "exact", rough: true });
+    // One unit left at a starting price: code took it as the price, so Jev is
+    // asked whether the page shows exactly that, not whether it is a "from" price.
+    const onlyUnit = row._in?.onlyUnit === true;
+    q("rent", { type: "predicate", instructions: onlyUnit ? `Does this text show ${u} priced from ${money(n.rent)}, with only one unit available?` : `Does this text state that ${u} rents for ${money(n.rent)}?` }, { kind: "predicate" });
+    if (!onlyUnit) q("rentType", { type: "choice", instructions: `Is ${money(n.rent)} the price itself, a starting-at price, or a range?`, choices: [{ value: "exact" }, { value: "starting_at" }, { value: "range" }] }, { kind: "choice", value: "exact", rough: true });
     if (n.rentIsPerPerson != null || field === "rentIsPerPerson") {
       q("basis", { type: "choice", instructions: `Is ${money(n.rent)} per person, for the whole unit, or not stated?`, choices: [{ value: "per_person" }, { value: "whole_unit" }, { value: "not_stated" }] }, { kind: "choice", value: n.rentIsPerPerson ? "per_person" : "whole_unit", rough: true });
     }

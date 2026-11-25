@@ -539,6 +539,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         unitId: db.id,
         field: "rent",
         old: null,
+        facts: { rentOnlyUnit: o.rentOnlyUnit === true },
         new: { rent: o.rent, rentIsPerPerson: o.rentIsPerPerson, leaseTermMonths: o.leaseTermMonths, availableFrom: o.availableFrom, apartments: o.apartments },
         detail: { op: "lease_insert", unitId: db.id, label, offer: o, draft: false },
       });
@@ -592,7 +593,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           detail: { op: "lease_update", leaseId: l.id, label, patch: { ...lp, unavailable: false, is_active: true } },
         });
       } else if (Object.keys(lp).length) {
-        push({ kind: repriced ? "rent_change" : "lease_updated", facts: { fromModel: !!snap.fromModel, rentExact: o.rentExact !== false }, unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
+        push({ kind: repriced ? "rent_change" : "lease_updated", facts: { fromModel: !!snap.fromModel, rentExact: o.rentExact !== false, rentOnlyUnit: o.rentOnlyUnit === true }, unitKey: snap.key, unitId: db.id, leaseId: l.id, field: Object.keys(diff).join(","), old: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.old])), new: Object.fromEntries(Object.entries(diff).map(([k, v]) => [k, v.new])), detail: { op: "lease_update", leaseId: l.id, label, patch: lp } });
       }
     }
     // A price the site no longer offers (or a unit it stopped offering).

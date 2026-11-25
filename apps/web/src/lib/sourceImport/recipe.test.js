@@ -87,3 +87,33 @@ test("digging deeper never takes a price from a page that only lists the plans",
   deepenUnits(units, [real]);
   assert.deepEqual(units.map((u) => [u.offers[0].rent, u.offers[0].rentIsExact]), [[1120, true], [1180, true], [1000, false], [1075, true]]);
 });
+
+test("a starting price with one unit left is that unit's price", () => {
+  const one = parseBlock("BlakeS1\nStudio\n/ 1 Bath\n496 sq. ft\nFrom\n$1,165 per month\n$500\ndeposit\nView Details\nOnly 1 Unit Available!");
+  assert.equal(one.offers.length, 1);
+  assert.equal(one.offers[0].rent, 1165);
+  assert.equal(one.offers[0].rentIsExact, true);
+  assert.equal(one.offers[0].onlyUnit, true);
+  const many = parseBlock("A1\n1 Bed\n/ 1 Bath\nFrom\n$1,611 per month\nView Details\n3 Units Available");
+  assert.equal(many.offers[0].rentIsExact, false);
+  assert.equal(many.offers[0].onlyUnit, undefined);
+  const eleven = parseBlock("A2\n1 Bed\nFrom\n$1,611 per month\n11 Units Available");
+  assert.equal(eleven.offers[0].rentIsExact, false);
+  const range = parseBlock("A3\n1 Bed\n$1,400 - $1,600\n1 Unit Available");
+  assert.equal(range.offers[0].rentIsExact, false);
+});
+
+test("a unit's block ends at the next unit's name, even one placed earlier on the page", () => {
+  const text = [
+    "BlakeA1", "1 Bed", "/ 1 Bath", "From", "$1,300 per month", "View Details",
+    "MarshB1", "2 Bed", "/ 2 Bath", "1,075 sq. ft", "View Details", "Waitlist Available",
+    "Specials", "Up to 3 Months Free",
+    "BlakeA1", "1 Bed, 1 Bath, 628 SqFt", "1 Available", "$1,395 per month", "12mo lease",
+    "AsheA1", "1 Bed, 1 Bath, 745 SqFt", "3 Available", "$1,575 per month",
+  ].join("\n");
+  const recipe = { v: 1, kind: "named", pages: ["https://x.test/plans"], after: null, names: ["BlakeA1", "MarshB1", "AsheA1"] };
+  const { units } = replayRecipe(recipe, [{ url: "https://x.test/plans", text }]);
+  const marsh = units.find((u) => u.name === "MarshB1");
+  assert.equal(marsh.offers.length, 0);
+  assert.equal(marsh.available, false);
+});
