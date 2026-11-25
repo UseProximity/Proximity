@@ -194,12 +194,43 @@ function Message({ m, sender, isLandlord, visitor = null }) {
           ))}
         </ul>
       )}
+      {m.listingUpdate && <ListingUpdateNote u={m.listingUpdate} />}
       {flagged && (
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
           <FlagBadges reasons={reasons} />
           {m.flags.every((f) => f.reviewedAt) && <span className="text-[10px] text-gray-400">reviewed</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+const UPDATE_SKIPS = {
+  this_student_only: "true for this student only",
+  other_property: "about another property",
+  "unclear which offering": "unclear which offering",
+  "already matches the listing": "listing already says this",
+  "quote not found in the message": "could not tie it to the message's words",
+  "could not read the message": "could not read the message",
+};
+
+/* What a landlord's message would change on the listing (dry run). */
+function ListingUpdateNote({ u }) {
+  const applies = u.changes.length > 0;
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${applies ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <Badge color={applies ? "green" : "gray"}>{applies ? "Would update listing" : "Listing not changed"}</Badge>
+        {u.mode === "dry_run" && <span className="text-[10px] text-gray-500">dry run, nothing changed</span>}
+        {!applies && u.skipped && <span>{UPDATE_SKIPS[u.skipped] ?? u.skipped}</span>}
+      </div>
+      {applies && (
+        <ul className="mt-1 list-disc pl-4">
+          {u.changes.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      )}
+      {u.quote && <p className="mt-1 italic">&ldquo;{u.quote}&rdquo;</p>}
+      {u.reason && <p className="mt-0.5 text-gray-500">{u.reason}</p>}
     </div>
   );
 }

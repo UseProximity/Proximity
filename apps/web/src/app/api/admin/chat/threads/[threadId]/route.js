@@ -7,6 +7,7 @@ import { domainApprovable } from "@/lib/chat/replySenders";
 import { PROXY_USER_ID } from "@/lib/agents/threads";
 import { alertEmailsFor } from "@/lib/chat/alertRoutes";
 import { testingAs } from "@/lib/agents/access";
+import { changeLabel } from "@/lib/agents/chatListingUpdates";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -251,6 +252,16 @@ export async function GET(req, { params }) {
         deletedAt: m.deleted_at,
         attachments: attachmentsByMessage.get(m.id) ?? [],
         flags: eventsByMessage.get(m.id) ?? [],
+        listingUpdate: m.metadata?.listingUpdate
+          ? {
+              mode: m.metadata.listingUpdate.mode,
+              about: m.metadata.listingUpdate.about,
+              quote: m.metadata.listingUpdate.quote,
+              reason: m.metadata.listingUpdate.reason,
+              skipped: m.metadata.listingUpdate.skipped,
+              changes: (m.metadata.listingUpdate.changes ?? []).map(changeLabel),
+            }
+          : null,
       })),
       blockedAttempts,
       refusedReplies: (inbound ?? [])

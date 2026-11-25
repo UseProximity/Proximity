@@ -69,6 +69,7 @@ import { recordAttachmentScan } from "@/lib/chat/sendGuards";
 import { findQuestionToken, handleQuestionEmail } from "@/lib/agents/questionEmail";
 import { findAgentReplyToken, handleAgentReplyEmail } from "@/lib/agents/replyEmail";
 import { detectTourProposal } from "@/lib/agents/tourProposals";
+import { detectListingUpdate } from "@/lib/agents/chatListingUpdates";
 
 const MAX_BODY = 5000;
 // An inline image this small is a signature logo, a social icon or a tracking
@@ -595,6 +596,8 @@ async function processOne({ bucket, key, recipients }) {
 
     // A tour time suggested by email is spotted before the alert, which carries its Confirm.
     await detectTourProposal({ threadId, messageId: sent.messageId, senderId: userId, body });
+    // So is a landlord saying the listing changed (dry run). Never throws.
+    await detectListingUpdate({ threadId, messageId: sent.messageId, senderId: userId, body });
     // A reply is a complete thought: relay it at once, no quiet window.
     await notifyNewChatMessage({
       threadId,

@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-24T03:16:08.355Z",
-  "count": 368,
+  "_generated": "2026-11-25T19:40:37.143Z",
+  "count": 369,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -42,6 +42,10 @@
     {
       "file": "src/lib/agents/budget.js",
       "description": "The agents' AI spend caps (PRD v3; enforced since the PR #365 review,"
+    },
+    {
+      "file": "src/lib/agents/chatListingUpdates.js",
+      "description": "Listing updates from what a landlord says in chat (Ben's idea, Wyatt"
     },
     {
       "file": "src/lib/agents/compliance.js",
