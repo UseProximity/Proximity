@@ -137,8 +137,13 @@ export function shadowRows({ changes, snapshot, state, learnings, landlordEdits 
       (c.kind === "unit_relisted" && !c.auto) ||
       // Specs on a unit the landlord made are the landlord's.
       (c.kind === "spec_mismatch" && !syncMadeUnit) ||
-      // A lease the landlord made, or changed after the sync wrote it.
-      (!!lease && ["rent_change", "lease_updated"].includes(c.kind) && (!synced || leaseFieldsDiffer(lease, synced, c.new)));
+      /*
+       * A lease the landlord changed after the sync wrote it. A lease with no
+       * synced record is not taken as the landlord's: every lease from
+       * before 11/11 has none. Landlord edits are known from their own
+       * provenance (landlordEdits) instead.
+       */
+      (!!lease && !!synced && ["rent_change", "lease_updated"].includes(c.kind) && leaseFieldsDiffer(lease, synced, c.new));
     /*
      * Has the website moved since? Against what the sync last wrote when it
      * wrote this lease; otherwise, once the listing has shadow history, a

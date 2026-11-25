@@ -80,3 +80,10 @@ test("descriptions and specials wait for the weekly read", () => {
   const [r] = shadowRows({ changes: [{ kind: "property_updated", field: "description", old: null, new: { description: "x" }, verdict: { apply: false } }], snapshot, state, learnings, now: NOW });
   assert.equal(r.ledger_apply, false);
 });
+
+test("a lease with no synced record (from before 11/11) is not the landlord's", () => {
+  const c = { kind: "rent_change", unitKey: "n:pershing", unitId: "u1", leaseId: "l1", field: "rent", old: { rent: 1500 }, new: { rent: 1450 }, facts: { rentExact: true }, verdict: { apply: true } };
+  const [r] = shadowRows({ changes: [c], snapshot: { ...snapshot, trace: { reader: "g5" } }, state, learnings: { synced: new Map() }, now: NOW });
+  assert.equal(r.landlord_edited, false);
+  assert.equal(r.ledger_apply, true);
+});
