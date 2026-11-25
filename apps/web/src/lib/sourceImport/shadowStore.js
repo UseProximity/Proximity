@@ -74,7 +74,7 @@ async function priorRunsFor(listingId) {
   return { priorRuns: out, priorRunsSeen: runs.length > 0, priorValues };
 }
 
-export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason }) {
+export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save = true }) {
   if (!shadowScoresOn() || !changes?.length) return [];
   try {
     const [landlordEdits, { priorRuns, priorRunsSeen, priorValues }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
@@ -84,6 +84,8 @@ export async function saveShadowScores({ listingId, monitorId, changes, snapshot
     const rows = full.map(({ _in, _i, ...r }) => ({ ...r, jev: r.jev ?? null }));
     const runId = randomUUID();
     const runAt = new Date().toISOString();
+    // A dry run scores and returns, saving nothing.
+    if (!save) return full.map(({ _in, ...r }) => r);
     const { error } = await supabase.from("listing_sync_scores").insert(rows.map((r) => ({ ...r, run_id: runId, run_at: runAt, listing_id: listingId, monitor_id: monitorId ?? null })));
     if (error) throw new Error(error.message);
     // Each row with the index of the change it scored, for the ledger to decide by.

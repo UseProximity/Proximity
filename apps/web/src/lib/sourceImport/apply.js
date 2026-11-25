@@ -1149,7 +1149,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true, images = true }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true, images = true, dryRun = false }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -1354,7 +1354,12 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   // Shadow scores (stage 1): the ledger's verdict on each change, saved next
   // to today's. Writes only listing_sync_scores; never changes the run.
   if (policyRun) {
-    const scored = await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason });
+    const scored = await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save: !dryRun });
+    /*
+     * A dry run (the admin compare tool) stops here: every planned change
+     * with the rules' verdict and the ledger's, and nothing written.
+     */
+    if (dryRun) return { dryRun: true, changes, scored, holdReason, churn };
     /*
      * The ledger decides (stage 3, SYNC_LEDGER_DECIDES): each change applies
      * or not by its score, in place of the rules above and the churn guard.
