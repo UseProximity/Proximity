@@ -40,7 +40,7 @@ import {
   splitFor,
   parseGroupRange,
   extractCardData,
-  perPersonRentOf,
+  cheapestLeaseIdOf,
 } from "@/lib/matchmaking/listingFilter";
 import { loadHiddenRents, withHiddenRents } from "@/lib/listings/hiddenRents";
 import { PRIORITY_WEIGHTS } from "@/lib/matchmaking/questionScript";
@@ -127,7 +127,7 @@ const live = (lease) => lease.is_active && !lease.unavailable;
 
 /*
  * MOVE-IN GATE. Same rule as the browse "Move in by" filter (leaseMatches in
- * lib/listings/filterListings.js): an offering counts when it opens on or
+ * packages/shared/src/formatters/listingFilters.js): an offering counts when it opens on or
  * before the date, and an offering with no date on file is not a late one.
  * A unit whose offerings ALL open too late drops out; a listing left with no
  * units drops out. Units that never had an offering are left alone.
@@ -392,17 +392,20 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
    */
   const perPersonOf = (id) => perPersonById[id] ?? null;
   // The price this place was ranked at came from a hidden website price, not
-  // the listing: the matched lease's, or (no lease resolved) a cheapest price
-  // the published listing does not have.
+  // the listing. Decided by the lease that set that price, never by comparing
+  // it with the published listing's cheapest: the move-in and sublease
+  // filters can leave a dearer public price that matches nothing there (PR
+  // 478 review).
+  const poolById = Object.fromEntries(pool.map((l) => [l.id, l]));
   const hiddenPriced = (id) => {
     if (perPersonById[id] == null || !hasHidden.has(id)) return false;
     // A matched lease with a price of its own: hidden or not by that lease.
-    // An unpriced match is ranked at the listing's cheapest price instead,
-    // which is judged below like a listing with no lease resolved.
+    // An unpriced match is ranked at the cheapest price left on the listing
+    // as ranked, so that lease decides.
     const offer = offerById[id];
-    if (offer?.leaseId && offer.perPerson != null) return hiddenLeaseIds.has(offer.leaseId);
-    const pub = publishedById[id];
-    return !pub || perPersonRentOf(pub) !== Math.round(perPersonById[id]);
+    const leaseId = offer?.leaseId && offer.perPerson != null ? offer.leaseId : cheapestLeaseIdOf(poolById[id] ?? {});
+    // No lease to point at: treated as hidden, so no figure is shown.
+    return leaseId == null || hiddenLeaseIds.has(leaseId);
   };
   const budgetText = preferences.budget_max ? money(preferences.budget_max) : null;
   const missesById = {};

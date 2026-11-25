@@ -30,6 +30,7 @@ import { parseStructured, HAIKU } from "./model";
 import { postProxyMessage } from "./threads";
 import { screenLandlordText, screenStudentText } from "./screen";
 import { synthesizeKnowledge } from "./synthesize";
+import { postCorrections } from "./corrections";
 import { findOrCreateSource } from "./store";
 import { notifyLandlordQuestion, notifyLandlordStudentReply, notifyStudentThread } from "./notify";
 import { stampReplyToken } from "./questionTokens";
@@ -405,16 +406,18 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   // the answer now, Proxy asks the follow-up in turn, and the question stays
   // open for the student's reply and the landlord's final word.
   if (both) {
+    let changesB = [];
     const answerText = screenLandlordText(both.answerPart).text || screened.text;
     const followUp = screenLandlordText(both.questionPart).text;
     try {
       const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
       const { data: primary } = await supabase.from("listing_landlords").select("user_id").eq("listing_id", q.listing_id).eq("is_primary", true).maybeSingle();
-      await synthesizeKnowledge({
+      const synth = await synthesizeKnowledge({
         listingId: q.listing_id, text: await exchangeText(q, answerText), sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
         cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question,
-        ownerDefault: primary?.user_id && primary.user_id !== landlordUserId ? landlordUserId : null,
+        ownerDefault: primary?.user_id && primary.user_id !== landlordUserId ? landlordUserId : null, deferCorrections: true,
       });
+      changesB = synth.changes ?? [];
     } catch (err) {
       console.error("[proxy] synthesis failed:", err?.message ?? err);
     }
@@ -426,6 +429,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
       await postProxyMessage({ threadId: w.thread_id, listingId: q.listing_id, type: "proxy_relay", body: combined, metadata: { questionId: q.id, clarifier: true, answered: true, landlordAsked: followUp } });
       await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     }
+    await postAnswerCorrections(q.listing_id, changesB);
     return { question: { ...q, pending_clarifier: true }, kind: "both", relayedTo: waiters.length, synthesis: null, screened: screened.removed > 0 };
   }
 
@@ -452,11 +456,14 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     const source = await findOrCreateSource({ listingId: q.listing_id, kind: "landlord_answer", questionId: q.id, userId: landlordUserId, label: `Answer to: ${q.question.slice(0, 120)}` });
     synthesis = await synthesizeKnowledge({
       listingId: q.listing_id, text: await exchangeText(q, screened.text), sourceKind: "landlord_answer", sourceId: source.id, sourceRef: `question:${q.id}`,
-      cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question, ownerDefault,
+      cause: "landlord_answer", landlordSet: true, setBy: landlordUserId, actorId: landlordUserId, question: q.question, ownerDefault, deferCorrections: true,
     });
   } catch (err) {
     console.error("[proxy] synthesis failed:", err?.message ?? err);
   }
+  // Fact changes the answer made, posted to students only after the answer
+  // itself is relayed (PR 478 review).
+  const answerChanges = (synthesis?.changes ?? []).map((c) => ({ ...c, failOpen: synthesis.failOpen }));
   // Every answered question leaves something the landlord can see (Wyatt,
   // 2026-10-27): when the answer set no general fact, it is kept as a
   // question-and-answer pair, which Proxy also answers from.
@@ -480,7 +487,7 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
   // A link in the answer (a flyer, a fee page) is read into the knowledge
   // base too, from the text as written, since screening removes links.
   try {
-    links = await ingestLinks({ listingId: q.listing_id, text: screened.original, cause: "landlord_answer", landlordSet: true, actorId: landlordUserId, ownerDefault, question: q.question });
+    links = await ingestLinks({ listingId: q.listing_id, text: screened.original, cause: "landlord_answer", landlordSet: true, actorId: landlordUserId, ownerDefault, question: q.question, changes: answerChanges });
   } catch (err) {
     console.error("[proxy] link ingest failed:", err?.message ?? err);
   }
@@ -501,7 +508,22 @@ export async function answerQuestion({ questionId, landlordUserId, body, done = 
     await notifyStudentThread({ threadId: w.thread_id, kind: "proxy_relay", quietMs: 0 }).catch(() => {});
     relayedTo++;
   }
+  await postAnswerCorrections(q.listing_id, answerChanges);
   return { question: { ...q, status: "answered", answer: screened.text }, kind: "answer", relayedTo, synthesis, links, screened: screened.removed > 0 };
+}
+
+/*
+ * The student notes for facts a landlord's answer changed, after the answer
+ * is relayed and the question marked (PR 478 review: posted before, a long
+ * run of notes and emails could time the route out before the waiting
+ * students heard anything). Inside the 60 second route, so on a budget.
+ */
+async function postAnswerCorrections(listingId, changes) {
+  if (!changes?.length) return;
+  for (const failOpen of [true, false]) {
+    const part = changes.filter((c) => (c.failOpen ?? true) === failOpen);
+    if (part.length) await postCorrections({ listingId, changes: part, failOpen, budgetMs: 15000 }).catch((err) => console.error("[proxy] corrections failed:", err?.message ?? err));
+  }
 }
 
 /* The landlord's queue: open questions first, then recent answered ones. */

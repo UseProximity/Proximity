@@ -35,6 +35,30 @@ export function syncedLeaseValues(row) {
   return out;
 }
 
+/*
+ * A lease the sync itself created blank on a "call for price" read (every
+ * plan unpriced on the website, LOCAL on Delmar) carries `askForPrice` in
+ * its synced row (PR 478 review). Only such a lease is a price not known
+ * yet that a later read may publish. Any other blank lease is the
+ * landlord's choice, however often the sync has updated it since.
+ *
+ * syncedLeaseRecord is the synced row after a write: what was remembered,
+ * the fields just written, and the marker, which is set only by a write
+ * that says so and dropped once the lease has a rent (written by the sync
+ * or set by the landlord before this write).
+ */
+export function syncedLeaseRecord(before, written, current = null) {
+  const values = syncedLeaseValues(written?.values);
+  const out = { ...(before ?? {}), ...values };
+  if (written?.askForPrice) out.askForPrice = true;
+  else if (values.rent != null || current?.rent != null) delete out.askForPrice;
+  return out;
+}
+
+export function isSyncBlank(lease, synced) {
+  return !!lease && lease.rent == null && synced?.askForPrice === true && synced.rent == null;
+}
+
 /* Fields the landlord changed since the sync last wrote them. */
 export function editedFields(dbLease, synced) {
   if (!dbLease || !synced) return new Set();

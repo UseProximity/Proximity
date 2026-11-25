@@ -12,10 +12,9 @@ const ICON_SIZE = { lg: 18, xl: 20, "2xl": 24 };
 // regardless of visual icon size, since the previous glyph + 8px hitSlop
 // fell short of the 44x44 minimum flagged in MASTER.md §9.
 //
-// `onImage` (opt-in, default off: the Listing Detail header's heart on a
-// plain white bar is unaffected) is for contexts like ListingCard's photo
-// overlay and the Listing Detail hero, where the icon sits directly on a
-// photo with no background container at all. Both states share a thick
+// `onImage` (opt-in, default off) is for ListingCard's and MatchCard's photo
+// overlays, where the icon sits directly on a photo with no background
+// container at all. Both states share a thick
 // white stroke, legible against any photo without needing a circle behind
 // it, so only fill communicates saved vs. unsaved: solid `primary` when
 // saved, a semi-transparent black (~35%) when not, so the underlying photo

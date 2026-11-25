@@ -29,7 +29,11 @@ import supabase from "@/lib/supabase";
 import { currentFacts, setFact, retireFact } from "./store";
 import { buildProxyContext } from "./context";
 import { SECTIONS, UNCLAIMED_OWNER_ID } from "./sections";
-import { postCorrections, numbersOf } from "./corrections";
+import { postCorrections } from "./corrections";
+import { sameFactReworded, carriesChange, numbersWithin, fullest, decideGroup, mergeDuplicateGroups } from "./factCompare";
+
+// The comparisons live in factCompare.js, which node --test can import.
+export { sameFactReworded, carriesChange };
 
 const Operation = z.object({
   op: z.enum(["set", "retire", "keep"]).describe("'keep' only when asked to confirm facts the pages still say unchanged."),
@@ -107,39 +111,6 @@ function parseValue(json) {
   }
 }
 
-/*
- * A website saying the same thing in other words: same validity and either
- * the same structured value, or the same amounts and dates in it with only
- * filler words changed. Not a change, so nothing is written and no student
- * gets a correction ("Parking is $75 a month" read again as "Parking costs $75
- * per month"). A changed word that carries meaning is a change even when the
- * numbers stay ("Application fee $50, refundable" read again as "Application
- * fee $50, non-refundable"), PR 447 review.
- */
-const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, x[key]])) : x));
-const numbersIn = (value, summary) => [...new Set(`${canon(value ?? {})} ${summary ?? ""}`.match(/\d+(?:\.\d+)?/g) ?? [])].sort().join(",");
-const plain = (t) => String(t ?? "").toLowerCase().replace(/[^a-z0-9$%]+/g, " ").trim();
-// Words that only change how a fact is phrased. Units (month, year, week),
-// negations and qualifiers are deliberately not here.
-const FILLER = new Set([
-  "a", "an", "the", "is", "are", "was", "be", "it", "its", "this", "that", "there",
-  "per", "each", "of", "for", "to", "and", "with", "at", "on", "in",
-  "cost", "costs", "costing", "charge", "charged", "charges", "fee", "fees",
-  "price", "priced", "runs", "comes", "will", "you", "your",
-]);
-const meaningWords = (summary) => new Set(plain(summary).split(" ").filter((w) => w && !/\d/.test(w) && !FILLER.has(w)));
-export function sameFactReworded(current, { value, summary, validUntil }) {
-  if ((current.valid_until ?? null) !== (validUntil ?? null)) return false;
-  if (canon(current.value ?? {}) === canon(value ?? {})) return true;
-  // The same sentence students see is no change, whatever the structured
-  // details say.
-  if (plain(current.summary) === plain(summary)) return true;
-  const before = numbersIn(current.value, current.summary);
-  if (!before || before !== numbersIn(value, summary)) return false;
-  const [was, now] = [meaningWords(current.summary), meaningWords(summary)];
-  return was.size === now.size && [...was].every((w) => now.has(w));
-}
-
 function knowledgeIndex(facts) {
   if (!facts.length) return "(empty)";
   return facts.map((f) => `- [${f.section}] ${f.field_key}${f.scope_level !== "property" ? ` (${f.scope_level} ${f.scope_id})` : ""}: ${f.summary}`).join("\n");
@@ -159,12 +130,17 @@ function knowledgeIndex(facts) {
  * `collect`, when given (an array), takes the 'set' operations instead of
  * writing them: the weekly read runs several batches of pages at once and
  * decides each fact once, after all of them (applyProposals below).
+ * `keptFrom` in the result is each 'keep' with the page that gave it
+ * ({ factId, sourceId }), so the write step knows which page confirmed what.
+ * `deferCorrections` leaves the student notes to the caller: the changes are
+ * in `changes`, for postCorrections once the caller's own work is saved
+ * (a landlord's answer relayed first, PR 478 review).
  */
 export async function synthesizeKnowledge({
   listingId, text, sourceKind, sourceId = null, sourceRef = null, cause,
   landlordSet = false, setBy = null, actorId = null, ownerDefault = null,
   question = null, observedAt = null, noRetire = false, pageSources = null,
-  canReplace = null, onlySections = null, collect = null,
+  canReplace = null, onlySections = null, collect = null, deferCorrections = false,
 }) {
   const body = String(text ?? "").trim();
   if (!body) return { ops: [], written: 0, unchanged: 0, held: 0, retired: 0, coreChanges: [], answer: null, notes: "empty", touched: [] };
@@ -206,7 +182,7 @@ export async function synthesizeKnowledge({
 
   const { data: protectedRows } = await supabase.from("listing_sources").select("id").eq("listing_id", listingId).eq("kind", "description");
   const protectedSources = new Set((protectedRows ?? []).map((r) => r.id));
-  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, kept: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [], touched: [] };
+  const result = { ops: parsed.operations, written: 0, unchanged: 0, held: 0, retired: 0, kept: 0, coreChanges: parsed.core_changes ?? [], answer: parsed.answer_for_student ?? null, notes: parsed.notes, changes: [], touched: [], keptFrom: [] };
   for (const op of parsed.operations ?? []) {
     if (!SECTIONS.includes(op.section)) continue;
     if (onlySections && !onlySections.includes(op.section)) continue;
@@ -224,7 +200,12 @@ export async function synthesizeKnowledge({
       const sameKey = facts.filter((f) => f.field_key === key && f.section === op.section);
       const current = sameKey.find((f) => f.scope_level === scopeLevel && (f.scope_id ?? null) === (scopeLevel === "property" ? null : scopeId ?? null))
         ?? (sameKey.length === 1 ? sameKey[0] : null);
-      if (current) { result.unchanged++; result.touched.push(current.id); }
+      if (current) {
+        result.unchanged++;
+        result.touched.push(current.id);
+        const keptOn = pageSources?.find((p) => p.n === op.page_number) ?? null;
+        result.keptFrom.push({ factId: current.id, sourceId: keptOn?.sourceId ?? sourceId });
+      }
       continue;
     }
     if (op.op === "retire") {
@@ -279,12 +260,13 @@ export async function synthesizeKnowledge({
     // been told the old value of.
     if (r.changed && r.event?.previous_fact_id) result.changes.push({ key, summary: op.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
-  if (result.changes.length && cause !== "seed") {
+  // When the material-change check cannot decide, only a website read stays
+  // quiet; a landlord's own words still reach the student (PR 475 review).
+  result.failOpen = sourceKind !== "page";
+  if (result.changes.length && cause !== "seed" && !deferCorrections) {
     // Awaited: a job that returns first can be frozen before the notes go
-    // out. When the material-change check cannot decide, only a website
-    // read stays quiet; a landlord's own words still reach the student
-    // (PR 475 review).
-    await postCorrections({ listingId, changes: result.changes, failOpen: sourceKind !== "page" }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    // out.
+    await postCorrections({ listingId, changes: result.changes, failOpen: result.failOpen }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
   }
   return result;
 }
@@ -304,40 +286,27 @@ export async function synthesizeKnowledge({
  *     same thing under a new key (misc.design-details beside misc.design),
  *     which piled up near-copies every week. A duplicate changes nothing; a
  *     fuller version of an existing fact replaces it under the existing key;
- *   - a proposal that carries a change (different amounts, times or dates,
- *     or a negation or "only" the current fact does not have) is written,
- *     the fullest of them, whatever other pages say: a brief mention on the
- *     FAQ, or an old footer still saying the old hours, never holds back a
- *     price change on the pricing page (PR 475 review);
- *   - otherwise, any proposal that only rewords the current fact, or a batch
- *     confirming it is still on its page (a 'keep', `confirmed`), keeps it,
- *     so nothing is written and no student is told;
- *   - a noticeably shorter proposal that says nothing the current fact does
- *     not (its meaning words are a subset) keeps it too: a page saying less;
- *   - otherwise the fullest proposal (the longest summary) is written.
+ *   - a duplicate or update verdict is acted on only when no amount, time
+ *     or date is lost (PR 478 review), and a new fact matched to one already
+ *     folded in follows it (factCompare.js mergeDuplicateGroups);
+ *   - then each fact is decided once (factCompare.js decideGroup): a
+ *     proposal that carries a change is written, unless the fact's own page
+ *     confirmed it in this read or the change only puts back what it said
+ *     before (two pages disagreeing, PR 478 review); a rewording, a 'keep'
+ *     or a page saying less keeps it; otherwise the fullest proposal wins.
  *
- * Returns { written, unchanged, held, merged, touched }.
+ * `confirmed` is the ids of the facts a batch kept, `keptFrom` a map from a
+ * fact id to the ids of the pages that kept it.
+ * Returns { written, unchanged, held, merged, touched, changes }: `changes`
+ * are the facts that changed, for the caller to post the student notes once
+ * its pages are saved (pages.js, PR 478 review).
  */
 const scopeKey = (scopeLevel, scopeId) => `${scopeLevel}|${scopeLevel === "property" ? "" : scopeId ?? ""}`;
 const factId = (section, key, scopeLevel, scopeId) => `${section}|${key}|${scopeKey(scopeLevel, scopeId)}`;
 const len = (t) => String(t ?? "").length;
 
-// Words that turn a statement around. A proposal that adds or drops one is a
-// change, even with the same numbers ("Dogs and cats welcome, up to 2 pets"
-// against "Only cats allowed, up to 2 pets").
-const TURNING = /\b(no|not|never|none|only|except|without|cannot|can't|isn't|aren't|won't|prohibited|banned|closed|unavailable|discontinued|ended|longer)\b/g;
-const turningWords = (t) => [...new Set(String(t ?? "").toLowerCase().match(TURNING) ?? [])].sort().join(",");
-export function carriesChange(current, proposal) {
-  if ((current.valid_until ?? null) !== (proposal.validUntil ?? null)) return true;
-  return numbersOf(proposal.summary) !== numbersOf(current.summary) || turningWords(proposal.summary) !== turningWords(current.summary);
-}
-const saysNothingNew = (current, proposal) => {
-  const was = meaningWords(current.summary);
-  return [...meaningWords(proposal.summary)].every((w) => was.has(w));
-};
-
-export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set(), skipDuplicateCheck = false }) {
-  const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [] };
+export async function applyProposals({ listingId, proposals, cause, actorId = null, confirmed = new Set(), keptFrom = new Map(), skipDuplicateCheck = false }) {
+  const out = { written: 0, unchanged: 0, held: 0, merged: 0, touched: [], changes: [] };
   if (!proposals?.length) return out;
   const facts = await currentFacts(listingId);
   const byId = new Map(facts.map((f) => [factId(f.section, f.field_key, f.scope_level, f.scope_id), f]));
@@ -356,56 +325,36 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
   const others = facts.filter((f) => f.section !== "core" && f.section !== "specials" && !f.landlord_set && !protectedSources.has(f.source_id));
   if (!skipDuplicateCheck && fresh.length && (others.length || fresh.length > 1)) {
     const verdicts = await findDuplicates({ listingId, facts: others, fresh: fresh.map(([, g]) => g) });
-    fresh.forEach(([id, g], i) => {
-      const v = verdicts[i];
-      if (!v || v.verdict === "new") return;
-      const target = v.target;
-      if (target?.kind === "fact") {
-        const f = target.fact;
-        const tid = factId(f.section, f.field_key, f.scope_level, f.scope_id);
-        groups.delete(id);
-        out.merged++;
-        if (v.verdict === "duplicate") {
-          if (!groups.has(tid)) { out.unchanged++; out.touched.push(f.id); }
-          return;
-        }
-        if (!groups.has(tid)) groups.set(tid, { section: f.section, key: f.field_key, scopeLevel: f.scope_level, scopeId: f.scope_id, current: f, props: [] });
-        groups.get(tid).props.push(...g.props);
-        groups.get(tid).fromMerge = true;
-      } else if (target?.kind === "new") {
-        const [tid, tg] = fresh[target.index];
-        if (!groups.has(tid) || tid === id) return;
-        groups.delete(id);
-        out.merged++;
-        tg.props.push(...g.props);
-      }
-    });
+    const m = mergeDuplicateGroups({ groups, fresh, verdicts, factIdOf: (f) => factId(f.section, f.field_key, f.scope_level, f.scope_id) });
+    out.merged += m.merged;
+    out.unchanged += m.touched.length;
+    out.touched.push(...m.touched);
   }
 
-  const fullest = (list) => list.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
-  const changes = [];
+  // What a confirmed fact said before its last change, for the facts a
+  // change is proposed for: a change back to it is two pages disagreeing.
+  const previous = new Map();
+  const askBefore = [...groups.values()].filter((g) => g.current && confirmed.has(g.current.id) && g.props.some((p) => carriesChange(g.current, p))).map((g) => g.current.id);
+  if (askBefore.length) {
+    const { data } = await supabase.from("listing_facts").select("summary, value, valid_until, superseded_by").in("superseded_by", askBefore);
+    for (const r of data ?? []) previous.set(r.superseded_by, r);
+  }
+
   for (const g of groups.values()) {
     const { section, key, scopeLevel, scopeId, current, props } = g;
     if (!props.length) continue;
-    let best = fullest(props);
-    if (current) {
-      const changing = props.filter((p) => carriesChange(current, p));
-      if (changing.length) {
-        best = fullest(changing);
-      } else {
-        const keep = confirmed.has(current.id) || props.some((p) => sameFactReworded(current, p))
-          // A fact found under another key only replaces the existing one
-          // when it is the fuller of the two.
-          || (g.fromMerge && len(best.summary) < len(current.summary))
-          // A page saying less (11/23: 38 facts lost detail this way).
-          || (len(best.summary) < len(current.summary) * 0.8 && saysNothingNew(current, best));
-        if (keep) {
-          out.unchanged++;
-          out.touched.push(current.id);
-          continue;
-        }
-      }
+    const d = decideGroup({
+      current, props, fromMerge: !!g.fromMerge,
+      confirmed: !!current && confirmed.has(current.id),
+      keptFrom: current ? keptFrom.get(current.id) ?? null : null,
+      previous: current ? previous.get(current.id) ?? null : null,
+    });
+    if (d.keep) {
+      out.unchanged++;
+      out.touched.push(current.id);
+      continue;
     }
+    const best = d.best;
     const r = await setFact({
       listingId, section, fieldKey: key, value: best.value, summary: best.summary, scopeLevel, scopeId,
       sourceId: best.sourceId, sourceRef: best.sourceRef, excerpt: best.excerpt, confidence: best.confidence,
@@ -413,11 +362,7 @@ export async function applyProposals({ listingId, proposals, cause, actorId = nu
     });
     if (r.held) out.held++; else if (r.changed) out.written++; else out.unchanged++;
     if (r.fact?.id) out.touched.push(r.fact.id);
-    if (r.changed && r.event?.previous_fact_id) changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
-  }
-  // Awaited: a job that returns first can be frozen before the notes go out.
-  if (changes.length && cause !== "seed") {
-    await postCorrections({ listingId, changes, failOpen: false }).catch((err) => console.error("[agents] corrections failed:", err?.message ?? err));
+    if (r.changed && r.event?.previous_fact_id) out.changes.push({ key, summary: best.summary, oldSummary: r.event.detail?.oldSummary ?? null });
   }
   return out;
 }
@@ -456,8 +401,7 @@ export async function findDuplicates({ listingId, facts, fresh }) {
     "",
     "NEW FACTS",
     fresh.map((g, i) => {
-      const best = g.props.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
-      return `N${i + 1}. ${show(g.scopeLevel, g.scopeId, g.section, g.key, best.summary)}`;
+      return `N${i + 1}. ${show(g.scopeLevel, g.scopeId, g.section, g.key, fullest(g.props).summary)}`;
     }).join("\n"),
   ].join("\n");
   try {
@@ -553,10 +497,8 @@ export async function tidyDuplicates({ listingId, cause = "sync", actorId = null
     const keep = members.reduce((a, b) => (len(b.summary) > len(a.summary) ? b : a));
     if (!merged || len(merged) < len(keep.summary) || len(merged) > 900) continue;
     // Every amount, time or date in the members must still be in the merged
-    // text.
-    const nums = (t) => String(t ?? "").replace(/(\d),(\d{3})\b/g, "$1$2").match(/\d+(?:\.\d+)?/g) ?? [];
-    const have = new Set(nums(merged));
-    if (members.some((f) => nums(f.summary).some((n) => !have.has(n)))) continue;
+    // text, however it is written ("9am" or "9:00 AM").
+    if (members.some((f) => !numbersWithin(f.summary, merged))) continue;
     const removed = members.filter((f) => f.id !== keep.id);
     for (const f of members) used.add(f.id);
     let factIdNow = keep.id;

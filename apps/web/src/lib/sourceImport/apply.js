@@ -35,11 +35,11 @@ import { copyRemoteImage, copyRemoteImages, addressSlug } from "./assets.js";
 import { judgeChange } from "./model.js";
 import { bareCoveredPlan, churnCheck, decideSyncChange, DENY } from "./syncPolicy.js";
 import { loadLearnings, saveLearnings, writtenRows } from "./learn.js";
-import { applyAliases, convertRentBasis, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
+import { applyAliases, convertRentBasis, isSyncBlank, learnableSiteName, rentBasisFrom, renamedUnitKey, trimForLandlord } from "./learnRules.js";
 import { summarize } from "./snapshot.js";
 import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateMessage } from "@/lib/billing/listingGate";
 import { sameSite } from "@/lib/listingDraft/fetchSite";
-import { saveHiddenRents } from "@/lib/listings/hiddenRents";
+import { replaceHiddenRents, saveHiddenRents, unconfirmHiddenRents } from "@/lib/listings/hiddenRents";
 
 const REJECTED_QUIET_DAYS = 30;
 // A floor plan priced by a leasing portal carries a lease per apartment per
@@ -421,6 +421,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const noPublicPrice = pricesUnknown || listingNoPrice;
       push({
         ...(misshapen ? { note: `listed as ${listingFormat === "plan" ? "floor plans" : "apartments"} here, so added as a draft` } : {}),
+        // On the change, never in `detail`: detail is saved on the event,
+        // which landlords can read (PR 478 review).
+        ...(hiddenNew ? { hiddenRent: hiddenFrom(hiddenNew, listingBasis) } : {}),
         kind: "unit_new",
         unitKey: snap.key,
         field: "unit",
@@ -431,7 +434,9 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: images ? snap.floorPlanImageUrl : null },
           offers: noPublicPrice ? [askForPrice] : withBasis(snap.offers),
-          ...(hiddenNew ? { hiddenRent: hiddenFrom(hiddenNew, listingBasis) } : {}),
+          // A blank written because the website prices nothing, marked so a
+          // later read can tell it from a landlord's blank (learnRules.js).
+          ...(pricesUnknown ? { askForPrice: true } : {}),
           available: pricesUnknown ? true : snap.available,
           photos: images ? snap.photos : [],
           draft: misshapen,
@@ -530,7 +535,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
         field: "rent",
         old: null,
         new: { rent: null, rentIsPerPerson: null, leaseTermMonths: [], availableFrom: null, apartments: [] },
-        detail: { op: "lease_insert", unitId: db.id, label, offer: askForPrice, draft: false, hiddenRent: hiddenFrom(noLeaseOffer, listingBasis) },
+        hiddenRent: hiddenFrom(noLeaseOffer, listingBasis),
+        detail: { op: "lease_insert", unitId: db.id, label, offer: askForPrice, draft: false },
       });
       continue;
     }
@@ -932,12 +938,14 @@ export async function executeChange(change, { state, userId }) {
         leaseRows = inserted ?? [];
       }
       // A new plan on a listing with no public prices: its website price is
-      // kept hidden on the unpriced lease it got.
-      if (d.hiddenRent && leaseRows[0]) {
-        await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: leaseRows[0].id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
+      // kept hidden on the unpriced lease it got. It rides on the change, not
+      // its detail, so a change applied later from its saved event has none:
+      // the next read saves it then.
+      if (change.hiddenRent && leaseRows[0]) {
+        await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: leaseRows[0].id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       }
       // What the sync wrote, so a landlord's later edit can be told apart (learn.js).
-      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r })) };
+      change.written = { unit: { id: unit.id, name: cleanUnitName(d.unit.name), siteKey: change.unitKey ?? null, lookalikeOf: d.lookalikeOf ?? null }, leases: leaseRows.map((r) => ({ id: r.id, values: r, ...(d.askForPrice ? { askForPrice: true } : {}) })) };
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
@@ -961,7 +969,7 @@ export async function executeChange(change, { state, userId }) {
       const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: row.id, values: row }] };
-      if (d.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...d.hiddenRent }], sourceUrl: state.source_url ?? null });
+      if (change.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
     case "lease_update": {
@@ -1234,15 +1242,16 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     if (of && !u.published_at) shadowedBy.set(of, u.name ?? "unit");
   }
   /*
-   * Leases the sync itself wrote with no rent and nobody has priced since:
-   * a "call for price" read, not the landlord's choice (learn.js keeps what
-   * the sync wrote).
+   * Leases the sync itself created blank on a "call for price" read and
+   * nobody has priced since: not the landlord's choice. Told by the marker
+   * that read left (learnRules.js isSyncBlank), never by a blank rent in
+   * what the sync last wrote: any later sync write to a landlord's blank
+   * lease (a relist, new dates) records its blank rent too (PR 478 review).
    */
   const syncBlanks = new Set();
   for (const u of state.listing_units) {
     for (const l of u.unit_leases) {
-      const wrote = learnings.synced.get(`lease:${l.id}`);
-      if (l.rent == null && wrote && "rent" in wrote && wrote.rent == null) syncBlanks.add(l.id);
+      if (isSyncBlank(l, learnings.synced.get(`lease:${l.id}`))) syncBlanks.add(l.id);
     }
   }
   const hidden = [];
@@ -1388,11 +1397,18 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
    * wait on auto-apply or a high-confidence read (the reader rates most of
    * LOCAL on Delmar's correct reads low). A run held because too much
    * changed at once, the usual sign of a wrong website or a misread, saves
-   * none (Wyatt, 2026-11-23); the next good read fills them in.
+   * none (Wyatt, 2026-11-23); the next good read fills them in. Any other
+   * read replaces that website's hidden prices, so one it no longer shows
+   * is deleted, and a held read leaves the old ones to age out rather than
+   * be kept fresh by unchanged pages after it (PR 478 review).
    */
-  if (mode === "sync" && hidden.length && holdReason !== "churn_hold") {
-    const saved = await saveHiddenRents({ listingId, rows: hidden, sourceUrl: snapshot.sourceUrl ?? state.source_url ?? null });
-    if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+  if (mode === "sync") {
+    const hiddenUrl = snapshot.sourceUrl ?? state.source_url ?? null;
+    if (holdReason === "churn_hold") await unconfirmHiddenRents(listingId, [hiddenUrl, state.source_url]);
+    else {
+      const saved = await replaceHiddenRents({ listingId, rows: hidden, sourceUrl: hiddenUrl, complete: !!snapshot.unitListComplete });
+      if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+    }
   }
 
   // The units the website showed this time, stamped unless the read is held.

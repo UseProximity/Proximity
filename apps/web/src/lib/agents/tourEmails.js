@@ -26,6 +26,15 @@ function unitPhrase(unit) {
   return unit.bedrooms ? `the ${unit.bedrooms} bed` : "";
 }
 
+/*
+ * Each subject carries the student's first name, as the body does, so Outlook
+ * (which groups a conversation by subject) never merges two students' emails
+ * about one listing, where a reply could reach the wrong student (Wyatt,
+ * 2026-11-23). Without a name the subject is the plain one.
+ */
+const first = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
+const fromFirst = (firstName) => (first(firstName) ? ` from ${first(firstName)}` : "");
+
 const where = (unit, listingLabel) => {
   const u = unitPhrase(unit);
   return u ? `${u} at ${listingLabel}` : listingLabel;
@@ -57,7 +66,7 @@ export function buildTourRequestEmail({ firstName, listingLabel, unit, slots = [
     reason: REASON,
   });
   return {
-    subject: `Tour request for ${listingLabel}`,
+    subject: `Tour request for ${listingLabel}${fromFirst(firstName)}`,
     fromName: who,
     html,
     text,
@@ -80,7 +89,7 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
     reason: REASON,
   });
   return {
-    subject: dayBefore ? `Reminder: tour of ${listingLabel} ${when}` : `Tour confirmed: ${who}, ${when}`,
+    subject: dayBefore ? `Reminder: tour of ${listingLabel} ${when}${studentName ? ` with ${first(studentName)}` : ""}` : `Tour confirmed: ${who}, ${when}`,
     html,
     text,
   };
@@ -88,20 +97,24 @@ export function buildTourConfirmedEmail({ studentName, listingLabel, unit, when,
 
 /**
  * The student cancelled. In their words, signed with their first name, with
- * the booked time (`when`) when the tour had been confirmed.
+ * the booked time (`when`) when the tour had been confirmed. `canReply` when
+ * the email carries the chat's reply address.
  */
-export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = null, dashboardUrl }) {
+export function buildTourCancelledEmail({ firstName, listingLabel, unit, when = null, dashboardUrl, canReply = false }) {
   const who = firstName || "A student";
   const { html, text } = buildInquiryEmail({
     messages: [{ body: when
       ? `Hi, I need to cancel my tour of ${where(unit, listingLabel)} on ${when}.`
       : `Hi, I need to cancel my tour request for ${where(unit, listingLabel)}.` }],
     signature: who,
-    details: ["Tour request sent through Proximity (useproximity.org)", "Nothing else is needed from you."],
+    details: [
+      "Tour request sent through Proximity (useproximity.org)",
+      canReply ? `Nothing else is needed from you. Reply to this email to message ${firstName || "the student"}.` : "Nothing else is needed from you.",
+    ],
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
-  return { subject: `Tour cancelled: ${listingLabel}`, fromName: who, html, text };
+  return { subject: `Tour cancelled for ${listingLabel}${fromFirst(firstName)}`, fromName: who, html, text };
 }
 
 /** The landlord's confirmation that they cancelled (Wyatt, 2026-11-20). */
@@ -115,5 +128,5 @@ export function buildTourCancelledByLandlordEmail({ firstName, listingLabel, uni
     button: { label: "Open your dashboard", url: dashboardUrl },
     reason: REASON,
   });
-  return { subject: `You cancelled a tour: ${listingLabel}`, html, text };
+  return { subject: `You cancelled a tour for ${listingLabel}${fromFirst(firstName)}`, html, text };
 }

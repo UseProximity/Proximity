@@ -24,6 +24,8 @@ import supabase from "@/lib/supabase";
 import { fetchPage, fetchPageSmart, htmlToText } from "@/lib/listingDraft/fetchSite";
 import { findOrCreateSource, ensureAgent, retireFact } from "./store";
 import { synthesizeKnowledge, applyProposals, tidyDuplicates } from "./synthesize";
+import { postCorrections } from "./corrections";
+import { copyReadStatus } from "./pageStatus";
 import { crawlSite, MAX_CRAWL_PAGES, isLanguageCopy, twinKey, languageTwinUrl } from "./crawl";
 import { foundUrlSet } from "./foundRead";
 import { MAX_FOUND_PAGES } from "./foundUrls";
@@ -79,6 +81,9 @@ const BATCH_DEADLINE_MS = 170000;
 // next the tidy of repeated facts: both wait for next week's read.
 const DUPLICATE_CHECK_DEADLINE_MS = 200000;
 const TIDY_DEADLINE_MS = 225000;
+// Student notes for the facts the read changed go out last, after the pages
+// are marked read, and stop being started past this (PR 478 review).
+const CORRECTIONS_DEADLINE_MS = 255000;
 
 /*
  * The whole-site read: the first import, every landlord-triggered sync, and
@@ -106,11 +111,16 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const crawled = new Set(pages.map((p) => sameUrl(p.url)));
   const have = new Set([...pages.map((p) => twinKey(p.url))]);
   const knownAll = await knownPageUrls(listingId).catch(() => []);
-  const known = knownAll.filter((u) => !isLanguageCopy(u, (k) => have.has(k)));
   // Copies the agent knows from earlier reads (the 11/23 read filed facts
   // under /es-cl/about and the like): not fetched, but their facts follow
-  // the English page's read below.
-  const knownCopies = knownAll.filter((u) => isLanguageCopy(u, (k) => have.has(k)));
+  // the English page's read below. Only when that English page was crawled:
+  // a translated slug (/es/sobre-nosotros beside /about-us) has no English
+  // twin to follow, so it is fetched again like any known page and its
+  // facts are counted from its own text (PR 478 review).
+  const twinCrawled = (u) => have.has(twinKey(languageTwinUrl(u) ?? ""));
+  const isKnownCopy = (u) => isLanguageCopy(u, (k) => have.has(k)) && twinCrawled(u);
+  const known = knownAll.filter((u) => !isKnownCopy(u));
+  const knownCopies = knownAll.filter(isKnownCopy);
   const gonePages = [];
   const failedPages = [];
   for (const url of known.filter((u) => !crawled.has(sameUrl(u))).slice(0, MAX_RECHECKS)) {
@@ -127,10 +137,10 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const status = new Map();
   // Pages not sent to the model because another page says the same: an exact
   // copy (the same page at two addresses), or a page in another language
-  // (2026-11-23). Facts filed under one follow the page it copies: counted
-  // as read when that page was read, as unchanged when it was unchanged, so
-  // they are taken out in the usual two weeks once the site stops saying
-  // them, and never just because a copy was skipped (PR 475 review).
+  // (2026-11-23). Facts filed under one follow the page it copies, so they
+  // are taken out in the usual two weeks once the site stops saying them,
+  // and never just because a copy was skipped (PR 475 review). A copy is
+  // unchanged only when its own text is too (pageStatus.js, PR 478 review).
   const copies = [];
   const seenText = new Map();
   // Everything the site says this week, whole pages, changed or not: a fact
@@ -143,12 +153,15 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     if (text.length < 80) continue;
     siteText.push(normText(full));
     const copyOf = createHash("sha256").update(normText(full)).digest("hex");
+    const hash = createHash("sha256").update(text).digest("hex").slice(0, 32);
     if (sameUrl(p.url) !== sameUrl(startUrl)) {
-      if (seenText.has(copyOf)) { copies.push({ sourceId: source.id, twin: seenText.get(copyOf) }); continue; }
-      if (isLanguageCopy(p.url, (k) => have.has(k) && k !== twinKey(p.url))) { copies.push({ sourceId: source.id, twin: languageTwinUrl(p.url) }); continue; }
+      // The copy's own fingerprint is left as it was: saving it would make a
+      // changed copy look unchanged next week.
+      const copy = { url: p.url, sourceId: source.id, fetched: true, ownUnchanged: source.last_fingerprint === hash };
+      if (seenText.has(copyOf)) { copies.push({ ...copy, twin: seenText.get(copyOf) }); continue; }
+      if (isLanguageCopy(p.url, (k) => have.has(k) && k !== twinKey(p.url))) { copies.push({ ...copy, twin: languageTwinUrl(p.url) }); continue; }
     }
     seenText.set(copyOf, p.url);
-    const hash = createHash("sha256").update(text).digest("hex").slice(0, 32);
     if (!force && source.last_fingerprint === hash) {
       await supabase.from("listing_sources").update({ last_checked_at: new Date().toISOString(), last_status: "unchanged", last_error: null, consecutive_failures: 0 }).eq("id", source.id);
       unchangedIds.push(source.id);
@@ -168,6 +181,8 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   if (cur.length) batches.push(cur);
   const totals = { pages: pages.length, read: changed.length, written: 0, held: 0, unchanged: 0, retired: 0, missed: 0, gone: gonePages.length };
   const touched = new Set();
+  // Which pages kept which fact, for the write step (applyProposals).
+  const keptFrom = new Map();
   const readIds = [];
   // What every batch proposes, written once after all of them
   // (synthesize.js applyProposals), and the pages to mark read after that.
@@ -183,6 +198,10 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
     const r = await synthesizeKnowledge({ listingId, text, sourceKind: "page", sourceId: batch[0].source.id, sourceRef: batch[0].url, cause, actorId, pageSources, noRetire: true, collect: proposals });
     totals.written += r.written ?? 0; totals.held += r.held ?? 0; totals.unchanged += r.unchanged ?? 0; totals.retired += r.retired ?? 0;
     for (const id of r.touched ?? []) touched.add(id);
+    for (const k of r.keptFrom ?? []) {
+      if (!keptFrom.has(k.factId)) keptFrom.set(k.factId, new Set());
+      if (k.sourceId) keptFrom.get(k.factId).add(k.sourceId);
+    }
     // A batch the model could not read says nothing about what is missing,
     // and its pages are read again next week.
     if (r.failed) return;
@@ -201,7 +220,7 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   }
   // Each fact decided once, against the facts as they are now.
   onStep("Saving what the site says");
-  const applied = await applyProposals({ listingId, proposals, cause, actorId, confirmed: touched, skipDuplicateCheck: Date.now() - started > DUPLICATE_CHECK_DEADLINE_MS });
+  const applied = await applyProposals({ listingId, proposals, cause, actorId, confirmed: touched, keptFrom, skipDuplicateCheck: Date.now() - started > DUPLICATE_CHECK_DEADLINE_MS });
   totals.written += applied.written; totals.held += applied.held; totals.unchanged += applied.unchanged;
   for (const id of applied.touched) touched.add(id);
   // Only now are the pages marked read: a run cut off before the write above
@@ -214,10 +233,23 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   }
   for (const url of knownCopies) {
     const source = await findOrCreateSource({ listingId, kind: "page", url, label: url, checkIntervalDays: 7 });
-    copies.push({ sourceId: source.id, twin: languageTwinUrl(url) });
+    copies.push({ url, sourceId: source.id, twin: languageTwinUrl(url), fetched: false, ownUnchanged: false });
   }
+  // A copy's twin can itself be a copy (/es/about of /about, an exact copy
+  // of /about-us): its status is worked out first.
+  const copyAt = new Map(copies.map((c) => [sameUrl(c.url), c]));
+  const settled = new Map();
+  const settle = (c, seen = new Set()) => {
+    if (settled.has(c)) return settled.get(c);
+    seen.add(sameUrl(c.url));
+    const twin = sameUrl(c.twin);
+    const twinStatus = status.get(twin) ?? (copyAt.has(twin) && !seen.has(twin) ? settle(copyAt.get(twin), seen) : null);
+    const s = copyReadStatus({ twinStatus, fetched: c.fetched, ownUnchanged: c.ownUnchanged });
+    settled.set(c, s);
+    return s;
+  };
   for (const c of copies) {
-    const s = status.get(sameUrl(c.twin));
+    const s = settle(c);
     if (s === "read") readIds.push(c.sourceId);
     else if (s === "unchanged") unchangedIds.push(c.sourceId);
   }
@@ -254,6 +286,17 @@ export async function readWholeSite({ listingId, startUrl, cause = "sync", actor
   const missing = await noteMissingFacts({ listingId, touched, readIds, unchangedIds, goneIds, siteText: siteText.join("\n"), cause, actorId });
   totals.missed = missing.missed;
   totals.retired += missing.retired;
+
+  // The student notes for what changed, now that everything above is saved
+  // (PR 478 review: awaited inside the write step, a long run of notes could
+  // see the job killed before its pages were marked read).
+  if (applied.changes?.length && cause !== "seed") {
+    const budgetMs = Math.max(10000, CORRECTIONS_DEADLINE_MS - (Date.now() - started));
+    totals.notes = await postCorrections({ listingId, changes: applied.changes, failOpen: false, budgetMs }).catch((err) => {
+      console.error("[agents] corrections failed:", err?.message ?? err);
+      return 0;
+    });
+  }
 
   totals.seconds = Math.round((Date.now() - started) / 1000);
   const now = new Date().toISOString();

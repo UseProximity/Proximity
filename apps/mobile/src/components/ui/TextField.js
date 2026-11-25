@@ -1,8 +1,8 @@
 import { Text, TextInput, View } from "react-native";
 
-// Canonical text input with label/error slots, matching the visual language
-// already established in FilterSheet.js/ProfileCompletionModal.js (bordered,
-// rounded-xl) rather than each new screen hand-rolling its own.
+// Canonical text input with label/error slots, matching the visual language of
+// ProfileCompletionModal.js's inputs (bordered, rounded-xl) rather than each
+// new screen hand-rolling its own.
 export function TextField({ label, error, className = "", inputClassName = "", ...inputProps }) {
   return (
     <View className={className}>
