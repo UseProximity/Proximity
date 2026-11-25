@@ -1213,8 +1213,9 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       }
     }
   }
-  // A daily sync whose units were read by code calls no model at all.
-  const codeOnly = daily && readerUnits.length > 0;
+  // A daily sync whose units were read by code calls no model at all. Asked
+  // each time: a leasing portal walked further down can fill the units in.
+  const codeOnly = () => daily && readerUnits.length > 0;
 
   /*
    * Hunting for what is still missing. The readers (and, the second time,
@@ -1230,7 +1231,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
-    if (codeOnly || explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
+    // Choosing pages is the model's job; a daily sync does not ask it.
+    if (daily || explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
     const facts = factsAbout({ units: unitsNow, flyers, listing: listingNow, readerNotes: notes });
     if (!facts.missing.length) return 0;
     const visited = new Set(crawl.fetched.map((f) => f.finalUrl));
@@ -1275,7 +1277,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    */
   const flyerSeen = new Set();
   const readFlyers = async () => {
-    if (codeOnly) return;
+    if (daily) return;
     for (const f of crawl.fetched) {
       for (const url of findFlyerCandidates(crawl.structureOf(f), f.finalUrl)) {
         if (flyerSeen.has(url) || flyers.length >= 2) continue;
@@ -1318,7 +1320,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let modelUnitCount = 0;
   const extractAndFill = async (force = false) => {
     runNotes = [];
-    if (codeOnly) {
+    if (codeOnly()) {
       // Two entries are one plan only by name or by an unnamed same layout: no model is asked.
       units = await dedupeLayouts(readerUnits, { judge: async () => ({ same: false, reason: "decided by code on a daily sync" }) });
       return;
@@ -1397,7 +1399,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   }
   // A reader that already filed photos per unit (the embedded feed) is not
   // second-guessed; the model sorts only for units that arrived without any.
-  const unsorted = codeOnly ? [] : units.filter((u) => !(u.photos ?? []).length);
+  const unsorted = codeOnly() ? [] : units.filter((u) => !(u.photos ?? []).length);
   if (unsorted.length && images.length) {
     onStep("Sorting photos by unit");
     const sorted = await sortPhotosByUnit({ units: unsorted, images: images.filter((im) => !diagrams.has(im.url)) });
@@ -1412,7 +1414,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   }
   // The pictures decide which image is each unit's diagram; filenames only
   // nominated candidates.
-  const floorPlanCheck = codeOnly ? { costUsd: 0, checked: 0, changed: 0, cleared: 0, unsure: 0 } : await confirmFloorPlans(units, { onStep });
+  const floorPlanCheck = codeOnly() ? { costUsd: 0, checked: 0, changed: 0, cleared: 0, unsure: 0 } : await confirmFloorPlans(units, { onStep });
   modelCost += floorPlanCheck.costUsd;
   // Every photo in a Zillow listing's gallery is of this listing: all of
   // them are the property's, in the site's order, less any diagram.
@@ -1433,7 +1435,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   const trace = {
     pages: crawl.fetched.map((f) => ({ url: f.finalUrl, chars: htmlToText(f.html).length })),
     reader: platform,
-    codeOnly,
+    codeOnly: codeOnly(),
     readerUnits: readerUnits.length,
     model: modelUsed ?? (listing ? "picker" : null),
     modelUnits: modelUnitCount,
@@ -1468,7 +1470,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    * leasing portal priced every lease, repeats are merged.
    */
   const finalFacts = factsAbout({ units, flyers, listing });
-  const reviewed = codeOnly ? { notes: [...new Set(notes)], cost: 0 } : await reviewNotes({
+  const reviewed = codeOnly() ? { notes: [...new Set(notes)], cost: 0 } : await reviewNotes({
     notes: [...notes, ...(listing?.sourceNotes ?? []).slice(0, 3)],
     facts: [
       ...finalFacts.known,
