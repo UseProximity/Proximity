@@ -154,7 +154,11 @@ export default function ListingDeck({ listings, tag = "", onOpenListing = null }
   const reduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [dir, setDir] = useState(1);
-  const [paused, setPaused] = useState(false);
+  // Paused while the pointer is over it OR keyboard focus is inside it: one
+  // ending must not restart rotation while the other still holds.
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   const count = listings?.length ?? 0;
   // The list can change under us (Popular refreshing, Suggested arriving).
   const at = count ? index % count : 0;
@@ -183,10 +187,13 @@ export default function ListingDeck({ listings, tag = "", onOpenListing = null }
   return (
     <div
       className="w-full"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocusCapture={() => setPaused(true)}
-      onBlurCapture={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={(e) => {
+        // Moving between the deck's own buttons is not leaving it.
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
+      }}
     >
       <div className="relative aspect-[1/1.02] w-full sm:aspect-[5/4]">
         {/* The next two cards, fanned out behind the one on top. */}

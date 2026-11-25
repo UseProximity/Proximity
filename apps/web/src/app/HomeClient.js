@@ -154,7 +154,7 @@ function ReviewsCarousel() {
   return (
     <section
       ref={sectionRef}
-      className="w-full py-16 md:py-22 bg-gray-50 border-t border-gray-200 overflow-hidden"
+      className="w-full py-16 md:py-[5.5rem] bg-gray-50 border-t border-gray-200 overflow-hidden"
     >
       {/* Header */}
       <div className={`w-full ${SIDE_MARGIN}`}>

@@ -3,21 +3,29 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import MatchBar from "./MatchBar";
-import ListingDeck from "./ListingDeck";
+import MatchBar from "@/components/home/MatchBar";
+import ListingDeck from "@/components/home/ListingDeck";
 import { trackEvent, setListingSource } from "@/utils/analytics";
 
 /*
  * The homepage hero: the headline and the Find Your Place bar on the left, the
  * rotating listing cards on the right (underneath on a phone).
  *
- * The cards follow the rule the old homepage row had. Signed-in students with
- * enough activity get "Suggested for you" (the same 2 or 4 picks as the
- * /browse strip); everyone else, and any student the endpoint returns nothing
- * for, gets Popular. The session is server-provided, so signed-out visitors and
- * crawlers get Popular in the first HTML; signed-in students see a placeholder
- * until the suggestion answer arrives, never Popular flashing into Suggested.
+ * Whose cards (Wyatt, 2026-11-24):
+ *   - a signed-in landlord sees their own live listings ("Your listings");
+ *   - a signed-in student with enough activity gets "Suggested for you" (the
+ *     same 2 or 4 picks as the /browse strip). A student who posted a sublease
+ *     still gets this, never their own sublease as "Your listings";
+ *   - everyone else, and anyone the personal answer comes back empty for,
+ *     gets Popular.
+ * The session is server-provided, so signed-out visitors and crawlers get
+ * Popular in the first HTML. Landlords and students see a placeholder until
+ * their answer arrives, never Popular flashing into something else; admins
+ * and other roles get Popular at once.
  */
+
+// Most cards a landlord's own deck rotates through.
+const MAX_OWN = 6;
 export default function HeroSection({ sideMargin, initialPopular = null, allListings = null, onBarEngage = null }) {
   // Server-seeded so the ranked cards (and their crawlable /listings/[id]
   // anchors) are in the first HTML; the mount fetch refreshes the ranking.
@@ -25,25 +33,37 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
   const [loading, setLoading] = useState(!(initialPopular && initialPopular.length));
   const { data: session } = useSession();
   const userId = session?.user?.id;
-  // null = still asking (signed in only); [] = none, show Popular.
-  const [suggested, setSuggested] = useState(userId ? null : []);
-  const showSuggested = !!suggested?.length;
+  const role = session?.user?.role;
+  // "mine" for a landlord, "suggested" for a student, null for everyone else.
+  const kind = !userId ? null : role === "landlord" ? "mine" : role === "student" ? "suggested" : null;
+  // null = still asking; [] = none, show Popular.
+  const [suggested, setSuggested] = useState(kind ? null : []);
+  const showSuggested = kind === "suggested" && !!suggested?.length;
+  const showMine = kind === "mine" && !!suggested?.length;
 
   useEffect(() => {
-    if (!userId) {
+    if (!kind) {
       setSuggested([]);
       return;
     }
-    fetch("/api/listings/suggested")
-      .then((r) => (r.ok ? r.json() : { ids: [] }))
-      .then((data) => {
-        const byId = new Map((allListings ?? []).map((l) => [String(l._id), l]));
-        const found = (data?.ids ?? []).map((id) => byId.get(String(id))).filter(Boolean);
-        // Even count only (0, 2 or 4), matching the browse strip.
-        setSuggested(found.slice(0, found.length - (found.length % 2)));
-      })
-      .catch(() => setSuggested([]));
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSuggested(null);
+    const byId = new Map((allListings ?? []).map((l) => [String(l._id), l]));
+    // Looked up in the public feed, so drafts, hidden and deleted listings
+    // never show; a landlord with nothing live gets Popular.
+    const request =
+      kind === "mine"
+        ? fetch("/api/landlord/listings")
+            .then((r) => (r.ok ? r.json() : []))
+            .then((rows) => (Array.isArray(rows) ? rows : []).map((row) => byId.get(String(row.id))).filter(Boolean).slice(0, MAX_OWN))
+        : fetch("/api/listings/suggested")
+            .then((r) => (r.ok ? r.json() : { ids: [] }))
+            .then((data) => {
+              const found = (data?.ids ?? []).map((id) => byId.get(String(id))).filter(Boolean);
+              // Even count only (0, 2 or 4), matching the browse strip.
+              return found.slice(0, found.length - (found.length % 2));
+            });
+    request.then(setSuggested).catch(() => setSuggested([]));
+  }, [userId, kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!showSuggested) return;
@@ -65,7 +85,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
       .finally(() => setLoading(false));
   }, []);
 
-  const deck = suggested === null ? null : showSuggested ? suggested : loading && !popular.length ? null : popular;
+  const deck = suggested === null ? null : showSuggested || showMine ? suggested : loading && !popular.length ? null : popular;
   // Nothing to show at all (both sources empty): the headline takes the row.
   const empty = deck !== null && deck.length === 0;
 
@@ -115,7 +135,7 @@ export default function HeroSection({ sideMargin, initialPopular = null, allList
           >
             <ListingDeck
               listings={deck}
-              tag={showSuggested ? "Suggested for you" : "Popular"}
+              tag={showMine ? "Your listings" : showSuggested ? "Suggested for you" : "Popular"}
               onOpenListing={
                 showSuggested
                   ? (listing, i) => {

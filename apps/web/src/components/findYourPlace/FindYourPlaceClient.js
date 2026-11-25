@@ -235,6 +235,10 @@ export default function FindYourPlaceClient() {
         return next;
       });
       setStep(1);
+    } else if (fromBar) {
+      // Start Matching with nothing filled still means "start": page 1, with
+      // anything saved on this browser kept.
+      setStep(1);
     }
     if (Object.keys(given).length || fromBar) {
       for (const key of ["group", "budget", "modes"]) params.delete(key);

@@ -40,7 +40,7 @@ export default function HomeFaq({ sideMargin }) {
   const [open, setOpen] = useState(null);
 
   return (
-    <section className="w-full bg-white py-16 md:py-22">
+    <section className="w-full bg-white py-16 md:py-[5.5rem]">
       <div className={`mx-auto grid w-full max-w-[1440px] gap-8 ${sideMargin} lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:gap-16`}>
         <h2 className="text-4xl font-black text-gray-900 md:text-5xl">FAQ</h2>
         <ul className="divide-y divide-gray-200 border-y border-gray-200">

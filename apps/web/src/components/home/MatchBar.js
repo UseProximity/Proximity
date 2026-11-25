@@ -73,6 +73,9 @@ export default function MatchBar({ onEngage = null }) {
   const [budget, setBudget] = useState("");
   const [group, setGroup] = useState(null);
   const [modes, setModes] = useState([]);
+  // The range error waits until the visitor is done typing (leaves the box,
+  // presses Enter or Start Matching), as on the Find Your Place page.
+  const [budgetChecked, setBudgetChecked] = useState(false);
 
   // Close on a click anywhere else, or Escape.
   useEffect(() => {
@@ -104,10 +107,15 @@ export default function MatchBar({ onEngage = null }) {
 
   const start = (e) => {
     e.preventDefault();
+    // An amount out of range is shown back, not silently dropped.
+    if (budgetBad) {
+      setBudgetChecked(true);
+      setOpen("budget");
+      return;
+    }
     // "from", not "src": ?src= is the printed QR campaign tag marketing records.
     const params = new URLSearchParams({ from: "home" });
     if (group) params.set("group", group);
-    // An amount Find Your Place would turn away is left for its own page to ask.
     if (budgetOk) params.set("budget", String(budgetNum));
     if (modes.length) params.set("modes", modes.join(","));
     const filled = (group ? 1 : 0) + (budgetOk ? 1 : 0) + (modes.length ? 1 : 0);
@@ -142,13 +150,18 @@ export default function MatchBar({ onEngage = null }) {
             autoFocus
             placeholder="max / mo"
             aria-label="Max monthly rent per person, in dollars"
-            aria-invalid={budgetBad}
+            aria-invalid={budgetBad && budgetChecked}
             value={budget}
-            onChange={(e) => setBudget(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            onChange={(e) => {
+              setBudget(e.target.value.replace(/\D/g, "").slice(0, 5));
+              setBudgetChecked(false);
+            }}
+            onBlur={() => setBudgetChecked(true)}
             onKeyDown={(e) => {
               // Enter moves on to the next question instead of leaving the page.
               if (e.key === "Enter") {
                 e.preventDefault();
+                setBudgetChecked(true);
                 setOpen(budgetBad ? "budget" : "group");
               }
             }}
@@ -157,7 +170,7 @@ export default function MatchBar({ onEngage = null }) {
             }`}
           />
         </div>
-        {budgetBad && (
+        {budgetBad && budgetChecked && (
           <p className="mt-2 text-xs text-red-600">
             Enter an amount between ${BUDGET_MIN.toLocaleString("en-US")} and ${BUDGET_MAX.toLocaleString("en-US")}.
           </p>

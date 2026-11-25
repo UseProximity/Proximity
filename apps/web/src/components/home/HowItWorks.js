@@ -138,7 +138,7 @@ export default function HowItWorks({ sideMargin }) {
   const isInView = useInView(ref, { once: true, margin: "-80px" });
 
   return (
-    <section ref={ref} className="w-full border-y border-gray-200 bg-gray-50 py-16 md:py-22">
+    <section ref={ref} className="w-full border-y border-gray-200 bg-gray-50 py-16 md:py-[5.5rem]">
       <div className={`mx-auto w-full max-w-[1440px] ${sideMargin}`}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
