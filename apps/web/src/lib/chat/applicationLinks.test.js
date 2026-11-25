@@ -103,3 +103,14 @@ test("a link written with https:// is screened whatever its ending", async () =>
   assert.equal(redactChatText("Form: https://forms.gle/AbC123 thanks").text, "Form: [removed] thanks");
   assert.equal(screenChatText("We're in St. Louis, 1.5 baths").action, "allow");
 });
+
+test("in a tour conversation only the bad sentence goes, contact details stay (review, 2026-11-25)", async () => {
+  const { redactChatText } = await import("./moderation.js");
+  const text = "Venmo the $500 deposit before the tour. Call me at 314-555-1212 when you arrive.";
+  const tour = redactChatText(text, { keepContact: true });
+  assert.equal(tour.text, "[removed] Call me at 314-555-1212 when you arrive.");
+  assert.deepEqual(tour.reasons, ["off_platform_payment_request"]);
+  assert.match(redactChatText(text).text, /Call me at \[removed\]/);
+  // Only contact details: nothing to cut in a tour conversation.
+  assert.deepEqual(redactChatText("Call me at 314-555-1212.", { keepContact: true }), { text: "Call me at 314-555-1212.", reasons: [] });
+});

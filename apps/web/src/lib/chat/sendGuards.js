@@ -131,10 +131,23 @@ export async function screenOutgoingChat({
  */
 export async function landlordApplicationLinkState(landlordId, listingId) {
   if (!landlordId || !listingId) return "missing";
-  const { data, error } = await supabase
+  // An owner of the property also counts its ownerless imported leases, the
+  // same rows the dashboard's contact block lets them edit.
+  const { data: ownerRow, error: ownerErr } = await supabase
+    .from("listing_landlords")
+    .select("user_id")
+    .eq("listing_id", listingId)
+    .eq("user_id", landlordId)
+    .maybeSingle();
+  if (ownerErr) {
+    console.error("application link owner lookup failed:", ownerErr);
+    return "missing";
+  }
+  let query = supabase
     .from("unit_leases")
-    .select("application_url, is_active, unavailable, published_at, deleted_at, listing_units!inner(listing_id, published_at, deleted_at)")
-    .eq("owner_id", landlordId)
+    .select("application_url, is_active, unavailable, published_at, deleted_at, listing_units!inner(listing_id, published_at, deleted_at)");
+  query = ownerRow ? query.or(`owner_id.eq.${landlordId},owner_id.is.null`) : query.eq("owner_id", landlordId);
+  const { data, error } = await query
     .eq("listing_units.listing_id", listingId)
     .is("listing_units.deleted_at", null)
     .is("deleted_at", null);

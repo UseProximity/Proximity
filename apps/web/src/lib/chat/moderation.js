@@ -402,6 +402,9 @@ const SENTENCE_RULES = [
   ...OFF_PLATFORM_REQUEST,
 ];
 
+// The same, less "let's move this off Proximity", for tour conversations.
+const SENTENCE_RULES_KEEP_CONTACT = [...SLURS, ...THREATS, ...RAILS_ALWAYS_BLOCK, ...PHISHING];
+
 function redactSentences(text, patterns) {
   return text.replace(/[^.!?\n]+[.!?]*/g, (sentence) => {
     if (!patterns.some((re) => re.test(sentence))) return sentence;
@@ -418,24 +421,29 @@ function redactSentences(text, patterns) {
  * edit, and a whole reply should not vanish because of one sentence. Contact
  * details are cut out where they stand, and the offending sentences go. If the
  * result would still be blocked, nothing of it is kept. Contact details are
- * removed too (Wyatt, 2026-11-23), except in a tour conversation, where the
- * caller does not ask for them to be.
+ * removed too (Wyatt, 2026-11-23), except in a tour conversation: there the
+ * caller passes keepContact, so only abuse, fraud and phishing are cut and
+ * every phone number, address and link stays as written.
  *
+ * @param {string} text
+ * @param {{ keepContact?: boolean }} [options]
  * @returns {{ text: string, reasons: string[] }} reasons is empty when nothing changed
  */
-export function redactChatText(text) {
+export function redactChatText(text, { keepContact = false } = {}) {
   const original = String(text ?? "");
   const verdict = screenChatText(original);
-  if (verdict.action !== "block") return { text: original, reasons: [] };
+  const counts = (reasons) => (keepContact ? reasons.filter((r) => !CONTACT_REASONS.has(r)) : reasons);
+  const cut = counts(verdict.reasons);
+  if (verdict.action !== "block" || cut.length === 0) return { text: original, reasons: [] };
 
   let out = original;
 
   if (verdict.reasons.includes("off_platform_payment_request")) {
     out = redactSentences(out, RAILS_CONDITIONAL);
   }
-  out = redactSentences(out, SENTENCE_RULES);
+  out = redactSentences(out, keepContact ? SENTENCE_RULES_KEEP_CONTACT : SENTENCE_RULES);
 
-  out = out
+  if (!keepContact) out = out
     .replace(new RegExp(EMAIL_PLAIN.source, "gi"), REDACTED)
     .replace(new RegExp(EMAIL_OBFUSCATED.source, "gi"), REDACTED)
     .replace(new RegExp(PHONE.source, "g"), REDACTED)
@@ -444,16 +452,17 @@ export function redactChatText(text) {
       return ALLOWED_LINK_HOSTS.some((ok) => h === ok || h.endsWith(`.${ok}`)) ? match : REDACTED;
     });
 
-  if (verdict.reasons.includes("social_handle")) {
+  if (!keepContact && verdict.reasons.includes("social_handle")) {
     out = out.replace(new RegExp(SOCIAL_HANDLE.source, "gi"), (m) => m.replace(/@\S+/, REDACTED));
     out = redactSentences(out, [PLATFORMS]);
   }
 
-  if (screenChatText(out).action === "block") out = REDACTED;
+  const after = screenChatText(out);
+  if (after.action === "block" && counts(after.reasons).length > 0) out = REDACTED;
 
   return {
     text: out.replace(/(\[removed\][\s,;]*){2,}/g, `${REDACTED} `).trim(),
-    reasons: verdict.reasons,
+    reasons: cut,
   };
 }
 

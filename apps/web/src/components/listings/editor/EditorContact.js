@@ -27,7 +27,7 @@ const field =
  * with an email is the best guess, and the mismatch note below says so.
  */
 function savedContact(listing) {
-  const mine = listing?.myLeases ?? [];
+  const mine = listing?.contactLeases ?? listing?.myLeases ?? [];
   const src = mine.find((l) => l.contactEmail) ?? mine[0];
   // No phone: students write through Proximity, never call (Wyatt, 2026-10-18).
   return {
@@ -65,7 +65,7 @@ function ApplicationLinkUnavailable() {
 
 export default function EditorContact({ listing, onChanged }) {
   const listingId = listing?._id || listing?.id;
-  const mine = listing?.myLeases ?? [];
+  const mine = listing?.contactLeases ?? listing?.myLeases ?? [];
   const [draft, setDraft] = useState(() => savedContact(listing));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);

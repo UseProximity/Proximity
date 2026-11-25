@@ -493,10 +493,12 @@ async function processOne({ bucket, key, recipients }) {
       ? verdict.reasons.filter((r) => !(unrestricted && CONTACT_REASONS.has(r)))
       : [];
     let body = screenedText.trim();
-    if (reasons.length > 0) body = redactChatText(screenedText).text.trim();
-    if (!body.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) body = "";
+    if (reasons.length > 0) body = redactChatText(screenedText, { keepContact: unrestricted }).text.trim();
     const appReasons = appLinks.length > 0 ? [APPLICATION_LINK_REASON] : [];
     const removedAny = appLinks.length > 0 || reasons.length > 0;
+    // Only what is left after a cut counts as empty: a reply of just "?" is
+    // still a reply and is posted as written.
+    if (removedAny && !body.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) body = "";
 
     // Never to a leasing assistant: it answers every email, so the note and its
     // answer would bounce between us (Wyatt, 2026-11-17). The record stays.
