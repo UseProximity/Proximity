@@ -67,10 +67,10 @@ export function questionsFor(row, idx, { unitLabel, building, address } = {}) {
     }
   }
   if (n.availableFrom && (field === "availableFrom" || row.action === "add")) {
-    q("date", { type: "predicate", instructions: `Does this text state ${u} is available from ${n.availableFrom}?` }, { kind: "predicate" });
+    q("date", { type: "predicate", instructions: `Does this text state ${u} is available from ${n.availableFrom}?` }, { kind: "predicate", soft: row.action === "add" });
   }
   if ((n.leaseTermMonths ?? []).length && (field === "leaseTermMonths" || row.action === "add")) {
-    q("terms", { type: "predicate", instructions: `Does this text state these lease lengths for ${u}: ${terms(n.leaseTermMonths)}?` }, { kind: "predicate" });
+    q("terms", { type: "predicate", instructions: `Does this text state these lease lengths for ${u}: ${terms(n.leaseTermMonths)}?` }, { kind: "predicate", soft: row.action === "add" });
   }
   if (["bedrooms", "bathrooms", "area"].includes(field) || row.kind === "unit_new") {
     const parts = [n.bedrooms != null ? `${n.bedrooms} bed` : null, n.bathrooms != null ? `${n.bathrooms} bath` : null, n.area ? `${n.area} sq ft` : null].filter(Boolean);

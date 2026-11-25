@@ -11,6 +11,8 @@ import { textHasAddress, unitWindow } from "./evidence.js";
 export const JEV_CALLS_PER_RUN = 40;
 // Evidence kept on a row for labelling and review, in characters.
 const KEEP_TEXT = 2500;
+// A whole page sent to Jev for a unit the site does not name, in characters.
+const PAGE_ASK_CHARS = 24000;
 
 /*
  * Ask Jev about every page-read change of a run: one call per unit, every
@@ -53,6 +55,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
   // Group the page-read changes by the unit they are about.
   const groups = new Map();
   const windows = new Map();
+  const layoutAsk = new Set();
   const results = new Map(); // row index -> jev result
   const snapNames = (snapshot?.units ?? []).map((u) => u?.name).filter(Boolean);
   rows.forEach((row, i) => {
@@ -61,13 +64,23 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
       // The withdrawn unit's own block, wherever a page still names it. A
       // unit no page names is off the website: code knows, Jev is not asked.
       const name = row._in?.unitName ?? null;
-      const w = name ? unitWindow(ev?.pages ?? [], { name }, snapNames.filter((n) => n !== name)) : null;
+      let w = name ? unitWindow(ev?.pages ?? [], { name }, snapNames.filter((n) => n !== name)) : null;
       if (!name || !(ev?.pages ?? []).length) return;
-      if (!w) {
+      if (!w && row._in.unitSiteNamed) {
         results.set(i, { status: "ok", model: "code", parts: [{ part: "listed", p: 0, invert: true, question: `${name} is named on none of the pages read` }] });
         return;
       }
-      const key = `gone:${name}`;
+      /*
+       * A name the website never used ("4 Bed 2 Bath" on The ICON, whose
+       * plans the site lists by size) proves nothing by its absence: Jev is
+       * asked about the layout on the fullest page instead.
+       */
+      if (!w) {
+        const fullest = [...(ev?.pages ?? [])].sort((a, b) => b.text.length - a.text.length)[0];
+        w = { url: fullest.url, text: fullest.text.slice(0, PAGE_ASK_CHARS) };
+        layoutAsk.add(i);
+      }
+      const key = layoutAsk.has(i) ? `gone-layout:${row._in.unitLayout ?? name}` : `gone:${name}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(i);
       windows.set(key, w);
@@ -81,7 +94,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
   for (const [key, idxs] of groups) {
     const win = key === "__page__" ? ev?.page : windows.get(key) ?? ev?.units?.[key];
     const text = win?.text ?? "";
-    const asks = idxs.flatMap((i) => questionsFor(rows[i], i, { unitLabel: rows[i].kind === "lease_withdrawn" ? `the ${rows[i]._in.unitName} unit` : label(rows[i].unit_key) }).map((q) => ({ ...q, row: i })));
+    const asks = idxs.flatMap((i) => questionsFor(rows[i], i, { unitLabel: rows[i].kind === "lease_withdrawn" ? (layoutAsk.has(i) && rows[i]._in.unitLayout ? `a ${rows[i]._in.unitLayout} plan` : `the ${rows[i]._in.unitName} unit`) : label(rows[i].unit_key) }).map((q) => ({ ...q, row: i })));
     if (!asks.length) continue;
     if (!text) {
       for (const i of idxs) results.set(i, { status: "no_text", model: JEV_MODEL, parts: [] });
@@ -98,7 +111,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
       for (const i of idxs) results.set(i, { status: "ok", model: r.model, parts: [], text: text.slice(0, KEEP_TEXT), url: win?.url ?? null });
       for (const a of asks) {
         const ans = r.answers[a.question.name];
-        results.get(a.row).parts.push({ part: a.part, p: expectedProbability(ans, a.expect), choice: ans?.choice ?? null, rough: !!a.expect.rough, invert: !!a.expect.invert, question: a.question.instructions });
+        results.get(a.row).parts.push({ part: a.part, p: expectedProbability(ans, a.expect), choice: ans?.choice ?? null, rough: !!a.expect.rough, invert: !!a.expect.invert, soft: !!a.expect.soft, question: a.question.instructions });
       }
     } catch (err) {
       for (const i of idxs) results.set(i, { status: "failed", model: JEV_MODEL, parts: [], error: String(err?.message ?? err).slice(0, 200) });

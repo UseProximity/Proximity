@@ -72,10 +72,22 @@ test("a unit's window stops at the next unit, and IvaS1 is not found inside IvaS
 test("a withdrawn unit no page names is gone by code, without asking Jev", async () => {
   const w = { kind: "lease_withdrawn", unitId: "u1", leaseId: "l1", field: "unavailable", old: false, new: true, facts: { fromModel: true }, verdict: { apply: true } };
   const snap = { trace: { reader: "generic" }, unitListComplete: true, units: [], evidence: collectEvidence([{ url: "u", text: "6100 Delmar Blvd. " + "Only the London plan is available today. ".repeat(10) }], [], state.address) };
-  const scored = shadowRows({ changes: [w], snapshot: snap, state, learnings, priorRuns: new Map([[`lease_withdrawn||l1|unavailable|true`, 1]]), now: NOW });
+  const named = { synced: new Map([["unit:u1", { name: "Pershing", siteKey: "n:pershing" }]]) };
+  const scored = shadowRows({ changes: [w], snapshot: snap, state, learnings: named, priorRuns: new Map([[`lease_withdrawn||l1|unavailable|true`, 1]]), now: NOW });
   let asked = 0;
   const [r] = await jevPass({ rows: scored, snapshot: snap, state, on: true, ask: async () => { asked++; return { answers: {}, costUsd: 0, model: "m" }; } });
   assert.equal(asked, 0);
   assert.equal(r.jev.model, "code");
   assert.equal(r.read_quality, 1);
+});
+
+test("a unit the website never named is not gone just because its name is absent", async () => {
+  const w = { kind: "lease_withdrawn", unitId: "u1", leaseId: "l1", field: "unavailable", old: false, new: true, facts: { fromModel: true }, verdict: { apply: false } };
+  const snap = { trace: { reader: "generic" }, unitListComplete: true, units: [], evidence: collectEvidence([{ url: "u", text: "6100 Delmar Blvd. 2 Beds | 2 Baths 900 Sq. Ft. View All 7 Available Units. ".repeat(6) }], [], state.address) };
+  const scored = shadowRows({ changes: [w], snapshot: snap, state, learnings, now: NOW });
+  let asked = "";
+  const [r] = await jevPass({ rows: scored, snapshot: snap, state, on: true, ask: async (_t, qs) => { asked = qs[0].instructions; return { answers: { [qs[0].name]: { type: "predicate", probability: 0.95 } }, costUsd: 0, model: "m" }; } });
+  assert.match(asked, /2 bed, 2 bath, 900 sq ft plan/);
+  assert.ok(r.read_quality <= 0.05);
+  assert.equal(r.ledger_apply, false);
 });
