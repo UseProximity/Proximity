@@ -91,10 +91,12 @@ export const lineShape = (line) => String(line ?? "").trim().toLowerCase().repla
  * Where a name sits: { page, index (char), line (number) } or null. Whole
  * name only. An occurrence with another unit's name on the line before or
  * after is an entry in a list of plans (a filter, a menu), and is passed
- * over for the next one; a name found only in such a list is still returned.
+ * over for the next one. A name found only in such a list is returned when
+ * working a recipe out (listOk) and not when replaying one: a plan named
+ * only in a filter has no block of its own to read.
  *   others  Set of the other units' names, normalised
  */
-function locate(pages, name, others = null) {
+function locate(pages, name, others = null, listOk = true) {
   const re = nameRe(name);
   if (!re) return null;
   let fallback = null;
@@ -114,7 +116,7 @@ function locate(pages, name, others = null) {
       fallback ??= hit;
     }
   }
-  return fallback;
+  return listOk ? fallback : null;
 }
 
 const samePath = (a, b) => {
@@ -193,7 +195,10 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
 
   const names = [];
   const have = new Set();
-  for (const n of [...(recipe.names ?? []), ...known]) {
+  // A listing's unit called "Studio" or "1 Bedroom" is a layout word, found
+  // all over any page; only the recipe's own names of that kind are looked for.
+  const generic = (n) => /^(?:studio|\d+\s*(?:bed(?:room)?s?|br|bd)(?:\s*[\/,|]?\s*\d+(?:\.\d)?\s*(?:bath(?:room)?s?|ba))?)$/i.test(String(n).trim());
+  for (const n of [...(recipe.names ?? []), ...known.filter((k) => !generic(k))]) {
     if (!norm(n) || have.has(norm(n))) continue;
     have.add(norm(n));
     names.push(n);
@@ -214,7 +219,7 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
       }
     }
   }
-  const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm))) }));
+  const spots = names.map((name) => ({ name, at: locate(use, name, new Set(names.filter((n) => norm(n) !== norm(name)).map(norm)), false) }));
   const placed = spots.filter((s) => s.at).sort((a, b) => a.at.page - b.at.page || a.at.index - b.at.index);
   const units = placed.map((s, i) => {
     const text = use[s.at.page].text;

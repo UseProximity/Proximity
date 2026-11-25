@@ -28,13 +28,16 @@ async function landlordEditTimes(listingId) {
     if ((f.scope_level === "lease" || f.scope_level === "unit") && f.scope_id) later(f.scope_id, f.updated_at);
     else if (f.scope_level === "property" && f.field_key.startsWith("core.property.")) later(`property:${f.field_key.slice("core.property.".length)}`, f.updated_at);
   }
-  // An Undo, and a landlord's own Apply now, are that person's edits too.
-  const { data: acted } = await supabase.from("listing_source_events").select("detail, verdict_by, verdict_at")
-    .eq("listing_id", listingId).or("verdict_by.not.is.null,detail->undone.not.is.null").limit(1000);
+  /*
+   * An Undo is that person's edit: they put their own value back. Applying a
+   * website change by hand is not (the listing then says what the website
+   * says); counting the team's launch-review approvals as landlord edits
+   * once made a plain price move on 4321 Grove need to beat a "fresh edit".
+   */
+  const { data: acted } = await supabase.from("listing_source_events").select("detail").eq("listing_id", listingId).not("detail->undone", "is", null).limit(1000);
   for (const e of acted ?? []) {
     const scope = e.detail?.leaseId ?? e.detail?.unitId ?? null;
-    const at = e.detail?.undone?.at ?? (e.verdict_by ? e.verdict_at : null);
-    if (scope && at) later(scope, at);
+    if (scope && e.detail?.undone?.at) later(scope, e.detail.undone.at);
   }
   return out;
 }
