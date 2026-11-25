@@ -24,6 +24,6 @@ export async function POST(req) {
     return NextResponse.json(await compareListing(body.listingId));
   } catch (err) {
     console.error("POST admin/agents/compare failed:", err);
-    return NextResponse.json({ error: String(err?.message ?? "Could not compare").slice(0, 200) }, { status: 500 });
+    return NextResponse.json({ error: err?.message === "This listing has no website to read." ? err.message : "Could not compare this listing" }, { status: 500 });
   }
 }

@@ -28,6 +28,7 @@
  * which is what the "proposed changes" review and the digest email read.
  */
 import supabase from "@/lib/supabase";
+import { updateAsUser } from "@/lib/supabaseWithUser";
 import { unitNameKey, apartmentsLabel, cleanUnitName } from "@/utils/unitName";
 import { listingUnitFormat, formatConflict } from "@/utils/unitFormat";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
@@ -83,8 +84,9 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 
 // ---------------------------------------------------------------- matching
 
-import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName } from "./match.js";
+import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName, stableJson } from "./match.js";
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
+import { changeKey } from "./shadow.js";
 import { checkStuck } from "./checker.js";
 export { matchUnits, sameName, nameMatchAliases };
 
@@ -400,7 +402,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
     if (images && snap.floorPlanImageUrl && !db.floor_plan_image_url) specPatch.floorPlanImageUrl = snap.floorPlanImageUrl;
     // Paired by layout and size, but the site calls it something else: say so.
     // ...unless the sync already knows the site's name for this unit (learn.js).
-    if (snap.name && db.name && !sameName(snap.name, db.name) && !snap.aliasOf) {
+    if (snap.name && db.name && !sameName(snap.name, db.name) && !snap.aliasOf && !(snap.aka ?? []).some((a) => sameName(a, db.name))) {
       specDiff.name = { old: db.name, new: snap.name };
     }
     if (Object.keys(specPatch).length) {
@@ -679,7 +681,8 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
       const twin = lookalike || shadow ? null : pairs.find(({ db }) => db && db.id !== u.id && layoutOf(db) && nameWithin(u.name, db.name, place)
         && live.every((l) => (db.unit_leases ?? []).some((x) => !x.unavailable && Number(x.rent) === Number(l.rent) && sameTerms(x.lease_term_months, l.lease_term_months))))?.db ?? null;
       const namedPlans = lookalike || shadow || twin || !genericName(u.name) ? []
-        : pairs.filter(({ snap, db }) => db && db.id !== u.id && norm(snap.name) && !genericName(snap.name) && Number(snap.bedrooms) === Number(u.bedrooms) && (snap.offers ?? []).some((o) => o.rent != null)).map(({ snap }) => snap.name);
+        : pairs.filter(({ snap, db }) => db && db.id !== u.id && norm(snap.name) && !genericName(snap.name) && Number(snap.bedrooms) === Number(u.bedrooms)
+          && (snap.bathrooms == null || u.bathrooms == null || Number(snap.bathrooms) === Number(u.bathrooms)) && (snap.offers ?? []).some((o) => o.rent != null)).map(({ snap }) => snap.name);
       for (const l of live) {
         push({
           kind: "lease_withdrawn",
@@ -908,7 +911,7 @@ export async function executeChange(change, { state, userId }) {
       let photos = 0;
       if (d.photos?.length) photos = await insertImages({ state, userId, unitId: unit.id, urls: d.photos, slug });
       change.unitId = unit.id;
-      change.undo = { op: "unit_remove", unitId: unit.id, leaseIds: leaseRows.map((r) => r.id) };
+      change.undo = { op: "unit_remove", unitId: unit.id, leaseIds: leaseRows.map((r) => r.id), wrote: Object.fromEntries(leaseRows.map((r) => [r.id, leaseWritten(r)])) };
       return `${offers.length} lease${offers.length === 1 ? "" : "s"}${photos ? `, ${photos} photos` : ""}`;
     }
     case "unit_update": {
@@ -931,7 +934,7 @@ export async function executeChange(change, { state, userId }) {
       const { data: row, error } = await supabase.from("unit_leases").insert(leaseRow({ state, userId, unitId: d.unitId, offer: d.offer, available: true, draft: !!d.draft })).select("id, rent, rent_is_per_person, lease_term_months, available_from, description").single();
       if (error) throw new Error(`lease: ${error.message}`);
       change.written = { leases: [{ id: row.id, values: row }] };
-      change.undo = { op: "lease_remove", leaseId: row.id };
+      change.undo = { op: "lease_remove", leaseId: row.id, wrote: leaseWritten(row) };
       if (change.hiddenRent) await saveHiddenRents({ listingId: state.id, rows: [{ leaseId: row.id, ...change.hiddenRent }], sourceUrl: state.source_url ?? null });
       return d.offer.rent != null ? `$${d.offer.rent}` : "unpriced";
     }
@@ -967,14 +970,11 @@ export async function executeChange(change, { state, userId }) {
  * availableFrom}), so a plain JSON.stringify never matched a change with
  * several fields and the same change was saved again every run.
  */
-function stableJson(value) {
-  const sort = (v) => {
-    if (Array.isArray(v)) return v.map(sort);
-    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, sort(v[k])]));
-    return v;
-  };
-  return JSON.stringify(sort(value ?? null));
-}
+// stableJson (match.js): JSON with its keys in order.
+
+// The fields of a lease the sync created, as it wrote them: an Undo checks them first.
+const LEASE_WRITTEN = ["rent", "rent_is_per_person", "lease_term_months", "available_from", "description"];
+const leaseWritten = (row) => Object.fromEntries(LEASE_WRITTEN.filter((k) => k in (row ?? {})).map((k) => [k, row[k] ?? null]));
 
 /*
  * Changes held for the team by an earlier skipped run that this run no
@@ -1034,9 +1034,11 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
     const { data: before } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail")
       .eq("listing_id", listingId).eq("status", "rejected").is("verdict_by", null).gte("created_at", since).limit(2000);
     const keyOf = (kind, unitKey, leaseId, field, value, reason) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${stableJson(value ?? null)}|${reason ?? ""}`;
-    const seen = new Set((before ?? []).filter((e) => e.detail?.autoDenied).map((e) => keyOf(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value, e.detail.autoDenied)));
+    // The kind of reason, not its figures: a score's reason moves with every read.
+    const reasonKind = (r) => String(r ?? "").replace(/\d+(?:\.\d+)?/g, "#");
+    const seen = new Set((before ?? []).filter((e) => e.detail?.autoDenied).map((e) => keyOf(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value, reasonKind(e.detail.autoDenied))));
     fresh = changes.filter((c) => {
-      const key = keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new, c.denyReason);
+      const key = keyOf(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new, reasonKind(c.denyReason));
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -1065,6 +1067,8 @@ async function recordEvents({ monitorId, listingId, changes, applied, status }) 
       ...(c.rulesVerdict ? { rules: { apply: !!c.rulesVerdict.apply, reason: c.rulesVerdict.reason ?? null } } : {}),
       unitId: c.unitId ?? c.detail.unitId ?? null,
       leaseId: c.leaseId ?? c.detail.leaseId ?? null,
+      // The key its score was saved under, so the decisions list finds it (decisions.js).
+      changeKey: changeKey(c),
       ...(status === "rejected" ? { autoDenied: c.denyReason ?? "denied" } : {}),
     },
   }));
@@ -1343,7 +1347,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       c.verdict = v;
       if (v.reason && v.apply) c.note = v.reason;
       // Undone by a person: not made again while the website still says the same.
-      const u = undone.get(undoKey(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new));
+      const u = undone.get(undoKey(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new))?.at;
       if (u) {
         c.undoneAt = u;
         c.verdict = { apply: false, reason: `undone on ${u.slice(0, 10)}, and the website still says the same` };
@@ -1405,7 +1409,8 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
       const checked = await checkStuck({ listingId, listingLabel: label, rows: scored, changes });
       for (const [i, v] of checked) {
         const c = changes[i];
-        if (!c || c.undoneAt || (c.gated && c.kind !== "unit_new")) continue;
+        // Another building's unit, one a person removed, or one that may be renamed: never the checker's to apply.
+        if (!c || c.undoneAt || (c.gated && c.kind !== "unit_new") || c.elsewhere || c.lookalike) continue;
         c.verdict = { apply: v.verdict === "apply", reason: v.reason };
         if (v.verdict === "apply") c.note = v.reason;
         c.ledger = { ...c.ledger, checker: v.verdict };
@@ -1429,6 +1434,24 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
     else {
       const saved = await replaceHiddenRents({ listingId, rows: hidden, sourceUrl: hiddenUrl, complete: !!snapshot.unitListComplete });
       if (saved) console.log(`[source-sync] ${listingLabel ?? state.title ?? listingId}: ${saved} hidden price${saved === 1 ? "" : "s"} saved`);
+    }
+  }
+
+  /*
+   * An Undo holds until the website says something different (Wyatt,
+   * 2026-11-25): a read that saw the unit, or saw the whole list, and did not
+   * plan the undone change again ends it, so the same change later (a lease
+   * really let months on) is decided afresh.
+   */
+  if (mode === "sync" && !holdReason && undone.size) {
+    const planned = new Set(changes.map((c) => undoKey(c.kind, c.unitKey, c.leaseId ?? c.detail?.leaseId, c.field, c.new)));
+    const seen = new Set(changes.seenUnitIds ?? []);
+    const unitOfLease = new Map(state.listing_units.flatMap((u) => u.unit_leases.map((l) => [l.id, u.id])));
+    for (const [k, u] of undone) {
+      if (planned.has(k)) continue;
+      const unitId = u.unitId ?? (u.leaseId ? unitOfLease.get(u.leaseId) : null);
+      if (!snapshot.unitListComplete && !(unitId && seen.has(unitId))) continue;
+      await expireUndo(u.id);
     }
   }
 
@@ -1516,7 +1539,13 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
    */
   if (takeover && (!autoApply || holdReason)) {
     for (const c of changes) {
-      if (c.gated && c.kind !== "unit_new") {
+      /*
+       * Still held on a claim (PR 483 review): what the listing gate stops,
+       * another building's units on the same website or a unit a person
+       * removed (elsewhere), a value the landlord set by hand (protected),
+       * and a unit that may be another renamed (lookalike).
+       */
+      if ((c.gated && c.kind !== "unit_new") || c.elsewhere || c.protected || c.lookalike) {
         held.push(c);
         continue;
       }
@@ -1598,7 +1627,7 @@ export function changedSinceRead(e, lease) {
 export async function applyEvents({ listingId, eventIds, userId, verdictBy = null, allowUnapplied = false }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
-  const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied, status").in("id", eventIds).eq("listing_id", listingId);
+  const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied, status, verdict_by").in("id", eventIds).eq("listing_id", listingId);
   // New floor plans join in layout order, unless the landlord arranged the
   // tabs by hand, in which case they go at the end as before.
   const addsUnits = (events ?? []).some((e) => e.kind === "unit_new" && !e.applied);
@@ -1685,15 +1714,26 @@ export async function rejectEvents({ listingId, eventIds, verdictBy = null }) {
 
 const undoKey = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${stableJson(value ?? null)}`;
 
-/* Changes a person undid: key -> when. A new value on the website is a new key. */
+/*
+ * Changes a person undid that still hold: key -> { at, id, unitId, leaseId }.
+ * A new value on the website is a new key; an undo the website has since
+ * moved on from has expired (expireUndo).
+ */
 async function undoneKeysFor(listingId) {
-  const { data, error } = await supabase.from("listing_source_events").select("kind, unit_key, field, new_value, detail")
+  const { data, error } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, new_value, detail")
     .eq("listing_id", listingId).not("detail->undone", "is", null).limit(1000);
   if (error) {
     console.error(`[source-sync] undone changes for ${listingId}: ${error.message}`);
     return new Map();
   }
-  return new Map((data ?? []).map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), e.detail.undone.at]));
+  return new Map((data ?? []).filter((e) => !e.detail.undone.expiredAt).map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), { at: e.detail.undone.at, id: e.id, unitId: e.detail?.unitId ?? null, leaseId: e.detail?.leaseId ?? null }]));
+}
+
+async function expireUndo(eventId) {
+  const { data: e } = await supabase.from("listing_source_events").select("detail").eq("id", eventId).maybeSingle();
+  if (!e?.detail?.undone || e.detail.undone.expiredAt) return;
+  const { error } = await supabase.from("listing_source_events").update({ detail: { ...e.detail, undone: { ...e.detail.undone, expiredAt: new Date().toISOString() } } }).eq("id", eventId);
+  if (error) console.error(`[source-sync] expiring undo ${eventId}: ${error.message}`);
 }
 
 /*
@@ -1704,9 +1744,33 @@ async function undoneKeysFor(listingId) {
  * the listing has been edited since, so an undo never overwrites newer work.
  * Returns [{ id, ok, note | error }].
  */
+// A database error is logged; the person is told plainly, without table or column names.
+const dbFail = (what, err) => {
+  console.error(`[source-sync] undo ${what}: ${err?.message ?? err}`);
+  return new Error("Could not undo that just now. Try again in a minute.");
+};
+/* A person's write, recorded in action_log as theirs (supabaseWithUser.js). */
+async function writeAsPerson(table, id, values, userId) {
+  if (!userId) return supabase.from(table).update(values).eq("id", id);
+  return updateAsUser(supabase, { userId, table, data: values, rowId: id });
+}
+
+/* A lease the sync created, edited on Proximity since: names what moved, or null. */
+async function editedSinceCreated(leaseIds, wrote) {
+  const ids = (leaseIds ?? []).filter((id) => wrote?.[id]);
+  if (!ids.length) return null;
+  const { data, error } = await supabase.from("unit_leases").select(["id", ...LEASE_WRITTEN].join(", ")).in("id", ids);
+  if (error) throw dbFail("read", error);
+  for (const l of data ?? []) {
+    const w = wrote[l.id];
+    if (Object.keys(w).some((k) => stableJson(l[k] ?? null) !== stableJson(w[k] ?? null))) return true;
+  }
+  return null;
+}
+
 export async function undoEvents({ listingId, eventIds, userId }) {
   const { data: events, error } = await supabase.from("listing_source_events").select("*").in("id", eventIds).eq("listing_id", listingId);
-  if (error) throw new Error(error.message);
+  if (error) throw dbFail("events", error);
   const results = [];
   for (const e of events ?? []) {
     const u = e.detail?.undo;
@@ -1725,22 +1789,25 @@ export async function undoEvents({ listingId, eventIds, userId }) {
         const id = u.op === "lease_restore" ? u.leaseId : u.unitId;
         const cols = Object.keys(u.wrote ?? {});
         const { data: now, error: readError } = await supabase.from(table).select(["id", ...cols].join(", ")).eq("id", id).maybeSingle();
-        if (readError) throw new Error(readError.message);
+        if (readError) throw dbFail("read", readError);
         if (!now) throw new Error("It is no longer on the listing.");
         const moved = cols.filter((k) => stableJson(now[k] ?? null) !== stableJson(u.wrote[k] ?? null));
         if (moved.length) throw new Error("This has been edited since the website change was applied, so there is nothing left to undo.");
-        const { error: writeError } = await supabase.from(table).update(u.values).eq("id", id);
+        const { error: writeError } = await writeAsPerson(table, id, u.values, userId);
         if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
-        if (writeError) throw new Error(writeError.message);
+        if (writeError) throw dbFail("write", writeError);
         note = `back to what it was (${cols.join(", ")})`;
       } else if (u.op === "lease_remove") {
-        const { error: writeError } = await supabase.from("unit_leases").update({ unavailable: true }).eq("id", u.leaseId);
-        if (writeError) throw new Error(writeError.message);
+        // Refused when the lease has been edited since the sync added it, as for any other undo.
+        if (u.wrote && (await editedSinceCreated([u.leaseId], { [u.leaseId]: u.wrote }))) throw new Error("This lease has been edited since the website added it, so it is left up. Take it down from the listing if you want it gone.");
+        const { error: writeError } = await writeAsPerson("unit_leases", u.leaseId, { unavailable: true }, userId);
+        if (writeError) throw dbFail("write", writeError);
         note = "the lease the website added was taken down";
       } else if (u.op === "unit_remove") {
-        if ((u.leaseIds ?? []).length) {
-          const { error: writeError } = await supabase.from("unit_leases").update({ unavailable: true }).in("id", u.leaseIds);
-          if (writeError) throw new Error(writeError.message);
+        if (u.wrote && (await editedSinceCreated(u.leaseIds, u.wrote))) throw new Error("This unit's leases have been edited since the website added them, so they are left up. Take them down from the listing if you want them gone.");
+        for (const leaseId of u.leaseIds ?? []) {
+          const { error: writeError } = await writeAsPerson("unit_leases", leaseId, { unavailable: true }, userId);
+          if (writeError) throw dbFail("write", writeError);
         }
         note = "the unit the website added had its leases taken down";
       } else throw new Error("This kind of change cannot be undone here.");

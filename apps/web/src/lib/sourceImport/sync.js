@@ -23,6 +23,7 @@
  * the agents), so moving a landlord to weekly is a column update.
  */
 import { loadRecipes, saveMadeRecipe, noteRecipeRun, recipesOn } from "./recipeStore.js";
+import { awaitingSecondRead } from "./shadowStore.js";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, needsLook, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
 import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
@@ -234,7 +235,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
-    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
+    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep, daily: !goDeep && recipesOn() });
     await keepSnapshot(m.id, { ok: true, snapshot });
     const fp = fingerprint(snapshot);
     // Photos weekly (Wyatt, 2026-11-12): the deep read, or a sync someone
@@ -248,7 +249,8 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     // An unpriced listing with no hidden prices yet takes one full pass even
     // on an unchanged page, so its website prices get saved (PR 474 review).
     const sameAsLast = !force && m.last_fingerprint === fp && !(images && gaps.any);
-    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id));
+    // A withdrawal the scores left for its second read is read again even on an unchanged page.
+    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id)) && !(await awaitingSecondRead(listing.id));
     let result = null;
     // Same website as last time: its prices are still showing, so the hidden
     // copies the last full read of it saved stay fresh for matchmaking (that

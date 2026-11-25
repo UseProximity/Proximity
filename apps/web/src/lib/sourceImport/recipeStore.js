@@ -5,6 +5,7 @@
  */
 
 import supabase from "@/lib/supabase";
+import { stableJson } from "./match.js";
 
 export const recipesOn = () => String(process.env.SYNC_RECIPES ?? "").toLowerCase() !== "false";
 
@@ -14,7 +15,7 @@ export async function loadRecipes(listingId, platformKey) {
   if (!recipesOn()) return out;
   try {
     const [mine, shared, units] = await Promise.all([
-      listingId ? supabase.from("source_recipes").select("id, version, recipe").eq("scope", "listing").eq("listing_id", listingId).eq("status", "active").maybeSingle() : { data: null },
+      listingId ? supabase.from("source_recipes").select("id, version, recipe, last_ok_at").eq("scope", "listing").eq("listing_id", listingId).eq("status", "active").maybeSingle() : { data: null },
       platformKey ? supabase.from("source_recipes").select("id, version, recipe").eq("scope", "platform").eq("platform_key", platformKey).eq("status", "active").maybeSingle() : { data: null },
       listingId ? supabase.from("listing_units").select("name").eq("listing_id", listingId).is("deleted_at", null).limit(500) : { data: [] },
     ]);
@@ -31,7 +32,8 @@ export async function loadRecipes(listingId, platformKey) {
 async function saveOne({ scope, listingId = null, platformKey = null, recipe, madeFrom, checked }) {
   const key = scope === "listing" ? { listing_id: listingId } : { platform_key: platformKey };
   const { data: prior } = await supabase.from("source_recipes").select("id, version, recipe").eq("scope", scope).match(key).eq("status", "active").maybeSingle();
-  if (prior && JSON.stringify(prior.recipe) === JSON.stringify(recipe)) return prior.id;
+  // Stored JSON comes back with its keys reordered: compared by content, not by text.
+  if (prior && stableJson(prior.recipe) === stableJson(recipe)) return prior.id;
   if (prior) await supabase.from("source_recipes").update({ status: "retired", retired_at: new Date().toISOString() }).eq("id", prior.id);
   const { data, error } = await supabase.from("source_recipes")
     .insert({ scope, ...key, version: (prior?.version ?? 0) + 1, recipe, made_from: madeFrom ?? null, checked: checked ?? null, last_ok_at: new Date().toISOString() })

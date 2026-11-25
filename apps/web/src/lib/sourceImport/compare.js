@@ -74,7 +74,8 @@ export async function compareListing(listingId) {
     try {
       return await oneVersion({ listing, monitor, allowUrl, version });
     } catch (err) {
-      return { error: String(err?.message ?? err).slice(0, 300), changes: [] };
+      console.error(`[compare] ${version} version for ${listing.id}:`, err);
+      return { error: "This version could not read the website", changes: [] };
     }
   };
   // One after the other: both read the same site, and the second reuses nothing.

@@ -1,20 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseBlock, induceRecipe, replayRecipe, compareReads, recipeBroken, deepenUnits } from "./recipe.js";
+import { parseBlock, induceRecipe, replayRecipe, compareReads, recipeBroken, deepenUnits, platformRecipeFits } from "./recipe.js";
 
 const TODAY = new Date("2026-11-24T12:00:00Z");
 // Real page text shapes from the 2026-11-24 preview runs.
 const UNION = [
-  "IvaS1\nStudio\n/ 1 Bath\n—\n516 sq. ft\nFrom\n$1,185 per month\n12mo lease\n$500\ndeposit\nView Details\n3 Units Available\nSpecials\nUp to 3 Months Free on Select Lease Terms!",
-  "IvaS10\nStudio\n/ 1 Bath\n—\n460 sq. ft\n$1,165 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
-  "IvaS4\nStudio\n/ 1 Bath\n—\n470 sq. ft\nView Details\nWaitlist Available",
-  "BookerA5\nStudio\n/ 1 Bath\n—\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026",
-  "IvaB1\n2 Bed\n/ 2 Bath\n—\n1,046 sq. ft\n$1,970 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
+  "IvaS1\nStudio\n/ 1 Bath\n\u2014\n516 sq. ft\nFrom\n$1,185 per month\n12mo lease\n$500\ndeposit\nView Details\n3 Units Available\nSpecials\nUp to 3 Months Free on Select Lease Terms!",
+  "IvaS10\nStudio\n/ 1 Bath\n\u2014\n460 sq. ft\n$1,165 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
+  "IvaS4\nStudio\n/ 1 Bath\n\u2014\n470 sq. ft\nView Details\nWaitlist Available",
+  "BookerA5\nStudio\n/ 1 Bath\n\u2014\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026",
+  "IvaB1\n2 Bed\n/ 2 Bath\n\u2014\n1,046 sq. ft\n$1,970 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
 ].join("\n");
 const page = (text) => [{ url: "https://x.test/floorplans/", text: `Floor Plans\nFilters\n${text}\nContact Us` }];
 
 test("a block: exact price, deposit ignored, lease length, date", () => {
-  const b = parseBlock("BookerA5\nStudio\n/ 1 Bath\n—\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026", TODAY);
+  const b = parseBlock("BookerA5\nStudio\n/ 1 Bath\n\u2014\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026", TODAY);
   assert.deepEqual([b.bedrooms, b.bathrooms, b.area], [0, 1, 754]);
   assert.equal(b.offers.length, 1);
   assert.deepEqual([b.offers[0].rent, b.offers[0].rentIsExact, b.offers[0].leaseTermMonths, b.offers[0].availableFrom], [1510, true, [12], "2026-12-23"]);
@@ -54,7 +54,7 @@ test("a recipe made from one read replays it, and IvaS1 is not IvaS10", () => {
 test("a unit the site adds later is found by the shape of the line after its name", () => {
   const truth = [{ name: "IvaS1", offers: [{ rent: 1185 }] }, { name: "IvaS10", offers: [{ rent: 1165 }] }, { name: "IvaS4", offers: [] }, { name: "BookerA5", offers: [{ rent: 1510 }] }];
   const recipe = induceRecipe({ pages: page(UNION), units: truth });
-  const later = UNION + "\nKnoxS2\nStudio\n/ 1 Bath\n—\n500 sq. ft\n$1,100 per month\n12mo lease";
+  const later = UNION + "\nKnoxS2\nStudio\n/ 1 Bath\n\u2014\n500 sq. ft\n$1,100 per month\n12mo lease";
   const replay = replayRecipe(recipe, page(later), { today: TODAY });
   assert.deepEqual(replay.added, ["KnoxS2"]);
   assert.equal(replay.units.find((u) => u.name === "KnoxS2").offers[0].rent, 1100);
@@ -116,4 +116,27 @@ test("a unit's block ends at the next unit's name, even one placed earlier on th
   const marsh = units.find((u) => u.name === "MarshB1");
   assert.equal(marsh.offers.length, 0);
   assert.equal(marsh.available, false);
+});
+
+test("a listing's short unit names never latch onto other text", () => {
+  const page = { url: "https://x.test/plans", text: "Apartment A\nStudio / 1 Bath\n$1,350 per month\n\nApartment B\n1 Bed / 1 Bath\n$1,600 per month" };
+  const recipe = { v: 1, kind: "named", pages: [page.url], after: null, names: ["Apartment A", "Apartment B"] };
+  const r = replayRecipe(recipe, [page], { known: ["1", "A", "Apartment A"], today: TODAY });
+  assert.deepEqual(r.units.map((u) => u.name).sort(), ["Apartment A", "Apartment B"]);
+  assert.equal(r.units.find((u) => u.name === "Apartment A").offers[0].rent, 1350);
+});
+
+test("a listing name of 3 or more characters is found only at the start of a line", () => {
+  const page = { url: "https://x.test/plans", text: "Floor plans: see Pershing below\nAzure\nStudio / 1 Bath\n$1,100 per month\nPershing\n2 Bed / 2 Bath\n$1,900 per month" };
+  const recipe = { v: 1, kind: "named", pages: [page.url], after: null, names: ["Azure"] };
+  const r = replayRecipe(recipe, [page], { known: ["Pershing"], today: TODAY });
+  assert.equal(r.units.find((u) => u.name === "Pershing").offers[0].rent, 1900);
+});
+
+test("another building's platform recipe fits only when it finds most of this listing's units", () => {
+  const units = [{ name: "Azure" }, { name: "Ruby" }];
+  assert.equal(platformRecipeFits(units, ["Azure", "Ruby", "Honey"]), true);
+  assert.equal(platformRecipeFits(units, ["Azure", "Sapphire", "Honey", "Rose"]), false);
+  // Nothing to check it against: not trusted.
+  assert.equal(platformRecipeFits(units, ["Studio", "1 Bedroom"]), false);
 });

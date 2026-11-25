@@ -42,6 +42,10 @@ async function landlordEditTimes(listingId) {
   return out;
 }
 
+// A run that planned no changes is saved as one marker row, so it breaks a
+// "seen N reads in a row" streak like any other run (PR 483 review).
+export const RUN_MARKER = "run";
+
 /* For each change key, how many of the listing's latest runs in a row planned it. */
 async function priorRunsFor(listingId) {
   const { data, error } = await supabase.from("listing_sync_scores").select("run_id, run_at, change_key, lease_id, unit_id, field, new_value")
@@ -55,10 +59,10 @@ async function priorRunsFor(listingId) {
       keysBy.set(r.run_id, new Set());
       runs.push(r.run_id);
     }
-    keysBy.get(r.run_id).add(r.change_key);
+    if (r.change_key !== RUN_MARKER) keysBy.get(r.run_id).add(r.change_key);
   }
   const out = new Map();
-  const all = new Set((data ?? []).map((r) => r.change_key));
+  const all = new Set((data ?? []).map((r) => r.change_key).filter((k) => k !== RUN_MARKER));
   for (const key of all) {
     let n = 0;
     for (const run of runs) {
@@ -67,18 +71,47 @@ async function priorRunsFor(listingId) {
     }
     if (n) out.set(key, n);
   }
-  // What the website has said before about each lease or unit field.
+  // What the website has said before about each lease or unit (shadow.js saidOtherwiseBefore).
   const priorValues = new Map();
   for (const r of data ?? []) {
-    const k = `${r.lease_id ?? r.unit_id ?? ""}|${r.field ?? ""}`;
-    if (!priorValues.has(k)) priorValues.set(k, new Set());
-    priorValues.get(k).add(JSON.stringify(r.new_value ?? null));
+    if (r.change_key === RUN_MARKER) continue;
+    const k = r.lease_id ?? r.unit_id ?? "";
+    if (!priorValues.has(k)) priorValues.set(k, []);
+    priorValues.get(k).push({ field: r.field ?? null, value: r.new_value ?? null });
   }
   return { priorRuns: out, priorRunsSeen: runs.length > 0, priorValues };
 }
 
+async function saveRunMarker(listingId, monitorId) {
+  const { error } = await supabase.from("listing_sync_scores").insert({
+    run_id: randomUUID(), run_at: new Date().toISOString(), listing_id: listingId, monitor_id: monitorId ?? null,
+    change_key: RUN_MARKER, kind: RUN_MARKER, action: "none", source: RUN_MARKER, platform: RUN_MARKER,
+    trust: 0, read_quality: 0, right_thing: 0, freshness: 0, score: 0, current_score: 0, need: 0, bar: 0,
+    ledger_apply: false, policy_apply: false,
+  });
+  if (error) console.error(`[source-sync] run marker for ${listingId}: ${error.message}`);
+}
+
+/*
+ * Whether the listing's latest scored run left a withdrawal waiting for its
+ * second read. The sync then scores an unchanged page again rather than
+ * stopping at "unchanged", or the second read would never come (PR 483 review).
+ */
+export async function awaitingSecondRead(listingId) {
+  if (!ledgerDecides()) return false;
+  const { data, error } = await supabase.from("listing_sync_scores").select("run_id, action, ledger_apply, reads_in_row, score, need")
+    .eq("listing_id", listingId).order("run_at", { ascending: false }).limit(300);
+  if (error || !data?.length) return false;
+  const latest = data[0].run_id;
+  return data.some((r) => r.run_id === latest && r.action === "withdraw" && !r.ledger_apply && Number(r.reads_in_row) < 2 && Number(r.score) >= Number(r.need));
+}
+
 export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save = true }) {
-  if (!shadowScoresOn() || !changes?.length) return [];
+  if (!shadowScoresOn()) return [];
+  if (!changes?.some((c) => c.kind !== "missing_unit")) {
+    if (save) await saveRunMarker(listingId, monitorId).catch(() => {});
+    return [];
+  }
   try {
     const [landlordEdits, { priorRuns, priorRunsSeen, priorValues }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
     const scored = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, priorValues, holdReason });

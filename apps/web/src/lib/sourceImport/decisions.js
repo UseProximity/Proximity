@@ -7,6 +7,7 @@
  */
 
 import supabase from "@/lib/supabase";
+import { updateAsUser } from "@/lib/supabaseWithUser";
 import { applyEvents, undoEvents } from "./apply.js";
 import { markLandlordSet } from "@/lib/agents/coreWrites";
 import { HIDDEN_RENT_MAX_AGE_DAYS } from "@/lib/listings/hiddenRents";
@@ -69,32 +70,35 @@ export async function recentDecisions({ listingId = null, days = 2, limit = 1500
     .select("id, listing_id, kind, unit_key, field, old_value, new_value, status, applied, verdict_by, verdict_at, detail, created_at, listings(title, address)")
     .gte("created_at", since).in("status", ["applied", "rejected"]).order("created_at", { ascending: false }).limit(limit);
   let scores = supabase.from("listing_sync_scores")
-    .select("listing_id, kind, unit_key, lease_id, field, new_value, source, platform, trust, read_quality, right_thing, freshness, score, need, bar, current_score, reads_in_row, borderline, ledger_apply, ledger_reason, policy_apply, policy_reason, run_at")
-    .gte("run_at", since).order("run_at", { ascending: false }).limit(limit * 2);
+    .select("listing_id, change_key, kind, unit_key, lease_id, field, new_value, source, platform, trust, read_quality, right_thing, freshness, score, need, bar, current_score, reads_in_row, borderline, ledger_apply, ledger_reason, policy_apply, policy_reason, run_at")
+    .gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).limit(limit * 2);
   if (listingId) {
     events = events.eq("listing_id", listingId);
     scores = scores.eq("listing_id", listingId);
   }
   const [{ data: ev, error }, { data: sc }] = await Promise.all([events, scores]);
   if (error) throw new Error(error.message);
-  // The newest score for each change.
+  // The newest score for each change, by the key it was saved under (an
+  // event made since PR 483 carries it; older ones are matched as before).
   const scoreBy = new Map();
   for (const s of sc ?? []) {
-    const k = `${s.listing_id}|${key(s.kind, s.unit_key, s.lease_id, s.field, s.new_value)}`;
-    if (!scoreBy.has(k)) scoreBy.set(k, s);
+    for (const k of [`${s.listing_id}|ck|${s.change_key}`, `${s.listing_id}|${key(s.kind, s.unit_key, s.lease_id, s.field, s.new_value)}`]) {
+      if (!scoreBy.has(k)) scoreBy.set(k, s);
+    }
   }
   const out = [];
   for (const e of ev ?? []) {
     if (e.detail?.op === "none") continue;
     // A change a person rejected is theirs, not the sync's decision.
     if (e.status === "rejected" && (e.verdict_by || !e.detail?.autoDenied)) continue;
-    const s = scoreBy.get(`${e.listing_id}|${key(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value)}`) ?? null;
+    const s = (e.detail?.changeKey ? scoreBy.get(`${e.listing_id}|ck|${e.detail.changeKey}`) : null) ?? scoreBy.get(`${e.listing_id}|${key(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value)}`) ?? null;
     const led = e.detail?.ledger ?? null;
     const undone = e.detail?.undone ?? null;
     const status = undone ? "undone" : e.applied ? "applied" : "not_applied";
     out.push({
       id: e.id,
       listingId: e.listing_id,
+      leaseId: e.detail?.leaseId ?? null,
       listing: e.listings?.title ?? e.listings?.address ?? "A listing",
       at: e.created_at,
       status,
@@ -117,6 +121,33 @@ export async function recentDecisions({ listingId = null, days = 2, limit = 1500
     });
   }
   return out;
+}
+
+/*
+ * The sync's reason, as a landlord reads it: the scores' figures are for the
+ * team (PR 483 review). Plain reasons pass through unchanged.
+ */
+export function landlordReason(reason) {
+  if (!reason) return null;
+  const r = String(reason);
+  if (/^score [\d.]+ is under the bar/.test(r) || /does not beat the current value/.test(r)) return "The website change was not certain enough to apply on its own. You can apply it now if it is right.";
+  if (/takes \d+ in a row/.test(r)) return "Seen gone from the website once. It is taken down if the next read agrees.";
+  if (/^Jev /.test(r)) return "The page could not be double-checked this time. The next read tries again.";
+  return r;
+}
+
+/* The lease a saved website change is about, or null for a unit or property change. */
+export async function eventLeaseId(listingId, eventId) {
+  const { data } = await supabase.from("listing_source_events").select("detail").eq("id", eventId).eq("listing_id", listingId).maybeSingle();
+  return data ? data.detail?.leaseId ?? null : undefined;
+}
+
+/* Of these leases, the ones this person owns (a co-landlord's or a subleaser's own offering). */
+export async function leasesOwnedBy(userId, leaseIds) {
+  const ids = [...new Set((leaseIds ?? []).filter(Boolean))];
+  if (!userId || !ids.length) return new Set();
+  const { data } = await supabase.from("unit_leases").select("id").in("id", ids).eq("owner_id", userId).is("deleted_at", null);
+  return new Set((data ?? []).map((l) => l.id));
 }
 
 /* Undo an applied change. Returns { ok, note } or { error }. */
@@ -142,7 +173,7 @@ export async function applyNow({ listingId, eventId, userId, isAdmin = false }) 
 export async function syncHealth({ days = 7 } = {}) {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const [{ data: sc }, { data: ev }, { data: rc }] = await Promise.all([
-    supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).order("run_at", { ascending: false }).limit(20000),
+    supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).limit(20000),
     supabase.from("listing_source_events").select("applied, status, verdict_by, verdict_at, detail, created_at").or(`created_at.gte.${since},verdict_at.gte.${since}`).limit(20000),
     supabase.from("source_recipes").select("scope, status, uses, failures, made_from, created_at").limit(5000),
   ]);
@@ -204,12 +235,22 @@ export async function hiddenPricesFor(listingId) {
 
 /* The landlord chooses to show a hidden price: it becomes the lease's public rent, as their own edit. */
 export async function showHiddenPrice({ listingId, leaseId, userId }) {
-  const { data: row } = await supabase.from("lease_hidden_rents").select("rent, rent_is_per_person").eq("listing_id", listingId).eq("lease_id", leaseId).maybeSingle();
+  // Only a price the website still shows: the same 30 days hiddenPricesFor lists.
+  const since = new Date(Date.now() - HIDDEN_RENT_MAX_AGE_DAYS * 86400000).toISOString();
+  const { data: row } = await supabase.from("lease_hidden_rents").select("rent, rent_is_per_person").eq("listing_id", listingId).eq("lease_id", leaseId).gte("seen_at", since).maybeSingle();
   if (!row) return { error: "Your website is no longer showing a price for this lease." };
+  const { data: lease } = await supabase.from("unit_leases").select("id, rent, listing_units!inner(listing_id)").eq("id", leaseId).eq("listing_units.listing_id", listingId).maybeSingle();
+  if (!lease) return { error: "This lease is no longer on the listing." };
+  if (lease.rent != null) return { error: "This lease already has a price." };
   const fields = { rent: Number(row.rent), ...(row.rent_is_per_person == null ? {} : { rent_is_per_person: row.rent_is_per_person }) };
-  const { data: saved, error } = await supabase.from("unit_leases").update(fields).eq("id", leaseId).is("rent", null).select("id, updated_at");
-  if (error) return { error: "Could not show that price." };
-  if (!saved?.length) return { error: "This lease already has a price." };
+  // The landlord's own edit, recorded in action_log as theirs.
+  const { data: savedRow, error } = await updateAsUser(supabase, { userId, table: "unit_leases", data: fields, rowId: leaseId });
+  if (error) {
+    console.error(`[source-sync] show hidden price ${leaseId}: ${error.message}`);
+    return { error: "Could not show that price." };
+  }
+  const saved = savedRow ? [savedRow] : [];
+  if (!saved.length) return { error: "Could not show that price." };
   await supabase.from("lease_hidden_rents").delete().eq("lease_id", leaseId);
   await markLandlordSet({ listingId, target: "lease", id: leaseId, fields, userId, cause: "dashboard", detail: { fromHiddenPrice: true }, old: { rent: null }, at: saved[0].updated_at });
   return { ok: true, note: `now showing $${Math.round(fields.rent).toLocaleString("en-US")}` };

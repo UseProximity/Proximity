@@ -51,9 +51,12 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
   const baseUrl = getBaseUrl();
   const sections = [];
   const label = (l) => l?.title || l?.address || "a listing";
+  // A weekly digest covers seven days: its words and row limits say so.
+  const when = days > 1 ? "this week" : "today";
+  const cap = (n) => n * Math.max(1, days);
 
   // Scraping
-  const { data: syncJobs } = await supabase.from("listing_import_jobs").select("listing_id, status, error, target, result, listings!listing_id(title, address)").gte("finished_at", w.start).lt("finished_at", w.end).limit(2000);
+  const { data: syncJobs } = await supabase.from("listing_import_jobs").select("listing_id, status, error, target, result, listings!listing_id(title, address)").gte("finished_at", w.start).lt("finished_at", w.end).limit(cap(2000));
   const syncs = (syncJobs ?? []).filter((j) => j.target?.sync);
   const imports = (syncJobs ?? []).filter((j) => !j.target?.sync && j.status === "done" && j.result?.mode === "import");
   const failed = syncs.filter((j) => j.status === "failed");
@@ -68,7 +71,7 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
   const factsForTeam = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "proposed").contains("detail", { teamReview: true }));
   sections.push({
     title: "Scraping",
-    rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], ["Website changes declined (new today)", siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
+    rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], [`Website changes declined (new ${when})`, siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
     note: "The sync applies or declines every website change itself. A run skipped for changing too much at once waits for the team in the admin Agents tab." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
   });
@@ -80,7 +83,7 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
    */
   const { data: learnedRows } = await supabase.from("listing_fact_events")
     .select("listing_id, previous_fact_id, new_value, status, listings!listing_id(title, address)")
-    .eq("cause", "sync").eq("status", "applied").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
+    .eq("cause", "sync").eq("status", "applied").gte("created_at", w.start).lt("created_at", w.end).limit(cap(5000));
   const learned = new Map();
   for (const e of learnedRows ?? []) {
     const k = learned.get(e.listing_id) ?? { name: label(e.listings), added: 0, changed: 0, removed: 0 };
@@ -106,7 +109,7 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
    * 2026-11-11): what each run read, what it applied, what it declined and
    * why, what failed, pages it was not allowed to open, own pages attached.
    */
-  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, verdict_by, detail").gte("created_at", w.start).lt("created_at", w.end).limit(5000);
+  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, verdict_by, detail").gte("created_at", w.start).lt("created_at", w.end).limit(cap(5000));
   const siteByListing = new Map();
   for (const e of siteEvents ?? []) {
     const k = siteByListing.get(e.listing_id) ?? { applied: {}, denied: {} };
@@ -247,11 +250,11 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
   // Gone from a website
   // Units whose website stopped showing them: the sync withdrew their leases
   // (Wyatt, 2026-11-11), one line per unit.
-  const { data: goneRows } = await supabase.from("listing_source_events").select("id, kind, detail, listing_id, listings!listing_id(title, address)").eq("kind", "lease_withdrawn").eq("status", "applied").contains("detail", { unitGone: true }).gte("created_at", w.start).lt("created_at", w.end).limit(500);
+  const { data: goneRows } = await supabase.from("listing_source_events").select("id, kind, detail, listing_id, listings!listing_id(title, address)").eq("kind", "lease_withdrawn").eq("status", "applied").contains("detail", { unitGone: true }).gte("created_at", w.start).lt("created_at", w.end).limit(cap(500));
   const gone = [...new Map((goneRows ?? []).map((e) => [`${e.listing_id}|${e.detail?.unitId ?? e.detail?.label}`, e])).values()];
   // Units the website never showed (added by hand, another link, loaded by the team): left as they are.
-  const { data: leftRows } = await supabase.from("listing_source_events").select("detail, listing_id, listings!listing_id(title, address)").eq("kind", "missing_unit").eq("status", "rejected").contains("detail", { notFromSite: true }).gte("created_at", w.start).lt("created_at", w.end).limit(500);
-  sections.push({ title: "Gone from a website", rows: [["Units withdrawn because their website stopped showing them", gone.length], ["Not on the website, left as is (first noticed today)", (leftRows ?? []).length]], list: [...gone.map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), ...(leftRows ?? []).map((e) => `Not on the website, left as is: ${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`)], note: gone.length ? `Their leases are marked unavailable, never deleted, and come back on their own if the website shows them again; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
+  const { data: leftRows } = await supabase.from("listing_source_events").select("detail, listing_id, listings!listing_id(title, address)").eq("kind", "missing_unit").eq("status", "rejected").contains("detail", { notFromSite: true }).gte("created_at", w.start).lt("created_at", w.end).limit(cap(500));
+  sections.push({ title: "Gone from a website", rows: [["Units whose leases were withdrawn because their website stopped showing them", gone.length], [`Not on the website, left as is (first noticed ${when})`, (leftRows ?? []).length]], list: [...gone.map((e) => `${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`), ...(leftRows ?? []).map((e) => `Not on the website, left as is: ${label(e.listings)}${e.detail?.label ? `: ${e.detail.label}` : ""}`)], note: gone.length ? `Their leases are marked unavailable, never deleted, and come back on their own if the website shows them again; ${LANDLORD_GONE_NOTICES ? "the landlord was told" : "landlord notices are paused, so the landlord was not told"}.` : "" });
 
   /*
    * How the website sync is doing (decisions.js syncHealth): by platform,

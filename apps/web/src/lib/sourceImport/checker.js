@@ -23,7 +23,7 @@ export const checkerOn = () => String(process.env.SYNC_CHECKER ?? "").toLowerCas
 /* Pure: the scored rows worth a check. */
 export function stuckRows(rows) {
   return (rows ?? []).filter((r) =>
-    !r.ledger_apply && !r.ledger_hidden && r.reads_in_row >= STUCK_READS && r.need - r.score <= NEAR_MISS && r.score > 0 &&
+    !r.ledger_apply && !r.ledger_hidden && r.reads_in_row >= STUCK_READS && r.score < r.need && r.need - r.score <= NEAR_MISS && r.score > 0 &&
     ["model", "pattern", "recipe", "portalSite"].includes(r.source) && r.kind !== "property_updated" && !/landlord|undone|publish|weekly/.test(r.ledger_reason ?? ""));
 }
 
