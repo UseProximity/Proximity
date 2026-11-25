@@ -258,7 +258,10 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     let pages = [];
     const late = Date.now() - started > KNOWLEDGE_CUTOFF_MS;
     if (knowledge && late) console.log(`[source-sync] ${label}: read ran long, specials go into knowledge on the next run`);
-    if (knowledge && !late) {
+    // Specials go into knowledge on the weekly read only: the daily sync
+    // calls no model (Wyatt, 2026-11-24), and a special that changed or
+    // vanished midweek waits for Sunday rather than being guessed at.
+    if (knowledge && !late && (goDeep || !recipesOn())) {
       onStep("Checking the website's specials");
       const specials = await syncSpecials({ listingId: listing.id, concessions: snapshot.property?.concessions ?? [], sourceUrl: snapshot.sourceUrl ?? m.source_url, actorId }).catch((e) => ({ url: m.source_url, error: String(e?.message ?? e).slice(0, 300) }));
       if (specials) pages = [specials];
