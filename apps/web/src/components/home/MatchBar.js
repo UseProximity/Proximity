@@ -181,7 +181,7 @@ export default function MatchBar({ onEngage = null }) {
 
       <Field
         icon={Users}
-        label="Roommates"
+        label="Group Size"
         value={group ? groupLabel(group) : ""}
         open={open === "group"}
         onToggle={() => toggle("group")}
