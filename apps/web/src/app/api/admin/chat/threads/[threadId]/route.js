@@ -259,7 +259,14 @@ export async function GET(req, { params }) {
               quote: m.metadata.listingUpdate.quote,
               reason: m.metadata.listingUpdate.reason,
               skipped: m.metadata.listingUpdate.skipped,
-              changes: (m.metadata.listingUpdate.changes ?? []).map(changeLabel),
+              bar: m.metadata.listingUpdate.bar ?? null,
+              changes: (m.metadata.listingUpdate.changes ?? []).map((c) => ({
+                label: changeLabel(c),
+                score: c.score ?? null,
+                apply: c.apply ?? null,
+                applied: c.applied ?? null,
+                error: c.error ?? null,
+              })),
             }
           : null,
       })),

@@ -5,18 +5,28 @@
  * A landlord who writes "we don't have any units available at 841 Westgate"
  * to a student has told us the listing is out of date. Each message a
  * listing's owner sends in a student chat (in the app or by email reply) is
- * read once: does it say something about the listing itself has changed
- * (taken, available again, a new available-from date, a new rent)? If so,
- * the change is worked out against the listing's current offerings.
+ * read once: does it state that the listing itself changed (taken, available
+ * again, a new move-in date, a new rent)? If so, and we are sure enough, the
+ * listing changes at once.
  *
- * Wyatt's decisions (2026-11-25): agent pilot listings only; changes apply
- * on their own and silently (no email to anyone), with an undo; phase 1 is
- * a dry run.
+ * Wyatt's decisions (2026-11-25):
+ *   - every listing, not only agent pilots
+ *   - applies on its own and silently (no email to anyone)
+ *   - undo from the landlord's Agent tab and the admin sync decisions list:
+ *     each change is a listing_source_events row (detail.source 'chat'), so
+ *     the sync ledger's Undo (sourceImport/decisions.js) works on it
+ *   - only high confidence, scored the sync ledger's way (sourceImport/score.js):
+ *       score = landlord trust x Jev "what does the message say" x
+ *               the message names the property (code)
+ *     and it must clear CHAT_BAR. No confidence check, no change.
+ *   - generic statements are ignored. "We're fully leased" says nothing
+ *     about which property: a message must name the property's address or
+ *     title, or the unit (namesTheProperty). And a
+ *     statement about now ("currently fully leased") never touches an
+ *     offering with a later move-in (a listing advertising next year).
  *
- * PHASE 1 (this file today): DRY RUN. Nothing on the listing changes. What
- * would have changed is kept on the message (chat_messages.metadata
- * .listingUpdate) so the team can see it in Admin > Conversations, and the
- * replay tool can run the same read over past chats.
+ * A change is the landlord's own edit (core provenance, landlord_set), so a
+ * website that still shows the old value does not put it back.
  *
  * Left alone on purpose:
  *   - anything true only for this student ("won't work for 3 people",
@@ -26,16 +36,29 @@
  *     say which one
  *   - hedged statements ("might", "probably", "I think")
  *   - messages from anyone but an owner of the listing
+ *
+ * CHAT_LISTING_UPDATES: unset or "on" applies; "dry_run" records only; "off".
  */
 import { z } from "zod";
 import supabase from "@/lib/supabase";
 import { parseStructured, SONNET } from "./model";
-import { agentIsLive } from "./flags";
 import { money, shortDate, todayChicago } from "./sections";
+import { applyCoreChange } from "./coreWrites";
+import { askJev, expectedProbability, jevOn } from "@/lib/sourceImport/jev";
+import { planChanges, namesTheProperty } from "./chatListingRules";
+import { TRUST, claimScore } from "@/lib/sourceImport/score";
 
-export const MODE = "dry_run";
 const FRESH_MS = 14 * 24 * 3600 * 1000;
 const MAX_LEASES = 80;
+/* How sure we must be. Above the sync's own bars (0.75 to 0.85): Wyatt wants high confidence. */
+export const CHAT_BAR = 0.85;
+
+export function chatUpdatesMode() {
+  const v = String(process.env.CHAT_LISTING_UPDATES ?? "").trim().toLowerCase();
+  if (["off", "false", "0", "no"].includes(v)) return "off";
+  if (v === "dry_run") return "dry_run";
+  return "apply";
+}
 
 const Change = z.object({
   offering: z.string().describe("The offering code from the list (\"O1\", \"O2\", ...), or \"ALL\" when the landlord says the whole property has nothing available."),
@@ -85,9 +108,8 @@ export async function loadContext(threadId) {
     .select("id, listing_id, landlord_id, interested_user_id, lease_id, deleted_at, listing:listings!listing_id(id, title, address, deleted_at)")
     .eq("id", threadId).maybeSingle();
   if (!thread?.listing_id || thread.deleted_at || thread.listing?.deleted_at) return null;
-  const [{ data: owners }, { data: agent }, { data: units }] = await Promise.all([
+  const [{ data: owners }, { data: units }] = await Promise.all([
     supabase.from("listing_landlords").select("user_id").eq("listing_id", thread.listing_id),
-    supabase.from("listing_agents").select("status").eq("listing_id", thread.listing_id).maybeSingle(),
     supabase.from("listing_units").select("id").eq("listing_id", thread.listing_id).is("deleted_at", null),
   ]);
   const unitIds = (units ?? []).map((u) => u.id);
@@ -97,67 +119,7 @@ export async function loadContext(threadId) {
       .in("unit_id", unitIds).is("deleted_at", null).order("created_at", { ascending: true }).limit(MAX_LEASES)
     : { data: [] };
   const leases = (leaseRows ?? []).map((l, i) => ({ ...l, code: `O${i + 1}` }));
-  return { thread, listing: thread.listing, ownerIds: (owners ?? []).map((o) => o.user_id), agent: agent ?? null, leases };
-}
-
-const norm = (s) => String(s ?? "").toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, "\"").replace(/\s+/g, " ").trim();
-
-function parseValue(field, raw) {
-  const v = String(raw ?? "").trim();
-  if (field === "unavailable") return /^(true|yes|1)$/i.test(v) ? true : /^(false|no|0)$/i.test(v) ? false : undefined;
-  if (field === "available_from") return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
-  if (field === "rent") {
-    const n = Number(v.replace(/[$,\s]/g, ""));
-    return Number.isFinite(n) && n >= 100 && n <= 20000 ? n : undefined;
-  }
-  return undefined;
-}
-
-const onMarket = (l) => !l.unavailable && l.is_active !== false;
-
-/*
- * Turn the model's reading into concrete changes against the offerings.
- * Pure: no database, no model. Returns { changes, skipped } where skipped
- * says why nothing applies.
- */
-export function planChanges({ reading, text, leases, ownerLeaseIds = null }) {
-  if (!reading) return { changes: [], skipped: "could not read the message" };
-  if (reading.about !== "listing_change") return { changes: [], skipped: reading.about };
-  if (!reading.changes?.length) return { changes: [], skipped: "unclear which offering" };
-  if (!reading.quote || !norm(text).includes(norm(reading.quote))) return { changes: [], skipped: "quote not found in the message" };
-  const byCode = new Map(leases.map((l) => [l.code, l]));
-  const out = [];
-  const seen = new Set();
-  for (const c of reading.changes) {
-    const value = parseValue(c.field, c.value);
-    if (value === undefined) continue;
-    let targets;
-    if (String(c.offering).toUpperCase() === "ALL") {
-      // "Nothing available" withdraws what is on the market; other fields need a named offering.
-      if (c.field !== "unavailable" || value !== true) continue;
-      targets = leases.filter(onMarket);
-    } else {
-      const l = byCode.get(String(c.offering).toUpperCase());
-      targets = l ? [l] : [];
-    }
-    for (const l of targets) {
-      if (ownerLeaseIds && !ownerLeaseIds.has(l.id)) continue;
-      const key = `${l.id}:${c.field}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const current = c.field === "unavailable" ? !onMarket(l) : c.field === "available_from" ? (l.available_from ? String(l.available_from).slice(0, 10) : null) : l.rent == null ? null : Number(l.rent);
-      if (current === value) continue;
-      out.push({
-        leaseId: l.id,
-        offering: l.code,
-        unit: l.listing_units?.name || l.listing_units?.title || null,
-        field: c.field,
-        from: current,
-        to: value,
-      });
-    }
-  }
-  return out.length ? { changes: out, skipped: null } : { changes: [], skipped: "already matches the listing" };
+  return { thread, listing: thread.listing, ownerIds: (owners ?? []).map((o) => o.user_id), leases };
 }
 
 /* Ask the model about one message. Never throws (returns null). */
@@ -182,6 +144,68 @@ export async function readMessage({ text, ctx, recent = [], today = null }) {
   }
 }
 
+const TAKEN = "nothing available, it is taken or fully leased";
+const AVAILABLE = "available";
+const UNSURE = "unsure or hedged";
+const OTHER = "not about that";
+
+/*
+ * The Jev question for one change, as a pick-one (sharper than yes/no on
+ * chat messages, tested 2026-11-25: "taken" statements 1.00, hedged 0.01,
+ * true-for-this-student 0.17, about another property 0.00).
+ * Returns { question, expect }.
+ */
+function claimQuestion(c, { listing, allOfIt, name }) {
+  const street = listing.address ? listing.address.split(",")[0] : listing.title || "this property";
+  const target = allOfIt || !c.unit ? street : `${c.unit} at ${street}`;
+  if (c.field === "unavailable") {
+    return {
+      question: { type: "choice", name, instructions: `What does the landlord say about whether ${target} can be rented?`, choices: [{ value: TAKEN }, { value: AVAILABLE }, { value: UNSURE }, { value: OTHER }] },
+      expect: { kind: "choice", value: c.to ? TAKEN : AVAILABLE },
+    };
+  }
+  if (c.field === "available_from") {
+    const said = `from ${c.to}`;
+    return {
+      question: { type: "choice", name, instructions: `What does the landlord say about when ${target} can be moved into? (today's year applies when none is given)`, choices: [{ value: said }, { value: "a different date" }, { value: UNSURE }, { value: OTHER }] },
+      expect: { kind: "choice", value: said },
+    };
+  }
+  const said = `${money(c.to)} a month`;
+  return {
+    question: { type: "choice", name, instructions: `What monthly rent does the landlord state for ${target}?`, choices: [{ value: said }, { value: "a different amount" }, { value: UNSURE }, { value: OTHER }] },
+    expect: { kind: "choice", value: said },
+  };
+}
+
+/*
+ * Score each planned change the sync ledger's way:
+ *   trust (landlord) x read quality (Jev) x right thing (code) x freshness (1, a new message)
+ * Jev reads only the landlord's message. Returns the changes with
+ * { score, parts }, or null when the check could not run (nothing applies then).
+ */
+export async function scoreChanges({ text, ctx, changes, allOfIt = false }) {
+  if (!changes.length) return [];
+  const listing = ctx.listing;
+  const named = changes.map((c) => namesTheProperty(text, { listing, unit: allOfIt ? null : c.unit }));
+  const asked = changes.map((c, i) => (named[i] ? claimQuestion(c, { listing, allOfIt, name: `c${i}` }) : null));
+  let answers = {};
+  if (asked.some(Boolean)) {
+    if (!jevOn()) return null;
+    try {
+      ({ answers } = await askJev(text.slice(0, 4000), asked.filter(Boolean).map((a) => a.question)));
+    } catch (err) {
+      console.error("chatListingUpdates: Jev failed:", err?.message ?? err);
+      return null;
+    }
+  }
+  return changes.map((c, i) => {
+    const readQuality = asked[i] ? expectedProbability(answers[`c${i}`], asked[i].expect) : null;
+    const parts = { trust: TRUST.landlord, readQuality: readQuality ?? 0, rightThing: named[i] ? 1 : 0, freshness: 1 };
+    return { ...c, score: claimScore(parts), parts, ...(named[i] ? {} : { why: "the message does not name the property or the unit" }) };
+  });
+}
+
 async function recentMessages(thread, beforeIso, limit = 6) {
   const { data } = await supabase.from("chat_messages").select("sender_id, body, created_at")
     .eq("thread_id", thread.id).is("deleted_at", null).lt("created_at", beforeIso)
@@ -191,61 +215,129 @@ async function recentMessages(thread, beforeIso, limit = 6) {
 
 /*
  * The whole read for one message, with every check, and no writes.
- * Returns { eligible, reason?, reading?, changes?, skipped? }.
- * Options: requirePilot (live use), requireFresh (live use).
+ * Returns { eligible, reason?, reading?, changes?, skipped? }; each change
+ * carries { score, parts, apply }.
  */
-export async function evaluateMessage({ threadId, messageId, senderId, body, createdAt = null, requirePilot = true, requireFresh = true }) {
+export async function evaluateMessage({ threadId, messageId, senderId, body, createdAt = null, requireFresh = true }) {
   const text = String(body ?? "").trim();
   if (!threadId || !messageId || !senderId || text.length < 8) return { eligible: false, reason: "empty" };
   if (requireFresh && createdAt && Date.now() - Date.parse(createdAt) > FRESH_MS) return { eligible: false, reason: "old message" };
   const ctx = await loadContext(threadId);
   if (!ctx) return { eligible: false, reason: "no listing" };
   if (senderId !== ctx.thread.landlord_id || !ctx.ownerIds.includes(senderId)) return { eligible: false, reason: "not an owner" };
-  if (requirePilot && !agentIsLive(ctx.agent)) return { eligible: false, reason: "not a pilot listing" };
   if (!ctx.leases.length) return { eligible: false, reason: "no offerings" };
 
   // Co-landlords: an owner changes only their own leases (unowned leases fall to the primary).
   const ownLeases = new Set(ctx.leases.filter((l) => !l.owner_id || l.owner_id === senderId).map((l) => l.id));
   const recent = await recentMessages(ctx.thread, createdAt ?? new Date().toISOString());
   // A replayed old message is read as of the day it was sent.
-  const today = createdAt ? new Date(createdAt).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) : null;
+  const today = createdAt ? new Date(createdAt).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) : todayChicago();
   const reading = await readMessage({ text, ctx, recent, today });
-  const { changes, skipped } = planChanges({ reading, text, leases: ctx.leases, ownerLeaseIds: ownLeases });
-  return { eligible: true, listingId: ctx.listing.id, listing: ctx.listing.title, reading, changes, skipped };
+  const planned = planChanges({ reading, text, leases: ctx.leases, ownerLeaseIds: ownLeases, today });
+  const base = { eligible: true, ctx, listingId: ctx.listing.id, listing: ctx.listing.title, reading };
+  if (!planned.changes.length) return { ...base, changes: [], skipped: planned.skipped };
+
+  const allOfIt = (reading.changes ?? []).some((c) => String(c.offering).toUpperCase() === "ALL");
+  const scored = await scoreChanges({ text, ctx, changes: planned.changes, allOfIt });
+  if (!scored) return { ...base, changes: planned.changes.map((c) => ({ ...c, apply: false })), skipped: "confidence check could not run" };
+  const changes = scored.map((c) => ({ ...c, apply: c.score >= CHAT_BAR }));
+  const skipped = changes.some((c) => c.apply) ? null : changes.every((c) => c.why) ? "generic: the message does not name the property" : "not sure enough";
+  return { ...base, changes, skipped };
+}
+
+/* The event row's shape for one change, in the sync's own terms. */
+function eventFor(c) {
+  if (c.field === "unavailable") {
+    return { kind: c.to ? "lease_withdrawn" : "unit_relisted", field: "unavailable", old_value: { unavailable: !!c.from }, new_value: { unavailable: !!c.to } };
+  }
+  if (c.field === "available_from") return { kind: "lease_updated", field: "availableFrom", old_value: { availableFrom: c.from }, new_value: { availableFrom: c.to } };
+  return { kind: "rent_change", field: "rent", old_value: { rent: c.from }, new_value: { rent: c.to } };
+}
+
+/* What to put back on Undo: the columns this change wrote, and what they were. */
+function undoFor(c) {
+  if (c.field === "unavailable") {
+    return { op: "lease_restore", leaseId: c.leaseId, values: { unavailable: !!c.from, is_active: c.wasActive }, wrote: { unavailable: !!c.to, is_active: !c.to } };
+  }
+  const col = c.field === "available_from" ? "available_from" : "rent";
+  return { op: "lease_restore", leaseId: c.leaseId, values: { [col]: c.from }, wrote: { [col]: c.to } };
+}
+
+/*
+ * Apply one scored change as the landlord's own edit and record it as a
+ * sync-style event with an Undo. Returns { ok, eventId } or { error }.
+ */
+async function applyOne({ c, ctx, senderId, messageId, threadId, quote }) {
+  const r = await applyCoreChange({
+    listingId: ctx.listing.id, userId: senderId, cause: "landlord_chat",
+    change: { target: "lease", id: c.leaseId, field: c.field, value: c.to },
+  });
+  if (!r?.ok) return { error: r?.error ?? "not applied" };
+  const ev = eventFor(c);
+  const { data, error } = await supabase.from("listing_source_events").insert({
+    monitor_id: null,
+    listing_id: ctx.listing.id,
+    ...ev,
+    confidence: "high",
+    status: "applied",
+    applied: true,
+    detail: {
+      source: "chat",
+      messageId,
+      threadId,
+      leaseId: c.leaseId,
+      label: c.unit ?? null,
+      quote,
+      note: "from the landlord's message to a student",
+      ledger: { source: "chat", score: c.score, need: CHAT_BAR, ...c.parts },
+      undo: undoFor(c),
+    },
+  }).select("id").maybeSingle();
+  if (error) console.error("chatListingUpdates: event not saved:", error.message);
+  return { ok: true, eventId: data?.id ?? null };
 }
 
 /*
  * Hook: called after a message is posted (app send route and email relay).
- * Phase 1 records what would change on the message and changes nothing on
- * the listing. Never throws.
+ * Reads it, applies what clears the bar, and keeps the outcome on the
+ * message (chat_messages.metadata.listingUpdate) for Admin > Conversations.
+ * Never throws.
  */
-export async function detectListingUpdate({ threadId, messageId, senderId, body, createdAt = null, requirePilot = true, requireFresh = true }) {
+export async function detectListingUpdate({ threadId, messageId, senderId, body, createdAt = null, requireFresh = true, mode = chatUpdatesMode() }) {
   try {
-    const r = await evaluateMessage({ threadId, messageId, senderId, body, createdAt, requirePilot, requireFresh });
+    if (mode === "off") return { eligible: false, reason: "off" };
+    const { data: msg } = await supabase.from("chat_messages").select("metadata").eq("id", messageId).maybeSingle();
+    // Read once: a retry or a second hook call never applies twice.
+    if (msg?.metadata?.listingUpdate) return { eligible: false, reason: "already read" };
+    const r = await evaluateMessage({ threadId, messageId, senderId, body, createdAt, requireFresh });
     if (!r.eligible || !r.reading || r.reading.about === "nothing") return r;
+
+    const changes = [];
+    for (const c of r.changes) {
+      const row = { leaseId: c.leaseId, unit: c.unit, field: c.field, from: c.from, to: c.to, score: c.score ?? null, parts: c.parts ?? null, apply: !!c.apply };
+      if (c.apply && mode === "apply") {
+        const done = await applyOne({ c, ctx: r.ctx, senderId, messageId, threadId, quote: r.reading.quote });
+        if (done.ok) Object.assign(row, { applied: true, eventId: done.eventId });
+        else Object.assign(row, { applied: false, error: done.error });
+      }
+      changes.push(row);
+    }
     const record = {
-      mode: MODE,
+      mode,
       at: new Date().toISOString(),
       about: r.reading.about,
       quote: r.reading.quote || null,
       reason: r.reading.reason || null,
-      changes: r.changes,
+      bar: CHAT_BAR,
+      changes,
       skipped: r.skipped,
     };
-    const { data: msg } = await supabase.from("chat_messages").select("metadata").eq("id", messageId).maybeSingle();
     await supabase.from("chat_messages").update({ metadata: { ...(msg?.metadata ?? {}), listingUpdate: record } }).eq("id", messageId);
-    return { ...r, record };
+    return { ...r, ctx: undefined, record };
   } catch (err) {
     console.error("chatListingUpdates: detect failed:", err?.message ?? err);
     return { eligible: false, reason: "error" };
   }
 }
 
-/* Plain words for one change, for the admin view and reports. */
-export function changeLabel(c) {
-  const what = c.unit ? `${c.unit}` : "offering";
-  if (c.field === "unavailable") return c.to ? `${what}: take off the market` : `${what}: put back on the market`;
-  if (c.field === "available_from") return `${what}: available from ${c.from ? shortDate(c.from) : "now"} to ${shortDate(c.to)}`;
-  if (c.field === "rent") return `${what}: rent ${c.from == null ? "none" : money(c.from)} to ${money(c.to)}`;
-  return `${what}: ${c.field}`;
-}
+export { changeLabel, planChanges, availableNow, namesTheProperty } from "./chatListingRules";

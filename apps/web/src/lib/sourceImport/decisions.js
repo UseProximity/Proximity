@@ -31,6 +31,8 @@ export function changeInWords(e) {
   const o = e.old_value && typeof e.old_value === "object" ? e.old_value : {};
   const n = e.new_value && typeof e.new_value === "object" ? e.new_value : {};
   const pairs = (keys) => keys.filter((k) => FIELD[k]).map((k) => ({ label: FIELD[k], before: k in o ? say(k, o[k]) : null, after: say(k, n[k]) }));
+  // A change the landlord stated in a chat message (lib/agents/chatListingUpdates.js).
+  if (e.detail?.source === "chat") return { title: `${unit}: from a chat message to a student`, rows: pairs(Object.keys(n)), quote: e.detail.quote ?? null };
   switch (e.kind) {
     case "rent_change":
     case "lease_updated":
@@ -54,7 +56,7 @@ export function changeInWords(e) {
   }
 }
 
-const SOURCE = { feed: "the platform's data feed", portal: "the leasing portal", unit_page: "the unit's own page", structured: "data embedded in the page", recipe: "the page, read by code (recipe)", pattern: "the page, read by code (patterns)", model: "the page, read by Haiku" };
+const SOURCE = { chat: "the landlord's own message to a student", feed: "the platform's data feed", portal: "the leasing portal", unit_page: "the unit's own page", structured: "data embedded in the page", recipe: "the page, read by code (recipe)", pattern: "the page, read by code (patterns)", model: "the page, read by Haiku" };
 const key = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}`;
 
 /*

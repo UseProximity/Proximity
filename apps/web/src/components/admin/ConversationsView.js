@@ -212,21 +212,37 @@ const UPDATE_SKIPS = {
   "already matches the listing": "listing already says this",
   "quote not found in the message": "could not tie it to the message's words",
   "could not read the message": "could not read the message",
+  "not sure enough": "confidence too low",
+  "generic: the message does not name the property": "generic, does not name the property",
+  "confidence check could not run": "confidence check could not run",
+  "only offerings for a later move-in, which a statement about now does not reach": "a statement about now does not reach next year's offerings",
 };
 
-/* What a landlord's message would change on the listing (dry run). */
+/* What a landlord's message changed on the listing, or would have (lib/agents/chatListingUpdates.js). */
 function ListingUpdateNote({ u }) {
-  const applies = u.changes.length > 0;
+  const pct = (n) => `${Math.round(Number(n) * 100)}%`;
+  // Older dry-run records kept plain labels.
+  const rows = (u.changes ?? []).map((c) => (typeof c === "string" ? { label: c } : c));
+  const applied = rows.some((c) => c.applied);
+  const would = rows.some((c) => c.apply || (u.mode === "dry_run" && c.apply == null));
+  const title = applied ? "Updated the listing" : would && u.mode === "dry_run" ? "Would update listing" : rows.length ? "Not sure enough to change" : "Listing not changed";
   return (
-    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${applies ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${applied || would ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
-        <Badge color={applies ? "green" : "gray"}>{applies ? "Would update listing" : "Listing not changed"}</Badge>
+        <Badge color={applied || would ? "green" : "gray"}>{title}</Badge>
         {u.mode === "dry_run" && <span className="text-[10px] text-gray-500">dry run, nothing changed</span>}
-        {!applies && u.skipped && <span>{UPDATE_SKIPS[u.skipped] ?? u.skipped}</span>}
+        {u.skipped && <span>{UPDATE_SKIPS[u.skipped] ?? u.skipped}</span>}
       </div>
-      {applies && (
+      {rows.length > 0 && (
         <ul className="mt-1 list-disc pl-4">
-          {u.changes.map((c, i) => <li key={i}>{c}</li>)}
+          {rows.map((c, i) => (
+            <li key={i}>
+              {c.label}
+              {c.score != null && <span className="text-gray-500"> · confidence {pct(c.score)}{u.bar ? ` of ${pct(u.bar)} needed` : ""}</span>}
+              {c.applied && <span className="font-medium"> · done</span>}
+              {c.error && <span className="text-red-700"> · not applied: {c.error}</span>}
+            </li>
+          ))}
         </ul>
       )}
       {u.quote && <p className="mt-1 italic">&ldquo;{u.quote}&rdquo;</p>}

@@ -349,8 +349,8 @@ function WebsiteChanges({ listingId, readOnly, onDone }) {
   const day = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <p className="text-sm font-semibold text-gray-900">Changes from your website</p>
-      <p className="mb-3 text-xs text-gray-500">What the daily check of your website changed in the last 30 days, and what it found but did not change{waiting.length ? ` (${waiting.length})` : ""}. You can undo a change or apply one yourself.</p>
+      <p className="text-sm font-semibold text-gray-900">Changes from your website and messages</p>
+      <p className="mb-3 text-xs text-gray-500">What the daily check of your website changed in the last 30 days, and what it found but did not change{waiting.length ? ` (${waiting.length})` : ""}. When you tell a student in a message that a unit is taken or its rent or move-in date changed, your listing is updated too. You can undo any change or apply one yourself.</p>
       {hidden.length > 0 && (
         <div className="mb-3 space-y-2">
           {hidden.map((h) => (
@@ -372,6 +372,7 @@ function WebsiteChanges({ listingId, readOnly, onDone }) {
             {r.change.rows.map((x) => (
               <p key={x.label} className="text-xs text-gray-600">{x.label}: {x.before != null && <><span className="line-through">{x.before}</span> to </>}<span className="font-medium text-gray-900">{x.after}</span></p>
             ))}
+            {r.change.quote && <p className="mt-1 text-xs italic text-gray-600">&ldquo;{r.change.quote}&rdquo;</p>}
             {r.status === "not_applied" && r.reason && <p className="mt-1 text-xs text-gray-500">Why not: {r.reason}</p>}
             {!readOnly && (r.canUndo || r.canApply) && (
               <div className="mt-2 flex gap-2">

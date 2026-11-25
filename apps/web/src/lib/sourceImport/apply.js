@@ -86,6 +86,7 @@ const isMine = (lease, ownerIds) => !lease.owner_id || ownerIds.includes(lease.o
 import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName } from "./match.js";
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
 import { checkStuck } from "./checker.js";
+import { markLandlordSet } from "@/lib/agents/coreWrites";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1097,10 +1098,15 @@ async function landlordSetScopes(listingId) {
   return out;
 }
 
-/* Lease ids a previous sync withdrew, so a relist of one is routine. */
+/*
+ * Lease ids a previous sync withdrew, so a relist of one is routine. Not
+ * the ones a landlord took down in a chat message (lib/agents/
+ * chatListingUpdates.js): a website still showing them must not put back
+ * what the landlord said is taken.
+ */
 async function withdrawnBySyncFor(listingId) {
   const { data } = await supabase.from("listing_source_events").select("detail").eq("listing_id", listingId).eq("kind", "lease_withdrawn").eq("applied", true);
-  return new Set((data ?? []).map((e) => e.detail?.leaseId).filter(Boolean));
+  return new Set((data ?? []).filter((e) => e.detail?.source !== "chat").map((e) => e.detail?.leaseId).filter(Boolean));
 }
 
 // ---------------------------------------------------------------- entry
@@ -1733,6 +1739,12 @@ export async function undoEvents({ listingId, eventIds, userId }) {
         if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
         if (writeError) throw new Error(writeError.message);
         note = `back to what it was (${cols.join(", ")})`;
+        // A chat change was recorded as the landlord's own edit; so is its undo,
+        // or the listing would still say the landlord set the undone value.
+        if (e.detail?.source === "chat" && u.op === "lease_restore") {
+          const fields = Object.fromEntries(Object.entries(u.values ?? {}).filter(([k]) => k !== "is_active"));
+          await markLandlordSet({ listingId, target: "lease", id: u.leaseId, fields, userId, cause: "revert", detail: { undid: e.id }, old: u.wrote });
+        }
       } else if (u.op === "lease_remove") {
         const { error: writeError } = await supabase.from("unit_leases").update({ unavailable: true }).eq("id", u.leaseId);
         if (writeError) throw new Error(writeError.message);
