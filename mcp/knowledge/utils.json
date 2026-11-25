@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-25T04:29:48.399Z",
-  "count": 370,
+  "_generated": "2026-11-25T19:42:47.646Z",
+  "count": 372,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -620,6 +620,10 @@
       "description": "Where a thread's chat alert emails go for one participant, for admin views."
     },
     {
+      "file": "src/lib/chat/applicationLinks.js",
+      "description": "Application links in chat (Wyatt, 2026-11-20)."
+    },
+    {
       "file": "src/lib/chat/attachments.js",
       "description": "Shared allowlist / limits for chat attachments (presign API + client)."
     },
@@ -694,6 +698,10 @@
     {
       "file": "src/lib/chat/replyAddress.js",
       "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/replyNote.js",
+      "description": "Tell the sender of an emailed reply what Proximity took out of it (Wyatt,"
     },
     {
       "file": "src/lib/chat/replySenderApproval.js",

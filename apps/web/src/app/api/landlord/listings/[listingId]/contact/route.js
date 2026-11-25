@@ -18,10 +18,11 @@ import { normalizeApplicationUrl } from "@/lib/listings/applicationLink";
  * one landlord with several options rather than several identical contacts,
  * and an enquiry about any of them lands in the same inbox.
  *
- * Scoped by owner_id, never by listing_landlords: subletters and landlords at a
- * property they do not own have leases here too, and the block is theirs for
- * their own leases only. Other people's leases at the same property are out of
- * reach by construction, not by a check.
+ * Scoped by owner_id: subletters and landlords at a property they do not own
+ * have leases here too, and the block is theirs for their own leases only.
+ * Other people's leases at the same property are out of reach by construction,
+ * not by a check. The one addition is an owner of the property (listing_landlords),
+ * who also covers its ownerless imported leases.
  *
  * @auth user
  */
@@ -85,13 +86,29 @@ export async function PUT(req, { params }) {
     return NextResponse.json({ error: "You don't have a listing at this property." }, { status: 404 });
   }
 
+  // An owner of the property also writes to its imported leases that have no
+  // owner yet: the dashboard shows those as theirs to fix (dashboardUser's
+  // showLeaseContact), and without them an imported building's owner could
+  // never set an application link. Other landlords' leases stay out of reach.
+  const { data: ownerRow, error: ownerErr } = await supabase
+    .from("listing_landlords")
+    .select("user_id")
+    .eq("listing_id", listingId)
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+  if (ownerErr) {
+    console.error("[listings/contact] owner lookup failed:", ownerErr.message);
+    return NextResponse.json({ error: "Could not save that contact." }, { status: 500 });
+  }
+
   // Withdrawn leases are included on purpose: restoring one later should not
   // bring back a stale address. Deleted ones are not; they are kept only for
   // enquiry history and must read as they did at the time.
-  const { data: updated, error } = await supabase
-    .from("unit_leases")
-    .update(contact)
-    .eq("owner_id", session.user.id)
+  let update = supabase.from("unit_leases").update(contact);
+  update = ownerRow
+    ? update.or(`owner_id.eq.${session.user.id},owner_id.is.null`)
+    : update.eq("owner_id", session.user.id);
+  const { data: updated, error } = await update
     .in("unit_id", unitIds)
     .is("deleted_at", null)
     .select("id");
