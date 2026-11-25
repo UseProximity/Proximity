@@ -216,6 +216,8 @@ const UPDATE_SKIPS = {
   "generic: the message does not name the property": "generic, does not name the property",
   "confidence check could not run": "confidence check could not run",
   "only offerings for a later move-in, which a statement about now does not reach": "a statement about now does not reach next year's offerings",
+  "a move-in date in the past": "the move-in date read is in the past",
+  "the new rent is too far from the saved rent to tell whether it is per person or for the unit": "new rent too far from the saved one to tell per person from whole unit",
 };
 
 /* What a landlord's message changed on the listing, or would have (lib/agents/chatListingUpdates.js). */
@@ -225,11 +227,14 @@ function ListingUpdateNote({ u }) {
   const rows = (u.changes ?? []).map((c) => (typeof c === "string" ? { label: c } : c));
   const applied = rows.some((c) => c.applied);
   const would = rows.some((c) => c.apply || (u.mode === "dry_run" && c.apply == null));
-  const title = applied ? "Updated the listing" : would && u.mode === "dry_run" ? "Would update listing" : rows.length ? "Not sure enough to change" : "Listing not changed";
+  // Sure enough, but the change itself failed (the billing gate, a save error).
+  const failed = !applied && rows.some((c) => c.apply && c.error);
+  const title = applied ? "Updated the listing" : failed ? "Could not apply" : would && u.mode === "dry_run" ? "Would update listing" : rows.length ? "Not sure enough to change" : "Listing not changed";
+  const tone = failed ? "border-amber-200 bg-amber-50 text-amber-900" : applied || would ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600";
   return (
-    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${applied || would ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${tone}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
-        <Badge color={applied || would ? "green" : "gray"}>{title}</Badge>
+        <Badge color={failed ? "amber" : applied || would ? "green" : "gray"}>{title}</Badge>
         {u.mode === "dry_run" && <span className="text-[10px] text-gray-500">dry run, nothing changed</span>}
         {u.skipped && <span>{UPDATE_SKIPS[u.skipped] ?? u.skipped}</span>}
       </div>

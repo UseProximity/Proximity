@@ -63,15 +63,17 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
   const { data: monitors } = await supabase.from("listing_source_monitors").select("last_status, listings!listing_id(title, address)").in("last_status", ["fetch_failed", "parse_failed"]).gte("last_checked_at", w.start).limit(500);
   const factsBySync = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "applied"));
   const heldBySync = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "held"));
-  const siteApplied = await countOf("listing_source_events", (q) => since(q).eq("status", "applied"));
+  // Website changes only: a change read from a landlord's chat message has no monitor (counted apart below).
+  const siteApplied = await countOf("listing_source_events", (q) => since(q).eq("status", "applied").not("monitor_id", "is", null));
+  const chatApplied = await countOf("listing_source_events", (q) => since(q).eq("status", "applied").is("monitor_id", null));
   // Declined by the sync itself (lib/sourceImport/syncPolicy.js), each recorded once.
-  const siteDenied = await countOf("listing_source_events", (q) => since(q).eq("status", "rejected").is("verdict_by", null));
+  const siteDenied = await countOf("listing_source_events", (q) => since(q).eq("status", "rejected").is("verdict_by", null).not("monitor_id", "is", null));
   const skipped = syncs.filter((j) => j.result?.holdReason === "churn_hold").length;
   const teamReview = syncTeamReview();
   const factsForTeam = await countOf("listing_fact_events", (q) => since(q).eq("cause", "sync").eq("status", "proposed").contains("detail", { teamReview: true }));
   sections.push({
     title: "Scraping",
-    rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], [`Website changes declined (new ${when})`, siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
+    rows: [["Syncs run", syncs.length], ["Deep reads", syncs.filter((j) => j.result?.deep).length], ["Succeeded", syncs.length - failed.length], ["Failed", failed.length], ["Pages unreachable", (monitors ?? []).length], ["Knowledge facts changed by syncs", factsBySync], ["Held (landlord-set)", heldBySync], ...(teamReview ? [["Knowledge changes waiting for the team", factsForTeam]] : []), ["Website changes applied", siteApplied], ["Listing changes from landlords' messages to students", chatApplied], [`Website changes declined (new ${when})`, siteDenied], ["Runs skipped (too much at once)", skipped], ["New listings created from URLs", imports.length]],
     list: failed.slice(0, 10).map((j) => `${label(j.listings)}: ${j.error ?? "failed"}`),
     note: "The sync applies or declines every website change itself. A run skipped for changing too much at once waits for the team in the admin Agents tab." + (teamReview ? " What Proxy learns from pages still waits for the team in the admin Agents tab." : ""),
   });
@@ -109,7 +111,7 @@ export async function buildDigest({ now = new Date(), days = 1 } = {}) {
    * 2026-11-11): what each run read, what it applied, what it declined and
    * why, what failed, pages it was not allowed to open, own pages attached.
    */
-  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, verdict_by, detail").gte("created_at", w.start).lt("created_at", w.end).limit(cap(5000));
+  const { data: siteEvents } = await supabase.from("listing_source_events").select("listing_id, kind, status, verdict_by, detail").not("monitor_id", "is", null).gte("created_at", w.start).lt("created_at", w.end).limit(cap(5000));
   const siteByListing = new Map();
   for (const e of siteEvents ?? []) {
     const k = siteByListing.get(e.listing_id) ?? { applied: {}, denied: {} };

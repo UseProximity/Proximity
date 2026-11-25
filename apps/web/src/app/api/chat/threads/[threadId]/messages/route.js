@@ -279,7 +279,8 @@ export async function POST(req, { params }) {
       const testEmailTo = stagingEmailHeader(req);
       // A tour time suggested in a tour's chat is spotted for the other side to confirm.
       after(() => detectTourProposal({ threadId, messageId: data?.messageId ?? null, senderId: authUser.id, body: bodyText }));
-      // A landlord saying the listing changed ("it's been leased") is read for the listing (dry run).
+      // A landlord saying the listing changed ("it's been leased") updates the listing,
+      // unless CHAT_LISTING_UPDATES says otherwise (lib/agents/chatListingUpdates.js).
       after(() => detectListingUpdate({ threadId, messageId: data?.messageId ?? null, senderId: authUser.id, body: bodyText }));
       after(() =>
         notifyNewChatMessage({
@@ -370,6 +371,7 @@ export async function POST(req, { params }) {
 
     const baseUrl = getBaseUrl(req);
     const testEmailTo = stagingEmailHeader(req);
+    // As above: a landlord saying the listing changed updates the listing.
     if (bodyText) after(() => detectListingUpdate({ threadId, messageId: data?.messageId ?? null, senderId: authUser.id, body: bodyText }));
     after(() =>
       notifyNewChatMessage({

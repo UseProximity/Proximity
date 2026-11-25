@@ -88,7 +88,7 @@ import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName, 
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
 import { changeKey } from "./shadow.js";
 import { checkStuck } from "./checker.js";
-import { markLandlordSet } from "@/lib/agents/coreWrites";
+import { markLandlordSet, relistBlocked, restoreCoreProvenance } from "@/lib/agents/coreWrites";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1800,13 +1800,24 @@ export async function undoEvents({ listingId, eventIds, userId }) {
         if (!now) throw new Error("It is no longer on the listing.");
         const moved = cols.filter((k) => stableJson(now[k] ?? null) !== stableJson(u.wrote[k] ?? null));
         if (moved.length) throw new Error("This has been edited since the change was applied, so there is nothing left to undo.");
+        // Putting an offering back on the market is publishing: the same billing
+        // and agreement gate as the dashboard (PR 484 review).
+        if (u.op === "lease_restore" && (u.values?.unavailable === false || u.values?.is_active === true)) {
+          const { data: lease } = await supabase.from("unit_leases").select("id, owner_id, unit_id, unavailable, is_active, listing_units!unit_id(name)").eq("id", id).maybeSingle();
+          if (lease && (lease.unavailable || lease.is_active === false)) {
+            const blocked = await relistBlocked({ lease, listingId });
+            if (blocked) throw new Error(blocked.error);
+          }
+        }
         const { error: writeError } = await writeAsPerson(table, id, u.values, userId);
         if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
         if (writeError) throw dbFail("write", writeError);
         note = `back to what it was (${cols.join(", ")})`;
-        // A chat change was recorded as the landlord's own edit; so is its undo,
-        // or the listing would still say the landlord set the undone value.
-        if (e.detail?.source === "chat" && u.op === "lease_restore") {
+        // A chat change was recorded as the landlord's own edit: its undo puts the
+        // earlier record back, so the lease is not left "set by the landlord".
+        if (e.detail?.source === "chat" && u.op === "lease_restore" && u.facts) {
+          await restoreCoreProvenance({ listingId, leaseId: u.leaseId, field: u.facts.field, prior: u.facts.prior ?? null, wrote: u.facts.wrote ?? null, userId, undid: e.id });
+        } else if (e.detail?.source === "chat" && u.op === "lease_restore") {
           const fields = Object.fromEntries(Object.entries(u.values ?? {}).filter(([k]) => k !== "is_active"));
           await markLandlordSet({ listingId, target: "lease", id: u.leaseId, fields, userId, cause: "revert", detail: { undid: e.id }, old: u.wrote });
         }

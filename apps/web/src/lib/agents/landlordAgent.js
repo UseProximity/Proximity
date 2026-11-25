@@ -131,7 +131,7 @@ export async function knowledgeView({ listingId, userId, isAdmin = false }) {
   return {
     listingId, title: ctx?.title ?? null, owner, sections, teamReview: syncTeamReview(), sources: sources.filter(landlordSource).map((s) => ({ id: s.id, kind: s.kind, label: sourceLabel(s), url: s.url, status: s.last_status, lastCheckedAt: s.last_checked_at })),
     held, history: history.filter((e) => (e.status === "applied" || e.status === "reverted") && landlordSource(srcById.get(e.source_id))).map((e) => ({
-      id: e.id, cause: e.cause, status: e.status, section: e.section, key: e.field_key, summary: e.detail?.summary ?? null, oldSummary: e.detail?.oldSummary ?? null, core: !!e.detail?.core, createdAt: e.created_at, canRevert: e.status === "applied" && (!!e.previous_fact_id || (!!e.detail?.core && hasOld(e.detail))),
+      id: e.id, cause: e.cause, status: e.status, section: e.section, key: e.field_key, summary: e.detail?.summary ?? null, oldSummary: e.detail?.oldSummary ?? null, core: !!e.detail?.core, createdAt: e.created_at, canRevert: e.status === "applied" && e.cause !== "student_chat" && (!!e.previous_fact_id || (!!e.detail?.core && hasOld(e.detail))),
     })),
     sync, unitPages, openQuestions: openQuestions ?? 0, leases: (ctx?.leases ?? []).map((l) => ({ id: l.id, index: l.index, label: l.label, owner: l.ownerLabel, mine: l.ownerId === userId })),
   };
@@ -471,6 +471,9 @@ export async function revertEvent({ listingId, userId, isAdmin = false, eventId 
   const { data: e } = await supabase.from("listing_fact_events").select("*").eq("id", eventId).maybeSingle();
   if (!e || e.listing_id !== listingId) return { error: "Change not found" };
   if (e.status !== "applied") return { error: "Only an applied change can be reverted" };
+  // A change read from a chat message is undone with its own Undo, which keeps the
+  // change list and the provenance in step (PR 484 review).
+  if (e.cause === "student_chat") return { error: "Undo this one under \"Changes from your website and messages\"." };
   if (e.detail?.core) {
     // Older dashboard edits did not record the earlier value; putting back
     // "nothing" would blank the field (PR #365 review).
