@@ -1555,6 +1555,12 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       recipeInfo.madeFrom = "units not found in the page text";
     }
   }
+  // A daily read that still needed the model and came away with no recipe:
+  // marked as a site code cannot read, so tomorrow's daily sync asks nothing.
+  if (recipeFor && daily && !codeOnly() && !recipeInfo.made) {
+    recipeInfo.made = { v: 1, kind: "none" };
+    recipeInfo.madeFrom = "first_daily_read: nothing code can read";
+  }
   snapshot.recipe = recipeInfo;
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
