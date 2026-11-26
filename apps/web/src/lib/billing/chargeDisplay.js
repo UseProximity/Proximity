@@ -67,6 +67,7 @@ export function adminChargeView(row, now = new Date()) {
       id: row.landlord_id,
       name: row.landlord?.name ?? null,
       email: row.landlord?.email ?? null,
+      company_name: row.landlord?.company_name ?? null,
     },
     triggerRef: row.trigger_ref ?? null,
     pendingAt: row.pending_at ?? null,
@@ -101,6 +102,8 @@ export function chargeView(row, now = new Date()) {
     actions: landlordActions(row),
     // Invoiced to someone else (the account's authorized signer), not the landlord.
     billedElsewhere: !!row.payer_id && row.payer_id !== row.landlord_id,
+    // Who that is (their name is looked up by the route that shows it).
+    billedToId: row.payer_id && row.payer_id !== row.landlord_id ? row.payer_id : null,
     // Refunds and credits an admin made on this Paid charge, oldest first (never the admin's reason).
     adjustments: (row.adjustments ?? [])
       .map((a) => ({ kind: a.kind, amountCents: a.amount_cents, createdAt: a.created_at }))

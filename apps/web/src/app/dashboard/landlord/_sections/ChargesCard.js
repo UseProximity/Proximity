@@ -79,7 +79,9 @@ function ChargeRow({ charge, busy, onApprove, onContest }) {
         </p>
       ))}
       {charge.status === "contested" && charge.contestReason && (
-        <p className="mt-1 text-xs text-gray-500">Your reason: {charge.contestReason}</p>
+        <p className="mt-1 text-xs text-gray-500">
+          {charge.contestedByOther === "payer" ? "Your authorized payer's reason" : charge.contestedByOther === "landlord" ? "The landlord's reason" : "Your reason"}: {charge.contestReason}
+        </p>
       )}
       {charge.actions.contactForDispute && (
         <p className="mt-1 text-xs text-gray-500">

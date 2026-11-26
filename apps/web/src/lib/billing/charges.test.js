@@ -81,7 +81,7 @@ describe("adminChargeView", () => {
 
   it("adds the landlord and the internal note for admins", () => {
     const v = adminChargeView(row);
-    assert.deepEqual(v.landlord, { id: "l1", name: "Pat", email: "pat@x.com" });
+    assert.deepEqual(v.landlord, { id: "l1", name: "Pat", email: "pat@x.com", company_name: null });
     assert.equal(v.resolutionNote, "INTERNAL");
     assert.equal(v.isTest, true);
     assert.equal(v.triggerRef, "ref-9");
@@ -136,7 +136,7 @@ describe("createCharge validation", () => {
 describe("landlord actions", () => {
   // A db that returns no charge for this landlord: someone else's charge looks like no charge.
   const emptyDb = {
-    from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
   };
 
   it("someone else's charge is simply not found", async () => {

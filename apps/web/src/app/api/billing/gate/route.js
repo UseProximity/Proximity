@@ -5,7 +5,7 @@ import supabase from "@/lib/supabase";
 import { billingReader } from "@/lib/billing/viewer";
 import { agreementView, coverageFor, syncAgreement } from "@/lib/billing/agreements";
 import { agreementServices } from "@/lib/billing/agreementServices";
-import { checkListingGate, gateMessage } from "@/lib/billing/listingGate";
+import { checkListingGate, gateMessage, methodWaitNames } from "@/lib/billing/listingGate";
 import { getEnrollmentWindow } from "@/lib/billing/enrollment";
 import { billingErrorResponse } from "@/lib/billing/http";
 
@@ -29,16 +29,29 @@ export async function GET(req) {
     if (signingAvailable && !reader.viewingAs) await syncAgreement(supabase, documenso, reader.userId, options);
     const [gate, coverage, enrollment, account] = await Promise.all([
       checkListingGate(supabase, reader.userId),
-      coverageFor(supabase, reader.userId),
+      // What the landlord signs for themselves: a listing with its own signer is that signer's.
+      coverageFor(supabase, reader.userId, new Date(), { holderId: reader.userId }),
       getEnrollmentWindow(supabase),
       supabase.from("users").select("name, company_name, billing_only").eq("id", reader.userId).maybeSingle(),
     ]);
     // A landlord with a payer never sees the agreement (Project B): /api/billing/payer has their status.
-    const delegated = !!coverage.state.payerLink;
+    // Only an account-wide signer: with a signer for some listings the landlord still has their own agreement.
+    const delegated = !!coverage.links?.account;
+    // The payment method is someone else's to add (the authorized payer, or the
+    // signer who pays): the checklist names them instead of asking the landlord.
+    const methodWaitsOn = methodWaitNames(gate);
+    const rest = methodWaitsOn ? gate.missing.filter((m) => m !== "payment_method") : gate.missing;
+    const who = { signerName: gate.payer?.name ?? null };
+    const message = gate.allowed
+      ? null
+      : methodWaitsOn
+        ? `${methodWaitsOn} needs to add a payment method before you can publish: they are invoiced for your listings.${rest.length ? ` ${gateMessage(rest, [], who).replace("Before you can publish a listing you need to", "You also need to")}` : ""}`
+        : gateMessage(gate.missing, [], who);
     return NextResponse.json({
       allowed: gate.allowed,
       missing: gate.missing,
-      message: gate.allowed ? null : gateMessage(gate.missing, [], { signerName: gate.payer?.name ?? null }),
+      message,
+      methodWaitsOn,
       requirePaymentMethod: gate.requirePaymentMethod,
       requireAgreement: gate.requireAgreement,
       agreement: delegated ? null : agreementView(coverage.state, { signingAvailable, properties: coverage.properties, covered: coverage.covered }),
