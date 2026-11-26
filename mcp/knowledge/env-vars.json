@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-25T05:34:25.757Z",
-  "count": 113,
+  "_generated": "2026-11-25T20:02:52.415Z",
+  "count": 114,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -113,6 +113,10 @@
     },
     {
       "name": "CHAT_INBOUND_TEST_SENDERS",
+      "public": false
+    },
+    {
+      "name": "CHAT_LISTING_UPDATES",
       "public": false
     },
     {

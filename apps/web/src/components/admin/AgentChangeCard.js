@@ -12,6 +12,7 @@ import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 const CAUSES = {
   sync: "Website sync",
   landlord_chat: "Landlord told their agent",
+  student_chat: "Landlord's message to a student",
   landlord_answer: "Landlord answered a question",
   document: "Uploaded document",
   dashboard: "Dashboard edit",

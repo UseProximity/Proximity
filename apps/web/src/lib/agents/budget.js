@@ -35,7 +35,9 @@ const monthStart = () => {
 async function sumSince(listingId, since) {
   let total = 0;
   for (let from = 0; ; from += 1000) {
-    let q = supabase.from("listing_agent_usage").select("cost_cents").gte("created_at", since).range(from, from + 999);
+    // Reading landlords' chat messages for listing changes (chatListingUpdates.js) is
+    // not Proxy's spend: it must never stop Proxy answering students (PR 484 review).
+    let q = supabase.from("listing_agent_usage").select("cost_cents").gte("created_at", since).neq("kind", "chat_listing_update").range(from, from + 999);
     if (listingId) q = q.eq("listing_id", listingId);
     const { data, error } = await q;
     if (error) throw new Error(`agent spend: ${error.message}`);

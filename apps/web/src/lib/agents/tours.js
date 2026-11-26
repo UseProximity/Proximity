@@ -28,6 +28,7 @@ import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
 import { sandboxViewFor } from "./sandbox";
 import { detectTourProposal } from "./tourProposals";
+import { detectListingUpdate } from "@/lib/agents/chatListingUpdates";
 import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
 import { shortDate } from "./sections";
 import {
@@ -222,6 +223,8 @@ export async function sendDirectMessage({ threadId, listingId, senderId, body, m
       notifyNewChatMessage({ threadId, senderId, messageId: msg.id, baseUrl: getBaseUrl(), via }),
       notifyNewChatMessagePush({ threadId, senderId, messageId: msg.id }),
     ]).catch((err) => console.error("[tours] direct chat alert failed:", err?.message ?? err));
+    // A landlord saying the listing changed updates it, as in the app's chat. Never throws.
+    await detectListingUpdate({ threadId, messageId: msg.id, senderId, body });
   };
   // After the response, like the chat routes; outside a request, right away.
   try { after(notify); } catch { await notify(); }

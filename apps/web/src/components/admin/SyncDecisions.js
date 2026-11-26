@@ -41,6 +41,7 @@ function Row({ r, busy, act, readOnly }) {
           ))}
         </ul>
       )}
+      {r.change.quote && <p className="mt-1 text-xs italic text-gray-600">&ldquo;{r.change.quote}&rdquo;</p>}
       <dl className="mt-2 grid gap-x-4 gap-y-0.5 text-xs text-gray-600 sm:grid-cols-2">
         {r.source && <div><dt className="inline text-gray-500">Read from: </dt><dd className="inline">{r.source}{r.platform ? ` (${r.platform})` : ""}</dd></div>}
         {r.score != null && <div><dt className="inline text-gray-500">Score: </dt><dd className="inline tabular-nums">{pct(r.score)} of {pct(r.need)} needed</dd></div>}

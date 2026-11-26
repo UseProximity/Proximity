@@ -7,6 +7,7 @@ import { domainApprovable } from "@/lib/chat/replySenders";
 import { PROXY_USER_ID } from "@/lib/agents/threads";
 import { alertEmailsFor } from "@/lib/chat/alertRoutes";
 import { testingAs } from "@/lib/agents/access";
+import { changeLabel } from "@/lib/agents/chatListingUpdates";
 
 /*
  * One thread in full for the admin Conversations view: every message (deleted
@@ -72,7 +73,7 @@ export async function GET(req, { params }) {
   const supabase = getSupabaseClient(getDbTarget(req));
 
   try {
-    const [{ data: thread, error: threadError }, { data: participants }, { data: messages, error: msgError }, { data: attachments }, { data: events, error: evError }] =
+    const [{ data: thread, error: threadError }, { data: participants }, { data: messages, error: msgError }, { data: attachments }, { data: events, error: evError }, { data: listingReads }] =
       await Promise.all([
         supabase
           .from("chat_threads")
@@ -100,6 +101,8 @@ export async function GET(req, { params }) {
           .select("id, user_id, message_id, action, reasons, body_excerpt, created_at, reviewed_at")
           .eq("thread_id", threadId)
           .order("created_at", { ascending: true }),
+        // What the listing-update reader decided about each landlord message (admins only).
+        supabase.from("chat_listing_reads").select("message_id, record").eq("thread_id", threadId),
       ]);
 
     if (threadError) throw threadError;
@@ -197,6 +200,8 @@ export async function GET(req, { params }) {
       attachmentsByMessage.get(a.message_id).push({ fileName: a.file_name, contentType: a.content_type, sizeBytes: a.size_bytes });
     }
 
+    // A message that stated no change ("nothing") gets no note, as before.
+    const readsByMessage = new Map((listingReads ?? []).filter((r) => r.record?.about && r.record.about !== "nothing").map((r) => [r.message_id, r.record]));
     const eventsByMessage = new Map();
     const blockedAttempts = [];
     for (const e of events ?? []) {
@@ -251,6 +256,23 @@ export async function GET(req, { params }) {
         deletedAt: m.deleted_at,
         attachments: attachmentsByMessage.get(m.id) ?? [],
         flags: eventsByMessage.get(m.id) ?? [],
+        listingUpdate: readsByMessage.has(m.id)
+          ? {
+              mode: readsByMessage.get(m.id).mode,
+              about: readsByMessage.get(m.id).about,
+              quote: readsByMessage.get(m.id).quote ?? null,
+              reason: readsByMessage.get(m.id).reason ?? null,
+              skipped: readsByMessage.get(m.id).skipped ?? null,
+              bar: readsByMessage.get(m.id).bar ?? null,
+              changes: (readsByMessage.get(m.id).changes ?? []).map((c) => ({
+                label: changeLabel(c),
+                score: c.score ?? null,
+                apply: c.apply ?? null,
+                applied: c.applied ?? null,
+                error: c.error ?? null,
+              })),
+            }
+          : null,
       })),
       blockedAttempts,
       refusedReplies: (inbound ?? [])

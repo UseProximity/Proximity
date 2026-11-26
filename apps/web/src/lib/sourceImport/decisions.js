@@ -32,6 +32,8 @@ export function changeInWords(e) {
   const o = e.old_value && typeof e.old_value === "object" ? e.old_value : {};
   const n = e.new_value && typeof e.new_value === "object" ? e.new_value : {};
   const pairs = (keys) => keys.filter((k) => FIELD[k]).map((k) => ({ label: FIELD[k], before: k in o ? say(k, o[k]) : null, after: say(k, n[k]) }));
+  // A change the landlord stated in a chat message (lib/agents/chatListingUpdates.js).
+  if (e.detail?.source === "chat") return { title: `${unit}: from a chat message to a student`, rows: pairs(Object.keys(n)), quote: e.detail.quote ?? null };
   switch (e.kind) {
     case "rent_change":
     case "lease_updated":
@@ -55,7 +57,7 @@ export function changeInWords(e) {
   }
 }
 
-const SOURCE = { feed: "the platform's data feed", portal: "the leasing portal", unit_page: "the unit's own page", structured: "data embedded in the page", recipe: "the page, read by code (recipe)", pattern: "the page, read by code (patterns)", model: "the page, read by Haiku" };
+const SOURCE = { chat: "the landlord's own message to a student", feed: "the platform's data feed", portal: "the leasing portal", unit_page: "the unit's own page", structured: "data embedded in the page", recipe: "the page, read by code (recipe)", pattern: "the page, read by code (patterns)", model: "the page, read by Haiku" };
 const key = (kind, unitKey, leaseId, field, value) => `${kind}|${unitKey ?? ""}|${leaseId ?? ""}|${field ?? ""}|${JSON.stringify(value ?? null)}`;
 
 /*
@@ -172,7 +174,7 @@ export async function applyNow({ listingId, eventId, userId, isAdmin = false }) 
  */
 export async function syncHealth({ days = 7 } = {}) {
   const since = new Date(Date.now() - days * 86400000).toISOString();
-  const [{ data: sc }, { data: ev }, { data: rc }] = await Promise.all([
+  const [{ data: sc }, { data: evAll }, { data: rc }] = await Promise.all([
     supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).limit(20000),
     supabase.from("listing_source_events").select("applied, status, verdict_by, verdict_at, detail, created_at").or(`created_at.gte.${since},verdict_at.gte.${since}`).limit(20000),
     supabase.from("source_recipes").select("scope, status, uses, failures, made_from, created_at").limit(5000),
@@ -199,6 +201,8 @@ export async function syncHealth({ days = 7 } = {}) {
   }
   const asked = (sc ?? []).filter((r) => r.jev && r.jev.model !== "code");
   const by = (st) => asked.filter((r) => r.jev.status === st).length;
+  // The sync's own changes: one read from a landlord's chat message says nothing about its scoring.
+  const ev = (evAll ?? []).filter((e) => e.detail?.source !== "chat");
   const undone = (ev ?? []).filter((e) => e.detail?.undone && e.detail.undone.at >= since).length;
   const appliedByPerson = (ev ?? []).filter((e) => e.applied && e.verdict_by && e.detail?.autoDenied && e.verdict_at >= since).length;
   const applied = (ev ?? []).filter((e) => e.applied && e.created_at >= since).length;

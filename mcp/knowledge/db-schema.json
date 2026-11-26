@@ -1856,7 +1856,7 @@
       {
         "table": "listing_source_events",
         "status": "unreleased",
-        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only. Listing changes read from a landlord's message to a student (lib/agents/chatListingUpdates.js, PR 484, migration 202611250001_source_events_from_chat.sql) are rows too: monitor_id NULL (now nullable) and detail.source 'chat', with detail.messageId, threadId, leaseId, quote and undo; unique index listing_source_events_chat_once on (detail->>'messageId', detail->>'leaseId', field) for those rows.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -1881,6 +1881,20 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "chat_listing_reads",
+        "status": "unreleased",
+        "description": "What the listing-update reader (lib/agents/chatListingUpdates.js, PR 484, migration 202611250002_chat_listing_reads.sql) decided about each landlord chat message: one row per message, claimed (inserted) before the read so a message is read once; record jsonb = { mode, at, about, quote, reason, bar, skipped, changes[] }. Admins only (Admin > Conversations): kept off chat_messages.metadata because rpc_get_chat_messages sends metadata to both people in the chat. Same migration adds cause 'student_chat' to listing_fact_events_cause_check.",
+        "columns": [
+          "message_id:uuid",
+          "thread_id:uuid",
+          "listing_id:uuid",
+          "record:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk message_id; fk message_id->chat_messages.id (cascade), thread_id->chat_threads.id (cascade); rls: on, no policies, revoked from anon/authenticated (service role only)"
       },
       {
         "table": "listing_source_monitors",

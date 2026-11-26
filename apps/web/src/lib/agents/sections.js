@@ -36,6 +36,8 @@ export const CONFIDENCES = ["high", "medium", "low"];
 export const CAUSES = [
   "seed", "sync", "url_added", "landlord_chat", "landlord_answer",
   "dashboard", "admin", "document", "backfill", "revert",
+  // A listing change read from a landlord's message to a student (chatListingUpdates.js).
+  "student_chat",
 ];
 
 /* fee_types.name -> the label students see. */

@@ -88,6 +88,7 @@ import { matchUnits, sameName, nameMatchAliases, norm, nameWithin, genericName, 
 import { saveShadowScores, ledgerDecides } from "./shadowStore.js";
 import { changeKey } from "./shadow.js";
 import { checkStuck } from "./checker.js";
+import { markLandlordSet, relistBlocked, restoreCoreProvenance } from "@/lib/agents/coreWrites";
 export { matchUnits, sameName, nameMatchAliases };
 
 const leaseKey = (rent, perPerson) => (rent == null ? "none" : `${Math.round(Number(rent))}:${perPerson ? "pp" : "whole"}`);
@@ -1101,10 +1102,15 @@ async function landlordSetScopes(listingId) {
   return out;
 }
 
-/* Lease ids a previous sync withdrew, so a relist of one is routine. */
+/*
+ * Lease ids a previous sync withdrew, so a relist of one is routine. Not
+ * the ones a landlord took down in a chat message (lib/agents/
+ * chatListingUpdates.js): a website still showing them must not put back
+ * what the landlord said is taken.
+ */
 async function withdrawnBySyncFor(listingId) {
   const { data } = await supabase.from("listing_source_events").select("detail").eq("listing_id", listingId).eq("kind", "lease_withdrawn").eq("applied", true);
-  return new Set((data ?? []).map((e) => e.detail?.leaseId).filter(Boolean));
+  return new Set((data ?? []).filter((e) => e.detail?.source !== "chat").map((e) => e.detail?.leaseId).filter(Boolean));
 }
 
 // ---------------------------------------------------------------- entry
@@ -1726,7 +1732,8 @@ async function undoneKeysFor(listingId) {
     console.error(`[source-sync] undone changes for ${listingId}: ${error.message}`);
     return new Map();
   }
-  return new Map((data ?? []).filter((e) => !e.detail.undone.expiredAt).map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), { at: e.detail.undone.at, id: e.id, unitId: e.detail?.unitId ?? null, leaseId: e.detail?.leaseId ?? null }]));
+  // A chat change's Undo answers that message alone; the website is decided on its own.
+  return new Map((data ?? []).filter((e) => !e.detail.undone.expiredAt && e.detail?.source !== "chat").map((e) => [undoKey(e.kind, e.unit_key, e.detail?.leaseId, e.field, e.new_value), { at: e.detail.undone.at, id: e.id, unitId: e.detail?.unitId ?? null, leaseId: e.detail?.leaseId ?? null }]));
 }
 
 async function expireUndo(eventId) {
@@ -1792,11 +1799,28 @@ export async function undoEvents({ listingId, eventIds, userId }) {
         if (readError) throw dbFail("read", readError);
         if (!now) throw new Error("It is no longer on the listing.");
         const moved = cols.filter((k) => stableJson(now[k] ?? null) !== stableJson(u.wrote[k] ?? null));
-        if (moved.length) throw new Error("This has been edited since the website change was applied, so there is nothing left to undo.");
+        if (moved.length) throw new Error("This has been edited since the change was applied, so there is nothing left to undo.");
+        // Putting an offering back on the market is publishing: the same billing
+        // and agreement gate as the dashboard (PR 484 review).
+        if (u.op === "lease_restore" && (u.values?.unavailable === false || u.values?.is_active === true)) {
+          const { data: lease } = await supabase.from("unit_leases").select("id, owner_id, unit_id, unavailable, is_active, listing_units!unit_id(name)").eq("id", id).maybeSingle();
+          if (lease && (lease.unavailable || lease.is_active === false)) {
+            const blocked = await relistBlocked({ lease, listingId });
+            if (blocked) throw new Error(blocked.error);
+          }
+        }
         const { error: writeError } = await writeAsPerson(table, id, u.values, userId);
         if (writeError && /lease_held_for_billing/.test(writeError.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
         if (writeError) throw dbFail("write", writeError);
         note = `back to what it was (${cols.join(", ")})`;
+        // A chat change was recorded as the landlord's own edit: its undo puts the
+        // earlier record back, so the lease is not left "set by the landlord".
+        if (e.detail?.source === "chat" && u.op === "lease_restore" && u.facts) {
+          await restoreCoreProvenance({ listingId, leaseId: u.leaseId, field: u.facts.field, prior: u.facts.prior ?? null, wrote: u.facts.wrote ?? null, userId, undid: e.id });
+        } else if (e.detail?.source === "chat" && u.op === "lease_restore") {
+          const fields = Object.fromEntries(Object.entries(u.values ?? {}).filter(([k]) => k !== "is_active"));
+          await markLandlordSet({ listingId, target: "lease", id: u.leaseId, fields, userId, cause: "revert", detail: { undid: e.id }, old: u.wrote });
+        }
       } else if (u.op === "lease_remove") {
         // Refused when the lease has been edited since the sync added it, as for any other undo.
         if (u.wrote && (await editedSinceCreated([u.leaseId], { [u.leaseId]: u.wrote }))) throw new Error("This lease has been edited since the website added it, so it is left up. Take it down from the listing if you want it gone.");
