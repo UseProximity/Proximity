@@ -227,7 +227,9 @@ export default function FindYourPlaceClient() {
     if (max !== null) {
       given.budget = max;
       const min = /^\d{1,6}$/.test(params.get("budgetMin") ?? "") ? budgetAmount(params.get("budgetMin")) : null;
-      if (min !== null && (max === NO_MAX || min < max)) given.budgetMin = min;
+      // The bar's range replaces the saved one whole: a minimum kept from an
+      // earlier visit could sit above the new top or set a floor nobody picked.
+      given.budgetMin = min !== null && (max === NO_MAX || min < max) ? min : null;
     }
     const asked = (params.get("modes") ?? "").split(",");
     const modes = COMMUTE_MODES.map((m) => m.id).filter((id) => asked.includes(id));
