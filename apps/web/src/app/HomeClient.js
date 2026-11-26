@@ -2,214 +2,19 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { listingHref } from "@/lib/listings/listingLink";
 import { motion, useInView, AnimatePresence } from "framer-motion";
-import {
-  Search,
-  Star,
-  ChevronLeft,
-  ChevronRight,
-  ArrowRight,
-  X,
-} from "lucide-react";
-import Link from "next/link";
-import dynamic from "next/dynamic";
+import { Star, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useSession } from "next-auth/react";
-import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import UniversityLogosCarousel from "@/components/ui/UniversityLogosCarousel";
 import Footer from "@/components/layout/Footer";
-import { getRentRangeLabel } from "@/utils/listingFormatters";
-import MapPopupCard from "@/components/listings/MapPopupCard";
+import HeroSection from "@/components/home/HeroSection";
+import HowItWorks from "@/components/home/HowItWorks";
+import HomeFaq from "@/components/home/HomeFaq";
 import { becomeLandlord } from "@/lib/auth/landlordRole";
-import { trackEvent, recordFyp, setListingSource } from "@/utils/analytics";
+import { trackEvent, recordFyp } from "@/utils/analytics";
 import { GROUP_OPTIONS as FYP_GROUPS } from "@/lib/findYourPlace/options";
 
-const MapView = dynamic(() => import("@/components/listings/MapView"), {
-  ssr: false,
-});
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return isMobile;
-}
-
 const SIDE_MARGIN = "px-5 sm:px-12 md:px-20 lg:px-28";
-
-// ─── Hero + Map (combined) ─────────────────────────────────────────────────────
-
-function HeroMapSection({ initialListings = null }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  // Seeded by the server page so hero listings (and their crawlable anchors)
-  // are in the first HTML; the mount fetch stays as a freshness refresh.
-  const [previewListings, setPreviewListings] = useState(initialListings ?? []);
-  const [selectedListing, setSelectedListing] = useState(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    fetch("/api/listings")
-      .then((r) => r.json())
-      .then((data) => {
-        const all = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.listings)
-          ? data.listings
-          : [];
-        if (all.length) setPreviewListings(all);
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    router.push(q ? `/browse?search=${encodeURIComponent(q)}` : "/browse");
-  };
-
-  const handleSuggestionSelect = (feature) => {
-    const [lng, lat] = feature.center;
-    router.push(`/browse?lat=${lat}&lng=${lng}`);
-  };
-
-  const BG = "#f2f4f8";
-
-  return (
-    <section className="relative overflow-hidden" style={{ background: BG }}>
-      <div className="flex flex-col xl:flex-row xl:min-h-[680px]">
-        {/* ── Left: Hero content ── */}
-        <div
-          className={`relative z-40 flex-shrink-0 max-w-[800px] ${SIDE_MARGIN} pt-10 md:pb-8 pb-20 lg:py-26 flex flex-col justify-center`}
-        >
-          {/* Headline */}
-          <motion.h1
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.08 }}
-            className="text-5xl sm:text-6xl lg:text-[56px] font-bold text-gray-900 leading-[1.1] tracking-tight mb-6"
-          >
-            Find Your Perfect <span className="text-red-700">WashU</span>{" "}
-            Housing
-          </motion.h1>
-
-          {/* Sub-headline */}
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.16 }}
-            className="text-[17px] text-gray-500 max-w-sm mb-2 leading-relaxed"
-          >
-            The only platform that actually understands what students care
-            about.
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.16 }}
-            className="text-[17px] text-gray-500 max-w-sm mb-8 leading-relaxed"
-          >
-            Relevant filters, real peer reviews, and a streamlined search to
-            help you secure off-campus housing with full transparency.
-          </motion.p>
-
-          {/* Search bar */}
-          <motion.form
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.24 }}
-            onSubmit={handleSearch}
-            className="relative max-w-md mb-5"
-          >
-            <div className="flex items-center bg-white rounded-xl border border-gray-200 focus-within:border-red-300 shadow-md shadow-black/[0.05] transition-all duration-200 p-1.5 gap-1">
-              <Search className="ml-2.5 h-4 w-4 text-gray-400 flex-shrink-0" />
-              <AddressSearchInput
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onSelectSuggestion={handleSuggestionSelect}
-                placeholder="Search address..."
-                className="w-full px-2.5 py-2.5 text-sm bg-transparent border-0 outline-none text-gray-900 placeholder-gray-400"
-              />
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg text-sm transition-all duration-150 flex-shrink-0"
-              >
-                Search
-              </button>
-            </div>
-          </motion.form>
-
-          {/* Tagline */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.46 }}
-            className="mt-4 text-xl font-bold text-gray-800 leading-snug"
-          >
-            Better apartments.{" "}
-            <span className="text-red-600">Honest reviews.</span> Zero stress.
-          </motion.p>
-        </div>
-
-        {/* ── Right: Map ── */}
-        <div className="relative flex-1 min-h-[400px] xl:min-h-0 overflow-hidden">
-          {/* Real Mapbox map, desaturated */}
-          <div className="absolute inset-0">
-            <MapView
-              listings={previewListings}
-              heroMode={true}
-              onListingSelect={setSelectedListing}
-              // Lights up the clicked pin and zooms to it, the same as browse.
-              // Without this the hero popped its card while the map sat still
-              // and every pin stayed unselected.
-              selectedListingId={selectedListing?._id}
-            />
-          </div>
-
-          {/* Map popup card — shown when a pin is clicked */}
-          {selectedListing && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-72">
-              <MapPopupCard
-                listing={selectedListing}
-                session={null}
-                onClose={() => setSelectedListing(null)}
-                onCardClick={(id) => {
-                  setSelectedListing(null);
-                  router.push(`/browse?panel=${id}`);
-                }}
-              />
-            </div>
-          )}
-
-          {/* Left gradient — blends map into hero bg (desktop only) */}
-          <div
-            className="hidden xl:block absolute left-0 top-0 bottom-0 w-56 z-30 pointer-events-none"
-            style={{
-              background: `linear-gradient(to right, ${BG} 0%, transparent 100%)`,
-            }}
-          />
-          {/* Top gradient */}
-          <div
-            className="absolute top-0 left-0 right-0 h-14 z-30 pointer-events-none"
-            style={{
-              background: `linear-gradient(to bottom, ${BG} 0%, transparent 100%)`,
-            }}
-          />
-          {/* Bottom gradient */}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-20 z-30 pointer-events-none"
-            style={{
-              background: `linear-gradient(to top, ${BG} 0%, transparent 100%)`,
-            }}
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
 
 const CARD_W = 300;
 const GAP = 20;
@@ -349,7 +154,7 @@ function ReviewsCarousel() {
   return (
     <section
       ref={sectionRef}
-      className="w-full py-16 md:py-22 bg-white overflow-hidden"
+      className="w-full py-16 md:py-[5.5rem] bg-gray-50 border-t border-gray-200 overflow-hidden"
     >
       {/* Header */}
       <div className={`w-full ${SIDE_MARGIN}`}>
@@ -376,8 +181,8 @@ function ReviewsCarousel() {
       >
         <div ref={trackRef} className="relative overflow-hidden">
           {/* Side fades */}
-          <div className="absolute left-0 top-0 bottom-0 w-24 md:w-40 lg:w-56 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
-          <div className="absolute right-0 top-0 bottom-0 w-24 md:w-40 lg:w-56 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+          <div className="absolute left-0 top-0 bottom-0 w-24 md:w-40 lg:w-56 bg-gradient-to-r from-gray-50 to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-24 md:w-40 lg:w-56 bg-gradient-to-l from-gray-50 to-transparent z-10 pointer-events-none" />
 
           <motion.div
             className="flex py-6"
@@ -463,293 +268,6 @@ function ReviewsCarousel() {
   );
 }
 
-// ─── Popular Rentals ───────────────────────────────────────────────────────────
-
-function RentalCard({ listing, index, isInView, onSelect = null }) {
-  const isMobile = useIsMobile();
-  const router = useRouter();
-  const imageUrl = listing.images?.[0];
-  const imageCount = listing.images?.length || 0;
-  const [streetAddress, ...restParts] = listing.address.split(",");
-  const cityStateZip = restParts.join(",").trim();
-  const bedValues = listing.unitTypes
-    .map((u) => u.bedrooms)
-    .filter(Number.isFinite);
-  const bathValues = listing.unitTypes
-    .map((u) => u.bathrooms)
-    .filter(Number.isFinite);
-  const bedLabel =
-    bedValues.length === 0
-      ? "N/A"
-      : Math.min(...bedValues) === Math.max(...bedValues)
-      ? String(Math.min(...bedValues))
-      : `${Math.min(...bedValues)}-${Math.max(...bedValues)}`;
-  const bathLabel =
-    bathValues.length === 0
-      ? "N/A"
-      : Math.min(...bathValues) === Math.max(...bathValues)
-      ? String(Math.min(...bathValues))
-      : `${Math.min(...bathValues)}-${Math.max(...bathValues)}`;
-
-  const initial = isMobile
-    ? { opacity: 0, x: index % 2 === 0 ? -40 : 40 }
-    : { opacity: 0, y: 40 };
-
-  return (
-    <motion.div
-      initial={initial}
-      animate={isInView ? { opacity: 1, x: 0, y: 0 } : {}}
-      transition={{ duration: 0.5, delay: index * 0.07 }}
-    >
-      <div
-        onClick={() => {
-          onSelect?.();
-          router.push(listingHref(listing._id, "/"));
-        }}
-        className="group block cursor-pointer relative"
-      >
-        {/* Real crawlable link to the canonical listing page. Plain clicks are
-            suppressed so the modal flow above still handles them; cmd/ctrl/
-            middle-click and crawlers get the actual /listings/[id] URL. */}
-        <a
-          href={`/listings/${listing._id}`}
-          aria-label={listing.title || listing.address}
-          className="absolute inset-0 z-[1]"
-          onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
-              // Let the browser open the new tab, but stop the click reaching
-              // the wrapper's router.push — otherwise a cmd-click opens the
-              // listing in a background tab AND navigates this one to the
-              // modal, losing the reader's place on the homepage.
-              e.stopPropagation();
-              return;
-            }
-            e.preventDefault();
-          }}
-        />
-        <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
-          <div className="relative">
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt={listing.address}
-                className="w-full aspect-video object-cover"
-              />
-            ) : (
-              <div className="w-full aspect-video bg-gray-100 flex items-center justify-center text-gray-400">
-                No image
-              </div>
-            )}
-            {imageCount > 1 && (
-              <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-                See all {imageCount} photos
-              </div>
-            )}
-          </div>
-          <div className="p-3 bg-[#fafafa] flex flex-col flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-sm text-gray-900 leading-snug">
-                  {listing.title || streetAddress}
-                </h3>
-                <p className="text-xs text-gray-500 font-normal mt-0.5">
-                  {listing.title ? listing.address : cityStateZip}
-                </p>
-              </div>
-              <span className="text-[#3C4142] font-bold text-sm whitespace-nowrap flex-shrink-0">
-                {getRentRangeLabel(listing.unitTypes)}
-                {getRentRangeLabel(listing.unitTypes) !==
-                  "Contact for Pricing" && (
-                  <span className="text-xs font-normal">/mo</span>
-                )}
-              </span>
-            </div>
-            <div className="flex items-center justify-between mt-auto pt-2">
-              <span className="text-gray-500 text-xs">
-                {bedLabel} bed{" | "}
-                {bathLabel} bath
-                {listing.leaseType
-                  ? ` | ${listing.leaseType}`
-                  : ""}
-              </span>
-              {listing.owner?.name && (
-                <span className="text-gray-400 text-xs truncate ml-2">
-                  {listing.owner.name}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-red-600 transition-[width] duration-300 group-hover:w-full" />
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function SkeletonCard() {
-  return (
-    <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 animate-pulse">
-      <div className="h-64 bg-gray-100" />
-      <div className="p-4 space-y-2.5">
-        <div className="h-4 bg-gray-100 rounded-lg w-3/4" />
-        <div className="h-3 bg-gray-100 rounded-lg w-1/2" />
-      </div>
-    </div>
-  );
-}
-
-/*
- * The homepage listings row. Signed-in students with enough activity get
- * "Suggested for you" (the same 2 or 4 picks as the /browse strip); everyone
- * else, and any student the endpoint returns nothing for, gets the Popular row
- * exactly as before. The session is server-provided, so signed-out visitors and
- * crawlers render Popular in the first HTML; signed-in students see skeletons
- * until the suggestion answer arrives, never Popular flashing into Suggested.
- */
-function PopularRentals({ initialPopular = null, allListings = null }) {
-  // Server-seeded so the ranked cards (and their crawlable /listings/[id]
-  // anchors) are in the first HTML; the mount fetch refreshes the ranking.
-  const [listings, setListings] = useState(initialPopular ?? []);
-  const [loading, setLoading] = useState(
-    !(initialPopular && initialPopular.length)
-  );
-  const { data: session } = useSession();
-  const userId = session?.user?.id;
-  // null = still asking (signed in only); [] = none, show Popular.
-  const [suggested, setSuggested] = useState(userId ? null : []);
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-80px" });
-  const isMobile = useIsMobile();
-  const showSuggested = !!suggested?.length;
-  const visibleListings = showSuggested
-    ? suggested
-    : isMobile
-    ? listings.slice(0, 3)
-    : listings;
-
-  useEffect(() => {
-    if (!userId) {
-      setSuggested([]);
-      return;
-    }
-    fetch("/api/listings/suggested")
-      .then((r) => (r.ok ? r.json() : { ids: [] }))
-      .then((data) => {
-        const byId = new Map((allListings ?? []).map((l) => [String(l._id), l]));
-        const found = (data?.ids ?? [])
-          .map((id) => byId.get(String(id)))
-          .filter(Boolean);
-        // Even count only (0, 2 or 4), matching the browse strip.
-        setSuggested(found.slice(0, found.length - (found.length % 2)));
-      })
-      .catch(() => setSuggested([]));
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!showSuggested) return;
-    trackEvent("suggested_impression", {
-      surface: "home",
-      count: suggested.length,
-    });
-  }, [showSuggested]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    // Server ranks these by recent saves + contacts (last week → month → all
-    // time), so render them as-is rather than re-sorting on the client.
-    fetch("/api/listings/popular")
-      .then((r) => r.json())
-      .then((data) => {
-        const all = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.listings)
-          ? data.listings
-          : [];
-        // Keep the server-rendered cards if the refresh comes back empty (a
-        // 500 returns {error}, which parses to []). Overwriting unconditionally
-        // replaced six painted cards with an empty grid — and loading is
-        // already false by then, so not even skeletons. HeroMapSection guards
-        // this the same way.
-        if (all.length) setListings(all.slice(0, 6));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <section ref={ref} className="w-full pt-16 pb-8 md:py-22 bg-gray-50/70">
-      <div className={`w-full ${SIDE_MARGIN}`}>
-        {/* Section header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="flex items-end justify-between mb-10"
-        >
-          <div>
-            <span className="inline-block px-3 py-1 bg-red-50 text-red-500 text-xs font-bold rounded-full uppercase tracking-widest mb-3">
-              {showSuggested ? "Picked for you" : "Available Now"}
-            </span>
-            <h2 className="text-4xl md:text-5xl font-black text-gray-900">
-              {showSuggested
-                ? "Suggested for you."
-                : "Popular apartments near WashU."}
-            </h2>
-          </div>
-          <Link
-            href="/browse"
-            className="hidden md:flex items-center gap-1.5 text-sm font-semibold text-red-500 hover:text-red-600 transition-colors"
-          >
-            View all <ArrowRight className="h-4 w-4" />
-          </Link>
-        </motion.div>
-
-        {/* Grid */}
-        <div
-          className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${
-            showSuggested ? "lg:grid-cols-4" : "lg:grid-cols-3"
-          }`}
-        >
-          {suggested === null
-            ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
-            : loading && !showSuggested
-            ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-            : visibleListings.map((listing, i) => (
-                <RentalCard
-                  key={listing._id}
-                  listing={listing}
-                  index={i}
-                  isInView={isInView}
-                  onSelect={
-                    showSuggested
-                      ? () => {
-                          trackEvent("suggested_click", {
-                            surface: "home",
-                            listing_id: String(listing._id),
-                            position: i + 1,
-                          });
-                          setListingSource(listing._id, "suggested");
-                        }
-                      : null
-                  }
-                />
-              ))}
-        </div>
-
-        {/* Mobile "view all" */}
-        <div className="flex md:hidden justify-center mt-10">
-          <Link
-            href="/browse"
-            className="group flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-xl transition-all duration-150 text-sm shadow-md"
-          >
-            View all listings
-            <ArrowRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // ─── Colleges Band ─────────────────────────────────────────────────────────────
 
 function CollegesBand() {
@@ -822,10 +340,34 @@ function CTABand() {
  * matches on this browser: "prx_fyp_v1" is where FindYourPlaceClient keeps
  * its run.
  */
-function FindYourPlacePopup() {
+// `suppressed`: the visitor is already answering in the hero bar, which asks
+// the same question, so the popup stays out of the way.
+// On phones it also waits while the bar is on screen: the popup is fixed to
+// the bottom of the screen, which is where the stacked bar sits, and would
+// cover it.
+function FindYourPlacePopup({ suppressed = false }) {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [barInView, setBarInView] = useState(false);
+  const shownRef = useRef(false);
+
+  useEffect(() => {
+    const bar = document.querySelector("[data-home-match-bar]");
+    if (!bar || !window.matchMedia("(max-width: 639px)").matches) return;
+    const observer = new IntersectionObserver(([entry]) => setBarInView(entry.isIntersecting));
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  const showing = visible && !dismissed && !suppressed && !barInView;
+  // Counted when it is really on screen, not when the timer runs out.
+  useEffect(() => {
+    if (!showing || shownRef.current) return;
+    shownRef.current = true;
+    trackEvent("Find Your Place Popup Shown");
+    recordFyp("popup_shown", {}, "/");
+  }, [showing]);
 
   useEffect(() => {
     try {
@@ -834,13 +376,10 @@ function FindYourPlacePopup() {
     } catch {
       // Unreadable storage: show it.
     }
-    const t = setTimeout(() => {
-      setVisible(true);
-      trackEvent("Find Your Place Popup Shown");
-      recordFyp("popup_shown", {}, "/");
-    }, 3000);
+    if (suppressed) return;
+    const t = setTimeout(() => setVisible(true), 3000);
     return () => clearTimeout(t);
-  }, []);
+  }, [suppressed]);
 
   const start = (group) => {
     trackEvent("Find Your Place Popup Clicked", { group });
@@ -850,7 +389,7 @@ function FindYourPlacePopup() {
 
   return (
     <AnimatePresence>
-      {visible && !dismissed && (
+      {showing && (
         <motion.div
           initial={{ opacity: 0, y: 16, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -910,6 +449,7 @@ export default function HomeClient({
   initialPopular = null,
 }) {
   const { data: session, update } = useSession();
+  const [barEngaged, setBarEngaged] = useState(false);
 
   // Fix: new users who signed in via "Login as Landlord" get created as students
   // in auth.js. Detect the ?role=landlord callback param and correct it immediately.
@@ -945,17 +485,20 @@ export default function HomeClient({
   return (
     <div className="min-h-screen bg-white">
       <main>
-        <HeroMapSection initialListings={initialListings} />
-        <PopularRentals
+        <HeroSection
+          sideMargin={SIDE_MARGIN}
           initialPopular={initialPopular}
           allListings={initialListings}
+          onBarEngage={() => setBarEngaged(true)}
         />
+        <HowItWorks sideMargin={SIDE_MARGIN} />
+        <HomeFaq sideMargin={SIDE_MARGIN} />
         <ReviewsCarousel />
         {/* <CollegesBand /> */}
         <CTABand />
       </main>
       <Footer />
-      <FindYourPlacePopup />
+      <FindYourPlacePopup suppressed={barEngaged} />
     </div>
   );
 }

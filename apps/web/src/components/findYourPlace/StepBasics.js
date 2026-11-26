@@ -54,7 +54,9 @@ export default function StepBasics({ answers, onChange }) {
 
   // ── Commute ───────────────────────────────────────────────────────────────
   const mode = slowestMode(answers.modes);
+  const pickedModeRef = useRef(false);
   const toggleMode = (id) => {
+    pickedModeRef.current = true;
     const modes = answers.modes.includes(id) ? answers.modes.filter((m) => m !== id) : [...answers.modes, id];
     // The follow-up is about the slowest mode, so a change of slowest mode asks again.
     const next = slowestMode(modes);
@@ -67,6 +69,9 @@ export default function StepBasics({ answers, onChange }) {
   const modeId = mode?.id ?? null;
   useEffect(() => {
     // Scroll the panel's own body only. scrollIntoView would move the page too.
+    // Only after a tap here: answers carried in from the homepage or a
+    // resumed run open the page at the top.
+    if (!pickedModeRef.current) return;
     const body = followUpRef.current?.closest("[data-fyp-body]");
     if (modeId && body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
   }, [modeId]);

@@ -31,7 +31,7 @@ const bool = (v) => (typeof v === "boolean" ? v : undefined);
 
 // Event name -> the fields it may carry and how each is checked.
 const FIELDS = {
-  opened: { resumed: bool, fromPopup: bool },
+  opened: { resumed: bool, fromPopup: bool, fromBar: bool },
   exited: { stage: oneOf(STAGES), answered: int(0, QUESTION_COUNT) },
   started_over: { stage: oneOf(STAGES) },
   // From page 3: "matches", or "loading"/"error" when none were on screen yet.
@@ -40,6 +40,8 @@ const FIELDS = {
   popup_shown: {},
   popup_clicked: { group: oneOf(GROUP_OPTIONS) },
   popup_dismissed: {},
+  // The homepage hero bar's Start Matching, with how many of its three were filled.
+  bar_started: { filled: int(0, 3) },
   // Server only: never accepted from the browser.
   search_failed: { reason: oneOf(FAIL_REASONS), retry: bool },
   // A search that answered. rerun: the same search run again (Back, then Show My Matches).

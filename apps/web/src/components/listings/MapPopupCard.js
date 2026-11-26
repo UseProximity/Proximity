@@ -20,7 +20,8 @@ function suppressPlainClick(e) {
 }
 
 // Exported for the Find Your Place match cards, which show the same times.
-export function WalkScale({ minutes, label }) {
+// `onPhoto` is the larger, light-on-dark variant for the homepage hero card.
+export function WalkScale({ minutes, label, onPhoto = false }) {
   const isCampus = label === "campus";
   const filled = isCampus
     ? minutes < 12 ? 1 : minutes < 20 ? 2 : minutes < 30 ? 3 : minutes < 45 ? 4 : 5
@@ -28,13 +29,13 @@ export function WalkScale({ minutes, label }) {
   const color = filled <= 1 ? "#22c55e" : filled <= 2 ? "#84cc16" : filled <= 3 ? "#eab308" : filled <= 4 ? "#f97316" : "#ef4444";
   return (
     <div className="flex items-center gap-1">
-      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }} className="w-3 h-3 flex-shrink-0">
+      <svg viewBox="0 0 24 24" fill="currentColor" style={{ color }} className={`flex-shrink-0 ${onPhoto ? "w-4 h-4" : "w-3 h-3"}`}>
         <path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/>
       </svg>
-      <span style={{ color }} className="text-[10px] tabular-nums tracking-tighter leading-none">
+      <span style={{ color }} className={`tabular-nums leading-none ${onPhoto ? "text-[13px] font-semibold" : "text-[10px] tracking-tighter"}`}>
         {minutes} min
       </span>
-      <span className="text-[10px] text-gray-400 leading-none capitalize">{label}</span>
+      <span className={`leading-none capitalize ${onPhoto ? "text-[13px] text-white/80" : "text-[10px] text-gray-400"}`}>{label}</span>
     </div>
   );
 }
