@@ -1,24 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Copy, Star, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { StarRating } from "@/components/ui/StarRating";
 import ReviewReplySection from "@/components/listings/ReviewReplySection";
+import { copyText } from "@/utils/copyText";
 
 function InviteLinkCard({ userId }) {
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const inputRef = useRef(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
   const link = origin && userId ? `${origin}/review-invite/${userId}` : "";
 
-  function copy() {
+  // On a blocked copy, select the link in the box so it can be copied by hand.
+  async function copy() {
     if (!link) return;
-    navigator.clipboard?.writeText(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (await copyText(link)) {
+      setCopyFailed(false);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } else {
+      setCopyFailed(true);
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
   }
 
   return (
@@ -30,12 +40,12 @@ function InviteLinkCard({ userId }) {
           </h3>
           <p className="mt-1.5 text-sm text-gray-600 leading-relaxed">
           Students rely on reviews when deciding who to contact. Share this link with past 
-          tenants who are verified WashU students — they pick which property to 
-          review and submit in under a minute.
+          tenants to get reviewed.
           </p>
         </div>
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             readOnly
             value={link}
             placeholder="Loading…"
@@ -52,6 +62,11 @@ function InviteLinkCard({ userId }) {
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
+        {copyFailed && (
+          <p className="text-xs text-gray-600">
+            Your browser blocked copying. The link is selected, so press Ctrl+C (⌘C on Mac).
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -240,6 +255,7 @@ export default function ReviewsSection({ user, viewAsId }) {
                             review={review}
                             owner={user}
                             isLandlord={true}
+                            readOnly={Boolean(viewAsId)}
                           />
                         </div>
                       </div>

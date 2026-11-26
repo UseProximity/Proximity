@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js page routes (non-API): URL path and file location.",
-  "_generated": "2026-07-16T07:10:56.296Z",
-  "count": 28,
+  "_generated": "2026-11-17T06:51:08.502Z",
+  "count": 47,
   "pages": [
     {
       "path": "/",
@@ -10,6 +10,22 @@
     {
       "path": "/_landlord/[landlordId]",
       "file": "src/app/_landlord/[landlordId]/page.js"
+    },
+    {
+      "path": "/(legal)/delete-account",
+      "file": "src/app/(legal)/delete-account/page.js"
+    },
+    {
+      "path": "/(legal)/privacy",
+      "file": "src/app/(legal)/privacy/page.js"
+    },
+    {
+      "path": "/(legal)/support",
+      "file": "src/app/(legal)/support/page.js"
+    },
+    {
+      "path": "/(legal)/terms",
+      "file": "src/app/(legal)/terms/page.js"
     },
     {
       "path": "/about",
@@ -28,6 +44,14 @@
       "file": "src/app/add-sublease/page.js"
     },
     {
+      "path": "/analytics",
+      "file": "src/app/analytics/page.js"
+    },
+    {
+      "path": "/analytics/[tab]",
+      "file": "src/app/analytics/[tab]/page.js"
+    },
+    {
       "path": "/browse",
       "file": "src/app/browse/page.js"
     },
@@ -36,12 +60,24 @@
       "file": "src/app/CampusHub/page.js"
     },
     {
+      "path": "/chat-link",
+      "file": "src/app/chat-link/page.js"
+    },
+    {
+      "path": "/contact-verify",
+      "file": "src/app/contact-verify/page.js"
+    },
+    {
       "path": "/dashboard",
       "file": "src/app/dashboard/page.js"
     },
     {
       "path": "/dashboard/admin",
       "file": "src/app/dashboard/admin/page.js"
+    },
+    {
+      "path": "/dashboard/admin/[...section]",
+      "file": "src/app/dashboard/admin/[...section]/page.js"
     },
     {
       "path": "/dashboard/admin/export",
@@ -60,12 +96,20 @@
       "file": "src/app/dashboard/view-as/[userId]/page.js"
     },
     {
+      "path": "/find-your-place",
+      "file": "src/app/find-your-place/page.js"
+    },
+    {
       "path": "/guides",
       "file": "src/app/guides/page.js"
     },
     {
       "path": "/guides/four-types-washu-housing",
       "file": "src/app/guides/four-types-washu-housing/page.js"
+    },
+    {
+      "path": "/guides/rent-reporting-credit",
+      "file": "src/app/guides/rent-reporting-credit/page.js"
     },
     {
       "path": "/guides/washu-apartment-checklist",
@@ -96,8 +140,12 @@
       "file": "src/app/login/page.js"
     },
     {
-      "path": "/matchmaking",
-      "file": "src/app/matchmaking/page.js"
+      "path": "/messages",
+      "file": "src/app/messages/page.js"
+    },
+    {
+      "path": "/parent-signup",
+      "file": "src/app/parent-signup/page.js"
     },
     {
       "path": "/refer",
@@ -112,8 +160,36 @@
       "file": "src/app/reset-password/page.js"
     },
     {
+      "path": "/review",
+      "file": "src/app/review/page.js"
+    },
+    {
       "path": "/review-invite/[landlordId]",
       "file": "src/app/review-invite/[landlordId]/page.js"
+    },
+    {
+      "path": "/review-invite/t/[token]",
+      "file": "src/app/review-invite/t/[token]/page.js"
+    },
+    {
+      "path": "/review/claim",
+      "file": "src/app/review/claim/page.js"
+    },
+    {
+      "path": "/review/finish",
+      "file": "src/app/review/finish/page.js"
+    },
+    {
+      "path": "/unsubscribe",
+      "file": "src/app/unsubscribe/page.js"
+    },
+    {
+      "path": "/washu",
+      "file": "src/app/washu/page.js"
+    },
+    {
+      "path": "/washu/[slug]",
+      "file": "src/app/washu/[slug]/page.js"
     }
   ]
 }

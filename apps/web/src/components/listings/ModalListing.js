@@ -1,7 +1,14 @@
 "use client";
 import React, { useEffect } from "react";
 
-export default function ModalListing({ isOpen, onClose, children }) {
+/*
+ * `header` renders above the scrolling body, under the close button: a strip
+ * that must stay visible and must never cover the ×. A sticky strip inside
+ * the scroll area did exactly that (the owner's preview had no way to close).
+ * The × sits at z-50 so the listing's own sticky "Did you submit your
+ * application?" bar (z-40) can never paint over it.
+ */
+export default function ModalListing({ isOpen, onClose, header = null, children }) {
   // Prevent body scroll when modal is open, restoring exact scroll position on close
   useEffect(() => {
     if (!isOpen) return;
@@ -31,18 +38,20 @@ export default function ModalListing({ isOpen, onClose, children }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative flex flex-col w-full max-w-6xl max-h-[calc(100dvh-107px)] md:max-h-[95vh]"
+        className="bg-white rounded-xl shadow-2xl border border-gray-100 relative flex flex-col overflow-hidden w-full max-w-6xl max-h-[calc(100dvh-107px)] md:max-h-[95vh]"
         onClick={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-600 hover:bg-white/80 text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+          className="absolute top-3 right-3 z-50 bg-white/90 shadow-md text-gray-600 hover:text-gray-900 hover:bg-white text-2xl w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
         >
           ×
         </button>
-        <div className="w-full px-6 pb-6 overflow-y-auto overscroll-y-contain flex-1" onScroll={(e) => e.stopPropagation()}>
+        {header}
+        {/* No side padding: the listing's photos run to the modal's edges (Wyatt, 2026-10-31). */}
+        <div className="w-full overflow-y-auto [overflow-anchor:none] overscroll-y-contain scrollbar-hidden flex-1" onScroll={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>

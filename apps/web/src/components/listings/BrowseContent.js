@@ -4,6 +4,8 @@
  * round-trips. Manages the full filter state (rent range, bed/bath counts, walk times,
  * move-in date, home type, lease structure, amenities, utilities, sublease flag, and
  * saved-only toggle) as well as a free-text search across address and description fields.
+ * The matching itself lives in @proximity/shared (formatters/listingFilters.js), which evaluates each
+ * listing unit-by-unit and lease-by-lease rather than against listing-level aggregates.
  * Reads an initial ?search= query param from the URL so the Header's search bar can
  * deep-link into a pre-filtered browse view. Passes the filtered listing array down to
  * AvailableListings (the split map+list panel) and TopFilterBar (the filter UI). Uses
@@ -11,50 +13,155 @@
  */
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AvailableListings from "@/components/listings/AvailableListings";
 import TopFilterBar from "@/components/listings/TopFilterBar";
-import { WASHU_PLACES, NON_CAMPUS_WALK_PLACES } from "@/utils/washuPlaces";
+import { campusWalkMinutes } from "@/utils/washuPlaces";
 import { useFavorites } from "@/context/FavoritesContext";
+import {
+  DEFAULT_FILTERS,
+  filterListings,
+  filtersActive,
+  fittingRents,
+} from "@proximity/shared";
+import { BROWSE_HANDOFF_KEY } from "@/lib/findYourPlace/options";
 
-const DEFAULT_FILTERS = {
-  minRent: "",
-  maxRent: "",
-  bedrooms: "", // min bedrooms
-  maxBedrooms: "", // max bedrooms
-  bathrooms: "", // min bathrooms
-  maxBathrooms: "", // max bathrooms
-  distance: "", // walking time to campus (minutes)
-  distanceToShuttle: "", // walking time to shuttle stop (minutes)
-  moveInDate: "",
-  homeType: [], // ['house','apartment','condo','townhouse','singleBedroom']
-  leaseAvailability: [], // ['semester','10-month','12-month']
-  amenities: [], // ['pool','studyRooms','inUnitLaundry','freeParking','petsAllowed']
-  furnished: "", // '' | 'furnished' | 'unfurnished'
-  utilitiesIncluded: [], // ['water','electric','gas', ...]
-  subleaseFriendly: false,
-  subleaseOnly: false, // only show actual sublease listings
-  leaseStructure: "", // '' | 'individual' | 'joint'
-  savedOnly: false,
-};
-
-export default function BrowseContent({ session }) {
+export default function BrowseContent({ session, initialListings = null }) {
   const { savedIds } = useFavorites();
-  const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Seeded server-side so crawlers and first paint get real cards; the mount
+  // fetch below still runs as a freshness refresh over the 5-min server cache.
+  const [listings, setListings] = useState(initialListings ?? []);
+  const [loading, setLoading] = useState(
+    !(initialListings && initialListings.length)
+  );
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("search");
 
   const [search, setSearch] = useState(searchQuery || "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Find Your Place's nice-to-haves: marked in the filter panel, switched off
+  // (Wyatt, 2026-11-17). { furnished, amenities } or null.
+  const [fypSuggested, setFypSuggested] = useState(null);
+  /*
+   * Arriving from Find Your Place's "Browse All Matches" (?fyp=1): the page
+   * left its hand-off in localStorage (lib/findYourPlace/browseHandoff.js).
+   * The answers browse has a filter for are pre-set in the filter bar, where
+   * they can be changed or cleared like any other.
+   */
+  const fromFindYourPlace = searchParams.get("fyp");
+  useEffect(() => {
+    if (!fromFindYourPlace) return;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(BROWSE_HANDOFF_KEY) ?? "null");
+      if (raw?.filters && typeof raw.filters === "object") setFilters({ ...DEFAULT_FILTERS, ...raw.filters });
+      if (raw?.suggested && typeof raw.suggested === "object") {
+        setFypSuggested({
+          furnished: typeof raw.suggested.furnished === "string" ? raw.suggested.furnished : null,
+          amenities: Array.isArray(raw.suggested.amenities) ? raw.suggested.amenities.filter((a) => typeof a === "string") : [],
+        });
+      }
+    } catch {
+      // No readable hand-off: plain browse.
+    }
+  }, [fromFindYourPlace]);
+  // Desktop only: hide the map and show the listings as a wider grid.
+  const [mapHidden, setMapHidden] = useState(false);
+  // Compare Listings (desktop): null when closed, else the [left, right] listings
+  // picked so far (each null while empty). Separate from the filters on purpose.
+  const [compare, setCompare] = useState(null);
+  /*
+   * The fade-through of a toggle (see AvailableListings) marks <body> with
+   * data-map-switching, and AvailableListings removes it once the new layout is
+   * in place. That removal follows a change of mapHidden, which two toggles in
+   * quick succession can cancel out, leaving the map offset and the column
+   * faded. So the mark is also removed here, after a safety timeout and on
+   * unmount. Every toggle still flips mapHidden, so two quick toggles are two
+   * flips; only the safety timer restarts.
+   */
+  const switchTimers = useRef({});
+  const endMapSwitch = () =>
+    document.body.removeAttribute("data-map-switching");
+  const fadeThrough = (flip) => {
+    const timers = switchTimers.current;
+    clearTimeout(timers.safety);
+    cancelAnimationFrame(timers.frame);
+    document.body.setAttribute("data-map-switching", "");
+    timers.flip = setTimeout(flip, 120);
+    // Two frames, like AvailableListings: the new layout has been drawn, still
+    // invisible, before the mark goes and its width change can animate.
+    timers.safety = setTimeout(() => {
+      timers.frame = requestAnimationFrame(() =>
+        requestAnimationFrame(endMapSwitch)
+      );
+    }, 700);
+  };
+  const toggleMap = () => fadeThrough(() => setMapHidden((hidden) => !hidden));
+  // With the map hidden, Compare also swaps the wide grid for the two-column one
+  // and the compare panel, so it fades through like the map toggle. With the map
+  // visible the columns do not change and it switches at once.
+  const changeCompare = (next) =>
+    mapHidden ? fadeThrough(() => setCompare(next)) : setCompare(next);
+  useEffect(() => {
+    const timers = switchTimers.current;
+    return () => {
+      clearTimeout(timers.flip);
+      clearTimeout(timers.safety);
+      cancelAnimationFrame(timers.frame);
+      endMapSwitch();
+    };
+  }, []);
+  // "Suggested for you" ids, best first (0, 2 or 4). Fetched once per visit, so
+  // a listing contacted from the strip stays put until the next reload.
+  const [suggestedIds, setSuggestedIds] = useState([]);
+  const [suggestedMode, setSuggestedMode] = useState("suggested");
+  const [anchorLabel, setAnchorLabel] = useState(null);
+  const userId = session?.user?.id;
+  /*
+   * The chat's no-reply note links here as ?from=no-reply&similar=<id>, which
+   * asks for places similar to the listing that went unanswered (Wyatt,
+   * 2026-10-16). Not ?listing=, which opens that listing's panel. The API
+   * falls back to normal suggestions when it can't.
+   */
+  const similarTo = searchParams.get("similar");
+
+  useEffect(() => {
+    if (!userId && !similarTo) return;
+    const url = similarTo
+      ? `/api/listings/suggested?similar=${encodeURIComponent(similarTo)}`
+      : "/api/listings/suggested";
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : { ids: [] }))
+      .then((data) => {
+        setSuggestedIds(Array.isArray(data?.ids) ? data.ids : []);
+        setSuggestedMode(data?.mode === "similar" ? "similar" : "suggested");
+        setAnchorLabel(typeof data?.anchorLabel === "string" ? data.anchorLabel : null);
+      })
+      .catch(() => {});
+  }, [userId, similarTo]);
+
+  /*
+   * Saved filters feed the student's running filter summary (the lightest
+   * suggestion signal). Called once when a filter control closes after a change
+   * (the Price and Beds & Baths cards and the side panel on desktop, which
+   * filter live) and from the Apply button of the phone's filter drawer, never
+   * on every slider tick. Fire-and-forget.
+   */
+  const handleFiltersSaved = (saved) => {
+    if (!userId) return;
+    fetch("/api/filter-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filters: saved }),
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     const fetchListings = async () => {
       try {
         const response = await fetch("/api/listings");
         const data = await response.json();
-        setListings(data);
+        if (Array.isArray(data)) setListings(data);
       } catch (error) {
         console.error("Error fetching listings:", error);
       } finally {
@@ -88,258 +195,36 @@ export default function BrowseContent({ session }) {
   const handleReset = () => {
     setSearch("");
     setFilters(DEFAULT_FILTERS);
+    setFypSuggested(null);
     handleClearSearch();
   };
 
-  const filteredListings = useMemo(() => {
-    return listings
-      .filter((listing) => {
-        const lt = listing?.homeType?.toLowerCase() || "";
-        const desc = listing?.description?.toLowerCase() || "";
-        const amenitiesText = (listing?.amenities || [])
-          .join(" ")
-          .toLowerCase();
-        const combined = desc + " " + amenitiesText;
+  // Minimum walk time to campus (utils/washuPlaces), injected into the filter
+  // module so it stays free of WashU-specific geography.
+  const campusMinutes = campusWalkMinutes;
 
-        // Search
-        const q = search.toLowerCase();
-        const matchSearch =
-          !q ||
-          listing?.address?.toLowerCase().includes(q) ||
-          listing?.title?.toLowerCase().includes(q);
+  const filteredListings = useMemo(
+    () => filterListings(listings, { filters, search, savedIds, campusMinutes }),
+    [listings, search, filters, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-        // Price
-        const matchMinRent =
-          !filters.minRent || listing?.maxRent >= Number(filters.minRent);
-        const matchMaxRent =
-          !filters.maxRent || listing?.minRent <= Number(filters.maxRent);
+  // For the price histograms: the rents of the available listings that fit
+  // the given filters (the page's, or a filter control's unapplied ones).
+  const rentsFor = useCallback(
+    (forFilters) =>
+      fittingRents(listings, { filters: forFilters, search, savedIds, campusMinutes }),
+    [listings, search, savedIds] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-        // Beds / baths (range)
-        const matchBeds =
-          (!filters.bedrooms ||
-            listing?.maxBedrooms >= Number(filters.bedrooms)) &&
-          (!filters.maxBedrooms ||
-            listing?.minBedrooms <= Number(filters.maxBedrooms));
-        const matchBaths =
-          (!filters.bathrooms ||
-            listing?.maxBathrooms >= Number(filters.bathrooms)) &&
-          (!filters.maxBathrooms ||
-            listing?.minBathrooms <= Number(filters.maxBathrooms));
-
-        // Walking distance to campus — use the minimum walk time among all
-        // WashU places that count as "campus" (grocery + Med Campus excluded).
-        let matchDistance = true;
-        if (filters.distance) {
-          const maxMinutes = parseFloat(filters.distance);
-          const pwm = listing.placeWalkMinutes;
-          const campusMins = WASHU_PLACES.filter(
-            (p) => !NON_CAMPUS_WALK_PLACES.includes(p.name)
-          )
-            .map((p) => pwm?.[p.name])
-            .filter((m) => m != null);
-          matchDistance =
-            campusMins.length > 0 &&
-            Math.min(...campusMins) <= maxMinutes;
-        }
-
-        // Walking time to nearest shuttle stop (use pre-computed DB value)
-        let matchShuttle = true;
-        if (filters.distanceToShuttle) {
-          const maxMinutes = parseFloat(filters.distanceToShuttle);
-          matchShuttle =
-            listing.shuttleWalkMinutes != null &&
-            listing.shuttleWalkMinutes <= maxMinutes;
-        }
-
-        // Home type
-        let matchHomeType = true;
-        if (filters.homeType && filters.homeType.length > 0) {
-          matchHomeType = filters.homeType.some((type) => {
-            switch (type) {
-              case "house":
-                return lt.includes("house");
-              case "apartment":
-                return lt.includes("apartment");
-              case "condo":
-                return lt.includes("condo");
-              case "townhouse":
-                return lt.includes("townhouse");
-              case "singleBedroom":
-                return listing?.minBedrooms === 1;
-              default:
-                return true;
-            }
-          });
-        }
-
-        // Lease availability (semester / 10-month / 12-month)
-        let matchLeaseAvail = true;
-        if (filters.leaseAvailability && filters.leaseAvailability.length > 0) {
-          const la = Array.isArray(listing?.leaseAvailability)
-            ? listing.leaseAvailability
-            : [];
-          matchLeaseAvail = filters.leaseAvailability.some((avail) => {
-            switch (avail) {
-              case "semester":
-                return la.includes("semester") || desc.includes("semester");
-              case "10-month":
-                return (
-                  la.includes("10-month") ||
-                  desc.includes("10 month") ||
-                  desc.includes("10-month")
-                );
-              case "12-month":
-                return (
-                  la.includes("12-month") ||
-                  desc.includes("12 month") ||
-                  desc.includes("12-month")
-                );
-              case "summer":
-                return la.includes("summer") || desc.includes("summer");
-              default:
-                return true;
-            }
-          });
-        }
-
-        // Amenities (all selected must match)
-        let matchAmenities = true;
-        if (filters.amenities && filters.amenities.length > 0) {
-          // Maps canonical snake_case filter value → all accepted DB values (snake_case + legacy ALL_CAPS)
-          const AMENITY_ALIASES = {
-            dishwasher: ["dishwasher", "DISHWASHER"],
-            in_unit_laundry: [
-              "in_unit_laundry",
-              "IN-UNIT LAUNDRY",
-              "IN UNIT LAUNDRY",
-            ],
-            ac_heating: ["ac_heating"],
-            mailroom: ["mailroom", "MAILROOM"],
-            pets_allowed: ["pets_allowed", "PETS ALLOWED"],
-            extra_storage: ["extra_storage", "EXTRA STORAGE"],
-            fireplace: ["fireplace", "FIREPLACE"],
-            private_parking: ["private_parking", "FREE PARKING"],
-            pool: ["pool", "POOL"],
-            study_room: ["study_room", "STUDY ROOMS"],
-            gym: ["gym", "GYM"],
-          };
-          const arr = listing.amenities || [];
-          matchAmenities = filters.amenities.every((amenity) => {
-            const aliases = AMENITY_ALIASES[amenity] ?? [amenity];
-            return aliases.some((v) => arr.includes(v));
-          });
-        }
-
-        // Furnished
-        let matchFurnished = true;
-        if (filters.furnished === "furnished") {
-          matchFurnished =
-            listing?.furnished === true ||
-            (combined.includes("furnished") &&
-              !combined.includes("unfurnished"));
-        } else if (filters.furnished === "unfurnished") {
-          matchFurnished =
-            listing?.furnished === false ||
-            combined.includes("unfurnished") ||
-            !combined.includes("furnished");
-        }
-
-        // Utilities included — listing must include ALL selected utilities
-        let matchUtilities = true;
-        if (filters.utilitiesIncluded?.length > 0) {
-          const listingUtils = Array.isArray(listing?.utilitiesIncluded)
-            ? listing.utilitiesIncluded
-            : [];
-          matchUtilities = filters.utilitiesIncluded.every((u) =>
-            listingUtils.includes(u)
-          );
-        }
-
-        // Sublease friendly
-        let matchSublease = true;
-        if (filters.subleaseFriendly) {
-          matchSublease =
-            listing?.subleaseFriendly === true ||
-            desc.includes("subleas") ||
-            desc.includes("subletting allowed");
-        }
-
-        // Sublease only — actual sublease listings (a unit lease flagged sublease)
-        let matchSubleaseOnly = true;
-        if (filters.subleaseOnly) {
-          matchSubleaseOnly =
-            String(listing?.leaseType ?? "").toLowerCase() === "sublease";
-        }
-
-        // Lease structure
-        let matchLeaseStructure = true;
-        if (filters.leaseStructure === "individual") {
-          matchLeaseStructure =
-            listing?.leaseStructure === "individual" ||
-            desc.includes("individual lease") ||
-            desc.includes("by the room");
-        } else if (filters.leaseStructure === "joint") {
-          matchLeaseStructure =
-            listing?.leaseStructure === "joint" ||
-            desc.includes("joint lease") ||
-            desc.includes("whole unit");
-        }
-
-        // Favorites / saved listings
-        const matchSaved =
-          !filters.savedOnly || savedIds.includes(String(listing._id)); // eslint-disable-line react-hooks/exhaustive-deps
-
-        // Move in Date — listings with no date set are always included
-        let matchMoveInDate = true;
-        if (filters.moveInDate) {
-          const desiredDate = new Date(filters.moveInDate);
-          const listingMoveInDate = new Date(listing.moveInDate);
-          matchMoveInDate =
-            isNaN(listingMoveInDate.getTime()) ||
-            listingMoveInDate <= desiredDate;
-        }
-
-        return (
-          matchSearch &&
-          matchMinRent &&
-          matchMaxRent &&
-          matchBeds &&
-          matchBaths &&
-          matchDistance &&
-          matchShuttle &&
-          matchHomeType &&
-          matchLeaseAvail &&
-          matchAmenities &&
-          matchFurnished &&
-          matchUtilities &&
-          matchSublease &&
-          matchSubleaseOnly &&
-          matchLeaseStructure &&
-          matchMoveInDate &&
-          matchSaved
-        );
-      })
-      .sort((a, b) => {
-        // 1) Listings with photos rank above photoless ones.
-        const aHasImages = a.images?.length > 0;
-        const bHasImages = b.images?.length > 0;
-        if (aHasImages !== bHasImages) return aHasImages ? -1 : 1;
-
-        // 2) Within the same photo tier, reviewed listings rank first.
-        const aReviews = a.numReviews ?? 0;
-        const bReviews = b.numReviews ?? 0;
-        const aHasReviews = aReviews > 0;
-        const bHasReviews = bReviews > 0;
-        if (aHasReviews !== bHasReviews) return aHasReviews ? -1 : 1;
-
-        // 3) Among reviewed listings, higher rating wins, then more reviews.
-        if (aHasReviews && bHasReviews) {
-          if (b.rating !== a.rating) return (b.rating ?? 0) - (a.rating ?? 0);
-          return bReviews - aReviews;
-        }
-        return 0;
-      });
-  }, [listings, search, filters]);
+  // The suggested strip only shows on the unfiltered view: once a student
+  // narrows the list, their own question is the ranking.
+  const suggestedListings = useMemo(() => {
+    if (search.trim() || filtersActive(filters)) return [];
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    // Keep the count even if a suggested listing dropped out of the feed.
+    return found.slice(0, found.length - (found.length % 2));
+  }, [listings, suggestedIds, search, filters]);
 
   if (loading) {
     return (
@@ -353,23 +238,44 @@ export default function BrowseContent({ session }) {
   }
 
   return (
-    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-83px)] md:h-[calc(100dvh-104px)]">
+    <div className="bg-gray-50 flex flex-col h-[calc(100dvh-var(--header-h))]">
       <div className="hidden md:block">
         <TopFilterBar
           search={search}
           setSearch={setSearch}
+          rentsFor={rentsFor}
           filters={filters}
           setFilters={setFilters}
           onReset={handleReset}
+          onFiltersSaved={handleFiltersSaved}
+          suggested={fypSuggested}
+          mapHidden={mapHidden}
+          // A fade-through: fade out now, and switch the layout once that has
+          // finished, while it is invisible.
+          onToggleMap={toggleMap}
+          compareOpen={!!compare}
+          onToggleCompare={() => changeCompare((c) => (c ? null : [null, null]))}
         />
       </div>
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
         <AvailableListings
           session={session}
           listings={filteredListings}
+          suggestedListings={suggestedListings}
+          suggestedMode={suggestedMode}
+          suggestedLabel={
+            suggestedMode === "similar" && anchorLabel ? `Similar to ${anchorLabel}` : "Suggested for you"
+          }
+          rentsFor={rentsFor}
+          onFiltersSaved={handleFiltersSaved}
+          mapHidden={mapHidden}
+          compare={compare}
+          setCompare={setCompare}
+          onCloseCompare={() => changeCompare(null)}
           filters={filters}
           setFilters={setFilters}
           handleReset={handleReset}
+          suggestedFilters={fypSuggested}
           onClearSearch={handleClearSearch}
           search={search}
           setSearch={setSearch}

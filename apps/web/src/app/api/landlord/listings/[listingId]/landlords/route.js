@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser, updateAsUser, deleteAsUser } from "@/lib/supabaseWithUser";
+import { hasDbRole } from "@/lib/userRole";
 
 async function requireOwnership(listingId) {
   const session = await auth();
   if (!session?.user?.id) return { err: "Unauthorized", status: 401 };
-  if (session.user.role === "super") return { session };
+  // The token role can be stale after a demotion, so a "super" token is only
+  // taken at its word once the DB agrees. Otherwise it is an ordinary caller.
+  if (session.user.role === "super" && (await hasDbRole(session.user.id, ["super"]))) {
+    return { session, isSuper: true };
+  }
   if (!["landlord"].includes(session.user.role)) return { err: "Forbidden", status: 403 };
 
   const { data: own } = await supabase
@@ -59,6 +64,20 @@ export async function POST(req, { params }) {
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
+  /*
+   * Staff only. For an owner this was an account-lookup oracle (404 vs a name and
+   * user id for any email) and it attached a real person to the caller's
+   * property with no consent, so a scam listing could read "Listed by <them>".
+   * An invite the other person accepts is the follow-up; until then the team
+   * adds co-owners on request.
+   */
+  if (!check.isSuper) {
+    return NextResponse.json(
+      { error: "Email info@useproximity.org to add a co-owner." },
+      { status: 403 }
+    );
+  }
+
   const { email } = await req.json();
   if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 });
 
@@ -102,7 +121,7 @@ export async function PATCH(req, { params }) {
   const check = await requireOwnership(listingId);
   if (check.err) return NextResponse.json({ error: check.err }, { status: check.status });
 
-  if (!check.isPrimary && check.session.user.role !== "super") {
+  if (!check.isPrimary && !check.isSuper) {
     return NextResponse.json({ error: "Only the primary owner can transfer primary status." }, { status: 403 });
   }
 

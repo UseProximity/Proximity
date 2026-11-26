@@ -30,6 +30,13 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
+          # The runner ships postgresql-client-16 at /usr/bin/pg_dump, which wins on PATH and
+          # refuses to dump prod (now Postgres 17). Put the v17 binaries first so the snapshot
+          # uses a matching client.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Verify pg_dump version
+        run: pg_dump --version
 
       - name: Run prod → dev snapshot
         env:

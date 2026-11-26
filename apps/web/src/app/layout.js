@@ -4,40 +4,55 @@
  * without a client-side waterfall. Renders the global shell: Inter font, Leaflet CSS,
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
- * Also mounts the Vercel Analytics beacon and Google Analytics (GA4) tag. All client
- * state providers (SessionProvider, FavoritesProvider) are composed inside Providers.
+ * Also mounts FeedbackWidget (bottom-left). Messages live at /messages (header entry).
+ * MarketingBeacon sends the marketing attribution session beacon on each route change.
+ * Also mounts the Vercel Analytics and Speed Insights beacons and Google Analytics (GA4) tag. All client
+ * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
+ * inside Providers.
  * Defines the site-wide <title> and <description> used for SEO.
  */
 import { Inter } from "next/font/google";
-import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { Header } from "@/components/layout/Header";
 import StagingBanner from "@/components/layout/StagingBanner";
 import StagingEmailPicker from "@/components/layout/StagingEmailPicker";
 import { auth } from "@/auth";
-import { appEnv } from "@/lib/appEnv";
+import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
+import GlobalMessagesPanel from "@/components/chat/GlobalMessagesPanel";
+import ErrorReporter from "@/components/ErrorReporter";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
+import MarketingBeacon from "@/components/marketing/MarketingBeacon";
 import Providers from "@/components/layout/Providers";
+import { serializeJsonLd } from "@/lib/jsonLd";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title:
-    "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
+  metadataBase: new URL("https://useproximity.org"),
+  title: "WashU Off-Campus Housing & Honest Peer Reviews | Proximity",
   description:
-    "Proximity helps WashU students find the perfect off-campus apartment. Verified listings, honest peer reviews, and free personalized matchmaking near Washington University in St. Louis.",
+    "Find your off-campus apartment near WashU with honest peer reviews, verified listings, and free personalized matchmaking — built by students, for students.",
+  // "./" resolves against each route, giving every page a self-canonical
+  // (query strings dropped). Pages that set their own canonical override it.
+  alternates: { canonical: "./" },
+  // Staging serves a copy of production content on a public URL, so it has to say
+  // noindex on every page. robots.txt alone isn't enough — it stops crawlers fetching
+  // a page, but a URL linked from elsewhere can still be indexed as a bare result.
+  // Inherited by every route unless a page sets its own `robots`.
+  ...(indexingEnabled() ? {} : { robots: { index: false, follow: false } }),
   openGraph: {
-    siteName: "WashU Student Housing",
-    title:
-      "WashU Student Housing Matchmaking | Honest Peer Reviews | Pre-Vetted Listings | Proximity",
+    siteName: "Proximity",
+    title: "WashU Off-Campus Housing & Honest Peer Reviews | Proximity",
     description:
-      "Proximity helps WashU students find the perfect off-campus apartment. Verified listings, honest peer reviews, and free personalized matchmaking near Washington University in St. Louis.",
+      "Find your off-campus apartment near WashU with honest peer reviews, verified listings, and free personalized matchmaking — built by students, for students.",
     url: "https://useproximity.org/",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
   },
 };
 
@@ -55,12 +70,29 @@ export default async function RootLayout({ children }) {
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               "@context": "https://schema.org",
-              "@type": "WebSite",
-              name: "WashU Student Housing",
-              alternateName: "Proximity",
-              url: "https://useproximity.org/",
+              "@graph": [
+                {
+                  "@type": "WebSite",
+                  "@id": "https://useproximity.org/#website",
+                  name: "WashU Student Housing",
+                  alternateName: "Proximity",
+                  url: "https://useproximity.org/",
+                  publisher: { "@id": "https://useproximity.org/#organization" },
+                },
+                {
+                  "@type": "Organization",
+                  "@id": "https://useproximity.org/#organization",
+                  name: "Proximity",
+                  url: "https://useproximity.org/",
+                  logo: "https://useproximity.org/logo.png",
+                  sameAs: [
+                    "https://www.instagram.com/useproximity",
+                    "https://www.tiktok.com/@useproximity",
+                  ],
+                },
+              ],
             }),
           }}
         />
@@ -75,9 +107,13 @@ export default async function RootLayout({ children }) {
           <Header session={session} />
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
+          <GlobalMessagesPanel />
+          <ErrorReporter />
           <FeedbackWidget />
+          <MarketingBeacon />
           {children}
           <Analytics />
+          <SpeedInsights />
           {/* GA only on the real site — staging/preview/local sessions would land in
               the same property and skew the funnels. Vercel Analytics separates
               environments on its own, so it stays mounted everywhere. */}

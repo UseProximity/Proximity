@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
+import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
+import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
+import { recordOutcome } from "@/lib/marketing/record";
+
+// Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
+// /api/reviewReferral so both review entry points accept the same values.
+function isHalfStar(v) {
+  return typeof v === "number" && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
+}
 
 export async function POST(req) {
   try {
@@ -14,9 +24,9 @@ export async function POST(req) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (!session.user.email?.endsWith("@wustl.edu")) {
+    if (!isReviewEligibleEmail(session.user.email)) {
       return NextResponse.json(
-        { error: "Only WashU students with a @wustl.edu email can leave reviews." },
+        { error: "Only students at a school we serve can leave reviews." },
         { status: 403 }
       );
     }
@@ -31,8 +41,15 @@ export async function POST(req) {
       valueRating,
     } = body;
 
-    if (!rating || rating < 1 || rating > 5 || !comment || comment.trim().length < 5) {
+    if (!isHalfStar(rating) || !comment || comment.trim().length < 5) {
       return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
+    }
+
+    // Reviews are public and permanent, so a named individual stays named. The
+    // form blocks this too; this is the check a crafted request cannot skip.
+    const named = checkReviewText(comment);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
     }
 
     if (!listingId) {
@@ -41,13 +58,22 @@ export async function POST(req) {
 
     // Validate optional category ratings if provided
     for (const [key, val] of Object.entries({ communicationRating, locationRating, valueRating })) {
-      if (val != null && (val < 1 || val > 5)) {
+      if (val != null && !isHalfStar(val)) {
         return NextResponse.json(
-          { error: `Invalid ${key}: must be between 1 and 5` },
+          { error: `Invalid ${key}: must be between 0.5 and 5, in half-star steps` },
           { status: 400 }
         );
       }
     }
+
+    // A repeat of a review this person already posted here: hand back the
+    // existing one instead of saving a second copy (lib/reviews/duplicate.js).
+    const duplicate = await findDuplicateReview({
+      userId: session.user.id,
+      listingId,
+      comment,
+    });
+    if (duplicate) return NextResponse.json(duplicate);
 
     const { data: newReview, error } = await insertAsUser(supabase, {
       userId: session.user.id,
@@ -65,10 +91,16 @@ export async function POST(req) {
     });
 
     if (error) {
+      // An identical submission won the race to insert: hand back that one.
+      if (isDuplicateReviewError(error)) {
+        const first = await findDuplicateReview({ userId: session.user.id, listingId, comment });
+        if (first) return NextResponse.json(first);
+      }
       console.error("POST /api/submitReview failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    await recordOutcome(req, { outcome: "review_submitted", userId: session.user.id, userRole: session.user.role ?? null, subjectId: newReview?.id });
     return NextResponse.json(newReview);
   } catch (e) {
     console.error("POST /api/submitReview failed:", e);

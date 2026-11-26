@@ -1,12 +1,34 @@
 /*
- * Submission endpoint for the ambassador referral review flow (/refer/<userId>).
+ * Submission endpoint for the review flow. Serves both entry points:
+ *   - /refer/<userId> — ambassador referral link (referrerId present, recorded on the review)
+ *   - /review         — public "Add a Review" page (no referrer; referrer_id stays null)
  *
- * Auth: the reviewer must be signed in with a WashU (@wustl.edu) account; the review is
- * attributed to that account. Reviews auto-publish (legitimacy=true). Max 2 per account.
+ * @auth optional
+ *
+ * Auth: signing in is OPTIONAL, because a student who scans a QR code on a flyer has no
+ * account yet and asking for one first loses the review.
+ *   - Signed in: the review is attributed to that account and the school must match its
+ *     email domain. Max 2 reviews per account.
+ *   - Signed out: the `reviewer` block (first, last, class, school email) creates an
+ *     incomplete account (lib/reviews/onboarding.js) which the review is attributed to,
+ *     and the response carries a profile-setup token so the caller can offer to finish it.
+ *     Soft per-client rate limit stands in for the login that isn't there.
+ *   - Signed out WITH an `inviteToken` (/review-invite/t/<token>): the same path, except
+ *     the reviewer's email is read off the invite row instead of the request body, so it
+ *     cannot be forged. The token was mailed to that one address, which makes the account
+ *     email-verified on creation and makes the rate limit unnecessary.
+ * Either way reviews auto-publish (legitimacy=true).
+ *
+ * School: never self-declared. It is proved by an email domain in both paths (the
+ * session's when signed in, the submitted reviewer email when not). It's stored on the
+ * USER (users.school_id): a review's school is derived by joining through its author,
+ * not duplicated onto the review row.
  *
  * Listing resolution (no user choice): the reviewer-selected address is compared against
- * our catalog. On an EXACT street-address match the review is attached to that listing
- * (tie-break across same-address listings: prefer non-sublease, then a landlord-owned one).
+ * our catalog by property key (lib/reviews/listingMatch.js). On a match the review is
+ * attached to that listing (tie-break across same-address listings: prefer a live one,
+ * then non-sublease, then a landlord-owned one). An address with no street number is
+ * refused: it names a street, not a building.
  * With no match we auto-create a minimal listing "stub" owned by the shared Proximity
  * account, with real walk/drive times computed (same as the landlord add-listing flow).
  *
@@ -16,32 +38,54 @@
  *     we fall back to the listing owner — but never when the listing is a sublease or the
  *     owner is a student (i.e. a sublease manager); those cases send no landlord email.
  *   - Messaging depends on whether the recipient has an account and whether the property
- *     is new. info@useproximity.org is BCC'd on every notification.
+ *     is new. info@useproximity.org is BCC'd on the notification UNLESS a mismatch alert
+ *     is also going out, which would put two emails about one review in that inbox.
  *   - For an existing listing, if the landlord email entered in the review differs from
  *     the listing owner's email, a mismatch alert is sent to info@useproximity.org.
+ *   - The reviewer hears nothing from here. Their confirmation is batched per reviewer
+ *     rather than per review — see lib/reviews/confirmation.js.
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
+import { recordOutcome } from "@/lib/marketing/record";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import nodemailer from "nodemailer";
 import { sendMailSafe } from "@/lib/outreach";
+import { isKnownSchool, schoolMatchesEmail, schoolForEmail } from "@/lib/schools";
+import { normalizeReviewSource } from "@/lib/reviews/source";
+import { listingPlaceName } from "@/lib/reviews/placeName";
+import { anonReviewRateKey, anonReviewRateLimited } from "@/lib/reviews/rateLimit";
+import { resolveProximityLandlordId } from "@/lib/listings/placeholderOwner";
+import { findListingForReviewAddress } from "@/lib/reviews/listingMatch";
+import { buildingAddress, NO_STREET_NUMBER_MESSAGE } from "@/utils/reviewAddress";
+import {
+  ensureReviewerAccount,
+  normalizeClassYear,
+  resolveSchoolId,
+} from "@/lib/reviews/onboarding";
+import { resolveInvite, resolveRecentlySpentInvite, consumeInvite } from "@/lib/reviews/invites";
+import { checkReviewText } from "@/lib/contentRules";
+import { escapeHtml } from "@/lib/escapeHtml";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
 
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PROXIMITY_EMAIL = "info@useproximity.org"; // shared placeholder landlord account
 const TEAM_EMAIL = "info@useproximity.org"; // BCC / internal alerts
-const REVIEW_LIMIT = 2; // max reviews per account (all reviews count)
+const REVIEW_LIMIT = 4; // max reviews per account (all reviews count)
 const SITE_URL = "https://useproximity.org";
 
 const _mailer = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -71,70 +115,6 @@ async function resolveOtherHomeTypeId() {
     .eq("label", "Other")
     .maybeSingle();
   return data?.id ?? null;
-}
-
-// Look up (or lazily create) the shared Proximity landlord account.
-async function resolveProximityLandlordId() {
-  const { data: existing } = await supabase
-    .from("users")
-    .select("id")
-    .eq("email", PROXIMITY_EMAIL)
-    .maybeSingle();
-  if (existing?.id) return existing.id;
-
-  const { data: role } = await supabase
-    .from("roles")
-    .select("id")
-    .eq("name", "landlord")
-    .maybeSingle();
-  const { data: created } = await supabase
-    .from("users")
-    .insert({
-      email: PROXIMITY_EMAIL,
-      name: "Proximity",
-      role_id: role?.id ?? null,
-      profile_complete: true,
-    })
-    .select("id")
-    .maybeSingle();
-  return created?.id ?? null;
-}
-
-// Canonical forms for common USPS street-type suffixes + directionals. Lets equivalent
-// address spellings compare equal — the same building is entered as "Ave" by one source
-// (a hand-typed listing) and "Avenue" by another (the Mapbox autocomplete), and both must
-// resolve to the same listing instead of spawning a duplicate.
-const STREET_TOKEN_SYNONYMS = {
-  ave: "avenue", av: "avenue", avenu: "avenue",
-  st: "street", str: "street",
-  rd: "road",
-  dr: "drive", drv: "drive",
-  blvd: "boulevard", blv: "boulevard",
-  ln: "lane",
-  ct: "court", crt: "court",
-  pl: "place",
-  ter: "terrace", terr: "terrace",
-  cir: "circle",
-  pkwy: "parkway", pky: "parkway",
-  hwy: "highway",
-  sq: "square",
-  trl: "trail",
-  pt: "point",
-  // directionals
-  n: "north", s: "south", e: "east", w: "west",
-  ne: "northeast", nw: "northwest", se: "southeast", sw: "southwest",
-};
-
-// Normalize the street-address line (drop city/state/zip) and canonicalize common
-// abbreviations so equivalent forms compare equal ("608 Kingsland Ave" == "608 Kingsland Avenue").
-function normStreet(addr) {
-  const line = String(addr || "").split(",")[0].trim().toLowerCase();
-  const cleaned = line.replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  return cleaned
-    .split(" ")
-    .map((tok) => STREET_TOKEN_SYNONYMS[tok] || tok)
-    .join(" ");
 }
 
 // Compute listing_walk_times rows (campus places + nearest shuttle) for a coordinate —
@@ -191,51 +171,6 @@ async function buildDriveTimeRows(lat, lng) {
   return rows;
 }
 
-// Find an existing listing whose street address matches the searched address (after
-// canonicalizing suffix/directional abbreviations; see normStreet), within a tight geo box.
-// Same-address ties: prefer a non-sublease, then one whose owner has the 'landlord' role.
-async function findExactAddressListingId({ address, lat, lng }) {
-  const target = normStreet(address);
-  if (!target || lat == null || lng == null) return null;
-
-  const latPad = 0.01;
-  const lngPad = 0.013;
-  const { data } = await supabase
-    .from("listings")
-    .select("id, address, lease_type, created_at")
-    .is("deleted_at", null)
-    .gte("latitude", lat - latPad)
-    .lte("latitude", lat + latPad)
-    .gte("longitude", lng - lngPad)
-    .lte("longitude", lng + lngPad)
-    .limit(100);
-
-  const exact = (data || []).filter((l) => normStreet(l.address) === target);
-  if (exact.length === 0) return null;
-  if (exact.length === 1) return exact[0].id;
-
-  const ids = exact.map((l) => l.id);
-  const { data: lls } = await supabase
-    .from("listing_landlords")
-    .select("listing_id, owner:users!user_id(roles!role_id(name))")
-    .in("listing_id", ids);
-  const hasLandlordOwner = {};
-  for (const ll of lls || []) {
-    if (ll.owner?.roles?.name === "landlord") hasLandlordOwner[ll.listing_id] = true;
-  }
-
-  exact.sort((a, b) => {
-    const aSub = (a.lease_type || "").toLowerCase() === "sublease";
-    const bSub = (b.lease_type || "").toLowerCase() === "sublease";
-    if (aSub !== bSub) return aSub ? 1 : -1; // non-sublease first
-    const aLL = !!hasLandlordOwner[a.id];
-    const bLL = !!hasLandlordOwner[b.id];
-    if (aLL !== bLL) return aLL ? -1 : 1; // landlord-owned first
-    return new Date(a.created_at) - new Date(b.created_at); // stable
-  });
-  return exact[0].id;
-}
-
 // First real (non-placeholder, non-system) owner account for a listing.
 async function getRealOwner(listingId, proximityId) {
   const { data } = await supabase
@@ -250,14 +185,15 @@ async function getRealOwner(listingId, proximityId) {
   return owners[0];
 }
 
-async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario }) {
+async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, scenario, bccTeam = true }) {
   if (!emailConfigured()) {
     console.warn("[reviewReferral] Email env not set — skipping landlord notification.");
     return;
   }
   const listingUrl = `${SITE_URL}/browse?listing=${listingId}`;
   const loginUrl = `${SITE_URL}/login`;
-  const addr = listingAddress || "your property";
+  // The address and name can come straight from the review form, so both are escaped.
+  const addr = escapeHtml(listingAddress || "your property");
 
   let subject, intro, ctaLabel, ctaUrl;
   if (scenario === "claim_new") {
@@ -278,13 +214,14 @@ async function sendLandlordReviewEmail({ to, toName, listingAddress, listingId, 
   }
 
   await sendMailSafe(_mailer, {
+    logAs: { kind: "landlord_review" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to,
-    bcc: TEAM_EMAIL,
+    bcc: bccTeam ? TEAM_EMAIL : undefined,
     subject,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
+        <p>Hi ${escapeHtml(toName || "there")},</p>
         <p>${intro}</p>
         <p style="margin-top: 16px;">
           <a href="${ctaUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">${ctaLabel}</a>
@@ -304,16 +241,17 @@ async function sendContactMismatchAlert({ listingAddress, listingId, ownerEmail,
   }
   const listingUrl = `${SITE_URL}/browse?listing=${listingId}`;
   await sendMailSafe(_mailer, {
+    logAs: { kind: "contact_mismatch" },
     from: `"Proximity" <${process.env.EMAIL_USER}>`,
     to: TEAM_EMAIL,
     subject: "⚠️ Review landlord-email mismatch on Proximity",
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
         <p>A new review was submitted for an existing listing, but the landlord contact email entered by the reviewer does <strong>not</strong> match the listing owner's email.</p>
-        <p><strong>Property:</strong> ${listingAddress || "—"} (<a href="${listingUrl}">view listing</a>)</p>
-        <p><strong>Listing owner email:</strong> ${ownerEmail}</p>
-        <p><strong>Email entered in review:</strong> ${submittedEmail}</p>
-        <p><strong>Submitted by:</strong> ${reviewerName || "—"}</p>
+        <p><strong>Property:</strong> ${escapeHtml(listingAddress || "—")} (<a href="${listingUrl}">view listing</a>)</p>
+        <p><strong>Listing owner email:</strong> ${escapeHtml(ownerEmail)}</p>
+        <p><strong>Email entered in review:</strong> ${escapeHtml(submittedEmail)}</p>
+        <p><strong>Submitted by:</strong> ${escapeHtml(reviewerName || "—")}</p>
         <p style="color:#6b7280;font-size:13px;">Confirm which landlord is correct for this property.</p>
       </div>
     `,
@@ -341,12 +279,14 @@ export async function POST(req) {
     const body = await req.json();
     const {
       referrerId,
+      school,
       rating,
       communicationRating,
       locationRating,
       valueRating,
       comment,
       unitNumber,
+      unitDesignator,
       address,
       latitude,
       longitude,
@@ -355,20 +295,33 @@ export async function POST(req) {
       landlordPhone,
       noLandlordContact,
       anonymous,
+      source,
+      reviewer,
+      inviteToken,
+      setupToken: priorSetupToken,
     } = body;
 
     // ── Validate referrer (the ambassador) ──────────────────────────────────
-    if (!referrerId) {
-      return NextResponse.json({ error: "Missing referral" }, { status: 400 });
+    // Optional: absent for reviews left from the public /review page. When present it must
+    // resolve to a live account, so a bad referral link still fails loudly.
+    if (referrerId) {
+      const { data: referrer } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", referrerId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!referrer) {
+        return NextResponse.json({ error: "Invalid referral link" }, { status: 400 });
+      }
     }
-    const { data: referrer } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", referrerId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!referrer) {
-      return NextResponse.json({ error: "Invalid referral link" }, { status: 400 });
+
+    // ── Validate school ─────────────────────────────────────────────────────
+    if (!isKnownSchool(school)) {
+      return NextResponse.json(
+        { error: "Select the school you go / went to." },
+        { status: 400 }
+      );
     }
 
     // ── Validate ratings (all four required, half-star) ─────────────────────
@@ -393,6 +346,10 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+    const named = checkReviewText(comment);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
+    }
 
     // ── Validate landlord/company name + contact ────────────────────────────
     if (!landlordName || landlordName.trim().length < 2) {
@@ -413,18 +370,269 @@ export async function POST(req) {
       );
     }
 
-    // ── Require a signed-in WashU account ───────────────────────────────────
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Please sign in to leave a review." }, { status: 401 });
-    }
-    if (!session.user.email?.toLowerCase().endsWith("@wustl.edu")) {
+    /*
+     * ── Validate the address ────────────────────────────────────────────────
+     * Done before the reviewer is resolved: a signed-out reviewer's account is
+     * created below, and a refusal after that point answers without the setup
+     * token, so a simple retry would lose the inline profile setup.
+     */
+    if (!String(address || "").trim() || latitude == null || longitude == null) {
       return NextResponse.json(
-        { error: "Only WashU students with a @wustl.edu email can leave reviews." },
-        { status: 403 }
+        { error: "Search and select your property address." },
+        { status: 400 }
       );
     }
-    const reviewerUserId = session.user.id;
+    // A bare street ("Delmar Boulevard, ...") names no building, so it can neither be
+    // matched to a listing nor stand as a property of its own. A named place keeps the
+    // street address that follows its name. See utils/reviewAddress.js.
+    const addressText = buildingAddress(address);
+    if (!addressText) {
+      return NextResponse.json({ error: NO_STREET_NUMBER_MESSAGE }, { status: 400 });
+    }
+    const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
+
+
+    /*
+     * ── Resolve the reviewer ────────────────────────────────────────────────
+     * Either a session, or the contact block a signed-out reviewer filled in at
+     * the bottom of the form. In BOTH cases the school is proved by an email
+     * domain and never taken on trust, which is the property that makes the
+     * school tag on a review worth anything.
+     */
+    const session = await auth();
+    const signedOutReviewer = !session?.user?.id && reviewer ? reviewer : null;
+
+    /*
+     * An emailed invite. The token is the only thing here that proves anything:
+     * it was mailed to exactly one address, so opening it demonstrates control
+     * of that inbox.
+     *
+     * A token that is present but does not resolve (unknown, expired, already
+     * spent) is REJECTED rather than ignored. Falling back to the ordinary
+     * signed-out path would look harmless, since that path is what /review uses
+     * anyway, but it quietly posts the review under whatever email the body
+     * claims while the caller still believes the address was verified. Refusing
+     * outright keeps "this review was invited" a property that cannot be half
+     * true. Anyone holding a dead link can still use /review like everyone else.
+     */
+    const invite = inviteToken ? await resolveInvite(inviteToken) : null;
+    /*
+     * The one exception: a link spent in the last day may be a retry of the
+     * very review that spent it (a phone that missed the first response). It
+     * proves the same inbox, so it is carried as far as the duplicate check
+     * below, which answers a matching retry with the thank-you step. Any other
+     * use of a spent link is refused there, exactly as a dead link is here.
+     */
+    const spentInvite =
+      inviteToken && !invite ? await resolveRecentlySpentInvite(inviteToken) : null;
+    const deadInviteResponse = () =>
+      NextResponse.json(
+        { error: "This invite link has expired or has already been used." },
+        { status: 410 }
+      );
+    if (inviteToken && !invite && !spentInvite) return deadInviteResponse();
+    // The inbox this request has proven, whether or not the link is still unspent.
+    const provenInvite = invite || spentInvite;
+
+    let reviewerUserId = null;
+    let reviewerEmail = null;
+    let reviewerDisplayName = null;
+    let emailSchool = null;
+    let setupToken = null;
+    // Signed-out reviewer whose email already belongs to a real account.
+    let existingAccount = false;
+    // Existing account still to be set up: its owner is emailed the link.
+    let setupByEmail = false;
+
+    if (session?.user?.id) {
+      emailSchool = schoolForEmail(session.user.email);
+      if (!emailSchool) {
+        return NextResponse.json(
+          { error: "Only students at a school we serve can leave reviews." },
+          { status: 403 }
+        );
+      }
+      if (!schoolMatchesEmail(school, session.user.email)) {
+        return NextResponse.json(
+          { error: `Your account email belongs to ${emailSchool.shortName}. Select that school.` },
+          { status: 403 }
+        );
+      }
+      reviewerUserId = session.user.id;
+      reviewerEmail = session.user.email;
+      reviewerDisplayName = session.user.name || null;
+    } else if (signedOutReviewer) {
+      /*
+       * With an invite, the address comes from the invite row and NEVER from the
+       * request body. This is the whole point of the feature: the browser can
+       * post any email it likes, and on this path it is ignored, so a tampered
+       * field cannot put a review under someone else's address.
+       */
+      const email = provenInvite
+        ? provenInvite.email
+        : String(signedOutReviewer.email || "").trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) {
+        return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+      }
+      emailSchool = schoolForEmail(email);
+      if (!emailSchool) {
+        return NextResponse.json(
+          { error: "Use your school email address so we can verify your review." },
+          { status: 403 }
+        );
+      }
+      // The client derives `school` from this same address; re-derive rather than believe it.
+      if (school && !schoolMatchesEmail(school, email)) {
+        return NextResponse.json(
+          { error: `That email belongs to ${emailSchool.shortName}. Select that school.` },
+          { status: 403 }
+        );
+      }
+      if (!normalizeClassYear(signedOutReviewer.classYear)) {
+        return NextResponse.json({ error: "Select your class year." }, { status: 400 });
+      }
+      /*
+       * The signed-in path costs a verified school login and is capped per
+       * account. This path has neither, so a soft per-client limit is the only
+       * thing between one person and a hundred reviews.
+       *
+       * An invite is exempt: the token IS the scarce credential (one per address,
+       * single-use, admin-issued), so it already bounds what one person can do
+       * far more tightly than an IP heuristic. Leaving the limit on would also
+       * punish a whole dorm behind one campus NAT for opening their invites on
+       * the same afternoon, which is exactly the burst we are hoping for.
+       */
+      if (!provenInvite && anonReviewRateLimited(anonReviewRateKey(req, email))) {
+        return NextResponse.json(
+          { error: "That's a lot of reviews at once. Please try again later." },
+          { status: 429 }
+        );
+      }
+
+      reviewerEmail = email;
+    } else {
+      return NextResponse.json(
+        { error: "Add your name and school email, or sign in, to leave a review." },
+        { status: 401 }
+      );
+    }
+
+    /*
+     * ── Find the address's listing ──────────────────────────────────────────
+     * After the cheap checks above (and the signed-out rate limit), so a request
+     * that is refused never reaches the property-key lookup. Before the account
+     * is created, for the setup-token reason given at the address check.
+     */
+    const matched = await findListingForReviewAddress({
+      address: addressText,
+      lat: latitude,
+      lng: longitude,
+    });
+    if (matched.error) {
+      // Not "no match": that would make a second property beside the real one.
+      console.error("[reviewReferral] address match failed:", matched.error);
+      return NextResponse.json({ error: "Could not look up that address. Try again." }, { status: 500 });
+    }
+
+    if (signedOutReviewer) {
+      const account = await ensureReviewerAccount({
+        firstName: signedOutReviewer.firstName,
+        lastName: signedOutReviewer.lastName,
+        email: reviewerEmail,
+        classYear: signedOutReviewer.classYear,
+        source: normalizeReviewSource(source),
+        /*
+         * The invite link was opened, which is the same proof the profile-setup
+         * link carries, only earlier. So the account is verified before the
+         * review is even written (inside ensureReviewerAccount, ahead of its
+         * claimability check), and the student never gets a second email asking
+         * them to confirm an address we already watched them use.
+         */
+        inboxProven: !!provenInvite,
+        priorSetupToken,
+        req,
+      });
+      if (account.error) {
+        return NextResponse.json({ error: account.error }, { status: 400 });
+      }
+      reviewerUserId = account.userId;
+      reviewerDisplayName = account.displayName;
+      setupToken = account.setupToken;
+      existingAccount = !!account.existingAccount;
+      setupByEmail = !!account.setupByEmail;
+    }
+
+    // Record the reviewer's school on their account. This is the only place the school is
+    // persisted — a review's school comes from joining listing_reviews → users → schools.
+    const schoolId = await resolveSchoolId(emailSchool.shortName);
+    if (schoolId) {
+      const { error: schoolErr } = await supabase
+        .from("users")
+        .update({ school_id: schoolId })
+        .eq("id", reviewerUserId);
+      if (schoolErr) {
+        // Non-fatal: the review itself still stands.
+        console.error("[reviewReferral] school_id update failed:", schoolErr.message);
+      }
+    }
+
+    // The one success payload, shared by a fresh review and a repeat of one.
+    const successResponse = async (review) => {
+      /*
+       * How many property reviews this account has now, so the flow knows whether
+       * to offer another one. Asking here rather than letting the form find out
+       * at the cap means a student is never invited to write a review that the
+       * POST above would reject. Dorm reviews are uncapped and not counted.
+       */
+      const reviewCount = await countUserReviews(reviewerUserId);
+      return NextResponse.json({
+        success: true,
+        review,
+        setupToken,
+        existingAccount,
+        setupByEmail,
+        // An invite proved the inbox, so the profile step may offer a password.
+        canSetPassword: !!provenInvite,
+        reviewCount,
+        reviewLimit: REVIEW_LIMIT,
+        // What the profile step should open pre-filled with, so the student never
+        // retypes what they just told us.
+        prefill: setupToken
+          ? {
+              firstName: String(signedOutReviewer.firstName || "").trim(),
+              lastName: String(signedOutReviewer.lastName || "").trim(),
+              email: reviewerEmail,
+              role: "student",
+              graduationYear: normalizeClassYear(signedOutReviewer.classYear),
+              graduationMonth: 5,
+              gender: "",
+              referralSource: "",
+            }
+          : null,
+      });
+    };
+
+    /*
+     * The same person posting the same words on the same listing again is a
+     * resubmission, not a second review. Answer it exactly like the first one
+     * so the student lands on the thank-you step, and stop here: no second
+     * row and no second landlord email. Checked ahead of the cap so a repeat
+     * of someone's last allowed review is not told they have hit the limit.
+     */
+    /*
+     * Only the id goes back for a repeat, never the stored row. On the
+     * signed-out path the account is named by an email anyone can type, so the
+     * row would hand a stranger who knows a review's public text its author,
+     * its unit and the landlord contact fields that are never displayed.
+     */
+    const duplicate = await findDuplicateReview({
+      userId: reviewerUserId,
+      listingId: matched.listingId,
+      comment,
+    });
+    if (duplicate) return successResponse({ id: duplicate.id });
+    // A spent link that is not retrying its own review is a dead link.
+    if (spentInvite) return deadInviteResponse();
 
     // ── Enforce per-account review cap ──────────────────────────────────────
     if ((await countUserReviews(reviewerUserId)) >= REVIEW_LIMIT) {
@@ -434,21 +642,20 @@ export async function POST(req) {
       );
     }
 
-    // ── Resolve the listing: exact address match, else create a stub ────────
-    const addressText = String(address || "").trim();
-    if (!addressText || latitude == null || longitude == null) {
-      return NextResponse.json(
-        { error: "Search and select your property address." },
-        { status: 400 }
-      );
+    /*
+     * Review sandbox (App Store review accounts): the review is seen only by its
+     * author (lib/reviewSandbox.js), a property it creates is a sandbox listing, and
+     * no landlord or team email goes out about it. A failed lookup saves nothing.
+     */
+    let reviewerIsSandbox;
+    try {
+      reviewerIsSandbox = (await sandboxIdsAmong([reviewerUserId])).has(reviewerUserId);
+    } catch {
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
-    const landlordEmailNorm = hasEmail ? String(landlordEmail).trim().toLowerCase() : null;
 
-    let resolvedListingId = await findExactAddressListingId({
-      address: addressText,
-      lat: latitude,
-      lng: longitude,
-    });
+    // ── Resolve the listing: the address match made above, else create a stub ─
+    let resolvedListingId = matched.listingId;
     let isNewProperty = false;
 
     if (!resolvedListingId) {
@@ -485,6 +692,32 @@ export async function POST(req) {
       }
       resolvedListingId = stubId;
       isNewProperty = true;
+
+      // The stub is made as the Proximity placeholder, so the creation trigger does not
+      // stamp it. A sandbox reviewer's new property is a sandbox listing.
+      if (reviewerIsSandbox) {
+        const { error: stampErr } = await supabase
+          .from("listings")
+          .update({ review_sandbox: true })
+          .eq("id", stubId);
+        if (stampErr) {
+          console.error("[reviewReferral] sandbox stamp failed:", stampErr.message);
+          return NextResponse.json({ error: "Could not save that property." }, { status: 500 });
+        }
+      }
+
+      // Tag the stub with the reviewer's school. Written here rather than passed into
+      // rpc_create_listing because that RPC inserts an explicit column list that omits
+      // school_id (same reason drive times are upserted below).
+      if (schoolId) {
+        const { error: tagErr } = await supabase
+          .from("listings")
+          .update({ school_id: schoolId })
+          .eq("id", stubId);
+        if (tagErr) {
+          console.error("[reviewReferral] listing school tag failed:", tagErr.message);
+        }
+      }
 
       // Drive times: best-effort upsert after stub create (mirrors addListing; not in RPC).
       if (driveTimeRows.length) {
@@ -533,8 +766,12 @@ export async function POST(req) {
         anonymous: !!anonymous,
         // When anonymous, don't even store the display name — identity lives only
         // in user_id (for moderation), never surfaced in public/landlord views.
-        name: anonymous ? null : session?.user?.name || null,
-        unit_number: unitNumber?.trim() || null,
+        name: anonymous ? null : reviewerDisplayName || null,
+        // 'Whole' covers the entire property and carries no number (DB CHECK).
+        unit_designator: unitDesignator || null,
+        unit_number:
+          unitDesignator === "Whole" ? null : unitNumber?.trim() || null,
+        source: normalizeReviewSource(source),
         landlord_name: landlordName.trim(),
         landlord_email: landlordEmailNorm,
         landlord_phone: hasPhone ? String(landlordPhone).trim() : null,
@@ -544,12 +781,47 @@ export async function POST(req) {
     });
 
     if (error) {
+      /*
+       * An identical submission landed between the duplicate check and this
+       * insert (two in flight at once). That one did the work, including the
+       * landlord email, so this one is answered as the repeat it is.
+       */
+      if (isDuplicateReviewError(error)) {
+        const first = await findDuplicateReview({
+          userId: reviewerUserId,
+          listingId: resolvedListingId,
+          comment,
+        });
+        return successResponse(first ? { id: first.id } : null);
+      }
       console.error("reviewReferral: insert failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    if (review?.id) await recordOutcome(req, { outcome: "review_submitted", userId: reviewerUserId, subjectId: review.id });
+
+    /*
+     * Spend the invite only now that a review actually exists. Burning it any
+     * earlier would mean a validation failure or a crash costs the student
+     * their one link, with no way to get back in.
+     *
+     * And only when the review really did land on the invited address. Someone
+     * already signed in as a different account who opens an invite link takes
+     * the session branch above, so their review is theirs and has nothing to do
+     * with this invite. Consuming it there would burn a link belonging to a
+     * student who has not used it yet, and would point review_id at a review the
+     * invited address never wrote.
+     */
+    if (invite && reviewerEmail === invite.email) {
+      await consumeInvite(invite.inviteId, {
+        reviewId: review?.id ?? null,
+        reviewKind: "listing",
+      });
+    }
+
     // ── Notify the landlord + flag email mismatches (best-effort) ───────────
-    try {
+    // Never for a review sandbox account's review: nobody but its author sees it.
+    if (!reviewerIsSandbox) try {
       const proximityId = await resolveProximityLandlordId();
       const { data: listingRow } = await supabase
         .from("listings")
@@ -576,31 +848,50 @@ export async function POST(req) {
       } else if (owner && !isSubleaseListing && owner.role !== "student") {
         recipient = { to: owner.email, toName: owner.name || landlordName.trim(), scenario: "alert_old" };
       }
-      if (recipient?.to) {
+      /*
+       * Existing listing + a provided landlord email that doesn't match the owner.
+       * Resolved before the notification goes out because it decides whether that
+       * notification still needs to BCC the team: the alert below already carries
+       * the address and both email addresses, so BCC'ing as well would put two
+       * emails about one review in the same inbox.
+       */
+      const mismatch = !!(
+        owner &&
+        landlordEmailNorm &&
+        owner.email.toLowerCase() !== landlordEmailNorm
+      );
+
+      /*
+       * PROXIMITY_EMAIL and TEAM_EMAIL are the same address, so a review that
+       * names the shared placeholder landlord as its contact would send the
+       * notification TO the team inbox and BCC the same inbox — two identical
+       * copies. The team hears about it either way, via the BCC or the alert.
+       */
+      if (recipient?.to && recipient.to.toLowerCase() !== TEAM_EMAIL) {
         await sendLandlordReviewEmail({
           to: recipient.to,
           toName: recipient.toName,
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
           scenario: recipient.scenario,
+          bccTeam: !mismatch,
         });
       }
 
-      // Existing listing + a provided landlord email that doesn't match the owner.
-      if (owner && landlordEmailNorm && owner.email.toLowerCase() !== landlordEmailNorm) {
+      if (mismatch) {
         await sendContactMismatchAlert({
           listingAddress: listingRow?.address,
           listingId: resolvedListingId,
           ownerEmail: owner.email,
           submittedEmail: landlordEmailNorm,
-          reviewerName: session?.user?.name || session?.user?.email,
+          reviewerName: reviewerDisplayName || reviewerEmail,
         });
       }
     } catch (mailErr) {
       console.error("[reviewReferral] notification failed:", mailErr?.message);
     }
 
-    return NextResponse.json({ success: true, review });
+    return successResponse(review);
   } catch (e) {
     console.error("POST /api/reviewReferral failed:", e?.message);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

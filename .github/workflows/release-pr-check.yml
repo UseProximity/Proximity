@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: read
 
 jobs:
   review:
@@ -58,10 +59,15 @@ jobs:
               owner, repo, issue_number,
             });
             // listComments is chronological; the last match is the newest state.
+            // Only this workflow's own comments count: anyone who can comment on
+            // the PR could otherwise post a hidden state block that clears the
+            // open-bug ledger. And the LAST marker in the body is the real one,
+            // so model-written narrative earlier in the comment can't shadow it.
             let state = 'null';
             for (const c of comments) {
+              if (c.user?.type !== 'Bot' || c.user?.login !== 'github-actions[bot]') continue;
               const body = c.body || '';
-              const s = body.indexOf(begin);
+              const s = body.lastIndexOf(begin);
               if (s === -1) continue;
               const e = body.indexOf(end, s + begin.length);
               if (e === -1) continue;
@@ -69,6 +75,63 @@ jobs:
             }
             fs.writeFileSync('ci-out/prev-state.json', state);
             core.info(state === 'null' ? 'No prior ledger — first run.' : `Loaded prior ledger (${state.length} chars).`);
+
+      - name: Seed release-review fixtures
+        env:
+          DEV_DB_URL: ${{ secrets.DEV_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-out
+          # Safety guard, same shape as the snapshot workflow: refuse to write
+          # unless the connection string really is the dev project. Seeding into
+          # prod would create fake landlords on the live site.
+          case "$DEV_DB_URL" in
+            *ngytjsckypjxddzpaekt*) ;;
+            *) echo "::error::DEV_DB_URL is not the dev project — refusing to seed." && exit 1 ;;
+          esac
+          psql "$DEV_DB_URL" -Atq -f mcp/scripts/ci-fixtures.sql > ci-out/fixtures.json
+          node -e "JSON.parse(require('fs').readFileSync('ci-out/fixtures.json','utf8'))" \
+            || { echo "::error::Fixture seed produced no catalogue."; exit 1; }
+          echo "Seeded release-review fixtures."
+
+      - name: Collect commit messages under review
+        # The narrative leans on these for intent: a diff shows what changed, the
+        # messages say why, which is what a test plan needs to state expectations.
+        run: |
+          git log --no-merges --format='- %s%n%b' origin/main..HEAD > ci-out/commits.md || true
+          wc -l < ci-out/commits.md
+
+      - name: Wait for the staging deploy of this commit
+        # The check starts the moment staging is pushed, while Vercel is still
+        # building. Probing then hits the old deploy or a cold switchover and
+        # logs slow answers as bugs. Wait for Vercel's status on this commit;
+        # if none shows up (the build was skipped because no app code changed),
+        # carry on, since staging already serves this code.
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const ref = context.payload.pull_request.head.sha;
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const started = Date.now();
+            let seen = false;
+            while (Date.now() - started < 20 * 60 * 1000) {
+              const { data } = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
+              const vercel = data.statuses.find((s) => s.context === 'Vercel');
+              if (vercel) {
+                seen = true;
+                if (vercel.state !== 'pending') {
+                  core.info(`Vercel: ${vercel.state} (${vercel.description}).`);
+                  if (vercel.state !== 'success') core.warning('Staging deploy did not succeed; testing whatever staging serves now.');
+                  break;
+                }
+              } else if (Date.now() - started > 3 * 60 * 1000) {
+                core.info('No Vercel status after 3 minutes; the build was skipped.');
+                break;
+              }
+              await sleep(15000);
+            }
+            if (seen) await sleep(30000); // let the staging alias settle on the new deploy
 
       - name: Analyze impact + run tests against staging
         env:

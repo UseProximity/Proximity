@@ -1,0 +1,697 @@
+/*
+ * Shared single-listing fetch, extracted from the GET handler of
+ * /api/listing/[listingId] so the listing page's generateMetadata/JSON-LD and
+ * the API route render identical data. Wrapped in React cache() so the page
+ * body and generateMetadata share one DB roundtrip per request.
+ *
+ * The increment_listing_metric click RPC intentionally stays in the API route:
+ * server page renders (including crawler hits) must not inflate click metrics.
+ *
+ * currentUserId only affects viewer-only fields (reviews[].userVote, isMine,
+ * viewerIsLandlord). Server page callers omit it; the API route passes the
+ * session user so vote state matches v4 behavior.
+ */
+
+import { cache } from "react";
+import supabase from "@/lib/supabase";
+import {
+  unitIsAvailable,
+  listingIsUnavailable,
+  nextAvailableFrom,
+  isLiveLease,
+  isPublished,
+  publicUnits,
+} from "@/lib/listings/unitAvailability";
+import { waitlistFor, resolveWaitlistUrl } from "@/lib/waitlists";
+import {
+  LANDLORD_CHAT_SELECT,
+  formatListingOwner,
+} from "@/lib/chat/landlordCanChat";
+import { listedByForListing } from "@/lib/users/licenseDisclosure";
+import { sortUnits } from "@/utils/unitOrder";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
+import { agentIsLive } from "@/lib/agents/flags";
+import { sandboxIdsAmong, withoutSandboxReviews } from "@/lib/reviewSandbox";
+
+function amenitiesRowToArray(row) {
+  if (!row) return [];
+  return [
+    "air_conditioning",
+    "dishwasher",
+    "gym",
+    "laundry",
+    "mailroom",
+    "microwave",
+    "oven",
+    "parking",
+    "pets_allowed",
+    "pool",
+    "refrigerator",
+    "rooftop",
+    "storage",
+    "stove",
+    "study_room",
+  ].filter((k) => row[k] === true);
+}
+
+function utilitiesRowToArray(row) {
+  if (!row) return [];
+  return [
+    "electric",
+    "gas",
+    "heat",
+    "water",
+    "internet",
+    "trash",
+    "cable",
+    "sewer",
+    "cooling",
+  ].filter((k) => row[k] === true);
+}
+
+/**
+ * Convert walk-time rows to a plain { locationName: minutes } map.
+ * 'shuttle_nearest' is excluded here — appears on shuttleWalkMinutes instead.
+ */
+function walkTimesToMap(walkTimes) {
+  const map = {};
+  for (const wt of walkTimes ?? []) {
+    const name = wt.locations?.name;
+    if (name && name !== "shuttle_nearest") map[name] = wt.minutes;
+  }
+  return map;
+}
+
+/**
+ * Convert drive-time rows to a plain { locationName: minutes } map. All rows are
+ * kept — including the synthetic *_nearest rows (gas_station_nearest, etc.),
+ * which the Places tab renders via DRIVE_LABELS.
+ */
+function driveTimesToMap(driveTimes) {
+  const map = {};
+  for (const dt of driveTimes ?? []) {
+    const name = dt.locations?.name;
+    if (name) map[name] = dt.minutes;
+  }
+  return map;
+}
+
+/*
+ * Which landlord an offering belongs to, as far as a renter is concerned.
+ *
+ * The owning account is the identity, because that is who a conversation
+ * reaches: Contact on a card opens a thread with the owner of the lease it
+ * names (fn_chat_resolve_landlord). Keying on the contact email instead merged
+ * two owners who share a leasing address, or who both fall back to the
+ * listing's, into one card whose Contact reached only the first of them.
+ * An imported lease with no account has only its contact email to be known
+ * by, so that is its identity. The browser gets a per-response stand-in
+ * ("landlord-1", "landlord-2") rather than the address or id itself; grouping
+ * needs equality, not the value. One keyer per listing, so the same landlord
+ * on two units of the building gets the same key.
+ */
+export function landlordKeyer() {
+  const keys = new Map();
+  return (lease, listingRow) => {
+    const email = (lease.contact_email ?? listingRow?.contact_email ?? "").trim().toLowerCase();
+    const identity = lease.owner_id ? `o:${lease.owner_id}` : email ? `e:${email}` : `l:${lease.id}`;
+    if (!keys.has(identity)) keys.set(identity, `landlord-${keys.size + 1}`);
+    return keys.get(identity);
+  };
+}
+
+/**
+ * Shape a unit's lease rows into the offering list the UI renders beneath it.
+ *
+ * One lease = one owner's offering on that unit, so these are competing options
+ * a renter chooses between, not attributes of the unit. Withdrawn offers
+ * (is_active false, or the owner flagged unavailable) and drafts are dropped:
+ * they are neither contactable nor real choices.
+ *
+ * Contact falls back to the listing row because pre-migration leases carry the
+ * property-level contact; once a lease has its own, that wins.
+ */
+export function shapeLeases(unitLeases, listingRow, keyFor = landlordKeyer(), bedrooms = null) {
+  const roomShare = isRoomShareListing(listingRow);
+  return (unitLeases ?? [])
+    .filter(isLiveLease)
+    .map((l) => ({
+      id: l.id,
+      // Which landlord this is, for grouping. Opaque on purpose: see landlordKeyer.
+      landlordKey: keyFor(l, listingRow),
+      // A rent of 0 means the price is unknown, not free, so it reads as
+      // "Contact for price" and sorts last instead of heading the list at $0.
+      rent: Number(l.rent) > 0 ? Number(l.rent) : null,
+      // null = the landlord never said; rentBasis falls back to inference.
+      rentIsPerPerson: l.rent_is_per_person ?? null,
+      /*
+       * The whole apartment's monthly rent, for ranking only: per-person and
+       * whole-unit prices can't be compared as stated (Wyatt, 2026-10-31).
+       * The renter sees `rent` as the landlord set it. Compare Listings also
+       * shows this figure under a rent with no stated basis, as the number its
+       * "Better" pill was decided on (ComparePanel.js).
+       */
+      unitRent:
+        Number(l.rent) > 0
+          ? leaseRentBasis({ rent: l.rent, rent_is_per_person: l.rent_is_per_person, bedrooms }, roomShare)?.unitRent ?? null
+          : null,
+      sublease: !!l.sublease,
+      furnished: l.furnished ?? null,
+      description: l.description ?? null,
+      availableFrom: l.available_from ?? null,
+      leaseTermMonths: Array.isArray(l.lease_term_months)
+        ? l.lease_term_months.map(Number).filter(Number.isFinite)
+        : [],
+      ownerId: l.owner_id ?? null,
+      // The landlord's own application (their portal or form), or null: the
+      // Apply button shows only when there is one (lib/listings/applicationLink.js).
+      applicationUrl: l.application_url ?? null,
+      // The person a renter would actually be emailing about THIS offering.
+      landlordName:
+        l.users?.name ?? l.contact_name ?? listingRow.contact_name ?? null,
+      landlordImage: l.users?.image ?? null,
+    }))
+    .sort((a, b) => {
+      // Cheapest first; unpriced offers sink so a "Contact for price" row never
+      // heads the list ahead of a real number.
+      if (a.rent == null && b.rent == null) return 0;
+      if (a.rent == null) return 1;
+      if (b.rent == null) return -1;
+      return a.rent - b.rent;
+    });
+}
+
+/*
+ * Missouri requires a licensed agent's name, company and company phone on every
+ * listing they market (MREC, 2026-11-04). Each landlord who declared a license
+ * (lib/users/licenseDisclosure.js) gets a `listedBy` on their offerings and, for
+ * the property's primary landlord, on `owner`. When an authorized signer's
+ * agreement covers a landlord's offering here, the signer's details show instead,
+ * or the landlord's when the signer is not a licensee (Wyatt, 2026-11-10).
+ * Landlords with no licensee behind them get none. A failed lookup leaves the listing as it is rather than failing it.
+ */
+async function attachListedBy(built) {
+  const leases = (built.unitTypes ?? []).flatMap((u) => u.leases ?? []);
+  const ids = [built.owner?._id, ...leases.map((l) => l.ownerId)].filter(Boolean);
+  if (!ids.length) return;
+  let listed;
+  try {
+    listed = await listedByForListing(supabase, built._id, ids);
+  } catch (err) {
+    console.error("[getListing] license disclosure fetch error:", err);
+    return;
+  }
+  if (built.owner?._id) built.owner.listedBy = listed.get(built.owner._id) ?? null;
+  for (const lease of leases) lease.listedBy = lease.ownerId ? listed.get(lease.ownerId) ?? null : null;
+}
+
+function buildListing(row, owner = null, reviews = []) {
+  // Retired units are not part of the property any more — see the note in
+  // api/listings/route.js; PostgREST can't filter an embedded resource.
+  // Draft units are their owner's until published, so they go too.
+  row = { ...row, listing_units: sortUnits(publicUnits(row.listing_units)) };
+  const keyFor = landlordKeyer();
+
+  /*
+   * A property has one gallery, and units are tags on its photos
+   * (listing_image_units): a picture of the shared kitchen can be true of every
+   * apartment, a bedroom of just one. The order is the property owner's, and
+   * the first photo is the cover.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const allImages = (row.listing_images ?? []).slice().sort(bySort);
+  const tagsOf = (img) => (img.listing_image_units ?? []).map((t) => t.unit_id);
+  const coverPool = allImages;
+
+  const walkTimes = row.listing_walk_times ?? [];
+  const driveTimes = row.listing_drive_times ?? [];
+  const shuttle = walkTimes.find(
+    (wt) => wt.locations?.name === "shuttle_nearest"
+  );
+
+  // Compute rating from passed-in reviews (already filtered to legit + not deleted)
+  const legitReviews = reviews.filter((r) => r.legitimacy && !r.deletedAt);
+
+  return {
+    _id: row.id,
+    title: row.title ?? null,
+    address: row.address,
+    // Identifies the property across databases, so listing-level config keyed by
+    // address (e.g. the off-site waitlists) doesn't ride on a UUID.
+    propertyKey: row.property_key ?? null,
+    /*
+     * The label for this property's off-site waitlist button, or null when it
+     * has none. Resolved HERE rather than in the browser because whether a
+     * waitlist exists depends on a server-only env var: the client cannot see
+     * it, so a client-side check would render a button that 404s the moment an
+     * environment forgot to configure the destination.
+     */
+    waitlistLabel: (() => {
+      const waitlist = waitlistFor(row.property_key);
+      return waitlist && resolveWaitlistUrl(waitlist) ? waitlist.label : null;
+    })(),
+    longitude: row.longitude != null ? Number(row.longitude) : null,
+    latitude: row.latitude != null ? Number(row.latitude) : null,
+    description: row.description,
+    unitTypes: (row.listing_units ?? []).map((u) => {
+      // Live offerings only, and cheapest first — a withdrawn lease is not this
+      // unit's price. Matches the browse feed (api/listings/route.js).
+      const liveLeases = (u.unit_leases ?? []).filter(isLiveLease);
+      /*
+       * Keep the cheapest priced OFFERING, not just its number, so the rent and
+       * the basis that explains it travel together. Taking the flag from
+       * liveLeases[0] instead would pair them wrongly whenever the first live
+       * offering is not the cheapest one — which is the normal case on a unit
+       * several landlords are competing for.
+       */
+      const cheapestPriced = liveLeases
+        .filter((l) => l.rent != null)
+        .sort((a, b) => Number(a.rent) - Number(b.rent))[0] ?? null;
+      const activeRent = cheapestPriced?.rent;
+      const nextAvailable = nextAvailableFrom(u);
+      const activeLease = liveLeases[0];
+      // Every live offering on this unit, cheapest first. `rent`/`leaseTermMonths`
+      // above stay as the first-active-lease summary so existing callers (cards,
+      // filters, matchmaking) keep working unchanged.
+      const leases = shapeLeases(u.unit_leases, row, keyFor, u.bedrooms);
+      return {
+        id: u.id,
+        // The photos tagged with this unit, in gallery order.
+        images: allImages.filter((img) => tagsOf(img).includes(u.id)).map((img) => img.url),
+        rent: activeRent != null ? Number(activeRent) : null,
+        // From the same offering as `rent` — see cheapestPriced above.
+        rentIsPerPerson: cheapestPriced?.rent_is_per_person ?? null,
+        area: u.area != null ? Number(u.area) : null,
+        bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
+        bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
+        // The unit's one name, or null when it has none. Callers fall back to a
+        // beds/baths description rather than inventing a name.
+        name: u.name ?? null,
+        sortOrder: u.sort_order ?? null,
+        floorPlanImageUrl: u.floor_plan_image_url ?? null,
+        leases,
+        leaseTermMonths: Array.isArray(activeLease?.lease_term_months)
+          ? activeLease.lease_term_months.map(Number)
+          : [],
+        leaseAvailability: nextAvailable,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
+      };
+    }),
+    leaseType: (() => {
+      const units = row.listing_units ?? [];
+      const activeLeases = (us) =>
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
+      const pool = availablePool.length ? availablePool : activeLeases(units);
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
+    })(),
+    images: coverPool.map((img) => img.url),
+    // Every photo at this property with the units it is tagged with, so the
+    // gallery can show them all and label each one.
+    gallery: allImages.map((img) => ({ url: img.url, unitIds: tagsOf(img) })),
+    /*
+     * Live rent specials, the ones a building puts in a banner or a popup.
+     * Expired offers are dropped here rather than in the UI so every surface
+     * that reads a listing gets the same answer.
+     */
+    concessions: (row.listing_concessions ?? [])
+      .filter((c) => c.active !== false)
+      .filter(
+        (c) =>
+          !c.valid_until ||
+          new Date(c.valid_until) >= new Date(new Date().toDateString())
+      )
+      .map((c) => ({
+        id: c.id,
+        description: c.description,
+        amount: c.amount ?? null,
+        conditions: c.conditions ?? null,
+        validUntil: c.valid_until ?? null,
+      })),
+    // Every photo at this property, as plain URLs.
+    allImages: allImages.map((img) => img.url),
+    // True when the cover photo was auto-fetched from Google Street View.
+    imageFromStreetView: coverPool[0]?.source === "street_view",
+    numReviews: legitReviews.length,
+    rating: legitReviews.length
+      ? Math.round(
+          (legitReviews.reduce((s, r) => s + r.rating, 0) /
+            legitReviews.length) *
+            10
+        ) / 10
+      : 0,
+    reviews,
+    placeWalkMinutes: walkTimesToMap(walkTimes),
+    placeDriveMinutes: driveTimesToMap(driveTimes),
+    shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
+    leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
+    customAmenities: (row.listing_custom_amenities ?? [])
+      .map((a) => a.label)
+      .filter(Boolean),
+    leaseStructure: row.lease_structure ?? null,
+    homeType: row.home_types?.label ?? "Other",
+    furnished: row.furnished ?? false,
+    moveInDate: row.move_in_date ?? null,
+    utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
+    subleaseFriendly: row.sublease_friendly ?? false,
+    twentyOnePlus: row.twenty_one_plus ?? false,
+    unavailable: listingIsUnavailable(row),
+    amenities: amenitiesRowToArray(row.listing_amenities),
+    minRent: row.min_rent != null ? Number(row.min_rent) : null,
+    maxRent: row.max_rent != null ? Number(row.max_rent) : null,
+    minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
+    maxBedrooms: row.max_bedrooms != null ? Number(row.max_bedrooms) : null,
+    minBathrooms: row.min_bathrooms != null ? Number(row.min_bathrooms) : null,
+    maxBathrooms: row.max_bathrooms != null ? Number(row.max_bathrooms) : null,
+    minArea: row.min_area != null ? Number(row.min_area) : null,
+    maxArea: row.max_area != null ? Number(row.max_area) : null,
+    // "Verified live" badge: the listing's data flows straight from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
+    // Dropped in v4 — return safe defaults
+    numClicks: 0,
+    numSaves: 0,
+    owner: formatListingOwner(owner, row),
+    createdAt: row.created_at ?? null,
+  };
+}
+
+/*
+ * A draft rendered as if it were published right now. The owner's preview
+ * (/api/landlord/listings/[id]/preview) asks "what will students see when I
+ * press Publish?", and the honest answer is this exact builder run over the
+ * same rows with the draft markers removed. Stamping published_at in memory,
+ * rather than teaching every availability helper a second mode, means the
+ * preview cannot drift from the public rendering: whatever buildListing does
+ * to a live row it does to this one. The database row is untouched.
+ */
+function asPublished(row) {
+  const stamp = (r) => (r && r.published_at === null ? { ...r, published_at: "preview" } : r);
+  return {
+    ...stamp(row),
+    listing_units: (row.listing_units ?? []).map((u) => ({
+      ...stamp(u),
+      unit_leases: (u.unit_leases ?? []).map(stamp),
+    })),
+  };
+}
+
+/**
+ * Fetch one listing with all v4 relations, reviews, and vote counts.
+ * Returns the buildListing() shape, or null when the listing doesn't exist.
+ * Throws on unexpected errors so callers can distinguish 404 from 500.
+ */
+export const getListing = cache(async (listingId, currentUserId = null) =>
+  fetchListing(listingId, currentUserId, { includeDrafts: false })
+);
+
+/**
+ * The owner's view of a listing. Not cached and never exported to a public
+ * surface: with includeDrafts the draft property, its draft units and draft
+ * leases all render as published. Callers must check ownership first.
+ */
+export function getListingPreview(listingId, { currentUserId = null, includeDrafts = false } = {}) {
+  return fetchListing(listingId, currentUserId, { includeDrafts, preview: true });
+}
+
+async function fetchListing(listingId, currentUserId, { includeDrafts, preview = false }) {
+  // Fetch listing with all v4 related tables
+  let query = supabase
+    .from("listings")
+    .select(
+      `
+      id, title, address, longitude, latitude, description,
+      lease_type, contact_email, contact_phone, contact_name,
+      lease_structure, furnished, move_in_date, lease_availability,
+      sublease_friendly, twenty_one_plus, unavailable,
+      city, state, zipcode, created_at, property_key, published_at, review_sandbox,
+      pms_connection_id, last_verified_at,
+      min_rent, max_rent, min_bedrooms, max_bedrooms,
+      min_bathrooms, max_bathrooms, min_area, max_area,
+      home_types(label),
+      listing_units(
+        id, bedrooms, bathrooms, area, deleted_at, published_at, name, sort_order, floor_plan_image_url,
+        unit_leases(
+          id, rent, rent_is_per_person, is_active, available_from, sublease, lease_term_months,
+          unavailable, description, furnished, owner_id, published_at,
+          contact_name, contact_email, contact_phone, application_url,
+          users!owner_id(id, name, image)
+        )
+      ),
+      listing_custom_amenities(label),
+      listing_landlords(user_id, is_primary),
+      listing_amenities(
+        air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
+        oven, parking, pets_allowed, pool, refrigerator, rooftop,
+        storage, stove, study_room
+      ),
+      listing_utilities(
+        electric, gas, heat, water, internet, trash, cable, sewer, cooling
+      ),
+      listing_images(id, url, sort_order, source, listing_image_units(unit_id)),
+      listing_concessions(id, description, amount, amount_type, conditions, valid_until, active),
+      listing_walk_times(minutes, locations(name)),
+      listing_drive_times(minutes, locations(name))
+      `
+    )
+    .eq("id", listingId)
+    // Soft-deleted listings are not public. Every GET caller is a public surface
+    // (listing page, global modal, browse panel, matchmaking cards), so these must
+    // 404 rather than render — otherwise the page emits canonical + Apartment
+    // JSON-LD advertising removed inventory. Admin reads go via /api/admin/[table],
+    // and the landlord dashboard's availability toggle is a PATCH, so neither is
+    // affected by this filter.
+    .is("deleted_at", null);
+  // A draft is not public yet either: same 404 as a deleted listing. Only the
+  // owner's preview, which has already checked who is asking, gets past this.
+  if (!includeDrafts) query = query.not("published_at", "is", null);
+  const { data: fetched, error } = await query.single();
+
+  if (error || !fetched) {
+    // PGRST116 = no rows for .single(); treat any fetch failure here as not-found,
+    // matching the previous API behavior (it returned 404 on error || !row).
+    return null;
+  }
+  // A listing made by an App Store review sandbox account is a 404 for everyone except
+  // a sandbox account (so the reviewer's landlord can open their own listing in the
+  // app). Only flagged listings pay for the lookup. The page passes no viewer, so the
+  // website 404s it for all; the owner's preview has already checked who is asking.
+  // A failed lookup throws, like any other unexpected error here.
+  if (fetched.review_sandbox && !preview) {
+    const viewerIsSandbox = currentUserId
+      ? (await sandboxIdsAmong([currentUserId])).has(currentUserId)
+      : false;
+    if (!viewerIsSandbox) return null;
+  }
+  const row = includeDrafts ? asPublished(fetched) : fetched;
+
+  // Resolve primary landlord from listing_landlords
+  const ll = row.listing_landlords ?? [];
+  const primaryLandlord = ll.find((x) => x.is_primary) ?? ll[0] ?? null;
+
+  let ownerUser = null;
+  if (primaryLandlord?.user_id) {
+    const { data: landlord, error: landlordErr } = await supabase
+      .from("users")
+      .select(LANDLORD_CHAT_SELECT)
+      .eq("id", primaryLandlord.user_id)
+      .maybeSingle();
+    if (landlordErr) {
+      console.error("[getListing] landlord fetch error:", landlordErr);
+    }
+    ownerUser = landlord ?? null;
+  }
+
+  // Fetch reviews from listing_reviews (renamed from reviews in v4)
+  // Show all reviews (including illegitimate) so the UI can mark them;
+  // only legit + not-deleted count toward the rating (handled in buildListing)
+  const { data: allReviewRows, error: reviewErr } = await supabase
+    .from("listing_reviews")
+    .select(
+      `
+    id,
+    rating,
+    comment,
+    legitimacy,
+    communication_rating,
+    location_rating,
+    value_rating,
+    created_at,
+    edited_at,
+    deleted_at,
+    user_id,
+    name,
+    anonymous,
+    listing_review_replies (
+      id,
+      reply,
+      created_at,
+      updated_at,
+      edited_at,
+      user_id
+    )
+  `
+    )
+    .eq("listing_id", listingId)
+    .is("deleted_at", null);
+
+  if (reviewErr) {
+    console.error("[getListing] reviews fetch error:", reviewErr);
+  }
+
+  /*
+   * Reviews written by anyone the signed-in viewer has blocked. Viewer-only: the
+   * reviews stay as they are for everyone else (user_blocks is generic and
+   * reused by messaging later). A block hides the review's TEXT from the blocker,
+   * never its score: the row is still returned so the rating, count and star
+   * breakdown match what every other visitor sees, and a block can't be used to
+   * raise a property's rating.
+   */
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js),
+  // so it is left out of the list, the rating and the counts for everyone else.
+  const reviewRows = await withoutSandboxReviews(allReviewRows ?? [], currentUserId);
+  let blockedAuthors = new Set();
+  if (currentUserId && reviewRows?.length) {
+    const { data: blocks, error: blocksErr } = await supabase
+      .from("user_blocks")
+      .select("blocked_id")
+      .eq("blocker_id", currentUserId);
+    if (blocksErr) {
+      console.error("[getListing] blocks fetch error:", blocksErr);
+    } else {
+      blockedAuthors = new Set((blocks ?? []).map((b) => b.blocked_id));
+    }
+  }
+  // Anonymous reviews are never hidden by a block: that would reveal their author.
+  const isHiddenByBlock = (r) =>
+    !r.anonymous && Boolean(r.user_id) && blockedAuthors.has(r.user_id);
+
+  // Batch-fetch reviewer profiles
+  const reviewerIds = [
+    ...new Set(
+      (reviewRows ?? [])
+        .filter((r) => !isHiddenByBlock(r))
+        .map((r) => r.user_id)
+        .filter(Boolean)
+    ),
+  ];
+  let reviewerMap = {};
+  if (reviewerIds.length > 0) {
+    const { data: reviewerUsers, error: reviewerErr } = await supabase
+      .from("users")
+      .select("id, name, image")
+      .in("id", reviewerIds);
+    if (reviewerErr) {
+      console.error("[getListing] reviewer batch fetch error:", reviewerErr);
+    }
+    for (const u of reviewerUsers ?? []) reviewerMap[u.id] = u;
+  }
+
+  // Fetch vote counts from review_votes (replaced upvotes/downvotes arrays)
+  const reviewIds = (reviewRows ?? []).map((r) => r.id);
+  let votesByReview = {};
+  if (reviewIds.length > 0) {
+    const { data: voteRows, error: voteErr } = await supabase
+      .from("review_votes")
+      .select("review_id, vote, user_id")
+      .in("review_id", reviewIds);
+    if (voteErr) {
+      console.error("[getListing] vote fetch error:", voteErr);
+    }
+    for (const v of voteRows ?? []) {
+      if (!votesByReview[v.review_id])
+        votesByReview[v.review_id] = { up: 0, down: 0, userVote: null };
+      if (v.vote === "up") votesByReview[v.review_id].up += 1;
+      else if (v.vote === "down") votesByReview[v.review_id].down += 1;
+      if (currentUserId && v.user_id === currentUserId)
+        votesByReview[v.review_id].userVote = v.vote;
+    }
+  }
+
+  const reviews = (reviewRows ?? []).map((r) => {
+    // Score only: the text, author and reply never reach the blocker's browser.
+    if (isHiddenByBlock(r)) {
+      return {
+        _id: r.id,
+        rating: r.rating,
+        comment: null,
+        legitimacy: r.legitimacy ?? false,
+        communicationRating: r.communication_rating ?? null,
+        locationRating: r.location_rating ?? null,
+        valueRating: r.value_rating ?? null,
+        createdAt: r.created_at ?? null,
+        deletedAt: r.deleted_at ?? null,
+        upvotes: 0,
+        downvotes: 0,
+        userVote: null,
+        isMine: false,
+        hiddenByBlock: true,
+        reviewer: null,
+        landlordReply: null,
+      };
+    }
+    // Anonymous reviews never expose the author — drop the profile join entirely
+    // so the UI falls back to "Anonymous" + default avatar.
+    const reviewer = r.anonymous || !r.user_id ? null : reviewerMap[r.user_id];
+    const votes = votesByReview[r.id] ?? { up: 0, down: 0, userVote: null };
+    return {
+      _id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      legitimacy: r.legitimacy ?? false,
+      communicationRating: r.communication_rating ?? null,
+      locationRating: r.location_rating ?? null,
+      valueRating: r.value_rating ?? null,
+      createdAt: r.created_at ?? null,
+      editedAt: r.edited_at ?? null,
+      deletedAt: r.deleted_at ?? null,
+      upvotes: votes.up,
+      downvotes: votes.down,
+      userVote: votes.userVote,
+      // Viewer-only: true when the signed-in viewer wrote this review. Lets the UI
+      // skip Report/Block on it even when it is anonymous (author otherwise hidden).
+      isMine: Boolean(currentUserId && r.user_id === currentUserId),
+      reviewer: reviewer
+        ? {
+            _id: reviewer.id,
+            name: reviewer.name,
+            image: reviewer.image ?? null,
+          }
+        : r.name
+        ? { _id: null, name: r.name, image: null }
+        : null,
+      landlordReply: r.listing_review_replies
+        ? {
+            id: r.listing_review_replies.id,
+            reply: r.listing_review_replies.reply,
+            createdAt: r.listing_review_replies.created_at,
+            updatedAt: r.listing_review_replies.updated_at,
+            editedAt: r.listing_review_replies.edited_at ?? null,
+            userId: r.listing_review_replies.user_id,
+          }
+        : null,
+    };
+  });
+
+  const built = buildListing(row, ownerUser, reviews);
+  await attachListedBy(built);
+  // Viewer-only: true when the signed-in viewer is any landlord linked to this
+  // listing (primary or co-landlord), so the review replies they can manage show
+  // Edit and Delete. A yes or no, never the list of landlords.
+  built.viewerIsLandlord = Boolean(currentUserId && ll.some((x) => x.user_id === currentUserId));
+  /*
+   * Whether Proxy answers on this listing (per-listing agents, PRD v3). Both
+   * switches must be on: the global one and the listing's own status. The
+   * modal shows the Proxy panel in place of the contact form when it is.
+   */
+  const { data: agent } = await supabase.from("listing_agents").select("status").eq("listing_id", row.id).maybeSingle();
+  built.agent = { live: agentIsLive(agent) };
+  return built;
+}

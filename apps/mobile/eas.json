@@ -1,0 +1,29 @@
+{
+  "cli": {
+    "version": ">= 24.6.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development"
+    },
+    "preview": {
+      "distribution": "internal",
+      "environment": "preview"
+    },
+    "testflight": {
+      "extends": "preview",
+      "distribution": "store",
+      "autoIncrement": true
+    },
+    "production": {
+      "autoIncrement": true,
+      "environment": "production"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

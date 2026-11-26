@@ -1,3 +1,13 @@
-// Role constants and permission helpers. Exports ROLES, isLandlord, isSuper.
+export const ROLES = {
+  STUDENT: "student",
+  LANDLORD: "landlord",
+  SUPER: "super",
+};
 
-export {};
+export function isLandlord(role) {
+  return role === "landlord" || role === "super";
+}
+
+export function isSuper(role) {
+  return role === "super";
+}

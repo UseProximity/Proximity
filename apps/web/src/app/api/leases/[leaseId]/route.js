@@ -1,0 +1,252 @@
+import { NextResponse, after } from "next/server";
+import supabase from "@/lib/supabase";
+import { auth } from "@/auth";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
+import { canManageLease, removeAbandonedProperty } from "@/lib/listings/ownership";
+import { shortDescription } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
+import { HELD_FOR_BILLING_MESSAGE, checkListingGate, gateResponseBody, isLeaseHeldForBilling } from "@/lib/billing/listingGate";
+import { recordDashboardSave, coreValuesBefore } from "@/lib/agents/coreWrites";
+import { dayOf } from "@/utils/calendarDate";
+
+/*
+ * Manage ONE lease — the counterpart to the property-level routes under
+ * /api/landlord/listings/[listingId].
+ *
+ * This exists because a landlord who attached an offering to someone else's
+ * property owns the lease but not the listing. Without it their only options
+ * would be no control at all, or property-level control they must not have (that
+ * route replaces every unit on the listing and can delete it). So the editable
+ * surface here is deliberately narrow: the caller's own offering, nothing that
+ * belongs to the property or to another landlord.
+ */
+
+// Fields a lease owner may change. Anything not named here — unit_id above all,
+// which would move the offering onto a different unit and around the sublease
+// guard — is ignored rather than trusted.
+const EDITABLE = {
+  rent: (v) => (v === null || v === "" ? null : Number(v)),
+  rent_is_per_person: (v) => (v == null ? null : !!v),
+  description: shortDescription,
+  furnished: (v) => (v == null ? null : !!v),
+  contact_name: (v) => (typeof v === "string" ? v.trim() || null : null),
+  contact_email: (v) => (typeof v === "string" ? v.trim() || null : null),
+  contact_phone: (v) => (typeof v === "string" ? v.trim() || null : null),
+  // A calendar day. A timestamp of that day is cut down to it; anything else
+  // comes back as given and is refused below.
+  available_from: (v) => (v ? dayOf(String(v)) ?? String(v) : null),
+  unavailable: (v) => !!v,
+  is_active: (v) => !!v,
+  sublease: (v) => !!v,
+  lease_term_months: (v) =>
+    Array.isArray(v)
+      ? v.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+      : [],
+};
+
+const BODY_TO_COLUMN = {
+  rent: "rent",
+  rentIsPerPerson: "rent_is_per_person",
+  description: "description",
+  furnished: "furnished",
+  contactName: "contact_name",
+  contactEmail: "contact_email",
+  contactPhone: "contact_phone",
+  availableFrom: "available_from",
+  unavailable: "unavailable",
+  isActive: "is_active",
+  sublease: "sublease",
+  leaseTermMonths: "lease_term_months",
+};
+
+// @auth user
+export async function PATCH(req, { params }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { leaseId } = await params;
+  const check = await canManageLease(session.user.id, leaseId);
+
+  if (!check.ok) {
+    if (check.reason === "not_found") {
+      return NextResponse.json({ error: "That lease no longer exists." }, { status: 404 });
+    }
+    if (check.reason === "forbidden") {
+      return NextResponse.json({ error: "This isn't your lease." }, { status: 403 });
+    }
+    // A lease id that isn't even a uuid is a bad request, not a server fault.
+    if (check.reason === "malformed") {
+      return NextResponse.json({ error: "That isn't a valid lease id." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Could not load that lease." }, { status: 500 });
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+
+  // Editing is where the contact requirement bites. Legacy offerings that only
+  // ever had the property's contact are left alone, but a landlord who opens
+  // one of their own can't save it back empty.
+  if ("contactEmail" in body && !String(body.contactEmail ?? "").trim()) {
+    return NextResponse.json(
+      { error: "A contact email is required so students can reach you." },
+      { status: 400 }
+    );
+  }
+
+  // Terms Section 5. Turning an offering into a sublease is posting one, so it
+  // needs the same confirmation the add flows ask for. Re-saving an offering
+  // that is already a sublease does not ask again.
+  if (body.sublease && !check.lease.sublease && body.subleaseRightsConfirmed !== true) {
+    return NextResponse.json(
+      { error: "Please confirm you have the right to sublet this place." },
+      { status: 400 }
+    );
+  }
+
+  const patch = {};
+  for (const [key, column] of Object.entries(BODY_TO_COLUMN)) {
+    if (key in body) patch[column] = EDITABLE[column](body[key]);
+  }
+
+  if (!Object.keys(patch).length) {
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+  if (patch.available_from != null && !/^\d{4}-\d{2}-\d{2}$/.test(patch.available_from)) {
+    return NextResponse.json({ error: "That move-in date is not a date." }, { status: 400 });
+  }
+
+  /*
+   * Same no-names / no-links / no-contact-details rule as the property
+   * description. The stored text is passed as `previous` because the editor
+   * sends the note on every save, changed or not (see checkListingDescription).
+   */
+  if (typeof body.description === "string" && body.description.trim()) {
+    const { data: stored, error: storedError } = await supabase
+      .from("unit_leases")
+      .select("description")
+      .eq("id", leaseId)
+      .maybeSingle();
+    if (storedError) {
+      console.error("[leases/:id] description lookup failed:", storedError.message);
+      return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
+    }
+    const problem = checkListingDescription(body.description, {
+      previous: stored?.description ?? null,
+    });
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  }
+
+  // A lease the overdue-invoice job withdrew stays withdrawn until an admin
+  // restores it, or putting it back by hand would undo the withdrawal.
+  // The database refuses this as well (202611010003_billing_holds.sql); checking
+  // here first gives the landlord the reason in plain words.
+  const goingLive = patch.is_active === true || patch.unavailable === false;
+  if (goingLive && (await isLeaseHeldForBilling(supabase, leaseId))) {
+    return NextResponse.json({ error: HELD_FOR_BILLING_MESSAGE, code: "lease_held_for_billing" }, { status: 403 });
+  }
+  // Putting a withdrawn offering back on the market is publishing, so it passes the
+  // same gate as a new one (payment method, agreement, no overdue invoice).
+  if (goingLive && !(check.lease.is_active && !check.lease.unavailable)) {
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: check.listingId ? [check.listingId] : [], unitIds: check.lease.unit_id ? [check.lease.unit_id] : [] });
+    if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
+  }
+  const leaseProtected = Object.fromEntries(Object.entries(patch).filter(([k]) => ["rent", "rent_is_per_person", "furnished", "available_from", "unavailable", "lease_term_months"].includes(k)));
+  const old = await coreValuesBefore({ target: "lease", id: leaseId, fields: leaseProtected });
+
+  const { data: saved, error } = await supabase
+    .from("unit_leases")
+    .update(patch)
+    .eq("id", leaseId)
+    // Re-asserted in the write itself so a lease that changed hands between the
+    // check and the update cannot be edited by the previous owner.
+    .eq("owner_id", session.user.id)
+    .select("updated_at");
+
+  if (error) {
+    // Withdrawn for an overdue invoice between the check above and this write.
+    if (/lease_held_for_billing/.test(error.message ?? "")) {
+      return NextResponse.json({ error: HELD_FOR_BILLING_MESSAGE, code: "lease_held_for_billing" }, { status: 403 });
+    }
+    console.error("[leases/:id] Update failed:", error.message);
+    return NextResponse.json({ error: "Could not update that lease." }, { status: 500 });
+  }
+
+  // A dashboard edit after launch is landlord-set: a website sync holds
+  // changes to this lease for the landlord instead of applying them.
+  if (Object.keys(leaseProtected).length && check.listingId) {
+    recordDashboardSave({ listingId: check.listingId, target: "lease", id: leaseId, fields: leaseProtected, old, userId: session.user.id, savedAt: saved?.[0]?.updated_at });
+  }
+
+  // A changed contact address only receives message alerts once confirmed.
+  if (typeof patch.contact_email === "string" && patch.contact_email) {
+    const baseUrl = getBaseUrl(req);
+    after(() =>
+      requestContactVerification({
+        landlordId: session.user.id,
+        email: patch.contact_email,
+        baseUrl,
+      })
+    );
+  }
+
+  return NextResponse.json({ message: "Lease updated", listingId: check.listingId });
+}
+
+/*
+ * Delete an offering. Withdrawing (PATCH isActive/unavailable) is the
+ * reversible way off the market; this is the permanent one, and the landlord
+ * no longer sees it on their dashboard afterwards.
+ *
+ * The row is soft-deleted rather than removed: enquiries and photo attribution
+ * point at it, and hard-deleting it would strand them. It is also taken off the
+ * market in the same write, so every surface that only knows about is_active
+ * and unavailable already treats it as gone.
+ *
+ * Deleting the last offering on a property the caller created but never owned
+ * (a sublease at an address they typed) removes that empty property too, so a
+ * mistyped address doesn't stay in browse. See removeAbandonedProperty.
+ *
+ * @auth user
+ */
+export async function DELETE(_req, { params }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { leaseId } = await params;
+  const check = await canManageLease(session.user.id, leaseId);
+
+  if (!check.ok) {
+    if (check.reason === "not_found") {
+      return NextResponse.json({ error: "That lease no longer exists." }, { status: 404 });
+    }
+    if (check.reason === "forbidden") {
+      return NextResponse.json({ error: "This isn't your lease." }, { status: 403 });
+    }
+    // A lease id that isn't even a uuid is a bad request, not a server fault.
+    if (check.reason === "malformed") {
+      return NextResponse.json({ error: "That isn't a valid lease id." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Could not load that lease." }, { status: 500 });
+  }
+
+  const { error } = await supabase
+    .from("unit_leases")
+    .update({ is_active: false, unavailable: true, deleted_at: new Date().toISOString() })
+    .eq("id", leaseId)
+    .eq("owner_id", session.user.id);
+
+  if (error) {
+    console.error("[leases/:id] Delete failed:", error.message);
+    return NextResponse.json({ error: "Could not delete that lease." }, { status: 500 });
+  }
+
+  const propertyRemoved = await removeAbandonedProperty(session.user.id, check.listingId);
+
+  return NextResponse.json({ message: "Lease deleted", listingId: check.listingId, propertyRemoved });
+}

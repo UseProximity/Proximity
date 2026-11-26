@@ -1,0 +1,331 @@
+/*
+ * Registry for the /washu landing pages, mirroring lib/guides.js. Structure
+ * and filters live here (code); the human-readable copy for each page lives in
+ * src/content/washu/<slug>.json so the content-refresh workflow can edit copy
+ * without ever touching code. Listing data on these pages is queried live at
+ * render (ISR), never hard-coded.
+ *
+ * targetQueries feed the SEO measurement engine; they come from the Aug 2026
+ * research sprint (Search Console export, autocomplete harvest, SERP gaps).
+ */
+
+export const washuPages = [
+  {
+    slug: "studio-apartments",
+    kind: "beds",
+    filter: { bedrooms: 0 },
+    title: "Studio Apartments Near WashU | Proximity",
+    h1: "Studio apartments near WashU",
+    metaDescription:
+      "Every studio apartment near WashU (WUSTL) that includes rent, walk time to campus, and honest reviews from WashU students. Updated live from Proximity listings.",
+    targetQueries: [
+      "studio apartments near washu",
+      "studio apartments st louis",
+      "studio apartments university city",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["1-bedroom-apartments", "apartments-under-1000", "delmar-loop-apartments"],
+  },
+  {
+    slug: "1-bedroom-apartments",
+    kind: "beds",
+    filter: { bedrooms: 1 },
+    title: "1 Bedroom Apartments Near WashU | Proximity",
+    h1: "1 bedroom apartments near WashU",
+    metaDescription:
+      "1 bedroom apartments near WashU (WUSTL) with current rents, walk times to campus, and reviews from students who actually lived there.",
+    targetQueries: [
+      "1 bedroom apartments near washu",
+      "one bedroom apartments near washu",
+      "1 bedroom apartments university city",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["2-bedroom-apartments", "studio-apartments", "skinker-debaliviere-apartments"],
+  },
+  {
+    slug: "2-bedroom-apartments",
+    kind: "beds",
+    filter: { bedrooms: 2 },
+    title: "2 Bedroom Apartments Near WashU | Proximity",
+    h1: "2 bedroom apartments near WashU",
+    metaDescription:
+      "2 bedroom apartments near WashU (WUSTL) with real rents, per person costs, walk times to campus, and honest student reviews.",
+    targetQueries: [
+      "2 bedroom apartments near washu",
+      "2 bedroom apartments university city",
+      "washu 2 bedroom apartments",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["3-bedroom-apartments", "1-bedroom-apartments", "apartments-under-1500"],
+  },
+  {
+    slug: "3-bedroom-apartments",
+    kind: "beds",
+    filter: { bedrooms: 3 },
+    title: "3 Bedroom Apartments Near WashU | Proximity",
+    h1: "3 bedroom apartments near WashU",
+    metaDescription:
+      "3 bedroom apartments near WashU (WUSTL) for groups, with real rents, per person splits, walk times, and reviews from WashU students.",
+    targetQueries: [
+      "3 bedroom apartments near washu",
+      "3 bedroom apartments university city",
+      "washu group housing",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["2-bedroom-apartments", "apartments-under-1500", "university-city-apartments"],
+  },
+  {
+    slug: "apartments-under-1000",
+    kind: "price",
+    filter: { maxPerPerson: 1000 },
+    title: "Apartments Near WashU Under $1,000 Per Person | Proximity",
+    h1: "Apartments near WashU under $1,000 per person",
+    metaDescription:
+      "Apartments near WashU (WUSTL) where your share of rent stays under $1,000 a month. Real listings, walk times, and honest student reviews.",
+    targetQueries: [
+      "cheap apartments near washu",
+      "apartments near washu under 1000",
+      "cheap apartments university city",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["apartments-under-1500", "studio-apartments", "skinker-debaliviere-apartments"],
+  },
+  {
+    slug: "apartments-under-1500",
+    kind: "price",
+    filter: { maxPerPerson: 1500 },
+    title: "Apartments Near WashU Under $1,500 Per Person | Proximity",
+    h1: "Apartments near WashU under $1,500 per person",
+    metaDescription:
+      "Apartments near WashU (WUSTL) where your share of rent stays under $1,500 a month, with walk times to campus and reviews from WashU students.",
+    targetQueries: [
+      "apartments near washu under 1500",
+      "washu apartments under 1500",
+      "affordable apartments near washu",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["apartments-under-1000", "2-bedroom-apartments", "university-city-apartments"],
+  },
+  {
+    slug: "sublease",
+    kind: "sublease",
+    filter: { sublease: true },
+    title: "WashU Subleases: Live Listings and How Subletting Works | Proximity",
+    h1: "WashU subleases",
+    metaDescription:
+      "Live WashU (WUSTL) sublease listings you can actually browse, plus how subletting works: landlord consent, lease takeovers, and summer sublet timing.",
+    targetQueries: [
+      "washu sublease",
+      "washu sublet",
+      "washu summer sublease",
+      "washu sublet summer",
+      "sublease st louis",
+      "summer sublet st louis",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["apartments-under-1000", "lease-timing", "1-bedroom-apartments"],
+  },
+  {
+    slug: "housing-cost",
+    kind: "answer",
+    filter: null,
+    title: "How Much Does WashU Off-Campus Housing Cost? | Proximity",
+    h1: "What WashU off-campus housing actually costs",
+    metaDescription:
+      "Real benchmark rents near WashU (WUSTL) by neighborhood and bedroom count, per person math, what utilities add, and how off-campus compares to the dorms.",
+    targetQueries: [
+      "washu housing cost",
+      "washu housing prices",
+      "washu off campus housing cost",
+      "how much is rent near washu",
+      "average rent st louis",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["apartments-under-1000", "apartments-under-1500", "lease-timing"],
+  },
+  {
+    slug: "lease-timing",
+    kind: "answer",
+    filter: null,
+    title: "When Should WashU Students Sign a Lease? The Real Timeline | Proximity",
+    h1: "When to sign a lease at WashU",
+    metaDescription:
+      "The month by month WashU (WUSTL) housing timeline: when private landlords start signing, when Quadrangle and Parallel open, and when you are officially late.",
+    targetQueries: [
+      "washu housing timeline",
+      "when do washu students sign leases",
+      "when to look for off campus housing washu",
+      "washu housing important dates",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["housing-cost", "sublease", "2-bedroom-apartments"],
+  },
+  {
+    slug: "washu-owned-apartments",
+    kind: "answer",
+    filter: null,
+    title: "WashU-Owned Apartments Explained: Quadrangle, Parallel, the Lofts | Proximity",
+    h1: "WashU-owned apartments, explained",
+    metaDescription:
+      "How WashU's own off-campus housing works: what Quadrangle Housing and Parallel Properties are, which buildings they run, when signing opens, and how they compare to private landlords.",
+    targetQueries: [
+      "quadrangle housing",
+      "washu owned apartments",
+      "washu lofts",
+      "washu greenway apartments",
+      "parallel properties washu",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["lease-timing", "housing-cost", "delmar-loop-apartments"],
+  },
+  {
+    slug: "student-safety",
+    kind: "answer",
+    filter: null,
+    title: "Is University City, MO Safe? An Honest Answer for WashU Students | Proximity",
+    h1: "Is it safe to live off campus at WashU?",
+    metaDescription:
+      "An honest, practical answer to whether University City, MO, the Loop, and the WashU area are safe for students, and how to evaluate a specific block before signing.",
+    targetQueries: [
+      "is university city safe",
+      "is the delmar loop safe",
+      "is washu in a safe area",
+      "safest neighborhoods for washu students",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["university-city-apartments", "delmar-loop-apartments", "lease-timing"],
+  },
+  {
+    slug: "graduate-student-housing",
+    kind: "answer",
+    filter: null,
+    title: "WashU Graduate Student Housing: Where Grads Actually Live | Proximity",
+    h1: "WashU graduate student housing",
+    metaDescription:
+      "Where WashU grad, law, and PhD students live off campus, how to sign a lease from another city or country, and what to know about guarantors and furnished places.",
+    targetQueries: [
+      "washu grad student housing",
+      "washu graduate housing",
+      "washu law housing",
+      "washu grad school housing",
+      "where do washu grad students live",
+    ],
+    datePublished: "2026-08-12",
+    dateModified: "2026-09-28",
+    related: ["central-west-end-apartments", "clayton-apartments", "1-bedroom-apartments"],
+  },
+  {
+    slug: "university-city-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "university-city" },
+    title: "University City, MO Apartments for WashU Students | Proximity",
+    h1: "University City, MO apartments for WashU students",
+    metaDescription:
+      "Apartments in University City, MO near WashU (WUSTL): real rents, walk times to campus and the Loop, and honest reviews from students.",
+    targetQueries: [
+      "university city apartments",
+      "university city apartments for students",
+      "u city apartments st louis",
+      "apartments in university city mo",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["delmar-loop-apartments", "skinker-debaliviere-apartments", "apartments-under-1500"],
+  },
+  {
+    slug: "delmar-loop-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "the-loop" },
+    title: "Delmar Loop Apartments for WashU Students | Proximity",
+    h1: "Delmar Loop apartments for WashU students",
+    metaDescription:
+      "Living on the Delmar Loop as a WashU (WUSTL) student: current apartments, real rents, walk times to campus, and honest student reviews.",
+    targetQueries: [
+      "delmar loop apartments",
+      "apartments on the loop st louis",
+      "delmar loop apartments reviews",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["university-city-apartments", "skinker-debaliviere-apartments", "2-bedroom-apartments"],
+  },
+  {
+    slug: "clayton-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "clayton" },
+    title: "Clayton Apartments for WashU Students | Proximity",
+    h1: "Clayton apartments for WashU students",
+    metaDescription:
+      "Apartments in Clayton, MO for WashU (WUSTL) students: what they cost, how far campus is, and what students say about living there.",
+    targetQueries: [
+      "clayton mo apartments",
+      "clayton apartments for students",
+      "apartments near washu clayton",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["demun-apartments", "central-west-end-apartments", "apartments-under-1500"],
+  },
+  {
+    slug: "central-west-end-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "central-west-end" },
+    title: "Central West End Apartments for WashU Students | Proximity",
+    h1: "Central West End apartments for WashU students",
+    metaDescription:
+      "CWE apartments for WashU (WUSTL) students, including the med campus crowd: real rents, commute times, and honest student reviews.",
+    targetQueries: [
+      "central west end apartments",
+      "cwe apartments st louis",
+      "apartments near washu med school",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["clayton-apartments", "skinker-debaliviere-apartments", "1-bedroom-apartments"],
+  },
+  {
+    slug: "demun-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "demun" },
+    title: "DeMun Apartments for WashU Students | Proximity",
+    h1: "DeMun apartments for WashU students",
+    metaDescription:
+      "Apartments in DeMun near WashU (WUSTL): quiet streets, coffee shops, real rents, and reviews from students who lived there.",
+    targetQueries: ["demun apartments", "demun apartments clayton", "demun st louis"],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["clayton-apartments", "1-bedroom-apartments", "apartments-under-1500"],
+  },
+  {
+    slug: "skinker-debaliviere-apartments",
+    kind: "neighborhood",
+    filter: { neighborhood: "skinker-debaliviere" },
+    title: "Skinker-DeBaliviere Apartments for WashU Students | Proximity",
+    h1: "Skinker-DeBaliviere apartments for WashU students",
+    metaDescription:
+      "Skinker-DeBaliviere apartments near WashU (WUSTL): the student blocks behind the Loop, real rents, walk times, and honest reviews.",
+    targetQueries: [
+      "skinker debaliviere apartments",
+      "skinker debaliviere apartments for rent",
+      "apartments behind the loop washu",
+    ],
+    datePublished: "2026-08-10",
+    dateModified: "2026-09-28",
+    related: ["delmar-loop-apartments", "university-city-apartments", "apartments-under-1000"],
+  },
+];
+
+export function getWashuPage(slug) {
+  return washuPages.find((p) => p.slug === slug) ?? null;
+}

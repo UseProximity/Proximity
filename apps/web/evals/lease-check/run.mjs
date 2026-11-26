@@ -107,6 +107,14 @@ function universalChecks(a, ctx) {
     out.push({ label: "no SSN/bank PII in stored text", pass: found.length === 0,
       detail: found.length ? `leaked: ${found.join(", ")}` : "" });
   }
+  // 5. neutrality: no advocacy, legal conclusions or sign/negotiate advice in stored text
+  //    (quotes are excluded: they are the landlord's words, not ours)
+  const ours = [a.summary, ...(a.flags || []).flatMap((f) => [f.title, f.explanation, f.question])]
+    .filter(Boolean).join(" ");
+  const ADVOCACY = /\b(illegal|unlawful|unenforceable|unfair|predatory|negotiat\w*|push back|don'?t sign|do not sign|should(?: not|n'?t)? sign|walk away|tenant[- ]friendly|landlord[- ]friendly|in your favou?r|ask (?:them|the landlord) to (?:remove|change|waive|lower|strike|cut))\b/gi;
+  const hits = [...new Set((ours.match(ADVOCACY) || []).map((m) => m.toLowerCase()))];
+  out.push({ label: "neutral wording (no advocacy or legal conclusions)", pass: hits.length === 0,
+    detail: hits.length ? `found: ${hits.join(", ")}` : "" });
   return out;
 }
 

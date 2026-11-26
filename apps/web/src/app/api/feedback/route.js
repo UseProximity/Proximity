@@ -41,6 +41,8 @@ const _mailer = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT) || 587,
   secure: false,
+  // STARTTLS or nothing: never let a stripped EHLO send AUTH in cleartext.
+  requireTLS: true,
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
@@ -56,7 +58,7 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-const TYPE_LABEL = { bug: "🐞 Bug report", suggestion: "💡 Suggestion", other: "💬 Feedback" };
+const TYPE_LABEL = { bug: "Bug report", suggestion: "Suggestion", other: "Feedback" };
 
 export async function POST(req) {
   try {
@@ -66,7 +68,7 @@ export async function POST(req) {
       "unknown";
     if (rateLimited(ip)) {
       return NextResponse.json(
-        { error: "You've sent a few reports already — please try again in a little while." },
+        { error: "You've sent a few reports already. Please try again in a little while." },
         { status: 429 }
       );
     }
@@ -91,7 +93,7 @@ export async function POST(req) {
       const session = await auth();
       if (session?.user) {
         const u = session.user;
-        submitter = `${u.name || "—"} <${u.email || providedEmail || "no email"}>${
+        submitter = `${u.name || "Unknown"} <${u.email || providedEmail || "no email"}>${
           u.role ? ` · ${u.role}` : ""
         }`;
       }
@@ -100,7 +102,7 @@ export async function POST(req) {
     }
 
     if (!emailConfigured()) {
-      console.warn("[feedback] Email env not set — submission dropped:", { type, trimmed });
+      console.warn("[feedback] Email env not set, submission dropped:", { type, trimmed });
       return NextResponse.json(
         { error: "Feedback isn't configured right now. Please email info@useproximity.org." },
         { status: 503 }
@@ -108,6 +110,7 @@ export async function POST(req) {
     }
 
     await sendMailSafe(_mailer, {
+      logAs: { kind: "feedback" },
       from: `"Proximity Feedback" <${process.env.EMAIL_USER}>`,
       to: TEAM_EMAILS.join(", "),
       replyTo: providedEmail || undefined,

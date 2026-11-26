@@ -3,10 +3,12 @@
  * Changes from previous version:
  *   - Removed FK hint `!` syntax from all select() calls; plain table names only
  *     (each pair of tables has at most one FK, so Supabase resolves without hints)
- *   - listing_units: unit_leases NOT nested here (browse page doesn't need per-unit rent;
- *     unitTypes[].rent is null — acceptable per spec)
+ *   - listing_units: unit_leases ARE nested here as of 2026-08-22 — browse filters
+ *     per unit/lease (see packages/shared/src/formatters/listingFilters.js), so unitTypes[].leases
+ *     carries every live offering in the same shape the detail fetch produces
  *   - listing_amenities / listing_utilities: PK is listing_id → Supabase returns single object,
  *     not array; amenitiesRowToArray / utilitiesRowToArray handle the object shape
+ *   - listing_custom_amenities(label): free-text amenities, mapped to customAmenities
  *   - listing_walk_times(minutes, locations(name)): shuttle_nearest handled separately
  *   - listing_landlords(user_id, is_primary): batch-fetch owners from users table
  *   - listing_images(url, sort_order): sorted ascending, mapped to URL strings
@@ -19,6 +21,19 @@
  */
 
 import supabase from "@/lib/supabase";
+import { shapeLeases } from "@/lib/listings/getListing";
+import {
+  unitIsAvailable,
+  listingIsUnavailable,
+  nextAvailableFrom,
+  publicUnits,
+  isPublished,
+} from "@/lib/listings/unitAvailability";
+import {
+  LANDLORD_CHAT_SELECT,
+  formatListingOwner,
+} from "@/lib/chat/landlordCanChat";
+import { isSandboxViewer, SANDBOX_FEED_HEADERS, stripSandboxReviews } from "@/lib/reviewSandbox";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,6 +108,25 @@ function driveTimesToMap(driveTimes) {
 // ---------------------------------------------------------------------------
 
 export function buildListing(row, owner = null) {
+  /*
+   * Retired units must not reach the UI. PostgREST cannot filter an embedded
+   * resource from the select string, so it is done here — and it has to be done
+   * at all now that merging duplicate properties soft-deletes the units it
+   * collapses. Before that nothing had ever set listing_units.deleted_at, so
+   * nothing filtered on it. Draft units go the same way: they are the owner's
+   * until published.
+   */
+  row = { ...row, listing_units: publicUnits(row.listing_units) };
+
+  /*
+   * Card imagery is the property's one gallery, in the order the property owner
+   * set. Units are tags on those photos now, not a separate pool, and a photo
+   * added by anyone else is appended after the owner's, so the cover stays
+   * theirs to choose.
+   */
+  const bySort = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  const coverPool = (row.listing_images ?? []).slice().sort(bySort);
+
   const walkTimes = row.listing_walk_times ?? [];
   const driveTimes = row.listing_drive_times ?? [];
   const shuttle = walkTimes.find((wt) => wt.locations?.name === "shuttle_nearest");
@@ -108,35 +142,66 @@ export function buildListing(row, owner = null) {
     latitude: row.latitude != null ? Number(row.latitude) : null,
     description: row.description,
     unitTypes: (row.listing_units ?? []).map((u) => {
-      const activeRent = (u.unit_leases ?? []).find((l) => l.is_active)?.rent;
+      /*
+       * Same shape as the detail fetch (shapeLeases), so browse filtering and
+       * the panel agree on what a unit is offering. They used to disagree: this
+       * feed took the first is_active lease while the panel required
+       * is_active && !unavailable, and 79 leases sit in that gap — enough for a
+       * card to advertise a price the panel then refused to list.
+       */
+      const leases = shapeLeases(u.unit_leases, row, undefined, u.bedrooms);
+      const nextAvailable =
+        leases
+          .filter((l) => l.availableFrom)
+          .sort((a, b) => new Date(a.availableFrom) - new Date(b.availableFrom))[0]
+          ?.availableFrom ?? null;
+      // Cheapest live offering — the number the card shows. shapeLeases sorts
+      // cheapest-first with unpriced sunk, so this is just the head of the list.
+      const pricedHead = leases.find((l) => l.rent != null) ?? null;
       return {
-        rent: activeRent != null ? Number(activeRent) : null,
+        id: u.id,
+        rent: pricedHead?.rent ?? null,
+        /*
+         * Carried from the SAME offering that supplied `rent`, because the two
+         * are only meaningful together: $1,069 means one thing per person and
+         * another for a 3-bed apartment.
+         *
+         * shapeLeases already put this on unitTypes[].leases[], but the flattened
+         * unit summary dropped it — and the summary is what minPerPersonRent()
+         * reads. So a landlord who had stated their basis was still having it
+         * guessed at, on exactly the surface the guess feeds: the /washu price
+         * pages. LOCAL on Delmar is the case in hand — its unnamed rows quote
+         * per bed and its named units quote the apartment, and only the stated
+         * flag can tell those apart with certainty.
+         */
+        rentIsPerPerson: pricedHead?.rentIsPerPerson ?? null,
         area: u.area != null ? Number(u.area) : null,
+        // The landlord's name for the unit and its place in their order, as on
+        // the listing page (Compare Listings labels and orders its unit tabs by them).
+        name: u.name ?? null,
+        sortOrder: u.sort_order ?? null,
         bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
         bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-        available: u.available ?? true,
+        // Derived from the offerings above, not stored — see unitAvailability.js.
+        available: unitIsAvailable(u),
+        availableFrom: nextAvailable,
+        leases,
       };
     }),
     leaseType: (() => {
       const units = row.listing_units ?? [];
       const activeLeases = (us) =>
-        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active));
-      // Decide the listing's label from its AVAILABLE units when it has any, so an
-      // available sublease surfaces as "Sublease" even alongside an unavailable
-      // standard lease (and an unavailable sublease no longer forces the badge).
-      const availablePool = activeLeases(units.filter((u) => u.available !== false));
+        us.flatMap((u) => (u.unit_leases ?? []).filter((l) => l.is_active && isPublished(l)));
+      // Decide the listing's label from its AVAILABLE units when it has any, so
+      // an unavailable sublease never forces the badge. Within that pool a
+      // standard lease trumps: the card says "Sublease" only when every offering
+      // is one (Wyatt, 2026-10-12), matching isSubleaseListing in matchmaking.
+      const availablePool = activeLeases(units.filter(unitIsAvailable));
       const pool = availablePool.length ? availablePool : activeLeases(units);
-      return pool.some((l) => l.sublease) ? "Sublease" : "Standard";
+      return pool.length && pool.every((l) => l.sublease) ? "Sublease" : "Standard";
     })(),
-    images: (row.listing_images ?? [])
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((img) => img.url),
-    // True when the cover photo (lowest sort_order) was auto-fetched from Google Street View.
-    imageFromStreetView:
-      (row.listing_images ?? [])
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.source ===
-      "street_view",
+    images: coverPool.map((img) => img.url),
+    imageFromStreetView: coverPool[0]?.source === "street_view",
     numReviews: legitReviews.length,
     rating:
       legitReviews.length
@@ -144,13 +209,19 @@ export function buildListing(row, owner = null) {
             (legitReviews.reduce((s, r) => s + r.rating, 0) / legitReviews.length) * 10
           ) / 10
         : 0,
-    reviews: legitReviews,
+    /*
+     * Deliberately no `reviews` array. This feed only ever carried
+     * {rating, legitimacy, deleted_at} rows (no reviewer, no comment, no date),
+     * because that is all the card aggregates need. The panel paints from
+     * this feed while its detail fetch is in flight, and those stub rows were
+     * enough to render real-looking review cards reading "Anonymous" with an
+     * empty body until the real ones arrived. Omitting the key makes
+     * `listing.reviews === undefined` an honest "not loaded yet" signal (the
+     * same rule unit leases follow) and trims the payload for every listing.
+     */
     placeWalkMinutes: walkTimesToMap(walkTimes),
     placeDriveMinutes: driveTimesToMap(driveTimes),
     shuttleWalkMinutes: shuttle ? shuttle.minutes : null,
-    contactEmail: row.contact_email ?? null,
-    contactPhone: row.contact_phone ?? null,
-    contactName: row.contact_name ?? null,
     leaseAvailability: Array.isArray(row.lease_availability) ? row.lease_availability : [],
     leaseStructure: row.lease_structure ?? null,
     homeType: row.home_types?.label ?? "Other",
@@ -159,14 +230,23 @@ export function buildListing(row, owner = null) {
     utilitiesIncluded: utilitiesRowToArray(row.listing_utilities),
     subleaseFriendly: row.sublease_friendly ?? false,
     twentyOnePlus: row.twenty_one_plus ?? false,
-    unavailable: (() => {
-      if (row.unavailable) return true;
-      const units = row.listing_units ?? [];
-      // Treat the listing as unavailable if it has units and none of them are available.
-      // Empty unit lists do NOT flip the listing — that's a separate data issue.
-      return units.length > 0 && units.every((u) => u.available === false);
+    unavailable: listingIsUnavailable(row),
+    // Earliest future move-in across available units; null = available now.
+    // Non-null means every open unit is pre-leased until that date, so the UI
+    // shows "Available Aug 1" instead of hiding the listing.
+    availableFrom: (() => {
+      const units = (row.listing_units ?? []).filter(unitIsAvailable);
+      if (!units.length) return null;
+      const nexts = units.map(nextAvailableFrom);
+      if (nexts.some((d) => !d)) return null;
+      return nexts.sort()[0];
     })(),
+    // Live-verified: availability/pricing sync daily from the landlord's
+    // property management system (pms_connection_id marks the connection).
+    verifiedLive: !!row.pms_connection_id,
+    verifiedAt: row.pms_connection_id ? row.last_verified_at ?? null : null,
     amenities: amenitiesRowToArray(row.listing_amenities),
+    customAmenities: (row.listing_custom_amenities ?? []).map((a) => a.label).filter(Boolean),
     minRent: row.min_rent != null ? Number(row.min_rent) : null,
     maxRent: row.max_rent != null ? Number(row.max_rent) : null,
     minBedrooms: row.min_bedrooms != null ? Number(row.min_bedrooms) : null,
@@ -178,14 +258,7 @@ export function buildListing(row, owner = null) {
     // Dropped in v4 — return safe defaults
     numClicks: 0,
     numSaves: 0,
-    owner: owner
-      ? {
-          _id: owner.id,
-          name: owner.name,
-          email: owner.email ?? null,
-          image: owner.image ?? null,
-        }
-      : null,
+    owner: formatListingOwner(owner, row),
     createdAt: row.created_at ?? null,
   };
 }
@@ -196,12 +269,17 @@ export function buildListing(row, owner = null) {
 
 /**
  * Fetch every non-deleted listing, fully built into the frontend shape.
- * Exported so other routes (e.g. the popular-listings ranking) can reuse the
- * exact same data path instead of duplicating the select + landlord join.
- * Throws on a DB error — callers handle the response.
+ * Exported so other routes (e.g. the popular-listings ranking, mobile's
+ * favorites read path) can reuse the exact same data path instead of
+ * duplicating the select + landlord join. Pass `listingIds` to filter to a
+ * specific set of listings (e.g. a user's saved listings) instead of
+ * fetching everything; omit it (or leave it empty) to fetch all non-deleted
+ * listings, unchanged from before. Throws on a DB error; callers handle
+ * the response. `includeSandbox` is only for a review sandbox viewer
+ * (isSandboxViewer): their feed also carries the sandbox listings.
  */
-export async function fetchListings() {
-  const { data: listings, error } = await supabase
+export async function fetchListings(listingIds = null, { includeSandbox = false } = {}) {
+  let query = supabase
     .from("listings")
     .select(
       `
@@ -209,11 +287,15 @@ export async function fetchListings() {
       lease_type, contact_email, contact_phone, contact_name,
       lease_structure, furnished, move_in_date, lease_availability,
       sublease_friendly, twenty_one_plus, unavailable,
-      city, state, zipcode, created_at,
+      city, state, zipcode, created_at, published_at,
+      pms_connection_id, last_verified_at,
       min_rent, max_rent, min_bedrooms, max_bedrooms,
       min_bathrooms, max_bathrooms, min_area, max_area,
       home_types(label),
-      listing_units(id, bedrooms, bathrooms, area, available, unit_leases(rent, is_active, sublease)),
+      listing_units(id, bedrooms, bathrooms, area, name, sort_order, deleted_at, published_at,
+        unit_leases(id, rent, rent_is_per_person, is_active, unavailable, sublease,
+                    available_from, lease_term_months, furnished, published_at,
+                    contact_name, contact_email, contact_phone)),
       listing_landlords(user_id, is_primary),
       listing_amenities(
         air_conditioning, dishwasher, gym, laundry, mailroom, microwave,
@@ -223,15 +305,37 @@ export async function fetchListings() {
       listing_utilities(
         electric, gas, heat, water, internet, trash, cable, sewer, cooling
       ),
+      listing_custom_amenities(label),
       listing_images(url, sort_order, source),
-      listing_reviews(rating, legitimacy, deleted_at),
+      listing_reviews(rating, legitimacy, deleted_at, user_id),
       listing_walk_times(minutes, locations(name)),
       listing_drive_times(minutes, locations(name))
       `
     )
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    // Draft properties belong on their owner's dashboard, not in browse.
+    .not("published_at", "is", null);
+
+  // Listings made by an App Store review sandbox account never show to a real user
+  // here (the flag is stamped at creation, see 202611020001_review_sandbox.sql). This
+  // is the feed behind browse, search, the map, popular, saved, the sitemap's price
+  // pages and the website's browse pages. Only a sandbox viewer's own request, from
+  // the app, asks for them too, so a reviewer can find the listing they just made.
+  if (!includeSandbox) {
+    query = query.eq("review_sandbox", false);
+  }
+
+  if (listingIds?.length > 0) {
+    query = query.in("id", listingIds);
+  }
+
+  const { data: listings, error } = await query;
 
   if (error) throw error;
+
+  // Ratings and counts leave out reviews by review sandbox accounts (seen only by
+  // their author, on the listing page).
+  await stripSandboxReviews(listings);
 
   // Collect unique primary-landlord user IDs for a single batch fetch
   const primaryLandlordIds = [
@@ -248,7 +352,7 @@ export async function fetchListings() {
   if (primaryLandlordIds.length > 0) {
     const { data: landlordUsers, error: landlordErr } = await supabase
       .from("users")
-      .select("id, name, email, image")
+      .select(LANDLORD_CHAT_SELECT)
       .in("id", primaryLandlordIds);
 
     if (landlordErr) {
@@ -265,8 +369,13 @@ export async function fetchListings() {
   });
 }
 
-export async function GET() {
+export async function GET(req) {
   try {
+    // A review sandbox account in the app also sees the sandbox listings. That answer
+    // is theirs alone, so it is never cached.
+    if (await isSandboxViewer(req)) {
+      return Response.json(await fetchListings(null, { includeSandbox: true }), { headers: SANDBOX_FEED_HEADERS });
+    }
     return Response.json(await fetchListings());
   } catch (err) {
     console.error("[listings GET] unexpected error:", err);

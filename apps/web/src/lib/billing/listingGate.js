@@ -1,0 +1,450 @@
+/*
+ * The listing gate: before a landlord puts a new listing, unit or offering in
+ * front of students they need an Active payment method and, when that
+ * requirement is on, a Signed marketing agreement. Landlords may skip both when
+ * they create an account; this is where it bites.
+ *
+ * Scope (the PRD's open question, answered with its recommendation):
+ *   - it blocks PUBLISHING: a new listing, a new unit or offering, and putting
+ *     back a published one. Saving a draft is never blocked, so nothing a
+ *     landlord has typed is lost.
+ *   - it applies to users with the landlord role. Admins, students (who may
+ *     sublet), and the importer and PMS sync paths (which never call it) are exempt.
+ *
+ * Both requirements are switches in billing_settings and default OFF, so the code
+ * can ship before landlords have been told and given time to enrol; an admin turns
+ * them on at launch (Admin > Billing > Agreements):
+ *
+ *   payment_method_required   an Active payment method is needed to publish
+ *   agreement_required        every property being published must be covered by
+ *                             the landlord's signed agreement (coverage.js): their
+ *                             master's Exhibit A, or a signed amendment to it
+ *
+ * Coverage is per property (decisions of 2026-11-04). A route passes the
+ * listings it is about to put live; any that are not covered come back in
+ * `uncovered`, and the landlord signs the master or an amendment covering them
+ * in the publish dialog, then publishes again. An unsigned document never
+ * covers anything. Review sandbox accounts (App Store review) are exempt.
+ *
+ * A landlord whose invoice went overdue (the overdue job withdrew their leases and
+ * it is still unpaid) is blocked from publishing anything new as well, always,
+ * whatever the switches say: otherwise a new listing or offering would put them
+ * straight back on the market. That clears as soon as the invoice is paid.
+ *
+ * A landlord account with a payer (billing_payers, Wyatt 2026-11-09) is checked
+ * against the payer: the payer's agreement covers it and the payer's payment
+ * method counts. The answer then carries `payer` ({ name }), so the page asks the
+ * landlord to send what they are publishing to the payer's addendum instead of
+ * opening signing: it stays a draft until the payer signs.
+ *
+ * Separately, a lease the overdue job withdrew cannot be put back by anyone but an
+ * admin: the database refuses it (202611010003_billing_holds.sql), and
+ * isLeaseHeldForBilling lets a route say so in plain words first.
+ *
+ * `db` is a service-role Supabase client, passed in so this stays testable.
+ */
+import { getBillingSetting } from "./settings.js";
+import { PAPER_OUT_MESSAGE, agreementState, coverageFor, isPaperOut } from "./agreements.js";
+import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
+import { hasActivePaymentMethod } from "./paymentMethodState.js";
+import { billedTo, billingLinksFor, linkForListing } from "./payerLinks.js";
+
+export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
+export const AGREEMENT_REQUIRED = "agreement_required";
+
+// The pure rule. `missing` lists what stands in the way: "payment_method", "agreement".
+export function gateDecision({ role, requirePaymentMethod, requireAgreement, hasPaymentMethod, agreementSigned, overdueInvoice = false, sandbox = false }) {
+  if (role !== "landlord" || sandbox) return { applies: false, allowed: true, missing: [] };
+  const missing = [];
+  if (overdueInvoice) missing.push("overdue_invoice");
+  if (requirePaymentMethod && !hasPaymentMethod) missing.push("payment_method");
+  if (requireAgreement && !agreementSigned) missing.push("agreement");
+  return { applies: true, allowed: missing.length === 0, missing };
+}
+
+const PARTS = {
+  overdue_invoice: "pay your overdue invoice",
+  payment_method: "add an active payment method",
+  agreement: "sign the marketing agreement",
+  paper_agreement: "send us your signed marketing agreement",
+};
+
+// What has to be done, as one phrase: "pay your overdue invoice and add an active payment method".
+function todoList(missing, uncovered) {
+  const named = uncovered.filter((u) => u.listingId).map((u) => u.address);
+  const parts = missing
+    .map((m) =>
+      m === "agreement" && uncovered.length
+        ? named.length
+          ? `add ${named.length === 1 ? named[0] : `${named.length} properties`} to your marketing agreement`
+          : "add this property to your marketing agreement"
+        : PARTS[m]
+    )
+    .filter(Boolean);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+}
+
+// A paper copy is out: who it went to (the landlord, or `signerName`, their
+// authorized signer), and anything else still in the way, so the next publish
+// is not refused for something this message never mentioned.
+function paperNotice(missing, signerName) {
+  const sent = signerName
+    ? `Your marketing agreement was sent to ${signerName} to sign on paper. Once we receive the signed copy, the properties on it can go live. To change anything, email info@useproximity.org.`
+    : PAPER_OUT_MESSAGE;
+  // With a signer, the payment method is the signer's to add.
+  const rest = missing.filter((m) => m !== "paper_agreement" && m !== "agreement" && (!signerName || m === "overdue_invoice"));
+  return rest.length ? `${sent} You also need to ${todoList(rest, [])} under Billing.` : sent;
+}
+
+// What to tell a landlord who is blocked. Plain words, and where to fix it.
+export function gateMessage(missing, uncovered = [], { signerName = null } = {}) {
+  if (missing.includes("paper_agreement")) return `${paperNotice(missing, signerName)} Your drafts are saved.`;
+  return `Before you can publish a listing you need to ${todoList(missing, uncovered)}. You can do this under Billing in your landlord dashboard. Your drafts are saved.`;
+}
+
+// What to tell a landlord whose publish was kept as a draft instead (code billing_needed).
+export function draftedMessage(missing, uncovered = [], { signerName = null } = {}) {
+  if (missing.includes("paper_agreement")) return `Saved as a draft. ${paperNotice(missing, signerName)}`;
+  return `Saved as a draft. To publish it, ${todoList(missing, uncovered)} under Billing.`;
+}
+
+// The body a route returns when the gate says no. `uncovered` lets the page open
+// the signing dialog for exactly those properties.
+export function gateResponseBody(gate) {
+  // Who each uncovered property waits on (Wyatt, 2026-11-25): its signer
+  // (`signerName`), or the landlord themselves. A batch can have both.
+  const theirs = (gate.uncovered ?? []).filter((u) => u.signerName);
+  const mine = (gate.uncovered ?? []).filter((u) => !u.signerName);
+  const signerNames = [...new Set(theirs.map((u) => u.signerName))];
+  // A payment method someone else has to add: the authorized payer, or the signer who pays.
+  const methodNames = joinNames((gate.methodWaitsOn ?? []).map((w) => w.name).filter(Boolean));
+  // A paper copy out (the landlord's or their signer's): no popup, no request to the signer.
+  // (Not when the landlord's own payment method is what is missing: that is theirs to add.)
+  // Nor when everything uncovered is the landlord's own to sign: that is the plain case below.
+  if (gate.payer && !gate.missing.includes("paper_agreement") && !gate.ownMethodMissing && (theirs.length || !mine.length)) {
+    const waits = payerCanFix(gate.missing);
+    // Covered already and only a payment method is missing: say whose.
+    const methodOnly = waits && !gate.missing.includes("agreement") && gate.methodWaitsOn?.length;
+    const names = signerNames.length ? joinNames(signerNames) : gate.payer.name;
+    const agreements = signerNames.length > 1 ? `the agreements of ${names}` : `${names}'s agreement`;
+    return {
+      error: methodOnly
+        ? `This goes live once ${methodNames} adds a payment method. Your draft is saved.`
+        : waits
+          ? mine.length
+            ? `Some of these need to be added to ${agreements}, and the rest to your own, before they go live. Your drafts are saved.`
+            : `This needs to be added to ${agreements} before it goes live. Your draft is saved.`
+          : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
+      code: "billing_setup_required",
+      missing: gate.missing,
+      // Covered but waiting on the payer's payment method: the listings themselves.
+      // Each says who signs for it (`signerName`; null: the landlord), so the page
+      // sends each signer their own and opens signing for the rest (Wyatt, 2026-11-25).
+      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing", signerName: gate.signerNameOf?.[listingId] ?? gate.payer.name })),
+      payer: gate.payer,
+      drafted: methodOnly
+        ? `Saved as a draft. Once ${methodNames} adds a payment method, you can publish it.`
+        : waits
+          ? mine.length
+            ? `Saved as drafts. Sign for your own, and once ${names} ${signerNames.length > 1 ? "approve" : "approves"} the rest you can publish them.`
+            : `Saved as a draft. Once ${names} ${signerNames.length > 1 ? "approve" : "approves"} it, you can publish it.`
+          : draftedMessage(gate.missing, gate.uncovered ?? []),
+    };
+  }
+  // The paper copy's signer, when it is not the landlord's own that is out.
+  const who = { signerName: gate.missing.includes("paper_agreement") ? (gate.paperSignerName !== undefined ? gate.paperSignerName : gate.payer?.name ?? null) : null };
+  // The payment method is someone else's to add (the authorized payer of a
+  // landlord who signs for themselves): say whose, never "add your own".
+  if (methodNames && !gate.ownMethodMissing && gate.missing.includes("payment_method") && !gate.missing.includes("paper_agreement")) {
+    const rest = gate.missing.filter((m) => m !== "payment_method");
+    const wait = `${methodNames} needs to add a payment method before this can go live: they are invoiced for it.`;
+    return {
+      error: rest.length ? `${wait} ${gateMessage(rest, gate.uncovered ?? [], who).replace("Before you can publish a listing you need to", "You also need to")}` : `${wait} Your draft is saved.`,
+      code: "billing_setup_required",
+      missing: gate.missing,
+      uncovered: gate.uncovered ?? [],
+      methodWaitsOn: methodNames,
+      drafted: rest.length ? `${draftedMessage(rest, gate.uncovered ?? [], who)} ${wait}` : `Saved as a draft. ${wait}`,
+    };
+  }
+  return {
+    error: gateMessage(gate.missing, gate.uncovered ?? [], who),
+    code: "billing_setup_required",
+    missing: gate.missing,
+    uncovered: gate.uncovered ?? [],
+    ...(gate.ready?.length && { ready: gate.ready }),
+    drafted: draftedMessage(gate.missing, gate.uncovered ?? [], who),
+  };
+}
+
+/*
+ * Whose payment method publishing waits on, when it is not the landlord's own to
+ * add (their authorized payer, or the signer who pays): the names as one phrase,
+ * or null. The Billing checklist shows it instead of "add a payment method".
+ */
+export const methodWaitNames = (gate) =>
+  gate?.missing?.includes("payment_method") && !gate.ownMethodMissing ? joinNames((gate.methodWaitsOn ?? []).map((w) => w.name).filter(Boolean)) || null : null;
+
+// "Ada", "Ada and Olive", "Ada, Olive and Sam".
+const joinNames = (names) => {
+  const list = [...new Set(names)];
+  return list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}` : list[0] ?? "";
+};
+
+// With a payer, a missing agreement or payment method is the payer's to fix: the
+// listing waits for them. An overdue invoice still blocks outright.
+export const payerCanFix = (missing = []) => missing.length > 0 && missing.every((m) => m === "agreement" || m === "payment_method");
+
+// Whether signing (or, with a payer, sending to the payer) is all that stands in the way.
+export const coverageOnly = (gate) => (gate.payer && !gate.ownMethodMissing ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
+
+async function userOf(db, userId) {
+  const { data, error } = await db
+    .from("users")
+    .select("deleted_at, review_sandbox, roles!role_id(name)")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || data.deleted_at) return { role: null, sandbox: false };
+  return { role: data.roles?.name ?? null, sandbox: data.review_sandbox === true };
+}
+
+/*
+ * Whether the landlord has an invoice the overdue job actioned that is still
+ * unpaid. A bank payment still settling (processing) counts as unpaid until it
+ * clears: it can still fail, and publishing reopened in the meantime stayed open
+ * when it did (review of 2026-11-07). Reads as no until the billing tables exist,
+ * so listing keeps working in an environment that does not have them yet.
+ */
+export async function hasOverdueInvoice(db, userId) {
+  const { data, error } = await db
+    .from("billing_invoices")
+    .select("id")
+    .eq("landlord_id", userId)
+    .not("overdue_actioned_at", "is", null)
+    .in("status", ["open", "failed", "processing"])
+    .limit(1);
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "42P01") return false;
+    throw error;
+  }
+  if (data.length > 0) return true;
+  // A payer's overdue invoice carrying this landlord's charges blocks them too:
+  // the overdue job withdrew their leases for it.
+  const { data: billed, error: billedError } = await db
+    .from("charges")
+    .select("invoice_id")
+    .eq("landlord_id", userId)
+    .not("payer_id", "is", null)
+    .not("invoice_id", "is", null)
+    .in("status", ["invoiced"])
+    .limit(500);
+  if (billedError) {
+    if (["PGRST205", "42P01", "42703"].includes(billedError.code)) return false;
+    throw billedError;
+  }
+  const ids = [...new Set((billed ?? []).map((c) => c.invoice_id))];
+  if (!ids.length) return false;
+  const { data: overdue, error: overdueError } = await db
+    .from("billing_invoices")
+    .select("id")
+    .in("id", ids)
+    .not("overdue_actioned_at", "is", null)
+    .in("status", ["open", "failed", "processing"])
+    .limit(1);
+  if (overdueError) throw overdueError;
+  return overdue.length > 0;
+}
+
+export async function getGateSettings(db) {
+  const [requirePaymentMethod, requireAgreement] = await Promise.all([
+    getBillingSetting(db, PAYMENT_METHOD_REQUIRED, false),
+    getBillingSetting(db, AGREEMENT_REQUIRED, false),
+  ]);
+  return { requirePaymentMethod: requirePaymentMethod === true, requireAgreement: requireAgreement === true };
+}
+
+/*
+ * Whether this user may publish right now, and the facts the dashboard shows.
+ * Only landlords are ever checked; for anyone else (and review sandbox accounts)
+ * it answers without touching the settings or payment tables.
+ *
+ *   listingIds   the properties about to go live. With the agreement required,
+ *                each must be covered; the ones that are not come back in
+ *                `uncovered` ({ listingId, address }).
+ *   unitIds      units whose lease is going on the market now (a withdrawn one put
+ *                back, or a new one): each must be covered too, since a unit with
+ *                only withdrawn leases needs no coverage (Wyatt, 2026-11-07)
+ *   newUnits     [{ listingId, name }] units about to be added to a property (add
+ *                listing onto an existing one): on a property covered by named
+ *                units, each needs an addendum (review of 2026-11-07)
+ *   newProperty  a property that does not exist yet (add listing): never covered
+ *   neither      the dashboard's question: does the landlord's master count?
+ *
+ * When the refusal is about particular properties, `blocked` lists them (the
+ * ids that will be live), so a batch publish can put the others live.
+ */
+export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newUnits = [], newProperty = false, now = new Date() } = {}) {
+  const { role, sandbox } = await userOf(db, userId);
+  if (role !== "landlord" || sandbox) {
+    return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
+  }
+
+  const [settings, overdueInvoice, links] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), billingLinksFor(db, userId)]);
+  // Who signs and who is invoiced for each property being published (Wyatt,
+  // 2026-11-25). Signing: its own signer, else the account's, else the landlord.
+  // Invoiced: its authorized payer, else whoever signs. A new property (no
+  // listing yet) and the dashboard's question read the account's.
+  const targets = listingIds?.length ? await resolvePublishedIds(db, listingIds) : [];
+  const scope = targets.length ? targets : [null];
+  const signerOf = new Map(scope.map((id) => [id, linkForListing(links.signers, id)]));
+  let hasPaymentMethod = true;
+  // Whose payment method is missing: the landlord's own, or someone else's to add.
+  const methodWaitsOn = [];
+  // The properties held back by a missing payment method (of whoever is invoiced for each).
+  const methodBlocked = new Set();
+  if (settings.requirePaymentMethod) {
+    const billed = new Map(scope.map((id) => [id, billedTo({ landlordId: userId, listingId: id, ...links })]));
+    const ids = [...new Set([...billed.values()].map((b) => b.userId))];
+    // The method of whoever is invoiced counts, never the landlord's in their place.
+    const { data, error } = await db
+      .from("payment_methods")
+      .select("user_id, status, type, exp_month, exp_year, deleted_at")
+      .in("user_id", ids)
+      .is("deleted_at", null);
+    if (error) throw error;
+    const has = new Map(ids.map((id) => [id, hasActivePaymentMethod((data ?? []).filter((m) => m.user_id === id), now)]));
+    hasPaymentMethod = ids.every((id) => has.get(id));
+    for (const [id, b] of billed) if (id && !has.get(b.userId)) methodBlocked.add(id);
+    for (const b of new Map([...billed.values()].map((x) => [x.userId, x])).values()) if (!has.get(b.userId)) methodWaitsOn.push({ userId: b.userId, name: b.name, via: b.via });
+  }
+  // The signers these properties go to. Several (or some the landlord's own) are
+  // never refused: each signer gets their own request for what they hold, and the
+  // landlord signs for the rest (Wyatt, 2026-11-25).
+  const signerLinks = [...new Map([...signerOf.values()].filter(Boolean).map((l) => [l.payer_id, l])).values()];
+  const ownTargets = scope.filter((id) => !signerOf.get(id));
+  const payerLink = signerLinks[0] ?? null;
+  let agreementSigned = true;
+  let uncovered = [];
+  // A paper copy out for signature: nothing to sign in the app, so the publish is
+  // refused with that said instead of opening the signing popup (Wyatt, 2026-11-17).
+  let paperOut = false;
+  // Whose paper copy it is: their name, or null for the landlord's own.
+  let paperSignerName;
+  if (settings.requireAgreement) {
+    if (listingIds?.length || newProperty) {
+      const ids = await resolvePublishedIds(db, listingIds ?? []);
+      const { state, properties, covered, holderOf } = await coverageFor(db, userId, now);
+      let extraUnits = null;
+      if (unitIds?.length) {
+        const { data: units, error: unitError } = await db
+          .from("listing_units")
+          .select("id, listing_id, name, unit_number, unit_designator, title")
+          .in("id", [...new Set(unitIds)].slice(0, 200));
+        if (unitError) throw unitError;
+        extraUnits = new Map();
+        for (const u of units ?? []) {
+          const label = unitLabel(u);
+          if (label) extraUnits.set(u.listing_id, [...(extraUnits.get(u.listing_id) ?? []), label]);
+        }
+      }
+      for (const u of newUnits ?? []) {
+        const label = String(u?.name ?? "").trim();
+        if (!u?.listingId || !label) continue;
+        extraUnits ??= new Map();
+        extraUnits.set(u.listingId, [...new Set([...(extraUnits.get(u.listingId) ?? []), label])]);
+      }
+      uncovered = uncoveredAmong(properties, covered, ids, { extraUnits });
+      // A building they have no stake in yet (an offering in someone else's): its address.
+      const unnamed = uncovered.filter((u) => u.listingId && u.address === "New property").map((u) => u.listingId);
+      if (unnamed.length) {
+        const { data: listings, error: listingError } = await db.from("listings").select("id, address, city, state, zipcode").in("id", unnamed);
+        if (listingError) throw listingError;
+        const byId = new Map((listings ?? []).map((l) => [l.id, displayAddress(l)]));
+        uncovered = uncovered.map((u) => (byId.has(u.listingId) ? { ...u, address: byId.get(u.listingId) } : u));
+      }
+      if (newProperty) uncovered.push({ listingId: null, address: "New property" });
+      agreementSigned = uncovered.length === 0;
+      // A paper copy holds a property only when it is out for whoever signs for
+      // THAT property (Wyatt, 2026-11-25): the landlord's own copy on paper does
+      // not hold a listing that has its own signer, nor the other way round.
+      // With several holders, it holds the publish only when every one is on paper.
+      if (uncovered.length) {
+        const holders = [...new Set(uncovered.map((u) => (u.listingId ? holderOf(u.listingId) : state.holderId ?? userId)))];
+        const out = [];
+        for (const h of holders) {
+          const st = h === (state.holderId ?? userId) ? state : await agreementState(db, userId, now, h === userId ? { own: true } : { holderId: h });
+          out.push(isPaperOut(st));
+        }
+        paperOut = out.every(Boolean);
+        if (paperOut) {
+          const first = uncovered[0];
+          paperSignerName = first.listingId ? linkForListing(links.signers, first.listingId)?.signer_name ?? null : links.signers.account?.signer_name ?? null;
+        }
+      }
+    } else {
+      // Signed, in its term, and on a version that still counts.
+      const state = await agreementState(db, userId, now);
+      agreementSigned = state.valid;
+      paperOut = isPaperOut(state);
+    }
+  }
+
+  // Who signs for each uncovered property: its signer's name, or null (the landlord).
+  const signerNameFor = (listingId) => (signerOf.get(listingId ?? null) ?? (listingId ? linkForListing(links.signers, listingId) : links.signers.account))?.signer_name ?? null;
+  if (signerLinks.length) uncovered = uncovered.map((u) => ({ ...u, signerName: signerNameFor(u.listingId) }));
+  const decision = gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice });
+  if (paperOut) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
+  // The properties held back, by coverage or by a payment method, when the
+  // refusal is about particular properties and not the whole account. A batch
+  // publish can then put the others live and leave these as drafts (Wyatt,
+  // 2026-11-25, api/landlord/publish `partial`).
+  const blocked =
+    !decision.allowed && !overdueInvoice && !newProperty && !paperOut && !uncovered.some((u) => !u.listingId)
+      ? [...new Set([...uncovered.map((u) => u.listingId), ...methodBlocked])]
+      : null;
+  return {
+    ...decision,
+    ...settings,
+    uncovered,
+    ...(blocked && { blocked }),
+    ...(paperOut && paperSignerName !== undefined && { paperSignerName }),
+    ...(payerLink && {
+      // The signer these go to; with several, the first, and `signers` has each
+      // with the properties that are theirs.
+      payer: { name: signerLinks.length === 1 ? payerLink.signer_name : `${signerLinks.length} authorized signers` },
+      signers: signerLinks.map((l) => ({ name: l.signer_name, listingIds: targets.filter((id) => signerOf.get(id)?.payer_id === l.payer_id) })),
+      // What would wait for a signer: the properties being published that one holds.
+      targets: targets.filter((id) => signerOf.get(id)),
+      // Published in the same go, but the landlord's own to sign for.
+      ownTargets: ownTargets.filter(Boolean),
+    }),
+    ...(payerLink && { signerNameOf: Object.fromEntries(targets.filter((id) => signerOf.get(id)).map((id) => [id, signerOf.get(id).signer_name])) }),
+    // A payment method someone else has to add (the authorized payer, or the signer who pays).
+    ...(methodWaitsOn.some((w) => w.via !== "landlord") && { methodWaitsOn: methodWaitsOn.filter((w) => w.via !== "landlord") }),
+    // The landlord's own payment method is missing: theirs to add, nobody else's.
+    ...(methodWaitsOn.some((w) => w.via === "landlord") && { ownMethodMissing: true }),
+  };
+}
+
+/*
+ * True while the overdue job's withdrawal of this lease has not been restored by
+ * an admin. A landlord cannot republish such a lease, or the withdrawal would be
+ * pointless. Reads as false until the withdrawals table exists.
+ */
+export async function isLeaseHeldForBilling(db, leaseId) {
+  const { data, error } = await db
+    .from("billing_lease_withdrawals")
+    .select("id")
+    .eq("lease_id", leaseId)
+    .is("restored_at", null)
+    .limit(1);
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "42P01") return false;
+    throw error;
+  }
+  return data.length > 0;
+}
+
+export const HELD_FOR_BILLING_MESSAGE =
+  "This listing was withdrawn because an invoice is overdue. Pay the invoice under Billing and we will put it back.";

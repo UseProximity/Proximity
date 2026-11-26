@@ -1,6 +1,52 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+
+// ─── URL-backed tab ───────────────────────────────────────────────────────────
+// A view's inner tab lives in ?tab= so a reload (or a shared link) opens the
+// same tab. The default tab is left out of the URL. Unknown values fall back.
+
+export function useUrlTab(allowed, fallback) {
+  /*
+   * Read ?tab= on the first render, not after it. Starting on the fallback and
+   * switching in an effect mounted the first tab, which fetched its data only
+   * to throw it away (Home's queue cards all link with ?tab=). Admin views only
+   * render in the browser, once the shell has read the address; the effect
+   * below still covers a server render.
+   */
+  const [tab, setTabState] = useState(() => {
+    if (typeof window === "undefined") return fallback;
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    return wanted && allowed.includes(wanted) ? wanted : fallback;
+  });
+  const allowedKey = allowed.join("|");
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && allowedKey.split("|").includes(wanted)) setTabState(wanted);
+  }, [allowedKey]);
+
+  const setTab = useCallback((next) => {
+    setTabState(next);
+    const p = new URLSearchParams(window.location.search);
+    if (next === fallback) p.delete("tab");
+    else p.set("tab", next);
+    const qs = p.toString();
+    window.history.replaceState(window.history.state, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, [fallback]);
+
+  return [tab, setTab];
+}
+
+// ─── Moving around the dashboard ──────────────────────────────────────────────
+// The shell (app/dashboard/admin/page.js) provides goTo(path, params) so any
+// view can open another page, or a person's or listing's record, in place.
+
+export const AdminNavContext = createContext(null);
+
+export function useAdminNav() {
+  return useContext(AdminNavContext);
+}
 
 // ─── Pending-changes store ────────────────────────────────────────────────────
 // Edits made anywhere in the dashboard are staged here (and highlighted) but
@@ -71,7 +117,8 @@ export function shortId(id) {
 export function fmtDate(v) {
   if (!v) return "—";
   const d = new Date(v);
-  return isNaN(d) ? String(v) : d.toLocaleDateString();
+  // 11/05/2026: dates only, never a time (Wyatt, 2026-11-05).
+  return isNaN(d) ? String(v) : d.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 export function fmtMoney(v) {
@@ -84,6 +131,63 @@ export function termLabel(months) {
   if (months === 5) return "Semester";
   if (months === 4) return "Summer";
   return `${months}-month`;
+}
+
+// ─── Sorting ──────────────────────────────────────────────────────────────────
+//
+// Newest first is the default wherever this is used. An admin opening a table
+// is nearly always asking what has just come in, and the tables that grew past
+// a screenful (users, reviews) buried exactly that under whatever order the
+// query happened to return.
+
+export const SORT_NEWEST = "newest";
+export const SORT_OLDEST = "oldest";
+
+/**
+ * Rows newest or oldest first, by `field`. Returns a new array, because callers
+ * render straight from the result, so sorting in place would mutate the
+ * fetched data and make the order depend on how many times it rendered.
+ *
+ * A row with no date sorts last in both directions. It is not old, it is
+ * unknown, and floating it to the top of "oldest" would read as a real answer.
+ */
+export function sortByDate(rows, direction = SORT_NEWEST, field = "created_at") {
+  const time = (r) => {
+    const t = new Date(r?.[field] ?? NaN).getTime();
+    return Number.isNaN(t) ? null : t;
+  };
+  return [...(rows || [])].sort((a, b) => {
+    const ta = time(a);
+    const tb = time(b);
+    if (ta === null) return tb === null ? 0 : 1;
+    if (tb === null) return -1;
+    return direction === SORT_OLDEST ? ta - tb : tb - ta;
+  });
+}
+
+export function SortToggle({ value, onChange, label = "Sort" }) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      <span className="text-[11px] text-gray-400">{label}</span>
+      {[
+        { key: SORT_NEWEST, text: "Newest" },
+        { key: SORT_OLDEST, text: "Oldest" },
+      ].map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`px-2 py-0.5 text-[11px] rounded-full border ${
+            value === o.key
+              ? "bg-gray-800 border-gray-800 text-white"
+              : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+          }`}
+        >
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Stars({ rating }) {

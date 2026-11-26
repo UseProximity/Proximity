@@ -1,0 +1,116 @@
+"use client";
+
+/*
+ * The two pieces every draft surface shares: the amber "Draft" marker and the
+ * Publish button. One look everywhere, so a landlord learns once that amber
+ * means "students can't see this yet".
+ *
+ * Publishing is one-way (see /api/landlord/publish), so the button asks first
+ * and says so. Withdraw is how a live offering comes back off the market.
+ */
+
+import { useState } from "react";
+import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
+import { Send } from "lucide-react";
+
+export function DraftBadge({ className = "" }) {
+  return (
+    <span
+      className={`rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ${className}`}
+    >
+      Draft
+    </span>
+  );
+}
+
+const WHAT = {
+  property: "this property",
+  unit: "this unit",
+  lease: "this listing",
+};
+
+export function PublishButton({
+  kind,
+  id,
+  // kind "properties": the property ids to publish together.
+  ids,
+  scope,
+  label = "Publish",
+  disabledReason = null,
+  confirmText,
+  successText = "Published. Students can see it now.",
+  onPublished,
+  size = "sm",
+}) {
+  const [busy, setBusy] = useState(false);
+  const disabled = busy || !!disabledReason;
+
+  const publish = async (e) => {
+    e?.stopPropagation();
+    if (disabled) return;
+    if (
+      !confirm(
+        confirmText ??
+          `Publish ${WHAT[kind]}? Students will be able to see it right away. Once published it can't go back to being a draft, but you can still edit or withdraw it.`
+      )
+    )
+      return;
+    await send();
+  };
+
+  // The publish itself, also run again once the landlord has signed for the
+  // properties their agreement did not cover yet (publishErrorToast's retry).
+  // `partial`: after the signing popup, when part of a batch went to an authorized
+  // signer: publish what is ready and leave what waits on them as drafts.
+  const send = async ({ partial = false } = {}) => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/landlord/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, id, ids, scope, ...(partial && { partial: true }) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return publishErrorToast(data, "Couldn't publish that.", { retry: send });
+      // A draft building whose address went live under someone else while it
+      // waited joins that building instead (see /api/landlord/publish).
+      if (data.published?.mergedInto) {
+        toast.success(
+          "Published. This building was already on Proximity, so your units and listings joined it. Find them under Live.",
+          { duration: 8000 }
+        );
+      } else if (data.published?.waiting) {
+        const { published: n, waiting } = data.published;
+        toast.success(`Published ${n} ${n === 1 ? "listing" : "listings"}. ${waiting} ${waiting === 1 ? "is still a draft, waiting" : "are still drafts, waiting"} on ${waiting === 1 ? "its" : "their"} authorized signer.`, { duration: 8000 });
+      } else {
+        toast.success(typeof successText === "function" ? successText(data.published) : successText);
+      }
+      await onPublished?.();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pad = size === "md" ? "px-3.5 py-2 text-sm" : "px-3 py-1.5 text-xs";
+  // Greyed out rather than hidden, with the reason on hover, so a landlord
+  // can see the step exists and what comes first.
+  const look = disabledReason
+    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+    : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-60";
+  return (
+    <button
+      type="button"
+      onClick={publish}
+      disabled={disabled}
+      aria-disabled={disabled}
+      title={disabledReason ?? undefined}
+      className={`inline-flex items-center gap-1.5 rounded-lg font-semibold transition ${look} ${pad}`}
+    >
+      <Send className="h-3.5 w-3.5" />
+      {busy ? "Publishing…" : label}
+    </button>
+  );
+}

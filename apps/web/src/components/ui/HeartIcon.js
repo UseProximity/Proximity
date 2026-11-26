@@ -1,16 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { createPortal } from "react-dom";
 import { useFavorites } from "@/context/FavoritesContext";
-import { trackEvent, getListingSource } from "@/utils/analytics";
 
 function AuthModal({ onClose }) {
+  // The modal is portalled to <body>, but React sends its events up the React
+  // tree, to whatever renders the heart: a grid card would take a backdrop click
+  // as its own and open the listing. Every click in the modal passes through the
+  // backdrop, so it stops there.
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center flex flex-col items-center gap-5"
@@ -46,67 +52,46 @@ function AuthModal({ onClose }) {
   );
 }
 
+// The save control, the same everywhere: a white heart on a translucent dark
+// circle, an outline when not saved and filled when saved. Callers only place it.
+// The icon is a block (an inline svg leaves a text gap under it, which lifts the
+// heart off the circle's center) nudged down half a pixel, where the heart's
+// shape looks centered.
 export default function HeartIcon({ listingId }) {
+  const iconClass = "block h-5 w-5 translate-y-[0.5px]";
   const { data: session } = useSession();
-  const { savedIds, toggle } = useFavorites();
+  const { savedIds, setFavorite } = useFavorites();
   const isFavorite = savedIds.includes(String(listingId));
-  const [pending, setPending] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
-  const handleClick = async (e) => {
+  // The heart changes at once and can be clicked again straight away; the
+  // server is brought in line in the background (see FavoritesContext).
+  const handleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (pending) return;
 
     if (!session?.user?.id) {
       setShowModal(true);
       return;
     }
 
-    setPending(true);
-    const next = !isFavorite;
-    toggle(listingId, next); // optimistic
-
-    try {
-      const res = await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || typeof data.favorited !== "boolean") {
-        toggle(listingId, isFavorite); // revert
-      } else {
-        if (data.favorited !== next) toggle(listingId, data.favorited); // sync server truth
-        const source = getListingSource(listingId);
-        trackEvent("Favorite Toggled", { action: data.favorited ? "add" : "remove", listingId, ...(source ? { source } : {}) });
-      }
-    } catch {
-      toggle(listingId, isFavorite); // revert
-    } finally {
-      setPending(false);
-    }
+    setFavorite(listingId, !isFavorite);
   };
 
   return (
     <>
       <button
         onClick={handleClick}
-        disabled={pending}
-        aria-disabled={pending}
-        aria-busy={pending}
-        className="focus:outline-none p-1.5 hover:text-red-500 transition-all disabled:opacity-60"
+        className="block rounded-full bg-black/30 p-[5px] text-white transition-colors focus:outline-none"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={isFavorite}
       >
         {isFavorite ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="red" viewBox="0 0 24 24" className="h-6 w-6">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" className={iconClass}>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="h-6 w-6">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className={iconClass}>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
         )}

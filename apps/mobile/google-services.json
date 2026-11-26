@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "310853027539",
+    "project_id": "proximity-477719",
+    "storage_bucket": "proximity-477719.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:310853027539:android:83e05e3fd1f370ccd7f626",
+        "android_client_info": {
+          "package_name": "org.useproximity.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "310853027539-gjgg1i9r265gk6ogoehrtbg6r6gcguc2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAER-NshvHod4-o1C-6ZyXI0RwnN1ipVqc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "310853027539-gjgg1i9r265gk6ogoehrtbg6r6gcguc2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "310853027539-e0rjsnblgiuue81ud4l394oo55gjga0q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.proximityllc.proximity"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

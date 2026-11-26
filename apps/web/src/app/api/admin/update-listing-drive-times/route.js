@@ -1,5 +1,6 @@
+// @auth super
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 import { getSupabaseClient } from "@/lib/supabase";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { DRIVE_PLACES, NEAREST_DRIVE_POOLS } from "@/utils/drivePlaces";
@@ -12,8 +13,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // rows with the latest hybrid nearest-gas/pharmacy results.
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session || session.user.role !== "super") {
+    const session = await requireDbRole(["super"]);
+    if (!session) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

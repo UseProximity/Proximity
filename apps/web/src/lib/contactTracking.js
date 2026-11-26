@@ -1,5 +1,6 @@
 import supabase from "@/lib/supabase";
 import { upsertAsUser } from "@/lib/supabaseWithUser";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 /*
  * Single source of truth for recording that a student contacted a listing.
@@ -7,6 +8,11 @@ import { upsertAsUser } from "@/lib/supabaseWithUser";
  * contact_owners action so both flows mark up the same contact numbers:
  * the user's contacted list (user_listing_interactions) and the listing's
  * "contacts" metric (landlord dashboard + matchmaking saturation signal).
+ *
+ * Review sandbox (App Store review accounts): a sandbox student still gets the
+ * listing on their own contacted list, but the listing's "contacts" metric is
+ * not bumped, so a reviewer never inflates a real landlord's numbers. A failed
+ * lookup skips the metric too (the popular row leaves sandbox users out itself).
  */
 export async function recordListingContact({ userId, listingId }) {
   // Look up the contacted interaction type ID
@@ -32,6 +38,8 @@ export async function recordListingContact({ userId, listingId }) {
 
   if (error) return { error };
 
+  if (await isSandboxContact(userId)) return { error: null };
+
   // Track contacts metric (fire-and-forget)
   supabase
     .rpc("increment_listing_metric", {
@@ -43,4 +51,14 @@ export async function recordListingContact({ userId, listingId }) {
     });
 
   return { error: null };
+}
+
+/* True when this user is a review sandbox account, or when that cannot be told. */
+export async function isSandboxContact(userId) {
+  if (!userId) return false;
+  try {
+    return (await sandboxIdsAmong([userId])).has(userId);
+  } catch {
+    return true;
+  }
 }

@@ -1,3 +1,5 @@
+import { twMerge } from "tailwind-merge";
+
 export const Button = ({
   children,
   variant = "default",
@@ -23,7 +25,7 @@ export const Button = ({
 
   return (
     <button
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
+      className={twMerge(baseClasses, variants[variant], sizes[size], className)}
       onClick={onClick}
       {...props}
     >

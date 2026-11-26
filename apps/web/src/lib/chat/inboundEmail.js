@@ -1,0 +1,650 @@
+/*
+ * Post an emailed reply into its chat conversation.
+ *
+ * SES receives mail for reply+<token>@<reply domain>, stores the raw message in
+ * S3 and, on prod and staging, notifies /api/chat/inbound-email over SNS. Locally
+ * there is no public URL for SNS, so /api/dev/inbound-email runs the same thing
+ * against the dev/ prefix by hand.
+ *
+ * A reply is posted only if every check passes, in this order:
+ *   1. SES did not mark it as spam or a virus.
+ *   2. It is not an automatic message (out of office, bounce, mailing list).
+ *   3. The From domain is authenticated: DMARC pass, or an SPF or DKIM pass for
+ *      that same domain. A forged From cannot get past this.
+ *   4. The reply address belongs to someone in a live conversation.
+ *   5. It comes from that person: their account email, the alert address this
+ *      conversation emails them at, or another mailbox at the same company
+ *      domain (never a free mail domain or wustl.edu, where sharing a domain
+ *      proves nothing), or an address or domain the landlord approved to reply
+ *      for them (lib/chat/replySenders.js). Forwards are refused (Wyatt,
+ *      2026-10-09). A landlord-side reply from anyone else is held, not
+ *      refused, and the landlord is asked once whether to approve the sender
+ *      (Wyatt, 2026-10-24); approving runs it again.
+ *   6. Something is left once the quoted email and signature are removed, or
+ *      a photo or PDF is attached.
+ * Then the text goes in through rpc_send_chat_message like any in-app message,
+ * so it is stored, rate limited and delivered exactly the same way. Before
+ * that, a landlord's application link, contact details (phone, email, outside
+ * link, handle, "let's talk elsewhere") and abuse, fraud or phishing are cut
+ * out and replaced with "[removed]", and the sender is emailed one note
+ * listing what was removed (Wyatt, 2026-11-23). In a tour conversation
+ * contact details are left in.
+ *
+ * Attached photos and PDFs are copied into R2 under the conversation and
+ * screened by the same vision scan as in-app uploads. Signature logos and
+ * tracking pixels (inline images under a few KB) are dropped; a blocked file
+ * is dropped and logged, and the text still posts.
+ *
+ * Spam, automatic mail and unauthenticated mail get no reply. The others get a
+ * short "not delivered" email, at most one per sender per conversation per
+ * day, and only when the sender was authenticated so we never mail a forged
+ * address. Every message received is recorded in chat_inbound_emails, and the
+ * team is emailed about every reply that was not posted (spam and automatic
+ * mail in the daily check-in, everything else straight away), so a real reply
+ * is never lost silently (Wyatt, 2026-10-23).
+ */
+import { randomUUID } from "node:crypto";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { simpleParser } from "mailparser";
+import supabase from "@/lib/supabase";
+import { outreachEnabled } from "@/lib/appEnv";
+import { getBaseUrl, sendReplyNotDeliveredEmail } from "@/lib/email";
+import { r2, getBucket } from "@/lib/r2";
+import {
+  CHAT_ATTACHMENT_ALLOWED_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_FILES,
+  sanitizeChatAttachmentFileName,
+} from "@/lib/chat/attachments";
+import { extractReplyText, fromLeasingAssistant } from "@/lib/chat/emailReplyText";
+import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
+import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
+import { requestSenderApproval } from "@/lib/chat/replySenderRequest";
+import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
+import { findApplicationLinks, stripApplicationLinks, APPLICATION_LINK_REASON } from "@/lib/chat/applicationLinks";
+import { emailReplyNote } from "@/lib/chat/replyNote";
+import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
+import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { alertTeam } from "@/lib/chat/deliveryAlerts";
+import { scanChatAttachments } from "@/lib/chat/scanAttachment";
+import { recordAttachmentScan } from "@/lib/chat/sendGuards";
+import { findQuestionToken, handleQuestionEmail } from "@/lib/agents/questionEmail";
+import { findAgentReplyToken, handleAgentReplyEmail } from "@/lib/agents/replyEmail";
+import { detectTourProposal } from "@/lib/agents/tourProposals";
+
+const MAX_BODY = 5000;
+// An inline image this small is a signature logo, a social icon or a tracking
+// pixel. A pasted photo or screenshot is far larger and is kept.
+const INLINE_LOGO_MAX_BYTES = 40 * 1024;
+const NOTICE_EVERY_MS = 24 * 60 * 60 * 1000;
+
+let s3;
+function mailBucketClient() {
+  s3 ??= new S3Client({
+    region: process.env.AWS_SES_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_SES_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY,
+    },
+  });
+  return s3;
+}
+
+function headerText(parsed, name) {
+  const value = parsed.headers.get(name);
+  if (value == null) return "";
+  const one = (v) => {
+    // Address headers parse to { value: [{ address, name }], text }.
+    if (v && typeof v === "object" && Array.isArray(v.value)) {
+      return v.value.map((a) => a.address ?? "").concat(v.text ?? "").join(" ");
+    }
+    if (v && typeof v === "object" && "value" in v) return String(v.value);
+    return String(v);
+  };
+  return Array.isArray(value) ? value.map(one).join("\n") : one(value);
+}
+
+/** Out of office, bounces, mailing lists and other mail no person typed. */
+export function isAutomatic(parsed) {
+  const h = (name) => headerText(parsed, name).trim().toLowerCase();
+  const auto = h("auto-submitted");
+  if (auto && auto !== "no") return true;
+  if (h("x-autoreply") || h("x-autorespond") || h("x-auto-response-suppress")) return true;
+  if (/^(bulk|junk|list|auto_reply)$/.test(h("precedence"))) return true;
+  if (h("list-id") || h("list-unsubscribe")) return true;
+  if (h("return-path") === "<>") return true;
+  if (/multipart\/report/.test(h("content-type"))) return true;
+  return /^(auto(matic)?[ -]?reply|out of (the )?office|autoreply|undeliverable|delivery status notification|mail delivery (failed|subsystem))/i.test(
+    String(parsed.subject ?? "").trim()
+  );
+}
+
+/** The reply token from whichever recipient carries our address. */
+export function findReplyToken(parsed, recipients = []) {
+  const domain = replyDomain().replace(/\./g, "\\.");
+  const re = new RegExp(`reply\\+([a-f0-9]{32})@${domain}`, "i");
+  const candidates = [
+    ...recipients,
+    ...["to", "cc", "delivered-to", "x-original-to"].map((k) => headerText(parsed, k)),
+  ];
+  for (const c of candidates) {
+    const m = String(c ?? "").match(re);
+    if (m) return { token: m[1].toLowerCase(), address: m[0].toLowerCase() };
+  }
+  return null;
+}
+
+const EXT_BY_TYPE = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "application/pdf": "pdf",
+};
+
+/** The files a person meant to send: photos and PDFs, minus signature art. */
+export function emailAttachments(parsed) {
+  const out = [];
+  for (const a of parsed.attachments ?? []) {
+    const contentType = String(a.contentType ?? "").toLowerCase();
+    if (!CHAT_ATTACHMENT_ALLOWED_TYPES.has(contentType)) continue;
+    const sizeBytes = Number(a.size ?? a.content?.length ?? 0);
+    if (!(sizeBytes > 0) || sizeBytes > CHAT_ATTACHMENT_MAX_BYTES) continue;
+    const inline = Boolean(a.related) || /inline/i.test(String(a.contentDisposition ?? ""));
+    if (inline && contentType.startsWith("image/") && sizeBytes < INLINE_LOGO_MAX_BYTES) continue;
+    const fileName = String(a.filename ?? "").trim() || `attachment.${EXT_BY_TYPE[contentType]}`;
+    out.push({ content: a.content, contentType, fileName: fileName.slice(0, 200), sizeBytes });
+    if (out.length >= CHAT_ATTACHMENT_MAX_FILES) break;
+  }
+  return out;
+}
+
+// Same key shape as the in-app presign route, which the send RPC checks.
+async function storeAttachments(threadId, files) {
+  const bucket = getBucket();
+  if (!bucket) throw new Error("R2 bucket env missing");
+  const stored = [];
+  for (const f of files) {
+    const key = `chat-attachments/${threadId}/${randomUUID()}-${sanitizeChatAttachmentFileName(f.fileName)}`;
+    await r2.send(
+      new PutObjectCommand({ Bucket: bucket, Key: key, Body: f.content, ContentType: f.contentType })
+    );
+    stored.push({ key, fileName: f.fileName, contentType: f.contentType, sizeBytes: f.sizeBytes });
+  }
+  return stored;
+}
+
+/** Update the log row. Returns false when the update failed. */
+async function finish(id, fields) {
+  const { error } = await supabase.from("chat_inbound_emails").update(fields).eq("id", id);
+  if (error) console.error("inbound email: log update failed:", error);
+  return !error;
+}
+
+async function maybeSendNotice({ logId, fromEmail, threadId, reason }) {
+  const since = new Date(Date.now() - NOTICE_EVERY_MS).toISOString();
+  let q = supabase
+    .from("chat_inbound_emails")
+    .select("id", { head: true, count: "exact" })
+    .eq("from_email", fromEmail)
+    .gte("notice_sent_at", since);
+  q = threadId ? q.eq("thread_id", threadId) : q.is("thread_id", null);
+  const { count } = await q;
+  if (count > 0) return;
+
+  try {
+    await sendReplyNotDeliveredEmail({ to: fromEmail, reason, baseUrl: getBaseUrl() });
+    await finish(logId, { notice_sent_at: new Date().toISOString() });
+  } catch (err) {
+    console.error("inbound email: notice failed:", err);
+  }
+}
+
+/** A claim this old that never finished belongs to a run that died (timeout, cold kill). */
+export const STALE_CLAIM_MS = 5 * 60_000;
+
+/**
+ * Take over an existing row for this key, if its run failed before posting
+ * anything. An "error" row, or a "processing" row older than STALE_CLAIM_MS,
+ * is reclaimed so an SNS retry or a manual re-run actually reprocesses it; any
+ * other outcome is final. The update is conditional on the row still being in
+ * the state we read, so two retries racing for the same row cannot both win.
+ * created_at doubles as the claim time and is reset on reclaim.
+ *
+ * @returns {Promise<string|null>} the row id when reclaimed, otherwise null
+ */
+async function reclaim(key) {
+  const { data: row, error } = await supabase
+    .from("chat_inbound_emails")
+    .select("id, status, created_at, chat_message_id")
+    .eq("s3_key", key)
+    .maybeSingle();
+  if (error || !row || row.chat_message_id) return null;
+  const stale = row.status === "processing" && Date.now() - Date.parse(row.created_at) > STALE_CLAIM_MS;
+  if (row.status !== "error" && !stale) return null;
+
+  const { data: taken } = await supabase
+    .from("chat_inbound_emails")
+    .update({ status: "processing", reason: null, created_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .eq("status", row.status)
+    .eq("created_at", row.created_at)
+    .is("chat_message_id", null)
+    .select("id")
+    .maybeSingle();
+  return taken?.id ?? null;
+}
+
+/**
+ * Process one stored message. Safe to call twice for the same key: once a
+ * message has an outcome, the second call returns { status: "duplicate" }
+ * without doing anything. A run that failed before posting is retried instead
+ * (see reclaim), so the route's 500 really does lead to a second attempt.
+ *
+ * @param {{ bucket: string, key: string, recipients?: string[] }} input
+ */
+export async function processInboundEmail({ bucket, key, recipients = [] }) {
+  const result = await processOne({ bucket, key, recipients });
+  if (!QUIET_OUTCOMES.has(result.status)) await reportNotPosted(key, result);
+  return result;
+}
+
+// Outcomes nobody needs to hear about straight away. Spam and automatic mail
+// are listed in the daily check-in instead, in case a real reply was misread.
+const QUIET_OUTCOMES = new Set(["posted", "duplicate", "spam", "auto_reply"]);
+
+const NOT_POSTED_WHY = {
+  unauthenticated: "SES could not confirm the email really came from the address in its From line.",
+  held: "It came from someone other than the landlord. The landlord has been emailed to approve the sender; approving delivers it. You can also approve it in the admin Conversations view.",
+  unknown_address: "The reply address does not match any conversation.",
+  wrong_sender: "It came from an address that is not the one this conversation emails, or it was a forward.",
+  empty: "Nothing new was left once the quoted email and signature were removed.",
+  rejected: "The conversation refused it (deleted, blocked or rate limited).",
+  error: "Processing crashed. SNS retries this automatically; check the logs if it repeats.",
+};
+
+/*
+ * A reply that reached us but not the conversation. The sender gets a "not
+ * delivered" notice for most of these (never for unauthenticated mail, which
+ * may be forged), but the team is told every time so it can relay the reply
+ * by hand.
+ */
+async function reportNotPosted(key, result) {
+  const { data: row } = await supabase
+    .from("chat_inbound_emails")
+    .select("from_email, thread_id, reason, created_at")
+    .eq("s3_key", key)
+    .maybeSingle();
+  await alertTeam({
+    subject: `an emailed reply was not posted (${result.status})`,
+    intro: NOT_POSTED_WHY[result.status] ?? "The reply was not posted to its conversation.",
+    facts: [
+      ["From", row?.from_email ?? "unknown"],
+      ["Conversation", row?.thread_id ?? "not identified"],
+      ["Reason", row?.reason ?? result.reason ?? result.status],
+      ["Received", row?.created_at],
+      ["Stored email", key],
+    ],
+    action:
+      result.status === "held"
+        ? "Nothing yet: the landlord decides. If they do not and the sender is genuine, approve them in the admin Conversations view, which delivers the reply."
+        : "Read the stored email in the inbound mail bucket. If it is a genuine reply, post it to the conversation or ask the sender to reply in the app.",
+  });
+}
+
+async function processOne({ bucket, key, recipients }) {
+  const { data: claimed, error: claimError } = await supabase
+    .from("chat_inbound_emails")
+    .insert({ s3_key: key, status: "processing" })
+    .select("id")
+    .single();
+  let logId = claimed?.id;
+  if (claimError) {
+    if (claimError.code !== "23505") {
+      console.error("inbound email: claim failed:", claimError);
+      return { status: "error" };
+    }
+    logId = await reclaim(key);
+    if (!logId) return { status: "duplicate" };
+  }
+
+  try {
+    const object = await mailBucketClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const parsed = await simpleParser(Buffer.from(await object.Body.transformToByteArray()));
+
+    const fromEmail = String(parsed.from?.value?.[0]?.address ?? "").trim().toLowerCase();
+    const base = { from_email: fromEmail || null, message_id_header: parsed.messageId || null };
+
+    if (
+      /^fail$/i.test(headerText(parsed, "x-ses-spam-verdict").trim()) ||
+      /^fail$/i.test(headerText(parsed, "x-ses-virus-verdict").trim())
+    ) {
+      await finish(logId, { ...base, status: "spam" });
+      return { status: "spam" };
+    }
+    if (isAutomatic(parsed)) {
+      await finish(logId, { ...base, status: "auto_reply" });
+      return { status: "auto_reply" };
+    }
+    /*
+     * A landlord answering one of Proxy's questions (per-listing agents). Its
+     * own address shape (reply+q<token>) never matches a chat reply token, and
+     * the answer never posts into a student's thread as written: see
+     * lib/agents/questionEmail.js.
+     */
+    const questionToken = findQuestionToken(parsed, recipients);
+    if (questionToken) {
+      base.to_address = questionToken.address;
+      if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
+        await finish(logId, { ...base, status: "unauthenticated" });
+        return { status: "unauthenticated" };
+      }
+      const finishWithBase = (id, fields) => finish(id, { ...base, ...fields });
+      return handleQuestionEmail({ parsed, fromEmail, token: questionToken.token, attachments: emailAttachments(parsed), logId, finish: finishWithBase });
+    }
+    /*
+     * A landlord answering a tour request (a message to the student) or a
+     * student answering one of Proxy's emails (a message to Proxy): see
+     * lib/agents/replyEmail.js (Wyatt, 2026-11-01).
+     */
+    const agentToken = findAgentReplyToken(parsed, recipients);
+    if (agentToken) {
+      base.to_address = agentToken.address;
+      if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
+        await finish(logId, { ...base, status: "unauthenticated" });
+        return { status: "unauthenticated" };
+      }
+      return handleAgentReplyEmail({ parsed, fromEmail, token: agentToken, logId, finish: (id, fields) => finish(id, { ...base, ...fields }) });
+    }
+    const found = findReplyToken(parsed, recipients);
+    if (!fromEmail || !authenticated(parsed.headerLines, fromEmail)) {
+      // Nothing is posted, but note which conversation it was addressed to so
+      // the admin Conversations view can show it there.
+      const { data: addressed } = found
+        ? await supabase
+            .from("chat_participants")
+            .select("thread_id, user_id")
+            .eq("reply_token_hash", hashReplyToken(found.token))
+            .maybeSingle()
+        : { data: null };
+      await finish(logId, {
+        ...base,
+        status: "unauthenticated",
+        thread_id: addressed?.thread_id ?? null,
+        user_id: addressed?.user_id ?? null,
+        to_address: found?.address ?? null,
+      });
+      return { status: "unauthenticated" };
+    }
+
+    const notice = async (status, reason, threadId = null, why = status) => {
+      await finish(logId, { ...base, status, reason, thread_id: threadId });
+      await maybeSendNotice({ logId, fromEmail, threadId, reason: why });
+      return { status, reason };
+    };
+
+    if (!found) return notice("unknown_address", "no reply token for this environment");
+
+    const { data: participant } = await supabase
+      .from("chat_participants")
+      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id, listing_id, unrestricted)")
+      .eq("reply_token_hash", hashReplyToken(found.token))
+      .maybeSingle();
+    if (!participant || participant.users?.deleted_at) {
+      return notice("unknown_address", "token matches no participant");
+    }
+    const { thread_id: threadId, user_id: userId } = participant;
+    base.to_address = found.address;
+    base.user_id = userId;
+    if (participant.chat_threads?.deleted_at) {
+      return notice("rejected", "conversation deleted", threadId);
+    }
+
+    // Who may speak for this participant.
+    const { data: alertEmail } = await supabase.rpc("fn_chat_alert_email", {
+      p_thread_id: threadId,
+      p_user_id: userId,
+    });
+    const allowed = [participant.users?.email, alertEmail]
+      .map((e) => String(e ?? "").trim().toLowerCase())
+      .filter(Boolean);
+    // Off production every alert is redirected to a tester's inbox, so the reply
+    // comes from there. Never honoured on the real site.
+    const testers = outreachEnabled()
+      ? []
+      : String(process.env.CHAT_INBOUND_TEST_SENDERS ?? "")
+          .split(",")
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean);
+    const fromDomain = domainOf(fromEmail);
+    const sameCompany =
+      !SHARED_DOMAINS.has(fromDomain) && allowed.some((e) => domainOf(e) === fromDomain);
+    const forwarded = /^\s*(fwd?|fw)\s*:/i.test(String(parsed.subject ?? ""));
+    // What the other side wrote lately: the messages the email being answered
+    // carried, so a client that pastes them under the reply with no quote
+    // header doesn't post them back into the chat as this person's words.
+    const { data: recent } = await supabase
+      .from("chat_messages")
+      .select("body")
+      .eq("thread_id", threadId)
+      .neq("sender_id", userId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    const quoted = (recent ?? []).map((m) => m.body).filter(Boolean);
+    if (!allowed.includes(fromEmail) && !testers.includes(fromEmail) && !sameCompany) {
+      // Someone else at the landlord's end may have been approved to reply for
+      // them, or is held until the landlord decides (Wyatt, 2026-10-24).
+      const isLandlord = participant.chat_threads?.landlord_id === userId;
+      const decision = isLandlord ? await senderDecision(supabase, userId, fromEmail) : null;
+      if (decision !== "approved") {
+        // What they wrote, kept so the landlord and the admin view can judge it.
+        const senderName = String(parsed.from?.value?.[0]?.name ?? "").trim().slice(0, 120) || null;
+        const preview = extractReplyText({
+          text: parsed.text,
+          html: typeof parsed.html === "string" ? parsed.html : "",
+          senderName: participant.users?.name,
+          senderCompany: participant.users?.company_name,
+          fromName: senderName,
+          quoted,
+        }).trim().slice(0, 2000);
+        base.body_preview = preview || null;
+        base.sender_name = senderName;
+        if (decision === "declined") return notice("wrong_sender", "declined by landlord", threadId);
+        if (!isLandlord || forwarded) {
+          return notice("wrong_sender", forwarded ? "forwarded" : "from address is not this participant", threadId);
+        }
+        /*
+         * Only ask the landlord about a reply we actually managed to hold. If the
+         * row can't be stored as held (the schema is missing the held columns,
+         * say), the catch below marks it 'error' so it shows up and can be re-run,
+         * instead of sitting in 'processing' behind an approval email whose
+         * Approve button finds nothing.
+         */
+        const held = await finish(logId, {
+          ...base,
+          status: "held",
+          reason: "sender not approved yet",
+          thread_id: threadId,
+        });
+        if (!held) throw new Error("could not store the reply as held");
+        await requestSenderApproval({ logId, landlordId: userId, threadId, fromEmail, senderName, preview });
+        await maybeSendNotice({ logId, fromEmail, threadId, reason: "awaiting_approval" });
+        return { status: "held", reason: "sender not approved yet" };
+      }
+    }
+    if (forwarded) return notice("wrong_sender", "forwarded", threadId);
+
+    const extracted = extractReplyText({
+      text: parsed.text,
+      html: typeof parsed.html === "string" ? parsed.html : "",
+      senderName: participant.users?.name,
+      senderCompany: participant.users?.company_name,
+      fromName: parsed.from?.value?.[0]?.name,
+      quoted,
+    });
+    /*
+     * What an emailed reply loses before the other side sees it (Wyatt,
+     * 2026-11-23). It cannot be bounced back for an edit, so the offending
+     * parts are cut out, each replaced with "[removed]", and the rest is
+     * delivered:
+     *
+     *   - a landlord's application link (it belongs on the listing, 2026-11-20)
+     *   - contact details and requests to move elsewhere, except in a tour
+     *     conversation, where both sides already have them (2026-10-26)
+     *   - abuse, threats, payment and login requests, with their sentence
+     *
+     * The sender is then emailed one note listing what was removed and why.
+     */
+    const thread = participant.chat_threads ?? {};
+    const isLandlord = thread.landlord_id === userId;
+    const unrestricted = thread.unrestricted === true;
+    const assistant = fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" });
+    const appLinks = isLandlord ? findApplicationLinks(extracted) : [];
+    const screenedText = appLinks.length > 0 ? stripApplicationLinks(extracted) : extracted;
+    const verdict = screenChatText(screenedText);
+    const reasons = verdict.action === "block"
+      ? verdict.reasons.filter((r) => !(unrestricted && CONTACT_REASONS.has(r)))
+      : [];
+    let body = screenedText.trim();
+    if (reasons.length > 0) body = redactChatText(screenedText, { keepContact: unrestricted }).text.trim();
+    const appReasons = appLinks.length > 0 ? [APPLICATION_LINK_REASON] : [];
+    const removedAny = appLinks.length > 0 || reasons.length > 0;
+    // Only what is left after a cut counts as empty: a reply of just "?" is
+    // still a reply and is posted as written.
+    if (removedAny && !body.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) body = "";
+
+    // Never to a leasing assistant: it answers every email, so the note and its
+    // answer would bounce between us (Wyatt, 2026-11-17). The record stays.
+    const sendNote = async ({ delivered, attachmentsRemoved = false }) => {
+      if (assistant || (!removedAny && !attachmentsRemoved)) return;
+      await emailReplyNote({
+        to: fromEmail,
+        audience: isLandlord ? "landlord" : "student",
+        senderId: userId,
+        otherId: isLandlord ? thread.interested_user_id : thread.landlord_id,
+        listingId: thread.listing_id ?? null,
+        threadId,
+        delivered,
+        reasons,
+        attachmentsRemoved,
+        applicationLink: appLinks.length > 0,
+        unrestricted,
+      });
+    };
+    // Nothing was posted: one block record for what was cut, then the note.
+    const notPosted = async ({ reason, attachmentsRemoved = false }) => {
+      if (removedAny) {
+        await supabase.rpc("rpc_log_chat_moderation_event", {
+          p_user_id: userId,
+          p_action: "block",
+          p_reasons: [...appReasons, ...reasons, "from_email"],
+          p_body: extracted,
+          p_thread_id: threadId,
+          p_message_id: null,
+          p_listing_id: thread.listing_id ?? null,
+        });
+      }
+      await finish(logId, { ...base, status: "empty", reason, thread_id: threadId });
+      await sendNote({ delivered: false, attachmentsRemoved });
+      return { status: "empty", reason };
+    };
+
+    const files = emailAttachments(parsed);
+    if (!body && files.length === 0) {
+      if (removedAny) return notPosted({ reason: "only removed content" });
+      return notice("empty", "no new text", threadId);
+    }
+    if (body.length > MAX_BODY) body = `${body.slice(0, MAX_BODY - 1)}…`;
+
+    let attachments = [];
+    let attachmentsRemoved = false;
+    if (files.length > 0) {
+      attachments = await storeAttachments(threadId, files);
+      const scan = await scanChatAttachments({ attachments });
+      if (scan.reasons.length > 0) {
+        await recordAttachmentScan({
+          userId,
+          threadId,
+          blocked: scan.blocked,
+          reasons: [...scan.reasons, "from_email"],
+          fileNames: files.map((f) => f.fileName),
+        });
+      }
+      if (scan.blocked) {
+        if (!body) return notPosted({ reason: "attachments blocked", attachmentsRemoved: true });
+        attachments = [];
+        attachmentsRemoved = true;
+      }
+    }
+
+    const { data: sent, error: sendError } = attachments.length > 0
+      ? await supabase.rpc("rpc_send_chat_attachment_message", {
+          p_user_id: userId,
+          p_thread_id: threadId,
+          p_body: body || null,
+          p_attachments: attachments,
+        })
+      : await supabase.rpc("rpc_send_chat_message", {
+          p_user_id: userId,
+          p_thread_id: threadId,
+          p_body: body,
+        });
+    if (sendError || !sent?.messageId) {
+      console.error("inbound email: send rpc refused:", sendError);
+      return notice("rejected", sendError?.message?.slice(0, 200) ?? "send failed", threadId);
+    }
+    // Pin the message to the claim at once, so a failure from here on is never
+    // reclaimed and posted a second time.
+    await finish(logId, { chat_message_id: sent.messageId });
+
+    // Attachment messages already carry metadata (caption, file list); add to it.
+    const { data: existing } = await supabase
+      .from("chat_messages")
+      .select("metadata")
+      .eq("id", sent.messageId)
+      .single();
+    await supabase
+      .from("chat_messages")
+      // email_from: who actually wrote it, which differs from the account when
+      // an approved colleague replied for the landlord.
+      .update({ metadata: { ...(existing?.metadata ?? {}), via: "email", email_from: fromEmail } })
+      .eq("id", sent.messageId);
+
+    // Flag-tier signals (a scam narrative, an SSN request) are recorded as they
+    // are in the app, whether or not something was also removed.
+    const flagReasons = verdict.action === "block" ? verdict.flags ?? [] : verdict.action === "flag" ? verdict.reasons : [];
+    if (removedAny || flagReasons.length > 0) {
+      await supabase.rpc("rpc_log_chat_moderation_event", {
+        p_user_id: userId,
+        p_action: "flag",
+        p_reasons: [...appReasons, ...reasons, ...flagReasons, removedAny ? "redacted_from_email" : "delivered_from_email"],
+        p_body: extracted,
+        p_thread_id: threadId,
+        p_message_id: sent.messageId,
+        p_listing_id: sent.listingId ?? null,
+      });
+    }
+    // Straight away, every time. The sender is authenticated by this point.
+    await sendNote({ delivered: true, attachmentsRemoved });
+
+    await finish(logId, { ...base, status: "posted", thread_id: threadId, chat_message_id: sent.messageId });
+
+    // A tour time suggested by email is spotted before the alert, which carries its Confirm.
+    await detectTourProposal({ threadId, messageId: sent.messageId, senderId: userId, body });
+    // A reply is a complete thought: relay it at once, no quiet window.
+    await notifyNewChatMessage({
+      threadId,
+      senderId: userId,
+      messageId: sent.messageId ?? null,
+      baseUrl: getBaseUrl(),
+      via: "email",
+      quietMs: 0,
+    });
+    return { status: "posted", threadId, messageId: sent.messageId };
+  } catch (err) {
+    console.error("inbound email: processing failed:", err);
+    await finish(logId, { status: "error", reason: String(err?.message ?? err).slice(0, 200) });
+    return { status: "error" };
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "intro": [
+    "Every year the same question hits r/washu: when do people sign leases? And every year someone finds out too late that the answer was months ago. Here's the real calendar, assembled from what WashU (Washington University in St. Louis) students consistently report about how the cycle runs.",
+    "The core dynamic is simple. Private landlords near campus start signing leases for NEXT August in the late fall, almost a year ahead. WashU's own housing companies open much later, in spring. Two waves, with a long awkward gap in between."
+  ],
+  "directAnswer": "WashU students typically sign off-campus leases for the following school year between November and January: students report private landlords near campus begin signing around November, and the best located places go first. WashU affiliated companies like Quadrangle and Parallel open their signing later, usually in March or April.",
+  "faqs": [
+    {
+      "q": "What does the month by month timeline look like?",
+      "a": "September and October: research neighborhoods, gather your group, tour places. November through January: the private landlord signing wave, when most walkable houses and flats get claimed. February: leftovers and second choices. March and April: WashU affiliated companies like Quadrangle and Parallel open signing, alongside a second market of admitted grad students arriving. May through August: last minute inventory and the summer sublet market. This calendar reflects what students consistently report, and individual landlords vary."
+    },
+    {
+      "q": "Am I too late if it is spring and I have not signed?",
+      "a": "No, but your options change. The walkable houses are mostly gone. The WashU affiliated buildings open in spring. Apartment buildings hold inventory longer than small landlords do, and the sublet and lease takeover market runs all summer. Students post looking for housing in July and find places. They just choose from what's left."
+    },
+    {
+      "q": "Why do leases get signed so far ahead?",
+      "a": "Supply and coordination. The stock of good places within a walk of campus is finite, and landlords like locking next year in early. Student groups form in the fall, while everyone is on campus together. Once a few landlords start signing in November, everyone else has to move too or watch the good places disappear."
+    },
+    {
+      "q": "Should I wait for a better deal later in the cycle?",
+      "a": "Usually no. What appears late is mostly what nobody chose early, and rents near WashU have been rising rather than falling: Zillow's rent index shows University City, MO up 4.7% and Skinker-DeBaliviere up 3.9% year over year as of August 2026. Source: Zillow Research. The exception is subleases, where late timing really does get you a discount."
+    },
+    {
+      "q": "When should sophomores start thinking about junior year housing?",
+      "a": "October of sophomore year would be the best time. That sounds absurd, and it is, but the November signing wave doesn't care. Have your group and budget settled by Halloween and you get first pick instead of February leftovers."
+    }
+  ],
+  "benchmarkNote": "Timeline reflects patterns WashU students consistently report in community discussions; individual landlords and years vary. Trend figures cite Zillow ZORI ZIP-level data as of August 2026. Source: Zillow Research.",
+  "sources": [
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+import { NextResponse, after } from "next/server";
+import { getRequestUser } from "@/lib/getRequestUser";
+import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { stagingEmailHeader } from "@/lib/outreach";
+import { recordOutcome } from "@/lib/marketing/record";
+import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import {
+  screenOutgoingChat,
+  assertSenderCanSend,
+  CHAT_PASSWORD_REQUIRED_CODE,
+  CHAT_PASSWORD_REQUIRED_MESSAGE,
+  isChatRateLimitError,
+  CHAT_RATE_LIMIT_MESSAGE,
+  CHAT_CONFIRM_SEND_CODE,
+  recordFlaggedSend,
+} from "@/lib/chat/sendGuards";
+import {
+  applyBlocksToInbox,
+  assertListingContactNotBlocked,
+} from "@/lib/chat/safety";
+import { annotateNoReply } from "@/lib/chat/followups";
+import { allSandboxUserIds } from "@/lib/reviewSandbox";
+import { listProxyInbox, claimThreadsByEmail } from "@/lib/agents/threads";
+import { landlordProxyOverview } from "@/lib/agents/landlordChat";
+import { agentsEnabled } from "@/lib/agents/flags";
+import { fmtTourTime } from "@/lib/agents/tourTime";
+import { inboxViewAsId } from "@/lib/users/viewAs";
+
+const SAFE_START_CHAT_ERRORS = new Set([
+  "listing not found",
+  "listing has no landlord to contact",
+  "listing landlord is no longer an active user",
+  "cannot start a chat about your own listing",
+]);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * A direct chat that a tour opened carries that tour, so the chat can say at
+ * the top what it is for (Wyatt, 2026-11-02).
+ */
+async function withTours(rows) {
+  const ids = rows.map((t) => t.threadId).filter(Boolean);
+  if (!ids.length) return rows;
+  const { data } = await supabase.from("tour_requests").select("id, thread_id, status, confirmed_slot, created_at, listings!listing_id(title, address)")
+    .in("thread_id", ids).order("created_at", { ascending: false });
+  const byThread = new Map();
+  for (const t of data ?? []) if (!byThread.has(t.thread_id)) byThread.set(t.thread_id, t);
+  return rows.map((row) => {
+    const t = byThread.get(row.threadId);
+    if (!t) return row;
+    return { ...row, tour: { id: t.id, status: t.status, confirmedText: t.confirmed_slot ? fmtTourTime(t.confirmed_slot) : null, listingTitle: t.listings?.title || t.listings?.address || "the listing" } };
+  });
+}
+
+// GET /api/chat/threads: inbox for the logged-in user, or for the user an
+// admin is viewing the inbox as (?viewAs=, read only; Wyatt, 2026-11-03)
+export async function GET(req) {
+  try {
+    const caller = await getRequestUser(req);
+    if (!caller?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const viewAsId = inboxViewAsId(caller, new URL(req.url).searchParams);
+    const authUser = viewAsId ? { id: viewAsId } : caller;
+
+    const { data, error } = await supabase.rpc("rpc_list_chat_threads", {
+      p_user_id: authUser.id,
+    });
+
+    if (error) {
+      console.error("GET /api/chat/threads failed:", error);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
+    const unblocked = await applyBlocksToInbox(authUser.id, data ?? []);
+    // Review sandbox (App Store review accounts): a conversation with a sandbox account
+    // is hidden from everyone who is not one, so a reviewer's message never shows up in
+    // a real person's inbox, previews or unread count (both clients take those from
+    // this list). Decided now from the live flag, so it covers old threads too. If the
+    // lookup fails after its retries it throws into the catch below (a 500), rather
+    // than showing the inbox unfiltered.
+    let inbox = unblocked;
+    if (unblocked.length > 0) {
+      const sandboxIds = await allSandboxUserIds();
+      if (!sandboxIds.has(authUser.id)) {
+        inbox = unblocked.filter((t) => !sandboxIds.has(t.otherUserId));
+      }
+    }
+    const direct = await withTours((await annotateNoReply(authUser.id, inbox)).map((t) => ({ kind: "direct", ...t })));
+    // The student's Proxy conversations ride along, on their own tab in the
+    // overlay. They never fail the inbox. Only clients that ask for them get
+    // them (the web overlay passes ?include=proxy; the mobile app does not
+    // know these rows yet), and only while the agents are on (PR #365 review).
+    const wantsProxy = new URL(req.url).searchParams.get("include") === "proxy" && agentsEnabled();
+    if (!wantsProxy) return NextResponse.json(direct);
+    // Claiming writes, so it is the user's own visit that does it, never an admin's look.
+    if (!viewAsId) await claimThreadsByEmail({ userId: authUser.id }).catch((err) => console.error("GET /api/chat/threads claim by email:", err?.message ?? err));
+    const proxy = await listProxyInbox(authUser.id).catch((err) => { console.error("GET /api/chat/threads proxy rows:", err?.message ?? err); return []; });
+    // A landlord's Proxy chats, one per listing (questions and tour requests).
+    const asLandlord = await landlordProxyOverview(authUser.id).catch((err) => { console.error("GET /api/chat/threads landlord proxy rows:", err?.message ?? err); return []; });
+    const landlordRows = asLandlord.map((l) => ({
+      kind: "proxy_landlord", threadId: `lp-${l.listingId}`, listingId: l.listingId, listingTitle: l.title, listingAddress: l.address, listingImage: l.image,
+      listings: [], listingCount: 1, isInterestedUser: false, otherUserId: null, otherUserName: "Proxy", otherUserImage: null, otherUserLastReadAt: null,
+      lastMessageBody: l.lastText, lastMessageType: "text", lastMessageAt: l.lastAt, lastMessageMine: false, updatedAt: l.lastAt,
+      unreadCount: l.openQuestions + l.openTours, hasUnread: l.openQuestions + l.openTours > 0,
+    }));
+    return NextResponse.json([...direct, ...proxy, ...landlordRows]);
+  } catch (error) {
+    console.error("GET /api/chat/threads failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+// POST /api/chat/threads: start or reuse a listing chat
+export async function POST(req) {
+  try {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const eligibility = await assertSenderCanSend(authUser.id);
+    if (!eligibility.ok) {
+      return NextResponse.json(
+        {
+          error: CHAT_PASSWORD_REQUIRED_MESSAGE,
+          code: CHAT_PASSWORD_REQUIRED_CODE,
+        },
+        { status: 403 }
+      );
+    }
+
+    let payload;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const { listingId, body, leaseId } = payload ?? {};
+    if (typeof listingId !== "string" || !listingId.trim()) {
+      return NextResponse.json({ error: "listingId required" }, { status: 400 });
+    }
+    if (!UUID_RE.test(listingId.trim())) {
+      return NextResponse.json({ error: "listingId must be a valid UUID" }, { status: 400 });
+    }
+    if (typeof body !== "string" || !body.trim()) {
+      return NextResponse.json({ error: "Message body required" }, { status: 400 });
+    }
+
+    /*
+     * Optional. It names which lease the enquiry is about, which is what decides
+     * the recipient on a property carrying competing leases from different
+     * landlords. The RPC re-checks that the lease belongs to the listing, so a
+     * lease id from elsewhere cannot redirect a message at an unrelated person.
+     */
+    let leaseIdArg = null;
+    if (leaseId !== undefined && leaseId !== null) {
+      if (typeof leaseId !== "string" || !UUID_RE.test(leaseId.trim())) {
+        return NextResponse.json(
+          { error: "leaseId must be a valid UUID" },
+          { status: 400 }
+        );
+      }
+      leaseIdArg = leaseId.trim();
+    }
+
+    const trimmedBody = body.trim();
+    if (trimmedBody.length > 5000) {
+      return NextResponse.json(
+        { error: "Message body exceeds the 5000 character limit" },
+        { status: 400 }
+      );
+    }
+
+    // Either person has blocked the other: neutral refusal, nothing is sent.
+    const blockCheck = await assertListingContactNotBlocked(
+      authUser.id,
+      listingId.trim(),
+      leaseIdArg
+    );
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
+    }
+
+    const screen = await screenOutgoingChat({
+      userId: authUser.id,
+      body: trimmedBody,
+      listingId: listingId.trim(),
+      confirmed: payload?.confirmed === true,
+      audience: authUser.role === "landlord" ? "landlord" : "student",
+    });
+    if (screen.blocked) {
+      return NextResponse.json({ error: screen.message }, { status: 422 });
+    }
+    if (screen.needsConfirmation) {
+      return NextResponse.json(
+        { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+        { status: 409 }
+      );
+    }
+
+    const { data, error } = await supabase.rpc("rpc_start_or_get_listing_chat", {
+      p_user_id: authUser.id,
+      p_listing_id: listingId.trim(),
+      p_body: trimmedBody,
+      p_lease_id: leaseIdArg,
+    });
+
+    if (error) {
+      if (isChatRateLimitError(error)) {
+        return NextResponse.json(
+          { error: CHAT_RATE_LIMIT_MESSAGE },
+          { status: 429 }
+        );
+      }
+      console.error("POST /api/chat/threads failed:", error);
+      if (SAFE_START_CHAT_ERRORS.has(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
+    if (screen.flagged) {
+      await recordFlaggedSend({
+        userId: authUser.id,
+        threadId: data?.threadId ?? null,
+        messageId: data?.messageId ?? null,
+        listingId: listingId.trim(),
+        reasons: screen.reasons,
+        body: trimmedBody,
+      });
+    }
+
+    // Marketing: a new landlord thread is the student's first message about
+    // this listing (PRD section 6, landlord_message). Never fails the send.
+    if (data?.isNew && authUser.role !== "landlord") {
+      await recordOutcome(req, { outcome: "landlord_message", userId: authUser.id, userRole: authUser.role ?? null, subjectId: listingId.trim() });
+    }
+
+    // Read the request headers here: after() runs once the response is on its way.
+    const baseUrl = getBaseUrl(req);
+    const testEmailTo = stagingEmailHeader(req);
+    after(() =>
+      notifyNewChatMessage({
+        threadId: data?.threadId,
+        senderId: authUser.id,
+        messageId: data?.messageId ?? null,
+        baseUrl,
+        testEmailTo,
+      })
+    );
+    after(() =>
+      notifyNewChatMessagePush({
+        threadId: data?.threadId,
+        senderId: authUser.id,
+        messageId: data?.messageId,
+      })
+    );
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("POST /api/chat/threads failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}

@@ -1,0 +1,419 @@
+import { NextResponse, after } from "next/server";
+import { getRequestUser } from "@/lib/getRequestUser";
+import { inboxViewAsId } from "@/lib/users/viewAs";
+import supabase from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/email";
+import { stagingEmailHeader } from "@/lib/outreach";
+import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
+import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { detectTourProposal } from "@/lib/agents/tourProposals";
+import {
+  CHAT_ATTACHMENT_ALLOWED_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_FILES,
+} from "@/lib/chat/attachments";
+import {
+  screenOutgoingChat,
+  recordAttachmentScan,
+  assertSenderCanSend,
+  CHAT_PASSWORD_REQUIRED_CODE,
+  CHAT_PASSWORD_REQUIRED_MESSAGE,
+  isChatRateLimitError,
+  CHAT_RATE_LIMIT_MESSAGE,
+  CHAT_CONFIRM_SEND_CODE,
+  recordFlaggedSend,
+  screenApplicationLinks,
+} from "@/lib/chat/sendGuards";
+import { scanChatAttachments } from "@/lib/chat/scanAttachment";
+import { assertThreadNotBlocked } from "@/lib/chat/safety";
+import { hasApplicationLink } from "@/lib/chat/applicationLinks";
+
+// Surfaced to the client as-is; everything else becomes a generic 500.
+const SAFE_SEND_MESSAGE_ERRORS = new Set([
+  "message body is required",
+  "message body exceeds the 5000 character limit",
+  "attachments are required",
+  "too many attachments (max 5)",
+  "invalid attachment metadata",
+  "invalid attachment key",
+  "unsupported attachment type",
+  "attachment exceeds size limit",
+  "invalid attachment size",
+  "file name too long",
+]);
+
+// A non-participant must not learn whether the thread exists, so this maps to 403.
+const NOT_PARTICIPANT_ERROR = "not a participant in this conversation";
+const THREAD_NOT_FOUND_ERROR = "conversation not found";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function mapChatRpcError(error) {
+  if (isChatRateLimitError(error)) {
+    return NextResponse.json({ error: CHAT_RATE_LIMIT_MESSAGE }, { status: 429 });
+  }
+  if (error.message === NOT_PARTICIPANT_ERROR) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (error.message === THREAD_NOT_FOUND_ERROR) {
+    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  }
+  if (SAFE_SEND_MESSAGE_ERRORS.has(error.message)) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  return NextResponse.json({ error: "Server error" }, { status: 500 });
+}
+
+function normalizeAttachments(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  if (raw.length > CHAT_ATTACHMENT_MAX_FILES) {
+    return { error: `Max ${CHAT_ATTACHMENT_MAX_FILES} files` };
+  }
+  const attachments = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      return { error: "Invalid attachment metadata" };
+    }
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    const fileName =
+      typeof item.fileName === "string"
+        ? item.fileName.trim()
+        : typeof item.name === "string"
+          ? item.name.trim()
+          : "";
+    const contentType =
+      typeof item.contentType === "string"
+        ? item.contentType.trim()
+        : typeof item.type === "string"
+          ? item.type.trim()
+          : "";
+    const sizeBytes = Number(item.sizeBytes ?? item.size);
+    if (!key || !fileName || !contentType) {
+      return { error: "Invalid attachment metadata" };
+    }
+    if (!CHAT_ATTACHMENT_ALLOWED_TYPES.has(contentType)) {
+      return { error: "Images (JPEG, PNG, WebP, GIF) and PDFs only" };
+    }
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > CHAT_ATTACHMENT_MAX_BYTES) {
+      return { error: "Each file must be 20MB or smaller" };
+    }
+    attachments.push({
+      key,
+      fileName: fileName.slice(0, 200),
+      contentType,
+      sizeBytes: Math.floor(sizeBytes),
+    });
+  }
+  return { attachments };
+}
+
+// GET /api/chat/threads/[threadId]/messages: paginated history for a
+// participant, or for the participant an admin is viewing the inbox as
+// (?viewAs=, read only: the history read marks nothing)
+export async function GET(req, { params }) {
+  try {
+    const caller = await getRequestUser(req);
+    if (!caller?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const viewAsId = inboxViewAsId(caller, new URL(req.url).searchParams);
+    const authUser = viewAsId ? { id: viewAsId } : caller;
+
+    const { threadId } = await params;
+    if (!UUID_RE.test(threadId ?? "")) {
+      return NextResponse.json({ error: "threadId must be a valid UUID" }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const rpcArgs = { p_user_id: authUser.id, p_thread_id: threadId };
+
+    const limitParam = searchParams.get("limit");
+    if (limitParam !== null) {
+      const limit = Number(limitParam);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return NextResponse.json(
+          { error: "limit must be an integer between 1 and 100" },
+          { status: 400 }
+        );
+      }
+      rpcArgs.p_limit = limit;
+    }
+
+    const beforeParam = searchParams.get("before");
+    if (beforeParam !== null) {
+      if (Number.isNaN(Date.parse(beforeParam))) {
+        return NextResponse.json(
+          { error: "before must be a valid ISO timestamp" },
+          { status: 400 }
+        );
+      }
+      rpcArgs.p_before = beforeParam;
+    }
+
+    const { data, error } = await supabase.rpc("rpc_get_chat_messages", rpcArgs);
+
+    if (error) {
+      console.error("GET /api/chat/threads/[threadId]/messages failed:", error);
+      return mapChatRpcError(error);
+    }
+
+    return NextResponse.json(data ?? []);
+  } catch (error) {
+    console.error("GET /api/chat/threads/[threadId]/messages failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+// POST /api/chat/threads/[threadId]/messages: reply (text and/or attachments)
+export async function POST(req, { params }) {
+  try {
+    const authUser = await getRequestUser(req);
+    if (!authUser?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { threadId } = await params;
+    if (!UUID_RE.test(threadId ?? "")) {
+      return NextResponse.json({ error: "threadId must be a valid UUID" }, { status: 400 });
+    }
+
+    /*
+     * A magic-link arrival can read this thread without any credentials. Sending
+     * is the line: an account with neither a password nor Google has to set one.
+     */
+    const eligibility = await assertSenderCanSend(authUser.id);
+    if (!eligibility.ok) {
+      return NextResponse.json(
+        {
+          error: CHAT_PASSWORD_REQUIRED_MESSAGE,
+          code: CHAT_PASSWORD_REQUIRED_CODE,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Either person has blocked the other: neutral refusal before anything is
+    // screened, scanned or sent.
+    const blockCheck = await assertThreadNotBlocked(threadId, authUser.id);
+    if (!blockCheck.ok) {
+      return NextResponse.json({ error: blockCheck.error }, { status: blockCheck.status });
+    }
+
+    // A tour thread: contact details and links are allowed (see sendGuards).
+    const { data: threadRow, error: threadError } = await supabase.from("chat_threads").select("unrestricted, landlord_id, listing_id").eq("id", threadId).maybeSingle();
+    const unrestricted = threadRow?.unrestricted === true;
+
+    // A landlord's application link is refused in every thread, tour threads
+    // included, and pointed at the dashboard field instead (Wyatt, 2026-11-20).
+    const refuseApplicationLink = async (body) => {
+      // Without the thread we cannot tell whether this is the landlord, so a
+      // message that looks like it carries an application link waits for a
+      // retry rather than going through unchecked (Wyatt, 2026-11-23). Other
+      // messages are not held up by the blip.
+      if ((threadError || !threadRow) && hasApplicationLink(body)) {
+        return NextResponse.json({ error: "We couldn't check this message. Try again in a moment." }, { status: 503 });
+      }
+      const refusal = await screenApplicationLinks({
+        userId: authUser.id,
+        body,
+        threadId,
+        listingId: threadRow?.listing_id ?? null,
+        isLandlord: !!threadRow?.landlord_id && threadRow.landlord_id === authUser.id,
+      });
+      if (!refusal) return null;
+      return NextResponse.json(
+        { error: refusal.message, code: refusal.code, settingsUrl: refusal.settingsUrl, actionLabel: refusal.actionLabel },
+        { status: 422 }
+      );
+    };
+
+    let payload;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const rawBody = payload?.body;
+    const bodyText = typeof rawBody === "string" ? rawBody.trim() : "";
+    // Set when the composer re-sends after the "send anyway?" prompt.
+    const confirmed = payload?.confirmed === true;
+    // Which "keep it on Proximity" reasons the prompt gives: scams for students,
+    // the dated record for landlords.
+    const audience = authUser.role === "landlord" ? "landlord" : "student";
+    const normalized = normalizeAttachments(payload?.attachments);
+
+    if (normalized?.error) {
+      return NextResponse.json({ error: normalized.error }, { status: 400 });
+    }
+
+    const hasAttachments = Array.isArray(normalized?.attachments);
+
+    if (!hasAttachments) {
+      if (!bodyText) {
+        return NextResponse.json({ error: "Message body required" }, { status: 400 });
+      }
+      if (bodyText.length > 5000) {
+        return NextResponse.json(
+          { error: "Message body exceeds the 5000 character limit" },
+          { status: 400 }
+        );
+      }
+
+      const appRefusal = await refuseApplicationLink(bodyText);
+      if (appRefusal) return appRefusal;
+
+      const screen = await screenOutgoingChat({
+        userId: authUser.id,
+        body: bodyText,
+        threadId,
+        confirmed,
+        audience,
+        unrestricted,
+      });
+      if (screen.blocked) {
+        return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
+      }
+
+      const { data, error } = await supabase.rpc("rpc_send_chat_message", {
+        p_user_id: authUser.id,
+        p_thread_id: threadId,
+        p_body: bodyText,
+      });
+
+      if (error) {
+        console.error("POST /api/chat/threads/[threadId]/messages failed:", error);
+        return mapChatRpcError(error);
+      }
+
+      if (screen.flagged) {
+        await recordFlaggedSend({
+          userId: authUser.id,
+          threadId,
+          messageId: data?.messageId ?? null,
+          listingId: data?.listingId ?? null,
+          reasons: screen.reasons,
+          body: bodyText,
+        });
+      }
+
+      const baseUrl = getBaseUrl(req);
+      const testEmailTo = stagingEmailHeader(req);
+      // A tour time suggested in a tour's chat is spotted for the other side to confirm.
+      after(() => detectTourProposal({ threadId, messageId: data?.messageId ?? null, senderId: authUser.id, body: bodyText }));
+      after(() =>
+        notifyNewChatMessage({
+          threadId,
+          senderId: authUser.id,
+          messageId: data?.messageId ?? null,
+          baseUrl,
+          testEmailTo,
+        })
+      );
+      after(() =>
+        notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
+      );
+
+      return NextResponse.json(data);
+    }
+
+    if (bodyText.length > 5000) {
+      return NextResponse.json(
+        { error: "Message body exceeds the 5000 character limit" },
+        { status: 400 }
+      );
+    }
+
+    let screen = null;
+    if (bodyText) {
+      const appRefusal = await refuseApplicationLink(bodyText);
+      if (appRefusal) return appRefusal;
+      screen = await screenOutgoingChat({
+        userId: authUser.id,
+        body: bodyText,
+        threadId,
+        confirmed,
+        audience,
+        unrestricted,
+      });
+      if (screen.blocked) {
+        return NextResponse.json({ error: screen.message }, { status: 422 });
+      }
+      if (screen.needsConfirmation) {
+        return NextResponse.json(
+          { error: screen.message, code: CHAT_CONFIRM_SEND_CODE, reasons: screen.reasons },
+          { status: 409 }
+        );
+      }
+    }
+
+    /*
+     * The files are already in R2 at this point, since they upload straight
+     * from the browser. Screening them here, before the message row exists,
+     * is what keeps a blocked attachment from ever reaching the recipient.
+     * Orphaned objects from a blocked send are the accepted cost.
+     */
+    const scan = await scanChatAttachments({ attachments: normalized.attachments });
+    if (scan.reasons.length > 0) {
+      await recordAttachmentScan({
+        userId: authUser.id,
+        threadId,
+        blocked: scan.blocked,
+        reasons: scan.reasons,
+        fileNames: normalized.attachments.map((a) => a.fileName),
+      });
+    }
+    if (scan.blocked) {
+      return NextResponse.json({ error: scan.message }, { status: 422 });
+    }
+
+    const { data, error } = await supabase.rpc("rpc_send_chat_attachment_message", {
+      p_user_id: authUser.id,
+      p_thread_id: threadId,
+      p_body: bodyText || null,
+      p_attachments: normalized.attachments,
+    });
+
+    if (error) {
+      console.error("POST /api/chat/threads/[threadId]/messages (attachment) failed:", error);
+      return mapChatRpcError(error);
+    }
+
+    if (screen?.flagged) {
+      await recordFlaggedSend({
+        userId: authUser.id,
+        threadId,
+        messageId: data?.messageId ?? null,
+        listingId: data?.listingId ?? null,
+        reasons: screen.reasons,
+        body: bodyText,
+      });
+    }
+
+    const baseUrl = getBaseUrl(req);
+    const testEmailTo = stagingEmailHeader(req);
+    after(() =>
+      notifyNewChatMessage({
+        threadId,
+        senderId: authUser.id,
+        messageId: data?.messageId ?? null,
+        baseUrl,
+        testEmailTo,
+      })
+    );
+    after(() =>
+      notifyNewChatMessagePush({ threadId, senderId: authUser.id, messageId: data?.messageId })
+    );
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("POST /api/chat/threads/[threadId]/messages failed:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}

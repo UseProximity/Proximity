@@ -2,29 +2,39 @@
 
 /*
  * Site-wide bug-report / suggestion widget. Renders a small floating button in the
- * bottom-left corner on desktop only (kept clear of the bottom-right ChatWidget)
+ * bottom-left corner on desktop only (kept clear of the bottom-right corner)
  * and a modal form. On mobile the launcher is hidden to keep the small viewport
  * clear — the footer "Report a bug" link is the entry point there.
+ * On /browse the launcher shrinks to a translucent icon so it stops covering the
+ * listing description it sits on top of; hovering restores it to full opacity.
+ * The launcher sits at z-50 because it renders before {children} in the root layout,
+ * so any page content at z-40 (e.g. the homepage hero column) would otherwise paint
+ * over it and eat the click even though the button stays visible.
  * Also opens when any element dispatches the `proximity:open-feedback` window event —
  * the footer "Report a bug" link uses that so both entry points share one modal.
  * Submissions POST to /api/feedback, which emails the team.
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
 import { MessageSquarePlus, X } from "lucide-react";
 
 const TYPES = [
-  { value: "bug", label: "🐞 Bug" },
-  { value: "suggestion", label: "💡 Suggestion" },
-  { value: "other", label: "💬 Other" },
+  { value: "bug", label: "Bug" },
+  { value: "suggestion", label: "Suggestion" },
+  { value: "other", label: "Other" },
 ];
 
 export const OPEN_FEEDBACK_EVENT = "proximity:open-feedback";
 
 export default function FeedbackWidget() {
   const { data: session } = useSession();
+  const pathname = usePathname();
+  // Browse is the one page with content underneath the launcher (the listing detail
+  // panel), so there it shrinks to a translucent icon instead of a labelled pill.
+  const subtle = pathname === "/browse";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState("bug");
   const [message, setMessage] = useState("");
@@ -82,15 +92,21 @@ export default function FeedbackWidget() {
 
   return (
     <>
-      {/* Floating launcher — desktop only */}
+      {/* Floating launcher, desktop only; never over a listing's Contact tab (ListingModalInfo sets the flag) */}
       <button
         type="button"
         onClick={openModal}
         aria-label="Report a bug or suggest a fix"
-        className="hidden sm:flex fixed bottom-6 left-6 z-40 items-center gap-2 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition px-4 py-3"
+        title="Report a bug or suggest a fix"
+        className={`hidden sm:flex [body[data-listing-contact]_&]:!hidden fixed bottom-6 left-6 z-50 items-center rounded-full shadow-lg transition ${
+          subtle
+            ? "p-3 bg-gray-900/40 text-white/70 backdrop-blur-sm hover:bg-gray-900 hover:text-white focus-visible:bg-gray-900 focus-visible:text-white"
+            : // Below the desktop breakpoint the labelled pill covers content, so it takes the icon-only look there.
+              "gap-2 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800 max-xl:gap-0 max-xl:p-3 max-xl:bg-gray-900/40 max-xl:text-white/70 max-xl:backdrop-blur-sm max-xl:hover:bg-gray-900 max-xl:hover:text-white max-xl:focus-visible:bg-gray-900 max-xl:focus-visible:text-white"
+        }`}
       >
         <MessageSquarePlus className="h-5 w-5" />
-        <span className="text-sm font-semibold">Feedback</span>
+        {!subtle && <span className="text-sm font-semibold max-xl:hidden">Feedback</span>}
       </button>
 
       {/* Modal */}
@@ -100,7 +116,7 @@ export default function FeedbackWidget() {
           onClick={close}
         >
           <div
-            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6"
+            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-5 sm:p-6 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-1">
@@ -115,7 +131,7 @@ export default function FeedbackWidget() {
               </button>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Spotted something broken or have an idea? Tell us — it goes straight to the team.
+              Spotted something broken or have an idea? Tell us and it goes straight to the team.
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,11 +1,10 @@
 /*
  * Site-wide navigation header rendered on every page by the root layout. Receives the
  * server-side session and adapts its UI to auth state: unauthenticated users see Sign In,
- * authenticated users see their dashboard link and a sign-out option. Contains an
- * expandable address search bar (using AddressSearchInput) that routes to /browse?search=
- * on submit, and a slide-in mobile menu that auto-closes on route change. All interactive
- * state (search open, mobile menu, query text) is local — no context dependency — keeping
- * the component self-contained and easy to test in isolation.
+ * authenticated users see messages (unread badge), their dashboard link, and a sign-out
+ * option. Contains an expandable address search bar (using AddressSearchInput) that routes
+ * to /browse?search= on submit, and a slide-in mobile menu that auto-closes on route
+ * change. Search/menu state is local; unread count comes from MessagesContext.
  */
 "use client";
 
@@ -13,11 +12,13 @@ import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 const Logo = "/logo.svg";
-import { Search, X, Menu, ChevronDown } from "lucide-react";
+import { Search, X, Menu, ChevronDown, MessageCircle } from "lucide-react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
 import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { recordPageVisit } from "@/utils/analytics";
+import { useMessages } from "@/context/MessagesContext";
+import { withMessages } from "@/lib/chat/messagesUrl";
 
 export function Header({ session }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -26,12 +27,36 @@ export function Header({ session }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const inputRef = useRef(null);
+  const smallInputRef = useRef(null);
   const moreRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { unreadCount } = useMessages();
 
+  /*
+   * Messages is an overlay driven by ?messages=1, not a page, so this adds a
+   * parameter instead of navigating. Read from window.location rather than
+   * useSearchParams: the header renders in the root layout, and subscribing to
+   * search params there would opt every page out of static rendering. A click
+   * handler can read the live URL directly.
+   */
+  function openInbox() {
+    setMobileMenuOpen(false);
+    const current = new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search
+    );
+    router.push(pathname + withMessages(current), { scroll: false });
+  }
+
+  // Two search forms are mounted while the search is open: the desktop one and
+  // the one used below 1280px. Only one is on screen, and focusing a hidden
+  // field does nothing, so fall back to the small-screen field.
   useEffect(() => {
-    if (searchOpen) inputRef.current?.focus();
+    if (!searchOpen) return;
+    inputRef.current?.focus();
+    if (document.activeElement !== inputRef.current) {
+      smallInputRef.current?.focus();
+    }
   }, [searchOpen]);
 
   useEffect(() => {
@@ -96,40 +121,43 @@ export function Header({ session }) {
   };
 
   // Adaptive "Add" CTA: landlords/super post full listings, everyone else posts
-  // subleases. Logged-out users go to /add-listing, whose layout bounces them
-  // through login and then to the right form for their role.
+  // subleases. Logged-out users go to /add-listing, which lets them fill the whole
+  // form and asks for an account only when they publish.
   const isLandlordType =
     session?.user?.role === "landlord" || session?.user?.role === "super";
   const addHref =
-    session?.user && !isLandlordType ? "/add-sublease" : "/add-listing";
+    session?.user?.id && !isLandlordType ? "/add-sublease" : "/add-listing";
   const addLabel =
-    session?.user && !isLandlordType ? "Add Sublease" : "Add Listing";
+    session?.user?.id && !isLandlordType ? "Add Sublease" : "Add Listing";
 
   // Primary links live inline in the bar; secondary links are tucked under "More".
   const primaryLinks = [
+    // Find Your Place leads (Wyatt, 2026-11-15).
+    { href: "/find-your-place", label: "Find Your Place" },
     { href: "/browse", label: "Browse Listings" },
-    { href: "/matchmaking", label: "Matchmaking" },
     { href: addHref, label: addLabel },
   ];
   const moreLinks = [
     { href: "/about", label: "Meet the Founder" },
     { href: "/CampusHub", label: "On Campus Hub" },
-    { href: "/guides", label: "Guides" },
+    { href: "/review", label: "Add a Review" },
     { href: "/lease-check", label: "Lease Check" },
+    { href: "/guides", label: "Guides" },
   ];
   const moreActive = moreLinks.some(({ href }) => isActive(href));
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-100">
-      <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-8 md:px-12">
+      <div className="relative w-full flex items-center justify-between h-[83px] md:h-[104px] px-4 sm:px-8 md:px-12">
         {/* ── Left: Logo + Nav ── */}
         <div
           className={`flex items-center gap-10 flex-shrink-0 ${
-            searchOpen ? "hidden md:flex" : ""
+            searchOpen ? "hidden xl:flex" : ""
           }`}
         >
-          <Link href="/" className="flex items-center gap-5 flex-shrink-0">
-            <div className="h-[56px] w-auto">
+          {/* Below 360px the brand tightens so logo, wordmark and three icon buttons fit a 320px phone. */}
+          <Link href="/" className="flex items-center gap-5 max-[359px]:gap-2 flex-shrink-0">
+            <div className="h-[56px] max-[359px]:h-11 w-auto">
               <Image
                 src={Logo}
                 alt="Proximity"
@@ -139,11 +167,11 @@ export function Header({ session }) {
                 priority
               />
             </div>
-            <span className="text-[26px] font-bold text-gray-900 tracking-tight">
+            <span className="text-[26px] max-[359px]:text-[22px] font-bold text-gray-900 tracking-tight">
               Proximity
             </span>
           </Link>
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden xl:flex items-center gap-1">
             {primaryLinks.map(({ href, label }) => (
               <Link
                 key={href}
@@ -203,10 +231,10 @@ export function Header({ session }) {
         {searchOpen && (
           <form
             onSubmit={submitSearch}
-            className="md:hidden absolute left-8 right-8 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
+            className="xl:hidden absolute left-4 right-4 sm:left-8 sm:right-8 md:left-12 md:right-12 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 bg-white"
           >
             <AddressSearchInput
-              ref={inputRef}
+              ref={smallInputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && closeSearch()}
@@ -238,7 +266,7 @@ export function Header({ session }) {
                 />
                 <form
                   onSubmit={submitSearch}
-                  className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
+                  className="hidden xl:flex absolute right-0 top-1/2 -translate-y-1/2 items-center gap-2 w-[480px]"
                 >
                   <AddressSearchInput
                     ref={inputRef}
@@ -271,9 +299,26 @@ export function Header({ session }) {
           </div>
 
           {/* Auth buttons — desktop only */}
-          <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
-            {session?.user ? (
+          <div className="hidden xl:flex items-center gap-2.5 flex-shrink-0">
+            {session?.user?.id ? (
               <>
+                <button
+                  type="button"
+                  onClick={openInbox}
+                  className="relative p-2.5 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-xl transition-all duration-150"
+                  aria-label={
+                    unreadCount > 0
+                      ? `Messages, ${unreadCount} unread`
+                      : "Messages"
+                  }
+                >
+                  <MessageCircle className="h-6 w-6" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </button>
                 <Link
                   href={
                     session.user.role === "landlord"
@@ -324,11 +369,32 @@ export function Header({ session }) {
             )}
           </div>
 
+          {/* Messages: mobile (badge visible without opening the menu) */}
+          {session?.user && !searchOpen && (
+            <button
+              type="button"
+              onClick={openInbox}
+              className="xl:hidden relative flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+              aria-label={
+                unreadCount > 0
+                  ? `Messages, ${unreadCount} unread`
+                  : "Messages"
+              }
+            >
+              <MessageCircle className="h-6 w-6" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Mobile hamburger */}
           {!searchOpen && (
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="md:hidden flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
+              className="xl:hidden flex-shrink-0 p-2.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? (
@@ -343,7 +409,7 @@ export function Header({ session }) {
 
       {/* Mobile menu — absolute overlay so it doesn't push content down */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 z-50 border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
+        <div className="xl:hidden absolute top-full left-0 right-0 z-50 max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-t border-gray-100 bg-white/95 backdrop-blur-lg shadow-xl px-4 py-4 flex flex-col gap-1">
           {primaryLinks.map(({ href, label }) => (
             <Link
               key={href}
@@ -393,8 +459,23 @@ export function Header({ session }) {
             ))}
 
           <div className="h-px bg-gray-100 my-2" />
-          {session?.user ? (
+          {session?.user?.id ? (
             <>
+              <button
+                type="button"
+                onClick={openInbox}
+                className="flex items-center justify-between px-4 py-3 rounded-xl text-[17px] font-medium text-gray-700 hover:bg-gray-50 transition-all text-left w-full"
+              >
+                <span className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5" />
+                  Messages
+                </span>
+                {unreadCount > 0 && (
+                  <span className="min-w-[1.25rem] h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
               <Link
                 href={
                   session.user.role === "landlord"

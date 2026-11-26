@@ -53,3 +53,11 @@ export function isProdData() {
 export function outreachEnabled() {
   return appEnv() === "production";
 }
+
+// Search engines may crawl and index ONLY the real production site. Staging runs on a
+// public *.vercel.app URL with a copy of production content, so leaving it indexable
+// competes with useproximity.org for the same queries. Fail-safe like the rest of this
+// module: anything that isn't positively production resolves to "don't index".
+export function indexingEnabled() {
+  return appEnv() === "production";
+}

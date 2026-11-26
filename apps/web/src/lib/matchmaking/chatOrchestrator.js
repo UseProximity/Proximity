@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import supabase from "@/lib/supabase";
-import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf } from "./listingFilter";
+import { rankListings, filterEligible, fetchActiveListings, slimCandidate, extractCardData, buildRankContext, perPersonRentOf, parseGroupRange } from "./listingFilter";
 import { defaultInquiryNote } from "./contactNote";
 import { buildNarrowingTurn, applyTradeoffChoice, rewindTradeoffs } from "./narrowing";
 import { QUESTION_BY_ID } from "./questionScript";
@@ -249,7 +249,7 @@ async function shownListingsContext(session) {
     const { data } = await supabase
       .from("listings")
       .select(
-        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly, listing_units!listing_id(unit_leases!unit_id(is_active, sublease))"
+        "id, title, address, furnished, lease_type, lease_structure, min_bedrooms, max_bedrooms, min_bathrooms, max_bathrooms, sublease_friendly, listing_units!listing_id(unit_leases!unit_id(is_active, unavailable, sublease))"
       )
       .in("id", recs.map((r) => r.listing_id));
     rows = Object.fromEntries((data ?? []).map((r) => [r.id, r]));
@@ -263,7 +263,7 @@ async function shownListingsContext(session) {
     // (unit_leases.sublease, rent listed or not) — NOT when sublease_friendly is
     // set, which only means a tenant would be allowed to sublet.
     const activeLeases = (row.listing_units ?? []).flatMap((u) =>
-      (u.unit_leases ?? []).filter((l) => l.is_active)
+      (u.unit_leases ?? []).filter((l) => l.is_active && !l.unavailable)
     );
     return {
       // 1-based position in the order shown, so "the first/second/third one" is unambiguous.
@@ -717,21 +717,22 @@ async function runAgentTurn(session) {
   return stripEmDashes(reply);
 }
 
+// The chat route always creates the row before a turn runs, so this is an
+// update, and it never writes the owner columns (user_id, visitor_id). A turn
+// that loaded a signed-out session and is still ranking when the same visitor
+// claims it from another tab would otherwise write user_id = null back over the
+// claim, handing the chat back to the device.
 async function persistSession(session) {
   const { error } = await supabase
     .from("matchmaking_chat_sessions")
-    .upsert(
-      {
-        id: session.id,
-        user_id: session.user_id,
-        status: session.status,
-        transcript: session.transcript,
-        preferences: session.preferences,
-        weights: session.weights,
-        recommendations: session.recommendations,
-      },
-      { onConflict: "id" }
-    );
+    .update({
+      status: session.status,
+      transcript: session.transcript,
+      preferences: session.preferences,
+      weights: session.weights,
+      recommendations: session.recommendations,
+    })
+    .eq("id", session.id);
   if (error) throw new Error(`[chatOrchestrator] Failed to persist session: ${error.message}`);
 }
 
@@ -824,9 +825,12 @@ async function finalizeRecommendations(session) {
 // right after they give their headcount, rather than letting a "3 bed" card be a
 // surprise. Returns null for any smaller group (they're held to a single unit).
 function bigGroupHeadsUp(value) {
-  const n = parseInt(String(value ?? "").replace(/[^0-9]/g, ""), 10);
-  if (!Number.isFinite(n) || n < 5) return null;
-  return `Quick heads up: no single place around campus has ${n} bedrooms, so a group your size takes a couple of units in the same building. I'll only show you buildings where those units add up to exactly ${n} bedrooms, so nobody's paying for a room you don't need.`;
+  // Parse via the shared range rule — a stripped-digits parse turned the "5-7"
+  // the min/max fields now submit into 57.
+  const { min, max } = parseGroupRange(value);
+  if (!Number.isFinite(min) || min < 5) return null;
+  const beds = min === max ? `exactly ${max} bedrooms` : `${min} to ${max} bedrooms`;
+  return `Quick heads up: no single place around campus has ${min} bedrooms, so a group your size takes a couple of units in the same building. I'll only show you buildings where those units add up to ${beds}, so nobody's paying for a room you don't need.`;
 }
 
 // Beyond this walk (minutes) a place realistically needs a car or the shuttle to
@@ -851,7 +855,7 @@ async function maybeCommuteConfirm(session) {
     return null;
   }
 
-  const slim = eligible.map((e) => slimCandidate(e.listing));
+  const slim = eligible.map((e) => slimCandidate(e.listing, e.offer));
   const walk = (c) => (typeof c.walk_to_campus_min === "number" ? c.walk_to_campus_min : null);
   const far = slim.filter((c) => walk(c) !== null && walk(c) > COMMUTE_WALK_LIMIT);
   const near = slim.filter((c) => walk(c) !== null && walk(c) <= COMMUTE_WALK_LIMIT);

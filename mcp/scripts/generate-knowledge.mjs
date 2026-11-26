@@ -70,7 +70,7 @@ const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // auth levels, weakest → strongest. "optional" means the handler consults the
 // session to personalize but still serves anonymous callers a safe response
 // (e.g. an empty list) — it is NOT a missing guard.
-const AUTH_RANK = { public: 0, optional: 1, any: 2, "landlord+": 3, super: 4 };
+const AUTH_RANK = { public: 0, optional: 1, any: 2, "landlord+": 3, admin: 4, super: 5 };
 
 // Slice each `export async function METHOD(...) {…}` body out of the route file so
 // auth can be judged per method (a route's GET may be a public read while its POST
@@ -102,9 +102,35 @@ function noSessionIsSoft(body) {
   return !rejects;
 }
 
+// Explicit auth declarations, read from comments anywhere in the route file:
+//
+//   @auth optional          → applies to every handler in the file
+//   @auth POST public       → applies to POST only (wins over the file-wide form)
+//
+// The inference below reads the shape of the code, which can't see a guard that
+// lives behind a helper (e.g. a resolveActor() that 401s only in production).
+// An annotation is the route saying what it actually promises; always prefer it.
+function declaredAuth(content) {
+  const declared = { file: null, methods: {} };
+  for (const [, a, b] of content.matchAll(/@auth\s+([A-Za-z+]+)(?:\s+([A-Za-z+]+))?/g)) {
+    const asMethod = a.toUpperCase();
+    if (HTTP_METHODS.includes(asMethod)) {
+      if (b && b in AUTH_RANK) declared.methods[asMethod] = b;
+    } else if (a in AUTH_RANK) {
+      declared.file = a;
+    }
+  }
+  return declared;
+}
+
 function classifyHandlerAuth(body) {
   if (/requireSuper\(\)/.test(body) || /role\s*!==\s*["']super["']/.test(body)) return "super";
-  if (!/\bauth\(\)/.test(body)) return "public"; // never consults the session
+  // requireDbRole([...]) is the DB-checked staff guard in apps/web/src/lib/userRole.js
+  const dbRole = body.match(/requireDbRole\(\[([^\]]*)\]\)/);
+  if (dbRole) return /["']admin["']/.test(dbRole[1]) ? "admin" : "super";
+  if (/requireSuperOrAdmin\(\)/.test(body)) return "admin";
+  // getRequestUser() is the shared session-or-bearer-token helper (apps/web/src/lib/getRequestUser.js)
+  if (!/\bauth\(\)/.test(body) && !/getRequestUser\(/.test(body)) return "public"; // never consults the session
   if (noSessionIsSoft(body)) return "optional";  // personalizes but serves anon
   return /role[^;\n]*landlord/.test(body) ? "landlord+" : "any";
 }
@@ -115,8 +141,11 @@ function inferRouteDetails(routePath, content) {
   // Extract HTTP methods defined in the file + judge each one's auth level.
   const bodies = extractHandlerBodies(content);
   const methods = HTTP_METHODS.filter((m) => bodies[m]);
+  const declared = declaredAuth(content);
   const methodAuth = {};
-  for (const m of methods) methodAuth[m] = classifyHandlerAuth(bodies[m]);
+  for (const m of methods) {
+    methodAuth[m] = declared.methods[m] ?? declared.file ?? classifyHandlerAuth(bodies[m]);
+  }
 
   // Route-level auth = the strongest guard across its methods (for summaries).
   let auth = "public";
@@ -124,9 +153,14 @@ function inferRouteDetails(routePath, content) {
     if (AUTH_RANK[methodAuth[m]] > AUTH_RANK[auth]) auth = methodAuth[m];
   }
 
-  // Detect Supabase tables accessed
+  // Detect Supabase tables accessed. The scan sees only literal .from("table") calls in
+  // the route file, so a route whose queries live in a helper declares them in a comment:
+  //   @tables users, other_table
   const tableMatches = [...content.matchAll(/\.from\(["']([a-z_]+)["']\)/g)];
-  const tables = [...new Set(tableMatches.map((m) => m[1]))];
+  const declaredTables = [...content.matchAll(/@tables\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/g)].flatMap((m) =>
+    m[1].split(",").map((t) => t.trim())
+  );
+  const tables = [...new Set([...tableMatches.map((m) => m[1]), ...declaredTables])];
 
   // Derive URL path from filesystem path
   // e.g. src/app/api/favorites/[listingId]/route.js → /api/favorites/[listingId]
@@ -173,7 +207,12 @@ function generateDbSchema() {
 // ── 3. Components ─────────────────────────────────────────────────────────────
 
 const COMPONENT_DESCRIPTIONS = {
+  "listings/wizard/ImportBatch.js": "Multi-property import workspace: one tab per picked property, read one at a time, each running the add-listing steps; marks properties already on Proximity (yours or someone else's) and publishes every tab together behind a confirmation",
   "AddressSearchInput.js": "Mapbox address autocomplete input — used in add-listing and add-sub-lease forms",
+  "listings/editor/DraftControls.js": "The amber Draft badge and the one-way Publish button (POST /api/landlord/publish) shared by every draft surface in the property editor",
+  "admin/ReviewInvitesView.js": "Admin view for review invites: pick students, write one templated message, send it in chunks, and browse the invite ledger",
+  "admin/reviewInvites/InviteComposer.js": "Subject and message editor for bulk review invites, with {first_name} / {link} placeholders and a live preview",
+  "admin/reviewInvites/RosterPicker.js": "Student roster picker for review invites: search, filter by contacted status, flag missing first names, and draw N at random",
   "ButtonAuth.js": "Sign in / sign out button using NextAuth",
   "Footer.js": "Site-wide footer",
   "GlobalListingModal.js": "Full-screen listing detail modal triggered from any listing card",
@@ -182,14 +221,20 @@ const COMPONENT_DESCRIPTIONS = {
   "HeroMapPreview.js": "Landing page hero section with embedded map preview",
   "HeroSection.js": "Above-the-fold landing section with CTA",
   "MapView.js": "Main interactive Mapbox map — renders listing pins, popups, and clustering",
+  "listings/MapErrorBoundary.js": "Error boundary wrapped around each Mapbox map; shows 'Map unavailable' instead of crashing the page when WebGL/Mapbox fails",
   "Modal.js": "Generic reusable modal wrapper",
   "ModalDorms.js": "Dorm detail modal with reviews",
   "ProfileCompletionModal.js": "Onboarding modal for new users to complete their profile",
-  "Providers.js": "Root Next.js providers: SessionProvider, Toaster, etc.",
+  "Providers.js": "Root client providers: Session, Favorites, Messages + openMessages router bridge",
   "ReviewsSection.js": "Renders a list of reviews with ratings for a listing",
+  "ui/StarRatingInput.js": "Shared half-star rating input with hover preview — used by every review-submission surface (/review, /refer, /review-invite, listing modal)",
   "UniversityLogosCarousel.js": "Auto-scrolling carousel of university logos on the landing page",
-  "chat/ChatContext.js": "React context providing chat state and actions",
-  "chat/ChatWidget.js": "Floating chat widget UI using @chatscope/chat-ui-kit-react",
+  "chat/ChatAvatar.js": "Avatar with photo or initials fallback for chat list/transcript",
+  "chat/ChatThreadList.js": "Inbox thread rows + empty state with Browse listings CTA",
+  "chat/ChatTranscript.js": "Per-thread message bubbles and composer (5000-char limit, send toasts)",
+  "chat/MessagesPanel.js": "Shared inbox + transcript UI for /messages (desktop split, mobile stack)",
+  "chat/chatEvents.js": "openMessages() / messagesHref: navigate to /messages (optional ?thread=)",
+  "listings/ListingModalInfo.js": "Listing detail pane: amenities/map/reviews/contact; Message CTA when owner.canChat",
   "landlord-dashboard/leasing-funnel.js": "Recharts funnel chart showing click → save → contact conversion",
   "landlord-dashboard/market-comparisons.js": "Bar chart comparing landlord's listing metrics vs market average",
   "landlord-dashboard/trend-indicators.js": "Sparkline trend indicators for views/saves over time",
@@ -198,7 +243,6 @@ const COMPONENT_DESCRIPTIONS = {
   "show-listings/FilterComponents.js": "Individual filter UI atoms (checkboxes, sliders, toggles)",
   "show-listings/ListingFilters.js": "Filter panel aggregating all filter components",
   "show-listings/ListingMap.js": "Map panel used inside the browse split view",
-  "show-listings/ListingModalInfo.js": "Detail pane for a listing shown inside the global modal",
   "show-listings/MapPopupCard.js": "Small card shown in Mapbox popup when a pin is clicked",
   "show-listings/ModalListing.js": "Wrapper that opens GlobalListingModal for a given listing",
   "show-listings/TopFilterBar.js": "Sticky horizontal filter bar above the listings grid",
@@ -214,7 +258,7 @@ function generateComponents() {
     return {
       name: filepath.split("/").pop().replace(".js", ""),
       file: rel,
-      description: COMPONENT_DESCRIPTIONS[key] ?? "No description — run generate after adding a description above.",
+      description: COMPONENT_DESCRIPTIONS[key] ?? "No description. Run generate after adding a description above.",
     };
   });
 
@@ -280,7 +324,7 @@ function generateDomain() {
         description: "Platform admins — full access",
         can: [
           "All student + landlord capabilities",
-          "Access /api/admin/* routes (CRUD on any table, view any user)",
+          "Access /api/admin/* routes: every admin page, plus the writes (inline edits to the tables the dashboard manages, agent approvals, review invites, reply sender decisions, notes, export). The read-only `admin` role gets the same pages without billing, mass email or any write.",
           "Toggle dev/prod database target via x-db-target header",
           "Approve/reject reviews (set legitimacy flag)",
           "Run bulk operations (update walk times)",
@@ -311,14 +355,37 @@ function generateDomain() {
 
     // ── Process / working agreement ───────────────────────────────────────────
     workflow: {
+      pullKnowledgeFirst: {
+        rule: "START EVERY TASK BY PULLING KNOWLEDGE FROM `staging`, BEFORE reading code, planning, or editing anything.",
+        why: "`staging` is the trunk — every PR merges there first, and CI keeps mcp/knowledge/ in sync with it. The knowledge files this MCP serves are ordinary files in your working tree, so the MCP answers from whatever commit you happen to be sitting on. On a stale clone or a long-lived feature branch, `proximity://db-schema`, `proximity://api-routes`, and the rest silently describe an older codebase — and stale knowledge is worse than none, because it reads as authoritative. Pulling first is what makes these resources trustworthy.",
+        how: [
+          "`git fetch origin staging` — always, even if you branched recently.",
+          "Starting fresh work: branch off the freshly fetched `origin/staging` and the knowledge comes with it.",
+          "Already mid-branch: `git checkout origin/staging -- mcp/knowledge` to pull just the knowledge without disturbing your code.",
+          "Then read the `proximity://` resources you need (`domain`, `db-schema`, `api-routes`, `components`, `pages`, `utils`, `env-vars`, `active-tasks`).",
+          "Check for an open `chore/knowledge-sync-staging` PR — if one exists, `staging` has drifted and that PR holds the newest picture.",
+        ],
+        caveat:
+          "db-schema.json is HAND-maintained and can lag reality even when it is current with `staging`. For anything schema-dependent, verify columns against the live DB with the supabase-dev / supabase-prod MCP before writing code.",
+      },
       branchAndPr: [
+        "Pull knowledge from `staging` first — see workflow.pullKnowledgeFirst.",
         "For every fix or feature, create a branch off `staging` (e.g. `feat/...` or `fix/...`).",
         "Implement the change on that branch.",
         "Give the user a test plan and WAIT for approval — do not push before the user approves.",
         "After approval, push the branch and open a PR into `staging`.",
       ],
       knowledgeMaintenance:
-        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. A CI workflow (update-knowledge.yml) also regenerates and commits any drift after pushes to staging/main, covering contributors who don't run the MCP.",
+        "Whenever there is a substantial architectural change — a new/removed/changed API route, component, page, util, env var, DB schema change, or convention — update this MCP's knowledge so it stays accurate. Either call the `update-knowledge` tool for the specific entry (and `log-task` for notable decisions), or re-run `node mcp/scripts/generate-knowledge.mjs` to rescan the codebase. Knowledge files in mcp/knowledge/ are COMMITTED to git (shared across machines and agents) — commit regenerated knowledge together with the code change. NOTE: domain.json is REGENERATED from the template in mcp/scripts/generate-knowledge.mjs — edit the script, not the JSON, or your change is wiped on the next run. Only db-schema.json and active-tasks.json are edited as files.",
+      knowledgeSyncCi: {
+        workflow: ".github/workflows/update-knowledge.yml",
+        trigger:
+          "push to `staging` or `main` touching `apps/web/src/**` or `mcp/scripts/generate-knowledge.mjs`. Note it does NOT run on a knowledge-only change.",
+        behavior:
+          "Re-runs mcp/scripts/generate-knowledge.mjs on the pushed commit. No drift → logs 'Knowledge already current' and closes any stale sync PR. Drift → force-pushes the regenerated files to the fixed branch `chore/knowledge-sync-<base>` and opens (or reuses) a PR into that base. It does NOT push straight to `staging`/`main`: both are protected by a ruleset requiring a PR + 1 approval, and GitHub Actions is not an installable app so it cannot be granted a bypass. Because the sync branch is rebuilt from the base tip and force-pushed each run, one PR always shows the total current drift no matter how many pushes fed it.",
+        soWhat:
+          "The regenerated files are NOT on `staging` until that sync PR is merged. If it is open, treat it as the freshest knowledge. Committing regenerated knowledge alongside your own code change keeps the PR from ever opening — that remains the preferred path.",
+      },
       commitStyle:
         "Do NOT add AI/Claude attribution to commit messages or PR descriptions — no 'Co-Authored-By: Claude' trailer and no 'Generated with Claude Code' footer. Write them as a normal human contributor would.",
     },
@@ -354,6 +421,10 @@ function generateDomain() {
       apiResponses: "Use Response.json() for all API responses. Use NextResponse.json() only when setting custom headers or redirects.",
       errorShape: "{ error: 'message string' } with appropriate HTTP status code",
       dbColumnNaming: "Supabase columns use snake_case (e.g. lease_type). JS layer converts to camelCase (e.g. leaseType) in buildListing().",
+      prose: "No em dashes anywhere written into this repo: code comments, UI copy, commit messages, PR descriptions, docs. Use a full stop, a comma, a colon or brackets instead (Wyatt, 2026-09-03).",
+      handoff: "After finishing a change, restart the local dev server on port 3000 and tell Wyatt to test there. A server left running from an earlier worktree serves that worktree's code on whatever port it claimed, so a stale 3001 (or a timed-out 3000) shows the change missing and reads as a bug in the work (Wyatt, 2026-09-11).",
+      devBuildCollision: "Never run `npm run build` while a dev server is running on the same worktree: both write to the same .next, the production build overwrites the dev chunks, and the running site then serves pages with no CSS. It presents as a broken stylesheet rather than a build collision. Stop dev, build, then rm -rf apps/web/.next and restart dev (2026-09-11).",
+      reviewSandbox: "App Store review accounts are flagged users.review_sandbox by the team, in SQL (no API sets it), so everything they do from the mobile app stays away from real people. Read the flag through apps/web/src/lib/reviewSandbox.js (sandboxIdsAmong, allSandboxUserIds, withoutSandboxRows) at the point of decision, never from a request or the session; a failed lookup throws SandboxLookupError and the action is suppressed. Rules: email is SUPPRESSED (never sent, never redirected) when the sender or the recipient is a sandbox user: sendMailSafe takes `sandbox: true` on the message and records it in sent_emails as suppressed with the reason 'review sandbox' (lib/outreach.js); sandbox alerts also mint no magic login link, no reply-by-email address and no tour confirm link (lib/chat/notifyEmail.js); a sandbox landlord's contact verification is never sent or stored and its old links never confirm (lib/chat/contactVerification.js); threads with a sandbox account are left out of the check-in email, 3-day reminders, report and delivery audit (lib/chat/checkin.js loadConversations). No push from a sandbox user to a non-sandbox user (lib/chat/notifyPush.js). Conversations with a sandbox account are hidden from everyone else's inbox (GET /api/chat/threads). Listings carry listings.review_sandbox, stamped at creation by the BEFORE INSERT trigger listings_stamp_review_sandbox from the transaction-local app.current_user_id, and are hidden from browse, matchmaking, the sitemap and the public listing page (detail shows only to sandbox viewers). A sandbox listing never blocks or absorbs a real landlord: the already-listed, duplicate-name, attach, address lookup, lease and publish-merge checks ignore it for everyone but sandbox accounts (withoutSandboxRows, lib/listings/propertyName.js). Known limits: chat RLS and Realtime are unchanged, so a sandbox message can reach a real participant's client without being shown, and a participant who learns a hidden thread id could fetch it. New mobile-reachable features that contact other people must apply this rule. Migration 202611020001.",
       envVars: {
         GOOGLE_ID: "Google OAuth client ID",
         GOOGLE_SECRET: "Google OAuth client secret",
@@ -401,7 +472,8 @@ function generatePages() {
 
 function generateUtils() {
   const dirs = [join(ROOT, "src", "lib"), join(ROOT, "src", "utils")];
-  const files = dirs.flatMap((d) => (existsSync(d) ? walk(d, ".js") : []));
+  // Tests sit beside the code they cover; they are not utils.
+  const files = dirs.flatMap((d) => (existsSync(d) ? walk(d, ".js") : [])).filter((f) => !/\.test\.js$/.test(f));
 
   const utils = files.map((filepath) => {
     const rel = relative(ROOT, filepath);
@@ -410,7 +482,7 @@ function generateUtils() {
     const block = content.match(/\/\*+([\s\S]*?)\*\//);
     const description = block
       ? block[1].replace(/^\s*\*?/gm, "").trim().split("\n")[0].trim()
-      : "No description — add a top-of-file comment.";
+      : "No description. Add a top-of-file comment.";
     return { file: rel, description };
   });
   utils.sort((a, b) => a.file.localeCompare(b.file));

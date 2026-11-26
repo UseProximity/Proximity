@@ -1,0 +1,50 @@
+{
+  "intro": [
+    "WashU (Washington University in St. Louis) doesn't just run dorms. The university owns a real portfolio of off-campus apartment buildings around campus, run through its own management companies. Understanding how that system works helps you decide whether to rent from the school or from a private landlord.",
+    "The short version: Quadrangle Housing Company manages WashU owned off-campus apartments, generally the older and more affordable stock. Parallel Properties is the university's newer management brand with more updated, pricier buildings. On-campus apartment style options like Millbrook and Village East are separate, run by Residential Life. Building lists do tend to shift, so confirm current offerings on each company's site."
+  ],
+  "directAnswer": "Quadrangle Housing Company manages Washington University's own off-campus apartment buildings near campus, generally older and more affordable stock, while Parallel Properties is the university's newer, more updated management brand. Both typically open lease signing for the next school year in spring, months after private landlords start signing in late fall.",
+  "faqs": [
+    {
+      "q": "What is Quadrangle Housing?",
+      "a": "The management company for WashU owned off-campus apartments, operated under the university's real estate arm. Its buildings sit in the neighborhoods around campus and tend to be older and priced below the newer purpose-built student buildings. You rent from Quadrangle like any landlord: their lease, their maintenance, their terms."
+    },
+    {
+      "q": "What is the difference between Quadrangle and Parallel Properties?",
+      "a": "Both are university affiliated management companies. Students generally describe Quadrangle as the older, more affordable portfolio and Parallel as the newer and a bit pricier one. Which buildings each manages changes over time, so check both sites when you're comparing."
+    },
+    {
+      "q": "When can I sign a lease with Quadrangle or Parallel?",
+      "a": "Later than you might expect. Students consistently report the university affiliated companies open signing for the next school year in March or April, months after private landlords start in November. That makes them a real second chance if you miss the fall wave, and a reason not to panic in February."
+    },
+    {
+      "q": "Should I rent from WashU or from a private landlord?",
+      "a": "If price matters, look private. WashU Residential Life's 2026-27 rate for a bed in its apartments runs $14,204 to $20,280 for the school year, with $16,834 at Greenway and University Drive and $17,532 at the Lofts. Utilities and furniture are included, but that's still about $1,870 a month over 9 months. HUD's FY2026 benchmark for a whole 2 bedroom in University City, MO is $1,360 a month with utilities, so $680 each. Even over a full 12 month lease, that's $8,160 per person. You'll buy some furniture, and buildings right by campus list above the benchmark, but sharing a private place usually still costs far less. Compare real prices on the listings and read the reviews before you sign.",
+      "links": [
+        {
+          "label": "Browse private listings",
+          "href": "/browse"
+        }
+      ]
+    },
+    {
+      "q": "Are the Lofts of Washington University part of this?",
+      "a": "The Lofts near the Delmar Loop are university connected housing that functions like apartment living with a shuttle to campus. If you're searching for the Lofts, Greenway, or similar buildings, verify current management and availability on the official sites, since the university's building lists and management assignments change."
+    }
+  ],
+  "benchmarkNote": "Descriptions of company structure and signing timing reflect public information and patterns WashU students consistently report; building assignments change, so confirm current details on the companies' official leasing sites and WashU's off-campus housing site. Proximity is independent and not affiliated with Washington University.",
+  "sources": [
+    {
+      "label": "WashU Residential Life",
+      "url": "https://reslife.washu.edu"
+    },
+    {
+      "label": "WashU Residential Life room rates, 2026-27",
+      "url": "https://reslife.washu.edu/room-rates/"
+    },
+    {
+      "label": "HUD Fair Market Rents (FY2026)",
+      "url": "https://www.huduser.gov/portal/datasets/fmr.html"
+    }
+  ]
+}

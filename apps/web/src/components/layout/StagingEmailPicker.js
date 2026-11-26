@@ -1,16 +1,17 @@
 /*
  * Test-email destination picker for non-production environments (staging AND local). Lets
  * anyone choose which inbox receives every outbound email here — they're redirected there by
- * sendMailSafe (via the `staging_email_to` cookie) instead of reaching real users. Pick from
- * the admin/super list (when signed in) or just type any address. Auto-opens when unset;
- * reopenable from the pill. `env` is resolved server-side in the layout, so it renders only
+ * sendMailSafe (via the `staging_email_to` cookie) instead of reaching real users. Type any
+ * address; there is deliberately no list to pick from, so no one's email is shown to people
+ * testing here (partners included). Auto-opens when unset; reopenable from the pill, which
+ * sits as a small dot until hovered. `env` is resolved server-side in the layout, so it renders only
  * off production (never leaks onto the real site).
  */
 "use client";
 import { useEffect, useState } from "react";
 
 const COOKIE = "staging_email_to";
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL_RE = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 
 function readCookie(name) {
   const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -25,9 +26,6 @@ export default function StagingEmailPicker({ env }) {
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState("");
   const [selected, setSelected] = useState("");
-  const [recipients, setRecipients] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -36,19 +34,6 @@ export default function StagingEmailPicker({ env }) {
     setSelected(c);
     if (!c) setOpen(true); // prompt on first visit
   }, [enabled]);
-
-  useEffect(() => {
-    if (!open || loaded) return;
-    setLoading(true);
-    fetch("/api/staging/email-recipients")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
-      .then((d) => setRecipients(d.recipients || []))
-      .catch(() => setRecipients([]))
-      .finally(() => {
-        setLoading(false);
-        setLoaded(true);
-      });
-  }, [open, loaded]);
 
   if (!enabled) return null;
 
@@ -63,11 +48,15 @@ export default function StagingEmailPicker({ env }) {
 
   return (
     <>
+      {/* A small amber dot until hovered or focused, then the full pill (Wyatt, 2026-10-29). */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-3 left-3 z-[60] rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-amber-950 shadow-md hover:bg-amber-400"
+        aria-label={`Test emails go to ${current || "nowhere (not set)"}. Change`}
+        className="group fixed bottom-3 left-3 z-[60] inline-flex items-center rounded-full bg-amber-500 p-1.5 text-xs font-medium text-amber-950 shadow-md transition-all duration-200 hover:bg-amber-400 hover:px-3 focus-visible:px-3"
       >
-        📧 Test emails → {current || "not set"}
+        <span className="block max-h-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-h-6 group-hover:max-w-xs group-hover:opacity-100 group-focus-visible:max-h-6 group-focus-visible:max-w-xs group-focus-visible:opacity-100">
+          📧 Test emails → {current || "not set"}
+        </span>
       </button>
 
       {open && (
@@ -75,32 +64,19 @@ export default function StagingEmailPicker({ env }) {
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-semibold text-gray-900">Test email destination</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Choose which inbox receives <strong>every</strong> email sent here (owner inquiries,
-              etc.). They’re redirected here instead of reaching real people. Until you pick one,
-              emails are suppressed.
+              Enter the inbox that receives <strong>every</strong> email sent here (owner inquiries,
+              etc.). They’re redirected here instead of reaching real people. Until you enter one,
+              emails are suppressed. Only team-approved addresses receive mail; ask an admin to add
+              yours if nothing arrives.
             </p>
-
-            {recipients.length > 0 && (
-              <select
-                value={recipients.some((r) => r.email === selected) ? selected : ""}
-                onChange={(e) => setSelected(e.target.value)}
-                className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">{loading ? "Loading…" : "— Pick an admin inbox —"}</option>
-                {recipients.map((r) => (
-                  <option key={r.email} value={r.email}>
-                    {r.name ? `${r.name} (${r.email})` : r.email} · {r.role}
-                  </option>
-                ))}
-              </select>
-            )}
 
             <input
               type="email"
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
-              placeholder="or type any email…"
-              className={`mt-2 w-full rounded-lg border px-3 py-2 text-sm ${
+              placeholder="you@example.com"
+              autoFocus
+              className={`mt-4 w-full rounded-lg border px-3 py-2 text-sm ${
                 valid ? "border-gray-300" : "border-red-400"
               }`}
             />

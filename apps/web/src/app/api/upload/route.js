@@ -3,15 +3,28 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2 } from "@/lib/r2";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
+import {
+  hasStakeInListing,
+  canAddUnitPhotos,
+} from "@/lib/listings/ownership";
 import { insertBatchAsUser } from "@/lib/supabaseWithUser";
 import { isProdData } from "@/lib/appEnv";
+import { imageUrlsInUse, isIssuedUploadUrl } from "@/lib/listings/imageRefs";
+import { hasDbRole } from "@/lib/userRole";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidId(id) {
   return typeof id === "string" && UUID_RE.test(id);
 }
+
+// Only staff may aim an upload at the other environment's bucket (the admin dashboard's
+// prod/dev switch). Anyone else always gets this deployment's own bucket. The role is
+// read from the DB, not the token, which can be stale after a demotion; the lookup
+// only runs when a bucket is actually requested.
+const allowedDb = async (requestUser, db) =>
+  db && (await hasDbRole(requestUser?.id, ["super"])) ? db : null;
 
 // When db is explicitly "prod", or when no db is given and we're on the real production
 // site, use the prod bucket. Staging & local fall through to the dev bucket.
@@ -36,6 +49,85 @@ function getPublicBase(db) {
 // "1173 Moorlands Dr, St. Louis, MO 63117" → "1173-moorlands"
 // Takes the first two whitespace-tokens from the street part (before first comma),
 // lowercases them, strips non-alphanumeric chars, joins with a dash.
+/*
+ * Resolve whether the caller may add photos here, and which unit (if any) to tag
+ * the new photos with.
+ *
+ * A property has one gallery. Anyone with a stake at the property may add to
+ * it: the owner, or a landlord letting one of its units. unitId, when sent,
+ * tags the new photos with that unit, and needs a stake in that unit.
+ *
+ * The unit is also checked to belong to the listing being written to, so a
+ * request cannot tag a photo with a unit at someone else's address. (The
+ * database enforces the same thing, but a 403 here beats a 500 from the
+ * trigger.)
+ */
+async function resolveUploadScope(requestUser, listingId, unitId) {
+  if (requestUser.role === "super") return { ok: true, unitId: unitId ?? null };
+
+  if (!unitId) {
+    return (await hasStakeInListing(requestUser.id, listingId))
+      ? { ok: true, unitId: null }
+      : {
+          ok: false,
+          status: 403,
+          error: "You need a listing at this property to add photos to it.",
+        };
+  }
+
+  const check = await canAddUnitPhotos(requestUser.id, unitId);
+  if (!check.ok) {
+    if (check.reason === "malformed") {
+      return { ok: false, status: 400, error: "That isn't a valid unit id." };
+    }
+    return check.reason === "not_found"
+      ? { ok: false, status: 404, error: "That unit no longer exists." }
+      : { ok: false, status: 403, error: "You don't have a listing on that unit." };
+  }
+  if (check.listingId !== listingId) {
+    return { ok: false, status: 400, error: "That unit isn't at this property." };
+  }
+  return { ok: true, unitId };
+}
+
+/*
+ * File uploaded URLs into the property's gallery, appended after its last
+ * photo, and tag them with the upload's unit when there is one. The gallery is
+ * one sequence per property now (202609250001), so order is read listing-wide.
+ */
+async function fileIntoGallery({ listingId, scope, urls, userId }) {
+  const { data: existingImages } = await supabase
+    .from("listing_images")
+    .select("sort_order")
+    .eq("listing_id", listingId)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  const maxOrder = existingImages?.[0]?.sort_order ?? -1;
+  const imageRows = urls.map((url, i) => ({
+    listing_id: listingId,
+    // Who added it: the record that decides who may take it down again.
+    owner_id: userId,
+    url,
+    sort_order: maxOrder + 1 + i,
+  }));
+  const { data: inserted, error } = await insertBatchAsUser(supabase, {
+    userId,
+    table: "listing_images",
+    rows: imageRows,
+  });
+  if (error) throw new Error(error.message);
+
+  if (scope.unitId && Array.isArray(inserted) && inserted.length) {
+    const { error: tagErr } = await supabase.from("listing_image_units").insert(
+      inserted
+        .filter((row) => row?.id)
+        .map((row) => ({ image_id: row.id, unit_id: scope.unitId, created_by: userId }))
+    );
+    // The photos are saved; a missing tag is fixable from the dashboard.
+    if (tagErr) console.error("[upload] tagging failed (non-fatal):", tagErr.message);
+  }
+}
+
 function addressToFolderSlug(address) {
   const street = (address || "").split(",")[0].trim();
   const tokens = street.toLowerCase().split(/\s+/).filter(Boolean);
@@ -48,14 +140,25 @@ function addressToFolderSlug(address) {
 
 export async function PATCH(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const formData = await req.formData();
     const listingId = formData.get("listingId");
-    const db = formData.get("db") || null;
+    const unitId = formData.get("unitId") || null;
+    const db = await allowedDb(requestUser, formData.get("db"));
+    /*
+     * A floor plan is stored on the unit (listing_units.floor_plan_image_url),
+     * not in the gallery. Without this it was written to BOTH: the same picture
+     * appeared as one of the unit's photos and as its plan, so a unit with four
+     * photos reported five and the diagram sat in the middle of the bedrooms.
+     *
+     * The upload and the permission check are identical either way — only the
+     * listing_images row is skipped — so this is a flag rather than a route.
+     */
+    const attach = formData.get("attach") !== "false";
     let files = formData.getAll("files");
 
     if (!listingId) {
@@ -84,15 +187,9 @@ export async function PATCH(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
     const bucket = getBucket(db);
@@ -123,24 +220,13 @@ export async function PATCH(req) {
       return Response.json({ error: "No valid files" }, { status: 400 });
     }
 
-    // Find max current sort_order for this listing
-    const { data: existingImages } = await supabase
-      .from("listing_images")
-      .select("sort_order")
-      .eq("listing_id", listingId)
-      .order("sort_order", { ascending: false })
-      .limit(1);
-    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
-    const imageRows = urls.map((url, i) => ({
-      listing_id: listingId,
-      url,
-      sort_order: maxOrder + 1 + i,
-    }));
-    await insertBatchAsUser(supabase, {
-      userId: session.user.id,
-      table: "listing_images",
-      rows: imageRows,
-    });
+    // Stored, but deliberately not filed in the gallery — the caller is putting
+    // it somewhere else (see `attach` above).
+    if (!attach) {
+      return Response.json({ urls, url: urls[0] });
+    }
+
+    await fileIntoGallery({ listingId, scope, urls, userId: requestUser.id });
 
     return Response.json({ urls, url: urls[0] });
   } catch (error) {
@@ -153,12 +239,13 @@ export async function PATCH(req) {
 // Body: { listingId, db?, files: [{ name, type }] }
 export async function POST(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, db, files } = await req.json();
+    const { listingId, unitId = null, db: requestedDb, files } = await req.json();
+    const db = await allowedDb(requestUser, requestedDb);
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -177,15 +264,9 @@ export async function POST(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
     const bucket = getBucket(db);
@@ -214,12 +295,13 @@ export async function POST(req) {
 // Body: { listingId, db?, urls: [string] }
 export async function PUT(req) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const requestUser = await getRequestUser(req);
+    if (!requestUser?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, db, urls } = await req.json();
+    const { listingId, unitId = null, db: requestedDb, urls, attach = true } = await req.json();
+    const db = await allowedDb(requestUser, requestedDb);
 
     if (!listingId || !isValidId(listingId)) {
       return Response.json({ error: "Invalid listingId" }, { status: 400 });
@@ -230,7 +312,7 @@ export async function PUT(req) {
 
     const { data: listing, error: fetchError } = await supabase
       .from("listings")
-      .select("id")
+      .select("id, address")
       .eq("id", listingId)
       .single();
 
@@ -238,35 +320,29 @@ export async function PUT(req) {
       return Response.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const { data: own } = await supabase
-      .from("listing_landlords")
-      .select("listing_id")
-      .eq("listing_id", listingId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    const isOwner = !!own;
-    if (!isOwner && session.user.role !== "super") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+    const scope = await resolveUploadScope(requestUser, listingId, unitId);
+    if (!scope.ok) {
+      return Response.json({ error: scope.error }, { status: scope.status });
     }
 
-    // Find max current sort_order for this listing
-    const { data: existingImages } = await supabase
-      .from("listing_images")
-      .select("sort_order")
-      .eq("listing_id", listingId)
-      .order("sort_order", { ascending: false })
-      .limit(1);
-    const maxOrder = existingImages?.[0]?.sort_order ?? -1;
-    const imageRows = urls.map((url, i) => ({
-      listing_id: listingId,
-      url,
-      sort_order: maxOrder + 1 + i,
-    }));
-    await insertBatchAsUser(supabase, {
-      userId: session.user.id,
-      table: "listing_images",
-      rows: imageRows,
-    });
+    /*
+     * Only URLs POST could have issued for this property, and only ones no
+     * other photo or floor plan already uses. Without this a caller could file
+     * another listing's public photo URL as their own row and then delete it,
+     * which deletes the other listing's object from the bucket.
+     */
+    const issued = { publicBase: getPublicBase(db), folder: addressToFolderSlug(listing.address) };
+    if (!urls.every((url) => isIssuedUploadUrl(url, issued)) || (await imageUrlsInUse(urls))) {
+      return Response.json({ error: "That isn't an upload for this property." }, { status: 400 });
+    }
+
+    // Stored, but deliberately not filed in the gallery — the caller is putting
+    // it somewhere else (a floor plan, which belongs on the unit record instead).
+    if (!attach) {
+      return Response.json({ urls, url: urls[0] });
+    }
+
+    await fileIntoGallery({ listingId, scope, urls, userId: requestUser.id });
 
     return Response.json({ urls });
   } catch (error) {

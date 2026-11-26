@@ -1,0 +1,209 @@
+/*
+ * Displayed fields, written by the agent (PRD v3, "Edit by conversation").
+ *
+ * Core values (rent, availability, lease length, furnished, withdrawn; a
+ * unit's beds, baths, size and name; the property's description) live in
+ * the listing, unit and lease tables. The agent changes them through the
+ * same checks the dashboard editor uses (canManageLease, isPropertyOwner,
+ * the description content rules) and the same columns, then records a core
+ * provenance row marked landlord_set so a sync never overwrites them.
+ *
+ * markLandlordSet is also called by the dashboard's own routes after a
+ * successful edit: a dashboard edit after launch counts as landlord-set
+ * (Wyatt, 2026-10-26).
+ *
+ * No scheduled changes: a value changes now or not at all.
+ */
+import { after } from "next/server";
+import supabase from "@/lib/supabase";
+import { canManageLease, isPropertyOwner } from "@/lib/listings/ownership";
+import { checkListingDescription } from "@/lib/contentRules";
+import { cleanUnitName } from "@/utils/unitName";
+import { findUnitNamed } from "@/lib/listings/unitNames";
+import { setFact } from "./store";
+import { checkListingGate, coverageOnly, gateResponseBody, isLeaseHeldForBilling, HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
+import { money, shortDate } from "./sections";
+
+export const LEASE_FIELDS = {
+  rent: { col: "rent", parse: (v) => (v === null || v === "" ? null : Number(String(v).replace(/[$,\s]/g, ""))), check: (n) => n == null || (Number.isFinite(n) && n >= 0 && n <= 100000), label: "rent" },
+  available_from: { col: "available_from", parse: (v) => (v ? String(v).slice(0, 10) : null), check: (d) => d == null || /^\d{4}-\d{2}-\d{2}$/.test(d), label: "available from" },
+  lease_term_months: { col: "lease_term_months", parse: (v) => (Array.isArray(v) ? v : String(v ?? "").split(/[,\s]+/)).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 36), check: (a) => Array.isArray(a), label: "lease length (months)" },
+  furnished: { col: "furnished", parse: (v) => (v == null ? null : /^(true|yes|furnished|1)$/i.test(String(v)) || v === true), check: () => true, label: "furnished" },
+  unavailable: { col: "unavailable", parse: (v) => /^(true|yes|1)$/i.test(String(v)) || v === true, check: () => true, label: "taken off the market" },
+  rent_is_per_person: { col: "rent_is_per_person", parse: (v) => (v == null ? null : /^(true|yes|1|per person)$/i.test(String(v)) || v === true), check: () => true, label: "rent is per person" },
+};
+export const UNIT_FIELDS = {
+  bedrooms: { col: "bedrooms", parse: (v) => (v === "" || v == null ? null : Number(v)), check: (n) => n == null || (Number.isFinite(n) && n >= 0 && n <= 20), label: "bedrooms" },
+  bathrooms: { col: "bathrooms", parse: (v) => (v === "" || v == null ? null : Number(v)), check: (n) => n == null || (Number.isFinite(n) && n >= 0 && n <= 20), label: "bathrooms" },
+  area: { col: "area", parse: (v) => (v === "" || v == null ? null : Number(String(v).replace(/[,\s]/g, ""))), check: (n) => n == null || (Number.isFinite(n) && n >= 0 && n <= 100000), label: "square feet" },
+  name: { col: "name", parse: cleanUnitName, check: () => true, label: "unit name" },
+};
+export const PROPERTY_FIELDS = {
+  description: { col: "description", parse: (v) => (typeof v === "string" ? v.trim() || null : null), check: () => true, label: "description" },
+  furnished: { col: "furnished", parse: (v) => !!v && !/^(false|no|0)$/i.test(String(v)), check: () => true, label: "furnished" },
+  sublease_friendly: { col: "sublease_friendly", parse: (v) => !!v && !/^(false|no|0)$/i.test(String(v)), check: () => true, label: "subletting allowed" },
+};
+
+const fmt = (field, v) => {
+  if (v == null) return "not set";
+  if (field === "rent") return money(v);
+  if (field === "available_from") return shortDate(v);
+  if (Array.isArray(v)) return v.join(", ");
+  return String(v);
+};
+
+/*
+ * Record that a landlord set these core values, so the sync holds changes
+ * to them instead of applying them. One row per field, scoped to the lease,
+ * unit or property.
+ *
+ * `at` is when the landlord saved. The dashboard records after it has
+ * answered, and that work can run late: an early save's record once landed
+ * minutes after a newer save's and replaced it (the lease said Jan 1, its
+ * record "not set"). A record older than the one already there is dropped
+ * (setFact's skipIfNewer, which also settles two saves landing at once).
+ */
+export async function markLandlordSet({ listingId, target, id = null, fields, userId, cause = "dashboard", detail = {}, old = null, at = new Date().toISOString() }) {
+  const scopeLevel = target === "property" ? "property" : target;
+  const scopeId = target === "property" ? null : id;
+  for (const [field, value] of Object.entries(fields ?? {})) {
+    // Revert puts `old` back, so it is recorded per field, and only when it
+    // was actually read (an entry without it cannot be reverted).
+    const before = old && Object.prototype.hasOwnProperty.call(old, field) ? { old: old[field] } : {};
+    const fieldKey = `core.${target}.${field}`;
+    try {
+      await setFact({
+        listingId, section: "core", fieldKey, scopeLevel, scopeId,
+        value: { value, set_at: at }, summary: `${field.replace(/_/g, " ")} set by the landlord: ${fmt(field, value)}`,
+        landlordSet: true, setBy: userId, actorId: userId, cause, detail: { core: true, target, id, field, ...detail, ...before },
+        observedAt: at, skipIfNewer: true,
+      });
+    } catch (err) {
+      // Reaches the site error alerts (lib/errors/serverHooks), so a record
+      // that could not be written, a lost race included, is seen.
+      console.error("[agents] markLandlordSet failed:", err?.message ?? err);
+    }
+  }
+}
+
+/*
+ * A dashboard route saved these fields: record them as landlord-set once the
+ * page has answered. In after(), so the work is finished before the server
+ * rests: left loose it could be paused part way and land minutes later.
+ *
+ * `savedAt` is the row's updated_at as the save itself returned it, so
+ * records are ordered by the database's clock at the write, not by when each
+ * request happened to resume.
+ */
+export function recordDashboardSave({ savedAt = null, ...save }) {
+  const at = savedAt ?? new Date().toISOString();
+  after(() => markLandlordSet({ ...save, cause: "dashboard", at }).catch(() => {}));
+}
+
+/*
+ * The current values of the fields a dashboard save is about to change, read
+ * before the update so the history can offer Revert (PR #365 review).
+ */
+const CORE_TABLE = { property: "listings", unit: "listing_units", lease: "unit_leases" };
+export async function coreValuesBefore({ target, id, fields }) {
+  const cols = Object.keys(fields ?? {});
+  if (!cols.length || !CORE_TABLE[target] || !id) return null;
+  const { data } = await supabase.from(CORE_TABLE[target]).select(cols.join(", ")).eq("id", id).maybeSingle();
+  return data ?? null;
+}
+
+/* The 14-day hold: an owner who claimed the listing recently (PRD v3). */
+export async function recentlyClaimed(userId, listingId) {
+  const { data } = await supabase.from("listing_landlords").select("claimed_at").eq("listing_id", listingId).eq("user_id", userId).maybeSingle();
+  if (!data?.claimed_at) return false;
+  return Date.now() - new Date(data.claimed_at).getTime() < 14 * 86400000;
+}
+
+/*
+ * Why this withdrawn lease cannot go back on the market, in words the agent can
+ * say, with what fixes it: { error, blocked: { kind, uncovered, unitName, gate } }.
+ * kind "agreement": the unit is not on the signed agreement (an addendum fixes it,
+ * signed in place); "billing": a payment method or an overdue invoice (Billing).
+ * Null when it may go live.
+ */
+async function relistBlocked({ lease, listingId }) {
+  const unitName = lease.listing_units?.name || "this unit";
+  if (await isLeaseHeldForBilling(supabase, lease.id)) {
+    return { error: `I can't put ${unitName} back on the market yet. ${HELD_FOR_BILLING_MESSAGE}`, blocked: { kind: "billing", unitName } };
+  }
+  const gate = await checkListingGate(supabase, lease.owner_id, { listingIds: [listingId], unitIds: lease.unit_id ? [lease.unit_id] : [] });
+  if (gate.allowed) return null;
+  const body = gateResponseBody(gate);
+  const agreementOnly = coverageOnly(gate) && (body.uncovered ?? []).length > 0;
+  return {
+    error: agreementOnly
+      ? gate.payer
+        ? `I can't put ${unitName} back on the market yet: it needs to be on ${gate.payer.name}'s agreement first. Send it to them with the button below, and it goes back up once they sign.`
+        : `I can't put ${unitName} back on the market yet: ${gate.uncovered[0].address} isn't on your signed marketing agreement. Add it with a short addendum (the button below), and I'll put it back as soon as you sign.`
+      : `I can't put ${unitName} back on the market yet. ${body.error}`,
+    blocked: { kind: agreementOnly ? "agreement" : "billing", unitName, gate: body },
+  };
+}
+
+/*
+ * Apply one change to a displayed field. change = { target: "lease" |
+ * "unit" | "property", id, field, value }. Returns { ok, old, new, label }
+ * or { error }.
+ */
+export async function applyCoreChange({ listingId, userId, isAdmin = false, change, cause = "landlord_chat" }) {
+  const { target, id, field } = change ?? {};
+  const spec = (target === "lease" ? LEASE_FIELDS : target === "unit" ? UNIT_FIELDS : target === "property" ? PROPERTY_FIELDS : {})[field];
+  if (!spec) return { error: `Cannot change ${field ?? "that"} on a ${target ?? "thing"}.` };
+  let value;
+  try { value = spec.parse(change.value); } catch { return { error: `Bad value for ${spec.label}.` }; }
+  if (!spec.check(value)) return { error: `That is not a valid ${spec.label}.` };
+
+  if (target === "lease") {
+    if (!isAdmin) {
+      const check = await canManageLease(userId, id);
+      if (!check?.ok) return { error: "You can only change your own leases." };
+    }
+    const { data: lease } = await supabase.from("unit_leases").select(`id, ${spec.col === "unavailable" ? "" : "unavailable, "}${spec.col}, is_active, owner_id, unit_id, listing_units!unit_id(listing_id, name)`).eq("id", id).is("deleted_at", null).maybeSingle();
+    if (!lease || lease.listing_units?.listing_id !== listingId) return { error: "That lease is not on this listing." };
+    // Putting a withdrawn offering back on the market is publishing: the same gate
+    // as the dashboard (payment method, agreement, overdue invoice), checked for the
+    // lease's landlord, even when the team does it (review of 2026-11-07).
+    if (field === "unavailable" && value === false && !(lease.is_active !== false && !lease.unavailable)) {
+      const blocked = await relistBlocked({ lease, listingId });
+      if (blocked) return blocked;
+    }
+    const old = lease[spec.col];
+    const patch = { [spec.col]: value };
+    if (field === "unavailable") patch.is_active = !value;
+    const { error } = await supabase.from("unit_leases").update(patch).eq("id", id);
+    if (error) return { error: `Could not save: ${error.message}` };
+    await markLandlordSet({ listingId, target: "lease", id, fields: { [field]: value }, userId, cause, detail: { old } });
+    return { ok: true, old, new: value, label: `${spec.label} on ${lease.listing_units?.name || "the lease"}: ${fmt(field, old)} to ${fmt(field, value)}` };
+  }
+  if (target === "unit") {
+    if (!isAdmin && !(await isPropertyOwner(userId, listingId))) return { error: "Only the property owner can change a unit's details." };
+    const { data: unit } = await supabase.from("listing_units").select(`id, listing_id, name, ${spec.col}`).eq("id", id).is("deleted_at", null).maybeSingle();
+    if (!unit || unit.listing_id !== listingId) return { error: "That unit is not on this listing." };
+    if (field === "name" && value && (await findUnitNamed(listingId, value, { excludeId: id }))) return { error: "Another unit here already has that name." };
+    const old = unit[spec.col];
+    const { error } = await supabase.from("listing_units").update({ [spec.col]: value }).eq("id", id);
+    if (error) return { error: `Could not save: ${error.message}` };
+    await markLandlordSet({ listingId, target: "unit", id, fields: { [field]: value }, userId, cause, detail: { old } });
+    return { ok: true, old, new: value, label: `${spec.label} on ${unit.name || "the unit"}: ${fmt(field, old)} to ${fmt(field, value)}` };
+  }
+  if (target === "property") {
+    if (!isAdmin && !(await isPropertyOwner(userId, listingId))) return { error: "Only the property owner can change the property's details." };
+    const { data: listing } = await supabase.from("listings").select(`id, ${spec.col}`).eq("id", listingId).maybeSingle();
+    if (!listing) return { error: "Listing not found." };
+    if (field === "description" && value) {
+      const problem = checkListingDescription(value, { previous: listing.description ?? null });
+      if (problem) return { error: typeof problem === "string" ? problem : problem.message ?? "That description breaks the listing rules." };
+    }
+    const old = listing[spec.col];
+    const { error } = await supabase.from("listings").update({ [spec.col]: value }).eq("id", listingId);
+    if (error) return { error: `Could not save: ${error.message}` };
+    await markLandlordSet({ listingId, target: "property", fields: { [field]: value }, userId, cause, detail: { old } });
+    return { ok: true, old, new: value, label: `${spec.label}: ${fmt(field, old)} to ${fmt(field, value)}` };
+  }
+  return { error: "Unknown target." };
+}
