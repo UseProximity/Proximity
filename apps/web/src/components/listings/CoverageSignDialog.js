@@ -246,11 +246,15 @@ export function openCoverageDialog({ uncovered, onSigned, payer = null }) {
 
 /*
  * A save that came back `agreement_needed` (saved as a draft, api/addListing):
- * open signing for it, and once signed publish what the response lists. Resolves
- * true when it went live, false when it stays a draft.
+ * open signing for it, and once signed publish what the response lists.
+ * Resolves { live, waiting }: `live` when at least one target went live,
+ * `waiting` when one stays a draft for its authorized signer (that toast is
+ * shown here, so the caller adds none). Only a publish that worked counts as
+ * live (PR 486 review): a target waiting on its signer is still a draft.
  */
 export async function signThenPublish(data) {
-  let live = false;
+  let published = 0;
+  let waitingNote = null;
   await openCoverageDialog({
     uncovered: data.uncovered ?? [],
     payer: data.payer ?? null,
@@ -264,15 +268,19 @@ export async function signThenPublish(data) {
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           // One that waits on its authorized signer (sent to them a moment ago) stays a draft.
-          if (err.code === "billing_setup_required" && err.payer) continue;
+          if (err.code === "billing_setup_required" && err.payer) {
+            waitingNote = err.drafted || err.error || "Signed. This waits for its authorized signer before it goes live.";
+            continue;
+          }
           toast.error(err.error || "Signed, but we couldn't publish it. Publish it from your drafts.");
           return;
         }
+        published += 1;
       }
-      live = true;
     },
   });
-  return live;
+  if (waitingNote) toast(waitingNote, { duration: 10000 });
+  return { live: published > 0, waiting: !!waitingNote };
 }
 
 // True when the only thing stopping a publish is that the properties are not covered yet.

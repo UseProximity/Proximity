@@ -416,8 +416,10 @@ export default function AddListingFlow({ user }) {
        * a draft they can publish later.
        */
       if (data.code === "agreement_needed") {
-        const live = await signThenPublish(data);
-        toast.success(live ? "Signed and published. Your listing is live." : "Saved as a draft. Sign the agreement to publish it.");
+        const { live, waiting } = await signThenPublish(data);
+        // Waiting on its authorized signer: signThenPublish already said so.
+        if (live) toast.success("Signed and published. Your listing is live.");
+        else if (!waiting) toast.success("Saved as a draft. Sign the agreement to publish it.");
         setPublished({ listingId, unitId: unit?.id ?? null, draft: !live });
         return;
       }
