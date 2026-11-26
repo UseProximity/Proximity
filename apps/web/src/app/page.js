@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 // Server shell for the homepage: owns the page metadata and seeds the client
-// experience with listings so the hero map cards (and their crawlable
+// experience with listings so the hero's listing cards (and their crawlable
 // /listings/[id] anchors) are present in the first HTML response.
 export default async function HomePage() {
   const [initialListings, initialPopular] = await Promise.all([

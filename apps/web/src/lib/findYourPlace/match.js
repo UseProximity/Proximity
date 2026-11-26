@@ -163,6 +163,8 @@ export function toRankingInputs(answers, parsed, text, viewerGender) {
     // "1+" is the open range: every size. A number is exact (3 means 3 beds).
     group_size: !answers.group || answers.group === NO_PREFERENCE ? "1+" : answers.group,
     budget_max: typeof answers.budget === "number" ? answers.budget : null,
+    // Soft: never filters (no ranking rule reads it), only told to the picker.
+    budget_min: typeof answers.budgetMin === "number" ? answers.budgetMin : null,
     ...(leaseTerm ? { lease_term: leaseTerm } : {}),
     ...(answers.moveIn && answers.moveIn !== NO_PREFERENCE ? { move_in_month: moveInLabel(answers.moveIn) } : {}),
     area: parsed.areas,
@@ -280,6 +282,7 @@ const PICK_SYSTEM = [
   "- The picks after that are alternatives that also fit what they asked for but differ from picks 1 and 2 in a way the student would notice: another neighborhood, clearly cheaper or clearly nicer for more money, a different kind of building (a house or small building against a large complex), a much shorter trip, or a standout feature the first two lack. Order them best first, and make them differ from each other too where you can. Do not pad with near copies of picks 1 and 2.",
   "- When candidates with near_miss set are included, there are not enough full fits. near_miss lists what each one misses (one thing, or several separated by semicolons). Rank every candidate without near_miss first, then the near_miss ones, fewest misses first. In that case return a pick, with a complete reason, for every candidate up to the limit: the app may need any of them to fill its four cards. For a near_miss candidate the reason says what is good about it for this student and leaves the miss to the app.",
   "- must_haves are requirements. Never pick a candidate whose data clearly says the opposite (for example they need a cat allowed and the description or knowledge says no pets). A candidate that is silent on a must-have may be picked, below ones that confirm it.",
+  "- min_rent_per_person, when set, is the bottom of the student's budget range: the price level they expect. It is never a reason to leave out a cheaper place. Use it only to judge which places feel right to them, and never mention it.",
   "- Then weigh wishes, the commute, and score (a rule-based fit from 0 to 1; treat it as a strong prior, not a verdict).",
   "- commute.minutes is the trip for the way they said they travel, and commute.limit is the longest they said they would accept. It is a preference, not a rule, but a real one: prefer candidates inside the limit, accept one a little over when it is clearly better on what they wrote, and pick one far over (more than half as long again) only when nothing closer meets a must-have.",
   "- Only state a travel time that appears in the candidate's fields. Never estimate one.",
@@ -550,6 +553,7 @@ export async function findMatches({ answers, text, chips, viewerGender = null, o
               student: {
                 people: answers.group ?? null,
                 max_rent_per_person: preferences.budget_max,
+                min_rent_per_person: preferences.budget_min,
                 lease_length: preferences.lease_term ?? null,
                 move_in: preferences.move_in_month ?? null,
                 gets_to_campus_by: answers.modes,
