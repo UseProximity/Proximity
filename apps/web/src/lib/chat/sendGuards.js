@@ -1,0 +1,313 @@
+/*
+ * The two checks every chat send path runs before and around the RPC:
+ * content screening on the way in, rate-limit translation on the way out.
+ *
+ * Kept separate from moderation.js so that file stays a pure, testable set of
+ * detectors with no imports, and separate from the routes so the inquiry,
+ * reply and attachment paths cannot drift apart on policy.
+ */
+import supabase from "@/lib/supabase";
+import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
+import {
+  hasApplicationLink,
+  applicationLinkCopy,
+  applicationLinkStateOf,
+  applicationLinkSettingsPath,
+  APPLICATION_LINK_CODE,
+  APPLICATION_LINK_REASON,
+} from "@/lib/chat/applicationLinks";
+
+export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
+const CONFIRMED_REASON = "confirmed_in_app";
+
+/*
+ * Log the decision. Never allowed to break a send: a screening record is
+ * worth less than the message it is about, so a failed insert is swallowed
+ * rather than turning a working conversation into a 500.
+ */
+async function logModeration({
+  userId,
+  action,
+  reasons,
+  body,
+  threadId = null,
+  messageId = null,
+  listingId = null,
+}) {
+  try {
+    await supabase.rpc("rpc_log_chat_moderation_event", {
+      p_user_id: userId,
+      p_action: action,
+      p_reasons: reasons,
+      p_body: body,
+      p_thread_id: threadId,
+      p_message_id: messageId,
+      p_listing_id: listingId,
+    });
+  } catch (error) {
+    console.error("chat moderation log failed:", error);
+  }
+}
+
+/**
+ * Screen a body before sending.
+ *
+ * Three outcomes:
+ *
+ * - blocked: abuse, fraud or phishing. Recorded here (there will be no message
+ *   row) and refused with copy for the sender.
+ * - needsConfirmation: only contact details or a move-elsewhere request
+ *   (CONTACT_REASONS) and the sender has not yet confirmed. Not recorded, since
+ *   nothing was sent; the route answers 409 CONFIRM_SEND and the composer asks
+ *   "send anyway?" (Wyatt, 2026-10-12). The same message sent again with
+ *   confirmed: true comes back as flagged with "confirmed_in_app" added.
+ * - flagged (or clean): allowed through. The sender is told nothing about a
+ *   flag, so someone probing for what gets through learns nothing. Flags are
+ *   NOT recorded here: the route calls recordFlaggedSend after the post so the
+ *   event carries the message id and the admin Conversations view can pin it
+ *   to the message.
+ *
+ * @returns {Promise<
+ *   {blocked: true, message: string}
+ *   | {blocked: false, needsConfirmation: true, reasons: string[], message: string}
+ *   | {blocked: false, flagged: boolean, reasons: string[]}
+ * >}
+ */
+export async function screenOutgoingChat({
+  userId,
+  body,
+  threadId = null,
+  listingId = null,
+  confirmed = false,
+  audience = "student",
+  // A tour thread (chat_threads.unrestricted): the two sides have already
+  // exchanged contact details, so sharing them here is not leaving the
+  // platform (Wyatt, 2026-10-26). Abuse and fraud are still blocked.
+  unrestricted = false,
+}) {
+  const verdict = screenChatText(body);
+
+  if (verdict.action === "block") {
+    const contactOnly = verdict.reasons.every((r) => CONTACT_REASONS.has(r));
+    if (contactOnly) {
+      if (unrestricted) return { blocked: false, flagged: false, reasons: [] };
+      if (!confirmed) {
+        return {
+          blocked: false,
+          needsConfirmation: true,
+          reasons: verdict.reasons,
+          message: confirmMessage(verdict.reasons, audience),
+        };
+      }
+      return {
+        blocked: false,
+        flagged: true,
+        reasons: [...verdict.reasons, ...(verdict.flags ?? []), CONFIRMED_REASON],
+      };
+    }
+    await logModeration({
+      userId,
+      action: "block",
+      reasons: verdict.reasons,
+      body,
+      threadId,
+      listingId,
+    });
+    return { blocked: true, message: verdict.message };
+  }
+
+  if (verdict.action === "flag") {
+    return { blocked: false, flagged: true, reasons: verdict.reasons };
+  }
+
+  return { blocked: false, flagged: false, reasons: [] };
+}
+
+/**
+ * Where this landlord stands on this listing's application link: "live",
+ * "saved", "missing" or "no_leases" (see applicationLinkStateOf). Read off
+ * their own leases there, the same rows the dashboard's contact block writes.
+ * A failed read answers "missing": the copy then just says to add one.
+ */
+export async function landlordApplicationLinkState(landlordId, listingId) {
+  if (!landlordId || !listingId) return "missing";
+  // An owner of the property also counts its ownerless imported leases, the
+  // same rows the dashboard's contact block lets them edit.
+  const { data: ownerRow, error: ownerErr } = await supabase
+    .from("listing_landlords")
+    .select("user_id")
+    .eq("listing_id", listingId)
+    .eq("user_id", landlordId)
+    .maybeSingle();
+  if (ownerErr) {
+    console.error("application link owner lookup failed:", ownerErr);
+    return "missing";
+  }
+  let query = supabase
+    .from("unit_leases")
+    .select("application_url, is_active, unavailable, published_at, deleted_at, listing_units!inner(listing_id, published_at, deleted_at)");
+  query = ownerRow ? query.or(`owner_id.eq.${landlordId},owner_id.is.null`) : query.eq("owner_id", landlordId);
+  const { data, error } = await query
+    .eq("listing_units.listing_id", listingId)
+    .is("listing_units.deleted_at", null)
+    .is("deleted_at", null);
+  if (error) {
+    console.error("application link lookup failed:", error);
+    return "missing";
+  }
+  return applicationLinkStateOf(data);
+}
+
+/** The refusal a landlord sees, with the button into their dashboard. */
+export async function applicationLinkRefusal(landlordId, listingId) {
+  const state = await landlordApplicationLinkState(landlordId, listingId);
+  const { message, actionLabel } = applicationLinkCopy(state);
+  return {
+    code: APPLICATION_LINK_CODE,
+    message,
+    settingsUrl: applicationLinkSettingsPath(listingId),
+    actionLabel,
+    state,
+  };
+}
+
+/**
+ * Refuse a landlord's message that carries an application link (Wyatt,
+ * 2026-11-20). No "send anyway": the link belongs on the listing, where the
+ * Apply button opens it. Applies in every thread, tour threads included.
+ * Only the thread's landlord is screened; a student has no dashboard to send
+ * the link to. Recorded as a block so admins can see it was tried.
+ *
+ * @returns {Promise<null | {code: string, message: string, settingsUrl: string, actionLabel: string, state: string}>}
+ *   null when the message may go on to the usual screening
+ */
+export async function screenApplicationLinks({ userId, body, threadId = null, listingId = null, isLandlord }) {
+  if (!isLandlord || !hasApplicationLink(body)) return null;
+  await logModeration({
+    userId,
+    action: "block",
+    reasons: [APPLICATION_LINK_REASON],
+    body,
+    threadId,
+    listingId,
+  });
+  return applicationLinkRefusal(userId, listingId);
+}
+
+/** Record an application link cut from an emailed reply (or a whole reply refused for it). */
+export async function recordApplicationLinkFromEmail({ userId, threadId, messageId = null, listingId = null, body, delivered }) {
+  await logModeration({
+    userId,
+    action: delivered ? "flag" : "block",
+    reasons: [APPLICATION_LINK_REASON, delivered ? "redacted_from_email" : "from_email"],
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
+}
+
+/**
+ * Record a flag on a message that was posted. Called by the send routes after
+ * the RPC returns the message id, for both the silent flag tier and the
+ * confirmed contact-details case.
+ */
+export async function recordFlaggedSend({ userId, threadId, messageId, listingId = null, reasons, body }) {
+  await logModeration({
+    userId,
+    action: "flag",
+    reasons,
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
+}
+
+/**
+ * Record an attachment scan result.
+ *
+ * Same table as text screening, with the file names standing in for the body
+ * excerpt: a reviewer needs to know which upload was refused, and the file
+ * itself is in R2 under the thread's prefix.
+ */
+export async function recordAttachmentScan({
+  userId,
+  threadId,
+  blocked,
+  reasons,
+  fileNames = [],
+}) {
+  await logModeration({
+    userId,
+    action: blocked ? "block" : "flag",
+    reasons,
+    body: `[attachment] ${fileNames.join(", ")}`,
+    threadId,
+  });
+}
+
+export const CHAT_PASSWORD_REQUIRED_CODE = "PASSWORD_REQUIRED";
+
+export const CHAT_PASSWORD_REQUIRED_MESSAGE =
+  "Set a password to reply. This keeps your conversations yours, and lets you get back in without an email link.";
+
+/**
+ * Can this account send a message yet?
+ *
+ * Reading a thread from a magic link needs no credentials: the link was emailed
+ * to the address on the account, so following it proves control of the inbox.
+ * Sending is where identity starts to matter, because the reply is attributed to
+ * a named landlord and the student will act on it. An account that has never set
+ * a password and has no Google or Apple identity has to set one first
+ * (Wyatt, 2026-10-03).
+ *
+ * Apple counts as an identity for the same reason Google does: the account was
+ * created or linked through a verified Apple sign-in (apple_account), so the
+ * person has already proved who they are and does not need a password as well.
+ * That is what lets the mobile app's Sign in with Apple users message without
+ * being asked to create one. A credential-less row that only ever arrived through
+ * a chat magic link has none of the three, so it stays restricted.
+ *
+ * This is why relaxing landlordCanChat to "we have an email address" is safe.
+ * Reachability and participation are separate gates, and this is the second one.
+ *
+ * Enforced server-side rather than in the composer, because the composer is not
+ * where a crafted request arrives.
+ *
+ * @returns {Promise<{ok: true} | {ok: false, reason: "password_required"}>}
+ */
+export async function assertSenderCanSend(userId) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("password_hash, google_account, apple_account")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    // Fail open on a read failure: a Supabase blip must not silence a landlord
+    // who does have a password. The rate limiter and the content screen still
+    // apply, so this is not the only thing standing in the way.
+    console.error("chat send eligibility check failed:", error);
+    return { ok: true };
+  }
+
+  if (!data) return { ok: true };
+  if (data.google_account === true) return { ok: true };
+  if (data.apple_account === true) return { ok: true };
+  if (data.password_hash) return { ok: true };
+  return { ok: false, reason: "password_required" };
+}
+
+/*
+ * fn_chat_assert_send_rate raises with a 'chat rate limit: ' prefix. Matching
+ * on the prefix keeps the specific ceiling that tripped out of the response,
+ * so the limits are not published to whoever is testing them.
+ */
+export function isChatRateLimitError(error) {
+  return typeof error?.message === "string"
+    && error.message.startsWith("chat rate limit:");
+}
+
+export const CHAT_RATE_LIMIT_MESSAGE =
+  "You have sent a lot of messages in a short time. Try again shortly.";

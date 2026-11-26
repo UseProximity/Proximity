@@ -1,0 +1,221 @@
+/*
+ * Everything Proxy may know about one listing, as text for the model and as
+ * data for routing (PRD v3: "Proxy's context holds only student-safe facts").
+ *
+ * In: the displayed fields (read live from the listing, unit and lease
+ * tables), amenities and utilities, the description, and the knowledge store
+ * by section. Each lease is one owner's offering and is labelled with its
+ * owner (Owner A, Owner B, Unclaimed leases) so Proxy can say whose terms it
+ * is quoting and never merge them.
+ *
+ * Out: owner and lease contact details, source names and URLs, other
+ * students' questions, anything not published.
+ */
+import supabase from "@/lib/supabase";
+import { isLiveLease, publicUnits } from "@/lib/listings/unitAvailability";
+import { studentFacts, ownerLabels } from "./studentView";
+import { UNCLAIMED_OWNER_ID, money, shortDate } from "./sections";
+import { leaseRentBasis } from "@/lib/listings/rentBasis";
+import { isRoomShareListing } from "@/lib/matchmaking/listingConstraints";
+import { loadHiddenRents, roughRangeText } from "@/lib/listings/hiddenRents";
+
+const AMENITY_LABELS = {
+  air_conditioning: "air conditioning", dishwasher: "dishwasher", gym: "gym", laundry: "laundry", mailroom: "mailroom",
+  microwave: "microwave", oven: "oven", parking: "parking", pets_allowed: "pets allowed", pool: "pool",
+  refrigerator: "refrigerator", rooftop: "rooftop", storage: "storage", stove: "stove", study_room: "study room",
+};
+const UTILITY_LABELS = { electric: "electric", gas: "gas", heat: "heat", water: "water", internet: "internet", trash: "trash", cable: "cable", sewer: "sewer", cooling: "cooling" };
+
+const SELECT = `
+  id, title, address, description, lease_type, lease_structure, furnished, sublease_friendly,
+  twenty_one_plus, unavailable, published_at, deleted_at, contact_email,
+  home_types!home_type_id(label),
+  listing_units!listing_id(id, bedrooms, bathrooms, area, name, sort_order, deleted_at, published_at,
+    unit_leases!unit_id(id, rent, is_active, unavailable, sublease, available_from, lease_term_months,
+      furnished, owner_id, rent_is_per_person, description, application_url, deleted_at, published_at)),
+  listing_landlords!listing_id(user_id, is_primary),
+  listing_amenities!listing_id(air_conditioning, dishwasher, gym, laundry, mailroom, microwave, oven, parking, pets_allowed, pool, refrigerator, rooftop, storage, stove, study_room),
+  listing_utilities!listing_id(electric, gas, heat, water, internet, trash, cable, sewer, cooling),
+  listing_custom_amenities!listing_id(label)
+`;
+
+// About 5,000 tokens. The largest knowledge base in Nov 2026 is under 10,000 characters.
+const FULL_FACTS_LIMIT = 20000;
+
+/*
+ * The key Proxy cites (in answered_keys) when it gives a hidden-price range,
+ * so a reply carrying the range counts as partly answered and is posted.
+ */
+export const PRICE_RANGE_KEY = "price.rough_range";
+
+function termLabel(months) {
+  const t = [...new Set((months ?? []).map(Number).filter((m) => Number.isFinite(m) && m > 0))].sort((a, b) => a - b);
+  if (!t.length) return null;
+  if (t.length === 1) return `${t[0]}-month lease`;
+  return `${t[0]} to ${t[t.length - 1]} month leases`;
+}
+
+/*
+ * How to apply, when a landlord added an application link (Wyatt,
+ * 2026-11-14). Proxy points the student at the Apply button rather than
+ * quoting the link: the button is what records that they went to apply.
+ */
+function applyLine(units) {
+  const live = units.flatMap((u) => (u.unit_leases ?? []).filter(isLiveLease));
+  if (!live.some((l) => l.application_url)) return null;
+  const all = live.every((l) => l.application_url);
+  return `HOW TO APPLY: the landlord takes applications on their own site${all ? "" : " for some of the leases here"}. When a student asks how to apply, tell them to use the Apply button next to the Tour button under this chat; it opens the landlord's application in a new tab. Do not write out the link.`;
+}
+
+export async function buildProxyContext(listingId) {
+  // Read at once rather than one after another: every second counts while a student waits.
+  // The owner labels are read once and shared with studentFacts.
+  const ownersRead = ownerLabels(listingId);
+  const [{ data: row, error }, owners, facts, hidden] = await Promise.all([
+    supabase.from("listings").select(SELECT).eq("id", listingId).maybeSingle(),
+    ownersRead,
+    studentFacts(listingId, ownersRead),
+    loadHiddenRents([listingId]),
+  ]);
+  if (error) throw new Error(`proxy context: ${error.message}`);
+  if (!row || row.deleted_at) return null;
+  const units = publicUnits(row.listing_units ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  const leases = [];
+  const unitLines = [];
+  // Proxy's copy of the unit lines: the same, plus each lease's rough hidden-price estimate.
+  const proxyUnitLines = [];
+  let estimated = 0;
+  const roomShare = isRoomShareListing(row);
+  for (const u of units) {
+    const live = (u.unit_leases ?? []).filter(isLiveLease);
+    const unitName = u.name || `${u.bedrooms ?? "?"} bed, ${u.bathrooms ?? "?"} bath`;
+    const specs = [u.bedrooms != null ? `${u.bedrooms} bed` : null, u.bathrooms != null ? `${u.bathrooms} bath` : null, u.area ? `${Number(u.area).toLocaleString()} sq ft` : null].filter(Boolean).join(", ");
+    const lines = [`- Unit "${unitName}"${specs ? ` (${specs})` : ""}${live.length ? "" : ": no lease on offer right now"}`];
+    const proxyLines = [lines[0]];
+    for (const l of live) {
+      const ownerKey = l.owner_id ?? UNCLAIMED_OWNER_ID;
+      const ownerLabel = owners.get(ownerKey) ?? "Unclaimed leases";
+      // Say the basis both ways: a bare price read as unknown, so Proxy asked landlords what the data already said.
+      // Not recorded (older leases): use the same estimate the listing page shows, marked as one.
+      // Only with a known bedroom count (a room-share is per person whatever it is): an
+      // unsized unit read as a one-bed and was stated as "for the whole unit".
+      const guess = l.rent_is_per_person == null && (u.bedrooms != null || roomShare)
+        ? leaseRentBasis({ rent: l.rent, bedrooms: u.bedrooms }, roomShare) : null;
+      const basis = l.rent_is_per_person === true ? " per person" : l.rent_is_per_person === false ? " for the whole unit"
+        // A studio or one-bed is one person's rent either way.
+        : guess && guess.beds <= 1 && !roomShare ? " for the whole unit"
+        : guess?.basis === "person" ? " per person (estimated from the price, not stated by the landlord)"
+        : guess?.basis === "unit" ? ` for the whole unit, about ${money(Math.round(guess.perPerson))} per person (estimated from the price, not stated by the landlord)`
+        : " (not stated whether this is per person or for the whole unit)";
+      const rent = Number(l.rent) > 0 ? `${money(l.rent)} a month${basis}` : "price on request";
+      const bits = [rent, termLabel(l.lease_term_months), l.available_from ? `available ${shortDate(l.available_from)}` : "available now (no date set)",
+        l.furnished === true ? "furnished" : l.furnished === false ? "unfurnished" : null, l.sublease ? "a sublease" : null].filter(Boolean);
+      const idx = leases.length + 1;
+      leases.push({
+        id: l.id, unitId: u.id, unitName, ownerId: l.owner_id ?? null, ownerKey, ownerLabel, rent: Number(l.rent) > 0 ? Number(l.rent) : null,
+        label: `${unitName}${Number(l.rent) > 0 ? ` at ${money(l.rent)}` : ""}`, index: idx,
+      });
+      const notes = l.description ? `. Notes: ${String(l.description).trim().slice(0, 300)}` : "";
+      lines.push(`  - Lease ${idx} [${ownerLabel}]: ${bits.join(", ")}${notes}`);
+      /*
+       * Hidden website price (Wyatt, 2026-11-20): on this lease's own line, so
+       * it is never quoted for another price-on-request lease.
+       */
+      const h = Number(l.rent) > 0 ? null : hidden.get(l.id);
+      const range = h ? roughRangeText([{ ...h, perPerson: h.perPerson ?? l.rent_is_per_person ?? null }]) : null;
+      if (range) estimated += 1;
+      const proxyBits = range ? [`price on request (rough estimate [${PRICE_RANGE_KEY}]: ${range})`, ...bits.slice(1)] : bits;
+      proxyLines.push(`  - Lease ${idx} [${ownerLabel}]: ${proxyBits.join(", ")}${notes}`);
+    }
+    unitLines.push(lines.join("\n"));
+    proxyUnitLines.push(proxyLines.join("\n"));
+  }
+
+  const amen = Object.entries(row.listing_amenities ?? {}).filter(([, v]) => v === true).map(([k]) => AMENITY_LABELS[k]).filter(Boolean);
+  const custom = (row.listing_custom_amenities ?? []).map((a) => a.label).filter(Boolean);
+  const utils = Object.entries(row.listing_utilities ?? {}).filter(([, v]) => v === true).map(([k]) => UTILITY_LABELS[k]).filter(Boolean);
+
+  const sectionText = (name, items) => items.length
+    ? `${name}:\n${items.map((f) => `- ${f.summary}${f.scope.level !== "property" ? ` [applies to: ${f.scope.label}]` : ""} (updated ${shortDate(f.updatedAt)})`).join("\n")}`
+    : `${name}: nothing on record`;
+
+  /*
+   * Proxy's copy carries every fact in full (its key, value, conditions and
+   * dates), so a question is answered in one model call instead of a first
+   * call to look the details up (Wyatt, 2026-11-11: answers felt slow).
+   * Past FULL_FACTS_LIMIT characters it falls back to the one-line index and
+   * Proxy pulls details with its tools, as before.
+   */
+  const fullLine = (f) => {
+    const bits = [`- [${f.key}] ${f.summary}`];
+    if (f.value != null && typeof f.value === "object" ? Object.keys(f.value).length : f.value != null) bits.push(`value: ${JSON.stringify(f.value)}`);
+    if (f.scope.level !== "property") bits.push(`applies to: ${f.scope.label}`);
+    if (f.validFrom) bits.push(`valid from ${f.validFrom}`);
+    if (f.validUntil) bits.push(`valid until ${f.validUntil}`);
+    if (f.landlordSet) bits.push("confirmed by the landlord");
+    bits.push(`updated ${shortDate(f.updatedAt)}`);
+    return bits.join("; ");
+  };
+  const fullSection = (name, items) => (items.length ? `${name}:\n${items.map(fullLine).join("\n")}` : `${name}: nothing on record`);
+  const factSections = (fmt) => [
+    fmt("FEES", facts.sections.fees),
+    fmt("POLICIES", facts.sections.policies),
+    fmt("SPECIALS AND PROMOTIONS (current)", facts.sections.specials),
+    fmt("OTHER DETAILS", facts.sections.misc),
+  ];
+  const fullFacts = factSections(fullSection).join("\n\n");
+  const factsInFull = fullFacts.length <= FULL_FACTS_LIMIT;
+
+  const headFor = (unitLines) => [
+    `LISTING: ${row.title || row.address}${row.title ? `, ${row.address}` : ""}. Type: ${row.home_types?.label ?? "other"}.`,
+    row.twenty_one_plus ? "Residents must be 21 or older." : null,
+    row.sublease_friendly ? "Subletting is allowed by the property." : null,
+    row.description ? `DESCRIPTION (from the listing): ${String(row.description).trim().slice(0, 2500)}` : "DESCRIPTION: none",
+    `AMENITIES: ${[...amen, ...custom].join(", ") || "none listed"}`,
+    `UTILITIES INCLUDED IN RENT: ${utils.join(", ") || "none listed"}`,
+    `UNITS AND LEASES (a lease is one owner's offering; several owners can offer the same building):\n${unitLines.join("\n") || "- no units listed"}`,
+    leases.length ? null : "AVAILABILITY: nothing is available right now (no lease on offer).",
+  ];
+  const head = headFor(unitLines);
+  const tail = facts.verifiedAt ? `The displayed details were last checked on ${shortDate(facts.verifiedAt)}.` : null;
+  /*
+   * Hidden website prices (Wyatt, 2026-11-20): for leases shown as "price on
+   * request", Proxy may give a rough range rounded out to $100, never the
+   * figure. Proxy's copy only: the landlord agent and knowledge synthesis
+   * read `text`, which never carries it.
+   */
+  const priceRangeLine = estimated
+    ? `ROUGH PRICE ESTIMATES [${PRICE_RANGE_KEY}]: some leases shown as "price on request" carry a rough estimate on their own lease line. The landlord has not published a price. Only when a student asks about the price or rent of one of those leases, say the exact price is not listed, give that lease's estimate as a rough range ("roughly ..."), and put ${PRICE_RANGE_KEY} in answered_keys. Never quote one lease's estimate for another lease. A lease shown as "price on request" with no estimate on its line has none: say its price is not listed. Never give a narrower or more exact figure and never say where the range comes from. Still send the student's question about the exact price to the landlord as an unanswered question, in the student's words, with no figure or range in it.`
+    : null;
+  const text = [...head, ...factSections(sectionText), tail].filter(Boolean).join("\n\n");
+  // How to apply is an instruction to Proxy alone, not listing data for the
+  // landlord agent or the knowledge synthesis that also read `text`.
+  const proxyHead = headFor(proxyUnitLines);
+  const proxyText = [factsInFull ? [...proxyHead, fullFacts, tail].filter(Boolean).join("\n\n") : [...proxyHead, ...factSections(sectionText), tail].filter(Boolean).join("\n\n"), priceRangeLine, applyLine(units)]
+    .filter(Boolean).join("\n\n");
+
+  const factKeys = new Set();
+  for (const items of Object.values(facts.sections)) for (const f of items) factKeys.add(f.key);
+
+  const primaryOwner = (row.listing_landlords ?? []).find((o) => o.is_primary)?.user_id
+    ?? (row.listing_landlords ?? [])[0]?.user_id ?? null;
+
+  return {
+    listingId,
+    title: row.title || row.address,
+    address: row.address,
+    text,
+    proxyText,
+    factsInFull,
+    leases,
+    hasLiveLease: leases.length > 0,
+    ownerCount: new Set(leases.map((l) => l.ownerKey)).size,
+    primaryOwner,
+    contactEmail: row.contact_email ?? null,
+    factKeys: [...factKeys],
+    // Set when some lease carries a rough hidden-price estimate Proxy may cite.
+    priceRangeKey: estimated ? PRICE_RANGE_KEY : null,
+    facts,
+  };
+}

@@ -1,156 +1,117 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Phone,
   Mail,
+  MessageCircle,
   ThumbsUp,
   ThumbsDown,
   Car,
   FileText,
+  Star,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { signIn } from "next-auth/react";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
 import StarRatingInput from "@/components/ui/StarRatingInput";
 import ListingMap from "@/components/listings/ListingMap";
-import {
-  getAreaRangeLabel,
-  getRentRangeLabel,
-  getUnitValuesLabel,
-  calcAge,
-  leaseMonthsToLabel,
-} from "@/utils/listingFormatters";
+import LeaseOptions, { useListingLeasePrefs } from "@/components/listings/LeaseOptions";
+import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
+import ProxyPanel from "@/components/proxy/ProxyPanel";
+import { calcAge, SITE_TIME_ZONE } from "@/utils/listingFormatters";
 import { WASHU_PLACES } from "@/utils/washuPlaces";
 import {
   DRIVE_PLACES,
   NEAREST_DRIVE_POOLS,
   DRIVE_LABELS,
 } from "@/utils/drivePlaces";
-import { trackEvent, getListingSource } from "@/utils/analytics";
+import { trackEvent, getListingSource, noteMatchRevisit } from "@/utils/analytics";
+import ApplyButton from "@/components/listings/ApplyButton";
+import ApplicationCheck from "@/components/listings/ApplicationCheck";
+import { pickApplication } from "@/lib/listings/applicationLink";
+import WaitlistDialog from "./WaitlistDialog";
 import ReviewReplySection from "./ReviewReplySection";
+import AmenityPill, { AMENITY_LABELS, UTILITY_LABELS, decodeHtml } from "./AmenityPill";
+import ReviewEditForm from "./ReviewEditForm";
+import CardMenu from "@/components/ui/CardMenu";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { useMessages, CHAT_CONFIRM_SEND_CODE } from "@/context/MessagesContext";
+import { withMessages } from "@/lib/chat/messagesUrl";
+import { compareUnits } from "@/utils/unitOrder";
+import ListedBy from "@/components/listings/ListedBy";
 
-// Scroll `el` into view within its nearest scrollable ancestor; falls back to
-// window-level scrollIntoView so it works in both modals and full-page views.
-function scrollIntoContainer(el) {
-  if (!el) return;
-  let parent = el.parentElement;
-  while (parent && parent !== document.body) {
-    const cs = window.getComputedStyle(parent);
-    if (
-      /auto|scroll/.test(cs.overflowY) &&
-      parent.scrollHeight > parent.clientHeight
-    ) {
-      const elTop = el.getBoundingClientRect().top;
-      const parentTop = parent.getBoundingClientRect().top;
-      parent.scrollBy({ top: elTop - parentTop, behavior: "smooth" });
-      return;
-    }
-    parent = parent.parentElement;
-  }
-  el.scrollIntoView({ behavior: "smooth", block: "start" });
+const CHAT_MAX_BODY = 5000;
+
+// Opening line the chat composer starts with. The usual reason a student doesn't
+// message is not knowing what to say, so the send button is one click away and the
+// text stays editable.
+function defaultListingInquiry(ownerName) {
+  const firstName = ownerName?.trim().split(/\s+/)[0];
+  return firstName
+    ? `Hi ${firstName}, I'm interested in this listing.`
+    : "Hi, I'm interested in this listing.";
+}
+
+// How far below the top of the window the title and tabs stick: the "Did you
+// submit?" bar's height (0 without it), plus the site header's height on the
+// full listing page below 1280px.
+const stickTop = (head) => (head ? parseFloat(getComputedStyle(head).top) || 0 : 0);
+
+// The nearest ancestor that scrolls vertically, or null when the window does.
+// Shared with ListDetailPanel so both find the same container. Stops below
+// <body>: the app's body is overflow:auto, but that passes to the viewport, so
+// on the full listing page it is the window that scrolls, never the body.
+export function scrollParent(el) {
+  let root = el?.parentElement;
+  while (
+    root &&
+    root !== document.body &&
+    !/(auto|scroll)/.test(getComputedStyle(root).overflowY)
+  )
+    root = root.parentElement;
+  return root && root !== document.body ? root : null;
 }
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
-const leaseAvailabilityMap = {
-  "10_month": "10 Month",
-  "12_month": "12 Month",
-  "10-month": "10 Month",
-  "12-month": "12 Month",
-  semester: "Semester",
-  summer: "Summer",
-};
-
-// Map a single lease-term value to a display label, including custom "<n>-month".
-function leaseLabel(v) {
-  if (leaseAvailabilityMap[v]) return leaseAvailabilityMap[v];
-  const m = /^(\d+)[-_]month$/.exec(String(v));
-  if (m) return `${m[1]} Month`;
-  return v;
-}
-
-function formatLeaseAvailability(val) {
-  if (!val) return "—";
-  const arr = Array.isArray(val) ? val : [val];
-  if (arr.length === 0) return "—";
-  return arr.map(leaseLabel).join(" · ");
-}
-
-function LeaseStatCell({ leaseAvailability }) {
-  const [open, setOpen] = useState(false);
-  const arr = Array.isArray(leaseAvailability)
-    ? leaseAvailability.filter(Boolean)
-    : leaseAvailability
-    ? [leaseAvailability]
-    : [];
-  const labels = arr.map(leaseLabel);
-
-  if (labels.length === 0) {
-    return (
-      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-        <div className="text-sm sm:text-lg font-semibold text-gray-900">—</div>
-        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      </div>
-    );
-  }
-
-  if (labels.length === 1) {
-    return (
-      <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-        <div className="text-sm sm:text-lg font-semibold text-gray-900">
-          {labels[0]}
-        </div>
-        <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px] relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex flex-col items-center gap-0.5 group"
-      >
-        <span className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
-          {labels[0]}
-        </span>
-        <span className="text-[11px] font-medium text-red-500 group-hover:text-red-600 transition-colors">
-          +{labels.length - 1} more
-        </span>
-      </button>
-      <div className="text-xs text-gray-500 mt-0.5">Lease</div>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-md py-1.5 min-w-[120px] text-center">
-            {labels.map((l) => (
-              <div key={l} className="text-xs text-gray-700 px-3 py-1">
-                {l}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
+// Pricing leads and a listing opens on it: price is the first thing a student
+// asks (Wyatt, 2026-10-31).
 const TABS = [
+  { id: "pricing", label: "Pricing" },
   { id: "amenities", label: "Overview" },
   { id: "map", label: "Map" },
-  { id: "places", label: "Places" },
   { id: "reviews", label: "Reviews" },
+  { id: "places", label: "Places" },
   { id: "contact", label: "Contact" },
 ];
 
+// How far back down the sticky header has to come before it grows again. More
+// than the ~50px compacting takes off, so the two can't chase each other.
+const HEAD_UNSTICK = 72;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/*
+ * Where to come back to after signing in from a listing tab: the current page,
+ * plus which tab the reader was on, so they land on Reviews or Contact again
+ * rather than the default Overview. Path-relative, because /login only follows
+ * a callbackUrl that is a path on this site.
+ */
+function returnUrlForTab(tab) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("listingTab", tab);
+  return `${window.location.pathname}?${params.toString()}`;
+}
 
 function parseAddress(addressStr) {
   const ci = addressStr?.indexOf(",") ?? -1;
@@ -179,95 +140,6 @@ function StarRow({ label, value, onChange, readOnly = false }) {
     </div>
   );
 }
-
-function decodeHtml(str) {
-  if (typeof document === "undefined" || !str) return str;
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
-}
-
-function AmenityPill({ label }) {
-  return (
-    <span className="inline-block bg-gray-100 text-gray-700 text-sm font-medium px-3 py-1 rounded-full border border-gray-200">
-      {decodeHtml(label)}
-    </span>
-  );
-}
-
-function StatCell({ label, value }) {
-  return (
-    <div className="flex-1 px-4 py-3 text-center min-w-[80px]">
-      <div className="text-sm sm:text-lg font-semibold text-gray-900 break-words">
-        {value}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
-  );
-}
-
-// Clickable stat cell for the selected unit's floor plan. Images open in the
-// shared lightbox; PDFs open in a new tab (they can't render as <img>).
-function FloorPlanStatCell({ url, onOpen }) {
-  const isPdf = /\.pdf($|\?)/i.test(url);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex-1 px-4 py-3 text-center min-w-[80px] group focus:outline-none"
-      aria-label="View floor plan"
-    >
-      <div className="flex items-center justify-center h-[28px]">
-        {isPdf ? (
-          <FileText className="h-6 w-6 text-gray-800 group-hover:text-red-600 transition" />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt="Floor plan"
-            className="h-7 w-7 object-cover rounded border border-gray-200 group-hover:ring-2 group-hover:ring-red-400 transition"
-          />
-        )}
-      </div>
-      <div className="text-xs text-gray-500 mt-0.5 group-hover:text-red-600 transition">
-        Floor Plan
-      </div>
-    </button>
-  );
-}
-
-// ─── Tab: Amenities ───────────────────────────────────────────────────────────
-
-// Keys are the boolean column names from listing_amenities / listing_utilities.
-const AMENITY_LABELS = {
-  air_conditioning: "Air Conditioning",
-  dishwasher: "Dishwasher",
-  gym: "Gym",
-  laundry: "Laundry",
-  mailroom: "Mailroom",
-  microwave: "Microwave",
-  oven: "Oven",
-  parking: "Parking",
-  pets_allowed: "Pets Allowed",
-  pool: "Pool",
-  refrigerator: "Refrigerator",
-  rooftop: "Rooftop",
-  storage: "Storage",
-  stove: "Stove",
-  study_room: "Study Room",
-};
-
-const UTILITY_LABELS = {
-  electric: "Electric",
-  gas: "Gas",
-  heat: "Heat",
-  water: "Water",
-  internet: "Internet",
-  trash: "Trash",
-  cable: "Cable",
-  sewer: "Sewer",
-  cooling: "Cooling",
-};
 
 function toTitleCase(str) {
   return str
@@ -322,7 +194,7 @@ function AmenitiesTab({ listing }) {
           </div>
         </>
       )}
-      <h2 className="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">Description</h2>
       <div className="space-y-2">
         {decodeHtml(listing.description || "")
           .split("\n")
@@ -516,7 +388,9 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      {/* The section title sits on the toggle's row, not above it (Wyatt, 2026-11-01). */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h2 className="text-xl font-bold text-gray-900">Places</h2>
         <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
           {toggleBtn("walking", WalkingPersonIcon, "Walking")}
           {toggleBtn("driving", Car, "Driving")}
@@ -557,7 +431,34 @@ function PlacesTab({ walkTimes, walkLoading, shuttleWalkMinutes, driveTimes }) {
 
 // ─── Auth Gate ───────────────────────────────────────────────────────────────
 
-function SignInPrompt({ message }) {
+/*
+ * One stretch of the continuous listing page. The tab row jumps here, and the
+ * scroll highlight reads where it sits. Every section after the first opens
+ * with a hairline so the page still reads as distinct parts.
+ */
+// `aside` sits at the far right of the heading row. It must not make the row
+// taller or wider than the heading itself.
+function Section({ id, label = null, aside = null, sectionRefs, children }) {
+  return (
+    <section
+      id={`listing-${id}`}
+      ref={(el) => {
+        sectionRefs.current[id] = el;
+      }}
+      className="py-8 first:pt-0 border-t border-gray-100 first:border-t-0"
+    >
+      {label && (
+        <div className="mb-4 flex h-7 items-center justify-between gap-3">
+          <h2 className="min-w-0 text-xl font-bold text-gray-900">{label}</h2>
+          {aside}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function SignInPrompt({ message, tab }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-6">
       <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center">
@@ -583,15 +484,11 @@ function SignInPrompt({ message }) {
         </p>
       </div>
       <button
-        onClick={() => signIn("google", { callbackUrl: window.location.href })}
-        className="flex items-center gap-3 bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-700 text-sm font-medium px-5 py-2.5 rounded-lg transition"
+        type="button"
+        onClick={() => signIn(undefined, { callbackUrl: returnUrlForTab(tab) })}
+        className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
       >
-        <img
-          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-          alt="Google"
-          className="w-5 h-5"
-        />
-        Continue with Google
+        Log in or sign up
       </button>
     </div>
   );
@@ -599,8 +496,54 @@ function SignInPrompt({ message }) {
 
 // ─── Tab: Reviews ─────────────────────────────────────────────────────────────
 
+// Reviews sit two across from the md breakpoint up, one across below it.
+const TWO_COLUMN_REVIEWS_QUERY = "(min-width: 768px)";
+
+function subscribeTwoColumnReviews(onChange) {
+  const query = window.matchMedia(TWO_COLUMN_REVIEWS_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function useTwoColumnReviews() {
+  return useSyncExternalStore(
+    subscribeTwoColumnReviews,
+    () => window.matchMedia(TWO_COLUMN_REVIEWS_QUERY).matches,
+    () => false
+  );
+}
+
+// A rough height for a review card, in pixels, from the length of its text.
+// It only has to rank cards against each other, and it is worked out from the
+// words alone (never measured) so a card does not hop to the other column when
+// a menu, a reply box or the editor opens inside it.
+function estimateReviewHeight(review) {
+  const lines = (text) => Math.ceil(String(text || "").length / 55);
+  const reply = review.landlordReply?.reply;
+  return 110 + lines(review.comment) * 23 + (reply ? 60 + lines(reply) * 20 : 0);
+}
+
+/*
+ * Deal the reviews into two columns, each going to whichever column is shorter
+ * so far (the left one on a tie). Reading order holds as closely as it can:
+ * the first review is top left, the second top right, and the next lands under
+ * whichever of those two is shorter.
+ */
+function packReviewColumns(reviews) {
+  const columns = [[], []];
+  const heights = [0, 0];
+  for (const review of reviews) {
+    const target = heights[1] < heights[0] ? 1 : 0;
+    columns[target].push(review);
+    heights[target] += estimateReviewHeight(review) + 16;
+  }
+  return columns;
+}
+
 function ReviewsTab({
   legitimateReviews,
+  reviewsLoaded,
+  reviewCount,
   overallAvg,
   starCounts,
   commAvg,
@@ -622,11 +565,28 @@ function ReviewsTab({
   setValRating,
   reviewLoading,
   handleReviewSubmit,
+  onReviewChange,
+  preview = false,
 }) {
   const maxCount = Math.max(...starCounts.map((d) => d.count), 1);
-  const displayed = showAllReviews
-    ? legitimateReviews
-    : legitimateReviews.slice(0, 4);
+  // Reviews may not name people. Shown as they type; the submit handler and the
+  // API both block it too.
+  const reviewProblem = checkReviewText(reviewText);
+  // Reviews the viewer has just blocked, hidden locally. On every later load the
+  // server sends them score-only (hiddenByBlock). Either way only the text is
+  // hidden: their ratings stay in the header stats, same as for everyone else.
+  const [hiddenReviewIds, setHiddenReviewIds] = useState(() => new Set());
+  // { [reviewId]: message } shown under a review after Report / Block.
+  const [reviewActionMsg, setReviewActionMsg] = useState({});
+  // The review whose author the viewer is being asked to block (confirm modal).
+  const [blockTarget, setBlockTarget] = useState(null);
+  const visibleReviews = legitimateReviews.filter(
+    (r) => !r.hiddenByBlock && !hiddenReviewIds.has(r._id)
+  );
+  const blockedHiddenCount = legitimateReviews.length - visibleReviews.length;
+  const displayed = showAllReviews ? visibleReviews : visibleReviews.slice(0, 4);
+  const twoColumnReviews = useTwoColumnReviews();
+  const reviewColumns = twoColumnReviews ? packReviewColumns(displayed) : [displayed];
 
   // Local vote overrides: { [reviewId]: { upvotes: number, downvotes: number, userVote: 'up'|'down'|null } }
   const [voteOverrides, setVoteOverrides] = useState({});
@@ -648,12 +608,173 @@ function ReviewsTab({
   }
 
   const userId = session?.user?.id;
-  const isLandlord =
-    listing?.owner?._id === userId || listing?.owner?.id === userId;
-  console.log("Listing:\n", listing);
+  // Any landlord linked to the listing, not just the primary one: getListing
+  // says so for the signed-in viewer without sending the landlord list.
+  const isLandlord = Boolean(
+    userId &&
+      (listing?.owner?._id === userId ||
+        listing?.owner?.id === userId ||
+        listing?.viewerIsLandlord)
+  );
+
+  async function handleReport(review) {
+    const res = await fetch("/api/reviewReport", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId: review._id }),
+    }).catch(() => null);
+    setReviewActionMsg((prev) => ({
+      ...prev,
+      [review._id]: res?.ok
+        ? "Thanks, we'll take a look at this review."
+        : "Couldn't send your report. Please try again.",
+    }));
+  }
+
+  async function handleBlock(review) {
+    const res = await fetch("/api/userBlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewId: review._id }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setReviewActionMsg((prev) => ({
+        ...prev,
+        [review._id]: "Couldn't block this user. Please try again.",
+      }));
+      return;
+    }
+    // Hide this review and, when the author is public, their other reviews too.
+    const authorId = review.reviewer?._id;
+    setHiddenReviewIds((prev) => {
+      const next = new Set(prev);
+      for (const r of legitimateReviews) {
+        if (r._id === review._id || (authorId && r.reviewer?._id === authorId)) next.add(r._id);
+      }
+      return next;
+    });
+    toast.success("User blocked successfully.", { duration: 6000 });
+  }
+
+  // The viewer's own review being edited in place, and the one they asked to delete.
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingReview, setDeletingReview] = useState(false);
+
+  async function handleReviewEdit(review, { text, rating }) {
+    try {
+      const res = await fetch(`/api/reviews/${review._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: text, rating }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || "Couldn't save your review.");
+        return;
+      }
+      onReviewChange(review._id, {
+        comment: data.comment,
+        rating: Number(data.rating),
+        ...(data.editedAt ? { editedAt: data.editedAt } : {}),
+      });
+      setEditingReviewId(null);
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    }
+  }
+
+  async function handleReviewDelete() {
+    const review = deleteTarget;
+    setDeletingReview(true);
+    try {
+      const res = await fetch(`/api/reviews/${review._id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "Couldn't delete your review.");
+        return;
+      }
+      // Drops it from the list and from the star stats above.
+      onReviewChange(review._id, { deletedAt: new Date().toISOString() });
+      setDeleteTarget(null);
+      toast.success("Review deleted.");
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setDeletingReview(false);
+    }
+  }
+
+  function reviewMenuItems(review) {
+    if (preview || !session?.user) return [];
+    const isOwn = review.isMine || (review.reviewer?._id && review.reviewer._id === userId);
+    if (isOwn) {
+      return [
+        { label: "Edit", onClick: () => setEditingReviewId(review._id) },
+        { label: "Delete", onClick: () => setDeleteTarget(review), destructive: true },
+      ];
+    }
+    return [
+      { label: "Report", onClick: () => handleReport(review) },
+      // Anonymous reviews have no public author, so only Report applies.
+      ...(review.reviewer?._id
+        ? [{ label: "Block", onClick: () => setBlockTarget(review) }]
+        : []),
+    ];
+  }
 
   return (
     <div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete review?"
+          message="Your review and its star rating will be removed from this property. This can't be undone."
+          busy={deletingReview}
+          onConfirm={handleReviewDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+      {blockTarget && overBody(
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
+            <h2 className="text-base font-semibold text-gray-900">Block user?</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Their reviews will no longer be visible to you. Their star ratings
+              still count toward this property&apos;s score.
+            </p>
+            <p className="mt-3 text-sm text-gray-600">
+              If you want to unblock this user later, contact Proximity support at{" "}
+              <a
+                href="mailto:info@useproximity.org"
+                className="font-medium text-gray-900 underline"
+              >
+                info@useproximity.org
+              </a>
+              .
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBlockTarget(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const review = blockTarget;
+                  setBlockTarget(null);
+                  handleBlock(review);
+                }}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Block
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Overall rating header */}
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         {/* Left: overall + bar chart */}
@@ -712,117 +833,164 @@ function ReviewsTab({
       </div>
 
       {/* Review cards */}
-      {legitimateReviews.length === 0 ? (
+      {!reviewsLoaded && reviewCount > 0 ? (
+        /*
+         * The aggregates say this property has reviews but their bodies never
+         * arrived (the detail fetch failed). Saying "no reviews yet" here would
+         * be a lie about a building students have written about.
+         */
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          Reviews couldn&apos;t be loaded. Refresh to try again.
+        </div>
+      ) : visibleReviews.length === 0 && blockedHiddenCount > 0 ? (
+        <div className="text-center py-10 text-gray-400 italic text-sm">
+          {blockedHiddenCount === 1
+            ? "This property's only review is from a user you blocked."
+            : "All reviews of this property are from users you blocked."}{" "}
+          Their ratings still count toward the score.
+        </div>
+      ) : visibleReviews.length === 0 ? (
         <div className="text-center py-10 text-gray-400 italic text-sm">
           No verified reviews yet. Be the first to share your experience!
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {displayed.map((review, i) => {
-              const date = review.createdAt
-                ? new Date(review.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : null;
-              return (
-                <div
-                  key={i}
-                  className="border border-gray-100 rounded-xl p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={
-                          review.reviewer?.image?.trim()
-                            ? review.reviewer.image
-                            : "/default-icons/default-user.png"
-                        }
-                        alt={review.reviewer?.name || "Anonymous"}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">
-                          {review.reviewer?.name || "Anonymous"}
+          {/* Two independent stacks rather than a grid: a grid row is as
+              tall as its longest review, which left a hole under a short
+              review sitting beside a long one. */}
+          <div className="flex items-start gap-4 mb-4">
+            {reviewColumns.map((column, c) => (
+              <div key={c} className="flex min-w-0 flex-1 flex-col gap-4">
+                {column.map((review, i) => {
+                  const date = review.createdAt
+                    ? new Date(review.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        timeZone: SITE_TIME_ZONE,
+                      })
+                    : null;
+                  return (
+                    <div
+                      key={review._id || i}
+                      className="border border-gray-100 rounded-xl p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={
+                              review.reviewer?.image?.trim()
+                                ? review.reviewer.image
+                                : "/default-icons/default-user.png"
+                            }
+                            alt={review.reviewer?.name || "Anonymous"}
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {review.reviewer?.name || "Anonymous"}
+                            </div>
+                            {date && (
+                              <div className="text-xs text-gray-400">
+                                {date}
+                                {review.editedAt && " · Edited"}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        {date && (
-                          <div className="text-xs text-gray-400">{date}</div>
+                        {/* While editing, the editor's own stars replace these. */}
+                        {editingReviewId !== review._id && (
+                          <div className="flex items-center gap-1">
+                            <StarRatingInput
+                              value={review.rating}
+                              readOnly
+                              showValue={false}
+                              px={14}
+                              color="red"
+                            />
+                            <CardMenu items={reviewMenuItems(review)} label="Review actions" />
+                          </div>
                         )}
                       </div>
+                      <div className="mb-3">
+                        {editingReviewId === review._id ? (
+                          <ReviewEditForm
+                            initialText={review.comment}
+                            initialRating={review.rating}
+                            minLength={5}
+                            onSave={(values) => handleReviewEdit(review, values)}
+                            onCancel={() => setEditingReviewId(null)}
+                          />
+                        ) : (
+                          <p className="text-gray-700 text-sm leading-relaxed">
+                            {review.comment}
+                          </p>
+                        )}
+                        <ReviewReplySection
+                          review={review}
+                          owner={listing?.owner}
+                          isLandlord={isLandlord}
+                          readOnly={preview}
+                        />
+                      </div>
+                      <div className="flex gap-4 text-xs text-gray-400">
+                        {(() => {
+                          const override = voteOverrides[review._id];
+                          const upCount = override
+                            ? override.upvotes
+                            : review.upvotes ?? 0;
+                          const downCount = override
+                            ? override.downvotes
+                            : review.downvotes ?? 0;
+                          const userVote = override
+                            ? override.userVote
+                            : review.userVote ?? null;
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleVote(review._id, "up")}
+                                className={`flex items-center gap-1 transition ${
+                                  userVote === "up"
+                                    ? "text-green-500"
+                                    : "hover:text-green-500"
+                                }`}
+                              >
+                                <ThumbsUp size={13} /> <span>{upCount}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleVote(review._id, "down")}
+                                className={`flex items-center gap-1 transition ${
+                                  userVote === "down"
+                                    ? "text-red-500"
+                                    : "hover:text-red-500"
+                                }`}
+                              >
+                                <ThumbsDown size={13} /> <span>{downCount}</span>
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      {reviewActionMsg[review._id] && (
+                        <p className="mt-2 text-xs text-gray-500">{reviewActionMsg[review._id]}</p>
+                      )}
                     </div>
-                    <div className="flex gap-0.5">
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <span
-                          key={s}
-                          className={
-                            s <= review.rating
-                              ? "text-red-500 text-sm"
-                              : "text-gray-200 text-sm"
-                          }
-                        >
-                          ★
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mb-3">
-                    <p className="text-gray-700 text-sm leading-relaxed">
-                      {review.comment}
-                    </p>
-                    <ReviewReplySection
-                      review={review}
-                      owner={listing?.owner}
-                      isLandlord={isLandlord}
-                    />
-                  </div>
-                  <div className="flex gap-4 text-xs text-gray-400">
-                    {(() => {
-                      const override = voteOverrides[review._id];
-                      const upCount = override
-                        ? override.upvotes
-                        : review.upvotes ?? 0;
-                      const downCount = override
-                        ? override.downvotes
-                        : review.downvotes ?? 0;
-                      const userVote = override
-                        ? override.userVote
-                        : review.userVote ?? null;
-                      return (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleVote(review._id, "up")}
-                            className={`flex items-center gap-1 transition ${
-                              userVote === "up"
-                                ? "text-green-500"
-                                : "hover:text-green-500"
-                            }`}
-                          >
-                            <ThumbsUp size={13} /> <span>{upCount}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleVote(review._id, "down")}
-                            className={`flex items-center gap-1 transition ${
-                              userVote === "down"
-                                ? "text-red-500"
-                                : "hover:text-red-500"
-                            }`}
-                          >
-                            <ThumbsDown size={13} /> <span>{downCount}</span>
-                          </button>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
-          {legitimateReviews.length > 4 && (
+          {blockedHiddenCount > 0 && (
+            <p className="text-center text-xs text-gray-400 mb-4">
+              {blockedHiddenCount === 1
+                ? "1 review from a user you blocked is hidden. Its rating still counts."
+                : `${blockedHiddenCount} reviews from users you blocked are hidden. Their ratings still count.`}
+            </p>
+          )}
+          {visibleReviews.length > 4 && (
             <div className="flex justify-center mb-6">
               <button
                 type="button"
@@ -836,7 +1004,9 @@ function ReviewsTab({
         </>
       )}
 
-      {/* Leave a Review form */}
+      {/* Leave a Review form. Not in the owner's preview: a landlord can't
+          review their own property, and the sign-up nudge is not for them. */}
+      {!preview && (
       <div className="border-t border-gray-100 pt-6 mt-4">
         {isReviewEligibleEmail(session?.user?.email) ? (
           <>
@@ -866,8 +1036,12 @@ function ReviewsTab({
                 placeholder="Leave a review..."
                 rows={4}
                 maxLength={1000}
+                aria-invalid={reviewProblem ? true : undefined}
                 className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
               />
+              {reviewProblem && (
+                <p className="text-sm text-red-600">{reviewProblem}</p>
+              )}
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -875,7 +1049,8 @@ function ReviewsTab({
                     reviewLoading ||
                     !reviewText.trim() ||
                     reviewText.trim().length < 5 ||
-                    rating === 0
+                    rating === 0 ||
+                    !!reviewProblem
                   }
                   className="bg-red-600 text-white text-sm font-medium px-6 py-2 rounded-full shadow hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -885,12 +1060,12 @@ function ReviewsTab({
             </form>
           </>
         ) : (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-            Reviews are only open to verified students at a school we serve.
-            Please sign in with your school email.
-          </div>
+          <p className="text-sm font-medium text-red-600">
+            Sign in with your school email to leave a review
+          </p>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -900,15 +1075,42 @@ function ReviewsTab({
 function ContactTab({
   listing,
   session,
-  contactForm,
-  setContactForm,
-  handleContactSubmit,
-  contactLoading,
-  contactSent,
+  selectedLease = null,
+  onOpenThread,
+  // The owner's preview: show who students would reach, never open a thread.
+  preview = false,
 }) {
+  const { startListingChat } = useMessages();
   const [ageStatus, setAgeStatus] = useState(
     listing.twentyOnePlus ? "loading" : "ok"
   );
+  const [chatSending, setChatSending] = useState(false);
+  // "Send anyway?" copy from the server when the message holds contact details.
+  const [chatConfirm, setChatConfirm] = useState(null);
+  const [chatBodyEdited, setChatBodyEdited] = useState(false);
+  const [chatBody, setChatBody] = useState("");
+
+  const userId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === userId || listing?.owner?.id === userId;
+  const canMessage = Boolean(
+    session?.user?.id && listing?.owner?.canChat && !isOwnListing && !preview
+  );
+
+  /*
+   * Re-prefill when the recipient changes. Picking a different lease changes who
+   * the message goes to, and greeting the previous landlord by name would be
+   * worse than no greeting. Skipped once the user has edited the text, so their
+   * own words are never overwritten.
+   */
+  const recipientName = selectedLease
+    ? selectedLease.landlordName ?? listing?.owner?.name
+    : listing?.owner?.name;
+
+  useEffect(() => {
+    if (chatBodyEdited) return;
+    setChatBody(defaultListingInquiry(recipientName));
+  }, [recipientName, chatBodyEdited]);
 
   useEffect(() => {
     if (!listing.twentyOnePlus) return;
@@ -953,14 +1155,71 @@ function ContactTab({
     );
   }
 
-  const owner = listing.owner;
+  /*
+   * The recipient is the owner of the SELECTED lease, not the property's primary
+   * landlord — several landlords can offer leases at one property, so "the
+   * landlord" is only meaningful once an offering is chosen. The lease options
+   * above already show that lease's price, term and type, so only the name is
+   * repeated here. The listing owner remains the fallback for properties whose
+   * units carry no lease at all.
+   */
+  const owner = selectedLease
+    ? {
+        name: selectedLease.landlordName ?? listing.owner?.name,
+        image: selectedLease.landlordImage ?? listing.owner?.image,
+      }
+    : listing.owner;
 
-  const handleChange = (field) => (e) =>
-    setContactForm((prev) => ({ ...prev, [field]: e.target.value }));
+  async function handleStartChat(e, confirmed = false) {
+    e?.preventDefault?.();
+    const text = chatBody.trim();
+    if (!text || chatSending || !listing?._id) return;
+    setChatSending(true);
+    setChatConfirm(null);
+    try {
+      /*
+       * The lease id is what routes the message. A property can carry competing
+       * leases from different landlords, so sending without it reaches whoever
+       * is primary rather than the person who holds the unit being asked about.
+       */
+      const data = await startListingChat(
+        listing._id,
+        text,
+        selectedLease?.id ?? null,
+        { confirmed }
+      );
+      toast.success("Message sent");
+      /*
+       * Same event the old contact form fired. The matchmaking funnel counts
+       * "Contact Submitted" filtered on source, which the chat_* events do not
+       * carry, so without this every matchmaking contact reads as zero.
+       */
+      const source = getListingSource(listing._id);
+      trackEvent("Contact Submitted", {
+        listingId: listing._id,
+        address: listing.address,
+        ...(source ? { source } : {}),
+      });
+      noteMatchRevisit(listing._id, "contacted");
+      /*
+       * Open the conversation rather than leaving a "sent" receipt behind. The
+       * thread id lands in the URL, so the step from enquiry to conversation is
+       * a real navigation and is attributable (Wyatt, 2026-10-03).
+       */
+      onOpenThread?.(data?.threadId ?? null);
+    } catch (err) {
+      if (err?.code === CHAT_CONFIRM_SEND_CODE) {
+        setChatConfirm(err.message);
+      } else {
+        toast.error(err?.message || "Failed to start chat. Please try again.");
+      }
+    } finally {
+      setChatSending(false);
+    }
+  }
 
   return (
     <div className="max-w-xl">
-      {/* Landlord info */}
       {owner && (
         <div className="flex items-center gap-4 mb-6">
           <img
@@ -974,7 +1233,7 @@ function ContactTab({
           />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide">
-              Listing by
+              {canMessage ? "Messaging" : "Listing by"}
             </p>
             <span className="text-lg font-semibold text-gray-900">
               {owner.name}
@@ -983,99 +1242,79 @@ function ContactTab({
         </div>
       )}
 
-      {contactSent ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-700 text-sm font-medium">
-          Your message was sent!
-          {owner ? ` ${owner.name} will be in touch soon.` : ""}
-        </div>
-      ) : (
-        <form onSubmit={handleContactSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                First Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.firstName}
-                onChange={handleChange("firstName")}
-                placeholder="Jane"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={contactForm.lastName}
-                onChange={handleChange("lastName")}
-                placeholder="Doe"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Email *
-            </label>
-            <input
-              type="email"
-              required
-              value={contactForm.email}
-              onChange={handleChange("email")}
-              placeholder="jane@example.com"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={contactForm.phone}
-              onChange={handleChange("phone")}
-              placeholder="(123) 456-7890"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Message *
-            </label>
+      {canMessage && (
+        <div id="listing-in-app-message" className="mb-8">
+          <form onSubmit={handleStartChat} className="space-y-3">
             <textarea
-              required
-              rows={4}
-              value={contactForm.message}
-              onChange={handleChange("message")}
-              placeholder="I'm interested in touring this location!"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none"
+              value={chatBody}
+              onChange={(e) => {
+                setChatBodyEdited(true);
+                setChatBody(e.target.value.slice(0, CHAT_MAX_BODY));
+              }}
+              rows={3}
+              disabled={chatSending}
+              placeholder={defaultListingInquiry(recipientName)}
+              aria-label="Message on Proximity"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition resize-none bg-white disabled:opacity-60"
             />
-          </div>
-          <button
-            type="submit"
-            disabled={contactLoading}
-            className="w-full bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {contactLoading ? "Sending..." : "Send Message"}
-          </button>
-        </form>
+            {chatConfirm && (
+              <div
+                role="alertdialog"
+                aria-live="polite"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] leading-5 text-amber-900"
+              >
+                <p>{chatConfirm}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStartChat(null, true)}
+                    disabled={chatSending}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+                  >
+                    Send anyway
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChatConfirm(null)}
+                    disabled={chatSending}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Edit message
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* Apply sits beside Send when the landlord added a link. */}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!chatBody.trim() || chatSending}
+                className="flex-1 bg-red-600 text-white font-medium text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {chatSending ? "Sending..." : "Send message"}
+              </button>
+              <ApplyButton listing={listing} selectedLease={selectedLease} signedIn variant="form" />
+            </div>
+          </form>
+        </div>
+      )}
+      {/* No message form here (the owner's preview, or a landlord with no
+          account to write to), but the application can still be reached. */}
+      {!canMessage && (
+        <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={!!userId}
+          record={!preview && !isOwnListing} variant="form" className="w-full" />
       )}
     </div>
   );
 }
 
-function GalleryImage({ src, index, onImageLoad, onClick }) {
+function GalleryImage({ src, index, onImageLoad, onClick, tags = [], highlighted = false }) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
       className={`relative mb-4 break-inside-avoid rounded-lg overflow-hidden bg-gray-800/20${
         onClick ? " cursor-zoom-in" : ""
-      }`}
+      }${highlighted ? " ring-2 ring-red-500" : ""}`}
       onClick={onClick}
     >
       {!loaded && (
@@ -1117,11 +1356,183 @@ function GalleryImage({ src, index, onImageLoad, onClick }) {
           onImageLoad?.(src);
         }}
       />
+      {/* Which units this photo shows. The open unit's tag is red, so its
+          photos stand out from the rest of the building's. */}
+      {tags.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium text-white ${
+                tag.active ? "bg-red-600" : "bg-black/60"
+              }`}
+            >
+              {tag.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+
+/*
+ * Full-screen layers (gallery, lightbox, floor plan, confirmations) render on
+ * <body>, not where they are written. In the browse side panel this component
+ * sits inside a column that is its own stacking context, and the map column
+ * beside it is a later one, so a fixed layer left in place was painted
+ * underneath the map however high its z-index.
+ */
+function overBody(node) {
+  return createPortal(node, document.body);
+}
+
+function FloorPlanViewer({ url, unitName, onClose }) {
+  return overBody(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Floor plan${unitName ? ` for ${unitName}` : ""}`}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Floor plan{unitName ? ` — ${unitName}` : ""}
+          </h3>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-xs font-medium text-red-600 underline underline-offset-2 hover:text-red-700"
+          >
+            Open original
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close floor plan"
+            className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-gray-50 p-4">
+          {/* A plan can be a PDF as readily as an image, and an <img> would show
+              a broken icon for one. */}
+          {/\.pdf($|\?)/i.test(url) ? (
+            <iframe src={url} title="Floor plan" className="h-[70vh] w-full rounded-lg bg-white" />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={url} alt="Floor plan" className="mx-auto max-h-[70vh] w-auto object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Loading skeleton ────────────────────────────────────────────────────────
+/*
+ * Shown while the detail fetch is still in flight. The browse feed carries
+ * enough to paint a panel immediately, but not enough to paint a CORRECT one:
+ * it has no leases, no review bodies and no reviewer identities, so the panel
+ * used to render real-looking cards full of fallbacks ("Anonymous", blank
+ * comment) and then rewrite itself a second later. A skeleton says "still
+ * arriving" instead of stating something false, and it holds the same boxes in
+ * the same places so the swap to real content doesn't move the page around.
+ */
+function Bar({ className = "" }) {
+  return <div className={`rounded bg-gray-200 ${className}`} />;
+}
+
+function ListingDetailSkeleton({ compact = false, excludeTabs = [] }) {
+  const tabCount = TABS.filter((t) => !excludeTabs.includes(t.id)).length;
+
+  return (
+    <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`} aria-busy="true">
+      <div className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}>
+        <div className="animate-pulse">
+          {/* Photo grid: one hero plus the two stacked side tiles */}
+          <div
+            className={`flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
+            }`}
+          >
+            <div className="bg-gray-200 aspect-[4/3] md:aspect-auto md:flex-shrink-0 md:w-[65%]" />
+            <div className="hidden md:flex flex-1 flex-col gap-0.5 min-w-[180px]">
+              <div className="flex-1 bg-gray-200" />
+              <div className="flex-1 bg-gray-200" />
+            </div>
+          </div>
+
+          {/* Title: flat and edge to edge, name over address, rating right. */}
+          <div className="bg-white -mx-4 px-10 pt-6 pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            <div className="w-full md:w-auto">
+              <Bar className="h-7 w-64 max-w-full" />
+              <Bar className="h-4 w-48 max-w-full mt-2" />
+            </div>
+            <Bar className="h-5 w-24 shrink-0" />
+          </div>
+
+          {/* Tab strip */}
+          <div className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5">
+            <nav className="flex justify-start">
+              {Array.from({ length: tabCount }).map((_, i) => (
+                <div key={i} className="px-5 py-3">
+                  <Bar className="h-4 w-16" />
+                </div>
+              ))}
+            </nav>
+          </div>
+
+          {/* Pricing, the tab a listing opens on: the "I want" sentence, one
+              landlord, a floor plan and its leases. */}
+          <div className="-mx-4 -mb-8 min-h-[60vh] bg-white px-10 py-6">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <Bar className="h-4 w-12" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-4 w-6" />
+              <Bar className="h-7 w-28 rounded-lg" />
+              <Bar className="h-4 w-14" />
+              <Bar className="h-7 w-24 rounded-lg" />
+              <Bar className="h-7 w-36 rounded-lg sm:ml-auto" />
+            </div>
+            <div className="border-t border-gray-100 py-3">
+              <div className="flex items-center gap-3">
+                <Bar className="h-9 w-9 rounded-full shrink-0" />
+                <div className="flex-1">
+                  <Bar className="h-4 w-32" />
+                  <Bar className="h-3 w-52 max-w-full mt-1.5" />
+                </div>
+                <Bar className="h-8 w-24 sm:w-[130px] rounded-lg shrink-0" />
+              </div>
+              <Bar className="h-3 w-48 max-w-full mt-4" />
+              <div className="mt-1 divide-y divide-gray-100 pl-2 sm:pl-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-3">
+                    {Array.from({ length: 4 }).map((__, j) => (
+                      <div key={j}>
+                        <Bar className="h-2.5 w-12" />
+                        <Bar className="h-4 w-20 mt-1.5" />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ListingModalInfo({
   session,
@@ -1129,30 +1540,235 @@ export default function ListingModalInfo({
   excludeTabs = [],
   compact = false,
   tabBarAction = null,
+  // The unit that satisfied the browse filters, if the renter arrived from a
+  // filtered search. See packages/shared/src/formatters/listingFilters.js.
+  initialUnitId = null,
+  /*
+   * True while the caller is still fetching the full listing. The browse panel
+   * opens from feed data that has no leases and no review bodies, so rendering
+   * it would show fallbacks that get rewritten seconds later. The caller flips
+   * this to false on BOTH success and failure, so a failed fetch falls back to
+   * feed data rather than leaving the skeleton up forever.
+   */
+  detailLoading = false,
+  /*
+   * The full listing page (/listings/[id]), where the window scrolls under the
+   * site header. Below 1280px the title and tabs stick under that header (and
+   * its 1px border), not behind it, and the heart sits in the photo's corner (no close button there).
+   */
+  page = false,
+  // Called with true/false as the title and tabs stick to the top and let go.
+  onHeadStuck = null,
+  // Called when a tab click starts scrolling the page to its section.
+  onSectionJump = null,
+  // Called with the "Did you submit?" bar's height (0 when it is gone).
+  onApplyBar = null,
+  /*
+   * The owner looking at their own listing through the dashboard's "View as
+   * Student" (GlobalListingModal with ?preview=1). Everything renders as a
+   * student would see it, but nothing a student would DO is wired: no Save,
+   * no message, no review, no waitlist. A landlord favouriting or reviewing
+   * their own draft would be a record nobody wants.
+   */
+  preview = false,
 }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState(null);
-  const [activeTab, setActiveTab] = useState("amenities");
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [activeTab, setActiveTab] = useState("pricing");
+  // The Proxy chat's input bar (Wyatt, 2026-10-28): ProxyPanel renders into
+  // it, and it pins to the bottom while the reader is in the Contact section.
+  const [proxyInputSlot, setProxyInputSlot] = useState(null);
+  // No floating Feedback button over the Contact section (FeedbackWidget hides on this).
+  useEffect(() => {
+    if (activeTab !== "contact") return;
+    document.body.dataset.listingContact = "1";
+    return () => { delete document.body.dataset.listingContact; };
+  }, [activeTab]);
+
+  // A Find Your Place match opened some other way than from the matches page.
+  // Deferred a moment: a ?from=matchmaking deep link marks its source in the
+  // browse page's own effect, which runs after this panel's.
+  useEffect(() => {
+    if (preview || !listing?._id) return;
+    const id = listing._id;
+    const t = setTimeout(() => noteMatchRevisit(id, "opened"), 300);
+    return () => clearTimeout(t);
+  }, [listing?._id, preview]);
+
+  /*
+   * True once the header has stuck to the top: the sentinel just above it has
+   * scrolled up out of the panel or modal it scrolls in. Compacting takes about
+   * 50px off the header, which moves everything under it, so growing back
+   * waits until the sentinel is HEAD_UNSTICK px back in view. Without that gap
+   * the shrink and the browser's scroll correction fed each other and the
+   * header twitched at the line (Wyatt, 2026-10-31).
+   */
+  const headSentinelRef = useRef(null);
+  // The stuck "Did you submit?" bar's height, for the scroll math below. Kept
+  // in a ref (set by ApplicationCheck) so no scroll event reads the style.
+  const applyBarH = useRef(0);
+  const onApplyBarCb = useRef(onApplyBar);
+  onApplyBarCb.current = onApplyBar;
+  // Where the title and tabs stick (stickTop), read from the style once and again
+  // only when it can have changed: the bar's height, or the window's size.
+  const headTopRef = useRef(null);
+  const headTop = useCallback((head) => (headTopRef.current ??= head ? stickTop(head) : null) ?? 0, []);
+  const onApplyBarHeight = useCallback((h) => {
+    applyBarH.current = h;
+    headTopRef.current = null;
+    onApplyBarCb.current?.(h);
+  }, []);
+  useEffect(() => {
+    const reset = () => {
+      headTopRef.current = null;
+    };
+    window.addEventListener("resize", reset);
+    return () => window.removeEventListener("resize", reset);
+  }, []);
+  const [headStuck, setHeadStuck] = useState(false);
+  // The browse panel's sliding pills follow the same stuck state (one listener).
+  const onHeadStuckRef = useRef(onHeadStuck);
+  onHeadStuckRef.current = onHeadStuck;
+  useEffect(() => {
+    const el = headSentinelRef.current;
+    if (!el) return;
+    const root = scrollParent(el);
+    const target = root ?? window;
+    let stuck = false;
+    const onScroll = () => {
+      // The header sticks below the "Did you submit?" bar when that shows. In
+      // a scrolling panel that is the panel's top plus the bar; on the full
+      // page, the header's own sticky top, which already counts the bar.
+      const top = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
+      const dist = el.getBoundingClientRect().top - top;
+      if (!stuck && dist < 0) stuck = true;
+      else if (stuck && dist > HEAD_UNSTICK) stuck = false;
+      else return;
+      setHeadStuck(stuck);
+      onHeadStuckRef.current?.(stuck);
+    };
+    onScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [detailLoading, headTop]);
+
+  /*
+   * One continuous page: every section renders in order and the tabs are
+   * jump links (Wyatt, 2026-11-01). `activeTab` is only the highlight, which
+   * follows whichever section sits under the header as the reader scrolls.
+   */
+  const headRef = useRef(null);
+  const sectionRefs = useRef({});
+  const visibleTabIds = TABS.filter((t) => !excludeTabs.includes(t.id)).map((t) => t.id);
+  const visibleKey = visibleTabIds.join(",");
+  const show = (id) => visibleTabIds.includes(id);
+  // While a jump's smooth scroll runs, the highlight stays on the clicked tab
+  // instead of flicking through every section it passes.
+  const spyQuietUntil = useRef(0);
+  const onSectionJumpRef = useRef(onSectionJump);
+  onSectionJumpRef.current = onSectionJump;
+  // A tab asked for before the sections exist (the sign-in return below).
+  const pendingJump = useRef(null);
+
+  const jumpTo = (id) => {
+    const section = sectionRefs.current[id];
+    if (!section) return;
+    setActiveTab(id);
+    spyQuietUntil.current = Date.now() + 1000;
+    onSectionJumpRef.current?.();
+    const root = scrollParent(section);
+    const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
+    const scrolled = root ? root.scrollTop : window.scrollY;
+    /*
+     * Less the header's height as it is NOW. If it isn't stuck yet it compacts
+     * on the way down, and the content under it moves up by exactly the height
+     * it loses, so the full height is the right offset in both cases.
+     */
+    const top =
+      scrolled + section.getBoundingClientRect().top - rootTop - (headRef.current?.offsetHeight ?? 0);
+    // Contact goes all the way down, to the chat's newest message and its box
+    // (Wyatt, 2026-11-01): it is the last section, so that is the page's bottom.
+    const end = root ? root.scrollHeight : document.documentElement.scrollHeight;
+    (root ?? window).scrollTo({ top: id === "contact" ? end : Math.max(0, top), behavior: "smooth" });
+    if (id === "contact") window.dispatchEvent(new CustomEvent("proxy:scroll-end", { detail: { listingId: listing?._id } }));
+  };
+
+  useEffect(() => {
+    const anchor = headSentinelRef.current;
+    if (!anchor) return;
+    const root = scrollParent(anchor);
+    const target = root ?? window;
+    const ids = visibleKey.split(",");
+    const onScroll = () => {
+      if (Date.now() < spyQuietUntil.current) return;
+      const rootTop = root ? root.getBoundingClientRect().top + applyBarH.current : headTop(headRef.current);
+      const line = rootTop + (headRef.current?.offsetHeight ?? 0) + 24;
+      const scrolled = root ? root.scrollTop : window.scrollY;
+      const viewport = root ? root.clientHeight : window.innerHeight;
+      const height = root ? root.scrollHeight : document.documentElement.scrollHeight;
+      const present = ids.filter((id) => sectionRefs.current[id]);
+      if (!present.length) return;
+      let current = present[0];
+      for (const id of present) {
+        if (sectionRefs.current[id].getBoundingClientRect().top <= line) current = id;
+      }
+      // A short last section can never reach the header, so the bottom of the
+      // page counts as being on it.
+      if (scrolled > 0 && scrolled + viewport >= height - 2) current = present[present.length - 1];
+      setActiveTab(current);
+    };
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [detailLoading, visibleKey, headTop]);
+
+  // Run a jump that was asked for while the skeleton was still up.
+  useEffect(() => {
+    if (detailLoading || !pendingJump.current) return;
+    const id = pendingJump.current;
+    pendingJump.current = null;
+    setTimeout(() => jumpTo(id), 100);
+  }, [detailLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Return a reader to the section they signed in from (see returnUrlForTab),
+  // then drop the param so a reload or a shared link opens at the top as usual.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("listingTab");
+    if (!tab) return;
+    if (TABS.some((t) => t.id === tab) && !excludeTabs.includes(tab)) {
+      if (detailLoading) pendingJump.current = tab;
+      else setTimeout(() => jumpTo(tab), 100);
+    }
+    params.delete("listingTab");
+    const qs = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc closes gallery overlay (only when lightbox is not open — lightbox takes priority)
   useEffect(() => {
     if (!isGalleryOpen) return;
     const handler = (e) => {
-      if (e.key === "Escape" && !lightboxSrc) setIsGalleryOpen(false);
+      if (e.key === "Escape" && lightboxIndex === null) setIsGalleryOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isGalleryOpen, lightboxSrc]);
+  }, [isGalleryOpen, lightboxIndex]);
 
-  // Esc closes lightbox
+  // Esc closes lightbox; arrows step through the photos
   useEffect(() => {
-    if (!lightboxSrc) return;
+    if (lightboxIndex === null) return;
     const handler = (e) => {
-      if (e.key === "Escape") setLightboxSrc(null);
+      if (e.key === "Escape") setLightboxIndex(null);
+      if (e.key === "ArrowLeft") showPrevPhoto();
+      if (e.key === "ArrowRight") showNextPhoto();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [lightboxSrc]);
+  }, [lightboxIndex]);
 
   // Review form state
   const [reviewText, setReviewText] = useState("");
@@ -1162,6 +1778,11 @@ export default function ListingModalInfo({
   const [valRating, setValRating] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  // { [reviewId]: fields } for reviews the viewer edited or deleted this session.
+  const [reviewChanges, setReviewChanges] = useState({});
+  function onReviewChange(reviewId, patch) {
+    setReviewChanges((prev) => ({ ...prev, [reviewId]: { ...prev[reviewId], ...patch } }));
+  }
 
   // Walk times — read from pre-computed DB values (populated at listing creation)
   const walkLoading = false;
@@ -1172,17 +1793,6 @@ export default function ListingModalInfo({
   const storedDriveTimes = listing?.placeDriveMinutes;
   const driveTimes = useMemo(() => storedDriveTimes ?? {}, [storedDriveTimes]);
 
-  // Contact form state
-  const [contactForm, setContactForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    message: "",
-  });
-  const [contactLoading, setContactLoading] = useState(false);
-  const [contactSent, setContactSent] = useState(false);
-
   // Hero image loading state
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
   const heroImgWrapperRef = useRef(null);
@@ -1192,122 +1802,293 @@ export default function ListingModalInfo({
     if (img?.complete && img.naturalWidth > 0) setHeroImageLoaded(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Unit selector — sorted ascending by beds, then baths, then disambiguation index
-  const [selectedUnitIdx, setSelectedUnitIdx] = useState(0);
+  const [floorPlanUnit, setFloorPlanUnit] = useState(null);
 
-  // sortedUnits: [{origIdx, label}] sorted ascending by beds → baths → dup number
-  // Studios (0 beds) are labelled "Studio" and not sorted by baths within the group
-  // Units with identical beds, baths, rent, and area are deduplicated — only the first is kept.
-  const sortedUnits = useMemo(() => {
-    const units = (listing.unitTypes ?? []).filter(
-      (u) => u.available !== false
-    );
-    const isStudio = (u) => (u.bedrooms ?? 0) === 0;
+  /*
+   * The units on offer, in the landlord's order (see utils/unitOrder), falling
+   * back to beds then baths for units never placed.
+   *
+   * No deduplication. Two units that look identical are two apartments: a
+   * building with ten matching studios has ten of them, and each carries its
+   * own offering from possibly a different landlord.
+   */
+  const sortedUnits = useMemo(
+    () => (listing.unitTypes ?? []).filter((u) => u.available !== false).sort(compareUnits),
+    [listing.unitTypes]
+  );
 
-    // Deduplicate: if two units share the same beds, baths, rent, and area they are identical
-    const seen = new Set();
-    const deduped = units.filter((u) => {
-      const key = `${u.title ?? ""}|${u.bedrooms ?? ""}|${u.bathrooms ?? ""}|${
-        u.rent ?? ""
-      }|${u.area ?? ""}|${u.leaseType ?? ""}|${
-        Array.isArray(u.leaseTermMonths) ? u.leaseTermMonths.join(",") : ""
-      }`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+  /*
+   * A renter who arrives from a filtered browse search opens on the size of the
+   * unit their filters matched, for this visit only (Wyatt, 2026-10-30).
+   */
+  const visitBeds = useMemo(() => {
+    const target = initialUnitId ? (listing.unitTypes ?? []).find((u) => u.id === initialUnitId) : null;
+    return target ? target.bedrooms ?? null : null;
+  }, [initialUnitId, listing.unitTypes]);
+
+  /*
+   * "I want a [beds] for [length] starting [month]" (Wyatt, 2026-10-30): the
+   * student's saved picks as they apply here, what each dropdown offers, and
+   * the matching leases grouped by floor plan. Replaced the unit tabs.
+   */
+  const leaseView = useListingLeasePrefs(sortedUnits, preview, visitBeds);
+
+  /*
+   * The browse panel paints itself from the listing feed before the detail fetch
+   * resolves, and that feed carries no leases at all. An ABSENT `leases` key
+   * therefore means "not loaded yet", while an empty array means "genuinely none
+   * on offer" — getListing always sets one. Conflating them would tell a reader a
+   * listing has no lease when it simply hasn't arrived.
+   */
+  const leasesLoading = sortedUnits.some((u) => u.leases === undefined);
+  const hasLeases = sortedUnits.some((u) => u.leases?.length);
+
+  // Every lease the picks match, best first within each floor plan.
+  const matchingLeases = useMemo(
+    () => leaseView.groups.flatMap((g) => g.leases),
+    [leaseView.groups]
+  );
+
+  /*
+   * The unit whose photos lead: only when the picks narrow the listing to a
+   * single floor plan. Otherwise the property's own photos show.
+   */
+  const selectedUnit = leaseView.groups.length === 1 ? leaseView.groups[0].unit : null;
+  const selectedUnitName = selectedUnit?.name ?? null;
+
+  /*
+   * Sending an enquiry opens the conversation, it does not leave a receipt on
+   * the listing. The thread id goes into the URL (?messages=1&thread=<id>) so
+   * the move from enquiry to conversation is a real navigation: it is
+   * attributable, the back button returns to the listing, and the link can be
+   * shared (Wyatt, 2026-10-03). withMessages drops ?listing= so the two
+   * overlays cannot stack on a phone.
+   */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const openThread = (threadId) => {
+    router.push(pathname + withMessages(searchParams, threadId), {
+      scroll: false,
     });
+  };
 
-    // Build base labels in original order for stable disambiguation numbering.
-    // Each entry has a full label ("2 Bed / 1 Bath") and a short label
-    // ("2 Br / 1 Ba") used when the selector has to scroll horizontally.
-    const baseLabelOf = deduped.map((u) => {
-      // Landlord-named units/floor plans display their custom title instead of "2 Bed / 1 Bath".
-      if (u.title) return { full: u.title, short: u.title };
-      if (isStudio(u)) return { full: "Studio", short: "Studio" };
-      const beds = u.bedrooms != null ? String(u.bedrooms) : "?";
-      const baths = u.bathrooms != null ? String(u.bathrooms) : "?";
-      return {
-        full: `${beds} Bed / ${baths} Bath`,
-        short: `${beds} Br / ${baths} Ba`,
-      };
-    });
-    const counts = {};
-    for (const { full } of baseLabelOf) counts[full] = (counts[full] || 0) + 1;
-    const counters = {};
-    const labels = baseLabelOf.map(({ full, short }) => {
-      if (counts[full] > 1) {
-        counters[full] = (counters[full] || 0) + 1;
-        const n = counters[full];
-        return {
-          base: full,
-          num: n,
-          label: `${full} (${n})`,
-          shortLabel: `${short} (${n})`,
-        };
-      }
-      return { base: full, num: 0, label: full, shortLabel: short };
-    });
-    return deduped
-      .map((u, i) => ({ unit: u, origIdx: i, ...labels[i] }))
-      .sort((a, b) => {
-        const bedDiff = (a.unit.bedrooms ?? 0) - (b.unit.bedrooms ?? 0);
-        if (bedDiff !== 0) return bedDiff;
-        // Studios: don't sort by baths, only by dup number
-        if (isStudio(a.unit)) return a.num - b.num;
-        const bathDiff = (a.unit.bathrooms ?? 0) - (b.unit.bathrooms ?? 0);
-        if (bathDiff !== 0) return bathDiff;
-        return a.num - b.num;
-      });
-  }, [listing.unitTypes]);
-
-  const selectedUnit = sortedUnits[selectedUnitIdx]?.unit ?? null;
-
-  // When the unit tabs don't all fit, the selector scrolls horizontally and
-  // uses abbreviated labels ("Br"/"Ba"). Overflow is measured against a hidden
-  // full-label row so the decision never feeds back into its own measurement.
-  const unitTrackRef = useRef(null);
-  const unitMeasureRef = useRef(null);
-  const [unitsScroll, setUnitsScroll] = useState(false);
+  /*
+   * Which lease the contact form is about. Set by the Contact button on a lease
+   * row; falls back to the best matching offering when the Contact tab is
+   * reached from the tab strip instead.
+   */
+  const [selectedLeaseId, setSelectedLeaseId] = useState(null);
   useEffect(() => {
-    const track = unitTrackRef.current;
-    const measure = unitMeasureRef.current;
-    if (!track || !measure) return;
-    const check = () =>
-      setUnitsScroll(measure.scrollWidth > track.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, [sortedUnits]);
+    setSelectedLeaseId((current) =>
+      current && matchingLeases.some((l) => l.id === current)
+        ? current
+        : matchingLeases[0]?.id ?? null
+    );
+  }, [matchingLeases]);
+
+  const selectedLease =
+    matchingLeases.find((l) => l.id === selectedLeaseId) ?? null;
+
+  /*
+   * Whether to offer furniture rental. Reads unit_leases.furnished — the
+   * per-offering flag — because two landlords on one unit can differ; the
+   * property-level listings.furnished is only a fallback for units whose leases
+   * haven't loaded.
+   */
+  const showFurnishCta = matchingLeases.length
+    ? matchingLeases.some((l) => !l.furnished)
+    : !listing.furnished;
+
+  /*
+   * A property that takes interest through its own off-site waitlist rather
+   * than through our contact form. Null for nearly every listing, and also null
+   * when the destination isn't configured in this environment, which the server
+   * decides for us (see getListing).
+   */
+  const waitlist = listing.waitlistLabel ? { label: listing.waitlistLabel } : null;
+
+  /*
+   * Signed-out students are asked for a name first, so the click has to open a
+   * dialog rather than navigate. Signed-in ones are already known and go
+   * straight out through the API route, which prefills from their profile.
+   */
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const waitlistName = listing.title || "this property";
+  const waitlistButtonClass =
+    "my-2 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+  const trackWaitlistClick = () => {
+    trackEvent("Waitlist Clicked", {
+      listingId: listing._id,
+      source: getListingSource(listing._id) ?? "direct",
+      signedIn: !!session,
+    });
+    noteMatchRevisit(listing._id, "waitlist");
+  };
+
+  const handleContactLease = (lease) => {
+    setSelectedLeaseId(lease.id);
+    /*
+     * Clicking Contact on a specific lease names that lease's landlord as the
+     * recipient, which is who the message is routed to. On a unit with
+     * competing offerings this is the difference between reaching the person
+     * who holds the unit and reaching whoever happens to be primary.
+     */
+    // Down to the Contact section, now part of the same page.
+    setTimeout(() => jumpTo("contact"), 50);
+  };
 
   // Images — respect the landlord-chosen order (sort_order from listing_images).
   const sanitizeUrl = (url) => url?.replace(/ /g, "%20") ?? url;
   const images = Array.isArray(listing?.images)
     ? listing.images.filter(Boolean).map(sanitizeUrl)
     : [];
-  const coverImage = images[0];
-  const secondImage = images[1] || images[0] || null;
-  const thirdImage = images[2] || images[1] || images[0] || null;
+
+  /*
+   * The two tiles beside the cover follow the UNIT whose tab is open, whenever
+   * that unit has pictures of its own. The big shot stays the property's — it
+   * is what the building looks like, and it should not jump around as someone
+   * flicks between units — while the pair beside it becomes the evidence that
+   * these are genuinely different apartments rather than one listing wearing
+   * different labels.
+   *
+   * The unit takes as many of the two tiles as it has pictures for: one photo
+   * replaces the top tile, two replace both. A unit with a single picture used
+   * to be shown none of it — the pair only switched together — which meant a
+   * landlord who uploaded one photo of their apartment saw no sign of it beside
+   * the cover.
+   */
+  const unitImages = Array.isArray(selectedUnit?.images)
+    ? selectedUnit.images.filter(Boolean).map(sanitizeUrl)
+    : [];
+  const showingUnitPhotos = unitImages.length > 0;
+
+  /*
+   * What the gallery shows: every photo at the property, each labelled with the
+   * units it is tagged with. The open unit's photos come first and are
+   * highlighted, so a renter looking at Apt 1W sees that apartment before the
+   * rest of the building, without losing the rest.
+   *
+   * `gallery` arrives with the detail fetch. Before it lands, the browse-feed
+   * shape only has plain URLs, which show untagged.
+   */
+  const unitLabelById = new Map(
+    (listing?.unitTypes ?? []).map((u) => [
+      u.id,
+      u.name ??
+        ((u.bedrooms ?? 0) === 0 && u.bedrooms != null
+          ? "Studio"
+          : `${u.bedrooms ?? "?"} bd · ${u.bathrooms ?? "?"} ba`),
+    ])
+  );
+  const galleryItems = (
+    Array.isArray(listing?.gallery)
+      ? listing.gallery.filter((g) => g?.url)
+      : images.map((url) => ({ url, unitIds: [] }))
+  ).map((g) => ({
+    src: sanitizeUrl(g.url),
+    unitIds: (g.unitIds ?? []).filter((id) => unitLabelById.has(id)),
+  }));
+  const isSelectedUnitPhoto = (item) =>
+    !!selectedUnit?.id && item.unitIds.includes(selectedUnit.id);
+  const orderedGallery = [
+    ...galleryItems.filter(isSelectedUnitPhoto),
+    ...galleryItems.filter((item) => !isSelectedUnitPhoto(item)),
+  ];
+  const galleryCount = orderedGallery.length;
+  const allGalleryPhotos = orderedGallery.map((item) => item.src);
+  const lightboxSrc = lightboxIndex !== null ? allGalleryPhotos[lightboxIndex] : null;
+  const showPrevPhoto = () =>
+      setLightboxIndex((i) => (i - 1 + allGalleryPhotos.length) % allGalleryPhotos.length);
+  const showNextPhoto = () =>
+      setLightboxIndex((i) => (i + 1) % allGalleryPhotos.length);
+  const coverImage = images[0] || unitImages[0];
+  /*
+   * Whether anything renders beside the cover. Keyed on the tiles themselves
+   * rather than on the property's photo count: a building with one picture and
+   * a unit with two does have a pair to show, and testing images.length alone
+   * would collapse the hero to full width and hide them.
+   */
+  const hasSideTiles = showingUnitPhotos || images.length > 1;
+  /*
+   * The two tiles, each tagged with where it came from so the caption only
+   * appears on a photo that really is of this unit.
+   *
+   * The offset differs by source: the cover already consumed images[0] from the
+   * property set, but nothing has consumed the unit's, so its photos start at 0.
+   * Unit photos claim tiles from the top down; the property's fill the rest.
+   */
+  const propertyTile = [
+    images[1] || images[0] || null,
+    images[2] || images[1] || images[0] || null,
+  ];
+  // A unit photo can also be the property's cover now that there is one
+  // gallery, and showing it twice side by side reads as a glitch.
+  const unitTiles = unitImages.filter((src) => src !== images[0]);
+  const sideTiles = [0, 1]
+    .map((i) =>
+      unitTiles[i]
+        ? { src: unitTiles[i], isUnit: true }
+        : propertyTile[i]
+          ? { src: propertyTile[i], isUnit: false }
+          : null
+    )
+    .filter(Boolean);
 
   // Address
   const { street, cityStateZip: parsedCityStateZip } = parseAddress(
     listing.address
   );
+  // Every licensed agent behind this property: the owner and each offering's landlord, once each.
+  // A licensee's "Listed by" shows under their name in the lease options
+  // (LeaseOptions). Contact keeps it only for one with no lease shown there: the
+  // property's owner when they list no lease of their own (Wyatt, 2026-11-06).
+  const listedByAll = (() => {
+    const keyOf = (l) => `${l.agentName}|${l.companyName}|${l.companyPhone}`;
+    const onLeases = new Set();
+    for (const u of listing.unitTypes ?? []) for (const l of u.leases ?? []) if (l.listedBy) onLeases.add(keyOf(l.listedBy));
+    const owner = listing.owner?.listedBy;
+    return owner && !onLeases.has(keyOf(owner)) ? [owner] : [];
+  })();
   const cityStateZip =
     listing.title && listing.title !== street
       ? listing.address
       : parsedCityStateZip;
 
-  // Reviews
+  /*
+   * Reviews. Same "absent key means not loaded" rule the leases use: the browse
+   * feed sends only the numReviews/rating aggregates, never the review bodies,
+   * so an ABSENT `reviews` key means the detail fetch hasn't landed (or failed)
+   * while an empty array means this property genuinely has none. getListing
+   * always sets one.
+   */
+  const reviewsLoaded = Array.isArray(listing.reviews);
+  const viewerId = session?.user?.id;
+  const isOwnListing =
+    listing?.owner?._id === viewerId || listing?.owner?.id === viewerId;
+  // Reviews, with the viewer's own edits and deletes from this session laid
+  // over the loaded copy so the cards and the star stats update straight away.
   const legitimateReviews = (listing.reviews || [])
     .filter(Boolean)
-    .filter((r) => r.legitimacy);
+    .map((r) => (reviewChanges[r._id] ? { ...r, ...reviewChanges[r._id] } : r))
+    .filter((r) => r.legitimacy && !r.deletedAt);
+  /*
+   * Star average and count come from the feed aggregates when the bodies aren't
+   * here, so a panel falling back to feed data still states the rating it knows
+   * rather than claiming "No reviews yet" about a well-reviewed building.
+   */
+  const feedReviewCount = Number(listing.numReviews) || 0;
+  const feedRating = Number(listing.rating);
+  const reviewCount = reviewsLoaded ? legitimateReviews.length : feedReviewCount;
   const overallAvg = legitimateReviews.length
     ? (
         legitimateReviews.reduce((s, r) => s + r.rating, 0) /
         legitimateReviews.length
       ).toFixed(1)
-    : null;
+    : !reviewsLoaded && feedReviewCount > 0 && Number.isFinite(feedRating) && feedRating > 0
+      ? feedRating.toFixed(1)
+      : null;
   const starCounts = [5, 4, 3, 2, 1].map((star) => ({
     star,
     count: legitimateReviews.filter((r) => Math.round(r.rating) === star)
@@ -1331,7 +2112,7 @@ export default function ListingModalInfo({
     if (reviewLoading) return;
 
     if (!session) {
-      signIn(undefined, { callbackUrl: "/browse" });
+      signIn(undefined, { callbackUrl: returnUrlForTab("reviews") });
       return;
     }
     if (!["student", "super"].includes(session.user.role)) {
@@ -1340,6 +2121,11 @@ export default function ListingModalInfo({
     }
     if (reviewText.trim().length < 5 || rating < 0.5 || rating > 5) {
       toast.error("Please write a valid review and select an overall rating.");
+      return;
+    }
+    const reviewProblem = checkReviewText(reviewText);
+    if (reviewProblem) {
+      toast.error(reviewProblem);
       return;
     }
 
@@ -1376,69 +2162,37 @@ export default function ListingModalInfo({
     }
   };
 
-  const handleContactSubmit = async (e) => {
-    e.preventDefault();
-    if (!session) {
-      signIn(undefined, { callbackUrl: window.location.href });
-      return;
-    }
-    setContactLoading(true);
-    try {
-      const res = await fetch("/api/contactLandlord", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...contactForm,
-          listingId: listing._id,
-          landlordEmail: listing.contactEmail ?? listing.owner?.email,
-          landlordName: listing.contactName ?? listing.owner?.name,
-          listingAddress: listing.address,
-        }),
-      });
-      if (res.ok) {
-        fetch("/api/contacted", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing._id }),
-        });
-        setTimeout(() => {
-          const source = getListingSource(listing._id);
-          trackEvent("Contact Submitted", {
-            listingId: listing._id,
-            address: listing.address,
-            ...(source ? { source } : {}),
-          });
-        }, 0);
-        setContactSent(true);
-      } else {
-        toast.error("Failed to send message. Please try again.");
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setContactLoading(false);
-    }
-  };
+  /*
+   * After every hook, never before. An early return above them would change
+   * the hook order between the loading and loaded renders.
+   */
+  if (detailLoading) {
+    return (
+      <ListingDetailSkeleton compact={compact} excludeTabs={excludeTabs} />
+    );
+  }
 
   return (
     <>
       <div className={`bg-gray-50${compact ? "" : " min-h-screen"}`}>
+        {/* "Did you submit your application?" sits above everything and stays stuck. */}
+        <ApplicationCheck listingId={listing._id} signedIn={!!session?.user?.id} preview={preview} onHeight={onApplyBarHeight} page={page} />
         <div
           className={`max-w-7xl mx-auto px-4 ${compact ? "pt-4 pb-8" : "py-8"}`}
         >
-          {/* ── Photo Grid ── */}
+          {/* ── Photo Grid ── Edge to edge with no card corners, the title
+              straight under it (Wyatt, 2026-10-31). The negative margins undo
+              the page padding. */}
           <div
-            className={`relative flex flex-col md:flex-row gap-2 mb-6 rounded-xl overflow-hidden ${
-              compact ? "md:h-[300px]" : "md:h-[520px]"
+            className={`relative flex flex-col md:flex-row gap-0.5 bg-white -mx-4 overflow-hidden ${compact ? "-mt-4" : "-mt-8"} ${
+              compact ? "md:h-[300px]" : "md:h-[380px] xl:h-[520px]"
             }`}
           >
             {/* Main image — natural width on desktop (no crop, no whitespace) */}
             <div
               ref={heroImgWrapperRef}
-              className={`relative cursor-pointer bg-gray-100 rounded-tl-xl rounded-tr-xl md:rounded-bl-xl overflow-hidden aspect-[4/3] md:aspect-auto ${
-                images.length > 1
-                  ? "md:rounded-tr-none md:flex-shrink-0 md:w-[65%]"
-                  : "md:rounded-tr-xl md:rounded-br-xl md:w-full"
+              className={`relative cursor-pointer bg-gray-100 overflow-hidden aspect-[4/3] md:aspect-auto ${
+                hasSideTiles ? "md:flex-shrink-0 md:w-[65%]" : "md:w-full"
               }`}
               onClick={() => images.length > 0 && setIsGalleryOpen(true)}
             >
@@ -1464,21 +2218,38 @@ export default function ListingModalInfo({
                   No photos available
                 </div>
               )}
-              {/* Tag listings whose cover photo was auto-pulled from Google Street View */}
-              {coverImage && listing.imageFromStreetView && (
-                <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                  Street View
+              {/* Cover badges: live PMS-verified availability + Street View attribution */}
+              {(listing.verifiedLive || (coverImage && listing.imageFromStreetView)) && (
+                <div className={`absolute left-3 z-10 flex flex-col items-start gap-1.5 ${compact ? "top-14" : "top-3"}`}>
+                  {listing.verifiedLive && !listing.unavailable && (
+                    <div className="flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+                      <span className="relative flex h-2 w-2" aria-hidden="true">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                      </span>
+                      <span className="uppercase tracking-wide">Live availability</span>
+                    </div>
+                  )}
+                  {coverImage && listing.imageFromStreetView && (
+                    <div className="flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.94 6.31a1.5 1.5 0 112.12 2.12L9.7 9.79a1 1 0 00-.29.7V11a1 1 0 11-2 0v-.5a3 3 0 01.88-2.12l.65-.65zM10 14.5a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      Street View
+                    </div>
+                  )}
                 </div>
               )}
-              {/* HeartIcon — shown in modal (mobile); desktop panel has its own header */}
-              {!compact && (
+              {/* HeartIcon: shown in the modal (mobile). The desktop panel has its own header.
+                  The photo runs to the modal's corner on phones and on a single
+                  photo, where the close button sits, so the heart steps left of
+                  it there. */}
+              {!compact && !preview && (
                 <div
-                  className="absolute top-3 right-3 bg-white/90 backdrop-blur-md rounded-full p-2 shadow-xl border border-white/50 z-10"
+                  className={`absolute top-3 ${hasSideTiles ? "right-16 md:right-3" : "right-16"} ${page ? "max-xl:right-3" : ""} z-10 flex items-center gap-2`}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <ShareButton listingId={listing._id} title={listing.title} />
                   <HeartIcon listingId={listing._id} />
                 </div>
               )}
@@ -1486,57 +2257,51 @@ export default function ListingModalInfo({
 
             {/* Two stacked thumbnails — fill remaining width, desktop only.
                 Hidden when there's a single photo so it doesn't render as repeated frames. */}
-            {images.length > 1 && (
+            {hasSideTiles && (
             <motion.div
-              className="hidden md:flex flex-1 flex-col gap-2 min-w-[180px]"
+              className="hidden md:flex flex-1 flex-col gap-0.5 min-w-[180px]"
               initial={compact ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.28, duration: 0.38, ease: "easeOut" }}
             >
-              {/* Top thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-tr-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {secondImage ? (
+              {sideTiles.map((tile, i) => (
+                <div
+                  key={`${tile.src}-${i}`}
+                  className="relative flex-1 cursor-pointer overflow-hidden bg-gray-100"
+                  onClick={() => setIsGalleryOpen(true)}
+                >
                   <Image
-                    src={secondImage}
-                    alt="Listing photo 2"
+                    src={tile.src}
+                    alt={
+                      tile.isUnit
+                        ? `${selectedUnitName ?? "Unit"} photo`
+                        : `Listing photo ${i + 2}`
+                    }
                     fill
                     sizes="(max-width: 768px) 0vw, 35vw"
                     className="object-cover"
                   />
-                ) : (
-                  <div className="w-full h-full bg-gray-200" />
-                )}
-              </div>
-              {/* Bottom thumbnail */}
-              <div
-                className="relative flex-1 cursor-pointer overflow-hidden rounded-br-xl bg-gray-100"
-                onClick={() => setIsGalleryOpen(true)}
-              >
-                {thirdImage ? (
-                  <Image
-                    src={thirdImage}
-                    alt="Listing photo 3"
-                    fill
-                    sizes="(max-width: 768px) 0vw, 35vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-300" />
-                )}
-              </div>
+                  {/* Says whose photo this is, so switching tabs reads as a
+                      different apartment rather than the gallery reshuffling.
+                      Only on the first unit tile — twice is clutter. */}
+                  {tile.isUnit && selectedUnitName && i === 0 && (
+                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                      {selectedUnitName}
+                    </span>
+                  )}
+                </div>
+              ))}
             </motion.div>
             )}
 
-            {/* "See all photos" button — only when there's more than one photo */}
-            {images.length > 1 && (
+            {/* "See all photos": every photo at the property, which is what the
+                gallery opens with. */}
+            {galleryCount > 1 && (
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="absolute bottom-4 right-4 z-20 text-white font-semibold text-sm bg-black/30 px-3 py-1.5 rounded-full hover:bg-black/50 transition"
               >
-                See all photos ({images.length})
+                See all photos ({galleryCount})
               </button>
             )}
           </div>
@@ -1547,281 +2312,458 @@ export default function ListingModalInfo({
             transition={{ delay: 0.22, duration: 0.4, ease: "easeOut" }}
           >
             {/* ── Header Info ── */}
-            {listing.unavailable && (
-              <div className="bg-gray-100 border border-gray-300 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-gray-600 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                This listing is currently unavailable
+            {/* No "currently unavailable" banner: the leases section already says no
+                lease is being offered (Wyatt, 2026-11-07). */}
+            {/* PMS-synced listings: availability comes straight from the landlord's
+                management system, refreshed daily — Proximity's freshness guarantee. */}
+            {listing.verifiedLive && (
+              <div className="bg-white border border-gray-200 border-l-4 border-l-red-600 rounded-xl px-6 py-3 mb-4 flex items-center gap-2.5 text-sm shadow-sm">
+                <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
+                </span>
+                <span className="text-gray-900">
+                  Availability comes straight from the landlord&apos;s own system
+                  {listing.verifiedAt && (
+                    <>
+                      {", last synced "}
+                      {new Date(listing.verifiedAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        timeZone: SITE_TIME_ZONE,
+                      })}
+                    </>
+                  )}
+                  . <span className="text-gray-500">What you see is what&apos;s actually open.</span>
+                </span>
               </div>
             )}
-            <div className="bg-white rounded-xl shadow px-6 py-5 mb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-snug">
-                  {listing.title || street}
-                </h1>
-                {cityStateZip && (
-                  <p className="text-gray-500 text-sm mt-0.5">{cityStateZip}</p>
-                )}
-              </div>
-              <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 md:ml-auto">
-                <button
-                  onClick={() => {
-                    setActiveTab("contact");
-                    setTimeout(
-                      () =>
-                        scrollIntoContainer(
-                          document.getElementById("listing-tabs")
-                        ),
-                      50
-                    );
-                  }}
-                  className={`shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg transition ${
-                    listing.unavailable
-                      ? "bg-gray-200 hover:bg-gray-300 text-gray-600"
-                      : "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-1 ring-red-600/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                  }`}
-                >
-                  Contact
-                </button>
-                {!listing.furnished && (
-                  <a
-                    href="https://cort.sjv.io/zzb9y0"
-                    target="_blank"
-                    rel="noopener noreferrer sponsored nofollow"
-                    className="shrink-0 w-full sm:w-[170px] h-9 inline-flex items-center justify-center text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 shadow-sm hover:bg-red-100 hover:border-red-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:translate-y-[1px]"
-                  >
-                    Furnish This Property
-                  </a>
-                )}
-              </div>
-            </div>
-
-            {/* ── Unit Selector ── */}
-            {sortedUnits.length > 0 && (
-              <div className="relative bg-white rounded-xl shadow mb-4 overflow-hidden">
-                <div ref={unitTrackRef} className="flex w-full overflow-x-auto">
-                  {sortedUnits.map(({ origIdx, label, shortLabel }, sortedIdx) => (
-                    <button
-                      key={origIdx}
-                      type="button"
-                      onClick={() => setSelectedUnitIdx(sortedIdx)}
-                      className={`flex-1 whitespace-nowrap py-2.5 px-3 text-sm font-semibold text-center transition border-b-2 ${
-                        selectedUnitIdx === sortedIdx
-                          ? "bg-red-600 text-white border-red-600"
-                          : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                      }`}
-                    >
-                      {unitsScroll ? shortLabel : label}
-                    </button>
-                  ))}
-                </div>
-                {/* Hidden full-label row used only to measure natural width */}
-                <div
-                  ref={unitMeasureRef}
-                  aria-hidden="true"
-                  className="absolute top-0 left-0 flex invisible pointer-events-none"
-                >
-                  {sortedUnits.map(({ origIdx, label }) => (
-                    <span
-                      key={origIdx}
-                      className="whitespace-nowrap py-2.5 px-3 text-sm font-semibold"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Stats Bar ── */}
-            <div className="bg-white rounded-xl shadow mb-6 flex flex-wrap divide-y md:divide-y-0 md:divide-x divide-gray-100">
-              <StatCell
-                label="/ mo"
-                value={
-                  selectedUnit
-                    ? selectedUnit.rent != null
-                      ? `$${selectedUnit.rent.toLocaleString()}`
-                      : "TBD"
-                    : (() => {
-                        const label = getRentRangeLabel(listing.unitTypes);
-                        if (label === "Contact for Pricing") return "TBD";
-                        const dashIdx = label.indexOf("-");
-                        if (dashIdx === -1) return label;
-                        return (
-                          <>
-                            <span className="whitespace-nowrap">
-                              {label.slice(0, dashIdx + 1)}
-                            </span>
-                            <wbr />
-                            <span className="whitespace-nowrap">
-                              {label.slice(dashIdx + 1)}
-                            </span>
-                          </>
-                        );
-                      })()
-                }
-              />
-              <StatCell
-                label="Beds"
-                value={
-                  selectedUnit
-                    ? selectedUnit.bedrooms != null
-                      ? String(selectedUnit.bedrooms)
-                      : "—"
-                    : getUnitValuesLabel(listing.unitTypes, "bedrooms")
-                }
-              />
-              <StatCell
-                label="Baths"
-                value={
-                  selectedUnit
-                    ? selectedUnit.bathrooms != null
-                      ? String(selectedUnit.bathrooms)
-                      : "—"
-                    : getUnitValuesLabel(listing.unitTypes, "bathrooms")
-                }
-              />
-              <StatCell
-                label="Sq Ft"
-                value={
-                  selectedUnit
-                    ? selectedUnit.area
-                      ? selectedUnit.area.toLocaleString()
-                      : "—"
-                    : getAreaRangeLabel(listing.unitTypes)
-                }
-              />
-              <LeaseStatCell
-                leaseAvailability={
-                  // Strictly the selected unit's own terms — never borrow another unit's
-                  // (a unit with no terms shows "—"). Only fall back to the listing-level
-                  // union when there is no selected unit at all.
-                  selectedUnit
-                    ? (Array.isArray(selectedUnit.leaseTermMonths)
-                        ? selectedUnit.leaseTermMonths
-                        : []
-                      ).map(leaseMonthsToLabel)
-                    : listing.leaseAvailability
-                }
-              />
-              {selectedUnit?.floorPlanImageUrl && (
-                <FloorPlanStatCell
-                  url={selectedUnit.floorPlanImageUrl}
-                  onOpen={() => {
-                    const url = selectedUnit.floorPlanImageUrl;
-                    if (/\.pdf($|\?)/i.test(url)) {
-                      window.open(url, "_blank", "noopener");
-                    } else {
-                      setLightboxSrc(url);
-                    }
-                  }}
-                />
-              )}
-              <StatCell
-                label="Rating"
-                value={overallAvg ? `★ ${overallAvg}` : "—"}
-              />
-            </div>
-
-            {/* ── Sticky Tab Bar ── */}
+            {/* ── Sticky header ── The title, address and rating stick with
+                the tabs as one block (Wyatt, 2026-10-31). Once stuck it
+                compacts: a smaller title, no address, the rating cut to the
+                title's height. The sentinel just above it says when. */}
+            <div ref={headSentinelRef} aria-hidden="true" className="h-px -mb-px" />
+            {/* Under the stuck "Did you submit?" bar when it shows (--apply-check-h, set by ApplicationCheck),
+                and under the site header too on the full listing page below 1280px. */}
             <div
-              id="listing-tabs"
-              className={`sticky z-30 bg-white border-b border-gray-100 shadow-sm mb-6 -mx-4 ${
-                compact ? "top-[52px]" : "top-0 px-4"
+              id="listing-head"
+              ref={headRef}
+              className={`sticky top-[var(--apply-check-h,0px)] z-30 ${
+                page ? "max-xl:top-[calc(var(--header-h)_+_1px_+_var(--apply-check-h,0px))]" : ""
               }`}
             >
-              <nav
-                className={`flex ${
-                  compact
-                    ? "justify-center"
-                    : "overflow-x-auto max-w-7xl mx-auto"
+              {/* No card: the title runs edge to edge like the tabs right under it (Wyatt, 2026-10-31). */}
+              <div
+                className={`bg-white -mx-4 px-10 flex transition-all duration-200 ${
+                  headStuck
+                    ? "pt-4 pb-2.5 flex-row items-center justify-between gap-4"
+                    : "pt-6 pb-4 flex-col md:flex-row md:justify-between md:items-center gap-4"
                 }`}
               >
-                {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
-                  (tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition ${
-                        activeTab === tab.id
-                          ? "text-red-600 border-red-600"
-                          : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                {/* One line each: a long name or address trails off rather than wrapping (Wyatt, 2026-10-31). */}
+                <div className={`min-w-0 md:flex-1 ${headStuck ? "flex-1" : "w-full md:w-auto"}`}>
+                  <h1
+                    className={`truncate font-bold text-gray-900 leading-snug transition-all duration-200 ${
+                      headStuck ? "text-[18px] sm:text-[23px]" : "text-[19px] sm:text-[27px]"
+                    }`}
+                  >
+                    {listing.title || street}
+                  </h1>
+                  {cityStateZip && (
+                    <p
+                      className={`truncate text-gray-500 text-[15px] sm:text-base overflow-hidden transition-all duration-200 ${
+                        headStuck ? "max-h-0 opacity-0" : "max-h-8 mt-0.5 opacity-100"
                       }`}
                     >
-                      {tab.label}
+                      {cityStateZip}
+                    </p>
+                  )}
+                  {/*
+                    * No property-level "Available <date>" pill here on purpose.
+                    * It used to read from listing.availableFrom, a rollup that
+                    * only the browse feed computes, so opening a listing showed
+                    * the pill for the split second the panel held feed data, then
+                    * dropped it the moment the detail fetch replaced that object.
+                    * A move-in date belongs to one offering anyway, not to the
+                    * building: LeaseOptions shows it per lease, where a renter can
+                    * see which unit the date actually applies to.
+                    */}
+                </div>
+                <div className={`shrink-0 flex items-center gap-3 md:ml-auto ${headStuck ? "" : "w-full md:w-auto"}`}>
+                  {/* Ask Proxy (Wyatt, 2026-10-27): down to Contact with the cursor in the chat. */}
+                  {(listing.agent?.live || preview) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        jumpTo("contact");
+                        window.dispatchEvent(new CustomEvent("proxy:focus-input", { detail: { listingId: listing._id } }));
+                      }}
+                      className={`group inline-flex items-center gap-1.5 rounded-lg px-1 font-semibold ${
+                        headStuck ? "py-1.5 text-[13px]" : "py-2 text-sm"
+                      }`}
+                    >
+                      {/* No fill or outline: one red, pink, purple gradient runs from
+                          the sparkle through the label (Wyatt, 2026-11-15). The
+                          sparkle carries the first stretch of it and the text picks
+                          up where it ends, so the two read as one sweep. Measured
+                          across the whole icon (userSpaceOnUse) so the two tiny
+                          sparkles, straight strokes with no width of their own, still
+                          get painted. On hover the sweep slides back to a deeper red (the
+                          text's 200%-wide gradient moves over, the icon's stops fade
+                          to match) and the sparkle gives a small twist. */}
+                      <svg width="0" height="0" className="absolute" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="ask-proxy-shine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="0">
+                            <stop offset="0%" className="transition-[stop-color] duration-500 ease-out [stop-color:#dc2626] group-hover:[stop-color:#991b1b]" />
+                            <stop offset="100%" className="transition-[stop-color] duration-500 ease-out [stop-color:#e33559] group-hover:[stop-color:#b91c1c]" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <Sparkles
+                        className="h-4 w-4 transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-110"
+                        stroke="url(#ask-proxy-shine)"
+                      />
+                      <span className="bg-[linear-gradient(90deg,#b91c1c_0%,#dc2626_25%,#e33559_50%,#ec4899_72%,#c026d3_100%)] bg-[length:200%_100%] bg-right bg-clip-text text-transparent transition-[background-position] duration-500 ease-out group-hover:bg-left">
+                        Ask Proxy
+                      </span>
                     </button>
-                  )
-                )}
-                {tabBarAction ? (
-                  <div className="ml-auto flex items-center pl-3 pr-8">
-                    {tabBarAction}
+                  )}
+                  {/* Rating moved up from the removed stats bar. Stuck, it is
+                      cut to the title's height. */}
+                  {overallAvg ? (
+                    <span className={`inline-flex items-center ${headStuck ? "gap-1" : "gap-2"}`}>
+                      <Star
+                        className={`shrink-0 fill-amber-400 text-amber-400 ${headStuck ? "h-6 w-6" : "h-8 w-8"}`}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={`font-semibold leading-none text-gray-900 ${headStuck ? "text-xl" : "text-2xl"}`}
+                      >
+                        {overallAvg}
+                      </span>
+                      <span className={`text-gray-500 ${headStuck ? "text-sm" : "text-md"}`}>
+                        ({reviewCount})
+                      </span>
+                    </span>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center text-gray-400 ${headStuck ? "h-8 text-[13px]" : "h-9 text-sm"}`}
+                    >
+                      No reviews yet
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Tab Bar ── */}
+              <div
+                id="listing-tabs"
+                className="bg-white border-b border-gray-100 shadow-sm -mx-4 pl-5"
+              >
+                {/* Tabs start at the left, the first label in line with the
+                    title above, in the browse panel (Wyatt, 2026-11-01) and the
+                    popup alike (Wyatt, 2026-11-15): pl-5 plus the tab's own
+                    px-5 matches the title's px-10.
+                    Below 1280px there is no room beside the tabs, so they get
+                    a row to themselves and the actions (the last child here)
+                    get the row above it. On a phone, and in the browse panel
+                    below 1024px, the six tabs share the width in a tighter
+                    size. Tabs that do not fit scroll sideways. */}
+                <nav className="flex flex-wrap items-stretch xl:flex-nowrap">
+
+                  <div className="flex w-full overflow-x-auto scrollbar-hidden xl:w-auto">
+                    {TABS.filter((tab) => !excludeTabs.includes(tab.id)).map(
+                      (tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => jumpTo(tab.id)}
+                          aria-current={activeTab === tab.id ? "true" : undefined}
+                          className={`flex-1 px-1 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 transition ${
+                            compact ? "lg:flex-none lg:px-5 lg:text-sm" : "md:flex-none md:px-5 md:text-sm"
+                          } ${
+                            activeTab === tab.id
+                              ? "text-red-600 border-red-600"
+                              : "text-gray-500 border-transparent hover:text-gray-800 hover:border-gray-300"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      )
+                    )}
                   </div>
-                ) : null}
-              </nav>
+
+                  {/* The actions: beside the tabs from 1280px. Below that, a row
+                      of their own between the title and the tabs, starting in
+                      line with the title; it is not rendered when there is none. */}
+                  <div
+                    className={`flex w-full items-stretch justify-end gap-2 bg-white pl-2 pr-4 xl:w-auto xl:flex-1 max-xl:order-first max-xl:flex-wrap max-xl:items-center max-xl:justify-start max-xl:gap-x-3 max-xl:pb-1 max-xl:empty:hidden ${
+                      compact ? "max-xl:pl-5 max-xl:pr-10" : "max-xl:px-6"
+                    }`}
+                  >
+                    {/* Joining this property's waitlist happens on the landlord's
+                        own form, so the link hops through our API first: that
+                        redirect is the only place a click can still be recorded
+                        before the browser leaves for a domain we can't see into. */}
+                    {waitlist && !preview &&
+                      (session ? (
+                        <a
+                          href={`/api/waitlist/${listing._id}`}
+                          target="_blank"
+                          /* No "noreferrer": the first hop is our own API route,
+                             and stripping the header there blinds the click log to
+                             which page the student was on. */
+                          rel="noopener nofollow"
+                          onClick={() => trackWaitlistClick()}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            trackWaitlistClick();
+                            setWaitlistOpen(true);
+                          }}
+                          className={waitlistButtonClass}
+                        >
+                          {waitlist.label}
+                        </button>
+                      ))}
+                    {/* Furniture rental, in the same font, weight, colour and hover
+                        as "View on map" beside it (Wyatt, 2026-11-15). It only
+                        appears against an UNFURNISHED offering: furnished belongs
+                        to the lease now, not the building, so this asks whether
+                        any live offering on the open unit is unfurnished, falling
+                        back to listings.furnished when none has loaded. */}
+                    {showFurnishCta && (
+                      <a
+                        href="https://cort.sjv.io/zzb9y0"
+                        target="_blank"
+                        rel="noopener noreferrer sponsored nofollow"
+                        className="inline-flex items-center whitespace-nowrap px-5 py-3 text-sm font-semibold text-red-600 transition-colors hover:text-red-700 max-xl:px-0 max-xl:py-2"
+                      >
+                        Furnish This Property
+                      </a>
+                    )}
+                    {tabBarAction && (
+                      <div className="flex items-center pl-3 pr-8 max-xl:ml-auto max-xl:px-0">{tabBarAction}</div>
+                    )}
+                  </div>
+                </nav>
+              </div>
             </div>
 
             {/* ── Tab Content ── */}
-            <div className="bg-white rounded-xl shadow p-6">
-              {activeTab === "amenities" && <AmenitiesTab listing={listing} />}
-              {activeTab === "map" && <MapTab listing={listing} />}
-              {activeTab === "places" && (
-                <PlacesTab
-                  walkTimes={walkTimes}
-                  walkLoading={walkLoading}
-                  shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
-                  driveTimes={driveTimes}
-                />
+            {/* White from edge to edge under the tab bar, down to the bottom
+                of the page: no grey frame around a card (Wyatt, 2026-10-27).
+                The negative margins cancel the page padding; px-10 keeps the
+                text where the card's padding used to put it. */}
+            <div
+              className={`bg-white -mx-4 px-10 py-6 ${
+                compact ? "-mb-8 min-h-[60vh]" : "-mb-8 min-h-[70vh]"
+              }`}
+            >
+              {/* "I want a [beds] for [length] starting [month]", then every
+                  matching lease as landlord, floor plan, lease (Wyatt,
+                  2026-10-30). Its own tab since 2026-10-31. Rent specials
+                  are not shown here (Wyatt, 2026-10-27): Proxy quotes current
+                  ones when asked, and expired ones never. */}
+              {show("pricing") && (
+                <Section
+                  id="pricing"
+                  label="Pricing"
+                  sectionRefs={sectionRefs}
+                  aside={
+                    <Image
+                      src="/assets/equal-housing-opportunity.png"
+                      alt="Equal Housing Opportunity"
+                      width={149}
+                      height={160}
+                      className="h-7 w-auto shrink-0"
+                    />
+                  }
+                >
+                  {!leasesLoading && hasLeases && (
+                    <div className="pb-3">
+                      <LeasePrefsControls
+                        value={leaseView.prefs}
+                        choices={leaseView.choices}
+                        count={matchingLeases.length}
+                        sort={leaseView.sort}
+                        sorts={leaseView.sorts}
+                        onSort={leaseView.setSort}
+                        onChange={leaseView.setPrefs}
+                        onClear={leaseView.clear}
+                      />
+                    </div>
+                  )}
+                  <div className="-mx-4">
+                    <LeaseOptions
+                      groups={leaseView.groups}
+                      prefs={leaseView.prefs}
+                      sort={leaseView.sort}
+                      loading={leasesLoading}
+                      empty={!hasLeases}
+                      onContact={handleContactLease}
+                      onFloorPlan={setFloorPlanUnit}
+                    />
+                  </div>
+                </Section>
               )}
-              {activeTab === "reviews" && !session && (
-                <SignInPrompt message="Sign in to view and leave reviews." />
+              {show("amenities") && (
+                <Section id="amenities" label="Overview" sectionRefs={sectionRefs}>
+                  <AmenitiesTab listing={listing} />
+                </Section>
               )}
-              {activeTab === "reviews" && session && (
-                <ReviewsTab
-                  legitimateReviews={legitimateReviews}
-                  overallAvg={overallAvg}
-                  starCounts={starCounts}
-                  commAvg={commAvg}
-                  locAvg={locAvg}
-                  valAvg={valAvg}
-                  showAllReviews={showAllReviews}
-                  setShowAllReviews={setShowAllReviews}
-                  session={session}
-                  listing={listing}
-                  reviewText={reviewText}
-                  setReviewText={setReviewText}
-                  rating={rating}
-                  setRating={setRating}
-                  commRating={commRating}
-                  setCommRating={setCommRating}
-                  locRating={locRating}
-                  setLocRating={setLocRating}
-                  valRating={valRating}
-                  setValRating={setValRating}
-                  reviewLoading={reviewLoading}
-                  handleReviewSubmit={handleReviewSubmit}
-                />
+              {show("map") && (
+                <Section id="map" label="Map" sectionRefs={sectionRefs}>
+                  <MapTab listing={listing} />
+                </Section>
               )}
-              {activeTab === "contact" && !session && (
-                <SignInPrompt message="Sign in to contact the property manager." />
+              {show("reviews") && (
+                <Section id="reviews" label="Reviews" sectionRefs={sectionRefs}>
+                  {!session ? (
+                    <SignInPrompt message="Sign in to view and leave reviews." tab="reviews" />
+                  ) : (
+                    <ReviewsTab
+                      legitimateReviews={legitimateReviews}
+                      reviewsLoaded={reviewsLoaded}
+                      reviewCount={reviewCount}
+                      overallAvg={overallAvg}
+                      starCounts={starCounts}
+                      commAvg={commAvg}
+                      locAvg={locAvg}
+                      valAvg={valAvg}
+                      showAllReviews={showAllReviews}
+                      setShowAllReviews={setShowAllReviews}
+                      session={session}
+                      listing={listing}
+                      reviewText={reviewText}
+                      setReviewText={setReviewText}
+                      rating={rating}
+                      setRating={setRating}
+                      commRating={commRating}
+                      setCommRating={setCommRating}
+                      locRating={locRating}
+                      setLocRating={setLocRating}
+                      valRating={valRating}
+                      setValRating={setValRating}
+                      reviewLoading={reviewLoading}
+                      handleReviewSubmit={handleReviewSubmit}
+                      onReviewChange={onReviewChange}
+                      preview={preview}
+                    />
+                  )}
+                </Section>
               )}
-              {activeTab === "contact" && session && (
-                <ContactTab
-                  listing={listing}
-                  session={session}
-                  contactForm={contactForm}
-                  setContactForm={setContactForm}
-                  handleContactSubmit={handleContactSubmit}
-                  contactLoading={contactLoading}
-                  contactSent={contactSent}
-                />
+              {show("places") && (
+                <Section id="places" sectionRefs={sectionRefs}>
+                  <PlacesTab
+                    walkTimes={walkTimes}
+                    walkLoading={walkLoading}
+                    shuttleWalkMinutes={listing?.shuttleWalkMinutes ?? null}
+                    driveTimes={driveTimes}
+                  />
+                </Section>
+              )}
+              {show("contact") && (
+                <Section id="contact" label="Contact" sectionRefs={sectionRefs}>
+                  {/*
+                   * Proxy first (per-listing agents, PRD v3): on a listing whose
+                   * agent is live, Contact is the Proxy conversation, signed in
+                   * or not. The owner's preview gets it too, in test mode. The
+                   * old contact form stays for every other listing.
+                   */}
+                  {listing.agent?.live || preview ? (
+                    <ProxyPanel
+                      listing={listing}
+                      session={session}
+                      selectedLease={selectedLease}
+                      preview={preview}
+                      active={activeTab === "contact"}
+                      glideOnOpen={false}
+                      inputSlot={proxyInputSlot}
+                    />
+                  ) : !session ? (
+                    <SignInPrompt
+                      message={pickApplication(listing)
+                        ? "Sign in to contact the property manager or apply."
+                        : "Sign in to contact the property manager."}
+                      tab="contact"
+                    />
+                  ) : (
+                    <ContactTab
+                      listing={listing}
+                      session={session}
+                      selectedLease={selectedLease}
+                      onOpenThread={openThread}
+                      preview={preview}
+                    />
+                  )}
+                  {/* The owner's licensee details when they list no lease of
+                      their own (MREC: name, company and company phone on every
+                      listing). Everyone else's show in the lease options. */}
+                  {listedByAll.length > 0 && (
+                    <div className="mt-8 border-t border-gray-100 pt-3">
+                      {listedByAll.map((l) => (
+                        <ListedBy key={`${l.agentName}|${l.companyName}|${l.companyPhone}`} listedBy={l} />
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              )}
+              {/* Our brokerage disclosure closes every listing, whichever
+                  sections this view shows. With Proxy on, it rides under
+                  Proxy's input instead (below). */}
+              {!(show("contact") && (listing.agent?.live || preview)) && (
+                <p className="mt-8 border-t border-gray-100 pt-3 pb-4 text-[11px] leading-4 text-gray-400">
+                  Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
+                </p>
+              )}
+              {/* Proxy's input sits under the chat and pins to the bottom
+                  while the reader is in Contact. It keeps its place in the
+                  page either way, so the page never jumps when it pins. The
+                  brokerage disclosure sits right under the input. */}
+              {show("contact") && (listing.agent?.live || preview) && (
+                <div
+                  className={`-mx-10 border-t border-gray-100 bg-white px-10 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
+                    activeTab === "contact" ? "sticky bottom-0 z-40" : ""
+                  }`}
+                >
+                  <div ref={setProxyInputSlot} />
+                  <p className="mt-2 text-[11px] leading-4 text-gray-400">
+                    Proximity LLC · (914) 584-1003 · Licensed Missouri real estate broker
+                  </p>
+                </div>
               )}
             </div>
           </motion.div>
         </div>
       </div>
 
+      {/* ── Waitlist capture (signed-out only) ── */}
+      {waitlist && !session && !preview && (
+        <WaitlistDialog
+          isOpen={waitlistOpen}
+          onClose={() => setWaitlistOpen(false)}
+          listingId={listing._id}
+          propertyName={waitlistName}
+        />
+      )}
+
+      {/* ── Floor plan ── */}
+      {floorPlanUnit?.floorPlanImageUrl && (
+        <FloorPlanViewer
+          url={floorPlanUnit.floorPlanImageUrl}
+          unitName={floorPlanUnit.name ?? null}
+          onClose={() => setFloorPlanUnit(null)}
+        />
+      )}
+
       {/* ── Full-screen Gallery Modal ── */}
-      {isGalleryOpen && (
+      {isGalleryOpen && overBody(
         <div
           className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm overflow-y-auto"
           onClick={() => setIsGalleryOpen(false)}
@@ -1832,7 +2774,7 @@ export default function ListingModalInfo({
           >
             <div className="flex items-center justify-between mb-6 text-white">
               <div className="text-lg font-semibold">
-                Photos ({images.length})
+                Photos ({galleryCount})
               </div>
               <button
                 type="button"
@@ -1844,14 +2786,20 @@ export default function ListingModalInfo({
               </button>
             </div>
             <div className="columns-1 sm:columns-2 lg:columns-3 gap-4">
-              {images.map((src) => (
+              {orderedGallery.map((item, i) => (
                 <GalleryImage
-                  key={src}
-                  src={src}
-                  index={images.indexOf(src)}
+                  key={item.src}
+                  src={item.src}
+                  index={i}
+                  highlighted={isSelectedUnitPhoto(item)}
+                  tags={item.unitIds.map((id) => ({
+                    id,
+                    label: unitLabelById.get(id),
+                    active: id === selectedUnit?.id,
+                  }))}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setLightboxSrc(src);
+                    setLightboxIndex(i);
                   }}
                 />
               ))}
@@ -1861,19 +2809,45 @@ export default function ListingModalInfo({
       )}
 
       {/* ── Lightbox (fullscreen single image) ── */}
-      {lightboxSrc && (
+      {lightboxIndex !== null && overBody(
         <div
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center"
-          onClick={() => setLightboxSrc(null)}
+          onClick={() => setLightboxIndex(null)}
         >
           <button
             type="button"
             className="absolute top-4 right-4 text-white/80 hover:text-white text-4xl leading-none z-10"
-            onClick={() => setLightboxSrc(null)}
+            onClick={() => setLightboxIndex(null)}
             aria-label="Close fullscreen image"
           >
             ×
           </button>
+          {allGalleryPhotos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showPrevPhoto();
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white z-10"
+                aria-label="Previous photo"
+              >
+                <ChevronLeft size={40} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showNextPhoto();
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white z-10"
+                aria-label="Next photo"
+              >
+                <ChevronRight size={40} />
+              </button>
+            </>
+          )}
           <div
             className="relative max-w-[90vw] max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}

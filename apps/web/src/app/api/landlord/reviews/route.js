@@ -2,20 +2,23 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
+import { resolveDashboardUserId } from "@/lib/users/viewAs";
+import { withoutSandboxReviews } from "@/lib/reviewSandbox";
 
 // GET /api/landlord/reviews — all approved reviews for the current landlord's listings
 export async function GET(req) {
   const session = await auth();
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["landlord", "super"].includes(session.user.role)) {
+  // "admin" is the read-only half of super and reaches this the same way, by
+  // opening a landlord's dashboard through view-as. Leaving it out 403'd them
+  // on the Reviews tab of a dashboard they could otherwise read end to end.
+  if (!["landlord", "super", "admin"].includes(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
-  const viewAsId = searchParams.get("viewAs");
-  const targetUserId =
-    viewAsId && session.user.role === "super" ? viewAsId : session.user.id;
+  const targetUserId = resolveDashboardUserId(session, searchParams);
 
   const { data: ll } = await supabase
     .from("listing_landlords")
@@ -33,6 +36,7 @@ export async function GET(req) {
       reply,
       created_at,
       updated_at,
+      edited_at,
       user_id
     )`
     )
@@ -43,8 +47,11 @@ export async function GET(req) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js).
+  const shown = await withoutSandboxReviews(reviews || []);
+
   return NextResponse.json(
-    (reviews || []).map((r) => ({
+    shown.map((r) => ({
       id: r.id,
       rating: r.rating,
       comment: r.comment,
@@ -72,6 +79,7 @@ export async function GET(req) {
             reply: r.listing_review_replies.reply,
             createdAt: r.listing_review_replies.created_at,
             updatedAt: r.listing_review_replies.updated_at,
+            editedAt: r.listing_review_replies.edited_at ?? null,
             userId: r.listing_review_replies.user_id,
           }
         : null,

@@ -1,0 +1,1151 @@
+"use client";
+
+/*
+ * Units, and the offerings on them.
+ *
+ * The three levels answer to different people, so they are edited separately
+ * and never in one save:
+ *   the unit    — a physical fact of the building; the property owner's
+ *   an offering — one landlord's terms on that unit; only that landlord's
+ *
+ * On a property that is already live, a unit or offering added here starts as
+ * a draft (202610100002): it carries an amber Draft marker and its own Publish
+ * button, and students see nothing of it until that is pressed. Inside a draft
+ * property nothing is marked, because the whole property is the draft.
+ *
+ * Unavailable units are shown rather than hidden. The renter-facing panel drops
+ * them, which meant a landlord who marked a unit unavailable had no way to find
+ * it again and turn it back on.
+ *
+ * Contact is not edited here. It is one block per landlord per property
+ * (EditorContact), copied onto every lease they own, so an offering's form has
+ * nothing to say about who to reach.
+ */
+
+import { FOCUS_EVENT, revealGap } from "./ImportGaps";
+import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { publishErrorToast } from "@/components/listings/publishErrorToast";
+import { ArrowDownWideNarrow, Plus, Trash2 } from "lucide-react";
+import { availabilityLabel } from "@/utils/availability";
+import { clampCount } from "@/utils/unitCounts";
+import { UnitFloorPlan } from "./EditorImageRows";
+import SubleaseConsentCheckbox from "@/components/listings/SubleaseConsentCheckbox";
+import LeaseTermPicker from "@/components/listings/LeaseTermPicker";
+import { LEASE_DESCRIPTION_MAX } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
+import { UNIT_NAME_MAX, UNIT_NAME_LABEL, UNIT_NAME_HELP } from "@/utils/unitName";
+import InfoTip from "@/components/ui/InfoTip";
+import { DraftBadge, PublishButton } from "./DraftControls";
+
+
+// Heading for a group of offerings inside a unit.
+function SectionLabel({ children, hint }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 px-4 pt-3">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        {children}
+      </span>
+      {hint && <span className="text-[11px] text-gray-400">{hint}</span>}
+    </div>
+  );
+}
+
+const field =
+  "rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-red-400 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
+
+// The saved state of an offering, as the form holds it. Shared by the initial
+// draft and by Discard, so "back to how it was" cannot drift from "how it
+// opened".
+const leaseDraft = (lease) => ({
+  rent: lease.rent ?? "",
+  rentIsPerPerson: lease.rentIsPerPerson ?? false,
+  leaseTermMonths: lease.leaseTermMonths ?? [],
+  sublease: !!lease.sublease,
+  furnished: !!lease.furnished,
+  availableFrom: lease.availableFrom ? String(lease.availableFrom).slice(0, 10) : "",
+  unavailable: !!lease.unavailable,
+  description: lease.description ?? "",
+});
+
+/*
+ * The contact on an imported offering nobody owns. The property's owner is the
+ * only one who can correct it, and only this: the rest of the offering stays
+ * read-only. A new address gets a confirmation email before alerts go there.
+ */
+function OwnerlessContact({ lease, onChanged }) {
+  const [email, setEmail] = useState(lease.contactEmail ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = email.trim() !== (lease.contactEmail ?? "").trim();
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactEmail: email, contactName: lease.landlordName ?? null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save that contact.");
+      toast.success(
+        data.verificationSent
+          ? "Contact updated. We emailed that address a link to confirm it for message alerts."
+          : "Contact updated."
+      );
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Contact email</span>
+      <input type="email" className={`min-w-0 flex-1 ${field}`} value={email}
+        onChange={(e) => setEmail(e.target.value)} />
+      {dirty && (
+        <button onClick={save} disabled={saving} type="button"
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          {saving ? "Saving…" : "Save"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LeaseRow({ lease, listingId, isPropertyOwner = false, onChanged, propertyIsDraft = false }) {
+  const [draft, setDraft] = useState(() => leaseDraft(lease));
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
+
+  const avail = availabilityLabel(lease.availableFrom);
+  // Switching an offering to a sublease is posting one, so it asks for the same
+  // confirmation as the add flows. One that already is a sublease does not.
+  const needsRightsConfirmation = draft.sublease && !lease.sublease;
+  // No names, links, emails or phone numbers. Same rule the lease PATCH applies.
+  const descriptionProblem = checkListingDescription(draft.description, {
+    previous: lease.description ?? null,
+  });
+
+  const discard = () => {
+    setDraft(leaseDraft(lease));
+    setDirty(false);
+  };
+
+  const save = async () => {
+    if (needsRightsConfirmation && !draft.subleaseRightsConfirmed) {
+      return toast.error("Please confirm you have the right to sublet this place.");
+    }
+    if (descriptionProblem) return toast.error(descriptionProblem);
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...draft,
+          availableFrom: draft.availableFrom || null,
+          // The Withdrawn box is the same toggle as the dashboard's Withdraw
+          // and Publish again buttons, which set is_active and unavailable
+          // together. Sending unavailable alone left is_active false on an
+          // offering withdrawn from the dashboard, so unticking the box here
+          // looked like a relist and changed nothing students could see.
+          isActive: !draft.unavailable,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return publishErrorToast(data, "Couldn't save that listing.", { retry: save });
+      toast.success("Your listing was updated.");
+      setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // One click back onto the market, the inverse of the dashboard's Withdraw.
+  const republish = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return publishErrorToast(data, "Couldn't publish that listing.", { retry: republish });
+      toast.success("Published. Students can see this listing again.");
+      setDraft((d) => ({ ...d, unavailable: false }));
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /*
+   * Delete is for good; the Withdrawn box below is the undoable way off the
+   * market. Only on your own offerings: the server re-checks ownership.
+   */
+  const remove = async () => {
+    if (
+      !confirm(
+        "Delete this listing? It is removed from your dashboard and students stop seeing it. This can't be undone. To take it down temporarily, tick Withdrawn instead."
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't delete that listing.");
+      toast.success("Listing deleted.");
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!lease.mine) {
+    // Another landlord's offering on the same unit: visible because a renter
+    // sees it, read-only because it isn't theirs.
+    return (
+      <li className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-gray-200 bg-white/60 p-4 text-sm">
+        <span className="font-semibold text-gray-900">
+          {lease.rent != null ? `$${Number(lease.rent).toLocaleString()}` : "Ask"}
+          {lease.rent != null && (
+            <span className="font-normal text-gray-500">
+              {lease.rentIsPerPerson ? "/person" : "/mo"}
+            </span>
+          )}
+        </span>
+        <span className={avail.now ? "font-semibold text-green-600" : "text-gray-600"}>{avail.text}</span>
+        <span className="text-gray-600">{lease.sublease ? "Sublease" : "Standard"}</span>
+        <span className="text-gray-500">{lease.landlordName ?? "Another landlord"}</span>
+        {lease.unavailable && (
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+            Withdrawn
+          </span>
+        )}
+        {isPropertyOwner && lease.ownerless && <OwnerlessContact lease={lease} onChanged={onChanged} />}
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center gap-2">
+        {lease.isDraft && <DraftBadge />}
+        {lease.isDraft && (
+          <span className="text-[11px] text-amber-700">Students can&apos;t see this yet.</span>
+        )}
+        {/* Red because it is a live consequence, not a note: while this is on,
+            students cannot find the offering at all. */}
+        {draft.unavailable && (
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+            Withdrawn
+          </span>
+        )}
+        {/* Offered on the saved offering, not the draft: a box unticked but not
+            yet saved is still withdrawn as far as students are concerned. */}
+        {lease.unavailable && !dirty && (
+          <button onClick={republish} disabled={saving} type="button"
+            className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+            {saving ? "Publishing…" : "Publish again"}
+          </button>
+        )}
+        <span className="flex-1" />
+        {dirty && (
+          <>
+            {/* An edit you can back out of. Without this the only way to undo a
+                half-typed change was to reload the page and lose the rest. */}
+            <button onClick={discard} disabled={saving}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60">
+              Discard changes
+            </button>
+            <button onClick={save} disabled={saving || !!descriptionProblem}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </>
+        )}
+        {lease.isDraft && !dirty && (
+          <PublishButton kind="lease" id={lease.id} onPublished={onChanged}
+            disabledReason={propertyIsDraft ? "Publish the property first. Its listings go live with it." : null} />
+        )}
+        <button onClick={remove} disabled={saving} type="button"
+          title="Delete this listing" aria-label="Delete this listing"
+          className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Rent / month</span>
+          <input type="number" className={`mt-1 w-full ${field}`} value={draft.rent} data-gap={`rent:${lease.id}`}
+            placeholder="Leave blank for “Contact for pricing”"
+            onChange={(e) => set({ rent: e.target.value })} />
+          <div className="mt-1.5 inline-flex rounded-lg bg-gray-100 p-0.5 text-[11px]">
+            {[[false, "whole unit"], [true, "per person"]].map(([v, label]) => (
+              <button key={label} type="button" onClick={() => set({ rentIsPerPerson: v })}
+                className={`rounded-md px-2 py-0.5 font-medium transition ${
+                  draft.rentIsPerPerson === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Available on</span>
+          <input type="date" className={`mt-1 w-full ${field}`} value={draft.availableFrom} data-gap={`date:${lease.id}`}
+            onChange={(e) => set({ availableFrom: e.target.value })} />
+          <span className="mt-0.5 block text-[11px] text-gray-400">
+            A date in the past shows{" "}
+            <span className="font-semibold text-green-600">Now</span>.
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-3">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+          Lease lengths you accept
+        </span>
+        <div className="mt-1.5" data-gap={`terms:${lease.id}`}>
+          <LeaseTermPicker
+            value={draft.leaseTermMonths}
+            onChange={(next) => set({ leaseTermMonths: next })}
+          />
+        </div>
+      </div>
+
+      {/* The blurb students read behind the chevron on this offering. Short by
+          design — it sits under the row, not in place of it. */}
+      <label className="mt-3 block">
+        <span className="flex items-baseline justify-between text-[10px] font-medium uppercase tracking-wide text-gray-400">
+          <span>A short note about this listing</span>
+          <span className="normal-case tracking-normal">
+            Optional · {draft.description.length}/{LEASE_DESCRIPTION_MAX}
+          </span>
+        </span>
+        <textarea
+          rows={2} className={`mt-1 w-full ${field}`} value={draft.description}
+          maxLength={LEASE_DESCRIPTION_MAX}
+          placeholder="Utilities included, on-street parking, cat-friendly…"
+          aria-invalid={descriptionProblem ? true : undefined}
+          onChange={(e) => set({ description: e.target.value })}
+        />
+        {descriptionProblem && (
+          <span className="mt-1 block text-sm text-red-600">{descriptionProblem}</span>
+        )}
+      </label>
+
+      <div className="mt-3 flex flex-wrap gap-4 text-sm">
+        <label className="inline-flex items-center gap-2 text-gray-700">
+          <input type="checkbox" checked={draft.sublease}
+            onChange={(e) => set({ sublease: e.target.checked, subleaseRightsConfirmed: false })} />
+          This is a sublease
+        </label>
+        <label className="inline-flex items-center gap-2 text-gray-700">
+          <input type="checkbox" checked={draft.furnished}
+            onChange={(e) => set({ furnished: e.target.checked })} />
+          Furnished
+        </label>
+        {/* A draft is already hidden; withdrawing is for something that was up. */}
+        {!lease.isDraft && (
+          <label className="inline-flex items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={draft.unavailable}
+              onChange={(e) => set({ unavailable: e.target.checked })} />
+            Withdrawn (hide from students)
+          </label>
+        )}
+      </div>
+
+      {needsRightsConfirmation && (
+        <div className="mt-3">
+          <SubleaseConsentCheckbox
+            checked={!!draft.subleaseRightsConfirmed}
+            onChange={(v) => set({ subleaseRightsConfirmed: v })}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+function UnitPanel({ unit, listing, isPropertyOwner, currentUserEmail, onChanged }) {
+  const listingId = listing?._id || listing?.id;
+  const [draft, setDraft] = useState({
+    name: unit.name ?? "",
+    bedrooms: unit.bedrooms ?? "",
+    bathrooms: unit.bathrooms ?? "",
+    area: unit.area ?? "",
+  });
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
+
+  const myLeases = (unit.leases ?? []).filter((l) => l.mine);
+  const myWithdrawn = myLeases.filter((l) => l.unavailable);
+
+  /*
+   * Every one of this landlord's withdrawn listings on the unit back on the market
+   * at once (Wyatt, 2026-11-07). One at a time through the same route as Publish
+   * again; if the unit needs adding to their agreement first, the signing popup
+   * opens once and this runs again after they sign.
+   */
+  const republishAll = async () => {
+    setSaving(true);
+    let done = 0;
+    let failed = 0;
+    try {
+      for (const lease of myWithdrawn) {
+        const res = await fetch(`/api/leases/${lease.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: true, unavailable: false }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          done += 1;
+          continue;
+        }
+        // Not covered, no payment method, an overdue invoice: the same for every
+        // listing here, so stop and show it (the popup re-runs this once signed).
+        if (data?.code === "billing_setup_required") {
+          if (done) await onChanged();
+          return publishErrorToast(data, "Couldn't publish these listings.", { retry: republishAll });
+        }
+        failed += 1;
+      }
+      if (done) toast.success(`Published ${done} ${done === 1 ? "listing" : "listings"}. Students can see ${done === 1 ? "it" : "them"} again.`);
+      if (failed) toast.error(`${failed} ${failed === 1 ? "listing" : "listings"} could not be published again.`);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const otherLeases = (unit.leases ?? []).filter((l) => !l.mine);
+  // Marked only on a live property; in a draft property everything is a draft.
+  const unitIsDraft = !!unit.isDraft && !listing?.isDraft;
+
+  const patchUnit = async (payload, message) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units/${unit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't save that unit.");
+      if (message) toast.success(message);
+      setDirty(false);
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /*
+   * Removing a unit is the property owner's alone (the server enforces the
+   * same), and it takes every offering on the unit with it, so the prompt says
+   * how many.
+   */
+  const removeUnit = async () => {
+    const n = (unit.leases ?? []).length;
+    const name = unit.name ?? "this unit";
+    const extra = n
+      ? ` Its ${n} ${n === 1 ? "listing is" : "listings are"} taken down with it.`
+      : "";
+    if (!confirm(`Delete ${name}? Students stop seeing it.${extra}`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units/${unit.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Couldn't delete that unit.");
+      toast.success("Unit deleted.");
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white" data-gap={`unit:${unit.id}`}>
+      <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+        <h4 className="text-sm font-semibold text-gray-900">
+          {unit.name ?? `${unit.bedrooms ?? "?"} bed · ${unit.bathrooms ?? "?"} bath`}
+        </h4>
+        <span className="text-xs text-gray-500">
+          {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
+          {unit.area != null ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
+        </span>
+        {unitIsDraft ? (
+          <>
+            <DraftBadge />
+            <span className="text-[11px] text-amber-700">
+              {unit.draftByOther
+                ? "Added by another landlord. Students see it once they publish."
+                : "Students can't see this unit or its listings yet."}
+            </span>
+          </>
+        ) : (
+          !unit.available && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">No live offering</span>
+          )
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {myWithdrawn.length > 1 && !dirty && (
+            <button onClick={republishAll} disabled={saving} type="button"
+              className="rounded-lg border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-50 disabled:opacity-60">
+              {saving ? "Publishing…" : `Publish all again (${myWithdrawn.length})`}
+            </button>
+          )}
+          {/* Save first: publishing half-edited specs would put the old ones live. */}
+          {unitIsDraft && !dirty && (
+            <PublishButton kind="unit" id={unit.id} label="Publish unit" onPublished={onChanged}
+              disabledReason={unit.draftByOther ? "Another landlord added this unit. It goes live when they publish their listing." : null} />
+          )}
+          {isPropertyOwner && dirty && (
+            <button onClick={() => patchUnit(draft, "Unit saved.")} disabled={saving}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+              {saving ? "Saving…" : "Save unit"}
+            </button>
+          )}
+          {isPropertyOwner && (
+            <button onClick={removeUnit} disabled={saving} type="button"
+              title="Delete this unit" aria-label="Delete this unit"
+              className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isPropertyOwner ? (
+        <div className="grid gap-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
+          {/* The unit's one name. Whatever is typed here is what every screen
+              calls this unit, students' and landlords' alike. */}
+          <label className="block sm:col-span-4 lg:col-span-3">
+            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              {UNIT_NAME_LABEL}
+              <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+            </span>
+            <input className={`mt-1 w-full ${field}`} value={draft.name}
+              maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
+              onChange={(e) => set({ name: e.target.value })} />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Beds</span>
+            <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.bedrooms}
+              onChange={(e) => set({ bedrooms: clampCount(e.target.value) })} />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Baths</span>
+            <input type="number" min="0" step="0.5" className={`mt-1 w-full ${field}`} value={draft.bathrooms}
+              onChange={(e) => set({ bathrooms: clampCount(e.target.value) })} />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
+            <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
+              onChange={(e) => set({ area: clampCount(e.target.value) })} />
+          </label>
+          {/* The plan sits in the same row as the numbers it draws. */}
+          <div className="block">
+            <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-start gap-4 px-4 py-3">
+          <p className="text-sm text-gray-500">
+            {unit.bedrooms ?? "?"} bed · {unit.bathrooms ?? "?"} bath
+            {unit.area ? ` · ${Number(unit.area).toLocaleString()} sq ft` : ""}
+            <span className="ml-2 text-xs text-gray-400">Managed by the property owner</span>
+          </p>
+          <UnitFloorPlan listing={listing} unit={unit} onChanged={onChanged} inline />
+        </div>
+      )}
+
+      {/*
+        * The offerings sit on a darker ground than the unit above them. They are
+        * a different level of the record owned by different people, and on a
+        * white-on-white panel the boundary between "this apartment" and "the
+        * terms someone is offering on it" was invisible.
+        */}
+      <div className="border-t border-gray-200 bg-gray-100/70">
+        {(unit.leases ?? []).length === 0 && (
+          <>
+            <SectionLabel>Listings on this unit</SectionLabel>
+            <p className="px-4 pb-3 text-sm text-gray-500">
+              No offerings on this unit yet.
+            </p>
+          </>
+        )}
+
+        {/*
+          * Split by who owns them rather than sorted into one list. The two
+          * groups are not the same kind of thing: the first is yours to edit,
+          * the second is what a student sees beside it and cannot be touched.
+          * Interleaving them by price made the editable rows something you had
+          * to hunt for on a unit with competing offerings.
+          */}
+        {myLeases.length > 0 && (
+          <>
+            <SectionLabel>Your listings on this unit</SectionLabel>
+            <ul className="space-y-3 px-4 pb-3 pt-2">
+              {myLeases.map((lease) => (
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
+              ))}
+            </ul>
+          </>
+        )}
+
+        {otherLeases.length > 0 && (
+          <>
+            <SectionLabel>
+              {otherLeases.length === 1
+                ? "Other landlord's listing"
+                : `Other landlords' listings (${otherLeases.length})`}
+            </SectionLabel>
+            <ul className="space-y-3 px-4 pb-3 pt-2">
+              {otherLeases.map((lease) => (
+                <LeaseRow key={lease.id} lease={lease} listingId={listingId}
+                  isPropertyOwner={isPropertyOwner} onChanged={onChanged}
+                  propertyIsDraft={!!listing?.isDraft} />
+              ))}
+            </ul>
+          </>
+        )}
+
+        {/*
+          * A landlord can hold more than one offering on the same apartment —
+          * different terms, or a sublease alongside their standard lease — and
+          * several landlords can each hold their own. Adding one creates an empty
+          * offering to fill in rather than opening a separate form, so it lands in
+          * the same list the others are edited in.
+          */}
+        <div className="border-t border-gray-200 px-4 py-3">
+          <button
+            type="button" disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const res = await fetch("/api/leases", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    unitId: unit.id,
+                    leaseTermMonths: [12],
+                    available: true,
+                    // Only read for a landlord's FIRST lease at the property.
+                    // After that the server copies the contact block they set
+                    // in EditorContact onto every new one.
+                    contactEmail: currentUserEmail ?? null,
+                    // On a live unit the new offering is a draft until published,
+                    // so students never see it half filled in. A draft unit or
+                    // property already hides it.
+                    draft: !listing?.isDraft && !unit.isDraft,
+                  }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) return toast.error(data.error || "Couldn't add a listing.");
+                toast.success(
+                  !listing?.isDraft && !unit.isDraft
+                    ? "Draft added. Fill in your terms, then publish it."
+                    : "Added. Fill in your terms below."
+                );
+                await onChanged();
+              } catch {
+                toast.error("Network error.");
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-60"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add another listing on this unit
+          </button>
+        </div>
+      </div>
+
+      {/* The renter-facing panel puts Contact here. For a landlord it is the
+          honest answer to "can students see this?" — and that is now decided by
+          the offerings above rather than by a switch of the unit's own. A unit
+          used to carry its own availability flag, set here and reported nowhere
+          the landlord looked; it drifted out of step with the marketplace and
+          quietly hid live properties. Withdraw the last offering to take a unit
+          off the market; add or restore one to put it back.
+
+          Not on a draft property. Its units are born with published_at set,
+          so one with a live-shaped offering read "On the market, students can
+          see this unit" under a banner saying students can see none of it.
+          The banner is the whole answer there. */}
+      {isPropertyOwner && !listing?.isDraft && (
+        <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+          <span className="text-xs text-gray-500">
+            {unitIsDraft
+              ? "A draft: students won't see this unit until you publish it."
+              : unit.available
+              ? "On the market — students can see this unit."
+              : "Hidden from students: every offering on this unit has been withdrawn. Publish one again above, or add a new one, to relist it."}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * The unsaved tab behind the +.
+ *
+ * Beds and baths are asked for rather than defaulted. The first version of this
+ * created the row immediately with nothing in it, which the database refused
+ * outright (both columns are NOT NULL) — and had it succeeded, a placeholder
+ * 1-bed would have gone straight into browse and matched bed/bath filters no
+ * real apartment here answers.
+ */
+function NewUnitPanel({ saving, onCancel, onCreate }) {
+  const [draft, setDraft] = useState({
+    name: "", bedrooms: "", bathrooms: "", area: "",
+  });
+  const [attempted, setAttempted] = useState(false);
+  const set = (p) => setDraft((d) => ({ ...d, ...p }));
+
+  const missing = [];
+  if (draft.bedrooms === "") missing.push({ key: "bedrooms", label: "Bedrooms" });
+  if (draft.bathrooms === "") missing.push({ key: "bathrooms", label: "Bathrooms" });
+  const missingKeys = new Set(missing.map((m) => m.key));
+  const bad = (key) =>
+    attempted && missingKeys.has(key) ? "border-red-400 ring-1 ring-red-200" : "";
+
+  const submit = () => {
+    if (missing.length) return setAttempted(true);
+    onCreate({
+      name: draft.name,
+      bedrooms: draft.bedrooms,
+      bathrooms: draft.bathrooms,
+      area: draft.area,
+    });
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 px-4 py-3">
+        <h4 className="text-sm font-semibold text-gray-900">A new unit</h4>
+        <p className="text-xs text-gray-500">
+          The apartment itself. You add your own terms on it once it exists.
+        </p>
+      </div>
+
+      <div className="grid gap-3 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
+        <label className="block sm:col-span-3">
+          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            {UNIT_NAME_LABEL}
+            <InfoTip label="How to name this">{UNIT_NAME_HELP}</InfoTip>
+          </span>
+          <input className={`mt-1 w-full ${field}`} value={draft.name}
+            maxLength={UNIT_NAME_MAX} placeholder="2W, or a floor plan like The Aspen"
+            onChange={(e) => set({ name: e.target.value })} />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Beds <span className="text-red-500">*</span>
+          </span>
+          <input type="number" min="0" className={`mt-1 w-full ${field} ${bad("bedrooms")}`} value={draft.bedrooms}
+            onChange={(e) => set({ bedrooms: clampCount(e.target.value) })} />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Baths <span className="text-red-500">*</span>
+          </span>
+          <input type="number" min="0" step="0.5" className={`mt-1 w-full ${field} ${bad("bathrooms")}`}
+            value={draft.bathrooms}
+            onChange={(e) => set({ bathrooms: clampCount(e.target.value) })} />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Sq ft</span>
+          <input type="number" min="0" className={`mt-1 w-full ${field}`} value={draft.area}
+            onChange={(e) => set({ area: clampCount(e.target.value) })} />
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+        <button onClick={submit} disabled={saving}
+          className="rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          {saving ? "Adding…" : "Add unit"}
+        </button>
+        <button onClick={onCancel} disabled={saving}
+          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700">
+          Cancel
+        </button>
+        {attempted && missing.length > 0 && (
+          <span className="text-xs font-medium text-red-600">
+            Still needed: {missing.map((m) => m.label).join(", ")}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The tab's name for a unit: its name, and only then a description of it.
+// Mirrors the student-facing selector, which is the point: a landlord editing
+// Apt 2W should be looking at the same label a renter sees.
+function unitTabLabel(unit) {
+  if (unit.name) return unit.name;
+  if ((unit.bedrooms ?? 0) === 0 && unit.bedrooms != null) return "Studio";
+  return `${unit.bedrooms ?? "?"} bd · ${unit.bathrooms ?? "?"} ba`;
+}
+
+export default function EditorUnits({ listing, isPropertyOwner, currentUserEmail, onChanged }) {
+  // Every unit, available or not — see the note at the top of this file.
+  const units = listing?.unitTypes ?? [];
+  const myUnitIds = new Set((listing?.myLeases ?? []).map((l) => l.unitId));
+  /*
+   * What a landlord who does NOT own the property sees: the units they are
+   * letting, plus any unit nobody is offering at all.
+   *
+   * That second group matters twice over. It is how a landlord claims a vacant
+   * apartment in someone else's building — the point of letting anyone add a
+   * unit. And without it, a unit you just added yourself vanished the moment it
+   * was created: a new unit has no lease, so "units I hold a lease on" excluded
+   * it, and the panel insisted nothing had happened while the row sat in the
+   * database.
+   */
+  const listed = isPropertyOwner
+    ? units
+    : units.filter(
+        (u) => myUnitIds.has(u.id) || !(u.leases ?? []).some((l) => !l.unavailable)
+      );
+  const listingId = listing?._id || listing?.id;
+
+  /*
+   * Dragging a tab reorders the units for every view (utils/unitOrder). The new
+   * order shows the moment it is dropped and is saved behind it; until that
+   * save lands the tabs go gray and hold still, so the next drag starts from
+   * an order that is really stored. A failed save snaps back. Owner-only, like
+   * the rest of the unit, and pointless with one tab.
+   */
+  const [localOrder, setLocalOrder] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  /*
+   * While a tab is dragged the others move out of its way: previewOrder is
+   * the order on screen, and releasing saves exactly that. (Working out the
+   * drop position from the tab let go on put a tab dragged rightward one
+   * place short, behind the tab it was dropped on.)
+   */
+  const [previewOrder, setPreviewOrderState] = useState(null);
+  // The same order in a ref: drop and drag-end both fire on release, in one
+  // render, and only the first may save.
+  const previewRef = useRef(null);
+  const setPreviewOrder = (ids) => {
+    previewRef.current = ids;
+    setPreviewOrderState(ids);
+  };
+  const canReorder = isPropertyOwner && listed.length > 1 && !savingOrder;
+  const order = previewOrder ?? localOrder;
+  const visible = order
+    ? order.map((id) => listed.find((u) => u.id === id)).filter(Boolean)
+    : listed;
+
+  const saveOrder = async (ids) => {
+    setLocalOrder(ids);
+    setSavingOrder(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units/order`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLocalOrder(null);
+        return toast.error(data.error || "Couldn't save the new order.");
+      }
+      await onChanged();
+      setLocalOrder(null);
+    } catch {
+      setLocalOrder(null);
+      toast.error("Network error.");
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  // Dragged over another tab, past its middle: take its place.
+  const dragOver = (e, targetId) => {
+    if (!dragId || targetId === dragId) return;
+    const ids = visible.map((u) => u.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    // Tabs differ in width; waiting for the middle stops a swap undoing itself.
+    if ((from < to && e.clientX < mid) || (from > to && e.clientX > mid)) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragId);
+    setPreviewOrder(ids);
+  };
+
+  // Released: keep what is on screen, saving it if it changed.
+  const finishDrag = () => {
+    const ids = previewRef.current;
+    setDragId(null);
+    setPreviewOrder(null);
+    if (!ids) return;
+    const before = listed.map((u) => u.id);
+    if (ids.join() !== (localOrder ?? before).join()) saveOrder(ids);
+  };
+
+  // Studios first, then by bedrooms, bathrooms and size.
+  const layoutOrder = [...listed]
+    .sort(
+      (a, b) =>
+        (a.bedrooms ?? 99) - (b.bedrooms ?? 99) ||
+        (Number(a.bathrooms) || 99) - (Number(b.bathrooms) || 99) ||
+        (Number(a.area) || 0) - (Number(b.area) || 0) ||
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true })
+    )
+    .map((u) => u.id);
+  const sortedAlready = layoutOrder.join() === visible.map((u) => u.id).join();
+
+  /*
+   * One unit open at a time, selected by id rather than index so adding or
+   * removing a unit doesn't silently swap which one is on screen. Stacking every
+   * unit vertically made a four-unit building an enormous scroll of near-identical
+   * forms with no way to tell where one ended — the same reason browse tabs them.
+   */
+  const [openId, setOpenId] = useState(null);
+
+  // "Fill this in" from the missing-fields box (ImportGaps): open the unit
+  // the field belongs to, then scroll to and highlight the field.
+  useEffect(() => {
+    const onFocus = (e) => {
+      const { target, unitId } = e.detail ?? {};
+      if (unitId) setOpenId(unitId);
+      setTimeout(() => revealGap(target), unitId ? 250 : 50);
+    };
+    window.addEventListener(FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_EVENT, onFocus);
+  }, []);
+  // A unit being described but not yet saved. It gets its own tab so the + is
+  // still one click, but nothing reaches the database until the specs are
+  // there — a unit with invented beds and baths would show up in browse and
+  // match filters it has no business matching.
+  const [drafting, setDrafting] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const justAdded = useRef(null);
+
+  // Keep the selection valid: fall back to the first unit, and jump to a unit
+  // this component just created rather than leaving the landlord to find it.
+  useEffect(() => {
+    if (justAdded.current && visible.some((u) => u.id === justAdded.current)) {
+      setOpenId(justAdded.current);
+      justAdded.current = null;
+      return;
+    }
+    if (!visible.length) return;
+    if (!visible.some((u) => u.id === openId)) setOpenId(visible[0].id);
+  }, [visible, openId]);
+
+  const createUnit = async (payload) => {
+    setAdding(true);
+    try {
+      const res = await fetch(`/api/landlord/listings/${listingId}/units`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // A unit added to a live property is a draft until published.
+        body: JSON.stringify({ ...payload, draft: !listing?.isDraft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 409 means this unit is already on the property. That is an answer, not
+        // a failure — open the one that exists rather than making them find it.
+        if (res.status === 409 && data.unit?.id) {
+          justAdded.current = data.unit.id;
+          setDrafting(false);
+          toast("That unit is already here — opening it.");
+          await onChanged();
+          return;
+        }
+        return toast.error(data.error || "Couldn't add a unit.");
+      }
+      justAdded.current = data.unit?.id ?? null;
+      setDrafting(false);
+      // Adding the first real unit to a property nobody owns hands it over (see
+      // claimUnclaimedProperty). Worth saying out loud: the rest of the editor
+      // unlocks on the refetch below, and silently growing new powers is
+      // confusing where being told is not.
+      toast.success(
+        data.claimedProperty
+          ? "Unit added — this property is now yours to manage."
+          : !listing?.isDraft
+          ? "Draft unit added. Students won't see it until you publish it."
+          : "Unit added — add your listing on it below."
+      );
+      await onChanged();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const addButton = (
+    <button
+      type="button" onClick={() => setDrafting(true)} disabled={savingOrder}
+      title="Add a unit to this property"
+      aria-label="Add a unit to this property"
+      className={`flex shrink-0 items-center gap-1 border-b-2 px-3 py-2.5 text-sm font-semibold transition ${
+        drafting
+          ? "border-red-600 bg-red-600 text-white"
+          : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600"
+      }`}
+    >
+      <Plus className="h-4 w-4" />
+    </button>
+  );
+
+  if (!visible.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 p-5 text-sm text-gray-500">
+        <p>
+          {isPropertyOwner
+            ? "This property has no units yet."
+            : "You don't have a listing on any unit at this property."}
+        </p>
+        <button
+          type="button" onClick={() => setDrafting(true)}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-red-300 hover:text-red-600"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add a unit
+        </button>
+        {drafting && (
+          <div className="mt-3">
+            <NewUnitPanel
+              saving={adding}
+              onCancel={() => setDrafting(false)}
+              onCreate={createUnit}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const openUnit = visible.find((u) => u.id === openId) ?? visible[0];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex w-full overflow-x-auto rounded-xl bg-white shadow-sm">
+        {visible.map((u) => (
+          <button
+            key={u.id} type="button"
+            onClick={() => { setOpenId(u.id); setDrafting(false); }}
+            draggable={canReorder}
+            disabled={savingOrder}
+            onDragStart={(e) => {
+              setDragId(u.id);
+              setPreviewOrder(visible.map((x) => x.id));
+              e.dataTransfer.effectAllowed = "move";
+              // Firefox will not start a drag without data.
+              try { e.dataTransfer.setData("text/plain", u.id); } catch {}
+            }}
+            onDragOver={(e) => {
+              if (!dragId) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              dragOver(e, u.id);
+            }}
+            onDrop={(e) => { e.preventDefault(); finishDrag(); }}
+            onDragEnd={finishDrag}
+            className={`flex-1 whitespace-nowrap border-b-2 px-3 py-2.5 text-center text-sm font-semibold transition ${
+              savingOrder
+                ? openUnit.id === u.id && !drafting
+                  ? "cursor-wait border-gray-400 bg-gray-400 text-white"
+                  : "cursor-wait border-gray-200 bg-gray-100 text-gray-400"
+                : openUnit.id === u.id && !drafting
+                ? "border-red-600 bg-red-600 text-white"
+                : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+            }${canReorder ? " cursor-grab active:cursor-grabbing" : ""}${
+              dragId === u.id ? " opacity-50 ring-2 ring-inset ring-red-400" : ""
+            }`}
+          >
+            {unitTabLabel(u)}
+            {/* A unit with nothing on offer still gets a tab — it is the only
+                way back to one — but it should not look like an active listing. */}
+            {u.isDraft && !listing?.isDraft ? (
+              <span className={`ml-1.5 text-[10px] font-semibold ${
+                openUnit.id === u.id && !drafting ? "text-amber-100" : "text-amber-600"}`}>
+                draft
+              </span>
+            ) : !u.available && (
+              <span className={`ml-1.5 text-[10px] font-normal ${
+                openUnit.id === u.id && !drafting ? "text-red-100" : "text-red-400"}`}>
+                hidden
+              </span>
+            )}
+          </button>
+        ))}
+        {addButton}
+      </div>
+      {isPropertyOwner && listed.length > 1 && (
+        <div className="-mt-1 flex items-center gap-2 px-1 text-[11px] text-gray-400">
+          {savingOrder ? (
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-gray-500" />
+              Saving order…
+            </span>
+          ) : (
+            <span>Drag the tabs to change the order students see.</span>
+          )}
+          <button
+            type="button"
+            onClick={() => saveOrder(layoutOrder)}
+            disabled={savingOrder || sortedAlready}
+            title={sortedAlready ? "Already sorted by bedrooms and bathrooms" : "Sort studios first, then by bedrooms, bathrooms and size"}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:cursor-default disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+          >
+            <ArrowDownWideNarrow className="h-3 w-3" />
+            Sort by beds and baths
+          </button>
+        </div>
+      )}
+
+      {drafting ? (
+        <NewUnitPanel
+          saving={adding}
+          onCancel={() => setDrafting(false)}
+          onCreate={createUnit}
+        />
+      ) : (
+        <UnitPanel key={openUnit.id} unit={openUnit} listing={listing}
+          isPropertyOwner={isPropertyOwner} currentUserEmail={currentUserEmail}
+          onChanged={onChanged} />
+      )}
+    </div>
+  );
+}

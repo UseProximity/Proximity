@@ -1,0 +1,38 @@
+{
+  "intro": [
+    "The 2 bedroom is the workhorse of WashU (Washington University in St. Louis) off-campus housing: one friend on one lease, and a per-person price that beats living alone almost every time.",
+    "Everything below is live inventory with walk times to campus already computed and reviews from students who lived in the building. Do the per-person math before you tour. The sticker price covers the whole unit, so your share is roughly half of it."
+  ],
+  "directAnswer": "2 bedroom apartments near WashU are commonly found in Skinker-DeBaliviere, University City, MO, and around the Delmar Loop. Every rent on this page is live. The closer you get to campus and the newer the building, the more you'll pay, and splitting it two ways is what makes the math work.",
+  "faqs": [
+    {
+      "q": "How much is a 2 bedroom apartment near WashU?",
+      "a": "It depends on how close to campus you want to be and how new the building is. Per-person math is what matters: divide each listing's rent by two and add utilities if they're separate. Every listing above shows its real current rent.",
+      "links": [
+        {
+          "label": "See the rent data",
+          "href": "/washu/housing-cost"
+        }
+      ]
+    },
+    {
+      "q": "What does a 2 bedroom cost per person?",
+      "a": "Take the unit rent, divide by two, then add utilities if they aren't included. That split is why 2 bedrooms are the most popular student setup: your share usually lands well below what a 1 bedroom or studio costs on its own."
+    },
+    {
+      "q": "When should two of us sign a lease for next year?",
+      "a": "Students consistently report that private landlords start signing for the next school year around November, and the good 2 bedrooms move first. WashU affiliated companies like Quadrangle and Parallel typically open signing in spring. If you've got your person locked in by late fall, you get the best selection."
+    },
+    {
+      "q": "Are rents near WashU going up?",
+      "a": "Yes, modestly. Zillow's rent index for ZIP 63130 (University City, MO) was up 4.7% year over year and 63112 (Skinker-DeBaliviere) up 3.9% as of August 2026, against 3.9% for the St. Louis metro. Source: Zillow Research. Signing earlier in the cycle generally beats waiting."
+    }
+  ],
+  "benchmarkNote": "Rent trend figures cite Zillow's Observed Rent Index (ZORI), ZIP-level data as of August 2026. Rents on listings are each landlord's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
+}

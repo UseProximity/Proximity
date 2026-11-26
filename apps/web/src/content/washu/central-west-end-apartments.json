@@ -1,0 +1,38 @@
+{
+  "intro": [
+    "The Central West End is where the WashU (Washington University in St. Louis) Medical Campus lives, which makes it the neighborhood of choice for med and nursing students, plus anyone doing research at the hospital complex. It's also just a great neighborhood: Euclid Avenue cafes, Forest Park across the street, a Metrolink stop that runs straight to the Danforth campus.",
+    "Below is the live CWE inventory with commute context and reviews from students. If you're Danforth-based, mind the distance. The CWE is a train or bike commute to main campus, not a walk."
+  ],
+  "directAnswer": "The Central West End is the go-to neighborhood for WashU medical campus students, sitting next to the hospital complex and Forest Park with a Metrolink connection to the Danforth campus. Rents run near the top of the WashU market, and every listing on this page shows its live price.",
+  "faqs": [
+    {
+      "q": "How do CWE residents get to the Danforth campus?",
+      "a": "Metrolink is the usual answer, since the Central West End station connects toward the Danforth campus stops in minutes. Biking through Forest Park is the popular fair-weather alternative, and driving is easy too. If you'll be on the main campus daily, weigh that commute against just living near the Loop."
+    },
+    {
+      "q": "How much do CWE apartments cost?",
+      "a": "The CWE runs near the top of the WashU market, second only to Clayton among the main student neighborhoods in Zillow's rent data. High-rise buildings on and near Euclid typically cost the most, while older buildings on the side streets can come in lower.",
+      "links": [
+        {
+          "label": "See the rent data",
+          "href": "/washu/housing-cost"
+        }
+      ]
+    },
+    {
+      "q": "Who should live in the CWE?",
+      "a": "Medical campus people first and foremost, because being able to walk to the hospital complex changes your life during rotations. Beyond that, grad students and anyone who'd rather have a real city neighborhood with restaurants and Forest Park at the door than a college-street scene."
+    },
+    {
+      "q": "Is the CWE good for undergrads?",
+      "a": "t can be. The Central West End works best for WashU undergrads who are comfortable commuting to the Danforth Campus and want a more urban neighborhood with restaurants, apartments, and MetroLink nearby. It’s especially convenient if you spend time at the WashU Medical Campus, but Danforth students should compare the commute before signing"
+    }
+  ],
+  "benchmarkNote": "Neighborhood comparisons on this page cite Zillow's Observed Rent Index (ZORI), ZIP-level data as of August 2026 for ZIP 63108. Rents on listings are each landlord's current asking rent. Proximity does not publish averages computed from its own listings.",
+  "sources": [
+    {
+      "label": "Zillow Research rent data",
+      "url": "https://www.zillow.com/research/"
+    }
+  ]
+}

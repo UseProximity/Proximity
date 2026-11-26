@@ -11,6 +11,8 @@
  * and /listings/[id] still renders those rows — so this filter is load-bearing.
  */
 import { guides } from "@/lib/guides";
+import { washuPages } from "@/lib/washuPages";
+import { listingIsUnavailable } from "@/lib/listings/unitAvailability";
 
 const SITE_URL = "https://useproximity.org";
 
@@ -25,12 +27,42 @@ const PAGE_SIZE = 1000;
 const staticRoutes = [
   { path: "/", priority: 1, changeFrequency: "weekly" },
   { path: "/browse", priority: 0.9, changeFrequency: "daily" },
-  { path: "/matchmaking", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/find-your-place", priority: 0.8, changeFrequency: "monthly" },
   { path: "/guides", priority: 0.7, changeFrequency: "monthly" },
   { path: "/about", priority: 0.6, changeFrequency: "monthly" },
   { path: "/CampusHub", priority: 0.6, changeFrequency: "weekly" },
   { path: "/lease-check", priority: 0.6, changeFrequency: "monthly" },
+  { path: "/washu", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/privacy", priority: 0.3, changeFrequency: "yearly" },
+  { path: "/terms", priority: 0.3, changeFrequency: "yearly" },
+  { path: "/support", priority: 0.3, changeFrequency: "yearly" },
 ];
+
+// /washu child pages enter the sitemap only when they meet the same
+// inventory threshold that flips their robots meta to index — one gate,
+// both places, so they can never disagree.
+async function fetchWashuEntries() {
+  // Lazy, for the same reason fetchListingEntries is: queryListings reaches
+  // @/lib/supabase, which throws from its module body when the DB env vars are
+  // missing. Imported at the top of this file that throw happens at module
+  // evaluation, before either try/catch below can run — killing the whole route
+  // rather than degrading to a static sitemap.
+  const { getWashuPageListings } = await import("@/lib/listings/queryListings");
+  const results = await Promise.all(
+    washuPages.map(async (page) => ({
+      page,
+      result: await getWashuPageListings(page),
+    }))
+  );
+  return results
+    .filter(({ result }) => result.meetsThreshold)
+    .map(({ page }) => ({
+      url: `${SITE_URL}/washu/${page.slug}`,
+      lastModified: new Date(page.dateModified),
+      changeFrequency: "weekly",
+      priority: 0.7,
+    }));
+}
 
 async function fetchListingEntries() {
   // Lazy import so a missing env var degrades to a static-only sitemap
@@ -41,9 +73,14 @@ async function fetchListingEntries() {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from("listings")
-      .select("id, updated_at, unavailable, listing_units(available)")
+      .select(
+        "id, updated_at, unavailable, listing_units(deleted_at, published_at, unit_leases(is_active, unavailable, published_at))"
+      )
       .is("deleted_at", null)
+      .not("published_at", "is", null)
       .eq("unavailable", false)
+      // Listings made by an App Store review sandbox account are not public.
+      .eq("review_sandbox", false)
       .order("id")
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
@@ -52,10 +89,7 @@ async function fetchListingEntries() {
   }
 
   return rows
-    .filter((row) => {
-      const units = row.listing_units ?? [];
-      return !(units.length > 0 && units.every((u) => u.available === false));
-    })
+    .filter((row) => !listingIsUnavailable(row))
     .map((row) => ({
       url: `${SITE_URL}/listings/${row.id}`,
       ...(row.updated_at ? { lastModified: new Date(row.updated_at) } : {}),
@@ -77,6 +111,12 @@ export default async function sitemap() {
       priority: 0.7,
     })),
   ];
+
+  try {
+    entries.push(...(await fetchWashuEntries()));
+  } catch (error) {
+    console.error("sitemap: failed to load /washu pages", error);
+  }
 
   try {
     entries.push(...(await fetchListingEntries()));

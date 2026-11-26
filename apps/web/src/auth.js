@@ -1,29 +1,111 @@
 /*
- * Authentication configuration for the entire application. Sets up NextAuth v5 with two
- * sign-in methods: Google OAuth (primary, used by most students) and email/password
- * Credentials (for accounts created without Google). On first Google sign-in a new user
- * row is inserted into Supabase with a default "student" role. On subsequent Google
- * sign-ins the google_account flag and profile image are kept in sync.
+ * Authentication configuration for the entire application. Sets up NextAuth v5 with three
+ * sign-in methods: Google OAuth (primary, used by most students), email/password
+ * Credentials (for accounts created without Google), and chat-link Credentials (magic
+ * links from chat notification emails). On first Google sign-in a new user row is inserted
+ * into Supabase with a default "student" role. On subsequent Google sign-ins the
+ * google_account flag and profile image are kept in sync.
  *
  * The JWT callback caches userId, role, and profileComplete in the token so every
  * session() call is a zero-DB read. Role freshness is enforced by ROLE_REFRESH_MS (60s):
  * after that window the JWT callback re-fetches role and profileComplete from the DB so
- * admin-side role changes propagate without requiring a sign-out. The session callback
- * exposes those three fields to the client via session.user.
+ * admin-side role changes propagate without requiring a sign-out. Chat-link sessions set
+ * viaEmailLink on the JWT for analytics / future soft UI; they are otherwise full sessions.
+ * The session callback exposes those fields to the client via session.user.
  *
  * Exports: handlers (GET/POST for /api/auth/*), signIn, signOut, auth (server-side
  * session getter used by layout.js and protected API routes).
  */
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import supabase from "@/lib/supabase";
+import { AUTH_ERRORS } from "@proximity/auth-core";
+import { hashChatAccessToken } from "@/lib/chat/accessToken";
+import { emailMatchPattern } from "@/lib/auth/email";
+import {
+  checkLoginLock,
+  recordLoginFailure,
+  recordLoginSuccess,
+  clientIp,
+} from "@/lib/auth/loginThrottle";
+import { isRestorable, signRestoreToken } from "@/lib/auth/accountRestore";
+import { onSignIn, stampSignup } from "@/lib/marketing/accounts";
 
 // How long the JWT can trust its cached role before re-checking the DB.
 // Short enough to heal stale sessions (e.g. role was changed in another
 // tab / by an admin) without requiring a sign-out.
 const ROLE_REFRESH_MS = 60_000;
+
+// The right password on an account whose email was never verified. It has to
+// extend CredentialsSignin: Auth.js swaps any other error thrown from
+// authorize() for a generic "Configuration" error, so the sign-in form never
+// learned the account was unverified and said "Invalid email or password".
+// The code reaches the client as `result.code`.
+class EmailNotVerified extends CredentialsSignin {
+  code = AUTH_ERRORS.EMAIL_NOT_VERIFIED;
+}
+
+// Too many failed password attempts for this email or IP. Same CredentialsSignin
+// trick as above, so the sign-in form receives the code as `result.code`.
+class LoginLocked extends CredentialsSignin {
+  code = AUTH_ERRORS.TOO_MANY_ATTEMPTS;
+}
+
+// The right password on an account deleted within its 30-day grace period. The
+// sign-in form answers it with the restore screen (POST /api/auth/restore-account).
+class AccountDeleted extends CredentialsSignin {
+  code = AUTH_ERRORS.ACCOUNT_DELETED;
+}
+
+/*
+ * Run a Supabase query without letting a network failure escape.
+ *
+ * supabase-js returns { data, error } for anything Postgres says no to, but a
+ * transport failure — the "TypeError: fetch failed" this project sees against
+ * Supabase — REJECTS instead. Unhandled inside the jwt callback, that rejection
+ * takes the whole callback down, and next-auth answers /api/auth/session with
+ * nothing: the browser concludes it is signed out and the UI starts asking a
+ * logged-in landlord to sign in.
+ *
+ * A blip must not end a session. The caller decides what a failed read means;
+ * here it simply becomes an error result like any other, and the token keeps
+ * the identity it was already carrying.
+ */
+async function safeQuery(run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error("[auth] Supabase query failed, keeping cached token:", err?.message);
+    return { data: null, error: err };
+  }
+}
+
+/*
+ * The token fields every sign-in path needs: id, email, name, role,
+ * profileComplete. Shared by the password and chat-link Credentials providers
+ * so they cannot drift apart. Wrapped in safeQuery so a Supabase blip returns
+ * null (caller keeps whatever the token already had) instead of rejecting
+ * inside the jwt callback.
+ */
+async function loadUserTokenFields(userId) {
+  const { data: existing } = await safeQuery(() =>
+    supabase
+      .from("users")
+      .select("id, profile_complete, name, email, roles!role_id(name)")
+      .eq("id", userId)
+      .single()
+  );
+  if (!existing) return null;
+  return {
+    userId: existing.id,
+    email: existing.email,
+    name: existing.name,
+    role: existing.roles?.name ?? "student",
+    profileComplete: existing.profile_complete ?? false,
+  };
+}
 
 const config = {
   providers: [
@@ -32,47 +114,155 @@ const config = {
       clientSecret: process.env.GOOGLE_SECRET,
     }),
     Credentials({
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const { email, password } = credentials;
         if (!email || !password) return null;
 
+        // Checked before any DB lookup so a locked unknown email and a locked
+        // real one are indistinguishable. See lib/auth/loginThrottle.js.
+        const who = { email: String(email), ip: clientIp(request?.headers) };
+        if (checkLoginLock(who).locked) throw new LoginLocked();
+
         const { data: user } = await supabase
           .from("users")
-          .select("id, email, name, password_hash, email_verified, profile_complete, roles!role_id(name)")
-          .eq("email", email)
+          .select("id, email, name, password_hash, email_verified, profile_complete, deleted_at, roles!role_id(name)")
+          .ilike("email", emailMatchPattern(email))
           .single();
 
-        if (!user || !user.password_hash) return null;
-        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+        if (!user || !user.password_hash) {
+          recordLoginFailure(who);
+          return null;
+        }
 
         const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) return null;
+        if (!valid) {
+          recordLoginFailure(who);
+          return null;
+        }
 
+        // A deleted account is only named as deleted once the password has
+        // proved it is theirs, so "this account was deleted" never leaks that
+        // an address was registered. Inside the grace period that opens the
+        // restore screen; after it (purge pending) it fails like a wrong
+        // password, as before.
+        if (user.deleted_at) {
+          if (user.email_verified && isRestorable(user)) throw new AccountDeleted();
+          recordLoginFailure(who);
+          return null;
+        }
+
+        // Checked after the password, so only the account's owner learns that
+        // it exists but is unverified. Not a password guess, so it neither
+        // counts as a failure nor resets the counter.
+        if (!user.email_verified) throw new EmailNotVerified();
+
+        recordLoginSuccess(who);
         return { id: user.id, email: user.email, name: user.name };
+      },
+    }),
+    // Magic link from chat notification emails. Token is burned here (single-use).
+    Credentials({
+      id: "chat-link",
+      name: "Chat link",
+      credentials: {
+        token: { label: "Token", type: "text" },
+      },
+      async authorize(credentials) {
+        const raw = credentials?.token;
+        if (typeof raw !== "string" || !raw.trim()) return null;
+
+        const { data, error } = await supabase.rpc("rpc_consume_chat_access_token", {
+          p_token_hash: hashChatAccessToken(raw.trim()),
+          p_purpose: "thread_access",
+        });
+
+        if (error) {
+          console.error("chat-link authorize failed:", error);
+          return null;
+        }
+        if (!data?.userId) return null;
+
+        const fields = await loadUserTokenFields(data.userId);
+        if (!fields) return null;
+
+        return {
+          id: fields.userId,
+          email: fields.email,
+          name: fields.name,
+          viaEmailLink: true,
+          threadId: data.threadId ?? null,
+        };
       },
     }),
   ],
   session: { strategy: "jwt" },
   allowDangerousEmailAccountLinking: true,
   pages: {
+    // Every signIn() without a provider lands on the Proximity login page
+    // (email/password and Google) instead of NextAuth's unstyled default.
+    signIn: "/login",
     error: "/",
   },
   callbacks: {
-    async jwt({ token, user, account, trigger, session: updateData }) {
+    // Google only — Credentials already rejects a deleted account synchronously
+    // in authorize() below, before any session is created. Without this, Google
+    // completes the OAuth handshake and only the jwt callback's deleted_at guard
+    // (further down) strips the identity — but by then a session already exists
+    // with profileComplete: false, which is indistinguishable from a real new
+    // signup to anything that keys off that flag (ProfileCompletionModal).
+    // Returning a URL here aborts sign-in before jwt/session ever run for this
+    // attempt: no token, no cookie, no onboarding.
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !user?.email) return true;
+
+      const { data: existing } = await supabase
+        .from("users")
+        .select("id, deleted_at")
+        .eq("email", user.email)
+        .single();
+
+      if (existing?.deleted_at) {
+        // Google has just proved the address is theirs, so the login page may
+        // offer a restore. The token stands in for that proof on the restore
+        // request (lib/auth/accountRestore).
+        if (isRestorable(existing)) {
+          return `/login?error=ACCOUNT_DELETED&restore=${encodeURIComponent(signRestoreToken(existing.id))}`;
+        }
+        return "/login?error=ACCOUNT_DELETED";
+      }
+
+      return true;
+    },
+    async jwt({ token, user, account, trigger }) {
       // Credentials sign-in: user.id is the DB id returned from authorize()
       if (account?.provider === "credentials" && user?.id) {
-        const { data: existing } = await supabase
-          .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
-          .eq("id", user.id)
-          .single();
-        if (existing) {
-          token.userId = existing.id;
-          token.role = existing.roles?.name ?? "student";
-          token.profileComplete = existing.profile_complete ?? false;
-          if (existing.name) token.name = existing.name;
+        const fields = await loadUserTokenFields(user.id);
+        if (fields) {
+          token.userId = fields.userId;
+          token.role = fields.role;
+          token.profileComplete = fields.profileComplete;
+          if (fields.name) token.name = fields.name;
+          if (fields.email) token.email = fields.email;
           token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: fields.userId, role: fields.role });
         }
+        token.viaEmailLink = false;
+        return token;
+      }
+
+      // Chat magic-link: full session, flagged so we can tell how they arrived.
+      if (account?.provider === "chat-link" && user?.id) {
+        const fields = await loadUserTokenFields(user.id);
+        if (fields) {
+          token.userId = fields.userId;
+          token.role = fields.role;
+          token.profileComplete = fields.profileComplete;
+          if (fields.name) token.name = fields.name;
+          if (fields.email) token.email = fields.email;
+          token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: fields.userId, role: fields.role });
+        }
+        token.viaEmailLink = true;
         return token;
       }
 
@@ -82,9 +272,21 @@ const config = {
 
         const { data: existing } = await supabase
           .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
+          .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
           .eq("email", user.email)
           .single();
+
+        // Deleted account: leave the token without an identity rather than
+        // falling through to the insert below, which would attempt a second row
+        // on an email that already exists. The session callback then yields no
+        // user.id, so this reads as signed-out everywhere downstream.
+        if (existing?.deleted_at) {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
 
         if (!existing) {
           const { data: studentRole } = await supabase
@@ -109,6 +311,12 @@ const config = {
             .select("id")
             .single();
           if (error) console.error("jwt: failed to insert new user", error);
+          // Marketing attribution: the session cookie survived the Google round
+          // trip, so the account gets the visit's source now (PRD 7.4, edge case 1).
+          if (newUser?.id) {
+            await stampSignup(null, { userId: newUser.id, role: "student" });
+            await onSignIn(null, { userId: newUser.id, role: "student" });
+          }
           token.userId = newUser?.id ?? null;
           token.role = "student";
           token.profileComplete = false;
@@ -125,17 +333,25 @@ const config = {
           token.profileComplete = existing.profile_complete ?? false;
           if (existing.name) token.name = existing.name;
           token.roleCheckedAt = Date.now();
+          await onSignIn(null, { userId: existing.id, role: token.role });
         }
+        token.viaEmailLink = false;
       }
 
-      // Backfill old tokens issued before JWT caching was introduced
+      // Backfill old tokens issued before JWT caching was introduced.
+      // Must also honor deleted_at: this block keys off `!token.userId`, which
+      // is exactly the state the deletion guards above leave behind, so without
+      // the check it would re-resolve the row by email on the very next request
+      // and resurrect the signed-out session.
       if (!token.userId && token.email) {
-        const { data: sbUser } = await supabase
-          .from("users")
-          .select("id, profile_complete, name, roles!role_id(name)")
-          .eq("email", token.email)
-          .single();
-        if (sbUser) {
+        const { data: sbUser } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("id, profile_complete, name, deleted_at, roles!role_id(name)")
+            .eq("email", token.email)
+            .single()
+        );
+        if (sbUser && !sbUser.deleted_at) {
           token.userId = sbUser.id;
           token.role = sbUser.roles?.name ?? "student";
           token.profileComplete = sbUser.profile_complete ?? false;
@@ -144,15 +360,12 @@ const config = {
         }
       }
 
-      // Client called update({ profileComplete, role }) after profile completion
+      // Client called update() after a role or profile change it already saved
+      // server-side. The payload is whatever the browser POSTed to
+      // /api/auth/session, so it is never trusted: clearing roleCheckedAt makes
+      // the refresh below re-read role and profile_complete from the DB now.
       if (trigger === "update") {
-        if (updateData?.profileComplete !== undefined) {
-          token.profileComplete = updateData.profileComplete;
-        }
-        if (updateData?.role !== undefined) {
-          token.role = updateData.role;
-          token.roleCheckedAt = Date.now();
-        }
+        token.roleCheckedAt = 0;
       }
 
       // Auto-heal stale role/profile_complete from DB.
@@ -165,26 +378,72 @@ const config = {
         (!token.roleCheckedAt ||
           Date.now() - token.roleCheckedAt > ROLE_REFRESH_MS)
       ) {
-        const { data: fresh, error: refreshErr } = await supabase
-          .from("users")
-          .select("profile_complete, roles!role_id(name)")
-          .eq("id", token.userId)
-          .single();
+        const { data: fresh, error: refreshErr } = await safeQuery(() =>
+          supabase
+            .from("users")
+            .select("profile_complete, deleted_at, roles!role_id(name)")
+            .eq("id", token.userId)
+            .single()
+        );
+        // Account deleted, or the row is definitively gone (PGRST116 = no rows
+        // matched): strip the identity off the token so the session callback
+        // below yields no user.id and every downstream guard treats this as
+        // signed-out. Piggybacks on the existing role-refresh query rather than
+        // adding a per-request lookup, so a deleted web session goes dead
+        // within ROLE_REFRESH_MS.
+        //
+        // Any OTHER error (DB unreachable, timeout) deliberately falls through
+        // and keeps the existing token: a transient blip must not sign every
+        // active user out. That's the same fail-open reasoning the original
+        // `if (!refreshErr && fresh)` guard had — only true deletion is
+        // fail-closed.
+        if (fresh?.deleted_at || refreshErr?.code === "PGRST116") {
+          token.userId = null;
+          token.role = null;
+          token.profileComplete = false;
+          token.roleCheckedAt = Date.now();
+          return token;
+        }
         if (!refreshErr && fresh) {
           token.role = fresh.roles?.name ?? token.role ?? "student";
           token.profileComplete =
             fresh.profile_complete ?? token.profileComplete ?? false;
+          token.roleCheckedAt = Date.now();
         }
-        token.roleCheckedAt = Date.now();
+        /*
+         * On failure the timestamp is deliberately NOT advanced: the refresh
+         * did not happen, so the next call should try again rather than wait
+         * out another interval on stale data it never actually checked.
+         */
       }
 
       return token;
     },
     async session({ session, token }) {
+      // No resolvable identity — deleted account (every deletion guard above
+      // nulls token.userId), or a sign-in that failed to create/find its row.
+      // Strip email/name/image too, not just id: a lot of this app's routes
+      // (getDbRole, buildDashboardUser, editProfile, the admin layout's DB
+      // check) authorize by looking the user up via session.user.email rather
+      // than .id, with no deleted_at filter of their own. NextAuth prefills
+      // those fields onto `session` from the token before this callback runs,
+      // so leaving them in place would let a deleted account's email keep
+      // authenticating everywhere except the couple of spots that check .id.
+      if (!token.userId) {
+        session.user.id = null;
+        session.user.email = null;
+        session.user.name = null;
+        session.user.image = null;
+        session.user.role = null;
+        session.user.profileComplete = false;
+        return session;
+      }
+
       // Read from token — no DB hit
       session.user.id = token.userId;
       session.user.role = token.role ?? "student";
       session.user.profileComplete = token.profileComplete ?? false;
+      session.user.viaEmailLink = !!token.viaEmailLink;
       return session;
     },
   },

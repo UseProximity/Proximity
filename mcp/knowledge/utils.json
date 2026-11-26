@@ -1,31 +1,831 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-08-10T15:51:58.036Z",
-  "count": 35,
+  "_generated": "2026-11-26T20:19:22.382Z",
+  "count": 372,
   "utils": [
+    {
+      "file": "src/lib/admin/adminDb.js",
+      "description": "Which database an admin route reads: the dashboard's dev/prod switch, sent as"
+    },
+    {
+      "file": "src/lib/admin/home.js",
+      "description": "The admin Home page (Wyatt, 2026-11-12): what needs someone's attention right"
+    },
+    {
+      "file": "src/lib/admin/jobs.js",
+      "description": "The scheduled jobs, for System > Scheduled jobs (Wyatt, 2026-11-14)."
+    },
+    {
+      "file": "src/lib/admin/lists.js",
+      "description": "The admin dashboard's plain lists (Wyatt, 2026-11-14): state the team could"
+    },
+    {
+      "file": "src/lib/admin/notes.js",
+      "description": "Shared by the admin notes routes (app/api/admin/notes): checking what was"
+    },
+    {
+      "file": "src/lib/admin/records.js",
+      "description": "The admin dashboard's record pages (Wyatt, 2026-11-12): everything Proximity"
+    },
+    {
+      "file": "src/lib/agents/access.js",
+      "description": "Who is talking to Proxy on this request, and in what capacity."
+    },
+    {
+      "file": "src/lib/agents/address.js",
+      "description": "Street addresses, read loosely enough to compare a listing with a page that"
+    },
+    {
+      "file": "src/lib/agents/backfill.js",
+      "description": "The chat-history backfill (Wyatt, 2026-10-26): every landlord message and"
+    },
+    {
+      "file": "src/lib/agents/budget.js",
+      "description": "The agents' AI spend caps (PRD v3; enforced since the PR #365 review,"
+    },
+    {
+      "file": "src/lib/agents/compliance.js",
+      "description": "Fair-housing screening of what landlords add to a listing's knowledge"
+    },
+    {
+      "file": "src/lib/agents/context.js",
+      "description": "Everything Proxy may know about one listing, as text for the model and as"
+    },
+    {
+      "file": "src/lib/agents/coreWrites.js",
+      "description": "Displayed fields, written by the agent (PRD v3, \"Edit by conversation\")."
+    },
+    {
+      "file": "src/lib/agents/corrections.js",
+      "description": "\"Students are told when an answer they received is later corrected\""
+    },
+    {
+      "file": "src/lib/agents/crawl.js",
+      "description": "Finding every page of a listing's website (Wyatt, 2026-10-27, round 6:"
+    },
+    {
+      "file": "src/lib/agents/digest.js",
+      "description": "The rollout digest (PRD v3, \"Metrics and rollout digest\"): one email a day"
+    },
+    {
+      "file": "src/lib/agents/discover.js",
+      "description": "Finding each listing's sources of truth (Wyatt, 2026-10-31)."
+    },
+    {
+      "file": "src/lib/agents/existingChat.js",
+      "description": "A student who already talks with this listing's landlord in Messages is"
+    },
+    {
+      "file": "src/lib/agents/factCompare.js",
+      "description": "Comparing a fact with a new statement of it: the pure part of the weekly"
+    },
+    {
+      "file": "src/lib/agents/flags.js",
+      "description": "The switches for the per-listing agents (PRD v3, 2026-10-26)."
+    },
+    {
+      "file": "src/lib/agents/foundRead.js",
+      "description": "Found pages into knowledge (Wyatt, 2026-11-02)."
+    },
+    {
+      "file": "src/lib/agents/foundUrls.js",
+      "description": "What kind of source a found URL is (lib/agents/discover.js): Zillow,"
+    },
+    {
+      "file": "src/lib/agents/gate.js",
+      "description": "Who may use a listing's agent tools on this request: any owner of the"
+    },
+    {
+      "file": "src/lib/agents/ingest.js",
+      "description": "Getting documents and links into a listing's knowledge (PRD v3, with"
+    },
+    {
+      "file": "src/lib/agents/landlordAgent.js",
+      "description": "The landlord's side of their listing's agent (PRD v3, milestone 7)."
+    },
+    {
+      "file": "src/lib/agents/landlordChat.js",
+      "description": "The landlord's Proxy chat, one per listing (Wyatt, 2026-10-27, round 6;"
+    },
+    {
+      "file": "src/lib/agents/limits.js",
+      "description": "Rate limits for Proxy, separate from the chat send limits (which never"
+    },
+    {
+      "file": "src/lib/agents/model.js",
+      "description": "The model calls behind the per-listing agents."
+    },
+    {
+      "file": "src/lib/agents/notify.js",
+      "description": "Emails Proxy sends (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/overview.js",
+      "description": "The team's counts for the per-listing agents: agents by status, current"
+    },
+    {
+      "file": "src/lib/agents/pages.js",
+      "description": "Pages into knowledge (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/pageStatus.js",
+      "description": "The weekly read's status for a page it did not send to the model because"
+    },
+    {
+      "file": "src/lib/agents/proxy.js",
+      "description": "Proxy answers a student (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/questionEmail.js",
+      "description": "Landlords answer Proxy's questions by email (PRD v3, milestone 3)."
+    },
+    {
+      "file": "src/lib/agents/questions.js",
+      "description": "Questions Proxy sends to landlords, and what comes back (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/questionTokens.js",
+      "description": "The per-question reply address a landlord can answer from (PRD v3)."
+    },
+    {
+      "file": "src/lib/agents/queueView.js",
+      "description": "What the admin review queue shows for each held knowledge change (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyEmail.js",
+      "description": "Email replies into the agents' conversations (Wyatt, 2026-11-01), beside"
+    },
+    {
+      "file": "src/lib/agents/replyStream.js",
+      "description": "Reading Proxy's answer while the model is still writing it (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/replyTokens.js",
+      "description": "Reply addresses for the agents' emails (Wyatt, 2026-11-01); the inbound"
+    },
+    {
+      "file": "src/lib/agents/retention.js",
+      "description": "What account deletion and the retention clock do to the agents' records"
+    },
+    {
+      "file": "src/lib/agents/sandbox.js",
+      "description": "Review sandbox rules for Proxy questions and tours (App Store review accounts,"
+    },
+    {
+      "file": "src/lib/agents/screen.js",
+      "description": "Text hygiene for Proxy."
+    },
+    {
+      "file": "src/lib/agents/sections.js",
+      "description": "The vocabulary of the knowledge store: sections, scopes, the fee and policy"
+    },
+    {
+      "file": "src/lib/agents/seed.js",
+      "description": "Seeding an agent from what the app already knows (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/store.js",
+      "description": "The knowledge store's one write path (PRD v3, milestone 1)."
+    },
+    {
+      "file": "src/lib/agents/studentView.js",
+      "description": "What a student (or anything acting for one: the read API, Proxy's context,"
+    },
+    {
+      "file": "src/lib/agents/sync.js",
+      "description": "The daily per-agent sync (PRD v3, milestone 6)."
+    },
+    {
+      "file": "src/lib/agents/synthesize.js",
+      "description": "Proxy learns (PRD v3, with Wyatt's note of 2026-10-26: the model, not a"
+    },
+    {
+      "file": "src/lib/agents/threads.js",
+      "description": "Proxy threads (PRD v3, milestone 2)."
+    },
+    {
+      "file": "src/lib/agents/tourEmails.js",
+      "description": "The tour emails a landlord gets, in the inquiry layout of lib/inquiryEmail.js"
+    },
+    {
+      "file": "src/lib/agents/tourNotify.js",
+      "description": "Emails for tour scheduling. Each one goes through lib/email.js, so off"
+    },
+    {
+      "file": "src/lib/agents/tourProposals.js",
+      "description": "Tour times suggested in a tour's direct chat (Wyatt, 2026-11-02)."
+    },
+    {
+      "file": "src/lib/agents/tours.js",
+      "description": "Tour scheduling (PRD v3, milestone 5; reworked by Wyatt, 2026-10-27, round 6)."
+    },
+    {
+      "file": "src/lib/agents/tourTime.js",
+      "description": "Tour times, shared by the server and the browser (no server imports)."
+    },
+    {
+      "file": "src/lib/agents/transfer.js",
+      "description": "Moving every existing listing into the agents' knowledge base (Wyatt,"
+    },
+    {
+      "file": "src/lib/agents/visitorEmail.js",
+      "description": "A signed-out visitor's email, given in the chat (Wyatt, 2026-10-27)."
+    },
+    {
+      "file": "src/lib/analytics/blocks.js",
+      "description": "Building blocks shared by every /analytics tab."
+    },
+    {
+      "file": "src/lib/analytics/db.js",
+      "description": "Small read helpers for the admin Analytics page. Reads go through the deployment's own database"
+    },
+    {
+      "file": "src/lib/analytics/ga.js",
+      "description": "Google Analytics 4 Data API reads for /analytics."
+    },
+    {
+      "file": "src/lib/analytics/periods.js",
+      "description": "Weekly time buckets for /analytics. Weeks start on Monday (UTC) and are keyed by"
+    },
+    {
+      "file": "src/lib/analytics/redirect.js",
+      "description": "Where an old /analytics address goes now: the matching tab of the admin Analytics page,"
+    },
+    {
+      "file": "src/lib/analytics/tabs/engagement.js",
+      "description": "Listing engagement: what students do with listings. Views, saves and contacts come from the"
+    },
+    {
+      "file": "src/lib/analytics/tabs/index.js",
+      "description": "Every tab of the admin Analytics page (/dashboard/admin/analytics), in display order. To add"
+    },
+    {
+      "file": "src/lib/analytics/tabs/landlords.js",
+      "description": "Landlord flow: who signs up, whether they add listings, how complete and fresh those"
+    },
+    {
+      "file": "src/lib/analytics/tabs/leaseCheck.js",
+      "description": "Lease check: students uploading a lease for review."
+    },
+    {
+      "file": "src/lib/analytics/tabs/marketing.js",
+      "description": "Marketing: sessions and outcomes by source, campaign and campaign link (PRD"
+    },
+    {
+      "file": "src/lib/analytics/tabs/matchmaking.js",
+      "description": "Find Your Place: the three-page flow (basics, then anything else in their own"
+    },
+    {
+      "file": "src/lib/analytics/tabs/overview.js",
+      "description": "Overview: accounts and the state of the site, for the team."
+    },
+    {
+      "file": "src/lib/analytics/tabs/reviews.js",
+      "description": "Reviews: apartment and dorm reviews, invites, and the /review page."
+    },
+    {
+      "file": "src/lib/analytics/tabs/traffic.js",
+      "description": "Traffic: visitors to the live site, from Google Analytics and Google Search Console."
+    },
     {
       "file": "src/lib/appEnv.js",
       "description": "Central environment / data-target helper."
     },
     {
+      "file": "src/lib/appleAuth.js",
+      "description": "Sign in with Apple, server side (native iOS flow)."
+    },
+    {
+      "file": "src/lib/appLinks/aasa.js",
+      "description": "Builds the apple-app-site-association document served at"
+    },
+    {
+      "file": "src/lib/auth/accountRestore.js",
+      "description": "Restoring a deleted account inside its 30-day grace period."
+    },
+    {
+      "file": "src/lib/auth/callbackUrl.js",
+      "description": "A return URL that arrives from outside (a query string, a request body, an"
+    },
+    {
+      "file": "src/lib/auth/email.js",
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/landlordRole.js",
+      "description": "Turn the signed-in account into a landlord."
+    },
+    {
+      "file": "src/lib/auth/loginThrottle.js",
+      "description": "In-memory brute-force guard for the two password login paths (the NextAuth"
+    },
+    {
+      "file": "src/lib/auth/passwordReset.js",
+      "description": "Mint a password-reset token and email the link. Shared by the forgot-password"
+    },
+    {
+      "file": "src/lib/auth/profileSave.js",
+      "description": "Saving the \"Complete Your Profile\" popup. Client-safe, no server imports."
+    },
+    {
+      "file": "src/lib/auth/roles.js",
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/auth/tokenHash.js",
+      "description": "Hash for bearer tokens we email or hand out (password reset, profile setup)."
+    },
+    {
+      "file": "src/lib/auth/verifyEmail.js",
+      "description": "Redeems an email-verification token. Shared by GET (the web link) and POST (the mobile"
+    },
+    {
+      "file": "src/lib/auth/verifyUrl.js",
+      "description": "The link in the verification email. `next` is where to send them once verified; it is"
+    },
+    {
       "file": "src/lib/authMobile.js",
-      "description": "Mobile bearer-token auth — the planned counterpart to `auth()` for a native client."
+      "description": "Signs a short-lived access token (15 minutes)."
     },
     {
       "file": "src/lib/autoUnavailable.js",
       "description": "Auto-unavailable: when a landlord reports a listing as leased through the"
     },
     {
+      "file": "src/lib/availabilityCheck.js",
+      "description": "One-click \"still available?\" landlord email."
+    },
+    {
+      "file": "src/lib/aws/snsVerify.js",
+      "description": "Verify that a message posted to one of our endpoints really came from Amazon SNS."
+    },
+    {
+      "file": "src/lib/billing/adjustments.js",
+      "description": "Correcting a Paid charge that turns out to be wrong. The original charge is"
+    },
+    {
+      "file": "src/lib/billing/adminDb.js",
+      "description": "Which database an admin billing route reads (Wyatt, 2026-11-06): the admin"
+    },
+    {
+      "file": "src/lib/billing/adminLandlords.js",
+      "description": "Finding a landlord, and their properties and leases, for the admin billing"
+    },
+    {
+      "file": "src/lib/billing/adminReview.js",
+      "description": "The admin side of the charge lifecycle, behind the admin review view:"
+    },
+    {
+      "file": "src/lib/billing/agreementFiles.js",
+      "description": "Storing and fetching a signed agreement PDF in Cloudflare R2."
+    },
+    {
+      "file": "src/lib/billing/agreementPdf.js",
+      "description": "Checks on a signed agreement file before it is stored. Pure, so it can be"
+    },
+    {
+      "file": "src/lib/billing/agreements.js",
+      "description": "Each landlord's marketing agreement: one master agreement (landlord_agreements)"
+    },
+    {
+      "file": "src/lib/billing/agreementServices.js",
+      "description": "The real Documenso client, signed-PDF storage and team email, wired together for"
+    },
+    {
+      "file": "src/lib/billing/agreementVersions.js",
+      "description": "Versions of the marketing agreement document (agreement_versions). An admin"
+    },
+    {
+      "file": "src/lib/billing/authorizedPayers.js",
+      "description": "An authorized payer for a landlord account, or for one of its listings (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/autopay.js",
+      "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
+    },
+    {
+      "file": "src/lib/billing/balance.js",
+      "description": "A landlord's outstanding balance: Approved charges not yet on an invoice, which"
+    },
+    {
+      "file": "src/lib/billing/billingAddress.js",
+      "description": "The landlord's own address for the agreement's optional \"Address\" box: the"
+    },
+    {
+      "file": "src/lib/billing/billingEmails.js",
+      "description": "Sends the billing emails. Copy lives in billingEmailTemplates.js; this adds the"
+    },
+    {
+      "file": "src/lib/billing/billingEmailTemplates.js",
+      "description": "The words of every billing email, as pure functions returning { subject, html }."
+    },
+    {
+      "file": "src/lib/billing/billingFakes.testutil.js",
+      "description": "In-memory stand-ins for Supabase and Documenso, shared by the billing tests"
+    },
+    {
+      "file": "src/lib/billing/billingNotify.js",
+      "description": "The emails a failed invoice payment sends, wired to the real senders. Passed to"
+    },
+    {
+      "file": "src/lib/billing/billingPeriod.js",
+      "description": "When the monthly billing run happens. It runs on the first Monday of each"
+    },
+    {
+      "file": "src/lib/billing/billingRun.js",
+      "description": "The monthly billing run. For each landlord it collects every Approved charge"
+    },
+    {
+      "file": "src/lib/billing/businessDays.js",
+      "description": "Business days on the America/Chicago calendar, for autopay: an invoice sent on"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFileRules.js",
+      "description": "Checks on a file a landlord (or an admin) attaches to a change request: their"
+    },
+    {
+      "file": "src/lib/billing/changeRequestFiles.js",
+      "description": "Storing and opening change request attachments in Cloudflare R2, in the same"
+    },
+    {
+      "file": "src/lib/billing/changeRequestHttp.js",
+      "description": "Reading a change request message from a route: JSON, or multipart/form-data"
+    },
+    {
+      "file": "src/lib/billing/changeRequestNotify.js",
+      "description": "The emails a change request sends, wired to the real senders and passed to"
+    },
+    {
+      "file": "src/lib/billing/changeRequests.js",
+      "description": "Landlords asking for changes to the commission agreement (agreement_change_requests"
+    },
+    {
+      "file": "src/lib/billing/chargeDisplay.js",
+      "description": "How a charge row is shown to a landlord. Pure, so the labels can be tested:"
+    },
+    {
+      "file": "src/lib/billing/chargeLifecycle.js",
+      "description": "The charge lifecycle as plain functions, for the dashboard, admin view and"
+    },
+    {
+      "file": "src/lib/billing/charges.js",
+      "description": "Charges: creating them and the landlord's side of their lifecycle."
+    },
+    {
+      "file": "src/lib/billing/constants.js",
+      "description": "The billing rules that are numbers, in one place. Each comes from the In-App"
+    },
+    {
+      "file": "src/lib/billing/coverage.js",
+      "description": "Which of a landlord's properties their commission agreement covers, and what"
+    },
+    {
+      "file": "src/lib/billing/customers.js",
+      "description": "Each landlord user gets exactly one Stripe Customer, created the first time"
+    },
+    {
+      "file": "src/lib/billing/declineNote.js",
+      "description": "A landlord who rejects the agreement in Documenso's signing window gets a change"
+    },
+    {
+      "file": "src/lib/billing/documenso.js",
+      "description": "Documenso, the e-signature provider for the marketing agreement (Teams plan)."
+    },
+    {
+      "file": "src/lib/billing/enrollment.js",
+      "description": "Launch enrollment: telling existing landlords that fees are now collected in the"
+    },
+    {
+      "file": "src/lib/billing/errors.js",
+      "description": "An expected billing failure the caller can act on. Routes turn it into an"
+    },
+    {
+      "file": "src/lib/billing/exhibitPdf.js",
+      "description": "The Exhibit A pages we generate and attach to a landlord's Documenso copy (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/exhibitUnits.js",
+      "description": "The Exhibit A step of the signing popup (Wyatt, 2026-11-07): what a landlord"
+    },
+    {
+      "file": "src/lib/billing/http.js",
+      "description": "Shared plumbing for the billing API routes: an expected BillingError becomes"
+    },
+    {
+      "file": "src/lib/billing/invoiceAccess.js",
+      "description": "A landlord's invoices, paying one (Pay now, or Retry payment after a failure),"
+    },
+    {
+      "file": "src/lib/billing/invoiceHandlers.js",
+      "description": "Webhook handlers for invoice and payment events, registered in"
+    },
+    {
+      "file": "src/lib/billing/invoicePlan.js",
+      "description": "Turns charges into the invoices the monthly run will create. Pure: it reads"
+    },
+    {
+      "file": "src/lib/billing/invoicing.js",
+      "description": "The Stripe side of a monthly invoice, one step per function. Every step is safe"
+    },
+    {
+      "file": "src/lib/billing/landlordOverview.js",
+      "description": "The admin dashboard's view of every landlord's commission agreement and"
+    },
+    {
+      "file": "src/lib/billing/listingGate.js",
+      "description": "The listing gate: before a landlord puts a new listing, unit or offering in"
+    },
+    {
+      "file": "src/lib/billing/methodAttentionJob.js",
+      "description": "The daily \"update your payment method\" check. A landlord whose default method"
+    },
+    {
+      "file": "src/lib/billing/money.js",
+      "description": "Money is integer cents everywhere in billing (Stripe's unit). Convert only at"
+    },
+    {
+      "file": "src/lib/billing/overdue.js",
+      "description": "When an unpaid invoice is overdue enough to withdraw the landlord's leases."
+    },
+    {
+      "file": "src/lib/billing/overdueJob.js",
+      "description": "The overdue job: an invoice unpaid for more than 30 days after its due date"
+    },
+    {
+      "file": "src/lib/billing/paperAgreementPdf.js",
+      "description": "The marketing agreement printed for a landlord to sign on paper (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/paperAgreements.js",
+      "description": "A landlord's marketing agreement signed on paper (Wyatt, 2026-11-17)."
+    },
+    {
+      "file": "src/lib/billing/payerLinks.js",
+      "description": "Who signs and who pays for a landlord account (billing_payers)."
+    },
+    {
+      "file": "src/lib/billing/payers.js",
+      "description": "A payer for a landlord account (Project B, Wyatt 2026-11-09). See"
+    },
+    {
+      "file": "src/lib/billing/payerServices.js",
+      "description": "The real email, storage and publishing behind payers.js, for the routes and"
+    },
+    {
+      "file": "src/lib/billing/paymentMethodHandlers.js",
+      "description": "Webhook handlers for payment method events, registered in webhookHandlers.js."
+    },
+    {
+      "file": "src/lib/billing/paymentMethods.js",
+      "description": "A landlord's payment methods. Card and bank details are entered only on"
+    },
+    {
+      "file": "src/lib/billing/paymentMethodState.js",
+      "description": "Payment method states and how to show them. Only Stripe ids and display"
+    },
+    {
+      "file": "src/lib/billing/placeholders.js",
+      "description": "Placeholders in an uploaded agreement PDF become Documenso boxes (Wyatt,"
+    },
+    {
+      "file": "src/lib/billing/reviewClock.js",
+      "description": "The review clock. A confirmed charge sits in Pending for 7 days, counted from"
+    },
+    {
+      "file": "src/lib/billing/settings.js",
+      "description": "Billing switches kept in billing_settings (key/value). A missing key reads as"
+    },
+    {
+      "file": "src/lib/billing/stripe.js",
+      "description": "The one Stripe client for the app, and the three env vars it reads:"
+    },
+    {
+      "file": "src/lib/billing/versionLandlords.js",
+      "description": "Who a custom agreement version applies to, seen from the admin dashboard"
+    },
+    {
+      "file": "src/lib/billing/viewer.js",
+      "description": "Whose billing a READ on the landlord Billing tab is about (Wyatt, 2026-11-11):"
+    },
+    {
+      "file": "src/lib/billing/webhookEvents.js",
+      "description": "Idempotent processing of a verified Stripe event, backed by"
+    },
+    {
+      "file": "src/lib/billing/webhookHandlers.js",
+      "description": "What to do for each Stripe event. handleStripeEvent is called once per event"
+    },
+    {
+      "file": "src/lib/chat/accessToken.js",
+      "description": "Chat magic-link tokens. Raw tokens live only in the email URL; the DB stores SHA-256"
+    },
+    {
+      "file": "src/lib/chat/alertRoutes.js",
+      "description": "Where a thread's chat alert emails go for one participant, for admin views."
+    },
+    {
+      "file": "src/lib/chat/applicationLinks.js",
+      "description": "Application links in chat (Wyatt, 2026-11-20)."
+    },
+    {
+      "file": "src/lib/chat/attachments.js",
+      "description": "Shared allowlist / limits for chat attachments (presign API + client)."
+    },
+    {
+      "file": "src/lib/chat/checkin.js",
+      "description": "Internal chat check-in (Wyatt, 2026-10-13)."
+    },
+    {
+      "file": "src/lib/chat/checkinReport.js",
+      "description": "Weekly chat check-in report (Wyatt, 2026-10-13)."
+    },
+    {
+      "file": "src/lib/chat/contactVerification.js",
+      "description": "One-click confirmation for per-listing alert addresses."
+    },
+    {
+      "file": "src/lib/chat/deliveryAlerts.js",
+      "description": "Tell the team at once when a chat email goes wrong (Wyatt, 2026-10-23)."
+    },
+    {
+      "file": "src/lib/chat/deliveryAudit.js",
+      "description": "Daily chat email audit (Wyatt, 2026-10-23)."
+    },
+    {
+      "file": "src/lib/chat/emailReplyText.js",
+      "description": "Turn an emailed reply into what the person actually wrote, so it reads in the"
+    },
+    {
+      "file": "src/lib/chat/emailStatus.js",
+      "description": "What an Amazon SES event means for a chat_email_log row (Wyatt, 2026-10-23)."
+    },
+    {
+      "file": "src/lib/chat/followups.js",
+      "description": "Follow-ups for conversations that went quiet (Wyatt, 2026-10-16)."
+    },
+    {
+      "file": "src/lib/chat/inboundAuth.js",
+      "description": "Is an emailed reply really from the domain in its From line?"
+    },
+    {
+      "file": "src/lib/chat/inboundEmail.js",
+      "description": "Post an emailed reply into its chat conversation."
+    },
+    {
+      "file": "src/lib/chat/inquiryDetails.js",
+      "description": "The detail lines under a student's message in a landlord email"
+    },
+    {
+      "file": "src/lib/chat/landlordCanChat.js",
+      "description": "Server-side gate for in-app listing chat: can this landlord be reached?"
+    },
+    {
+      "file": "src/lib/chat/messagesUrl.js",
+      "description": "The messages overlay lives in the URL, the same way the listing modal does"
+    },
+    {
+      "file": "src/lib/chat/moderation.js",
+      "description": "Content screening for in-app chat."
+    },
+    {
+      "file": "src/lib/chat/notifyEmail.js",
+      "description": "Email notification for a new in-app chat message."
+    },
+    {
+      "file": "src/lib/chat/notifyPush.js",
+      "description": "Push notification for a new in-app chat message."
+    },
+    {
+      "file": "src/lib/chat/realtime.js",
+      "description": "Supabase Realtime helper for listing chat."
+    },
+    {
+      "file": "src/lib/chat/replyAddress.js",
+      "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/replyNote.js",
+      "description": "Tell the sender of an emailed reply what Proximity took out of it (Wyatt,"
+    },
+    {
+      "file": "src/lib/chat/replySenderApproval.js",
+      "description": "Holding, approving and declining emailed replies from someone other than the"
+    },
+    {
+      "file": "src/lib/chat/replySenderRequest.js",
+      "description": "Ask a landlord, once per sender, whether someone else may reply by email on"
+    },
+    {
+      "file": "src/lib/chat/replySenders.js",
+      "description": "Who else may reply by email on a landlord's behalf (Wyatt, 2026-10-24)."
+    },
+    {
+      "file": "src/lib/chat/safety.js",
+      "description": "Chat block and report support, kept out of the chat RPCs on purpose."
+    },
+    {
+      "file": "src/lib/chat/scanAttachment.js",
+      "description": "Vision screening for chat attachments."
+    },
+    {
+      "file": "src/lib/chat/sendGuards.js",
+      "description": "The two checks every chat send path runs before and around the RPC:"
+    },
+    {
       "file": "src/lib/contactTracking.js",
       "description": "Single source of truth for recording that a student contacted a listing."
+    },
+    {
+      "file": "src/lib/contentRules/firstNames.js",
+      "description": "Name lists behind the \"no names in user-written text\" rule (lib/contentRules)."
+    },
+    {
+      "file": "src/lib/contentRules/index.js",
+      "description": "Content rules for text students and landlords write into Proximity."
     },
     {
       "file": "src/lib/email.js",
       "description": "Transactional email client using Nodemailer over SMTP. Currently sends two types of"
     },
     {
+      "file": "src/lib/email/newListingEmail.js",
+      "description": "\"You have a new listing on Proximity\": the note a landlord gets when a"
+    },
+    {
+      "file": "src/lib/emailFooter.js",
+      "description": "Kept apart from lib/email.js (which needs the mail transports) so the admin"
+    },
+    {
+      "file": "src/lib/emailKinds.js",
+      "description": "The categories and labels for the admin \"Sent emails\" page (Wyatt,"
+    },
+    {
+      "file": "src/lib/emailLog.js",
+      "description": "The record of every email the app sends, for the admin \"Sent emails\" page"
+    },
+    {
+      "file": "src/lib/errors/client.js",
+      "description": "The browser half of the site error alerts (Wyatt, 2026-11-03): send one"
+    },
+    {
+      "file": "src/lib/errors/record.js",
+      "description": "Site error alerts (Wyatt, 2026-11-03): when a page or API call fails on"
+    },
+    {
+      "file": "src/lib/errors/serverHooks.js",
+      "description": "The Node half of instrumentation.js (site error alerts, Wyatt,"
+    },
+    {
+      "file": "src/lib/escapeHtml.js",
+      "description": "Escape a value for interpolation into HTML, element text and quoted attribute"
+    },
+    {
+      "file": "src/lib/findYourPlace/browseHandoff.js",
+      "description": "\"Browse All N Matches\": the browse page opened with the student's answers"
+    },
+    {
+      "file": "src/lib/findYourPlace/commute.js",
+      "description": "Per-listing commute minutes for Find Your Place, one number per mode:"
+    },
+    {
+      "file": "src/lib/findYourPlace/events.js",
+      "description": "Find Your Place's own record of the moments that leave no search row: which"
+    },
+    {
+      "file": "src/lib/findYourPlace/match.js",
+      "description": "Find Your Place: answers in, top four places out."
+    },
+    {
+      "file": "src/lib/findYourPlace/options.js",
+      "description": "Find Your Place: the questions, answer options and prompt chips, shared by"
+    },
+    {
+      "file": "src/lib/findYourPlace/parsePreferences.js",
+      "description": "Find Your Place, page 2: turn whatever the student wrote into preferences"
+    },
+    {
+      "file": "src/lib/firecrawl.js",
+      "description": "Every call to Firecrawl goes through here, so a second account can take over"
+    },
+    {
+      "file": "src/lib/geo/neighborhoods.js",
+      "description": "Canonical neighborhood table for the WashU market. Listings only carry"
+    },
+    {
+      "file": "src/lib/getRequestUser.js",
+      "description": "Thrown when the user lookup itself fails (the database or network, not a missing"
+    },
+    {
+      "file": "src/lib/google/serviceAccount.js",
+      "description": "Access tokens for Google APIs from the project's service account, using the"
+    },
+    {
       "file": "src/lib/guides.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/inquiryEmail.js",
+      "description": "The layout of every email a landlord gets about a student: a chat message, a"
     },
     {
       "file": "src/lib/jsonLd.js",
@@ -34,6 +834,10 @@
     {
       "file": "src/lib/leaseCheck/analyzeLease.js",
       "description": "Claude analysis for Lease Check. Sends the uploaded lease (PDF and/or images, base64)"
+    },
+    {
+      "file": "src/lib/leaseCheck/pendingCheck.js",
+      "description": "A lease picked by a signed-out visitor, held until they sign in."
     },
     {
       "file": "src/lib/leaseCheck/prompt.js",
@@ -48,60 +852,512 @@
       "description": "In-memory sliding-window rate limit for lease checks: max 5 per hour per user."
     },
     {
+      "file": "src/lib/legal.js",
+      "description": "Loader for the published legal documents (/privacy, /terms)."
+    },
+    {
+      "file": "src/lib/listingDraft/assignPhotos.js",
+      "description": "Second pass of the paste-your-website draft: which photos show which floor"
+    },
+    {
+      "file": "src/lib/listingDraft/extract.js",
+      "description": "Claude extraction for the paste-your-website listing draft. Takes the stripped"
+    },
+    {
+      "file": "src/lib/listingDraft/fetchSite.js",
+      "description": "SSRF-safe fetching + HTML stripping for the paste-your-website listing draft."
+    },
+    {
+      "file": "src/lib/listingDraft/floorPlanUnits.js",
+      "description": "Per-apartment availability and pricing, read from a building's own floor-plan"
+    },
+    {
+      "file": "src/lib/listingDraft/sightmap.js",
+      "description": "SightMap inventory reader."
+    },
+    {
+      "file": "src/lib/listings/applicationLink.js",
+      "description": "The landlord's application link (unit_leases.application_url), shared by"
+    },
+    {
+      "file": "src/lib/listings/applications.js",
+      "description": "Who went to apply (listing_applications), server side."
+    },
+    {
       "file": "src/lib/listings/getListing.js",
       "description": "Shared single-listing fetch, extracted from the GET handler of"
     },
     {
+      "file": "src/lib/listings/hiddenRents.js",
+      "description": "Hidden website prices (Wyatt, 2026-11-20; table lease_hidden_rents)."
+    },
+    {
+      "file": "src/lib/listings/imageRefs.js",
+      "description": "Guards between listing photo rows and the R2 objects behind them."
+    },
+    {
+      "file": "src/lib/listings/leaseDescription.js",
+      "description": "A lease's blurb: the one or two sentences a landlord adds about THEIR offering"
+    },
+    {
+      "file": "src/lib/listings/leaseFit.js",
+      "description": "Does an offering fit the student's move-in month and lease length?"
+    },
+    {
+      "file": "src/lib/listings/leasePrefsColumns.js",
+      "description": "The account columns behind a student's saved sizes and lease lengths."
+    },
+    {
+      "file": "src/lib/listings/listingLink.js",
+      "description": "Where a tap on a listing card goes. Below 768px the popup is too tight, so a"
+    },
+    {
       "file": "src/lib/listings/listingSelect.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "The listing shape every non-browse surface reads (matchmaking, saved/contacted"
+    },
+    {
+      "file": "src/lib/listings/lookupRateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out address lookups: 60 per minute per"
+    },
+    {
+      "file": "src/lib/listings/ownership.js",
+      "description": "Ids arrive from URL segments, so they are whatever the caller typed. The id"
+    },
+    {
+      "file": "src/lib/listings/pendingDraft.js",
+      "description": "A listing someone has finished describing but not yet published."
+    },
+    {
+      "file": "src/lib/listings/placeholderOwner.js",
+      "description": "The shared \"Proximity\" landlord account."
+    },
+    {
+      "file": "src/lib/listings/pricedLease.js",
+      "description": "Whether a property is complete enough to go live: some unit still standing"
+    },
+    {
+      "file": "src/lib/listings/propertyName.js",
+      "description": "Display-name uniqueness for properties."
+    },
+    {
+      "file": "src/lib/listings/publish.js",
+      "description": "Publishing drafts: the work behind POST /api/landlord/publish, here so a"
+    },
+    {
+      "file": "src/lib/listings/queryListings.js",
+      "description": "Server-side listing data for pages that render listings in their initial"
+    },
+    {
+      "file": "src/lib/listings/rentBasis.js",
+      "description": "Shared rent-basis heuristic. unit_leases.rent stores two conventions with no"
+    },
+    {
+      "file": "src/lib/listings/suggestionSignals.js",
+      "description": "Loads the raw signals suggestListings.js turns into a taste profile, for one"
+    },
+    {
+      "file": "src/lib/listings/suggestListings.js",
+      "description": "\"Suggested for you\": ranks the browse feed against one student's taste"
+    },
+    {
+      "file": "src/lib/listings/unitAvailability.js",
+      "description": "Is this unit something a renter can actually take?"
+    },
+    {
+      "file": "src/lib/listings/unitNames.js",
+      "description": "One apartment, one row. Two live units at the same property both called"
+    },
+    {
+      "file": "src/lib/marketing/accounts.js",
+      "description": "Account outcomes (PRD 7.4, section 6 tier 1)."
+    },
+    {
+      "file": "src/lib/marketing/classify.js",
+      "description": "Decide which campaign a visit came from (PRD 7.1). Pure: no DB, no request"
+    },
+    {
+      "file": "src/lib/marketing/config.js",
+      "description": "Marketing attribution switches and constants."
+    },
+    {
+      "file": "src/lib/marketing/emailLinks.js",
+      "description": "Campaign tags on links in our own emails (PRD 7.5): utm_source=proximity-email,"
+    },
+    {
+      "file": "src/lib/marketing/links.js",
+      "description": "Campaign link rules (PRD 7.8 and 7.9), shared by the admin form and the API."
+    },
+    {
+      "file": "src/lib/marketing/linksServer.js",
+      "description": "Server-side campaign link storage and the headline numbers the Campaign"
+    },
+    {
+      "file": "src/lib/marketing/outcomes.js",
+      "description": "Canonical marketing outcomes (PRD section 6) and how each is deduplicated."
+    },
+    {
+      "file": "src/lib/marketing/rateLimit.js",
+      "description": "In-memory sliding-window limits on the session beacon."
+    },
+    {
+      "file": "src/lib/marketing/record.js",
+      "description": "recordOutcome: the one server helper every outcome hook calls (PRD 7.3)."
+    },
+    {
+      "file": "src/lib/marketing/report.js",
+      "description": "The Marketing tab's arithmetic (PRD 7.6), kept pure so it can be tested:"
+    },
+    {
+      "file": "src/lib/marketing/retention.js",
+      "description": "Retention for attribution data (PRD section 9): sessions never linked to an"
+    },
+    {
+      "file": "src/lib/marketing/sessions.js",
+      "description": "Server-side reads and writes for marketing_sessions and touchpoints."
+    },
+    {
+      "file": "src/lib/marketing/signup.js",
+      "description": "The source stamped on a new account (PRD 7.4): users.signup_session_id,"
+    },
+    {
+      "file": "src/lib/marketing/tags.js",
+      "description": "The one tag cleaner every campaign value goes through: utm_* parameters, the"
+    },
+    {
+      "file": "src/lib/massEmail/audience.js",
+      "description": "Who a mass email can go to, with what the admin needs to pick them (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/history.js",
+      "description": "What a mass email template has sent so far (Wyatt, 2026-11-07): each batch,"
+    },
+    {
+      "file": "src/lib/massEmail/http.js",
+      "description": "Shared plumbing for the admin mass email routes (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/render.js",
+      "description": "Turning a mass email version into the HTML a person receives (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/send.js",
+      "description": "Sending one version of a mass email to the people an admin picked (Wyatt,"
+    },
+    {
+      "file": "src/lib/massEmail/templates.js",
+      "description": "Mass email templates and their versions (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/massEmail/unowned.js",
+      "description": "Live listings with no landlord account, and getting them one before a mass"
+    },
+    {
+      "file": "src/lib/massEmail/unsubscribe.js",
+      "description": "Unsubscribing from mass email (Wyatt, 2026-11-08)."
+    },
+    {
+      "file": "src/lib/matchmaking/anonymousSessions.js",
+      "description": "Matchmaking before login. Everything the chat route needs to run the Proxy"
     },
     {
       "file": "src/lib/matchmaking/chatOrchestrator.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/contactNote.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/listingConstraints.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/listingFilter.js",
-      "description": "best-effort"
+      "description": "——— Coherent unit offers ————————————————————————————————————————————————"
     },
     {
       "file": "src/lib/matchmaking/narrowing.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/questionEngine.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/matchmaking/questionScript.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/lib/matchmaking/saturation.js",
+      "description": "Demand signal shared by matchmaking ranking and suggested listings. Split out"
     },
     {
       "file": "src/lib/matchmaking/tradeoffTriage.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/lib/outreach.js",
       "description": "Outreach guard. External, user-visible side-effects (transactional email, Airtable sync)"
     },
     {
+      "file": "src/lib/pms/appfolio.js",
+      "description": "AppFolio connector (via Nango Proxy — \"private-api-basic\" template, key"
+    },
+    {
+      "file": "src/lib/pms/buildium.js",
+      "description": "Buildium connector (via Nango Proxy — provider config key \"buildium\")."
+    },
+    {
+      "file": "src/lib/pms/doorloop.js",
+      "description": "DoorLoop connector (via Nango Proxy — custom API config, key \"doorloop\")."
+    },
+    {
+      "file": "src/lib/pms/holdToken.js",
+      "description": "Signed release links for PMS swing-guard holds. Same trust model as the"
+    },
+    {
+      "file": "src/lib/pms/httpRetry.js",
+      "description": "fetch with timeout + backoff for PMS/Nango calls."
+    },
+    {
+      "file": "src/lib/pms/index.js",
+      "description": "PMS connector registry. Every connector implements the contract in types.js:"
+    },
+    {
+      "file": "src/lib/pms/ingest.js",
+      "description": "Create a Proximity listing from a normalized PMS property (shared by the"
+    },
+    {
+      "file": "src/lib/pms/mapping.js",
+      "description": "Mapping between PMS physical units and Proximity's listing model."
+    },
+    {
+      "file": "src/lib/pms/mock.js",
+      "description": "Demo mode — a synthetic PMS account for testing the entire flow (connect →"
+    },
+    {
+      "file": "src/lib/pms/nango.js",
+      "description": "Nango hosted-auth helper."
+    },
+    {
+      "file": "src/lib/pms/rentec.js",
+      "description": "Rentec Direct connector (via Nango Proxy — provider config key \"rentec\")."
+    },
+    {
+      "file": "src/lib/pms/sync.js",
+      "description": "The PMS sync engine — one connection per call, PMS as source of truth"
+    },
+    {
+      "file": "src/lib/pms/types.js",
+      "description": "PMS connector contract + normalized shapes."
+    },
+    {
       "file": "src/lib/posthog.js",
       "description": "PostHog is entirely key-gated: without NEXT_PUBLIC_POSTHOG_KEY every export"
+    },
+    {
+      "file": "src/lib/push.js",
+      "description": "Push notification sender. The single entry point every feature should call:"
     },
     {
       "file": "src/lib/r2.js",
       "description": "Cloudflare R2 client for listing image storage. R2 is S3-compatible so it uses the AWS"
     },
     {
+      "file": "src/lib/reviews/confirmation.js",
+      "description": "Batched \"your review is live\" confirmations."
+    },
+    {
+      "file": "src/lib/reviews/duplicate.js",
+      "description": "A review this person has already posted on this listing with the same text."
+    },
+    {
+      "file": "src/lib/reviews/duplicateReport.js",
+      "description": "Review stubs that may be a building already listed under another address."
+    },
+    {
+      "file": "src/lib/reviews/invites.js",
+      "description": "Tokenized review invites: proving a reviewer owns the address they review under."
+    },
+    {
+      "file": "src/lib/reviews/listingMatch.js",
+      "description": "Which listing a review belongs on."
+    },
+    {
+      "file": "src/lib/reviews/onboarding.js",
+      "description": "Accounts born from a signed-out review (the QR flow)."
+    },
+    {
+      "file": "src/lib/reviews/placeName.js",
+      "description": "What to call the place a review is about, in copy addressed to the reviewer."
+    },
+    {
+      "file": "src/lib/reviews/rateLimit.js",
+      "description": "In-memory sliding-window guard on signed-out review submissions: 5 per hour"
+    },
+    {
+      "file": "src/lib/reviews/source.js",
+      "description": "The campaign tag a printed QR code carries: /r?src=<tag>."
+    },
+    {
+      "file": "src/lib/reviewSandbox.js",
+      "description": "Review sandbox lookups (App Store review accounts). users.review_sandbox is set"
+    },
+    {
       "file": "src/lib/schools.js",
       "description": "The universities Proximity serves, and the email domains that prove membership."
+    },
+    {
+      "file": "src/lib/security/secretColumns.js",
+      "description": "Columns that must never leave the server, for any caller, staff included."
+    },
+    {
+      "file": "src/lib/seo/gsc.js",
+      "description": "Google Search Console client using the project service account (token flow"
+    },
+    {
+      "file": "src/lib/seo/report.js",
+      "description": "Turns two GSC windows into the weekly flag list. Pure functions only —"
+    },
+    {
+      "file": "src/lib/seo/targets.js",
+      "description": "The evidence-backed target-query map the measurement engine tracks."
+    },
+    {
+      "file": "src/lib/sourceImport/alreadyListed.js",
+      "description": "Which of these buildings are already on Proximity, and whose."
+    },
+    {
+      "file": "src/lib/sourceImport/apply.js",
+      "description": "Lay a snapshot over a listing."
+    },
+    {
+      "file": "src/lib/sourceImport/assets.js",
+      "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
+    },
+    {
+      "file": "src/lib/sourceImport/describeChange.js",
+      "description": "A website change, side by side (Wyatt, 2026-11-05): for every change a"
+    },
+    {
+      "file": "src/lib/sourceImport/jobs.js",
+      "description": "Background import jobs."
+    },
+    {
+      "file": "src/lib/sourceImport/learn.js",
+      "description": "Loading and saving what the sync learns about a listing"
+    },
+    {
+      "file": "src/lib/sourceImport/learnRules.js",
+      "description": "What the sync learns from the landlord's edits (Wyatt, 2026-11-11). Pure:"
+    },
+    {
+      "file": "src/lib/sourceImport/limits.js",
+      "description": "Spending caps for the URL importer."
+    },
+    {
+      "file": "src/lib/sourceImport/model.js",
+      "description": "The model calls behind the importer: Haiku first, Sonnet only when Haiku"
+    },
+    {
+      "file": "src/lib/sourceImport/pageCache.js",
+      "description": "The importer's shared page cache (see setSharedPageCache in"
+    },
+    {
+      "file": "src/lib/sourceImport/read.js",
+      "description": "Read a landlord's website into a snapshot."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/document.js",
+      "description": "Files a landlord's site links to instead of putting the numbers on the"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/embeddedProperties.js",
+      "description": "A company's property list embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/entrata.js",
+      "description": "Entrata floor plans, as the \"pm-entrata-manager\" WordPress plugin renders"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/floorPlanVision.js",
+      "description": "Which of a unit's images is its floor plan diagram."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/flyer.js",
+      "description": "\"What's included\" flyers."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/g5.js",
+      "description": "G5 (g5marketingcloud.com) inventory reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portals.js",
+      "description": "The leasing portals the importer and sync can walk (readers/portalWalk.js)."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalk.js",
+      "description": "Walking a leasing portal the way a renter does."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/portalWalkParse.js",
+      "description": "What a portal walk found, as snapshot units. Pure, so it is tested without a"
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOll.js",
+      "description": "RealPage Online Leasing portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/realpageOllParse.js",
+      "description": "RealPage Online Leasing: the parts that need no network."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/rentcafeEmbedded.js",
+      "description": "Floor plans embedded as JSON in a page."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/securecafe.js",
+      "description": "SecureCafe (RentCafe online leasing) portal reader."
+    },
+    {
+      "file": "src/lib/sourceImport/readers/zillow.js",
+      "description": "A Zillow listing's own photos."
+    },
+    {
+      "file": "src/lib/sourceImport/sanitize.js",
+      "description": "Make an imported description publishable under the content rules."
+    },
+    {
+      "file": "src/lib/sourceImport/snapshot.js",
+      "description": "The one shape every reader produces and the one shape the writer consumes."
+    },
+    {
+      "file": "src/lib/sourceImport/sync.js",
+      "description": "The recurring source sync."
+    },
+    {
+      "file": "src/lib/sourceImport/syncPolicy.js",
+      "description": "What the daily website sync does with each change it finds."
+    },
+    {
+      "file": "src/lib/sourceSync/attach.js",
+      "description": "Attach (or clear) the source URL a listing is monitored against."
+    },
+    {
+      "file": "src/lib/sourceSync/classify.js",
+      "description": "Classify a source URL's host as the landlord's own site or a third-party portal."
+    },
+    {
+      "file": "src/lib/sourceSync/givenSites.js",
+      "description": "The pages a listing may be synced from (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/sourceSync/subpages.js",
+      "description": "A listing's own page on a company-wide website (Wyatt, 2026-11-07)."
+    },
+    {
+      "file": "src/lib/sourceSync/unitPages.js",
+      "description": "A page per unit (Wyatt, 2026-11-06)."
     },
     {
       "file": "src/lib/streetview.js",
@@ -116,32 +1372,124 @@
       "description": "Thin wrappers around the write-as-user RPCs defined in migration"
     },
     {
+      "file": "src/lib/useLeaveGuard.js",
+      "description": "Ask before leaving a page with work in flight, and clean up if they go."
+    },
+    {
       "file": "src/lib/userRole.js",
-      "description": "Resolve a user's authoritative role straight from the database."
+      "description": "Guard for privileged routes: returns the session only when the caller's role"
+    },
+    {
+      "file": "src/lib/users/dashboardUser.js",
+      "description": "The dashboard payload, built once for whoever is being looked at."
+    },
+    {
+      "file": "src/lib/users/licenseDisclosure.js",
+      "description": "Real estate license disclosure (MREC compliance, 2026-11-04)."
+    },
+    {
+      "file": "src/lib/users/mrecForm.js",
+      "description": "The Missouri Real Estate Commission's Broker Disclosure Form (MREC, 2026-11-05)."
+    },
+    {
+      "file": "src/lib/users/profileCompletion.js",
+      "description": "What a request that marks a profile complete has to carry."
+    },
+    {
+      "file": "src/lib/users/viewAs.js",
+      "description": "Who a dashboard request is actually ABOUT."
+    },
+    {
+      "file": "src/lib/visitorCookie.js",
+      "description": "The prx_vid device cookie: names a signed-out browser across visits. Shared"
+    },
+    {
+      "file": "src/lib/waitlistNudge.js",
+      "description": "The half-hour follow-up for a waitlist lead who never finished their account."
+    },
+    {
+      "file": "src/lib/waitlists.js",
+      "description": "Properties that run their own waitlist off-site."
+    },
+    {
+      "file": "src/lib/washuPages.js",
+      "description": "Registry for the /washu landing pages, mirroring lib/guides.js. Structure"
     },
     {
       "file": "src/utils/analytics.js",
-      "description": "── Cross-page navigation source ──"
+      "description": "── Find Your Place, recorded in our own database ──"
+    },
+    {
+      "file": "src/utils/availability.js",
+      "description": "How an offering's start date reads to a person."
+    },
+    {
+      "file": "src/utils/bikeTimes.js",
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/calendarDate.js",
+      "description": "Calendar days: a move-in date, a special's valid-until. One rule for all of them."
+    },
+    {
+      "file": "src/utils/chatThreadGrouping.js",
+      "description": "Inbox ordering for chat threads."
+    },
+    {
+      "file": "src/utils/compressImage.js",
+      "description": "No description. Add a top-of-file comment."
+    },
+    {
+      "file": "src/utils/copyText.js",
+      "description": "Copies text to the clipboard and resolves to true/false. Never throws."
     },
     {
       "file": "src/utils/drivePlaces.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/driveTimes.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/listingFormatters.js",
-      "description": "Transforms a raw Supabase listings row (plus its related rows) into the"
+      "description": "Format listing aggregate min/max rent for chat headers (e.g. \"$1,200/mo\")."
+    },
+    {
+      "file": "src/utils/reviewAddress.js",
+      "description": "Address rules for the review flow, shared by the form and the route so the"
+    },
+    {
+      "file": "src/utils/shareLink.js",
+      "description": "The link a listing share sends: always the public listing page,"
+    },
+    {
+      "file": "src/utils/unitCounts.js",
+      "description": "Bedroom and bathroom counts."
+    },
+    {
+      "file": "src/utils/unitFormat.js",
+      "description": "Whether a unit name is an apartment (\"Apt 201\", \"Unit 5548\", \"305\") or a"
+    },
+    {
+      "file": "src/utils/unitName.js",
+      "description": "A unit's name: \"Apt 2W\", \"Unit D1\", \"The Loft\", \"Whole property\"."
+    },
+    {
+      "file": "src/utils/unitOrder.js",
+      "description": "The order units appear in, everywhere: the landlord's own order first"
+    },
+    {
+      "file": "src/utils/uploadImagesToR2.js",
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/walkTimes.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     },
     {
       "file": "src/utils/washuPlaces.js",
-      "description": "No description — add a top-of-file comment."
+      "description": "No description. Add a top-of-file comment."
     }
   ]
 }

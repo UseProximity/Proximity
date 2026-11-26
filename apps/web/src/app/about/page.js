@@ -46,7 +46,7 @@ export default function AboutPage() {
           {founders.map((founder) => (
             <div
               key={founder.name}
-              className="flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-20"
+              className="flex flex-col lg:flex-row items-center lg:items-center gap-6 lg:gap-20"
             >
               {/* Left: image + identity */}
               <div className="flex flex-col items-center text-center flex-shrink-0 w-80">

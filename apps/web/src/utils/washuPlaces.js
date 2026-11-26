@@ -8,6 +8,7 @@ export const WASHU_PLACES = [
   { name: "Danforth University Center", lat: 38.64754193120054,  lng: -90.31037361422699 },
   { name: "Sumers Rec Center",          lat: 38.64933192571885,  lng: -90.31472066027095 },
   { name: "Village House",              lat: 38.65056939432417,  lng: -90.31405161268682 },
+  { name: "McKelvey Hall",              lat: 38.64824450579284,  lng: -90.30151440373899 },
   { name: "Med Campus",                 lat: 38.638520791600385, lng: -90.26355199334968 },
 ];
 
@@ -75,3 +76,15 @@ export const CAMPUS = WASHU_PLACES.find((p) => p.name === "Danforth University C
 // not read as a close walk to campus. (These still appear individually in the
 // listing's "Places" tab — they're only excluded from the single min figure.)
 export const NON_CAMPUS_WALK_PLACES = ["Schnucks (Grocery)", "Med Campus"];
+
+// Minimum walk-minutes to campus for a built listing (placeWalkMinutes keyed
+// by place name), leaving out NON_CAMPUS_WALK_PLACES. The one rule behind the
+// browse distance filter, the card walk badges and the Find Your Place count.
+export function campusWalkMinutes(listing) {
+  const pwm = listing?.placeWalkMinutes;
+  if (!pwm || typeof pwm !== "object") return null;
+  const mins = WASHU_PLACES.filter((p) => !NON_CAMPUS_WALK_PLACES.includes(p.name))
+    .map((p) => pwm[p.name])
+    .filter((m) => m != null);
+  return mins.length ? Math.min(...mins) : null;
+}

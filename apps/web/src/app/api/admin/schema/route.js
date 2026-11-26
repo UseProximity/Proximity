@@ -1,6 +1,7 @@
+// @auth admin
 export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { requireDbRole } from "@/lib/userRole";
 
 function getDbTarget(req) {
   const header = req.headers.get("x-db-target");
@@ -32,8 +33,8 @@ function toLabel(colName) {
 }
 
 export async function GET(req) {
-  const session = await auth();
-  if (!session || (session.user.role !== "super" && session.user.role !== "admin")) {
+  const session = await requireDbRole(["super", "admin"]);
+  if (!session) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

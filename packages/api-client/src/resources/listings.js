@@ -1,3 +1,53 @@
-// Listings resource: getListings, getListing, getPopularListings. Calls /api/listings/* endpoints.
-
-export {};
+// Wraps GET /api/listings, GET /api/listing/[listingId], GET /api/listings/popular
+// (all three fully public, no auth, per apps/web/src/app/api/listings/route.js,
+// listing/[listingId]/route.js, and listings/popular/route.js; /api/listings takes
+// no query params, filtering happens client-side, matching web's own contract),
+// plus POST /api/addListing (createListing; requires a bearer token and a
+// landlord/student/super role, per addListing/route.js's getRequestUser check).
+// createListing forwards payload as-is; the caller (Add Listing's wizard) shapes
+// it to match AddListingWizard.js's own submit body. saveFilterSummary wraps
+// POST /api/filter-summary (needs a bearer token), as web's Browse does on Apply.
+export function createListingsResource(client) {
+  return {
+    getListings: () => client.request("/api/listings"),
+    getListing: (listingId) => client.request(`/api/listing/${listingId}`),
+    getPopularListings: () => client.request("/api/listings/popular"),
+    // GET /api/listings/suggested (auth optional): the signed-in student's
+    // "Suggested for you" listing ids, best first ({ ids: [] } when signed out
+    // or when there is too little to go on).
+    getSuggestedListings: () => client.request("/api/listings/suggested"),
+    // POST /api/filter-summary: records the browse filters a signed-in student
+    // just applied, the lightest signal behind "Suggested for you". The server
+    // keeps only known filter keys and skips an empty set.
+    saveFilterSummary: (filters) =>
+      client.request("/api/filter-summary", {
+        method: "POST",
+        body: JSON.stringify({ filters }),
+      }),
+    // Review safety (both need a bearer token). The server resolves the review's
+    // author itself, so anonymous reviews can be reported but never blocked.
+    reportReview: (reviewId) =>
+      client.request("/api/reviewReport", {
+        method: "POST",
+        body: JSON.stringify({ reviewId }),
+      }),
+    // Reports a listing itself (needs a bearer token). `reason` is one of
+    // LISTING_REPORT_REASONS' values (@proximity/shared). The answer is
+    // { ok, alreadyReported? }.
+    reportListing: (listingId, { reason, details }) =>
+      client.request("/api/listingReport", {
+        method: "POST",
+        body: JSON.stringify({ listingId, reason, details: details || undefined }),
+      }),
+    blockReviewAuthor: (reviewId) =>
+      client.request("/api/userBlock", {
+        method: "POST",
+        body: JSON.stringify({ reviewId }),
+      }),
+    createListing: (payload) =>
+      client.request("/api/addListing", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  };
+}

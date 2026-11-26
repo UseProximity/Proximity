@@ -1,0 +1,352 @@
+/*
+ * The recurring source sync.
+ *
+ * Every published listing with a source URL has a monitor row saying when it
+ * is next due. syncMonitor reads one the same way an import reads it
+ * (readProperty), keeps the snapshot, and if anything about the units or
+ * prices changed applies it under the sync rules in apply.js.
+ *
+ * Three rhythms (Wyatt, 2026-11-12):
+ *   daily     units, leases, prices and availability, plus the specials the
+ *             website shows (they come and go fast)
+ *   Sunday    the deep read, which also brings photos and floor plan drawings
+ *   Monday    the knowledge read: the whole site into what Proxy knows
+ *             (lib/agents/pages.js readWholeSite, queued by
+ *             lib/agents/sync.js runWeeklyKnowledge)
+ *
+ * Since the per-listing agents (PRD v3) the daily batch runs each listing as
+ * its own job in the import lanes (lib/agents/sync.js); runSourceSync, which
+ * reads listings one after another, remains for an admin's on-demand run and
+ * for the unscheduled /api/cron/source-sync route.
+ *
+ * The interval lives on the monitor (check_interval_days, default 1 since
+ * the agents), so moving a landlord to weekly is a column update.
+ */
+import supabase from "@/lib/supabase";
+import { getBaseUrl, needsLook, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
+import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
+import { readProperty, DraftFetchError } from "./read.js";
+import { nextSundayCheckAt } from "./readers/portalWalkParse.js";
+import { applySnapshot } from "./apply.js";
+import { fingerprint, summarize } from "./snapshot.js";
+import { syncSpecials, markStaleSources } from "@/lib/agents/pages";
+import { ensureAgent } from "@/lib/agents/store";
+import { mergeUnitPages } from "@/lib/sourceSync/unitPages";
+import { givenSiteFilterFor } from "@/lib/sourceSync/givenSites";
+import { hiddenRentsMissing, touchHiddenRents } from "@/lib/listings/hiddenRents";
+
+export const ALERT_TO = (process.env.SOURCE_SYNC_ALERT_EMAIL || "info@useproximity.org,o.wyatt@wustl.edu")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export const DEFAULT_INTERVAL_DAYS = 1;
+const MAX_BACKOFF_DAYS = 14;
+
+/*
+ * When a monitor is next due. The daily cron runs at 09:00 UTC and each check
+ * finishes a few minutes after it, so "exactly one day later" was a few minutes
+ * past the next run: the source was skipped and only read every other day. The
+ * next check is therefore set SCHEDULE_SLACK_MS early, so a daily source is due
+ * at every daily run (Wyatt, 2026-11-07).
+ */
+export const SCHEDULE_SLACK_MS = 6 * 60 * 60 * 1000;
+
+/*
+ * The weekly deep read (Wyatt, 2026-11-11): on Sunday's run every listing is
+ * read much further into its site (read.js explore), the same day walked
+ * leasing portals refresh. Admins can ask for one any time.
+ */
+export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
+
+/*
+ * The time one sync gives the read, out of a five-minute function: the rest
+ * is for applying and the knowledge pass. Past KNOWLEDGE_CUTOFF_MS the
+ * knowledge pass waits for the next run.
+ */
+const READ_BUDGET_MS = 210000;
+const KNOWLEDGE_CUTOFF_MS = 200000;
+export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
+const plusDays = (days) => nextCheckAt(days);
+
+/*
+ * A published listing with a source URL and no monitor row gets one. The 36
+ * prod listings whose source URLs were set by hand before any sync existed
+ * are the case: nothing ever wrote their monitors.
+ */
+export async function ensureMonitors() {
+  const { data: rows } = await supabase
+    .from("listings")
+    .select("id, source_url, source_kind, listing_source_monitors!listing_id(id)")
+    .not("source_url", "is", null)
+    .is("deleted_at", null)
+    .not("published_at", "is", null);
+  const missing = (rows ?? []).filter((l) => !(l.listing_source_monitors ?? []).length && !isNeverSourceUrl(l.source_url));
+  if (!missing.length) return 0;
+  const { error } = await supabase.from("listing_source_monitors").upsert(
+    missing.map((l) => ({ listing_id: l.id, source_url: l.source_url, source_kind: l.source_kind ?? "own_site", enabled: true, auto_apply: true })),
+    { onConflict: "listing_id" }
+  );
+  if (error) console.error("[source-sync] ensureMonitors:", error.message);
+  else console.log(`[source-sync] created ${missing.length} monitor${missing.length === 1 ? "" : "s"} for listings with a source URL`);
+  return missing.length;
+}
+
+const MONITOR_SELECT = "id, listing_id, source_url, source_kind, index_url, enabled, auto_apply, check_interval_days, next_check_at, last_checked_at, last_status, consecutive_failures, muted_until, last_fingerprint, portal, listings!listing_id(id, title, address, published_at, deleted_at)";
+
+export async function dueMonitors({ listingId = null, limit = 30, force = false } = {}) {
+  let q = supabase
+    .from("listing_source_monitors")
+    .select(MONITOR_SELECT)
+    .order("next_check_at", { ascending: true, nullsFirst: true })
+    .limit(limit);
+  if (listingId) q = q.eq("listing_id", listingId);
+  else {
+    q = q.eq("enabled", true).or(`next_check_at.is.null,next_check_at.lte.${new Date().toISOString()}`);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(`monitors: ${error.message}`);
+  return (data ?? []).filter((m) => {
+    const l = m.listings;
+    if (!l || l.deleted_at) return false;
+    if (!force) {
+      if (l.published_at === null) return false; // drafts are never synced
+      if (m.muted_until && new Date(m.muted_until) > new Date()) return false;
+      if (!sourceKindEnabled(m.source_kind)) return false;
+    }
+    return true;
+  });
+}
+
+export async function monitorFor(listingId) {
+  const { data, error } = await supabase.from("listing_source_monitors").select(MONITOR_SELECT).eq("listing_id", listingId).maybeSingle();
+  // Loud, not null: a missing column once made every website look absent.
+  if (error) console.error("[source-sync] monitor lookup:", error.message);
+  return data ?? null;
+}
+
+async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
+  // The snapshot minus photo lists, which are long and not what a diff needs.
+  const normalized = snapshot
+    ? { ...snapshot, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
+    : null;
+  await supabase.from("listing_source_snapshots").insert({
+    monitor_id: monitorId,
+    ok,
+    normalized,
+    rollup: snapshot ? summarize(snapshot) : null,
+    unit_count: snapshot?.units.length ?? null,
+    error: error ? String(error).slice(0, 500) : null,
+  });
+}
+
+/*
+ * Photos or floor plan drawings the website has that the listing is missing:
+ * `any` when there is something to fill, `overdue` when it has waited a week
+ * (the listing, or the unit, is more than seven days old).
+ */
+async function photoGaps(listingId, snapshot) {
+  const sitePhotos = (snapshot.property?.photos?.length ?? 0) > 0;
+  const unitPhotos = (snapshot.units ?? []).some((u) => u.photos?.length);
+  const drawings = (snapshot.units ?? []).some((u) => u.floorPlanImageUrl);
+  if (!sitePhotos && !unitPhotos && !drawings) return { any: false, overdue: false };
+  const [{ data: listing }, { data: units }, { data: images }] = await Promise.all([
+    supabase.from("listings").select("created_at").eq("id", listingId).maybeSingle(),
+    supabase.from("listing_units").select("id, created_at, floor_plan_image_url").eq("listing_id", listingId).is("deleted_at", null),
+    supabase.from("listing_images").select("unit_id, source").eq("listing_id", listingId),
+  ]);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const old = (row) => row?.created_at && new Date(row.created_at).getTime() < weekAgo;
+  const withPhotos = new Set((images ?? []).filter((i) => i.source !== "street_view").map((i) => i.unit_id ?? "property"));
+  const missing = [];
+  if (sitePhotos && !withPhotos.has("property")) missing.push(listing);
+  for (const u of units ?? []) {
+    if ((unitPhotos && !withPhotos.has(u.id)) || (drawings && !u.floor_plan_image_url)) missing.push(u);
+  }
+  return { any: missing.length > 0, overdue: missing.some(old) };
+}
+
+/*
+ * Sync one monitor. Returns the digest row for it. Never throws: a failure
+ * is recorded on the monitor (with backoff) and returned as status "failed".
+ *   force       read even if the fingerprint is unchanged
+ *   autoApply   false records every structural change as open (the landlord
+ *               reviews them) and applies nothing
+ *   onStep      progress text, for a job
+ *   knowledge   also read the website's specials into the listing's
+ *               knowledge (default); everything else it knows is the
+ *               Monday read's job
+ */
+export async function syncMonitor(m, { force = false, autoApply = null, onStep = () => {}, knowledge = true, email = true, actorId = null, deep = null } = {}) {
+  const listing = m.listings;
+  const label = listing.title ?? listing.address;
+  const interval = m.check_interval_days || DEFAULT_INTERVAL_DAYS;
+  const started = Date.now();
+  const baseUrl = getBaseUrl();
+  const goDeep = deep ?? isDeepDay();
+  try {
+    await ensureAgent(listing.id);
+    // Only the sites the landlord gave us (Wyatt, 2026-11-07).
+    const allowUrl = await givenSiteFilterFor(listing.id);
+    const snapshot = await readProperty({
+      allowUrl,
+      pastedUrl: m.index_url ?? m.source_url,
+      target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
+      knownPortal: m.portal ?? null,
+      deep: goDeep,
+      deadline: started + READ_BUDGET_MS,
+      // Nothing is applied while a portal walk is unfinished, so the read
+      // stops there and leaves the run's time to the walk.
+      stopWhenPending: true,
+      onStep,
+    });
+    if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    /*
+     * A leasing portal too large to walk in one run: what it has so far is
+     * on the monitor and the listing is due again at once, so the next run
+     * carries on. Nothing is compared or applied from half a price list.
+     */
+    if (snapshot.portalPending) {
+      const p = snapshot.portal?.progress;
+      const note = `Leasing portal part read: ${p?.priced?.length ?? 0} of ${Object.keys(p?.units ?? {}).length} apartments priced, continuing on the next run`;
+      onStep(note);
+      await supabase
+        .from("listing_source_monitors")
+        .update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: new Date().toISOString() })
+        .eq("id", m.id);
+      console.log(`[source-sync] ${label}: ${note}`);
+      // No summary: nothing was read from the website, which is not the same as a page with no units on it.
+      return { listingId: listing.id, listing: label, status: "ok", platform: snapshot.platform, confidence: snapshot.confidence, seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: null, pages: [], unitPages: [], note, portalPending: true };
+    }
+    // Units with their own page: read those pages alone and trust them for
+    // their unit (lib/sourceSync/unitPages.js).
+    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
+    await keepSnapshot(m.id, { ok: true, snapshot });
+    const fp = fingerprint(snapshot);
+    // Photos weekly (Wyatt, 2026-11-12): the deep read, or a sync someone
+    // asked for, adds them. A unit or listing that has waited a week without
+    // any (its Sunday read did not run or was held) gets them on its next
+    // sync. The fingerprint leaves photos out, so a run that could fill a gap
+    // applies rather than stopping at "unchanged"; one with nothing to fill
+    // stops there as usual.
+    const gaps = await photoGaps(listing.id, snapshot).catch(() => ({ any: false, overdue: false }));
+    const images = goDeep || force || gaps.overdue;
+    // An unpriced listing with no hidden prices yet takes one full pass even
+    // on an unchanged page, so its website prices get saved (PR 474 review).
+    const sameAsLast = !force && m.last_fingerprint === fp && !(images && gaps.any);
+    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id));
+    let result = null;
+    // Same website as last time: its prices are still showing, so the hidden
+    // copies the last full read of it saved stay fresh for matchmaking (that
+    // read deleted or detached the rest; applySnapshot).
+    if (unchanged) await touchHiddenRents(listing.id, [snapshot.sourceUrl, m.source_url]);
+    if (!unchanged) {
+      onStep("Saving");
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });
+      // Skipped for churn: the team hears at once, the first day in a row.
+      if (result?.churn && m.last_status !== "suppressed") {
+        await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, newUnits: result.churn.newUnits, units: result.churn.units, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));
+      }
+    }
+    let pages = [];
+    const late = Date.now() - started > KNOWLEDGE_CUTOFF_MS;
+    if (knowledge && late) console.log(`[source-sync] ${label}: read ran long, specials go into knowledge on the next run`);
+    if (knowledge && !late) {
+      onStep("Checking the website's specials");
+      const specials = await syncSpecials({ listingId: listing.id, concessions: snapshot.property?.concessions ?? [], sourceUrl: snapshot.sourceUrl ?? m.source_url, actorId }).catch((e) => ({ url: m.source_url, error: String(e?.message ?? e).slice(0, 300) }));
+      if (specials) pages = [specials];
+    }
+    const status = unchanged ? "unchanged" : result?.holdReason ? "suppressed" : result?.applied.length ? "changed" : "ok";
+    await supabase
+      .from("listing_source_monitors")
+      .update({
+        last_checked_at: new Date().toISOString(),
+        last_extracted_at: new Date().toISOString(),
+        last_status: status,
+        // A leasing portal that read nothing is not a failed sync (the
+        // listing keeps its prices), but the team should see it.
+        last_error: snapshot.portalUnread ? `Leasing portal not read: ${snapshot.portalUnread}`.slice(0, 500) : null,
+        consecutive_failures: 0,
+        last_fingerprint: fp,
+        // A listing priced by a leasing portal is refreshed weekly, on
+        // Sunday (Wyatt, 2026-11-10): the walk is slow and costs renders.
+        next_check_at: snapshot.portal?.walked ? nextSundayCheckAt(Date.now(), SCHEDULE_SLACK_MS) : plusDays(interval),
+      })
+      .eq("id", m.id);
+    await supabase.from("listing_agents").update({ last_sync_at: new Date().toISOString() }).eq("listing_id", listing.id);
+    const item = {
+      listingId: listing.id,
+      listing: label,
+      status,
+      deep: goDeep,
+      platform: snapshot.platform,
+      confidence: snapshot.confidence,
+      unitListComplete: !!snapshot.unitListComplete,
+      seconds: Math.round((Date.now() - started) / 1000),
+      applied: result?.applied ?? [],
+      held: result?.held ?? [],
+      denied: result?.denied ?? [],
+      deniedNew: result?.deniedNew ?? 0,
+      holdReason: result?.holdReason ?? null,
+      refused: snapshot.trace?.refused ?? [],
+      summary: summarize(snapshot),
+      pages,
+      unitPages,
+      portalUnread: snapshot.portalUnread ?? null,
+      portalUnreadKept: snapshot.portalUnreadKept ?? null,
+    };
+    console.log(`[source-sync] ${label}: ${status} (${snapshot.platform}, ${item.seconds}s, ${pages.filter((p) => p.written).length} page${pages.length === 1 ? "" : "s"} with new knowledge)`);
+    return item;
+  } catch (err) {
+    const code = err instanceof DraftFetchError ? err.code : null;
+    const failures = (m.consecutive_failures ?? 0) + 1;
+    const message = code ? `fetch failed (${code})` : err?.message ?? "sync failed";
+    await keepSnapshot(m.id, { ok: false, error: message });
+    await supabase
+      .from("listing_source_monitors")
+      .update({
+        last_checked_at: new Date().toISOString(),
+        last_status: code ? "fetch_failed" : "parse_failed",
+        last_error: message.slice(0, 500),
+        consecutive_failures: failures,
+        next_check_at: plusDays(Math.min(interval * (failures + 1), MAX_BACKOFF_DAYS)),
+      })
+      .eq("id", m.id);
+    // The monitored pages share the failure count; after a few in a row their
+    // facts are stale. Other page sources (a link from an answer) are not touched.
+    await supabase.from("listing_sources").update({ consecutive_failures: failures, last_status: code ? "fetch_failed" : "parse_failed", last_error: message.slice(0, 500), last_checked_at: new Date().toISOString() })
+      .eq("listing_id", listing.id).eq("kind", "page").in("url", [m.source_url, m.index_url].filter(Boolean));
+    const stale = await markStaleSources(listing.id);
+    console.error(`[source-sync] ${label}: ${message}${stale ? ` (${stale} source${stale === 1 ? "" : "s"} now stale)` : ""}`);
+    if (email) {
+      try {
+        await sendSourceSyncFailureEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, error: message, failures, baseUrl });
+      } catch (e) {
+        console.error("[source-sync] failure email:", e?.message);
+      }
+    }
+    return { listingId: listing.id, listing: label, status: "failed", error: message, failures, applied: [], held: [], pages: [] };
+  }
+}
+
+/*
+ * Run the sync inline, listing after listing. Returns { checked, items }.
+ *   listingId  one listing, on demand
+ *   force      run it even if not due, muted, or still a draft
+ */
+export async function runSourceSync({ listingId = null, limit = 30, force = false, email = true, deep = null } = {}) {
+  await ensureMonitors();
+  const monitors = await dueMonitors({ listingId, limit, force });
+  const items = [];
+  for (const m of monitors) items.push(await syncMonitor(m, { force, email, deep }));
+
+  // One digest per run, when there is anything to say.
+  if (email && items.some(needsLook)) {
+    try {
+      await sendSourceSyncDigestEmail({ to: ALERT_TO, items, baseUrl: getBaseUrl() });
+    } catch (e) {
+      console.error("[source-sync] digest email:", e?.message);
+    }
+  }
+  return { checked: monitors.length, items };
+}

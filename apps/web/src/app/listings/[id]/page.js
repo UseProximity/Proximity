@@ -122,6 +122,13 @@ export default async function ListingDetailPage({ params }) {
   if (!listing) notFound();
   return (
     <>
+      {/* Marks the top of the document for Next's scroll-to-top on navigation,
+          which looks at a page's first visible element. Without it that is the
+          one-screen loading state below: opened from a scrolled page, the short
+          document clamps the scroll so that state starts exactly at the top of
+          the viewport, Next sees nothing to scroll, and the listing then opens
+          at the old page's scroll position. */}
+      <div aria-hidden="true" className="absolute left-0 top-0 h-px w-px" />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -136,7 +143,11 @@ export default async function ListingDetailPage({ params }) {
           </div>
         }
       >
-        <ListingDetailClient listingId={id} session={session} />
+        <ListingDetailClient
+          listingId={id}
+          session={session}
+          initialListing={listing}
+        />
       </Suspense>
     </>
   );

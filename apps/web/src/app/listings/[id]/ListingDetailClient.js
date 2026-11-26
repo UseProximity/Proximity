@@ -4,33 +4,48 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ListingModalInfo from "@/components/listings/ListingModalInfo";
 import HeartIcon from "@/components/ui/HeartIcon";
+import ShareButton from "@/components/listings/ShareButton";
+import { sanitizeCallbackUrl } from "@/lib/auth/callbackUrl";
 
-export default function ListingDetailClient({ listingId, session }) {
+export default function ListingDetailClient({
+  listingId,
+  session,
+  initialListing = null,
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [listing, setListing] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // The server page seeds initialListing so the first paint (and crawler HTML)
+  // has the full listing. The mount fetch still runs: it counts the click
+  // metric and, for signed-in users, restores per-review vote state.
+  const [listing, setListing] = useState(initialListing);
+  const [loading, setLoading] = useState(!initialListing);
   const [notFound, setNotFound] = useState(false);
 
   const from = searchParams.get("from");
+  // Set when a phone opened the site on a ?listing= link and was handed here
+  // (GlobalListingModal): the page that popup would have been on.
+  // Only ever a path on this site (a crafted link could name another).
+  const back = sanitizeCallbackUrl(searchParams.get("back"), null);
 
   useEffect(() => {
     fetch(`/api/listing/${listingId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setListing(data);
-        else setNotFound(true);
+        else if (!initialListing) setNotFound(true);
         setLoading(false);
       })
       .catch(() => {
-        setNotFound(true);
+        if (!initialListing) setNotFound(true);
         setLoading(false);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId]);
 
   const handleBack = () => {
     if (from === "map") router.push("/browse?view=map");
     else if (from === "listings") router.push("/browse?view=listings");
+    else if (back) router.push(back);
     else router.back();
   };
 
@@ -86,14 +101,16 @@ export default function ListingDetailClient({ listingId, session }) {
         <span className="flex-1 font-semibold text-gray-900 text-sm truncate">
           {listing.title || listing.address?.split(",")[0]}
         </span>
-        <div className="bg-white/90 backdrop-blur-md rounded-full p-1.5 shadow border border-gray-100 flex-shrink-0">
+        {/* Below 1280px the heart on the photo is the only one. */}
+        <div className="flex flex-shrink-0 items-center gap-2 max-xl:hidden">
+          <ShareButton listingId={listing._id} title={listing.title} />
           <HeartIcon listingId={listing._id} />
         </div>
       </div>
 
       {/* Detail content */}
       <div className="flex-1">
-        <ListingModalInfo session={session} listing={listing} />
+        <ListingModalInfo session={session} listing={listing} initialUnitId={searchParams.get("unit")} page />
       </div>
     </div>
   );

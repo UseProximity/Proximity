@@ -6,6 +6,18 @@
  * page and embedded inline elsewhere (e.g. the ambassador /refer pages) so users never
  * have to leave the page to sign up. On successful credentials sign-in it navigates to
  * `callbackUrl` (pass the current path to simply refresh into the signed-in view).
+ *
+ * Embedding it mid-task (Add Listing asks for an account only when you publish)
+ * takes three optional props: `initialEmail` pre-fills the email field but leaves
+ * it editable, `defaultRole` picks the role the sign-up form starts on, and `bare`
+ * drops the card chrome and heading so the host supplies its own. `callbackUrl`
+ * also rides along on sign-up and resend, so the emailed verification link comes
+ * back to the task rather than to the dashboard.
+ *
+ * Signing in to an account deleted within the last 30 days opens a confirm
+ * screen offering to restore it (POST /api/auth/restore-account). A password
+ * sign-in reaches it through the ACCOUNT_DELETED code; Google comes back to
+ * /login with ?error=ACCOUNT_DELETED&restore=<token>.
  */
 
 import { useState, useEffect } from "react";
@@ -14,32 +26,133 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackEvent } from "@/utils/analytics";
 
-export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "signin", showBackHome = false }) {
+export default function AuthCard({
+  callbackUrl = "/dashboard",
+  initialTab = "signin",
+  showBackHome = false,
+  initialEmail = "",
+  defaultRole = "student",
+  bare = false,
+}) {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState(initialTab === "signup" ? "signup" : "signin");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState("student");
+  const [role, setRole] = useState(defaultRole);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [verificationSentTo, setVerificationSentTo] = useState("");
+  // True when the inbox view comes from signing in to an unverified account
+  // rather than from signing up, so the copy doesn't claim we just sent a link.
+  const [unverifiedSignIn, setUnverifiedSignIn] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
   const [forgotView, setForgotView] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
+  // { via: "password" | "google", token, deletedAt, restoreBy } while the
+  // restore screen is up.
+  const [restore, setRestore] = useState(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
 
   useEffect(() => {
     if (searchParams.get("verified") === "1") {
       setVerificationSentTo("");
     }
     if (searchParams.get("error") === "invalid_token") {
-      setError("Verification link is invalid or expired. Please request a new one below.");
+      setError(
+        "Verification link is invalid or expired. Sign in below and we'll offer to send you a new one."
+      );
     }
+    if (searchParams.get("error") === "verification_failed") {
+      setError("We couldn't verify your email just now. Please open the link again in a moment.");
+    }
+    if (searchParams.get("error") === "ACCOUNT_DELETED") {
+      const token = searchParams.get("restore");
+      if (token) {
+        openRestore({ via: "google", token }).then((ok) => {
+          if (!ok) {
+            setError(
+              "That restore link has expired. Continue with Google again to restore your account."
+            );
+          }
+        });
+      } else {
+        setError(
+          "This account was deleted more than 30 days ago and can no longer be restored. Need help? Contact info@useproximity.org."
+        );
+      }
+    }
+    // openRestore is stable in effect: it only reads its argument.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Ask the server when the account was deleted, then show the restore screen.
+  // Returns false when it can't be restored, so the caller can say why.
+  const openRestore = async ({ via, token }) => {
+    try {
+      const res = await fetch("/api/auth/restore-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(via === "google" ? { token } : { email, password }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      setRestoreError("");
+      setRestore({ via, token, deletedAt: data.deletedAt, restoreBy: data.restoreBy });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleRestore = async () => {
+    setRestoreError("");
+    setRestoreLoading(true);
+    try {
+      const res = await fetch("/api/auth/restore-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          restore.via === "google"
+            ? { token: restore.token, confirm: true }
+            : { email, password, confirm: true }
+        ),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRestoreError(data.error ?? "Something went wrong. Please try again.");
+        setRestoreLoading(false);
+        return;
+      }
+      trackEvent("Account Restored", { provider: restore.via === "google" ? "google" : "email" });
+      // Restored: now an ordinary sign-in.
+      if (restore.via === "google") {
+        signIn("google", { callbackUrl });
+        return;
+      }
+      const result = await signIn("credentials", { email, password, callbackUrl, redirect: false });
+      if (!result || result.error) {
+        // The account is back; only this sign-in failed.
+        setRestore(null);
+        setRestoreLoading(false);
+        setError("Your account is restored. Please sign in.");
+        return;
+      }
+      window.location.href = result.url ?? callbackUrl;
+    } catch {
+      setRestoreError("Something went wrong. Please try again.");
+      setRestoreLoading(false);
+    }
+  };
+
+  const formatDay = (iso) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   const switchTab = (t) => {
     setTab(t);
@@ -48,6 +161,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
     setResendMsg("");
     setForgotView(false);
     setForgotSent(false);
+    setForgotMessage("");
   };
 
   const handleForgot = async (e) => {
@@ -60,10 +174,11 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         setForgotError(data.error ?? "Something went wrong. Please try again.");
       } else {
+        setForgotMessage(data.message);
         setForgotSent(true);
       }
     } catch {
@@ -88,8 +203,20 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       setError("Something went wrong. Please try again.");
       return;
     }
-    if (result.error === "EMAIL_NOT_VERIFIED") {
+    if (result.code === "EMAIL_NOT_VERIFIED") {
       setVerificationSentTo(email);
+      setUnverifiedSignIn(true);
+      return;
+    }
+    if (result.code === "ACCOUNT_DELETED") {
+      setLoading(true);
+      const ok = await openRestore({ via: "password" });
+      setLoading(false);
+      if (!ok) setError("Something went wrong. Please try again.");
+      return;
+    }
+    if (result.code === "TOO_MANY_ATTEMPTS") {
+      setError("Too many failed sign-in attempts. Please wait about 15 minutes and try again.");
       return;
     }
     if (result.error) {
@@ -104,12 +231,13 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
     e.preventDefault();
     setError("");
     setVerificationSentTo("");
+    setUnverifiedSignIn(false);
     setLoading(true);
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, callbackUrl }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -134,7 +262,7 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: verificationSentTo }),
+        body: JSON.stringify({ email: verificationSentTo, callbackUrl }),
       });
       setResendMsg("Resent! Check your inbox.");
     } catch {
@@ -147,10 +275,12 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
   const resetDone = searchParams.get("reset") === "1";
 
   return (
-    <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-        {tab === "signin" ? "Sign in to continue" : "Create your account"}
-      </h1>
+    <div className={bare ? "w-full" : "bg-white rounded-2xl shadow-md p-8 w-full max-w-sm"}>
+      {!bare && (
+        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+          {tab === "signin" ? "Sign in to continue" : "Create your account"}
+        </h1>
+      )}
 
       {/* Tab toggle */}
       <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
@@ -188,28 +318,74 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
         </div>
       )}
 
-      {forgotView ? (
+      {restore ? (
+        <div className="text-center">
+          <div className="mb-4 px-4 py-4 rounded-lg bg-amber-50 text-amber-900 text-sm leading-relaxed text-left">
+            <p className="font-semibold mb-1">Restore your account?</p>
+            <p>
+              You deleted this account on{" "}
+              <span className="font-medium">{formatDay(restore.deletedAt)}</span>. You can
+              bring it back, with your listings, until{" "}
+              <span className="font-medium">{formatDay(restore.restoreBy)}</span>. After that
+              it is removed for good.
+            </p>
+          </div>
+          {restoreError && (
+            <div className="mb-3 px-4 py-3 rounded-lg bg-red-50 text-red-600 text-sm text-left">
+              {restoreError}
+            </div>
+          )}
+          <button
+            onClick={handleRestore}
+            disabled={restoreLoading}
+            className="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition"
+          >
+            {restoreLoading ? "Restoring…" : "Restore my account"}
+          </button>
+          <button
+            onClick={() => {
+              setRestore(null);
+              setRestoreError("");
+              setPassword("");
+            }}
+            disabled={restoreLoading}
+            className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : forgotView ? (
         <div className="text-center">
           {forgotSent ? (
             <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
               <p className="font-semibold mb-1">Check your inbox</p>
-              <p>We sent a reset link to <span className="font-medium">{forgotEmail}</span>.</p>
-              <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
+              <p>{forgotMessage}</p>
+              <p className="mt-1 text-blue-700/80">
+                Don&apos;t see it? Check your spam folder.
+              </p>
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-600 mb-4">Enter your email and we&apos;ll send you a reset link.</p>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter your email and we&apos;ll send you a reset link.
+              </p>
               {forgotError && (
                 <div className="mb-3 px-4 py-3 rounded-lg bg-red-50 text-red-600 text-sm text-left">
                   {forgotError}
                 </div>
               )}
-              <form onSubmit={handleForgot} className="flex flex-col gap-3 text-left">
+              <form
+                onSubmit={handleForgot}
+                className="flex flex-col gap-3 text-left"
+              >
                 <input
                   type="email"
                   placeholder="Email"
                   value={forgotEmail}
-                  onChange={(e) => { setForgotEmail(e.target.value); setForgotError(""); }}
+                  onChange={(e) => {
+                    setForgotEmail(e.target.value);
+                    setForgotError("");
+                  }}
                   required
                   className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-red-400 transition"
                 />
@@ -224,7 +400,12 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
             </>
           )}
           <button
-            onClick={() => { setForgotView(false); setForgotSent(false); setForgotEmail(""); setForgotError(""); }}
+            onClick={() => {
+              setForgotView(false);
+              setForgotSent(false);
+              setForgotEmail("");
+              setForgotError("");
+            }}
             className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
           >
             ← Back
@@ -233,12 +414,28 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
       ) : verificationSentTo ? (
         <div className="text-center">
           <div className="mb-4 px-4 py-4 rounded-lg bg-blue-50 text-blue-800 text-sm leading-relaxed">
-            <p className="font-semibold mb-1">Check your inbox</p>
-            <p>
-              We sent a verification link to{" "}
-              <span className="font-medium">{verificationSentTo}</span>.
+            {unverifiedSignIn ? (
+              <>
+                <p className="font-semibold mb-1">Verify your email to sign in</p>
+                <p>
+                  Your account for{" "}
+                  <span className="font-medium">{verificationSentTo}</span>{" "}
+                  isn&apos;t verified yet. Open the link we emailed you, or send
+                  a new one below.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold mb-1">Check your inbox</p>
+                <p>
+                  We sent a verification link to{" "}
+                  <span className="font-medium">{verificationSentTo}</span>.
+                </p>
+              </>
+            )}
+            <p className="mt-1 text-blue-700/80">
+              Don&apos;t see it? Check your spam folder.
             </p>
-            <p className="mt-1 text-blue-700/80">Don&apos;t see it? Check your spam folder.</p>
           </div>
           <p className="text-sm text-gray-500 mb-3">Didn&apos;t get it?</p>
           <button
@@ -252,7 +449,10 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
             <p className="mt-2 text-sm text-gray-500">{resendMsg}</p>
           )}
           <button
-            onClick={() => { setVerificationSentTo(""); setResendMsg(""); }}
+            onClick={() => {
+              setVerificationSentTo("");
+              setResendMsg("");
+            }}
             className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600 transition"
           >
             ← Back
@@ -293,7 +493,11 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
               </button>
               <button
                 type="button"
-                onClick={() => { setError(""); setForgotEmail(email); setForgotView(true); }}
+                onClick={() => {
+                  setError("");
+                  setForgotEmail(email);
+                  setForgotView(true);
+                }}
                 className="text-sm text-gray-400 hover:text-gray-600 transition text-center w-full"
               >
                 Forgot password?
@@ -329,7 +533,9 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
               {/* Role intent — lets landlords be created with the right role from
                   the start, so their first session is correct. */}
               <div>
-                <span className="block text-xs font-medium text-gray-500 mb-1.5">I am a…</span>
+                <span className="block text-xs font-medium text-gray-500 mb-1.5">
+                  I am a…
+                </span>
                 <div className="flex rounded-xl bg-gray-100 p-1">
                   {[
                     { value: "student", label: "Student" },
@@ -367,11 +573,37 @@ export default function AuthCard({ callbackUrl = "/dashboard", initialTab = "sig
           </div>
 
           <button
-            onClick={() => { trackEvent("Sign In Started", { provider: "google" }); signIn("google", { callbackUrl }); }}
+            onClick={() => {
+              trackEvent("Sign In Started", { provider: "google" });
+              signIn("google", { callbackUrl });
+            }}
             className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 rounded-lg transition"
           >
             Continue with Google
           </button>
+
+          {/* Placed below the Google button rather than inside the Sign Up form
+              because this button creates an account too: a first-time Google
+              sign-in inserts the user row (see auth.js), and it is shared by both
+              tabs. Sitting here, the notice covers every path that can create an
+              account instead of only the email/password one. */}
+          <p className="mt-4 text-center text-xs leading-5 text-gray-400">
+            By creating an account, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="underline underline-offset-2 hover:text-gray-600 transition"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </>
       )}
 

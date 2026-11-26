@@ -8,6 +8,20 @@ export function trackEvent(eventName, props = {}) {
   try { phCapture(eventName, props); } catch {}
 }
 
+/* ── Find Your Place, recorded in our own database ──
+ * The moments a search row cannot show (leaving a page, the popup, Start over)
+ * go to /api/find-your-place/events as well as to analytics, so the admin
+ * Analytics tab reads them without Google. sendBeacon so an event sent as the
+ * tab closes still arrives. Names and fields: lib/findYourPlace/events.js. */
+export function recordFyp(name, metadata = {}, page = "/find-your-place") {
+  try {
+    const body = JSON.stringify({ name, metadata, page });
+    const url = "/api/find-your-place/events";
+    if (navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }))) return;
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+  } catch {}
+}
+
 /* ── Cross-page navigation source ──
  * Header records each route change so any page can ask "where did the user
  * come from?" (client-side navigations don't update document.referrer). */
@@ -47,4 +61,55 @@ export function setListingSource(listingId, source) {
 
 export function getListingSource(listingId) {
   try { return sessionStorage.getItem(listingSourceKey(listingId)) || null; } catch { return null; }
+}
+
+/* ── Find Your Place matches seen again ──
+ * Did a student come back to a listing Find Your Place showed them, but not
+ * through the matches page (browse, search, a shared link, days later)? The
+ * matches are remembered on this browser, signed in or not, and opening,
+ * saving or contacting one of them by any other route fires
+ * "Find Your Place Match Revisited" (Wyatt, 2026-11-15). Per browser on
+ * purpose: one IP is shared by a whole dorm on the campus network. */
+const FYP_SHOWN_KEY = "prx_fyp_shown";
+const FYP_SHOWN_MAX = 60;
+const FYP_REVISIT_TAB_KEY = "prx_fyp_revisited";
+
+function readShown() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FYP_SHOWN_KEY) ?? "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+export function rememberMatchesShown(listingIds) {
+  try {
+    const shown = readShown();
+    const now = new Date().toISOString();
+    for (const id of listingIds) if (id && !shown[id]) shown[id] = now;
+    // Oldest first; keep only the most recent.
+    const kept = Object.entries(shown).sort((a, b) => a[1].localeCompare(b[1])).slice(-FYP_SHOWN_MAX);
+    localStorage.setItem(FYP_SHOWN_KEY, JSON.stringify(Object.fromEntries(kept)));
+  } catch {}
+}
+
+// action: "opened" | "saved" | "contacted" | "waitlist"
+export function noteMatchRevisit(listingId, action) {
+  try {
+    // Opened from the matches page itself: that is the ordinary funnel, not a revisit.
+    // A heart tapped on the matches page itself is part of it too.
+    if (!listingId || getListingSource(listingId) === "matchmaking") return;
+    if (window.location.pathname.startsWith("/find-your-place")) return;
+    const shownAt = readShown()[listingId];
+    if (!shownAt) return;
+    // An open counts once per tab, so closing and reopening the panel is one visit.
+    if (action === "opened") {
+      const seen = JSON.parse(sessionStorage.getItem(FYP_REVISIT_TAB_KEY) ?? "[]");
+      if (seen.includes(listingId)) return;
+      sessionStorage.setItem(FYP_REVISIT_TAB_KEY, JSON.stringify([...seen, listingId].slice(-FYP_SHOWN_MAX)));
+    }
+    const daysSince = Math.max(0, Math.floor((Date.now() - Date.parse(shownAt)) / 86_400_000));
+    trackEvent("Find Your Place Match Revisited", { listingId, action, daysSince });
+  } catch {}
 }

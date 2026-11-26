@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
 import {
   LineChart,
   Line,
@@ -18,7 +19,10 @@ const METRIC_COLORS = {
   saves: "#d97706",
   contacts: "#2563eb",
 };
-const METRIC_LABELS = { clicks: "Views", saves: "Saves", contacts: "Contacts" };
+// "contacts" is the metric's name in the database; students see it as
+// inquiries, since every question to Proxy counts (Wyatt, 2026-10-26).
+// Until the agents are on it is still "Contacts".
+const metricLabels = (agentsOn) => ({ clicks: "Views", saves: "Saves", contacts: agentsOn ? "Inquiries" : "Contacts" });
 const RANGE_OPTIONS_CHART = [
   { value: "7d", label: "7 days" },
   { value: "30d", label: "30 days" },
@@ -39,6 +43,7 @@ function fmtDate(dateStr) {
 }
 
 export default function ListingMetricsChart({ listingId, viewAsId }) {
+  const labels = metricLabels(useAgentsEnabled());
   const [range, setRange] = useState("30d");
   const [metrics, setMetrics] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,7 +121,7 @@ export default function ListingMetricsChart({ listingId, viewAsId }) {
                       : {}
                   }
                 >
-                  {METRIC_LABELS[type]}
+                  {labels[type]}
                 </button>
               );
             })}
@@ -162,10 +167,10 @@ export default function ListingMetricsChart({ listingId, viewAsId }) {
               />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
-                formatter={(val, name) => [val, METRIC_LABELS[name] ?? name]}
+                formatter={(val, name) => [val, labels[name] ?? name]}
               />
               <Legend
-                formatter={(name) => METRIC_LABELS[name] ?? name}
+                formatter={(name) => labels[name] ?? name}
                 wrapperStyle={{ fontSize: 12 }}
               />
               {["clicks", "saves", "contacts"]

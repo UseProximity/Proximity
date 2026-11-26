@@ -4,12 +4,14 @@
  * without a client-side waterfall. Renders the global shell: Inter font, Leaflet CSS,
  * toast notifications, the site Header, the profile completion gate modal, and the
  * URL-driven GlobalListingModal that can open any listing from any page via ?listing=.
- * Also mounts the Vercel Analytics beacon and Google Analytics (GA4) tag. All client
- * state providers (SessionProvider, FavoritesProvider) are composed inside Providers.
+ * Also mounts FeedbackWidget (bottom-left). Messages live at /messages (header entry).
+ * MarketingBeacon sends the marketing attribution session beacon on each route change.
+ * Also mounts the Vercel Analytics and Speed Insights beacons and Google Analytics (GA4) tag. All client
+ * state providers (SessionProvider, FavoritesProvider, MessagesProvider) are composed
+ * inside Providers.
  * Defines the site-wide <title> and <description> used for SEO.
  */
 import { Inter } from "next/font/google";
-import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { Header } from "@/components/layout/Header";
@@ -19,10 +21,14 @@ import { auth } from "@/auth";
 import { appEnv, indexingEnabled } from "@/lib/appEnv";
 import ProfileCompletionModal from "@/components/auth/ProfileCompletionModal";
 import GlobalListingModal from "@/components/listings/GlobalListingModal";
+import GlobalMessagesPanel from "@/components/chat/GlobalMessagesPanel";
+import ErrorReporter from "@/components/ErrorReporter";
 import FeedbackWidget from "@/components/feedback/FeedbackWidget";
+import MarketingBeacon from "@/components/marketing/MarketingBeacon";
 import Providers from "@/components/layout/Providers";
 import { serializeJsonLd } from "@/lib/jsonLd";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -101,9 +107,13 @@ export default async function RootLayout({ children }) {
           <Header session={session} />
           <ProfileCompletionModal session={session} />
           <GlobalListingModal />
+          <GlobalMessagesPanel />
+          <ErrorReporter />
           <FeedbackWidget />
+          <MarketingBeacon />
           {children}
           <Analytics />
+          <SpeedInsights />
           {/* GA only on the real site — staging/preview/local sessions would land in
               the same property and skew the funnels. Vercel Analytics separates
               environments on its own, so it stays mounted everywhere. */}

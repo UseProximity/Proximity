@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { calcAge } from "@/utils/listingFormatters";
+import DeleteAccountButton from "@/components/account/DeleteAccountButton";
 
 export default function ProfileSection({
   user,
@@ -13,6 +14,10 @@ export default function ProfileSection({
   cancelEdit,
   saveProfile,
   setIsEditing,
+  // Opt in, so a new caller can't show it by accident. Must stay false while an
+  // admin is viewing as this landlord: the button deletes the signed-in
+  // account, not the one being viewed.
+  canDeleteAccount = false,
 }) {
   if (!user) {
     return (
@@ -23,10 +28,11 @@ export default function ProfileSection({
   }
 
   return (
+    <>
     <div className="bg-white p-5 sm:p-8 rounded-lg shadow-lg mb-8">
-      <div className="flex flex-col md:flex-row gap-5 md:gap-8">
+      <div className="flex flex-col lg:flex-row gap-5 lg:gap-8">
         {/* Profile Image */}
-        <div className="flex-shrink-0 flex justify-center md:block">
+        <div className="flex-shrink-0 flex justify-center lg:block">
           <img
             src={user.image}
             alt={user.name}
@@ -42,14 +48,22 @@ export default function ProfileSection({
                 <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 break-words">
                   {user.name}
                 </h1>
-                <Badge
-                  variant="secondary"
-                  className="bg-red-50 text-red-700 border border-red-200"
-                  aria-label="Account role: Landlord"
-                >
-                  Landlord
-                </Badge>
+                {/* The real role. This said "Landlord" for everyone, which was
+                    merely redundant while only landlords could reach this page
+                    and became untrue the moment a student subletter could. */}
+                {user.role && (
+                  <Badge
+                    variant="secondary"
+                    className="bg-red-50 text-red-700 border border-red-200"
+                    aria-label={`Account role: ${user.role}`}
+                  >
+                    {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                  </Badge>
+                )}
               </div>
+              {user.company_name && (
+                <p className="text-gray-600 text-base sm:text-lg">{user.company_name}</p>
+              )}
               {user.numReviews === 0 ? (
                 <p className="text-gray-500 text-sm italic">No ratings yet</p>
               ) : (
@@ -61,7 +75,17 @@ export default function ProfileSection({
                 </div>
               )}
               <p className="text-gray-500 mt-2 text-base sm:text-lg">
-                {user.listings?.length ?? 0} active listings
+                {/* A property counts when students can take something there:
+                    a draft never does, and neither does a building where every
+                    offering (or, for a lease-holder, their own) is withdrawn. */}
+                {(user.listings ?? []).filter(
+                  (l) =>
+                    !l.isDraft &&
+                    (l.ownership === "property"
+                      ? (l.unitTypes ?? []).some((u) => u.available)
+                      : (l.myLeases ?? []).some((x) => x.isLive))
+                ).length}{" "}
+                active listings
               </p>{" "}
               <p className="text-gray-400 text-sm sm:text-base mt-2">
                 {calcAge(user.birthday) != null
@@ -70,7 +94,7 @@ export default function ProfileSection({
                 {user.gender ? ` • ${user.gender}` : ""}
               </p>
               <p className="text-gray-500 text-sm sm:text-base mt-2 break-words">
-                📞 {user.phone} • ✉️ {user.email}
+                ✉️ {user.email}
               </p>
               {/* Additional Info */}
               <div className="mt-6">
@@ -105,15 +129,19 @@ export default function ProfileSection({
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  Phone
+                  Company
                 </label>
                 <input
-                  name="phone"
-                  value={form.phone == "N/A" ? "" : form.phone}
+                  name="companyName"
+                  value={form.companyName}
                   onChange={onChange}
+                  maxLength={100}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="+1 (555) 555-5555"
+                  placeholder="e.g. Proximity LLC"
                 />
+                <p className="mt-1 text-xs text-gray-400">
+                  Shown next to your name when you message students.
+                </p>
               </div>
               <div className="col-span-1">
                 <label className="block text-sm font-medium text-gray-700">
@@ -196,6 +224,41 @@ export default function ProfileSection({
                 </select>
               </div>
 
+              <div className="col-span-1 md:col-span-2 flex items-start justify-between gap-3 rounded-md border border-gray-200 px-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800">
+                    Email notifications
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Get an email when someone messages you about a listing.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!form.emailNotifications}
+                  onClick={() =>
+                    onChange({
+                      target: {
+                        name: "emailNotifications",
+                        value: !form.emailNotifications,
+                      },
+                    })
+                  }
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                    form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                      form.emailNotifications
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="col-span-1 md:col-span-2 flex gap-3 pt-2">
                 <Button
                   type="submit"
@@ -234,5 +297,7 @@ export default function ProfileSection({
         </div>
       </div>
     </div>
+    {canDeleteAccount && <DeleteAccountButton variant="card-wide" className="mb-8" />}
+    </>
   );
 }

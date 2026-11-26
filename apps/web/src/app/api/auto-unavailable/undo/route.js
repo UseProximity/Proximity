@@ -110,7 +110,15 @@ export async function POST(req) {
 
   const args = { p_user_id: SYSTEM_USER_ID, p_listing_id: action.listing_id };
   if (action.scope?.units?.length) {
-    args.p_unit_updates = action.scope.units.map((u) => ({ id: u.id, available: true }));
+    // Restore exactly the offerings this action withdrew — the ids were recorded
+    // in scope at hide time. Without them a relist would revive every withdrawn
+    // lease on the unit, including ones another landlord pulled for their own
+    // reasons and this action never touched.
+    args.p_unit_updates = action.scope.units.map((u) => ({
+      id: u.id,
+      available: true,
+      lease_ids: u.leaseIds ?? null,
+    }));
   } else {
     args.p_listing_updates = { unavailable: false };
   }

@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { insertAsUser } from "@/lib/supabaseWithUser";
 import { isReviewEligibleEmail } from "@/lib/schools";
+import { checkReviewText } from "@/lib/contentRules";
+import { findDuplicateReview, isDuplicateReviewError } from "@/lib/reviews/duplicate";
+import { recordOutcome } from "@/lib/marketing/record";
 
 // Valid half-star rating: between 0.5 and 5 in 0.5 increments. Mirrors the check in
 // /api/reviewReferral so both review entry points accept the same values.
@@ -42,6 +45,13 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid rating or comment" }, { status: 400 });
     }
 
+    // Reviews are public and permanent, so a named individual stays named. The
+    // form blocks this too; this is the check a crafted request cannot skip.
+    const named = checkReviewText(comment);
+    if (named) {
+      return NextResponse.json({ error: named }, { status: 400 });
+    }
+
     if (!listingId) {
       return NextResponse.json({ error: "Must provide listingId" }, { status: 400 });
     }
@@ -55,6 +65,15 @@ export async function POST(req) {
         );
       }
     }
+
+    // A repeat of a review this person already posted here: hand back the
+    // existing one instead of saving a second copy (lib/reviews/duplicate.js).
+    const duplicate = await findDuplicateReview({
+      userId: session.user.id,
+      listingId,
+      comment,
+    });
+    if (duplicate) return NextResponse.json(duplicate);
 
     const { data: newReview, error } = await insertAsUser(supabase, {
       userId: session.user.id,
@@ -72,10 +91,16 @@ export async function POST(req) {
     });
 
     if (error) {
+      // An identical submission won the race to insert: hand back that one.
+      if (isDuplicateReviewError(error)) {
+        const first = await findDuplicateReview({ userId: session.user.id, listingId, comment });
+        if (first) return NextResponse.json(first);
+      }
       console.error("POST /api/submitReview failed:", error);
       return NextResponse.json({ error: "Server error" }, { status: 500 });
     }
 
+    await recordOutcome(req, { outcome: "review_submitted", userId: session.user.id, userRole: session.user.role ?? null, subjectId: newReview?.id });
     return NextResponse.json(newReview);
   } catch (e) {
     console.error("POST /api/submitReview failed:", e);

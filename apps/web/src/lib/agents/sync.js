@@ -1,0 +1,261 @@
+/*
+ * The daily per-agent sync (PRD v3, milestone 6).
+ *
+ * One daily run queues every due listing's sync as its own job in the
+ * importer's job table; the 2-minute import-jobs cron runs them in lanes, so
+ * agents run in parallel and fail independently. Each job re-reads only its
+ * own listing's pages (lib/sourceImport/sync.js syncMonitor) and then reads
+ * those pages into the listing's knowledge.
+ *
+ * "Sync now" queues the same job for one listing, capped per agent per day.
+ * Adding a URL to a live listing queues a job that proposes rather than
+ * applies: the displayed-field changes wait for the landlord (open events),
+ * and the pages' fees, policies and specials go into knowledge at once.
+ */
+import { randomUUID } from "crypto";
+import supabase from "@/lib/supabase";
+import { ensureMonitors, dueMonitors, monitorFor, syncMonitor } from "@/lib/sourceImport/sync";
+import { sourceKindEnabled } from "@/lib/sourceSync/classify";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import { agentsEnabled } from "./flags";
+import { ensureAgent, getAgent } from "./store";
+import { PROXY_USER_ID } from "./threads";
+
+export const MANUAL_SYNCS_PER_DAY = Number(process.env.AGENT_MANUAL_SYNCS_PER_DAY) || 3;
+
+const todayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+/* Already queued or running for this listing? Then do not queue another. */
+async function openSyncJob(listingId) {
+  const { data } = await supabase.from("listing_import_jobs").select("id, status, batch_id").eq("listing_id", listingId)
+    .in("status", ["queued", "running"]).limit(5);
+  return (data ?? []).find((j) => j) ?? null;
+}
+
+export async function enqueueSync({ listingId, userId = null, batchId = null, propose = false, url = null, force = false, knowledge = false, deep = null }) {
+  const m = url ? null : await monitorFor(listingId);
+  if (!url && !m && !knowledge) return { error: "This listing has no website to sync from.", status: 409 };
+  const existing = await openSyncJob(listingId);
+  if (existing) return { job: existing, already: true };
+  if (knowledge && !url && !m) {
+    const { data: l } = await supabase.from("listings").select("source_url").eq("id", listingId).maybeSingle();
+    if (!l?.source_url) return { error: "This listing has no website to read.", status: 409 };
+    url = l.source_url;
+  }
+  const { data: listing } = await supabase.from("listings").select("id, title, address").eq("id", listingId).maybeSingle();
+  if (!listing) return { error: "Listing not found", status: 404 };
+  const { data: job, error } = await supabase.from("listing_import_jobs").insert({
+    batch_id: batchId ?? randomUUID(),
+    user_id: userId ?? PROXY_USER_ID,
+    listing_id: listingId,
+    target: {
+      // knowledge: read the whole site into what Proxy knows, nothing else.
+      sync: true, knowledge, propose, force, deep, name: listing.title, address: listing.address,
+      url: url ?? m.source_url, levelUrl: url ? null : m.index_url, pastedUrl: url ?? m.index_url ?? m.source_url,
+    },
+    status: "queued", step: knowledge ? "Queued: reading the whole site" : "Queued for sync", progress: 0,
+  }).select("id, status, batch_id").single();
+  if (error) return { error: error.message, status: 500 };
+  return { job };
+}
+
+/* The daily batch: every due monitor becomes a job. Returns the counts. */
+export async function runDailyBatch({ limit = 500 } = {}) {
+  if (!agentsEnabled()) return { skipped: "agents off" };
+  await ensureMonitors();
+  // A listing given a company-wide page gets its own page on that site first
+  // (lib/sourceSync/subpages.js). Two sites a day keeps the cron in its time.
+  let subpages = null;
+  try {
+    const { attachSubpages } = await import("@/lib/sourceSync/subpages");
+    subpages = await attachSubpages({ limit: 2 });
+  } catch (err) {
+    console.error("[agent-sync] sub-pages:", err?.message ?? err);
+  }
+  const monitors = await dueMonitors({ limit });
+  const batchId = randomUUID();
+  let queued = 0;
+  let already = 0;
+  for (const m of monitors) {
+    const r = await enqueueSync({ listingId: m.listing_id, batchId });
+    if (r.job && !r.already) queued++;
+    else if (r.already) already++;
+  }
+  return { due: monitors.length, queued, already, batchId, subpages: subpages ? { sites: subpages.sites, attached: subpages.attached.length } : null };
+}
+
+/*
+ * The weekly knowledge read (Wyatt, 2026-11-12), Monday after Sunday's deep
+ * read: every published listing with a website gets a whole-site read into
+ * what Proxy knows (lib/agents/pages.js readWholeSite), each its own job in
+ * the import lanes. The daily sync only checks specials. A listing whose
+ * daily sync is still running is retried by a later cron tick: the route is
+ * called every hour from 5am to 3pm St. Louis on Monday, and each tick skips
+ * listings already read this week, so the later ticks cost nothing once the
+ * daily syncs have drained. Muted listings, and website kinds whose sync is
+ * switched off, are left out, the same as the daily sync (dueMonitors).
+ */
+export async function runWeeklyKnowledge({ limit = 500 } = {}) {
+  if (!agentsEnabled()) return { skipped: "agents off" };
+  const { data, error } = await supabase
+    .from("listing_source_monitors")
+    .select("listing_id, source_url, source_kind, muted_until, enabled, listings!listing_id(published_at, deleted_at)")
+    .eq("enabled", true)
+    .limit(limit);
+  if (error) throw new Error(`monitors: ${error.message}`);
+  const now = new Date();
+  const due = (data ?? []).filter((m) => m.listings && !m.listings.deleted_at && m.listings.published_at && m.source_url
+    && !(m.muted_until && new Date(m.muted_until) > now) && sourceKindEnabled(m.source_kind));
+  // Already read this week (an earlier tick, an import, a landlord's sync),
+  // or tried and failed: a failed read already used its own retries, so it is
+  // not queued again every hour of the Monday (PR 447 review). It is read
+  // again next week.
+  // In chunks: hundreds of ids in one filter make a URL too long to send.
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString();
+  const readRecently = new Set();
+  const ids = due.map((m) => m.listing_id);
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data: recent, error: e2 } = await supabase.from("listing_import_jobs").select("listing_id").in("status", ["done", "failed"])
+      .contains("target", { knowledge: true }).gte("finished_at", weekAgo).in("listing_id", ids.slice(i, i + 100));
+    if (e2) throw new Error(`recent reads: ${e2.message}`);
+    for (const r of recent ?? []) readRecently.add(r.listing_id);
+  }
+  const batchId = randomUUID();
+  let queued = 0;
+  let busy = 0;
+  let fresh = 0;
+  for (const m of due) {
+    if (readRecently.has(m.listing_id)) { fresh++; continue; }
+    const r = await enqueueSync({ listingId: m.listing_id, batchId, knowledge: true, url: m.source_url });
+    if (r.job && !r.already) queued++;
+    else if (r.already) busy++;
+  }
+  return { listings: due.length, queued, busy, readThisWeek: fresh, batchId };
+}
+
+/* "Sync now" from a landlord's or admin's dashboard. */
+export async function manualSync({ listingId, userId, isAdmin = false }) {
+  if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
+  const agent = await ensureAgent(listingId);
+  // A sync already waiting or running: hand it back without spending a sync.
+  const open = await openSyncJob(listingId);
+  if (open) return { job: open, already: true };
+  if (!isAdmin) {
+    const day = todayKey();
+    const used = agent.manual_sync_day === day ? agent.manual_syncs_today : 0;
+    if (used >= MANUAL_SYNCS_PER_DAY) return { error: `You can sync ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
+    await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
+  }
+  // An admin's sync is a deep read, the weekly kind, so the team can try it
+  // on a listing any day (Wyatt, 2026-11-11).
+  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? true : null });
+}
+
+/*
+ * A landlord adds a URL to a live listing. The URL is attached as the
+ * listing's source (monitor + listings.source_url) and a proposing job is
+ * queued; nothing displayed changes until the landlord confirms the open
+ * events in the Agent tab.
+ */
+export async function addUrl({ listingId, url, userId, isAdmin = false }) {
+  if (!agentsEnabled()) return { error: "Agents are not enabled yet.", status: 404 };
+  const agent = await ensureAgent(listingId);
+  // Adding a website is a full paid read, so it counts as one of the day's
+  // syncs (the same limit as "Sync now").
+  const day = todayKey();
+  const used = agent.manual_sync_day === day ? agent.manual_syncs_today : 0;
+  if (!isAdmin && used >= MANUAL_SYNCS_PER_DAY) return { error: `You can add or sync a website ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
+  const attached = await attachSourceUrl({ listingId, rawUrl: url, userId });
+  if (!attached.ok) return { error: attached.reason === "bad_url" ? "That doesn't look like a website address." : "Could not attach that URL.", status: 400 };
+  // A read already waiting or running picks the new website up next time;
+  // no second read and no sync spent.
+  const open = await openSyncJob(listingId);
+  if (open) return { job: open, already: true };
+  if (!isAdmin) {
+    await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
+  }
+  return enqueueSync({ listingId, userId, propose: true, force: true });
+}
+
+/*
+ * Runs inside the import job runner for a job whose target.sync is true.
+ * A landlord-triggered sync (force) reads the displayed fields here and
+ * then hands the whole-site read to a knowledge job of its own, so each
+ * fits one function run; the daily sync re-reads only the known pages.
+ */
+export async function runSyncJob(job, { onStep = () => {} } = {}) {
+  const target = job.target ?? {};
+  const actorId = job.user_id === PROXY_USER_ID ? null : job.user_id;
+  if (target.knowledge) {
+    const { readWholeSite } = await import("./pages");
+    const m = await monitorFor(job.listing_id);
+    const totals = await readWholeSite({ listingId: job.listing_id, startUrl: target.url ?? m?.source_url, cause: "sync", actorId, force: !!target.force, onStep });
+    return { status: "knowledge", applied: [], held: [], pages: totals, seconds: totals.seconds, summary: null };
+  }
+  const m = await monitorFor(job.listing_id);
+  if (!m) throw new Error("This listing has no website to sync from.");
+  const item = await syncMonitor(m, {
+    force: !!target.force, autoApply: target.propose ? false : null, onStep, email: false, actorId, deep: target.deep ?? null,
+    // A landlord's sync reads the whole site next, in its own job.
+    knowledge: !target.force,
+  });
+  if (item.status === "failed") throw new Error(item.error);
+  return item;
+}
+
+/*
+ * Queue the whole-site read and start it in a fresh function run. Used after
+ * an import and after a landlord's sync. On production the import-jobs cron
+ * would also pick it up; previews have no crons, so the runner is called.
+ */
+export async function queueWholeSiteRead({ listingId, userId = null, batchId = null }) {
+  const r = await enqueueSync({ listingId, userId, batchId, force: true, knowledge: true });
+  if (r.job?.batch_id && !r.already) await kickRunner(r.job.batch_id);
+  return r;
+}
+
+export async function kickRunner(batchId) {
+  if (!process.env.CRON_SECRET) return;
+  const { getBaseUrl } = await import("@/lib/email");
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    await fetch(`${getBaseUrl()}/api/landlord/import/run`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.CRON_SECRET}` },
+      body: JSON.stringify({ batchId }), signal: ctrl.signal,
+    });
+  } catch {
+    // Aborted after the runner accepted it, or it is down; the cron retries on production.
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/*
+ * How long this listing's syncs usually take, from its last few (Wyatt,
+ * 2026-10-27): the median of their run times, or a default for a first run.
+ */
+async function syncEstimate(listingId) {
+  // A landlord's sync is the structure read plus the whole-site read.
+  const { data } = await supabase.from("listing_import_jobs").select("result, target").eq("listing_id", listingId).eq("status", "done")
+    .not("result->seconds", "is", null).order("created_at", { ascending: false }).limit(12);
+  const median = (rows) => {
+    const secs = rows.map((j) => Number(j.result?.seconds)).filter((n) => n > 0).sort((x, y) => x - y);
+    return secs.length ? secs[Math.floor(secs.length / 2)] : null;
+  };
+  const read = median((data ?? []).filter((j) => !j.target?.knowledge)) ?? 120;
+  const site = median((data ?? []).filter((j) => j.target?.knowledge)) ?? 180;
+  return read + site;
+}
+
+export async function agentSyncStatus(listingId) {
+  const [agent, m, job] = await Promise.all([getAgent(listingId), monitorFor(listingId), openSyncJob(listingId)]);
+  const { data: running } = job ? await supabase.from("listing_import_jobs").select("id, status, step, progress, created_at, updated_at").eq("id", job.id).maybeSingle() : { data: null };
+  return {
+    estimateSeconds: await syncEstimate(listingId),
+    job: running ? { id: running.id, status: running.status, step: running.step, progress: running.progress, startedAt: running.created_at } : null,
+    agent, hasSource: !!m, sourceUrl: m?.source_url ?? null, lastStatus: m?.last_status ?? null, lastCheckedAt: m?.last_checked_at ?? null, nextCheckAt: m?.next_check_at ?? null,
+    failures: m?.consecutive_failures ?? 0, running: job ? { id: job.id, status: job.status } : null,
+    manualLeft: agent ? Math.max(0, MANUAL_SYNCS_PER_DAY - (agent.manual_sync_day === todayKey() ? agent.manual_syncs_today : 0)) : MANUAL_SYNCS_PER_DAY,
+  };
+}

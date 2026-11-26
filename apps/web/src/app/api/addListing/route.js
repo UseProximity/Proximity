@@ -1,46 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 import { fetchAllWalkTimes } from "@/utils/walkTimes";
 import { fetchAllDriveTimes } from "@/utils/driveTimes";
 import { fetchAndStoreStreetView } from "@/lib/streetview";
 import { deriveLeaseAvailability } from "@/utils/listingFormatters";
-import nodemailer from "nodemailer";
-import { sendMailSafe } from "@/lib/outreach";
-
-const _emailTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT) || 587,
-  secure: false,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
-
-async function sendNewListingEmail(toEmail, toName, address, listingId) {
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn("[sendNewListingEmail] Email env vars not set — skipping in dev mode.");
-    return;
-  }
-  const listingUrl = `https://useproximity.org/browse?listing=${listingId}`;
-  await sendMailSafe(_emailTransporter, {
-    from: `"Proximity" <${process.env.EMAIL_USER}>`,
-    to: toEmail,
-    subject: "You have a new listing on Proximity!",
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111827;">
-        <p>Hi ${toName || "there"},</p>
-        <p>Congratulations! A new listing has been added to your Proximity account.</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p><strong>Address:</strong> ${address}</p>
-        <p style="margin-top: 16px;">
-          <a href="${listingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">View Your Listing</a>
-        </p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-        <p>Best,<br/>The Proximity Team<br/><a href="https://useproximity.org" style="color: #dc2626;">useproximity.org</a></p>
-        <p style="color: #9ca3af; font-size: 12px;">You're receiving this because a listing was assigned to your account on Proximity.</p>
-      </div>
-    `,
-  });
-}
+import { shortDescription } from "@/lib/listings/leaseDescription";
+import { isValidCount, isWholeCount } from "@/utils/unitCounts";
+import { stagingEmailHeader } from "@/lib/outreach";
+import { sendNewListingEmail } from "@/lib/email/newListingEmail";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
+import {
+  findPropertyNameConflict,
+  listingsAtAddress,
+  propertyNameTakenResponse,
+} from "@/lib/listings/propertyName";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
+import { displayAddress } from "@/lib/billing/coverage";
+import { checkListingDescription } from "@/lib/contentRules";
+import { attachSourceUrl } from "@/lib/sourceSync/attach";
+import { apartmentsLabel, cleanUnitName } from "@/utils/unitName";
+import { findUnitNamed, nextUnitSortOrder } from "@/lib/listings/unitNames";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
 
 async function geocodeAddress(address) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -67,7 +50,45 @@ const UTILITY_COLS = new Set([
   "trash", "cable", "sewer", "cooling",
 ]);
 
+// A revenue-managed building quotes nine or ten lease lengths; past that it is
+// almost certainly a parsing accident rather than a real price list.
+const MAX_LEASES_PER_UNIT = 40;
+
 export async function POST(req) {
+  /*
+   * The property row this request created, if it created one. Held at function
+   * scope so every failure path below, including the catch, can undo it.
+   */
+  let createdListingId = null;
+
+  /*
+   * Undo the property we made in this request, then report the failure.
+   *
+   * rpc_create_listing commits the property on its own; its units and leases are
+   * written afterwards in separate statements. A failure in between used to
+   * leave a property row carrying nothing, invisible on the landlord's dashboard
+   * but live on browse. Three of those appeared at 7244 Forsyth in 62 seconds
+   * when one submission failed three times over a fractional bedroom count.
+   *
+   * Every child of listings is ON DELETE CASCADE or SET NULL, so the row takes
+   * its amenities, utilities and walk times with it. A property we merely
+   * attached to is never touched: we did not create it.
+   */
+  const fail = async (status, error) => {
+    if (createdListingId) {
+      const { error: rollbackError } = await supabase
+        .from("listings")
+        .delete()
+        .eq("id", createdListingId);
+      if (rollbackError) {
+        console.error("[addListing] Rollback of orphaned property failed:", rollbackError.message);
+      } else {
+        createdListingId = null;
+      }
+    }
+    return NextResponse.json({ error }, { status });
+  };
+
   try {
     const body = await req.json();
 
@@ -82,26 +103,69 @@ export async function POST(req) {
       leaseAvailability,
       lease_availability,
       leaseStructure,
-      homeType,
       amenities,
-      utilitiesIncluded,
-      subleaseFriendly,
-      twenty_one_plus,
       furnished,
-      moveInDate,
-      contactEmail,
-      contactPhone,
-      contactName,
       title,
       customAmenities,
       custom_amenities,
       attachStreetView,
+      // Set when the address matched an existing property and the user chose to
+      // add a new unit to it rather than create a second property row.
+      attachToListingId,
     } = body;
 
-    // Validate required fields
+    /*
+     * Save as a draft instead of publishing (see 202610100002). A new property
+     * is born a draft, which hides everything under it. Attached to a property
+     * that is already live, the new units are the drafts instead, so the
+     * building students can see is left exactly as it was.
+     */
+    let draft = body.draft === true;
+    // Set when the property must be added to the landlord's marketing agreement
+    // before it can go live: it is saved as a draft and the page asks them to sign.
+    let needsCoverage = false;
+    let payerFor = null;
+    // Set when something else on Billing (a payment method, an overdue invoice)
+    // must be fixed first: saved as a draft, and the page says what is missing.
+    let billingBlock = null;
+
+    // The add forms hold their state in snake_case and spread it straight into
+    // the body, so any field this route read only in camelCase never arrived:
+    // home type silently fell back to "Other", utilities came out empty and
+    // sublease_friendly stayed false on every listing created through the app.
+    // Accept either spelling (as `lease_type` already does below).
+    // `||` for the text fields so a blank one falls through to null rather than
+    // reaching Postgres as "" (an empty move_in_date would fail the date cast);
+    // `??` for booleans and arrays so a deliberate false or [] is preserved.
+    const homeType = body.homeType || body.home_type || null;
+    const utilitiesIncluded = body.utilitiesIncluded ?? body.utilities_included;
+    const subleaseFriendly = body.subleaseFriendly ?? body.sublease_friendly;
+    const twenty_one_plus = body.twenty_one_plus ?? body.twentyOnePlus;
+    const moveInDate = body.moveInDate || body.move_in_date || null;
+    /*
+     * Where this listing was read from. `sourceUrl` is the property's own page,
+     * `indexUrl` the company page the landlord pasted when that page listed
+     * several properties. Both are what the weekly source check re-reads later,
+     * so a listing that came in from a website is never left without a way back
+     * to it.
+     */
+    const sourceUrl = body.sourceUrl || body.source_url || null;
+    const indexUrl = body.indexUrl || body.index_url || null;
+    const contactEmail = body.contactEmail || body.contact_email || null;
+    const contactPhone = body.contactPhone || body.contact_phone || null;
+    const contactName = body.contactName || body.contact_name || null;
+
+    /*
+     * Validate required fields.
+     *
+     * A description is NOT one of them. It used to be, which forced every
+     * landlord to write a paragraph before they could publish — and what they
+     * wrote then went to listings.description, a property-level column that the
+     * offering-level UI never shows. It is now the lease's own short blurb,
+     * optional, and read back behind the chevron on the offering it describes.
+     */
     if (
       !address?.trim() ||
-      !description?.trim() ||
       !Array.isArray(unitTypes) ||
       unitTypes.length === 0
     ) {
@@ -119,6 +183,42 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid unit type" }, { status: 400 });
     }
 
+    // Room counts are physical, so a negative is always a slip rather than a
+    // claim — four listings went live with -2 bed / -1 bath before this check
+    // existed. See @/utils/unitCounts.
+    if (
+      unitTypes.some(
+        (unit) => !isValidCount(unit.bedrooms) || !isValidCount(unit.bathrooms)
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Bedrooms and bathrooms cannot be negative." },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Bedrooms land in an integer column, so a 2.5 used to travel all the way to
+     * the insert and come back as "invalid input syntax for type integer", which
+     * the landlord saw only as "Could not save a unit." Reject it here, by name,
+     * before a property row exists to be orphaned. Bathrooms are numeric and
+     * half baths are real, so they are deliberately not checked.
+     */
+    if (unitTypes.some((unit) => !isWholeCount(unit.bedrooms))) {
+      return NextResponse.json(
+        /*
+         * Deliberately NOT tagged with `field`: the wizard renders a field
+         * rejection only for `title` and swallows any other, so naming the field
+         * here would show the landlord nothing. The message carries the field.
+         */
+        {
+          error:
+            "Bedrooms must be a whole number. If you mean a half bath, put it in the bathrooms field.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Allow import script to bypass auth using a shared secret
     const importSecret = process.env.IMPORT_SECRET;
     const providedSecret = req.headers.get("x-import-secret");
@@ -127,20 +227,97 @@ export async function POST(req) {
     let ownerId = null;
 
     if (!isImportRequest) {
-      const session = await auth();
-      if (!session) {
+      // Web cookie or mobile Bearer token.
+      const requestUser = await getRequestUser(req);
+      if (!requestUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const userRole = session?.user?.role;
+      const userRole = requestUser.role;
       if (!["student", "landlord", "super"].includes(userRole)) {
         return NextResponse.json(
           { error: "Only students, landlords, and super admins can create listings." },
           { status: 403 }
         );
       }
-      ownerId = session?.user?.id;
+      ownerId = requestUser.id;
       if (!ownerId) {
         return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+      }
+      /*
+       * Putting a listing in front of students needs a payment method and, when
+       * required, a signed marketing agreement (lib/billing/listingGate.js).
+       * Only landlords are checked, and saving a draft is never blocked, so
+       * nothing a landlord has typed is lost.
+       */
+      if (!draft) {
+        const gate = await checkListingGate(
+          supabase,
+          ownerId,
+          attachToListingId
+            ? {
+                listingIds: [attachToListingId],
+                // The units being added must be on the agreement too, not just the building.
+                newUnits: (Array.isArray(unitTypes) ? unitTypes : []).map((u) => ({ listingId: attachToListingId, name: u?.name })),
+              }
+            : { newProperty: true }
+        );
+        if (!gate.allowed) {
+          // Only the agreement: kept as a draft and the page opens signing for
+          // this property. Anything else (no payment method, an overdue invoice):
+          // kept as a draft too (a landlord who left to add a payment method lost
+          // the whole form, 2026-11-07), but only for a page that says so and
+          // links to Billing. Every other caller (the mobile app, which has no
+          // billing, and the sublease form) is refused as before, since a 2xx
+          // would read to them as published.
+          // The agreement-only draft is for those pages too (review of 2026-11-07).
+          if (body.draftIfBillingBlocked !== true) {
+            return NextResponse.json(gateResponseBody(gate), { status: 403 });
+          } else if (coverageOnly(gate)) {
+            draft = true;
+            needsCoverage = true;
+            // A landlord with a payer: the page sends it to the payer instead of signing.
+            payerFor = gate.payer ?? null;
+          } else {
+            draft = true;
+            billingBlock = gateResponseBody(gate);
+          }
+        }
+      }
+      /*
+       * Someone has to be reachable about the offering. Not asked of the
+       * importer, which creates unclaimed listings whose contact is whatever the
+       * source site published — sometimes nothing.
+       */
+      if (!contactEmail?.trim()) {
+        return NextResponse.json(
+          { error: "A contact email is required so students can reach you." },
+          { status: 400 }
+        );
+      }
+
+      /*
+       * No names, links or self-promotion in what a person writes. Deliberately
+       * NOT applied to the importer above: that path is a trusted seeding script
+       * copying whatever a source site published, with no author on the other
+       * end to rewrite it, so enforcing here would only fail the import.
+       */
+      for (const text of [description, body.leaseDescription]) {
+        const problem = checkListingDescription(text);
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      }
+
+      /*
+       * Terms Section 5: posting a sublease means the poster confirms their own
+       * lease lets them sublet. The form asks with an unticked checkbox; this is
+       * the same check for anyone calling the route without it.
+       */
+      const postsSublease =
+        String(leaseType ?? body.lease_type ?? "").toLowerCase() === "sublease";
+      if (postsSublease && body.subleaseRightsConfirmed !== true) {
+        return NextResponse.json(
+          { error: "Please confirm you have the right to sublet this place." },
+          { status: 400 }
+        );
       }
     }
 
@@ -257,13 +434,125 @@ export async function POST(req) {
     const resolvedLeaseType = leaseType ?? body.lease_type ?? "standard";
     const isSublease = String(resolvedLeaseType).toLowerCase() === "sublease";
 
+    /*
+     * The blurb that goes on the OFFERING. The add flow sends one short line;
+     * the importer sends whatever the source site published, which can run to
+     * several paragraphs and predates the cap, so it is copied across whole.
+     */
+    const leaseBlurb = isImportRequest
+      ? description?.trim() || null
+      : shortDescription(body.leaseDescription ?? description);
+
+    /*
+     * Rent specials. listing_concessions has existed unused since the schema
+     * was written, and a special is the single biggest thing a student cannot
+     * see when comparing two rents: "1 month free on a 10+ month lease, sign by
+     * September 30" is worth more than the gap between most listings.
+     *
+     * Attached to the listing rather than to a lease: the table's lease foreign
+     * key points at listing_leases, which is the retired table, and a banner
+     * special is property-wide anyway.
+     */
+    const concessionRows = (Array.isArray(body.concessions) ? body.concessions : [])
+      .map((c) => (typeof c === "string" ? c : c?.description))
+      .filter((c) => typeof c === "string" && c.trim())
+      .slice(0, 6)
+      .map((text) => {
+        /*
+         * The deadline, pulled out of the sentence here rather than asked of
+         * the model, so the extraction schema stays flat. "on or before
+         * September 30th, 2026" and "9/30/2026" both land as a date; anything
+         * we cannot read stays in the sentence, which is the part a renter
+         * reads anyway.
+         */
+        const t = text.trim().slice(0, 300);
+        const iso = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+        const slash = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+        const written = t.match(
+          /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/i
+        );
+        let validUntil = null;
+        if (iso) validUntil = iso[0];
+        else if (slash) {
+          validUntil = `${slash[3]}-${String(slash[1]).padStart(2, "0")}-${String(slash[2]).padStart(2, "0")}`;
+        } else if (written) {
+          const month =
+            [
+              "january", "february", "march", "april", "may", "june",
+              "july", "august", "september", "october", "november", "december",
+            ].indexOf(written[1].toLowerCase()) + 1;
+          validUntil = `${written[3]}-${String(month).padStart(2, "0")}-${String(written[2]).padStart(2, "0")}`;
+        }
+        /*
+         * amount_type is constrained to flat | percentage | months_free, so it
+         * is only set when the sentence actually says which kind of offer this
+         * is, with the number alongside it. Left null otherwise: the sentence
+         * already says what the renter gets, and inventing a category to
+         * satisfy a column would put a wrong number on a listing.
+         */
+        const monthsFree = t.match(/(\d+(?:\.\d+)?)\s*(?:month|mo)s?\s+free/i);
+        const percentOff = t.match(/(\d+(?:\.\d+)?)\s*%\s*(?:off|discount)/i);
+        const flatOff = t.match(/\$\s*([\d,]+(?:\.\d{2})?)\s*(?:off|credit|discount)/i);
+        let amount = null;
+        let amountType = null;
+        if (monthsFree) {
+          amount = Number(monthsFree[1]);
+          amountType = "months_free";
+        } else if (percentOff) {
+          amount = Number(percentOff[1]);
+          amountType = "percentage";
+        } else if (flatOff) {
+          amount = Number(flatOff[1].replace(/,/g, ""));
+          amountType = "flat";
+        }
+        return {
+          description: t,
+          amount,
+          amount_type: amountType,
+          conditions: null,
+          valid_until: validUntil,
+          active: true,
+          last_verified_source: "import",
+          last_verified_at: new Date().toISOString(),
+        };
+      });
+
     const unitData = unitTypes.map((unit) => ({
       bedrooms: unit.bedrooms,
       bathrooms: unit.bathrooms,
       area: unit.area ?? null,
       rent: unit.rent ?? null,
-      title: unit.title ?? null,
+      // The mobile app sends `title` for a unit's name.
+      name: cleanUnitName(unit.name ?? unit.title),
       floorPlanImageUrl: unit.floorPlanImageUrl ?? null,
+      /*
+       * Several priced offerings on one unit, cheapest-first on the listing
+       * page. Each entry is { rent, leaseTermMonths, availableFrom?,
+       * rentIsPerPerson? }; the last two fall back to the unit's own when absent.
+       */
+      leases: Array.isArray(unit.leases)
+        ? unit.leases
+            .filter((l) => l && (l.rent != null || Array.isArray(l.leaseTermMonths)))
+            .map((l) => ({
+              rent: l.rent != null && l.rent !== "" ? Number(l.rent) : null,
+              leaseTermMonths: Array.isArray(l.leaseTermMonths)
+                ? l.leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+                : [],
+              availableFrom:
+                typeof l.availableFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(l.availableFrom)
+                  ? l.availableFrom
+                  : null,
+              rentIsPerPerson: l.rentIsPerPerson == null ? null : !!l.rentIsPerPerson,
+              // Apartment numbers behind a floor plan's price, written to the
+              // lease's description. Short strings only, and not many of them.
+              apartments: Array.isArray(l.apartments)
+                ? l.apartments
+                    .filter((a) => typeof a === "string" && a.trim())
+                    .map((a) => a.trim().slice(0, 20))
+                    .slice(0, 40)
+                : [],
+            }))
+        : null,
       // A unit can be offered for several lease durations (months).
       leaseTermMonths: Array.isArray(unit.leaseTermMonths)
         ? unit.leaseTermMonths
@@ -271,6 +560,11 @@ export async function POST(req) {
             .filter((m) => Number.isFinite(m) && m > 0)
         : [],
       leaseAvailability: unit.leaseAvailability ?? null,
+      rentIsPerPerson:
+        unit.rentIsPerPerson == null ? null : !!unit.rentIsPerPerson,
+      // Availability of the OFFERING, not of the unit — it lands on
+      // unit_leases.unavailable below. Units no longer carry a flag of their
+      // own; whether one is available is read back off its offerings.
       available: unit.available !== false,
       sublease: isSublease,
     }));
@@ -278,46 +572,403 @@ export async function POST(req) {
     // listings.lease_availability is derived from the union of the units' lease terms.
     const leaseAvailabilityArr = deriveLeaseAvailability(unitData);
 
-    // All DB writes in one transaction — sets app.current_user_id for action_log attribution
-    const { data: listingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
-      p_user_id: ownerId,
-      p_listing_data: {
-        title: title?.trim() || null,
-        address,
-        longitude: resolvedLng,
-        latitude: resolvedLat,
-        description,
-        lease_type: resolvedLeaseType,
-        home_type_id: homeTypeId,
-        lease_structure: leaseStructure ?? null,
-        sublease_friendly: subleaseFriendly ?? false,
-        twenty_one_plus: twenty_one_plus ?? false,
-        furnished: furnished ?? false,
-        move_in_date: moveInDate ?? null,
-        contact_email: contactEmail ?? null,
-        contact_phone: contactPhone ?? null,
-        contact_name: contactName ?? null,
-        lease_availability: leaseAvailabilityArr,
-        unavailable: false,
-        deleted_at: null,
-      },
-      p_amenities: amenityObj,
-      p_utilities: utilityObj,
-      p_walk_times: walkTimeRows,
-      p_units: unitData,
-      p_lease_availability: leaseAvailabilityVal,
-      p_custom_amenities: customAmenityArr,
+    // Units and leases are written directly rather than through the create RPC's
+    // p_units, because the RPC gives no way to tie each inserted unit back to the
+    // payload row it came from — every row in one transaction shares a created_at,
+    // so identity and lease ownership could not be attributed afterwards.
+    let listingId = attachToListingId ?? null;
+    let createdListingHere = false;
+
+    if (listingId) {
+      // Attaching to an existing property: the property row, its amenities and
+      // its walk times already exist and belong to whoever created them. Only
+      // the new units and their leases are written.
+      const { data: target, error: targetError } = await supabase
+        .from("listings")
+        .select("id, address, deleted_at, review_sandbox")
+        .eq("id", listingId)
+        .maybeSingle();
+
+      if (targetError) {
+        console.error("[addListing] Target listing lookup failed:", targetError.message);
+        return NextResponse.json({ error: "Could not verify that property." }, { status: 500 });
+      }
+      if (!target || target.deleted_at) {
+        return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+      }
+
+      /*
+       * A review sandbox account (App Store review) and a real landlord never share a
+       * property, in either direction. A sandbox account adding to a real landlord's
+       * property would change what browse shows for them: answered like an address that
+       * is already taken, without naming the property. A real landlord adding to a
+       * sandbox property would have their units hidden from every student: that property
+       * does not exist for them, so it is answered as not found. The mobile app never
+       * sends attachToListingId, so this is a safety net. A failed flag lookup throws to
+       * the catch at the bottom (a 500).
+       */
+      if (ownerId) {
+        const ownerIsSandbox = (await sandboxIdsAmong([ownerId])).has(ownerId);
+        const targetIsSandbox = target.review_sandbox === true;
+        if (ownerIsSandbox && !targetIsSandbox) {
+          return NextResponse.json(
+            { error: "This address is already on Proximity.", code: "address_taken" },
+            { status: 409 }
+          );
+        }
+        if (!ownerIsSandbox && targetIsSandbox) {
+          return NextResponse.json({ error: "That property no longer exists." }, { status: 404 });
+        }
+      }
+
+      /*
+       * The client picks the property from an address lookup, so the id and the
+       * submitted address must describe the same place. Checking only that the
+       * id exists let a crafted request graft units onto an unrelated
+       * landlord's property — changing their unit set, their aggregates, and
+       * what browse shows for them.
+       */
+      const [{ data: targetKey }, { data: submittedKey }] = await Promise.all([
+        supabase.rpc("normalize_property_key", { p_address: target.address }),
+        supabase.rpc("normalize_property_key", { p_address: address }),
+      ]);
+      /*
+       * A website often gives the street address with no ZIP, and the
+       * address check below already counts that as this property (it matches
+       * by street when the ZIP is missing), so attaching must accept it too
+       * or the landlord is told the address is taken and then refused here.
+       */
+      const sameStreet = (a, b) => a.endsWith("|") && b.startsWith(a);
+      const samePlace = targetKey && submittedKey
+        && (targetKey === submittedKey || sameStreet(submittedKey, targetKey) || sameStreet(targetKey, submittedKey));
+      if (!samePlace) {
+        return NextResponse.json(
+          { error: "That property doesn't match the address you entered." },
+          { status: 400 }
+        );
+      }
+    } else {
+      /*
+       * A new property claims its display name. Only this branch checks: the
+       * attach branch above adds units to a property that already exists and
+       * never writes listings.title, so a name it does not touch cannot be one
+       * it takes.
+       *
+       * school_id is not set on create yet, so the lookup runs against the
+       * unschooled bucket — the same one the unique index folds NULLs into.
+       */
+      /*
+       * One building, one listing. A second listing at an address that is
+       * already on Proximity is refused, whatever it is called: a batch import
+       * posted "5047 Waterman Blvd." beside "5047 Waterman Boulevard" because
+       * only the name was checked, and the two differ by an abbreviation. The
+       * address key is the one the database already stores on every row.
+       *
+       * The existing listing comes back so the caller can add to it or edit
+       * what the landlord already has there, which is what they meant to do.
+       */
+      const atAddress = await listingsAtAddress(address, ownerId);
+      if (atAddress.match) {
+        return NextResponse.json(
+          {
+            error: "This address is already on Proximity.",
+            code: "address_taken",
+            existing: atAddress.match,
+          },
+          { status: 409 }
+        );
+      }
+
+      const nameConflict = await findPropertyNameConflict(title, { schoolId: null, userId: ownerId });
+      if (nameConflict) {
+        return NextResponse.json(propertyNameTakenResponse(nameConflict), { status: 409 });
+      }
+
+      // All property-level writes in one transaction — sets app.current_user_id
+      // for action_log attribution.
+      const { data: newListingId, error: listingError } = await supabase.rpc("rpc_create_listing", {
+        p_user_id: ownerId,
+        p_listing_data: {
+          title: title?.trim() || null,
+          address,
+          longitude: resolvedLng,
+          latitude: resolvedLat,
+          // NOT NULL in the schema, and now optional in the form: a property
+          // created without one starts blank rather than refusing to save.
+          description: description?.trim() || "",
+          lease_type: resolvedLeaseType,
+          home_type_id: homeTypeId,
+          lease_structure: leaseStructure ?? null,
+          sublease_friendly: subleaseFriendly ?? false,
+          twenty_one_plus: twenty_one_plus ?? false,
+          furnished: furnished ?? false,
+          move_in_date: moveInDate ?? null,
+          contact_email: contactEmail ?? null,
+          contact_phone: contactPhone ?? null,
+          contact_name: contactName ?? null,
+          lease_availability: leaseAvailabilityArr,
+          unavailable: false,
+          deleted_at: null,
+          draft,
+        },
+        p_amenities: amenityObj,
+        p_utilities: utilityObj,
+        p_walk_times: walkTimeRows,
+        p_units: [],
+        p_lease_availability: leaseAvailabilityVal,
+        p_custom_amenities: customAmenityArr,
+        /*
+         * Creating the property record does not always mean owning it.
+         *
+         * A sublease means the poster is handing over part of a lease someone
+         * else holds — so the building is not theirs, even when they are the
+         * first person to put its address on the site. Claiming it would write
+         * them a listing_landlords row, which is what isPropertyOwner reads, and
+         * hand them the right to rewrite and delete a property they only rent a
+         * room in. Prod carries exactly that shape at 5803 Waterman and 729
+         * Westgate, both created this way.
+         *
+         * Their stake is the lease below (owner_id), which is the thing they
+         * actually hold. The property stays unclaimed until a landlord claims
+         * it — the same state every imported listing starts in.
+         */
+        p_claim_property: !isSublease,
+      });
+
+      if (listingError) {
+        console.error("Error creating listing:", listingError.message);
+        return NextResponse.json({ error: listingError.message }, { status: 500 });
+      }
+      listingId = newListingId;
+      createdListingHere = true;
+      createdListingId = newListingId;
+    }
+
+    /*
+     * ── Units + leases ──────────────────────────────────────────────────────
+     *
+     * The ids are collected because the caller needs them to file its photos.
+     * A poster who does not own the property may only upload against a unit
+     * they are letting (/api/upload), and after the sublease change above that
+     * now includes the person who just created the property. Returning the ids
+     * is what lets the client scope the upload instead of guessing.
+     */
+    // In the order the landlord entered them, after any units already there.
+    const firstSortOrder = await nextUnitSortOrder(listingId);
+    /*
+     * Units already on the property are reused; the rest go in with one insert.
+     *
+     * One apartment, one row. Adding "Apt 2E" to a building that already has
+     * an Apt 2E, which happens when a second landlord describes a unit the
+     * first one put there as a draft they cannot see (202610100002), puts this
+     * offering on the existing unit rather than making a twin. The offering is
+     * still this landlord's own; the unit is shared, as it would be had they
+     * picked it from the list.
+     *
+     * New units are one multi-row insert rather than a round trip each. A house
+     * is two round trips and nobody notices; One Hundred Above the Park is
+     * forty-seven units, so a loop was ninety-four trips to the database in
+     * series and the landlord watched a spinner for most of a minute. Postgres
+     * returns the rows of a multi-row insert in the order they were sent, which
+     * is what lets each id be matched back to its unit by position. The count
+     * is checked rather than assumed.
+     */
+    const createdUnitIds = new Array(unitData.length).fill(null);
+    if (attachToListingId) {
+      for (const [i, unit] of unitData.entries()) {
+        createdUnitIds[i] = await findUnitNamed(listingId, unit.name);
+      }
+    }
+    /*
+     * Two units with the same name in one request to an existing property
+     * (two lease variants of "Apt 2E") are one unit: only the first is inserted and the rest take
+     * its id below, as the one-at-a-time lookup used to arrange.
+     */
+    const nameKey = (u) => String(u.name ?? "").trim().toLowerCase();
+    const firstByName = new Map();
+    const sameAs = new Array(unitData.length).fill(null);
+    unitData.forEach((unit, i) => {
+      const k = nameKey(unit);
+      // Only when adding to an existing property, as before; a new listing
+      // keeps every unit type it was sent.
+      if (!attachToListingId || !k || createdUnitIds[i]) return;
+      if (firstByName.has(k)) sameAs[i] = firstByName.get(k);
+      else firstByName.set(k, i);
+    });
+    const toInsert = unitData
+      .map((unit, i) => ({ unit, i }))
+      .filter(({ i }) => !createdUnitIds[i] && sameAs[i] === null);
+    if (toInsert.length) {
+      const { data: insertedUnits, error: unitError } = await supabase
+        .from("listing_units")
+        .insert(
+          toInsert.map(({ unit }, n) => ({
+            listing_id: listingId,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            area: unit.area,
+            name: unit.name,
+            sort_order: firstSortOrder + n,
+            floor_plan_image_url: unit.floorPlanImageUrl,
+            // A draft property already hides its units; on a live one the unit
+            // itself is the draft.
+            ...(draft && attachToListingId ? { published_at: null } : {}),
+          }))
+        )
+        .select("id");
+
+      if (unitError || !insertedUnits || insertedUnits.length !== toInsert.length) {
+        console.error(
+          "[addListing] Unit insert failed:",
+          unitError?.message ??
+            `expected ${toInsert.length} units back, got ${insertedUnits?.length ?? 0}`
+        );
+        return fail(500, "Could not save a unit.");
+      }
+      toInsert.forEach(({ i }, n) => {
+        createdUnitIds[i] = insertedUnits[n].id;
+      });
+    }
+    sameAs.forEach((first, i) => {
+      if (first !== null) createdUnitIds[i] = createdUnitIds[first];
     });
 
-    if (listingError) {
-      console.error("Error creating listing:", listingError.message);
-      return NextResponse.json({ error: listingError.message }, { status: 500 });
+    const allLeaseRows = [];
+    for (const [i, unit] of unitData.entries()) {
+      const unitId = createdUnitIds[i];
+
+      /*
+       * One row per price, not one row per unit.
+       *
+       * A unit can be offered at more than one price: a revenue-managed
+       * building quotes a different rent for each lease length (Metropolitan
+       * Flats asks $1,915 for seven months and $1,725 for fifteen on the same
+       * apartment). unit_leases has always allowed several rows per unit, each
+       * with its own rent and its own set of durations, and the listing page
+       * already renders one panel per offering. Nothing but this insert was
+       * stopping it, so a caller can now send `leases: [...]` and an importer
+       * can reproduce a whole price curve. Callers that send a single rent are
+       * unchanged: they become an array of one.
+       */
+      const leaseRows = (
+        Array.isArray(unit.leases) && unit.leases.length
+          ? unit.leases
+          : [{ rent: unit.rent, leaseTermMonths: unit.leaseTermMonths }]
+      )
+        .slice(0, MAX_LEASES_PER_UNIT)
+        .map((lease) => ({
+          unit_id: unitId,
+          owner_id: ownerId,
+          rent: lease.rent ?? null,
+          // Which number `rent` is. Dropped here until now, so an offering
+          // published as per-person came back out as whole-unit rent and was
+          // divided by the bedroom count a second time.
+          rent_is_per_person: lease.rentIsPerPerson ?? unit.rentIsPerPerson,
+          lease_term_months: Array.isArray(lease.leaseTermMonths)
+            ? lease.leaseTermMonths
+            : unit.leaseTermMonths,
+          available_from:
+            lease.availableFrom ?? unit.leaseAvailability ?? leaseAvailabilityVal ?? null,
+          sublease: unit.sublease,
+          is_active: true,
+          unavailable: !unit.available,
+          // The apartments a floor plan's price is for, when the site said:
+          // "Apts 07C, 11C". Otherwise the listing's own words, as before.
+          description: apartmentsLabel(lease.apartments) ?? leaseBlurb,
+          furnished: furnished ?? null,
+          contact_email: contactEmail ?? null,
+          contact_phone: contactPhone ?? null,
+          contact_name: contactName ?? null,
+          // A draft offering on a live building. Inside a draft property the
+          // row is published and the property hides it, so publishing the
+          // property alone puts everything up.
+          ...(draft && attachToListingId ? { published_at: null } : {}),
+        }));
+
+      allLeaseRows.push(...leaseRows);
+    }
+
+    if (allLeaseRows.length) {
+      const { error: leaseError } = await supabase.from("unit_leases").insert(allLeaseRows);
+
+      if (leaseError) {
+        // Raised by unit_leases_sublease_guard when a sublease is posted onto a
+        // unit that is already being offered.
+        if (leaseError.code === "23514" || /sublease/i.test(leaseError.message)) {
+          return fail(
+            409,
+            "This unit already has a live lease, so it can't be subleased. Pick a different unit, or add a new one."
+          );
+        }
+        console.error("[addListing] Lease insert failed:", leaseError.message);
+        return fail(500, "Could not save a lease.");
+      }
+    }
+
+    /*
+     * The property now has its units and their leases, so it is a real listing.
+     * Everything below is best-effort decoration and must never be able to take
+     * it back out, so release the rollback handle before running any of it.
+     */
+    createdListingId = null;
+
+    /*
+     * Attaching to a property nobody owns — a review stub carrying the Proximity
+     * placeholder, or an import with no landlord row — hands it to the landlord
+     * who just put real units on it. A no-op on a property that already has an
+     * owner, which includes the one this request may have created a moment ago.
+     */
+    const claimedProperty = await claimUnclaimedProperty({
+      userId: ownerId,
+      listingId,
+      sublease: isSublease,
+    });
+
+    if (concessionRows.length && listingId) {
+      const { error: concessionError } = await supabase
+        .from("listing_concessions")
+        .insert(concessionRows.map((c) => ({ ...c, listing_id: listingId })));
+      if (concessionError) {
+        // A special is worth having but never worth failing a publish over.
+        console.error("[addListing] Concession insert failed:", concessionError.message);
+      }
+    }
+
+
+    /*
+     * Remember the page this came from, so it can be re-read later.
+     *
+     * Best-effort in the strongest sense: a listing must never fail to publish
+     * because we could not record where it was read from. Only for a property
+     * this request actually created, attaching an offering to someone else's
+     * building must not re-point their monitor at the page this landlord
+     * happened to paste.
+     */
+    if (sourceUrl && createdListingHere) {
+      try {
+        const attached = await attachSourceUrl({
+          listingId,
+          rawUrl: sourceUrl,
+          indexUrl,
+          userId: ownerId,
+        });
+        if (!attached.ok) {
+          console.error(`[addListing] Failed to record source URL: ${attached.reason}`);
+        } else {
+          console.log(
+            `[addListing] source recorded: ${attached.kind} ${attached.url}` +
+              (attached.indexUrl ? ` (listed on ${attached.indexUrl})` : "")
+          );
+        }
+      } catch (srcErr) {
+        console.error("[addListing] Failed to record source URL:", srcErr?.message);
+      }
     }
 
     // Persist driving times (best-effort; never blocks listing creation). Written
     // after the create RPC rather than inside it — the service-role client bypasses
     // RLS, and the UNIQUE (listing_id, location_id) constraint makes this idempotent.
-    if (driveTimeRows.length) {
+    if (driveTimeRows.length && !attachToListingId) {
       try {
         const { error: driveErr } = await supabase
           .from("listing_drive_times")
@@ -335,7 +986,7 @@ export async function POST(req) {
 
     // Best-effort default photo from Google Street View. Stored at sort_order 0 (cover);
     // any user uploads land after it via /api/upload. Never blocks listing creation.
-    if (attachStreetView) {
+    if (attachStreetView && !attachToListingId) {
       try {
         await fetchAndStoreStreetView({
           supabase,
@@ -349,16 +1000,19 @@ export async function POST(req) {
       }
     }
 
-    // Notify landlord of their new listing
-    if (ownerId) {
+    // Notify landlord of their new listing. A draft is not one yet.
+    if (ownerId && !draft) {
       try {
         const { data: landlordUsers } = await supabase
           .from("users")
-          .select("email, name")
+          .select("email, name, review_sandbox")
           .eq("id", ownerId);
         for (const landlordUser of (landlordUsers ?? [])) {
           if (landlordUser?.email) {
-            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId);
+            // A review sandbox owner's copy is recorded as not sent, never delivered.
+            await sendNewListingEmail(landlordUser.email, landlordUser.name, address, listingId, req, {
+              sandbox: landlordUser.review_sandbox === true,
+            });
           }
         }
       } catch (emailErr) {
@@ -366,12 +1020,65 @@ export async function POST(req) {
       }
     }
 
+    // A contact address typed into the add form only receives message alerts
+    // once someone at it confirms, the same as one set later in the editor.
+    // The importer is left alone: its addresses come from the source site and
+    // have no landlord on our side to confirm them for.
+    if (!isImportRequest && ownerId && contactEmail) {
+      const baseUrl = getBaseUrl(req);
+      const testEmailTo = stagingEmailHeader(req);
+      after(() => requestContactVerification({ landlordId: ownerId, email: contactEmail, baseUrl, testEmailTo }));
+    }
+
+    if (needsCoverage) {
+      // Saved as a draft. The page signs the agreement for this property, then
+      // publishes the draft (api/landlord/publish).
+      return NextResponse.json(
+        {
+          message: payerFor
+            ? `Draft saved. It goes live once ${payerFor.name} signs.`
+            : "Draft saved. Sign your marketing agreement for this property to publish it.",
+          code: "agreement_needed",
+          ...(payerFor && { payer: payerFor }),
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
+          // Units added to an existing property are named, so the addendum lists them.
+          uncovered: [
+            {
+              listingId,
+              address: displayAddress({ address }),
+              ...(attachToListingId && { missingUnits: [...new Set(unitData.map((u) => String(u.name ?? "").trim()).filter(Boolean))] }),
+            },
+          ],
+          // What to publish once signed: the new property, or the new units added to a live one.
+          publish: attachToListingId
+            ? createdUnitIds.filter(Boolean).map((id) => ({ kind: "unit", id }))
+            : [{ kind: "property", id: listingId }],
+        },
+        { status: 202 }
+      );
+    }
+
+    if (billingBlock) {
+      return NextResponse.json(
+        {
+          message: billingBlock.drafted,
+          code: "billing_needed",
+          missing: billingBlock.missing,
+          listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft: true },
+        },
+        { status: 202 }
+      );
+    }
+
     return NextResponse.json(
-      { message: "Listing created successfully", listing: { id: listingId, address } },
+      {
+        message: draft ? "Draft saved" : "Listing created successfully",
+        listing: { id: listingId, address, unitIds: createdUnitIds, claimedProperty, draft },
+      },
       { status: 201 }
     );
   } catch (e) {
     console.error("Error:", e?.message);
-    return NextResponse.json({ error: e?.message }, { status: 500 });
+    return fail(500, e?.message);
   }
 }

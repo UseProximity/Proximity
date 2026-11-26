@@ -10,8 +10,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
 
-  const [listingModal, setListingModal] = useState(null); // null | {mode:'add'} | {mode:'edit',listing}
   const [coOwnersModal, setCoOwnersModal] = useState(null); // null | listing
+  const [leaseModal, setLeaseModal] = useState(null); // null | { property, lease }
   const [profileUpdatePrompt, setProfileUpdatePrompt] = useState(null); // null | { name?, email?, phone? }
   const [updatingProfile, setUpdatingProfile] = useState(false);
 
@@ -20,12 +20,14 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    companyName: "",
     phone: "",
     description: "",
     birthday: "",
     gender: "unspecified",
     referralSource: "",
     role: "landlord",
+    emailNotifications: true,
   });
 
   const router = useRouter();
@@ -40,14 +42,33 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     fetchUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * The student-view popup (GlobalListingModal, mounted in the root layout) can
+   * publish a draft from its preview strip. It lives outside this tree, so it
+   * announces the publish on window and the dashboard reloads itself the same
+   * way it does after its own Publish button.
+   */
+  useEffect(() => {
+    const onPublished = () => fetchUser();
+    window.addEventListener("proximity:listing-published", onPublished);
+    return () => window.removeEventListener("proximity:listing-published", onPublished);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // restore tab + selected listing from URL on initial load
   useEffect(() => {
     if (!user || initializedFromUrl.current) return;
     initializedFromUrl.current = true;
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab");
+    // "payments" is the Billing tab's old name, still in emails already sent (2026-11-07).
+    const raw = params.get("tab");
+    const tab = raw === "payments" ? "billing" : raw;
+    if (raw === "payments") {
+      params.set("tab", "billing");
+      window.history.replaceState(null, "", `?${params.toString()}${window.location.hash}`);
+    }
     const propertyId = params.get("property");
     if (tab) setActiveView(tab);
+    if (tab === "drafts") setReturnView("drafts");
     if (propertyId) {
       const listing = user.listings?.find(
         (l) => l._id === propertyId || l.id === propertyId
@@ -71,6 +92,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (!user) return;
     setForm({
       name: user.name || "",
+      companyName: user.company_name || "",
       phone: user.phone || "",
       description: user.description || "",
       birthday: user.birthday
@@ -79,6 +101,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
       gender: user.gender || "unspecified",
       referralSource: user.referralSource || user.referral_source || "",
       role: (user.role || "landlord").toLowerCase(),
+      emailNotifications:
+        user.emailNotifications ?? user.email_notifications !== false,
     });
   }, [user]);
 
@@ -109,6 +133,7 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     if (user) {
       setForm({
         name: user.name || "",
+        companyName: user.company_name || "",
         phone: user.phone || "",
         description: user.description || "",
         birthday: user.birthday
@@ -117,6 +142,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         gender: user.gender || "unspecified",
         referralSource: user.referralSource || user.referral_source || "",
         role: (user.role || "landlord").toLowerCase(),
+        emailNotifications:
+          user.emailNotifications ?? user.email_notifications !== false,
       });
     }
   };
@@ -133,12 +160,14 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
         },
         body: JSON.stringify({
           name: form.name?.trim(),
+          companyName: form.companyName?.trim() ?? "",
           phone: form.phone?.trim(),
           description: form.description?.trim(),
           birthday: form.birthday || null,
           gender: form.gender || "unspecified",
           referralSource: form.referralSource || "",
           role: form.role,
+          emailNotifications: !!form.emailNotifications,
         }),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
@@ -170,8 +199,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleAddListing = () => router.push("/add-listing");
-  const handleEditListing = (listing) =>
-    setListingModal({ mode: "edit", listing });
   const handleManageCoOwners = (listing) => setCoOwnersModal(listing);
   const handleDeleteListing = async (property) => {
     if (
@@ -202,32 +229,90 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     }
   };
 
-  const handleListingModalSuccess = async (
-    updatedUnits = null,
-    profileDiff = null
-  ) => {
-    if (updatedUnits && listingModal?.listing) {
-      const listingId = listingModal.listing._id || listingModal.listing.id;
-      setUser((prev) => ({
-        ...prev,
-        listings: prev.listings.map((l) =>
-          l._id === listingId || l.id === listingId
-            ? {
-                ...l,
-                unitTypes: updatedUnits.map((u) => ({
-                  bedrooms: u.bedrooms != null ? Number(u.bedrooms) : null,
-                  bathrooms: u.bathrooms != null ? Number(u.bathrooms) : null,
-                  area: u.area != null ? Number(u.area) : null,
-                  rent: u.rent != null ? Number(u.rent) : null,
-                })),
-              }
-            : l
-        ),
-      }));
+  /*
+   * Lease-level controls, for a landlord whose stake here is an OFFERING rather
+   * than the property record. These hit /api/leases/[leaseId], which is scoped
+   * to the caller's own lease — unlike the property routes above, which replace
+   * the whole unit set and would (rightly) 403 them.
+   */
+  const handleEditLease = (property) => {
+    const lease = (property.myLeases ?? []).find((x) => x.isActive) ?? property.myLeases?.[0];
+    if (!lease) {
+      alert("We couldn't find your listing at this property. Try reloading.");
+      return;
     }
-    await fetchUser();
-    setListingModal(null);
-    if (profileDiff) setProfileUpdatePrompt(profileDiff);
+    setLeaseModal({ property, lease });
+  };
+
+  const handleWithdrawLease = async (property) => {
+    /*
+     * The lease that is actually ON the market — not merely is_active, which a
+     * withdrawn lease can still be. Picking by is_active alone found a withdrawn
+     * lease, fell through to myLeases[0] when it found none, and re-withdrew the
+     * same offering: a write that changed nothing, on a card that looked the
+     * same afterwards. A landlord reported it as the button doing nothing, and
+     * pressed it twice more.
+     */
+    const lease = (property.myLeases ?? []).find((x) => x.isLive);
+    if (!lease) {
+      alert("That listing is already withdrawn.");
+      return;
+    }
+    const where = lease.unitLabel ? `your listing for ${lease.unitLabel}` : "your listing";
+    if (
+      !confirm(
+        `Withdraw ${where} at ${property.title || property.address}? Students stop seeing your price, terms and contact details, and can no longer enquire. The building stays on the site as unavailable, and your unit and photos are kept — you can publish it again whenever you like.`
+      )
+    )
+      return;
+    try {
+      // Withdrawing is an edit, not a delete: the offering stays on record and
+      // can be put back. DELETE on this route removes it for good.
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false, unavailable: true }),
+      });
+      if (res.ok) {
+        // Withdrawn, not deleted — the lease row survives as the ownership
+        // record, so the property stays on their dashboard, now with no live
+        // offering. Refetch rather than guess at the new shape.
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not withdraw your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
+  };
+
+  /*
+   * Put a withdrawn offering back on the market — the inverse of the above, and
+   * the reason withdrawing is safe to do. Without it the only way back was the
+   * lease editor, which does not say that withdrawal is what it is undoing.
+   */
+  const handleRepublishLease = async (property) => {
+    const lease = (property.myLeases ?? []).find((x) => !x.isLive);
+    if (!lease) {
+      alert("We couldn't find a withdrawn listing at this property. Try reloading.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true, unavailable: false }),
+      });
+      if (res.ok) {
+        await fetchUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not publish your listing. Please try again.");
+      }
+    } catch {
+      alert("Network error.");
+    }
   };
 
   const handleProfileUpdate = async (shouldUpdate) => {
@@ -245,9 +330,6 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
           ...(profileUpdatePrompt.email && {
             email: profileUpdatePrompt.email,
           }),
-          ...(profileUpdatePrompt.phone && {
-            phone: profileUpdatePrompt.phone,
-          }),
         }),
       });
       await fetchUser();
@@ -260,6 +342,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
   };
 
   const handleNavigation = (key) => {
+    // On desktop only the content column scrolls (page.js); on mobile, the window.
+    document.getElementById("landlord-dashboard-main")?.scrollTo({ top: 0, behavior: "smooth" });
     window.scrollTo({ top: 0, behavior: "smooth" });
     setActiveView(key);
     setSelectedProperty(null);
@@ -269,11 +353,21 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
 
+  /*
+   * Which list a property was opened from, Live ("properties") or "drafts", so
+   * Back returns there rather than dropping someone reviewing drafts onto the
+   * live list. Kept in the URL's tab so a reload lands in the same place.
+   */
+  const listView = activeView === "drafts" ? "drafts" : "properties";
+  const [returnView, setReturnView] = useState("properties");
+
   const handlePropertySelect = (property) => {
+    const from = listView;
+    setReturnView(from);
     setSelectedProperty(property);
-    setActiveView("property-analytics");
+    setActiveView(from);
     const p = new URLSearchParams({
-      tab: "properties",
+      tab: from,
       property: property._id || property.id,
     });
     if (viewAsId) p.set("viewAs", viewAsId);
@@ -282,8 +376,8 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
 
   const handleBackToProperties = () => {
     setSelectedProperty(null);
-    setActiveView("properties");
-    const p = new URLSearchParams({ tab: "properties" });
+    setActiveView(returnView);
+    const p = new URLSearchParams({ tab: returnView });
     if (viewAsId) p.set("viewAs", viewAsId);
     window.history.replaceState(null, "", `?${p.toString()}`);
   };
@@ -293,14 +387,24 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     switch (activeView) {
       case "properties":
         return "Properties";
+      case "drafts":
+        return "Drafts";
       case "settings":
         return "Settings";
       case "reviews":
         return "My Reviews";
+      case "questions":
+        return "Questions from students";
+      case "tours":
+        return "Tour requests";
+      case "integrations":
+        return "PMS Sync (Beta)";
       case "profile":
         return "My Profile";
       case "analytics":
         return "Analytics";
+      case "billing":
+        return "Billing";
       default:
         return "Landlord Dashboard";
     }
@@ -314,10 +418,10 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     setSidebarOpen,
     user,
     setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
+    leaseModal,
+    setLeaseModal,
     profileUpdatePrompt,
     updatingProfile,
     isEditing,
@@ -332,14 +436,17 @@ export function useLandlordDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
-    handleListingModalSuccess,
+    handleEditLease,
+    handleWithdrawLease,
+    handleRepublishLease,
+    fetchUser,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,
     handleBackToProperties,
+    backLabel: returnView === "drafts" ? "Back to Drafts" : "Back to Properties",
     getPageTitle,
     router,
   };

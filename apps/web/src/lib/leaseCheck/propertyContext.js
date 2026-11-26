@@ -12,6 +12,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import supabase from "@/lib/supabase";
 import { haversineKm } from "@/utils/walkTimes";
 import { Anthropic } from "@/lib/leaseCheck/analyzeLease";
+import { withoutSandboxReviews } from "@/lib/reviewSandbox";
 
 const MATCH_RADIUS_KM = 0.2; // ~200m
 
@@ -85,15 +86,16 @@ export async function matchListing(address) {
 async function reviewsForListings(listingIds, cap = 3) {
   const { data, error } = await supabase
     .from("listing_reviews")
-    .select("rating, comment, created_at, listing_id")
+    .select("rating, comment, created_at, listing_id, user_id")
     .in("listing_id", listingIds)
     .eq("legitimacy", true)
     .is("deleted_at", null)
     .lte("rating", 3)
     .order("created_at", { ascending: false })
-    .limit(cap);
+    .limit(cap + 5);
   if (error) throw error;
-  return data || [];
+  // A review sandbox account's review is seen only by its author (lib/reviewSandbox.js).
+  return (await withoutSandboxReviews(data || [])).slice(0, cap).map(({ user_id, ...r }) => r);
 }
 
 // Reviews for the matched listing + the primary landlord's other properties.

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
-import { auth } from "@/auth";
+import { getRequestUser } from "@/lib/getRequestUser";
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(req, { params }) {
   try {
     const { listingId } = params || {};
 
@@ -10,12 +10,12 @@ export async function DELETE(_req, { params }) {
       return NextResponse.json({ error: "listingId required" }, { status: 400 });
     }
 
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getRequestUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     const { data: typeRow } = await supabase
       .from("interaction_types")

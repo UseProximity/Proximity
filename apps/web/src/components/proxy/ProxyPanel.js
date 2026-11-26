@@ -1,0 +1,777 @@
+"use client";
+
+/*
+ * "Ask": the Proxy conversation on a listing (PRD v3).
+ *
+ * One thread per listing per person, signed in or not. Proxy answers from the
+ * listing's knowledge; what it cannot answer it sends to the landlord and
+ * posts the answer back here. The landlord is never in this conversation.
+ *
+ * Layout (Wyatt, 2026-10-27, round 6; round 7, 2026-10-28; 2026-10-29): the
+ * chat is about the whole listing, so no lease is named above it; the
+ * conversation sits straight in the section (no box or border). An empty
+ * chat opens with Proxy typing a greeting. The input is always on screen: on the listing
+ * it renders into `inputSlot`, a bar pinned to the bottom of the listing
+ * (ListingModalInfo), and in the popup the panel fills its height (`fill`)
+ * with the input at the bottom. Sending or receiving a message scrolls the
+ * chat and the page around it to the very bottom. Consecutive messages
+ * from the same side stack with one icon. Tour beside the input opens the
+ * tour popup (TourDialog), which sends the request itself (2026-11-14), and
+ * Apply beside it opens the landlord's application when they added a link.
+ * Panels open on the same thread (the listing page and the Messages popup)
+ * tell each other when something new arrives, so both stay in step.
+ * The panel is mounted with the listing (hidden until the Contact tab) so
+ * the thread is loaded before the student gets there; when the tab opens
+ * the modal scrolls to the bottom of the panel, and the conversation stays
+ * pinned to its newest message while an answer types out.
+ *
+ * A question Proxy had to send on reads as a plain Proxy message that says
+ * so and how the answer will reach them; a signed-out visitor is asked for
+ * their email in that message and types it into the chat (visitorEmail.js).
+ *
+ * Message kinds, from the API (all drawn the same: one grey Proxy bubble,
+ * no labels; Proxy writes everything in its own words, Wyatt 2026-10-27):
+ *   mine          the student's own messages
+ *   proxy_answer  Proxy, from the listing's details ("Based on details
+ *                 updated Oct 24" underneath when it drew on dated facts)
+ *   proxy_asked   Proxy sent something to the landlord
+ *   proxy_relay   what the landlord said, in Proxy's words; with `clarifier`
+ *                 it carries the landlord's question back
+ *   proxy_note    an update: a correction, or no answer yet
+ *
+ * While the panel is on screen it polls the thread every 15 seconds, so a
+ * landlord's reply shows up without a reload, and every poll marks the
+ * thread read, which is what stops the email Proxy would otherwise send for
+ * an answer the student already saw here.
+ *
+ * Proxy's reply shows as it is written (Wyatt, 2026-11-11): the message
+ * request streams the reply's text, which fills a draft bubble in place of
+ * the typing dots, and the saved messages replace it when they arrive.
+ *
+ * The owner's "View as Student" preview gets test mode: real answers, nothing
+ * logged or sent on. Staff get it only on listings that are not live yet.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { signIn } from "next-auth/react";
+import toast from "react-hot-toast";
+import Link from "next/link";
+import { Send, Sparkles, Flag, CalendarDays, Check, Pencil, X } from "lucide-react";
+import { useTour } from "./TourMarker";
+import TourDialog from "./TourDialog";
+import ApplyButton from "@/components/listings/ApplyButton";
+import { pickApplication } from "@/lib/listings/applicationLink";
+import ChatSkeleton from "@/components/chat/ChatSkeleton";
+import { announceInboxChange } from "@/components/landlord/landlordSync";
+
+const money = (n) => (n == null ? null : `$${Number(n).toLocaleString("en-US")}`);
+
+// The listing page and the Messages overlay can mount a panel for the same
+// listing in the same moment; they share one open-thread request.
+const threadOpens = new Map();
+// The last thread loaded per listing this visit: reopening the listing shows
+// it at once while a fresh copy loads (Wyatt, 2026-11-01).
+const threadSeen = new Map();
+
+function openThread(listingId, leaseId) {
+  const key = `${listingId}:${leaseId ?? ""}`;
+  if (!threadOpens.has(key)) {
+    const p = fetch("/api/proxy/threads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId }) })
+      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then((res) => { if (res.ok) threadSeen.set(key, res.data); return res; })
+      .finally(() => threadOpens.delete(key));
+    threadOpens.set(key, p);
+  }
+  return threadOpens.get(key);
+}
+const dateLabel = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
+
+function leaseChoices(listing) {
+  const out = [];
+  for (const u of listing?.unitTypes ?? []) {
+    const unitLabel = u.name || ((u.bedrooms ?? 0) === 0 ? "Studio" : `${u.bedrooms ?? "?"} bed / ${u.bathrooms ?? "?"} bath`);
+    for (const l of u.leases ?? []) {
+      out.push({ id: l.id, label: `${unitLabel}${l.rent ? ` at ${money(l.rent)}/mo` : ""}` });
+    }
+  }
+  return out;
+}
+
+// What Proxy says the first time a student opens a listing's chat (Wyatt,
+// 2026-10-29). Shown, not saved: no thread fills up for someone who only looked.
+const GREETING = "Hey, I'm Proxy. Ask me anything about this listing, or tap Tour and I'll get you in touch with the landlord.";
+// Shown, not saved; it stays at the top once the conversation starts (Wyatt, 2026-11-01).
+const GREETING_MSG = { id: "greeting", body: GREETING, fromProxy: true, type: "proxy_note" };
+
+/*
+ * The student already talks with this landlord in Messages (Wyatt,
+ * 2026-11-02): a pointer to that conversation. Proxy still answers here.
+ */
+function ExistingChatCard({ chat }) {
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <p className="min-w-0 text-xs text-gray-700">
+        You&apos;re already talking with <span className="font-semibold text-gray-900">{chat.landlordName}</span>
+        {chat.sameListing || !chat.listingLabel ? " about this place." : ` about ${chat.listingLabel}.`}
+      </p>
+      <Link href={chat.href} className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+        Open conversation
+      </Link>
+    </div>
+  );
+}
+
+/* Three bouncing dots in a Proxy bubble while an answer is being looked up. */
+function TypingBubble() {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50">
+        <Sparkles className="h-3 w-3 text-red-600" />
+      </div>
+      <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-gray-100 px-3.5 py-3">
+        {["[animation-delay:0ms]", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
+          <span key={delay} className={`h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 ${delay}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/*
+ * A Proxy message types itself out, fast: a few characters per frame, so a
+ * paragraph lands in well under a second. Only messages that arrived in
+ * this session animate; history loads whole.
+ */
+function useTypeOut(text, animate) {
+  const [shown, setShown] = useState(animate ? 0 : text.length);
+  useEffect(() => {
+    if (!animate) { setShown(text.length); return; }
+    let i = 0;
+    let raf;
+    const step = () => {
+      i = Math.min(text.length, i + Math.max(3, Math.ceil(text.length / 60)));
+      setShown(i);
+      if (i < text.length) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [text, animate]);
+  return shown;
+}
+
+/*
+ * Sends one message and reads the streamed answer: onDelta gets each new
+ * piece of reply text; resolves with { ok, data } like a plain JSON request,
+ * data being the "done" (or "error") line.
+ */
+async function postStreamed(threadId, payload, onDelta) {
+  const r = await fetch(`/api/proxy/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok || !(r.headers.get("content-type") ?? "").includes("ndjson") || !r.body) {
+    return { ok: r.ok, data: await r.json().catch(() => ({})) };
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let end = null;
+  while (!end) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while (!end && (nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; }
+      if (ev.type === "delta") onDelta(ev.text ?? "");
+      else if (ev.type === "done" || ev.type === "error") end = ev;
+    }
+  }
+  // The server keeps the stream open while it sends the question on; read the rest quietly.
+  if (end) (async () => { try { while (!(await reader.read()).done); } catch {} })();
+  if (!end) throw new Error("stream ended early");
+  return end.type === "done" ? { ok: true, data: end } : { ok: false, data: end };
+}
+
+// Panels on the same thread hear about each other's new messages at once.
+const SYNC_EVENT = "proxy:thread-updated";
+const announce = (threadId, source) => {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { threadId, source } }));
+};
+
+/*
+ * One message. `first` and `last` place it in a run of messages from the
+ * same side: the Proxy icon shows once, on the first, and the corners
+ * between stacked bubbles are tighter so the run reads as one block.
+ */
+function Bubble({ msg, onReport, animate = false, first = true, last = true }) {
+  const shown = useTypeOut(msg.body ?? "", animate && !msg.isMine);
+  if (msg.isMine) {
+    const corners = `rounded-2xl ${first ? "" : "rounded-tr-md"} ${last ? "rounded-br-md" : "rounded-br-md"}`;
+    return (
+      <div className="flex justify-end">
+        <div className={`max-w-[85%] ${corners} bg-red-600 px-3.5 py-2 text-sm leading-relaxed text-white whitespace-pre-wrap`}>{msg.body}</div>
+      </div>
+    );
+  }
+  const corners = `rounded-2xl ${first ? "rounded-tl-md" : "rounded-tl-md"} ${last ? "" : "rounded-bl-md"}`;
+  const done = shown >= (msg.body ?? "").length;
+  return (
+    <div className="flex items-start gap-2">
+      <div className="w-6 shrink-0">
+        {first && (
+          <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-50">
+            <Sparkles className="h-3 w-3 text-red-600" />
+          </div>
+        )}
+      </div>
+      <div className="max-w-[85%]">
+        <div className={`${corners} bg-gray-100 px-3.5 py-2 text-sm leading-relaxed text-gray-900 whitespace-pre-wrap`}>
+          {(msg.body ?? "").slice(0, shown)}
+        </div>
+        {msg.link && done && (
+          <Link href={msg.link.href} className="mt-1.5 inline-flex items-center rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+            {msg.link.label}
+          </Link>
+        )}
+        {msg.type === "proxy_answer" && last && done && (
+          <div className="mt-0.5 flex items-center gap-3 text-[11px] text-gray-400">
+            {msg.updatedAt && <span>Based on details updated {dateLabel(msg.updatedAt)}</span>}
+            <button type="button" onClick={() => onReport(msg)} className="inline-flex items-center gap-1 hover:text-gray-600">
+              <Flag className="h-3 w-3" /> Report
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function ProxyPanel({ listing, session, selectedLease = null, preview = false, active = true, tourIntentSignal = 0, fill = false, inputSlot = null, glideOnOpen = true }) {
+  const listingId = listing?._id;
+  const choices = leaseChoices(listing);
+  const leaseId = selectedLease?.id ?? null;
+  const [thread, setThread] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [testMode, setTestMode] = useState(false);
+  const [existingChat, setExistingChat] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [unavailable, setUnavailable] = useState(null);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  // Read after an await (the tour popup), where `sending` would be stale.
+  const sendingRef = useRef(false);
+  sendingRef.current = sending;
+  // Proxy's reply as it streams in, until the saved message replaces it.
+  const [draft, setDraft] = useState("");
+  // The answer is in; no typing dots while the panel catches up after it.
+  const [answered, setAnswered] = useState(false);
+  const [signInNeeded, setSignInNeeded] = useState(false);
+  // Whether the tour popup is open.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Tour's little Edit tour / Cancel tour menu, once a tour is requested.
+  const [tourMenuOpen, setTourMenuOpen] = useState(false);
+  const tourMenuRef = useRef(null);
+  const [tourBusy, setTourBusy] = useState(false);
+  // Messages that arrived in this session type themselves out.
+  const [fresh, setFresh] = useState(() => new Set());
+  const inputRef = useRef(null);
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
+  const selfId = useRef(Math.random().toString(36).slice(2));
+  const signedIn = !!session?.user?.id;
+  const started = messages.length > 0 || sending;
+  const greet = !loading && !!thread && !started;
+  const { tour, setTour } = useTour(listingId, signedIn);
+  const tourRef = useRef(tour);
+  tourRef.current = tour;
+
+  useEffect(() => {
+    if (!listingId) return;
+    let cancelled = false;
+    const seen = threadSeen.get(`${listingId}:${leaseId ?? ""}`);
+    if (seen) {
+      setThread(seen.thread);
+      setMessages(seen.messages ?? []);
+      setTestMode(!!seen.testMode);
+      setExistingChat(seen.existingChat ?? null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    openThread(listingId, leaseId)
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (!ok) { setUnavailable(data?.error || "Proxy is not available on this listing yet."); return; }
+        setThread(data.thread);
+        setMessages(data.messages ?? []);
+        setTestMode(!!data.testMode);
+        setExistingChat(data.existingChat ?? null);
+      })
+      .catch(() => { if (!cancelled) setUnavailable("Proxy could not load just now."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // The thread is opened once per listing; the lease rides on each message.
+  }, [listingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pull new messages: on a timer while on screen, and at once when another
+  // panel on this thread says something arrived.
+  const refresh = useCallback(async () => {
+    if (!thread || typeof document === "undefined" || document.visibilityState !== "visible") return;
+    try {
+      const r = await fetch(`/api/proxy/threads/${thread.id}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const incoming = data.messages ?? [];
+      setMessages((m) => {
+        const have = new Set(m.map((x) => x.id));
+        const extra = incoming.filter((x) => !have.has(x.id));
+        if (!extra.length) return m;
+        // Anything from Proxy (a relayed answer, a tour update, a new direct
+        // chat with the landlord): the inbox and every tour view catch up.
+        if (extra.some((x) => x.fromProxy)) setTimeout(announceInboxChange, 0);
+        setFresh((f) => new Set([...f, ...extra.filter((x) => x.fromProxy).map((x) => x.id)]));
+        return [...m.filter((x) => !String(x.id).startsWith("temp-")), ...extra];
+      });
+    } catch {}
+  }, [thread]);
+
+  useEffect(() => {
+    if (!active || !thread || sending) return;
+    // Every few seconds while the chat is on screen (Wyatt, 2026-11-02).
+    const t = setInterval(refresh, 4000);
+    return () => clearInterval(t);
+  }, [active, thread, sending, refresh]);
+
+  useEffect(() => {
+    if (!thread) return;
+    const on = (e) => { if (e.detail?.threadId === thread.id && e.detail?.source !== selfId.current) refresh(); };
+    window.addEventListener(SYNC_EVENT, on);
+    return () => window.removeEventListener(SYNC_EVENT, on);
+  }, [thread, refresh]);
+
+  // "Ask Proxy" on the listing header puts the cursor in this chat.
+  useEffect(() => {
+    const on = (e) => { if (e.detail?.listingId === listingId) setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250); };
+    window.addEventListener("proxy:focus-input", on);
+    return () => window.removeEventListener("proxy:focus-input", on);
+  }, [listingId]);
+
+  // A tour question opens the picker (from Proxy's reply, or the Messages header).
+  // A confirmed tour opens the Tour menu instead (Cancel only, see below).
+  useEffect(() => {
+    if (!tourIntentSignal || !signedIn) return;
+    if (tourRef.current?.status === "confirmed") setTourMenuOpen(true);
+    else setPickerOpen(true);
+  }, [tourIntentSignal, signedIn]);
+  // The picker opened before the tour had loaded, and it turned out to be
+  // confirmed: swap to the Tour menu, since new times can't be sent for it
+  // (PR 447 review).
+  useEffect(() => {
+    if (pickerOpen && tour?.status === "confirmed") {
+      setPickerOpen(false);
+      setTourMenuOpen(true);
+    }
+  }, [pickerOpen, tour?.status]);
+
+  // The chat to its newest message, and whatever scrolls around it (the
+  // listing modal, or the page) all the way to the bottom.
+  const scrollToEnd = useCallback((smooth = false) => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    let p = rootRef.current?.parentElement;
+    while (p && p !== document.body) {
+      const oy = getComputedStyle(p).overflowY;
+      if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) break;
+      p = p.parentElement;
+    }
+    const behavior = smooth ? "smooth" : "auto";
+    if (p && p !== document.body) p.scrollTo({ top: p.scrollHeight, behavior });
+    else if (!fill) window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
+  }, [fill]);
+
+  /*
+   * Contact on the listing: the conversation to its newest message and the
+   * page to its bottom. Asked before the thread has loaded, it happens once it
+   * has, since the messages arriving push the bottom further down (Wyatt,
+   * 2026-11-01).
+   */
+  const wantEnd = useRef(false);
+  useEffect(() => {
+    const on = (e) => {
+      if (e.detail?.listingId !== listingId) return;
+      if (loadingRef.current) { wantEnd.current = true; return; }
+      scrollToEnd(true);
+    };
+    window.addEventListener("proxy:scroll-end", on);
+    return () => window.removeEventListener("proxy:scroll-end", on);
+  }, [listingId, scrollToEnd]);
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  // The chat always opens on its newest message; a Contact click that came
+  // early takes the page down with it now.
+  useEffect(() => {
+    if (loading) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    if (wantEnd.current) {
+      wantEnd.current = false;
+      requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [loading, started, scrollToEnd]);
+
+  // The conversation stays pinned to its newest message while an answer types out.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !active) return;
+    const obs = new MutationObserver(() => scrollToEnd(false));
+    obs.observe(el, { childList: true, characterData: true, subtree: true });
+    return () => obs.disconnect();
+  }, [active, started, scrollToEnd]);
+
+  // Opening the Contact tab glides to the bottom of the panel (the input),
+  // after the modal's own jump to the tab strip has happened. Not on the
+  // continuous listing page, where Contact turns active just by scrolling to
+  // it and a glide would take the page out of the reader's hands.
+  useEffect(() => {
+    if (!active || loading || !glideOnOpen) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    const t = setTimeout(() => scrollToEnd(true), 180);
+    return () => clearTimeout(t);
+  }, [active, loading, glideOnOpen, scrollToEnd]);
+
+  const sendTour = useCallback(async (slots) => {
+    // A confirmed tour is not edited from here: new times would create a
+    // second request beside the booked one (Wyatt, 2026-11-16).
+    if (tour?.status === "confirmed") throw new Error("Your tour is already confirmed. Cancel it first to pick new times.");
+    const open = tour && ["requested", "proposed", "messaging"].includes(tour.status);
+    const r = open
+      ? await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", slots }) })
+      : await fetch("/api/tours", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, leaseId: leaseId ?? (choices.length === 1 ? choices[0].id : null), slots, proxyThreadId: thread?.id ?? null }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || "Could not send your times.");
+    setTour(data.tour);
+  }, [tour, listingId, leaseId, choices, thread, setTour]);
+
+  /*
+   * A message to Proxy: what is in the input, or `noteText` (the tour
+   * popup's note, sent right after the request so Proxy reads it in order).
+   */
+  const send = useCallback(async (noteText = null) => {
+    const fromInput = typeof noteText !== "string";
+    const text = (fromInput ? input : noteText).trim();
+    if (!text || !thread || sending) return;
+    setSending(true);
+    setAnswered(false);
+    if (fromInput) setInput("");
+    const temp = { id: `temp-${Date.now()}`, body: text, isMine: true, type: "text" };
+    const temps = [temp];
+    const tempIds = new Set(temps.map((x) => x.id));
+    setMessages((m) => [...m, ...temps]);
+    requestAnimationFrame(() => scrollToEnd(true));
+    try {
+        let streamed = "";
+        const { ok, data } = await postStreamed(thread.id, { body: text, leaseId }, (piece) => {
+          streamed += piece;
+          setDraft(streamed);
+        });
+        if (!ok) {
+          setDraft("");
+          setMessages((m) => m.filter((x) => x.id !== temp.id));
+          setInput(text);
+          if (data?.code === "SIGN_IN") setSignInNeeded(true);
+          toast.error(data?.error || "Proxy could not answer just now.");
+          return;
+        }
+        const incoming = data.messages ?? [];
+        // The reply that already streamed in does not type itself out again;
+        // anything after it (a note) does.
+        const proxyMsgs = incoming.filter((x) => x.fromProxy);
+        const typed = streamed ? proxyMsgs.slice(1) : proxyMsgs;
+        setFresh((f) => new Set([...f, ...typed.map((x) => x.id)]));
+        setMessages((m) => [...m.filter((x) => !tempIds.has(x.id)), ...incoming]);
+        setDraft("");
+        setAnswered(true);
+        // A tour question opens the popup, unless it came from the popup.
+        if (data.intent === "tour" && signedIn && fromInput) setPickerOpen(true);
+      // Seen on the page: no email for this answer. Other panels catch up too.
+      await refresh();
+      announce(thread.id, selfId.current);
+    } catch {
+      setDraft("");
+      if (temps.length) setMessages((m) => m.filter((x) => !tempIds.has(x.id)));
+      setInput(text);
+      toast.error("Proxy could not answer just now.");
+    } finally {
+      setSending(false);
+      requestAnimationFrame(() => scrollToEnd(true));
+      inputRef.current?.focus();
+    }
+  }, [input, thread, sending, leaseId, signedIn, refresh, scrollToEnd]);
+
+  /*
+   * Send from the tour popup: the request goes at once and its message shows
+   * in the chat (the server posts it); then the note, if any, as the
+   * student's own message so Proxy answers it there. The popup stays open
+   * with an error if the request fails, so nothing picked is lost.
+   */
+  const submitTour = useCallback(async ({ slots, note }) => {
+    try {
+      await sendTour(slots);
+    } catch (err) {
+      toast.error(err.message);
+      return;
+    }
+    setPickerOpen(false);
+    toast.success("Tour request sent.");
+    // The request's own messages first, so the note lands after them.
+    await refresh();
+    if (note && sendingRef.current) {
+      // Proxy is still answering: keep the note in the box rather than drop it.
+      setInput((cur) => (cur.trim() ? cur : note));
+      toast("Your note is in the message box. Send it once Proxy finishes.");
+    } else if (note) {
+      await send(note);
+    } else {
+      announce(thread?.id, selfId.current);
+      requestAnimationFrame(() => scrollToEnd(true));
+    }
+  }, [sendTour, send, refresh, thread, scrollToEnd]);
+
+  const cancelTour = useCallback(async () => {
+    if (!tour) return;
+    setTourBusy(true);
+    try {
+      const r = await fetch(`/api/tours/${tour.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { toast.error(data?.error || "Could not cancel."); return; }
+      setTour(null);
+      setPickerOpen(false);
+      setTourMenuOpen(false);
+      toast.success("Tour request canceled.");
+      await refresh();
+      announce(thread?.id, selfId.current);
+    } finally {
+      setTourBusy(false);
+    }
+  }, [tour, setTour, refresh, thread]);
+
+  useEffect(() => {
+    if (!tourMenuOpen) return;
+    const onDown = (e) => { if (!tourMenuRef.current?.contains(e.target)) setTourMenuOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setTourMenuOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [tourMenuOpen]);
+
+  const report = useCallback(async (msg) => {
+    if (!thread) return;
+    try {
+      await fetch(`/api/proxy/threads/${thread.id}/report`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messageId: msg.id }) });
+      toast.success("Thanks, we'll take a look at that answer.");
+    } catch {
+      toast.error("Could not send the report.");
+    }
+  }, [thread]);
+
+  if (unavailable) {
+    return <div className="py-4 text-sm text-gray-600">{unavailable}</div>;
+  }
+
+  const tourAllowed = !testMode && choices.length > 0;
+  const activeTour = tour && ["requested", "proposed", "messaging", "confirmed"].includes(tour.status) ? tour : null;
+  const applyShown = !!pickApplication(listing, selectedLease);
+  const sideOf = (m) => (m.isMine ? "me" : "proxy");
+
+  const inputBar = signInNeeded ? (
+        <div className="text-sm text-red-700">
+          Sign in to keep asking.{" "}
+          <button type="button" onClick={() => signIn()} className="font-semibold underline">Sign in</button>
+        </div>
+      ) : (
+        <div className="relative">
+          {pickerOpen && signedIn && tourAllowed && (
+            <TourDialog
+              listing={listing}
+              session={session}
+              tour={activeTour}
+              busy={tourBusy}
+              onSubmit={submitTour}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+          {/*
+           * One row on a computer. On a phone with Apply as well, Tour and
+           * Apply get their own row above the input, so the input keeps its
+           * width and both buttons keep their words.
+           */}
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex flex-wrap items-end gap-2">
+            <div className="order-2 flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 focus-within:border-gray-400 sm:order-1">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                rows={1}
+                maxLength={2000}
+                placeholder={started ? "Ask a follow-up" : "Ask about fees, pets, parking, lease terms, move-in dates..."}
+                disabled={loading || sending || !thread}
+                className="w-full resize-none border-0 bg-transparent p-0 py-1 text-base leading-6 focus:outline-none focus:ring-0"
+              />
+            </div>
+            <div className={`flex gap-2 ${applyShown ? "order-1 w-full sm:order-2 sm:w-auto" : "order-2"}`}>
+              {/*
+               * Tour (Wyatt, 2026-11-15): before a request it opens the tour
+               * popup. Once there is one, the calendar turns into a check and
+               * a click opens a small menu above it instead: Edit tour (the
+               * popup, with the times filled in) or Cancel tour.
+               */}
+              {tourAllowed && (
+                <div ref={tourMenuRef} className={`relative ${applyShown ? "flex flex-1 sm:flex-none" : ""}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!signedIn) { signIn(); return; }
+                      if (activeTour) setTourMenuOpen((o) => !o);
+                      else setPickerOpen(true);
+                    }}
+                    aria-label={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed: cancel" : activeTour ? "Tour requested: edit or cancel" : "Pick tour times"}
+                    aria-haspopup={activeTour ? "menu" : undefined}
+                    aria-expanded={activeTour ? tourMenuOpen : undefined}
+                    title={!signedIn ? "Sign in to request a tour" : activeTour?.status === "confirmed" ? "Tour confirmed" : activeTour ? "Tour requested" : "Request a tour"}
+                    className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold ${applyShown ? "flex-1 sm:flex-none" : ""} ${pickerOpen || tourMenuOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    {activeTour ? <Check className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+                    Tour
+                  </button>
+                  {activeTour && tourMenuOpen && (
+                    <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                      {/* A confirmed tour is booked: cancel it, but changing the time is a talk with the landlord. */}
+                      {activeTour.status !== "confirmed" && <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setTourMenuOpen(false); setPickerOpen(true); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                      >
+                        <Pencil className="h-4 w-4 text-gray-500" /> Edit tour
+                      </button>}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={tourBusy}
+                        onClick={cancelTour}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" /> {tourBusy ? "Canceling..." : "Cancel tour"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Only when a landlord here added an application link. */}
+              <ApplyButton listing={listing} selectedLease={selectedLease} signedIn={signedIn}
+                record={!testMode && !preview} className="flex-1 sm:flex-none" />
+            </div>
+            <button type="submit" disabled={loading || sending || !input.trim()} className="order-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white disabled:opacity-40">
+              <Send className="h-5 w-5" />
+            </button>
+          </form>
+        </div>
+      );
+
+  return (
+    <div ref={rootRef} className={`flex flex-col gap-3 ${fill ? "h-full min-h-0" : ""}`}>
+      {testMode && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Test mode: you are trying Proxy on {preview ? "your own" : "this"} listing. Answers are real; nothing is logged, counted or sent to a landlord.
+        </div>
+      )}
+
+      {existingChat && <ExistingChatCard chat={existingChat} />}
+
+      {loading && <ChatSkeleton rows={3} />}
+      {/* Before the first question the greeting sits at the top with some room under it for the conversation, so a new chat does not look squeezed (Wyatt, 2026-10-30; less room 2026-11-01). */}
+      {greet && (
+        <div className={`flex flex-col ${fill ? "min-h-0 flex-1" : "min-h-32"}`}>
+          <Bubble msg={GREETING_MSG} animate />
+        </div>
+      )}
+      {started && (
+        <div ref={listRef} className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
+          {[GREETING_MSG, ...messages].map((m, i, all) => {
+            const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+            const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
+            return (
+              <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+                <Bubble msg={m} onReport={report} animate={fresh.has(m.id)} first={first} last={last} />
+              </div>
+            );
+          })}
+          {sending && draft && (
+            <div className="mt-3">
+              <Bubble msg={{ id: "draft", body: draft, fromProxy: true, type: "proxy_note" }} onReport={() => {}} />
+            </div>
+          )}
+          {sending && !draft && !answered && <div className="mt-3"><TypingBubble /></div>}
+        </div>
+      )}
+
+      {inputSlot ? createPortal(inputBar, inputSlot) : <div className="shrink-0">{inputBar}</div>}
+    </div>
+  );
+}
+
+/*
+ * A student's Proxy conversation as they see it, for an admin viewing their
+ * inbox (Wyatt, 2026-11-03). Loaded by thread id from the read-only route
+ * (?viewAs=), never through openThread, which can create, claim and mark
+ * read. Same bubbles; the message box is shown shut and Report does nothing.
+ */
+export function ProxyReadOnlyTranscript({ threadId, viewAsId, fill = false }) {
+  const [messages, setMessages] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!threadId || !viewAsId) return;
+    let cancelled = false;
+    setMessages(null);
+    setFailed(false);
+    fetch(`/api/proxy/threads/${threadId}?viewAs=${encodeURIComponent(viewAsId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) { if (d) setMessages(d.messages ?? []); else setFailed(true); } })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [threadId, viewAsId]);
+  if (failed) return <p className="text-sm text-gray-500">Could not load this conversation.</p>;
+  if (!messages) return <ChatSkeleton rows={3} />;
+  const sideOf = (m) => (m.isMine ? "me" : "proxy");
+  const all = [GREETING_MSG, ...messages];
+  return (
+    <div className={`flex flex-col gap-3 ${fill ? "min-h-0 flex-1" : ""}`}>
+      <div className={`flex flex-col overflow-y-auto ${fill ? "min-h-0 flex-1" : "max-h-[480px]"}`}>
+        {all.map((m, i) => {
+          const first = i === 0 || sideOf(all[i - 1]) !== sideOf(m);
+          const last = i === all.length - 1 || sideOf(all[i + 1]) !== sideOf(m);
+          return (
+            <div key={m.id} className={first ? (i === 0 ? "" : "mt-3") : "mt-0.5"}>
+              <Bubble msg={m} onReport={() => {}} first={first} last={last} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="shrink-0 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-[13px] text-gray-400">
+        Their message box. Read only while you view their inbox.
+      </div>
+    </div>
+  );
+}

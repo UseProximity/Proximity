@@ -3,18 +3,28 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import DeleteAccountButton from "@/components/account/DeleteAccountButton";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid } from "lucide-react";
 import { getRentRangeLabel, calcAge } from "@/utils/listingFormatters";
 import SubleaseFormPanel from "@/components/listings/SubleaseFormPanel";
+import StudentTours from "@/components/proxy/StudentTours";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
+import { ListingCard as BrowseCard } from "@/components/listings/MapPopupCard";
+import { listingHref, openListingPageOnPhone } from "@/lib/listings/listingLink";
+import LeasePrefsControls from "@/components/listings/LeasePrefsControls";
+import { useLeasePreferences } from "@/context/LeasePreferencesContext";
 
-function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
+function SubleaseCard({ listing, onEdit, onDelete, onRemove, deleting }) {
+  const router = useRouter();
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
   const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
     ? (listing.address || "")
     : (listing.address || "").replace(/^[^,]+,\s*/, "");
   const imageUrl = listing.images?.[0];
+  const listingId = listing._id || listing.id;
+  const isActive = !listing.unavailable;
 
   return (
     <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 flex flex-col">
@@ -45,25 +55,36 @@ function SubleaseCard({ listing, onEdit, onDelete, deleting }) {
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100 flex-wrap">
           <Link
-            href={`/browse?listing=${listing._id}`}
-            className="flex-1 text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            href={`/browse?listing=${listingId}`}
+            onClick={(e) => openListingPageOnPhone(e, router, listingId)}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-600 hover:text-gray-900 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             View
           </Link>
           <button
             onClick={() => onEdit(listing)}
-            className="flex-1 text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-blue-600 hover:text-blue-800 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
           >
             Edit
           </button>
+          {/* "Withdraw", not "Delete" — it takes the offering off the market
+              and leaves the property alone. See handleWithdrawSublease. */}
           <button
-            onClick={() => onDelete(listing._id || listing.id)}
+            onClick={() => onDelete(listing)}
             disabled={deleting}
-            className="flex-1 text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-red-600 hover:text-red-800 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
           >
-            {deleting ? "..." : "Delete"}
+            {deleting ? "…" : "Withdraw"}
+          </button>
+          {/* The permanent one. See handleDeleteSublease. */}
+          <button
+            onClick={() => onRemove(listing)}
+            disabled={deleting}
+            className="flex-1 min-w-[4rem] text-center text-xs font-medium text-gray-500 hover:text-red-700 py-1.5 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -77,6 +98,21 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const { update: updateSession } = useSession();
   const router = useRouter();
   const initialRole = (user.role || "student").toLowerCase();
+  /*
+   * Bed count, move-in month and lease length. Seeded from the shared copy, which already
+   * holds any change made on a listing this visit, and falling back to the
+   * dashboard payload until that copy has loaded.
+   */
+  const leasePrefs = useLeasePreferences();
+  const [housing, setHousing] = useState(
+    leasePrefs.loaded
+      ? leasePrefs.prefs
+      : {
+          beds: user.preferredBeds ?? [],
+          moveIn: user.preferredMoveInDate ?? null,
+          months: user.preferredLeaseMonths ?? [],
+        }
+  );
   const [form, setForm] = useState({
     name: user.name || "",
     birthday: user.birthday
@@ -87,6 +123,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
     phone: user.phone || "",
     description: user.description || "",
     referralSource: user.referralSource || "",
+    emailNotifications:
+      user.emailNotifications ?? user.email_notifications !== false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -141,6 +179,9 @@ function EditProfileModal({ user, onClose, onSaved }) {
         body: JSON.stringify({
           ...form,
           birthday: form.birthday || undefined,
+          preferredMoveInDate: housing.moveIn ?? null,
+          preferredLeaseMonths: housing.months ?? [],
+          preferredBeds: housing.beds ?? [],
           ...(imageUrl !== undefined && { image: imageUrl }),
         }),
       });
@@ -149,6 +190,12 @@ function EditProfileModal({ user, onClose, onSaved }) {
         throw new Error(data.error || "Failed to save");
       }
       const updated = await res.json();
+      // Every listing's lease options read the shared copy: bring it up to date.
+      leasePrefs.hydrate({
+        beds: updated.preferredBeds,
+        moveIn: updated.preferredMoveInDate,
+        months: updated.preferredLeaseMonths,
+      });
       onSaved(updated);
 
       // If role changed, push the new role into the JWT and route them to
@@ -209,7 +256,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
                   </svg>
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
@@ -261,13 +308,8 @@ function EditProfileModal({ user, onClose, onSaved }) {
             </select>
           </div>
 
-          {/* Phone */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Phone</label>
-            <input type="tel" name="phone" value={form.phone} onChange={handleChange}
-              placeholder="e.g. (314) 555-0100"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-          </div>
+          {/* No phone field: nothing on Proximity calls or texts anyone, and
+              landlords reach students through messages (Wyatt, 2026-10-18). */}
 
           {/* Bio */}
           <div>
@@ -289,6 +331,54 @@ function EditProfileModal({ user, onClose, onSaved }) {
               <option value="On Campus">On Campus</option>
               <option value="Other">Other</option>
             </select>
+          </div>
+
+          {/* Housing search: narrows the lease options on every listing. */}
+          {form.role === "student" && (
+            <div className="rounded-lg border border-gray-200 px-3 py-3">
+              <p className="text-sm font-semibold text-gray-800">Housing search</p>
+              <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                What size, when you want to move in and for how long. Every listing
+                opens on the leases that fit.
+              </p>
+              <LeasePrefsControls
+                variant="form"
+                idPrefix="profile-lease-prefs"
+                value={housing}
+                onChange={(patch) => setHousing((prev) => ({ ...prev, ...patch }))}
+                onClear={() => setHousing({ beds: [], moveIn: null, months: [] })}
+              />
+            </div>
+          )}
+
+          {/* Email notifications */}
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">Email notifications</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Get an email when someone messages you about a listing.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.emailNotifications}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  emailNotifications: !prev.emailNotifications,
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                form.emailNotifications ? "bg-red-600" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  form.emailNotifications ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -313,6 +403,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
 
 function ListingCard({ listing, badge }) {
   const pathname = usePathname();
+  const router = useRouter();
   const addressBeforeComma = (listing.address || "").split(",")[0].trim();
   const title = listing.title || addressBeforeComma;
   const cityStateZip = (listing.title && listing.title !== addressBeforeComma)
@@ -340,7 +431,7 @@ function ListingCard({ listing, badge }) {
   const imageCount = listing.images?.length || 0;
 
   return (
-    <Link href={`${pathname}?listing=${listing._id}`} className="group block">
+    <Link href={`${pathname}?listing=${listing._id}`} onClick={(e) => openListingPageOnPhone(e, router, listing._id)} className="group block">
       <div className="relative bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 hover:border-red-200 transition-colors duration-200 flex flex-col">
         <div className="relative">
           {imageUrl ? (
@@ -417,6 +508,7 @@ const CARDS_PER_PAGE = 2;
 const SUBLEASES_PER_PAGE = 4;
 
 export default function StudentDashboardPage({ initialViewAsId } = {}) {
+  const agentsOn = useAgentsEnabled();
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -426,7 +518,13 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
   const [editOpen, setEditOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-  const [subleaseModal, setSubleaseModal] = useState(null); // null | { mode: "add" } | { mode: "edit", listing }
+  /*
+   * The old flat sublease form. Editing no longer goes through it — Edit opens
+   * the property → unit → lease editor instead — so nothing sets mode "edit" any
+   * more. Kept because /add-sublease still renders the same panel, and this
+   * modal is the in-dashboard entry point to it.
+   */
+  const [subleaseModal, setSubleaseModal] = useState(null); // null | { mode: "add" }
   const [deletingId, setDeletingId] = useState(null);
 
   const notifRef = useRef(null);
@@ -477,6 +575,9 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     role: dbUser?.role ?? session?.user?.role ?? "student",
     phone: dbUser?.phone ?? null,
     description: dbUser?.description ?? null,
+    preferredMoveInDate: dbUser?.preferredMoveInDate ?? null,
+    preferredLeaseMonths: dbUser?.preferredLeaseMonths ?? [],
+    preferredBeds: dbUser?.preferredBeds ?? [],
   };
 
   const contacted = user.contacted;
@@ -508,12 +609,44 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
     subleasePage * SUBLEASES_PER_PAGE + SUBLEASES_PER_PAGE
   );
 
-  async function handleDeleteSublease(listingId) {
-    if (!confirm("Delete this listing? This cannot be undone.")) return;
+  /*
+   * Take a sublease down.
+   *
+   * This withdraws the OFFERING, never the property. It used to DELETE the
+   * listing, which is the building's shared record — and since that endpoint is
+   * guarded by property ownership, the button silently did nothing for exactly
+   * the people it was for: a student subletting a room in someone else's
+   * building. Withdrawing is also the honest verb. The lease row survives as the
+   * record of who offered what, so nothing about the sublease is lost and it can
+   * be put back.
+   */
+  async function handleWithdrawSublease(listing) {
+    const listingId = listing._id || listing.id;
+    const lease =
+      (listing.myLeases ?? []).find((l) => l.isActive) ?? listing.myLeases?.[0];
+
+    if (!lease) {
+      alert(
+        "We couldn't find your sublease at this property. Try reloading the page."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        "Take this sublease down? Students will stop seeing it. The property itself isn't affected, and you can put it back."
+      )
+    )
+      return;
+
     setDeletingId(listingId);
     try {
-      const res = await fetch(`/api/landlord/listings/${listingId}`, {
-        method: "DELETE",
+      // Withdrawing is an edit, not a delete: the offering stays on record and
+      // can be put back. DELETE on this route removes it for good.
+      const res = await fetch(`/api/leases/${lease.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false, unavailable: true }),
       });
       if (res.ok) {
         setDbUser((prev) => ({
@@ -522,7 +655,61 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
             (l) => (l._id || l.id) !== listingId
           ),
         }));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Could not take that sublease down. Please try again.");
       }
+    } catch {
+      alert("Network error.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  /*
+   * Delete a sublease for good, the counterpart to Withdraw. Removes every one
+   * of the student's offerings at this property. When they also created the
+   * property (a new address typed into the sublease form) and nobody else is
+   * on it, the server removes the property too, so a mistyped address doesn't
+   * stay in browse with no way to take it down.
+   */
+  async function handleDeleteSublease(listing) {
+    const listingId = listing._id || listing.id;
+    const leases = listing.myLeases ?? [];
+
+    if (!leases.length) {
+      alert(
+        "We couldn't find your sublease at this property. Try reloading the page."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        "Delete this sublease for good? Students stop seeing it and it can't be put back. To take it down for now, use Withdraw instead."
+      )
+    )
+      return;
+
+    setDeletingId(listingId);
+    try {
+      for (const lease of leases) {
+        const res = await fetch(`/api/leases/${lease.id}`, { method: "DELETE" });
+        // Already gone counts as done: a retry after a half-finished delete.
+        if (!res.ok && res.status !== 404) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || "Could not delete that sublease. Please try again.");
+          return;
+        }
+      }
+      setDbUser((prev) => ({
+        ...prev,
+        listings: (prev?.listings ?? []).filter(
+          (l) => (l._id || l.id) !== listingId
+        ),
+      }));
+    } catch {
+      alert("Network error.");
     } finally {
       setDeletingId(null);
     }
@@ -554,7 +741,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
           <h1 className="text-2xl font-bold text-gray-900">My Account</h1>
 
           {/* Banner icon dropdowns — mobile only */}
-          <div className="flex items-center gap-2 md:hidden">
+          <div className="flex items-center gap-2 lg:hidden">
             {/* Recent Activity dropdown */}
             <div ref={activityRef}>
               <button
@@ -614,7 +801,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
         <div className="border-b border-gray-200 mb-8" />
 
         {/* Two-column layout */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_2.5fr] gap-10 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_2.5fr] gap-10 items-start">
           {/* ── LEFT COLUMN ── */}
           <div className="space-y-5">
             {/* Profile card */}
@@ -669,7 +856,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
             </div>
 
             {/* Notifications card — desktop only */}
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div className="hidden lg:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <BellIcon className="w-4 h-4 text-gray-700" />
                 <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
@@ -678,7 +865,7 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
             </div>
 
             {/* Recent Activity card — desktop only */}
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div className="hidden lg:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <ClockIcon className="w-4 h-4 text-gray-700" />
                 <h3 className="font-semibold text-gray-900 text-sm">Recent Activity</h3>
@@ -695,30 +882,37 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               </a>
             )}
             {user.role === "super" && (
-              <a href="/dashboard/admin?table=reviews&filter=pending" target="_blank" rel="noopener noreferrer"
+              <a href="/dashboard/admin/reviews?filter=unverified" target="_blank" rel="noopener noreferrer"
                 className="block bg-gray-900 hover:bg-gray-800 transition-colors rounded-xl border border-gray-700 shadow-sm p-5 text-center">
                 <p className="font-semibold text-white text-sm">Pending Reviews</p>
                 <p className="text-xs text-gray-400 mt-1">Opens in new tab</p>
               </a>
             )}
+
+            {/* Danger zone: not shown while an admin is viewing as another user, since
+                the button deletes the signed-in account, not the one being viewed. */}
+            {!isViewingAs && <DeleteAccountButton variant="card" />}
           </div>
 
           {/* ── RIGHT COLUMN ── */}
           <div className="space-y-8">
+            {/* Tours booked through Proxy (per-listing agents). Renders nothing when there are none. */}
+            {agentsOn && <StudentTours />}
             {/* Contacted section */}
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <h2 className="text-lg font-bold text-gray-900">Contacted</h2>
+                {/* "Inquiries" once every Proxy question counts as one; until the agents are on it is still "Contacted". */}
+                <h2 className="text-lg font-bold text-gray-900">{agentsOn ? "Inquiries" : "Contacted"}</h2>
               </div>
               <div className="border-b border-gray-200 mb-4" />
 
               {contacted.length === 0 ? (
                 <div>
                   <p className="text-sm text-gray-500 mb-6">
-                    You haven&apos;t contacted any leasing agents yet. Browse listings to get started.
+                    {agentsOn ? "You haven't asked about any places yet." : "You haven't contacted any leasing agents yet."} Browse listings to get started.
                   </p>
                   <Link href="/browse"
                     className="inline-block px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -728,11 +922,12 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               ) : (
                 <>
                   <p className="text-sm text-gray-500 mb-4">
-                    Congrats, you&apos;ve reached out to the leasing agent. Check your email and phone number for updates.
+                    Congrats, you&apos;ve reached out to the leasing agent. Check your email and your Proximity messages for updates.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+                    {/* The same card as the main page and browse grid (Wyatt, 2026-10-27). */}
                     {contactedVisible.map((listing) => (
-                      <ListingCard key={listing._id} listing={listing} badge={<CheckBadge />} />
+                      <BrowseCard key={listing._id} listing={listing} session={session} onCardClick={(id) => router.push(listingHref(id, window.location.pathname))} />
                     ))}
                   </div>
                   {contactedPages > 1 && (
@@ -817,13 +1012,30 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                     </svg>
                     <h2 className="text-lg font-bold text-gray-900">My Subleases</h2>
                   </div>
-                  <button
-                    onClick={() => router.push("/add-sublease")}
-                    className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Sublease
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/*
+                      * Only once they have something to manage. The property
+                      * dashboard admits a stake rather than a role, so a student
+                      * with a sublease belongs there — but sending one who has
+                      * none would just bounce them straight back here.
+                      */}
+                    {subleases.length > 0 && (
+                      <button
+                        onClick={() => router.push("/dashboard/landlord?tab=properties")}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                        Manage my listings
+                      </button>
+                    )}
+                    <button
+                      onClick={() => router.push("/add-sublease")}
+                      className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Sublease
+                    </button>
+                  </div>
                 </div>
                 <div className="border-b border-gray-200 mb-4" />
 
@@ -840,8 +1052,20 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
                         <SubleaseCard
                           key={listing._id}
                           listing={listing}
-                          onEdit={(l) => setSubleaseModal({ mode: "edit", listing: l })}
-                          onDelete={handleDeleteSublease}
+                          /*
+                            * Edit opens the full property → unit → lease editor
+                            * rather than the old flat form. Same screen a
+                            * landlord gets, with the same per-level rules: the
+                            * building read-only unless they own it, their own
+                            * terms editable.
+                            */
+                          onEdit={(l) =>
+                            router.push(
+                              `/dashboard/landlord?tab=properties&property=${l._id || l.id}`
+                            )
+                          }
+                          onDelete={handleWithdrawSublease}
+                          onRemove={handleDeleteSublease}
                           deleting={deletingId === (listing._id || listing.id)}
                         />
                       ))}
@@ -886,6 +1110,9 @@ export default function StudentDashboardPage({ initialViewAsId } = {}) {
               role: updated.role,
               phone: updated.phone,
               description: updated.description,
+              preferredMoveInDate: updated.preferredMoveInDate,
+              preferredLeaseMonths: updated.preferredLeaseMonths,
+              preferredBeds: updated.preferredBeds,
             }));
           }}
         />

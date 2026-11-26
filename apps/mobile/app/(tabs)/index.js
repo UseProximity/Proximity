@@ -1,3 +1,318 @@
 // Browse listings tab (home screen).
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "expo-router";
+import { Search, SlidersHorizontal, Rows3, Map as MapIcon } from "lucide-react-native";
+import {
+  DEFAULT_FILTERS,
+  filterListings,
+  filtersActive,
+  fittingRents,
+  rankBrowseListings,
+  countActiveFilters,
+} from "@proximity/shared";
+import apiClient from "../../src/lib/apiClient";
+import { accessTokenNeedsRefresh } from "../../src/lib/accessTokenExpiry";
+import { useAuthStore } from "../../src/store/authStore";
+import { useBrowseHandoffStore } from "../../src/store/browseHandoffStore";
+import { ListingCard } from "../../src/components/listings/ListingCard";
+import { FilterSheet } from "../../src/components/listings/FilterSheet";
+import { BrowseMapView } from "../../src/components/listings/BrowseMapView";
+import { SuggestedSection } from "../../src/components/listings/SuggestedSection";
+import { BackToTopButton } from "../../src/components/ui/BackToTopButton";
+import { ErrorState } from "../../src/components/ui/ErrorMessage";
+import { getErrorMessage } from "../../src/lib/apiError";
+import { ERROR_MESSAGES } from "../../src/lib/errorMessages";
+import { colors, shadows } from "../../src/theme/tokens";
 
-export default function BrowseScreen() {}
+// The one shadow tier design-system/MASTER.md §5 allows, reserved for
+// floating elements: the pill search field and circular filter button are
+// a "lifted" pair of controls, the same kind of floating element it's for.
+const FLOATING_SHADOW = shadows.floating;
+
+// How far the list must scroll before the back-to-top button appears.
+const BACK_TO_TOP_OFFSET = 600;
+
+export default function BrowseScreen() {
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  // Find Your Place's nice-to-haves, marked in the filter sheet but switched off.
+  // { furnished, amenities } or null; gone after Clear All.
+  const [suggestedFilters, setSuggestedFilters] = useState(null);
+  const [view, setView] = useState("list");
+  const listRef = useRef(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  // "Suggested for you" ids, best first, fetched once per visit while signed
+  // in, as web's Browse does. They feed the list's suggested section and the
+  // map's badged pins.
+  const userId = useAuthStore((state) => state.user?.id);
+  const [suggestedIds, setSuggestedIds] = useState([]);
+
+  // The list remounts at the top when returning from the map.
+  useEffect(() => {
+    if (view !== "list") setShowBackToTop(false);
+  }, [view]);
+
+  // Arriving from Find Your Place's "Browse All Matches": its answers become the
+  // filters (each one shown, and removable, in the filter sheet), as on web.
+  const handoff = useBrowseHandoffStore((state) => state.pending);
+  // Only the Browse on screen takes it: a hidden one (for example under the
+  // stack after a sign-in) must not use it up. `handoff` and focus only wake
+  // this effect; the store is read once, here, and an empty read does nothing.
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    if (!isFocused) return;
+    const next = useBrowseHandoffStore.getState().take();
+    if (!next) return;
+    const { filters: handed, suggested } = next;
+    setFilters({ ...DEFAULT_FILTERS, ...(handed ?? {}) });
+    setSearch("");
+    setSuggestedFilters(
+      suggested
+        ? {
+            furnished: typeof suggested.furnished === "string" ? suggested.furnished : null,
+            amenities: Array.isArray(suggested.amenities) ? suggested.amenities.filter((a) => typeof a === "string") : [],
+          }
+        : null
+    );
+  }, [handoff, isFocused]);
+
+  async function load() {
+    try {
+      setError(null);
+      const data = await apiClient.listings.getListings();
+      setListings(data);
+    } catch (err) {
+      setError(getErrorMessage(err, ERROR_MESSAGES.LISTINGS.LOAD));
+    }
+  }
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setSuggestedIds([]);
+    if (!userId) return undefined;
+    let current = true;
+    const fetchIds = () =>
+      apiClient.listings.getSuggestedListings().then((data) => (Array.isArray(data?.ids) ? data.ids : []));
+    (async () => {
+      // The route answers an expired access token as signed out ({ ids: [] },
+      // not a 401), so the client never refreshes it. Check the expiry first
+      // rather than retrying on an empty answer: empty is also the normal
+      // answer for a student with no history, and refreshing for them wasted
+      // a call and a SecureStore write on every visit. Refresh tokens are
+      // stateless, so this is safe alongside any other refresh, and it never
+      // signs the user out. The refresh stays inline, not apiClient's
+      // refresh(), so a sign-out meanwhile is not undone by setTokens.
+      if (accessTokenNeedsRefresh(useAuthStore.getState().accessToken)) {
+        const { refreshToken, user } = useAuthStore.getState();
+        const { accessToken } = await apiClient.auth.refresh(refreshToken);
+        if (!current || typeof accessToken !== "string" || !accessToken) return;
+        await useAuthStore.getState().setTokens({ accessToken, refreshToken, user });
+        if (!current) return;
+      }
+      const ids = await fetchIds();
+      if (current) setSuggestedIds(ids);
+    })()
+      // Suggestions are an enhancement: on failure there are none.
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [userId]);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
+  const visibleListings = useMemo(() => {
+    // Same pipeline as web Browse: filterListings ranks, then unavailable last.
+    return rankBrowseListings(filterListings(listings, { filters, search }));
+  }, [listings, filters, search]);
+
+  const activeFilterCount = countActiveFilters(filters);
+
+  // For the filter sheet's price histogram: the rents of the available
+  // listings that fit the given filters, as on web.
+  const rentsFor = useCallback(
+    (forFilters) => fittingRents(listings, { filters: forFilters, search }),
+    [listings, search]
+  );
+
+  // Web's rule (BrowseContent): suggestions show only on the unfiltered view,
+  // once a student narrows the list their own question is the ranking. Only
+  // listings still in the feed count, kept to an even number.
+  const suggestedListings = useMemo(() => {
+    if (search.trim() || filtersActive(filters)) return [];
+    const byId = new Map(listings.map((l) => [String(l._id), l]));
+    const found = suggestedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    return found.slice(0, found.length - (found.length % 2));
+  }, [listings, suggestedIds, search, filters]);
+  const suggestedIdSet = useMemo(
+    () => new Set(suggestedListings.map((l) => String(l._id))),
+    [suggestedListings]
+  );
+  // As on web, the suggested listings leave the list below while they show,
+  // so no card appears twice, but still count as results.
+  const listData = useMemo(
+    () => visibleListings.filter((l) => !suggestedIdSet.has(String(l._id))),
+    [visibleListings, suggestedIdSet]
+  );
+  const resultCount = listData.length + suggestedIdSet.size;
+
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator size="large" />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <ErrorState
+          message={error}
+          onAction={() => {
+            setLoading(true);
+            load().finally(() => setLoading(false));
+          }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+      <View className="px-4 pt-3 pb-3">
+        {/* Search + Filters: a lifted pill field + a matched circular
+            button, same white/border/shadow treatment so the two read as
+            one control group. No page title here: the tab bar already
+            says "Browse"; a repeated heading was pure visual weight with
+            no new information. */}
+        <View className="flex-row items-center gap-2.5">
+          <View
+            className="flex-1 flex-row items-center h-12 bg-white border border-gray-200 rounded-full px-4"
+            style={FLOATING_SHADOW}
+          >
+            <Search size={16} color={colors.textMuted} strokeWidth={2} />
+            <TextInput
+              className="flex-1 ml-2.5 text-sm text-gray-900"
+              placeholder="Search by address or title"
+              placeholderTextColor="#9ca3af"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+          <Pressable
+            onPress={() => setFilterSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : "Filters"}
+            className="w-12 h-12 rounded-full bg-white border border-gray-200 items-center justify-center"
+            style={FLOATING_SHADOW}
+          >
+            <SlidersHorizontal size={20} color={colors.textSecondary} strokeWidth={2} />
+            {activeFilterCount > 0 && (
+              <View className="absolute -top-1 -right-1 bg-red-600 rounded-full w-5 h-5 items-center justify-center">
+                <Text className="text-white text-[10px] font-bold">{activeFilterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Count + view toggle share one compact row: the count is small/
+            secondary (not a headline) and sits here rather than in its own
+            header row precisely because this row's whole purpose (what am I
+            looking at, and how) is a real relationship between the two,
+            not an arbitrary pairing. */}
+        <View className="flex-row items-center justify-between mt-3">
+          <Text className="text-xs text-gray-500">
+            {resultCount} listing{resultCount === 1 ? "" : "s"}
+          </Text>
+          <View className="flex-row bg-gray-100 rounded-full p-1">
+            {[
+              { value: "list", label: "List", icon: Rows3 },
+              { value: "map", label: "Map", icon: MapIcon },
+            ].map(({ value, label, icon: Icon }) => (
+              <Pressable
+                key={value}
+                onPress={() => setView(value)}
+                className={`flex-row items-center gap-1.5 px-3.5 h-9 rounded-full ${view === value ? "bg-red-600" : ""}`}
+              >
+                <Icon size={13} color={view === value ? "#ffffff" : colors.textSecondary} strokeWidth={2} />
+                <Text className={`text-xs font-medium ${view === value ? "text-white" : "text-gray-500"}`}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {view === "map" ? (
+        <BrowseMapView listings={visibleListings} suggestedIds={suggestedIdSet} />
+      ) : (
+        <View className="flex-1">
+          <FlatList
+            ref={listRef}
+            data={listData}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={{ padding: 16, paddingTop: 0 }}
+            renderItem={({ item }) => <ListingCard listing={item} />}
+            ListHeaderComponent={<SuggestedSection listings={suggestedListings} />}
+            onScroll={(e) => setShowBackToTop(e.nativeEvent.contentOffset.y > BACK_TO_TOP_OFFSET)}
+            scrollEventThrottle={100}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={
+              suggestedListings.length > 0 ? null : (
+                <View className="items-center justify-center mt-20">
+                  <View className="mb-3">
+                    <Search size={32} color={colors.textMuted} strokeWidth={1.5} />
+                  </View>
+                  <Text className="text-gray-500">No listings match your search.</Text>
+                </View>
+              )
+            }
+          />
+          {showBackToTop ? (
+            <BackToTopButton onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })} />
+          ) : null}
+        </View>
+      )}
+
+      <FilterSheet
+        visible={filterSheetVisible}
+        filters={filters}
+        suggested={suggestedFilters}
+        rentsFor={rentsFor}
+        onApply={(next) => {
+          setFilters(next);
+          // As on web, the applied filters feed the student's filter summary
+          // (a "Suggested for you" signal). Fire-and-forget.
+          if (userId) apiClient.listings.saveFilterSummary(next).catch(() => {});
+          setFilterSheetVisible(false);
+        }}
+        // Clear All: as on web it clears the filters, the search and Find Your
+        // Place's hints; unlike web it also closes the sheet.
+        onReset={() => {
+          setFilters(DEFAULT_FILTERS);
+          setSearch("");
+          setSuggestedFilters(null);
+          setFilterSheetVisible(false);
+        }}
+        onClose={() => setFilterSheetVisible(false)}
+      />
+    </SafeAreaView>
+  );
+}

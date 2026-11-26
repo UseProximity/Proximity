@@ -4,19 +4,16 @@
 // preference key (a few questions write to multiple keys — see isAnswered).
 export const QUESTION_PLAN = [
   {
-    id: "name_confirm",
-    field: "name",
-    kind: "confirm_or_replace",
-    prompt:
-      "Hi there, I'm Proxy, your personal housing matchmaker. Let's find your place. First, I have your name as {{name}}. Is that right, or do you go by something else?",
-  },
-  {
     id: "group_size",
     field: "group_size",
     kind: "choice",
-    // Uses the name we just confirmed, so the flow reads as a handoff from the
-    // greeting straight into the first real question.
-    prompt: "Alright {{name}}, how many people are you planning to live with (including yourself)?",
+    // The opener. The chat used to begin by confirming the student's name; that
+    // question is gone (Wyatt, 2026-10-20), so Proxy introduces itself here and
+    // goes straight into the first real question. A signed-in student's first
+    // name is still stored on the session from their account (for the owner
+    // email draft and the ranking payload); a signed-out visitor has none.
+    prompt:
+      "Hi, I'm Proxy, your personal housing matchmaker. Let's find your place. How many people are you planning to live with, including yourself?",
     // Tappable count cards, ascending from 0 bedrooms. Every count is EXACT: tap
     // 2 and you get 2-bedroom places, never a 3-bed you'd be paying an extra room
     // for. "Studio" means one person in a 0-bedroom unit and matches ONLY studios.
@@ -167,10 +164,6 @@ const isFilled = (v) =>
 export function isAnswered(question, preferences) {
   const p = preferences ?? {};
   switch (question.id) {
-    // `name` is pre-filled at session creation, so gate on an explicit
-    // confirmation flag — we always want to ask/confirm it first.
-    case "name_confirm":
-      return !!p._name_confirmed;
     // Budget can be answered with a number or marked unsure (no cap).
     case "budget":
       return isFilled(p.budget_max) || !!p._budget_unsure;

@@ -1,14 +1,34 @@
 "use client";
 
-import { BarChart3, MapPin, Star, User, Menu, X } from "lucide-react";
-import ListingFormPanel from "@/components/listings/ListingFormPanel";
+import { useEffect, useState } from "react";
+import {
+  BarChart3,
+  CreditCard,
+  CalendarDays,
+  MapPin,
+  MessageCircleQuestion,
+  Plug,
+  Star,
+  User,
+  Menu,
+  X,
+  ChevronDown,
+} from "lucide-react";
 import AnalyticsDashboardSection from "./_sections/AnalyticsDashboardSection";
+import IntegrationsSection from "./_sections/IntegrationsSection";
 import ManageCoOwnersModal from "./_modals/ManageCoOwnersModal";
+import EditLeaseModal from "./_modals/EditLeaseModal";
 import ProfileSection from "./_sections/ProfileSection";
+import LicenseDisclosureCard from "./_sections/LicenseDisclosureCard";
+import PaymentsSection from "./_sections/PaymentsSection";
 import PropertiesSection from "./_sections/PropertiesSection";
 import ReviewsSection from "./_sections/ReviewsSection";
+import QuestionsSection from "./_sections/QuestionsSection";
+import useAgentsEnabled from "@/components/proxy/useAgentsEnabled";
+import ToursSection from "./_sections/ToursSection";
 import PropertyAnalyticsSection from "./_sections/PropertyAnalyticsSection";
 import { useLandlordDashboard } from "./_hooks/useLandlordDashboard";
+import { onLandlordChange } from "@/components/landlord/landlordSync";
 
 export default function ProximityDashboard({ initialViewAsId } = {}) {
   const {
@@ -17,9 +37,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     sidebarOpen,
     setSidebarOpen,
     user,
-    setUser,
-    listingModal,
-    setListingModal,
     coOwnersModal,
     setCoOwnersModal,
     profileUpdatePrompt,
@@ -34,73 +51,169 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
     cancelEdit,
     saveProfile,
     handleAddListing,
-    handleEditListing,
     handleManageCoOwners,
     handleDeleteListing,
-    handleListingModalSuccess,
+    handleEditLease,
+    handleWithdrawLease,
+    handleRepublishLease,
+    leaseModal,
+    setLeaseModal,
+    fetchUser,
     handleProfileUpdate,
     handleNavigation,
     handlePropertySelect,
     handleBackToProperties,
+    backLabel,
     getPageTitle,
     router,
   } = useLandlordDashboard({ initialViewAsId });
+
+  // Properties opens into Live and Drafts. Open by default: the drafts count is
+  // the thing a landlord should not have to go looking for.
+  const [propertiesOpen, setPropertiesOpen] = useState(true);
+  // What is waiting on the landlord from Proxy (open questions and tour
+  // requests), shown as a count on the Questions tab; refreshed every 10s
+  // and whenever an answer or tour pick happens anywhere on the page.
+  // Nothing of this shows, and nothing polls, while the agents are off
+  // (PR #365 review): the tabs wait for the switch.
+  const agentsOn = useAgentsEnabled();
+  const [waiting, setWaiting] = useState({ questions: 0, tours: 0 });
+  useEffect(() => {
+    if (!agentsOn) return;
+    let cancelled = false;
+    const load = () => {
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      fetch(`/api/landlord/proxy-chat${qs}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (!cancelled && d?.waiting) setWaiting(d.waiting); }).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 10000);
+    const off = onLandlordChange(load);
+    return () => { cancelled = true; clearInterval(t); off(); };
+  }, [viewAsId, activeView, agentsOn]);
+  const listings = user?.listings ?? [];
+  const draftCount =
+    listings.filter((l) => l.isDraft).length +
+    listings.filter(
+      (l) =>
+        !l.isDraft &&
+        ((l.draftUnitCount ?? 0) + (l.draftLeaseCount ?? 0) > 0 ||
+          (l.ownership === "lease" && l.myLeases?.some((x) => x.isDraft)))
+    ).length;
+  const inProperties =
+    activeView === "properties" || activeView === "drafts" || !!selectedProperty;
+
+  /*
+   * This dashboard is reachable by anyone holding a stake, which now includes a
+   * student subletting a room. Three of its sections are the property business's
+   * back office rather than anything about an offering: portfolio Analytics,
+   * Reviews of the landlord, and PMS Sync. A subletter has no portfolio, no
+   * reviews, and no property management system, so those are hidden for them.
+   *
+   * `role` comes from the DB via getUser, not from the JWT, so a freshly
+   * promoted landlord sees them without signing out. The APIs behind each
+   * section enforce their own access; this only decides what to show.
+   */
+  const role = (user?.role ?? "").toLowerCase();
+  // Sections that belong to running a property business, not to holding one lease.
+  const LANDLORD_ONLY = new Set(["analytics", "reviews", "integrations"]);
+  const isLandlord = role === "landlord" || role === "super";
+  /*
+   * Payments are for landlord-role users only: not a super user, and not a
+   * student subletting a room. An admin viewing as a landlord sees their
+   * Billing read-only (Wyatt, 2026-11-11): reads carry ?viewAs, and every
+   * billing write acts on the signed-in landlord, so it refuses an admin.
+   */
+  const canSeePayments = role === "landlord";
+  /*
+   * A billing account, made for someone who signs and pays for other landlords'
+   * listings (Project B, Wyatt 2026-11-09): a landlord with no properties,
+   * analytics or listing tools, only their profile and Billing.
+   */
+  const billingOnly = user?.billing_only === true;
 
   const renderContent = () => {
     if (selectedProperty)
       return (
         <PropertyAnalyticsSection
           handleBackToProperties={handleBackToProperties}
+          backLabel={backLabel}
           selectedProperty={selectedProperty}
-          onEditListing={handleEditListing}
           viewAsId={viewAsId}
+          onPhotosChanged={fetchUser}
+          currentUserEmail={user?.email ?? null}
         />
       );
-    switch (activeView) {
+    /*
+     * Guarded as well as hidden: ?tab=analytics is a URL anyone can type, and a
+     * hidden button is not access control. Someone without the role lands on
+     * their properties — the thing they actually came here for — rather than a
+     * blank panel or an error.
+     */
+    const view =
+      billingOnly && !["profile", "billing"].includes(activeView)
+        ? canSeePayments
+          ? "billing"
+          : "profile"
+        : (LANDLORD_ONLY.has(activeView) && !isLandlord) ||
+            (activeView === "billing" && !canSeePayments)
+          ? "properties"
+          : activeView;
+
+    switch (view) {
       case "properties":
+      case "drafts":
         return (
           <PropertiesSection
             user={user}
-            setUser={setUser}
+            mode={view === "drafts" ? "drafts" : "live"}
+            onPublished={fetchUser}
             handlePropertySelect={handlePropertySelect}
             router={router}
             onAddListing={handleAddListing}
-            onEditListing={handleEditListing}
             onDeleteListing={handleDeleteListing}
+            onEditLease={handleEditLease}
+            onWithdrawLease={handleWithdrawLease}
+            onRepublishLease={handleRepublishLease}
             onManageCoOwners={handleManageCoOwners}
           />
         );
       case "reviews":
         return <ReviewsSection user={user} viewAsId={viewAsId} />;
+      case "questions":
+        return agentsOn ? <QuestionsSection viewAsId={viewAsId} /> : null;
+      case "tours":
+        return agentsOn ? <ToursSection viewAsId={viewAsId} /> : null;
+      case "integrations":
+        return <IntegrationsSection />;
       case "analytics":
         return <AnalyticsDashboardSection viewAsId={viewAsId} />;
+      case "billing":
+        return <PaymentsSection viewAsId={isViewingAs ? viewAsId : null} viewAsName={isViewingAs ? user?.name || user?.email : null} />;
       case "profile":
       default:
         return (
-          <ProfileSection
-            user={user}
-            isEditing={isEditing}
-            form={form}
-            onChange={onChange}
-            saving={saving}
-            cancelEdit={cancelEdit}
-            saveProfile={saveProfile}
-            setIsEditing={setIsEditing}
-          />
+          <>
+            <ProfileSection
+              user={user}
+              isEditing={isEditing}
+              form={form}
+              onChange={onChange}
+              saving={saving}
+              cancelEdit={cancelEdit}
+              saveProfile={saveProfile}
+              setIsEditing={setIsEditing}
+              canDeleteAccount={!viewAsId}
+            />
+            {/* Same audience as Payments: the route acts on the signed-in landlord,
+                so never while an admin is viewing as someone. */}
+            {canSeePayments && <LicenseDisclosureCard />}
+          </>
         );
     }
   };
 
   return (
     <>
-      {listingModal && (
-        <ListingFormPanel
-          listing={listingModal.mode === "edit" ? listingModal.listing : null}
-          onClose={() => setListingModal(null)}
-          onSuccess={handleListingModalSuccess}
-          user={user}
-        />
-      )}
       {coOwnersModal && (
         <ManageCoOwnersModal
           listing={coOwnersModal}
@@ -108,9 +221,17 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           onClose={() => setCoOwnersModal(null)}
         />
       )}
+      {leaseModal && (
+        <EditLeaseModal
+          property={leaseModal.property}
+          lease={leaseModal.lease}
+          onClose={() => setLeaseModal(null)}
+          onSaved={fetchUser}
+        />
+      )}
       {profileUpdatePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 max-xl:max-h-[calc(100dvh-2rem)] max-xl:overflow-y-auto">
             <h3 className="text-lg font-semibold text-gray-900">
               Update your Proximity profile?
             </h3>
@@ -129,12 +250,6 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                 <li>
                   <span className="font-medium">Email:</span>{" "}
                   {profileUpdatePrompt.email}
-                </li>
-              )}
-              {profileUpdatePrompt.phone && (
-                <li>
-                  <span className="font-medium">Phone:</span>{" "}
-                  {profileUpdatePrompt.phone}
                 </li>
               )}
             </ul>
@@ -159,7 +274,12 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           </div>
         </div>
       )}
-      <div className="w-full min-h-screen bg-gray-50 font-sans">
+      {/* Desktop: the page is one screen tall under the site header; the
+          sidebar stays put and only the content column scrolls (Wyatt,
+          2026-10-28). The site header is 105px with its border, plus 24px
+          for the test-environment banner off production, so the window
+          itself never scrolls. Mobile scrolls the window as before. */}
+      <div className="w-full min-h-screen bg-gray-50 font-sans md:flex md:h-[calc(100dvh-105px)] md:[body:has(.staging-banner)_&]:h-[calc(100dvh-129px)] md:min-h-0 md:flex-col md:overflow-hidden">
         {isViewingAs && user && (
           <div className="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
             <span>
@@ -177,7 +297,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
             </a>
           </div>
         )}
-        <div className="flex">
+        <div className="flex md:min-h-0 md:flex-1">
           {/* Mobile backdrop — only visible when sidebar is open on < md */}
           {sidebarOpen && (
             <div
@@ -191,9 +311,9 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
           <aside
             className={`${
               sidebarOpen ? "translate-x-0" : "-translate-x-full"
-            } md:translate-x-0 fixed md:sticky top-0 left-0 z-40 w-64 h-screen bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
+            } md:translate-x-0 fixed md:static top-0 left-0 z-40 w-64 h-screen md:h-full bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out flex-shrink-0`}
           >
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="sticky top-0 z-10 h-16 px-4 border-b border-gray-200 bg-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold">
                   P
@@ -229,6 +349,7 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <User className="h-4 w-4" />
                     My Profile
                   </button>
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("analytics")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -240,17 +361,52 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <BarChart3 className="h-4 w-4" />
                     Analytics
                   </button>
+                  )}
+                  {!billingOnly && (<>
                   <button
-                    onClick={() => handleNavigation("properties")}
+                    onClick={() => setPropertiesOpen((o) => !o)}
+                    aria-expanded={propertiesOpen}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                      activeView === "properties" || selectedProperty
-                        ? "bg-red-50 text-red-700"
+                      inProperties
+                        ? "text-red-700"
                         : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
                     <MapPin className="h-4 w-4" />
                     Properties
+                    <ChevronDown
+                      className={`ml-auto h-4 w-4 transition-transform ${
+                        propertiesOpen ? "" : "-rotate-90"
+                      }`}
+                    />
                   </button>
+                  {propertiesOpen && (
+                    <div className="ml-5 space-y-1 border-l border-gray-200 pl-2">
+                      {[
+                        { key: "properties", label: "Live" },
+                        { key: "drafts", label: "Drafts", count: draftCount },
+                      ].map(({ key, label, count }) => (
+                        <button
+                          key={key}
+                          onClick={() => handleNavigation(key)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg w-full text-left text-sm transition-colors ${
+                            activeView === key
+                              ? "bg-red-50 text-red-700 font-medium"
+                              : "text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {label}
+                          {count > 0 && (
+                            <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  </>)}
+                  {isLandlord && !billingOnly && (
                   <button
                     onClick={() => handleNavigation("reviews")}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
@@ -262,15 +418,77 @@ export default function ProximityDashboard({ initialViewAsId } = {}) {
                     <Star className="h-4 w-4" />
                     Reviews
                   </button>
+                  )}
+                  {agentsOn && !billingOnly && (<>
+                  <button
+                    onClick={() => handleNavigation("questions")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "questions"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <MessageCircleQuestion className="h-4 w-4" />
+                    Questions
+                    {waiting.questions > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting.questions}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleNavigation("tours")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "tours"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    Tours
+                    {waiting.tours > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{waiting.tours}</span>
+                    )}
+                  </button>
+                  </>)}
+                  {canSeePayments && (
+                  <button
+                    onClick={() => handleNavigation("billing")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "billing"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Billing
+                  </button>
+                  )}
+                  {isLandlord && !billingOnly && (
+                  <button
+                    onClick={() => handleNavigation("integrations")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                      activeView === "integrations"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Plug className="h-4 w-4" />
+                    PMS Sync
+                    <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                      Beta
+                    </span>
+                  </button>
+                  )}
                 </div>
               </div>
             </div>
           </aside>
 
           {/* Main Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 border-b bg-white px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-20">
-              <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate min-w-0">
+          <div id="landlord-dashboard-main" className="flex-1 min-w-0 md:overflow-y-auto">
+            {/* Mobile only: the page title and the menu button. On desktop the
+                sidebar names the section (Wyatt, 2026-10-28: no top bar). */}
+            <div className="md:hidden flex h-16 items-center justify-between gap-2 border-b bg-white px-4 sticky top-0 z-20">
+              <h1 className="text-base font-semibold text-gray-900 truncate min-w-0">
                 {getPageTitle()}
               </h1>
               <button

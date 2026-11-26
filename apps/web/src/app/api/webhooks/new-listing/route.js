@@ -6,8 +6,13 @@ const AIRTABLE_BASE = 'appm77rMuwqoMG0HW';
 const LANDLORDS_TABLE = 'tblB7mcwzBupm7kDS';
 
 async function findLandlordInAirtable(email) {
+  // The email is whatever the account holder signed up with, so it is escaped for the
+  // formula's string literal and the whole formula URL-encoded. Otherwise a quote in
+  // it rewrites the filter and the PATCH below lands on someone else's CRM record.
+  const literal = String(email ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const formula = encodeURIComponent(`({Email}="${literal}")`);
   const res = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${LANDLORDS_TABLE}?filterByFormula=({Email}="${email}")`,
+    `https://api.airtable.com/v0/${AIRTABLE_BASE}/${LANDLORDS_TABLE}?filterByFormula=${formula}`,
     { headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` } }
   );
   const data = await res.json();

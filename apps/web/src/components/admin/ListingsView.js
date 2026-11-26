@@ -1,13 +1,17 @@
 "use client";
 
+import { ListingLink, PersonLink } from "@/components/admin/RecordLink";
 import { useState, useRef, useEffect } from "react";
 import AddressSearchInput from "@/components/listings/AddressSearchInput";
+import { clampCount } from "@/utils/unitCounts";
 import {
   adminFetch, insertRow, deleteRow, prodConfirm,
   fmtMoney, fmtDate, termLabel, shortId,
   Stars, Badge, GearButton, TrashButton,
   InlineToggle, InlineNumber, usePending,
 } from "@/components/admin/adminShared";
+import { unitIsAvailable, listingIsUnavailable } from "@/lib/listings/unitAvailability";
+import { sortUnits } from "@/utils/unitOrder";
 
 const AMENITY_COLS = ["air_conditioning","dishwasher","gym","laundry","mailroom","microwave","oven","parking","pets_allowed","pool","refrigerator","rooftop","storage","stove","study_room"];
 const UTILITY_COLS = ["electric","gas","heat","water","internet","trash","cable","sewer","cooling"];
@@ -23,13 +27,13 @@ function sortedImages(listing) {
   return [...(listing.listing_images || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
-// Effective availability, mirroring the browse API logic exactly:
-// unavailable only when the manual override is set or every unit is marked
-// unavailable. Leases never gate availability — they only control which rent shows.
-function availability(listing) {
-  const units = listing.listing_units || [];
+// Effective availability, mirroring the browse API exactly — same helper, so
+// the two cannot drift. Leases now DO gate availability: a unit whose every
+// offering has been withdrawn is not one a student can take (a unit carrying no
+// offering at all still counts as available; see unitAvailability.js).
+export function availability(listing) {
   if (listing.unavailable) return { label: "Hidden (override)", color: "red" };
-  if (units.length > 0 && units.every((u) => u.available === false)) return { label: "Unavailable", color: "red" };
+  if (listingIsUnavailable(listing)) return { label: "No live offerings", color: "red" };
   return { label: "Available", color: "green" };
 }
 
@@ -40,7 +44,7 @@ function hasListedRent(listing) {
 }
 
 function unitLabel(u) {
-  return u.title || `${u.bedrooms ?? "?"} BR / ${u.bathrooms ?? "?"} BA`;
+  return u.name || `${u.bedrooms ?? "?"} BR / ${u.bathrooms ?? "?"} BA`;
 }
 
 // ─── Toggle-able chip grid for listing_amenities / listing_utilities ─────────
@@ -251,7 +255,6 @@ function AddUnitForm({ listingId, dbTarget, isProd, onDone, onCancel }) {
         bedrooms: Number(beds),
         bathrooms: Number(baths),
         area: area === "" ? null : Number(area),
-        available: true,
       }, dbTarget);
       onDone();
     } catch (err) {
@@ -262,11 +265,11 @@ function AddUnitForm({ listingId, dbTarget, isProd, onDone, onCancel }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 py-1.5 text-xs">
-      <input type="number" min="0" placeholder="Beds" value={beds} onChange={(e) => setBeds(e.target.value)} className="w-16 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+      <input type="number" min="0" placeholder="Beds" value={beds} onChange={(e) => setBeds(clampCount(e.target.value))} className="w-16 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
       <span className="text-gray-400">BR /</span>
-      <input type="number" min="0" step="0.5" placeholder="Baths" value={baths} onChange={(e) => setBaths(e.target.value)} className="w-16 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+      <input type="number" min="0" step="0.5" placeholder="Baths" value={baths} onChange={(e) => setBaths(clampCount(e.target.value))} className="w-16 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
       <span className="text-gray-400">BA</span>
-      <input type="number" min="0" placeholder="Area (sqft)" value={area} onChange={(e) => setArea(e.target.value)} className="w-24 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+      <input type="number" min="0" placeholder="Area (sqft)" value={area} onChange={(e) => setArea(clampCount(e.target.value))} className="w-24 px-2 py-0.5 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
       <button type="button" disabled={saving} onClick={submit} className="px-2.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-40">{saving ? "Adding…" : "Add unit"}</button>
       <button type="button" onClick={onCancel} className="px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
     </div>
@@ -276,7 +279,7 @@ function AddUnitForm({ listingId, dbTarget, isProd, onDone, onCancel }) {
 // ─── New listing modal ────────────────────────────────────────────────────────
 
 function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
-  const [fields, setFields] = useState({ address: "", title: "", contact_name: "", contact_email: "", contact_phone: "" });
+  const [fields, setFields] = useState({ address: "", title: "", contact_name: "", contact_email: "" });
   const [units, setUnits] = useState([{ bedrooms: "", bathrooms: "", area: "", rent: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -298,7 +301,6 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
           bedrooms: Number(u.bedrooms),
           bathrooms: Number(u.bathrooms),
           area: u.area === "" ? null : Number(u.area),
-          available: true,
         }, dbTarget);
         if (u.rent !== "" && !isNaN(Number(u.rent))) {
           await insertRow("unit_leases", {
@@ -344,7 +346,7 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
             <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Display name</label>
             <input type="text" value={fields.title} onChange={(e) => setField("title", e.target.value)} className={inputClass} />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact name</label>
               <input type="text" value={fields.contact_name} onChange={(e) => setField("contact_name", e.target.value)} className={inputClass} />
@@ -352,10 +354,6 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
             <div>
               <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact email</label>
               <input type="email" value={fields.contact_email} onChange={(e) => setField("contact_email", e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-0.5">Contact phone</label>
-              <input type="text" value={fields.contact_phone} onChange={(e) => setField("contact_phone", e.target.value)} className={inputClass} />
             </div>
           </div>
           <div>
@@ -366,10 +364,10 @@ function NewListingModal({ dbTarget, isProd, onClose, onCreated }) {
             <div className="space-y-1.5">
               {units.map((u, i) => (
                 <div key={i} className="flex items-center gap-1.5 text-xs">
-                  <input type="number" min="0" placeholder="Beds" value={u.bedrooms} onChange={(e) => setUnit(i, "bedrooms", e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
-                  <input type="number" min="0" step="0.5" placeholder="Baths" value={u.bathrooms} onChange={(e) => setUnit(i, "bathrooms", e.target.value)} className="w-16 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
-                  <input type="number" min="0" placeholder="Sqft" value={u.area} onChange={(e) => setUnit(i, "area", e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
-                  <input type="number" min="0" placeholder="Rent ($/mo)" value={u.rent} onChange={(e) => setUnit(i, "rent", e.target.value)} className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+                  <input type="number" min="0" placeholder="Beds" value={u.bedrooms} onChange={(e) => setUnit(i, "bedrooms", clampCount(e.target.value))} className="w-16 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+                  <input type="number" min="0" step="0.5" placeholder="Baths" value={u.bathrooms} onChange={(e) => setUnit(i, "bathrooms", clampCount(e.target.value))} className="w-16 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+                  <input type="number" min="0" placeholder="Sqft" value={u.area} onChange={(e) => setUnit(i, "area", clampCount(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
+                  <input type="number" min="0" placeholder="Rent ($/mo)" value={u.rent} onChange={(e) => setUnit(i, "rent", clampCount(e.target.value))} className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-blue-400" />
                   {units.length > 1 && (
                     <button type="button" onClick={() => setUnits((prev) => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500 font-bold">&times;</button>
                   )}
@@ -406,11 +404,11 @@ function Section({ title, count, children, action }) {
   );
 }
 
-function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpenGear, onOpenImages, onRefresh }) {
+export function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpenGear, onOpenImages, onRefresh }) {
   const [addingUnit, setAddingUnit] = useState(false);
   const [addingLeaseFor, setAddingLeaseFor] = useState(null);
 
-  const units = [...(listing.listing_units || [])].sort((a, b) => (a.bedrooms ?? 0) - (b.bedrooms ?? 0));
+  const units = sortUnits(listing.listing_units || []);
   const images = sortedImages(listing);
   const reviews = [...(listing.listing_reviews || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const amenities = oneRow(listing.listing_amenities);
@@ -452,7 +450,9 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   <span className="text-xs text-gray-500">
                     <InlineNumber table="listing_units" id={u.id} field="area" value={u.area} disabled={isReadOnly} className="w-16" /> sqft
                   </span>
-                  <InlineToggle table="listing_units" id={u.id} field="available" value={u.available !== false} disabled={isReadOnly} label="Available" />
+                  <Badge color={unitIsAvailable(u) ? "green" : "red"}>
+                    {unitIsAvailable(u) ? "available" : "no live offering"}
+                  </Badge>
                   {u.deleted_at && <Badge color="red">deleted</Badge>}
                   <span className="ml-auto flex items-center gap-0.5">
                     {!isReadOnly && <TrashButton title="Delete unit" onClick={() => handleDelete("listing_units", u.id, "unit")} />}
@@ -460,7 +460,7 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
                   </span>
                 </div>
                 <div className="pl-6 pr-3 py-2 space-y-1">
-                  {leases.length === 0 && <p className="text-[11px] text-gray-400 italic">No leases — the unit can still be available, but no rent will display.</p>}
+                  {leases.length === 0 && <p className="text-[11px] text-gray-400 italic">No leases — the unit still shows as available (terms unknown), but no rent will display.</p>}
                   {leases.map((l) => {
                     const future = l.available_from && new Date(l.available_from) > new Date();
                     return (
@@ -509,11 +509,11 @@ function ListingDetail({ listing, allUsers, dbTarget, isProd, isReadOnly, onOpen
       <Section
         title="Photos"
         count={images.length}
-        action={
+        action={isReadOnly ? null : (
           <button type="button" onClick={() => onOpenImages(listing.id, images.map((i) => i.url))} className="text-xs text-blue-600 hover:underline">
             Manage photos
           </button>
-        }
+        )}
       >
         {images.length === 0 ? (
           <p className="text-xs text-gray-400 italic">No photos</p>
@@ -638,9 +638,9 @@ export default function ListingsView({ data, search, dbTarget, isProd, isReadOnl
                 <div className="w-12 h-9 rounded bg-gray-100 border border-gray-200 flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{l.title || l.address}</p>
+                <p className="text-sm font-medium text-gray-900 truncate"><ListingLink id={l.id}>{l.title || l.address}</ListingLink></p>
                 <p className="text-[11px] text-gray-400 truncate">
-                  {l.title ? `${l.address} · ` : ""}{primary?.users?.name || "no landlord"}
+                  {l.title ? `${l.address} · ` : ""}{primary?.users ? <PersonLink id={primary.user_id} className="underline decoration-gray-300 hover:text-gray-700">{primary.users.name || primary.users.email}</PersonLink> : "no landlord"}
                   {avgRating != null && ` · ${avgRating.toFixed(1)}★ (${reviews.length})`}
                 </p>
               </div>
@@ -655,6 +655,7 @@ export default function ListingsView({ data, search, dbTarget, isProd, isReadOnl
                 <Badge color="gray" title="Available on the site, but no active lease has a rent, so no price displays">no rent listed</Badge>
               )}
               {l.deleted_at && <Badge color="red">deleted</Badge>}
+              <ListingLink id={l.id} className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50">Open record</ListingLink>
               <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
                 <InlineToggle table="listings" id={l.id} field="unavailable" value={l.unavailable} disabled={isReadOnly} label="Hide" />
                 <GearButton onClick={() => onOpenGear("listings", l)} />

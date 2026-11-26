@@ -1,0 +1,266 @@
+import { after } from "next/server";
+import supabase from "@/lib/supabase";
+import { auth } from "@/auth";
+import { getBaseUrl } from "@/lib/email";
+import { requestContactVerification } from "@/lib/chat/contactVerification";
+import { shortDescription } from "@/lib/listings/leaseDescription";
+import { checkListingDescription } from "@/lib/contentRules";
+import { claimUnclaimedProperty } from "@/lib/listings/ownership";
+import { checkListingGate, coverageOnly, gateResponseBody } from "@/lib/billing/listingGate";
+import { sandboxIdsAmong } from "@/lib/reviewSandbox";
+
+// Create a lease on a unit that already exists — step 3 of the
+// address -> unit -> lease flow, taken when the address matched a known property
+// and the user picked one of its existing units.
+//
+// The listing (property) and the unit are untouched; this only adds the caller's
+// own offering. Owner-specific content (contact, description, furnished) is
+// written onto the lease, so it never overwrites what another landlord at the
+// same property has published.
+//
+// One thing it can change: a property nobody owns — a review stub carrying the
+// Proximity placeholder, or an import with no landlord row — is handed to a
+// landlord publishing a real (non-sublease) offering on it. This is the step
+// where sublease is actually known, which is why the claim is tried here as well
+// as on unit creation. See claimUnclaimedProperty.
+//
+// @auth user
+export async function POST(req) {
+  const session = await auth();
+  if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => null);
+  if (!body) return Response.json({ error: "Invalid request body." }, { status: 400 });
+
+  const {
+    unitId,
+    rent,
+    rentIsPerPerson,
+    leaseTermMonths,
+    sublease = false,
+    available = true,
+    // The date this offering opens. It was collected on the way in but never
+    // read here, so every lease created through the flow landed with a null
+    // available_from and came back reading "Available now".
+    availableFrom,
+    description,
+    furnished,
+    contactEmail,
+    contactPhone,
+    contactName,
+  } = body;
+
+  if (!unitId) {
+    return Response.json({ error: "A unit is required." }, { status: 400 });
+  }
+
+  // The note on an offering is read by students like the property description,
+  // so it follows the same rule: no names, links, emails or phone numbers.
+  const descriptionProblem = checkListingDescription(description);
+  if (descriptionProblem) {
+    return Response.json({ error: descriptionProblem }, { status: 400 });
+  }
+
+  // Adding a live offering needs a payment method and, when required, a signed
+  // agreement (lib/billing/listingGate.js). A draft offering is never blocked.
+  let draft = body.draft === true;
+  // Something else on Billing (a payment method, an overdue invoice) blocks it:
+  // the offering is saved as a draft rather than lost, for a page that asks for
+  // that (draftIfBillingBlocked) and says why. Any other caller is refused as
+  // before, since a 2xx would read to it as published.
+  // Only the agreement: refused as before, and the page opens signing for this
+  // property and submits again (saving a draft here would make that a second copy).
+  let billingBlock = null;
+  if (!draft) {
+    const { data: unitRow } = await supabase.from("listing_units").select("listing_id").eq("id", unitId).maybeSingle();
+    const gate = await checkListingGate(supabase, session.user.id, { listingIds: unitRow?.listing_id ? [unitRow.listing_id] : [], unitIds: [unitId] });
+    if (!gate.allowed) {
+      if (coverageOnly(gate) || body.draftIfBillingBlocked !== true) {
+        return Response.json(gateResponseBody(gate), { status: 403 });
+      }
+      draft = true;
+      billingBlock = gateResponseBody(gate);
+    }
+  }
+
+  // Terms Section 5: a subletter confirms their own lease lets them sublet.
+  // The add flow asks with a checkbox; this holds the line for direct calls.
+  if (sublease && body.subleaseRightsConfirmed !== true) {
+    return Response.json(
+      { error: "Please confirm you have the right to sublet this place." },
+      { status: 400 }
+    );
+  }
+
+  // Confirm the unit exists and is live before writing against it.
+  const { data: unit, error: unitError } = await supabase
+    .from("listing_units")
+    .select("id, listing_id, deleted_at")
+    .eq("id", unitId)
+    .maybeSingle();
+
+  if (unitError) {
+    console.error("[leases] Unit lookup failed:", unitError.message);
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
+  if (!unit || unit.deleted_at) {
+    return Response.json({ error: "That unit no longer exists." }, { status: 404 });
+  }
+
+  // A review sandbox account (App Store review) and a real landlord never share a
+  // property, in either direction, like addListing's attach. A real landlord adding to a
+  // sandbox property would have the offering hidden from every student: that property
+  // does not exist for them, so 404. A sandbox account adding to a real landlord's
+  // property would change what students see there: answered like an address that is
+  // already taken.
+  // Either lookup failing refuses the write, like addListing's attach, so a real
+  // landlord's offering is never put on a sandbox property on a guess.
+  const { data: parent, error: parentError } = await supabase
+    .from("listings")
+    .select("review_sandbox")
+    .eq("id", unit.listing_id)
+    .maybeSingle();
+  if (parentError) {
+    console.error("[leases] Property lookup failed:", parentError.message);
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
+  const parentIsSandbox = parent?.review_sandbox === true;
+  let callerIsSandbox;
+  try {
+    callerIsSandbox = (await sandboxIdsAmong([session.user.id])).has(session.user.id);
+  } catch {
+    return Response.json({ error: "Could not verify that unit." }, { status: 500 });
+  }
+  if (callerIsSandbox !== parentIsSandbox) {
+    return parentIsSandbox
+      ? Response.json({ error: "That unit no longer exists." }, { status: 404 })
+      : Response.json({ error: "This address is already on Proximity.", code: "address_taken" }, { status: 409 });
+  }
+
+  /*
+   * One contact per landlord per property. A landlord who already lists here
+   * has set theirs (api/landlord/listings/[listingId]/contact writes it to
+   * every lease they own at the property), so a new offering takes that block
+   * rather than whatever the client sent. The form behind this request may be
+   * the add flow, prefilled from the same block, or the editor's bare "add
+   * another listing" button, which only knows the login email. Either way the
+   * right answer is the address students already reach them at. Their first
+   * lease at a property is where the block is born, from the body.
+   */
+  const inherited = await inheritedContact(session.user.id, unit.listing_id);
+  const contact = inherited ?? {
+    contact_email: contactEmail?.trim() || null,
+    contact_phone: contactPhone || null,
+    contact_name: contactName || null,
+  };
+
+  // A renter has to be able to reach someone. An offering with no contact is
+  // unanswerable, so it is not one we accept. The client pre-fills the
+  // landlord's own address, which makes this a guard rather than a chore.
+  if (!contact.contact_email) {
+    return Response.json(
+      { error: "A contact email is required so students can reach you." },
+      { status: 400 }
+    );
+  }
+
+  const terms = Array.isArray(leaseTermMonths)
+    ? leaseTermMonths.map(Number).filter((m) => Number.isFinite(m) && m > 0)
+    : [];
+
+  const { data: lease, error } = await supabase
+    .from("unit_leases")
+    .insert({
+      unit_id: unitId,
+      owner_id: session.user.id,
+      rent: rent != null && rent !== "" ? Number(rent) : null,
+      // Recorded rather than inferred — see 202608240004.
+      rent_is_per_person: rentIsPerPerson == null ? null : !!rentIsPerPerson,
+      lease_term_months: terms,
+      sublease: !!sublease,
+      is_active: true,
+      unavailable: available === false,
+      available_from: availableFrom || null,
+      description: shortDescription(description),
+      furnished: furnished ?? null,
+      ...contact,
+      // An offering added to a live unit from the editor starts as a draft, so
+      // students never see it half filled in (see 202610100002).
+      ...(draft ? { published_at: null } : {}),
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("[leases] Insert failed:", error.message);
+    return Response.json({ error: "Could not create that lease." }, { status: 500 });
+  }
+
+  const claimed = await claimUnclaimedProperty({
+    userId: session.user.id,
+    listingId: unit.listing_id,
+    sublease: !!sublease,
+  });
+
+  // The lease's contact address only receives message alerts once confirmed.
+  // A lease's conversations are held by its owner, which is the caller. Confirm
+  // the address the lease was saved with (the inherited block when there is
+  // one), never the raw body value, which may not be stored anywhere.
+  const baseUrl = getBaseUrl(req);
+  after(() =>
+    requestContactVerification({
+      landlordId: session.user.id,
+      email: contact.contact_email,
+      baseUrl,
+    })
+  );
+
+  if (billingBlock) {
+    return Response.json(
+      {
+        message: billingBlock.drafted,
+        code: "billing_needed",
+        missing: billingBlock.missing,
+        draft: true,
+        lease: { id: lease.id, listingId: unit.listing_id },
+        claimedProperty: claimed,
+      },
+      { status: 202 }
+    );
+  }
+
+  return Response.json(
+    {
+      message: "Lease created",
+      lease: { id: lease.id, listingId: unit.listing_id },
+      claimedProperty: claimed,
+    },
+    { status: 201 }
+  );
+}
+
+// The caller's contact block at this property, off the lease of theirs that was
+// edited most recently. Null when they have no lease here yet, or none with an
+// email (legacy rows that only ever had the property's contact).
+async function inheritedContact(userId, listingId) {
+  const { data, error } = await supabase
+    .from("unit_leases")
+    .select("contact_name, contact_email, contact_phone, listing_units!unit_id!inner(listing_id)")
+    .eq("owner_id", userId)
+    .eq("listing_units.listing_id", listingId)
+    .is("deleted_at", null)
+    .not("contact_email", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[leases] Contact lookup failed:", error.message);
+    return null;
+  }
+  if (!data?.contact_email?.trim()) return null;
+  return {
+    contact_email: data.contact_email.trim(),
+    contact_phone: data.contact_phone || null,
+    contact_name: data.contact_name || null,
+  };
+}

@@ -1,22 +1,38 @@
 import { auth } from "@/auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import LoginClient from "./LoginClient";
+import { sanitizeCallbackUrl, toSameSitePath } from "@/lib/auth/callbackUrl";
+import { withCampaignParams } from "@/lib/marketing/tags";
 
-function sanitizeCallbackUrl(raw) {
-  if (!raw) return "/dashboard";
-  // Prevent open redirect: must be a relative path starting with /
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
-  return raw;
+function configuredAuthHost() {
+  try {
+    return new URL(process.env.AUTH_URL || process.env.NEXTAUTH_URL).host;
+  } catch {
+    return null;
+  }
 }
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams;
-  const callbackUrl = sanitizeCallbackUrl(params?.callbackUrl);
+  const h = await headers();
+  const callbackUrl = sanitizeCallbackUrl(
+    toSameSitePath(params?.callbackUrl, [
+      h.get("x-forwarded-host"),
+      h.get("host"),
+      configuredAuthHost(),
+    ])
+  );
   const initialTab = params?.tab === "signup" ? "signup" : "signin";
 
   const session = await auth();
-  if (session) {
-    redirect(callbackUrl);
+  // A deleted account keeps a truthy session object (see auth.js's session
+  // callback) but with no id. Checking bare truthiness here would bounce that
+  // session straight to callbackUrl, which dashboard/layout.js now redirects
+  // right back to /login for the same reason — an infinite loop.
+  if (session?.user?.id) {
+    // Campaign tags on the login URL follow the visitor (marketing attribution).
+    redirect(withCampaignParams(callbackUrl, params));
   }
 
   return <LoginClient callbackUrl={callbackUrl} initialTab={initialTab} />;
