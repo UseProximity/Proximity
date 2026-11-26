@@ -317,7 +317,11 @@ const plainError = (e) => (/^I can't put /.test(String(e ?? "")) ? String(e) : "
 /*
  * Apply one scored change as the landlord's own edit, with its Undo.
  * The event (and so the Undo) is saved first: a change is never made that
- * nobody could undo. Returns { ok, eventId } or { error }.
+ * nobody could undo. It is saved as applied, never open: an open event reads
+ * as a pending change in the landlord's Agent tab and the admin queue, and one
+ * left there by a run cut short could never be approved (PR 486 review). If
+ * the change itself is refused, the event is deleted.
+ * Returns { ok, eventId } or { error }.
  */
 async function applyOne({ c, ctx, senderId, messageId, threadId, quote }) {
   // What the lease holds right now, not when the message was first read:
@@ -334,8 +338,8 @@ async function applyOne({ c, ctx, senderId, messageId, threadId, quote }) {
     listing_id: ctx.listing.id,
     ...eventFor(c, from),
     confidence: "high",
-    status: "open",
-    applied: false,
+    status: "applied",
+    applied: true,
     detail: {
       source: "chat",
       messageId,
@@ -365,9 +369,9 @@ async function applyOne({ c, ctx, senderId, messageId, threadId, quote }) {
   }
   const wroteFact = await currentCoreFact(ctx.listing.id, c.leaseId, c.field);
   const { error: upError } = await supabase.from("listing_source_events")
-    .update({ status: "applied", applied: true, detail: { ...ev.detail, undo: { ...undo, facts: { ...undo.facts, wrote: wroteFact } } } })
+    .update({ detail: { ...ev.detail, undo: { ...undo, facts: { ...undo.facts, wrote: wroteFact } } } })
     .eq("id", ev.id);
-  if (upError) console.error("chatListingUpdates: event not marked applied:", upError.message);
+  if (upError) console.error("chatListingUpdates: event's Undo detail not saved:", upError.message);
   return { ok: true, eventId: ev.id };
 }
 
