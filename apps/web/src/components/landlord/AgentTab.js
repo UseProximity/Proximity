@@ -310,19 +310,21 @@ function ChangeHistory({ listingId, history, onDone }) {
  * Apply now takes one the sync left. Either is the landlord's own edit, so
  * the sync does not reverse it while the website still says the same thing.
  */
-function WebsiteChanges({ listingId, readOnly, onDone }) {
+function WebsiteChanges({ listingId, viewAsId = null, readOnly, onDone }) {
   const [rows, setRows] = useState(null);
   const [hidden, setHidden] = useState([]);
   const [busy, setBusy] = useState(null);
   const [open, setOpen] = useState(false);
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes`);
+      // Viewing as a landlord: what that landlord sees, not the admin's view.
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes${qs}`);
       const d = await r.json().catch(() => ({}));
       setRows(r.ok ? d.rows ?? [] : []);
       setHidden(r.ok ? d.hidden ?? [] : []);
     } catch { setRows([]); }
-  }, [listingId]);
+  }, [listingId, viewAsId]);
   useEffect(() => { load(); }, [load]);
   if (!rows?.length && !hidden.length) return null;
   const show = async (h) => {
@@ -430,7 +432,7 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} teamReview={data.teamReview} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
-      <WebsiteChanges listingId={listingId} readOnly={!!viewAsId} onDone={load} />
+      <WebsiteChanges listingId={listingId} viewAsId={viewAsId} readOnly={!!viewAsId} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />
       <ChangeHistory listingId={listingId} history={data.history} onDone={load} />
     </div>

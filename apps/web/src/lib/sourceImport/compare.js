@@ -22,7 +22,12 @@ import { applySnapshot } from "./apply.js";
 import { loadRecipes } from "./recipeStore.js";
 import { changeInWords } from "./decisions.js";
 
+/*
+ * Both versions run side by side in a five-minute request (PR 483 review):
+ * each read gets READ_MS and its Jev checks stop JEV_MS into that version.
+ */
 const READ_MS = 120000;
+const JEV_MS = 200000;
 const keyOf = (r) => `${r.kind}|${r.unit_key ?? ""}|${r.lease_id ?? ""}|${r.field ?? ""}|${JSON.stringify(r.new_value ?? null)}`;
 
 async function oneVersion({ listing, monitor, allowUrl, version }) {
@@ -40,7 +45,7 @@ async function oneVersion({ listing, monitor, allowUrl, version }) {
   const base = { reader: snapshot.trace?.reader ?? snapshot.platform, model: snapshot.trace?.model ?? null, costUsd: snapshot.trace?.modelCostUsd ?? 0, codeOnly: !!snapshot.trace?.codeOnly, units: snapshot.units.length, seconds: Math.round((Date.now() - started) / 1000), recipe: snapshot.recipe ? { used: snapshot.recipe.used, version: snapshot.recipe.version, found: snapshot.recipe.found, missing: snapshot.recipe.missing, added: snapshot.recipe.added, deepened: snapshot.recipe.deepened } : null };
   if (snapshot.portalPending) return { ...base, note: "leasing portal part read; nothing planned", changes: [] };
   if (snapshot.dailySkipped) return { ...base, note: "code cannot read this site; the daily sync leaves it for the weekly read", changes: [] };
-  const run = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: monitor.id, dryRun: true });
+  const run = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: monitor.id, dryRun: true, jevDeadline: started + JEV_MS });
   const changes = (run.scored ?? []).map((r) => {
     const c = run.changes[r._i] ?? {};
     const held = version === "old" && run.holdReason;
@@ -78,9 +83,8 @@ export async function compareListing(listingId) {
       return { error: "This version could not read the website", changes: [] };
     }
   };
-  // One after the other: both read the same site, and the second reuses nothing.
-  const oldV = await run("old");
-  const newV = await run("new");
+  // Side by side: one after the other could run past the request's five minutes.
+  const [oldV, newV] = await Promise.all([run("old"), run("new")]);
   const byKey = new Map();
   for (const c of oldV.changes) byKey.set(c.key, { key: c.key, old: c, new: null });
   for (const c of newV.changes) {

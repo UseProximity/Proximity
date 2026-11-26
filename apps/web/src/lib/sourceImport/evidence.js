@@ -100,11 +100,16 @@ export function collectEvidence(pages, units, address = null) {
   return out;
 }
 
-/* Whether a text names the listing's street address (number and street name). */
+/*
+ * Whether a text names the listing's street address (number and street name).
+ * The street ends at a comma, a unit ("#2", "Apt 3") or a range or joint
+ * address ("6100-6104 Delmar", "12 & 14 Oak"); either number of a range counts.
+ */
 export function textHasAddress(text, address) {
-  const m = String(address ?? "").match(/^\s*(\d+[A-Za-z]?)\s+([A-Za-z0-9.' ]+?)(?:,|$)/);
+  const m = String(address ?? "").match(/^\s*(\d+[A-Za-z]?)(?:\s*[-\u2013&]\s*(\d+[A-Za-z]?))?\s+([A-Za-z0-9.' ]+?)\s*(?=,|#|[-\u2013&]|\b(?:apt|unit|suite|ste)\b|$)/i);
   if (!m || !text) return false;
-  const street = m[2].trim().split(/\s+/).filter((w) => !/^(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|pl|place|ct|court|ln|lane|n|s|e|w|north|south|east|west)\.?$/i.test(w));
+  const numbers = [m[1], m[2]].filter(Boolean).map(escapeRe).join("|");
+  const street = m[3].trim().split(/\s+/).filter((w) => !/^(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|pl|place|ct|court|ln|lane|n|s|e|w|north|south|east|west)\.?$/i.test(w));
   if (!street.length) return false;
-  return new RegExp(`\\b${escapeRe(m[1])}\\b[^\\n]{0,8}${escapeRe(street[0])}`, "i").test(text);
+  return new RegExp(`\\b(?:${numbers})\\b[^\\n]{0,8}${escapeRe(street[0])}`, "i").test(text);
 }

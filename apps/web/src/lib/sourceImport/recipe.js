@@ -263,6 +263,9 @@ export function replayRecipe(recipe, pages, { known = [], today = new Date() } =
     return { name: s.name, ...parseBlock(block, today), photos: [], floorPlanImageUrl: null, fromModel: true, readBy: "recipe", source: "the website, read by its recipe", evidence: { url: use[s.at.page].url, text: block } };
   });
   const recipeNames = new Set((recipe.names ?? []).map(norm));
+  // A name only code saw (no model, no person) is marked: it waits for the weekly read before it becomes a unit.
+  const addedSet = new Set(added.map(norm));
+  for (const u of units) if (addedSet.has(norm(u.name))) u.recipeAdded = true;
   return {
     units,
     found: placed.filter((s) => recipeNames.has(norm(s.name))).length,

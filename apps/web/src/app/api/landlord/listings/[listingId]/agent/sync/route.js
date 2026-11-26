@@ -2,9 +2,9 @@
  * The landlord's "Sync now" and sync status for one listing's agent.
  *   GET   status: source, last run, next run, failures, a running job,
  *         manual syncs left today
- *   POST  queue a sync now (3 a day per listing; admins unlimited). An
- *         admin's is the weekly deep read, or with { daily: true } the
- *         daily kind (code only, no model)
+ *   POST  queue a sync now (1 a day per listing; admins unlimited). It is
+ *         the weekly deep read; an admin can ask for the daily kind
+ *         (code only, no model) with { daily: true }
  *
  * Owners of the listing (any owner may sync their own offer; the source is
  * the property's) and supers.

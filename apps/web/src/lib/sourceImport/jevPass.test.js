@@ -91,3 +91,18 @@ test("a unit the website never named is not gone just because its name is absent
   assert.ok(r.read_quality <= 0.05);
   assert.equal(r.ledger_apply, false);
 });
+
+test("an address with a unit or a range still names the street (PR 483 review)", () => {
+  assert.equal(textHasAddress("Units at 4321 Grove St are leased", "4321 Grove St #2, St. Louis"), true);
+  assert.equal(textHasAddress("6104 Delmar is full", "6100-6104 Delmar Blvd, St. Louis"), true);
+  assert.equal(textHasAddress("5 Oak apt 3 is gone", "5 Oak St Apt 3, STL"), true);
+  assert.equal(textHasAddress("nothing at 842 Westgate", "841 Westgate Ave, University City"), false);
+});
+
+test("the Jev pass stops at the run's deadline (PR 483 review)", async () => {
+  let asked = 0;
+  const ask = async () => { asked += 1; return { answers: {}, costUsd: 0, model: "jev" }; };
+  const out = await jevPass({ rows: rows(), snapshot, state, ask, on: true, runDeadline: Date.now() - 1 });
+  assert.equal(asked, 0);
+  assert.ok(out.every((r) => !r.jev || r.jev.status !== "ok"));
+});

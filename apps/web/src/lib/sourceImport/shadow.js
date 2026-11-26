@@ -51,6 +51,18 @@ export function primaryField(c) {
  * The source a change came from and its trust. platform is the reader the
  * read used (snapshot.trace.reader); a unit the model read is Haiku's.
  */
+/* "zillow" or "apartments.com" when the read came from that listing site, else null. */
+export function portalSiteOf(url) {
+  try {
+    const host = new URL(url ?? "").hostname.replace(/^www\./, "");
+    if (/(^|\.)zillow\.com$/.test(host)) return "zillow";
+    if (/(^|\.)apartments\.com$/.test(host)) return "apartments.com";
+  } catch {
+    // no URL: not a listing site
+  }
+  return null;
+}
+
 export function sourceOf(c, snapUnit, snapshot) {
   const platform = String(snapshot?.trace?.reader ?? snapshot?.platform ?? "generic");
   if (c.detail?.fromUnitPage) return { source: "unit_page", trust: TRUST.feed, platform };
@@ -58,6 +70,9 @@ export function sourceOf(c, snapUnit, snapshot) {
   if (snapUnit?.readBy === "pattern") return { source: "pattern", trust: TRUST.pattern, platform: "pattern" };
   // A change with no website unit behind it (a withdrawal) on a read code made.
   if (!snapUnit && snapshot?.trace?.codeOnly && /^(recipe|pattern)$/.test(platform)) return { source: platform, trust: platform === "recipe" ? TRUST.recipe : TRUST.pattern, platform };
+  // A listing site (Zillow, Apartments.com) rather than the landlord's own: its own trust (PR 483 review).
+  const site = portalSiteOf(snapshot?.sourceUrl);
+  if (site) return { source: "portalSite", trust: TRUST.portalSite, platform: site };
   if (snapUnit?.fromModel || c.facts?.fromModel) return { source: "model", trust: TRUST.haiku, platform: `${platform}/model` };
   if (snapshot?.portal?.walked) return { source: "portal", trust: TRUST.feed, platform };
   if (/^(g5|sightmap|securecafe)/.test(platform)) return { source: "feed", trust: TRUST.feed, platform };

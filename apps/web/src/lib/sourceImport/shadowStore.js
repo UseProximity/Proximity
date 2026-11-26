@@ -42,15 +42,32 @@ async function landlordEditTimes(listingId) {
   return out;
 }
 
+/*
+ * Every row a query matches, up to `max`, in pages: PostgREST returns at most
+ * 1000 rows a request whatever .limit() asks for (PR 483 review). The query
+ * must be ordered so the pages do not overlap.
+ */
+const PAGE = 1000;
+export async function allRows(query, max = 20000) {
+  const rows = [];
+  for (let from = 0; from < max; from += PAGE) {
+    const { data, error } = await query.range(from, Math.min(from + PAGE, max) - 1);
+    if (error) return { data: rows, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return { data: rows, error: null };
+}
+
 // A run that planned no changes is saved as one marker row, so it breaks a
 // "seen N reads in a row" streak like any other run (PR 483 review).
 export const RUN_MARKER = "run";
 
 /* For each change key, how many of the listing's latest runs in a row planned it. */
 async function priorRunsFor(listingId) {
-  const { data, error } = await supabase.from("listing_sync_scores").select("run_id, run_at, change_key, lease_id, unit_id, field, new_value")
+  const { data, error } = await allRows(supabase.from("listing_sync_scores").select("run_id, run_at, change_key, lease_id, unit_id, field, new_value")
     .eq("listing_id", listingId).gte("run_at", new Date(Date.now() - 21 * 86400000).toISOString())
-    .order("run_at", { ascending: false }).limit(5000);
+    .order("run_at", { ascending: false }).order("id"), 5000);
   if (error) throw new Error(`prior runs: ${error.message}`);
   const runs = [];
   const keysBy = new Map();
@@ -106,7 +123,7 @@ export async function awaitingSecondRead(listingId) {
   return data.some((r) => r.run_id === latest && r.action === "withdraw" && !r.ledger_apply && Number(r.reads_in_row) < 2 && Number(r.score) >= Number(r.need));
 }
 
-export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save = true }) {
+export async function saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save = true, jevDeadline = null }) {
   if (!shadowScoresOn()) return [];
   if (!changes?.some((c) => c.kind !== "missing_unit")) {
     if (save) await saveRunMarker(listingId, monitorId).catch(() => {});
@@ -116,7 +133,7 @@ export async function saveShadowScores({ listingId, monitorId, changes, snapshot
     const [landlordEdits, { priorRuns, priorRunsSeen, priorValues }] = await Promise.all([landlordEditTimes(listingId), priorRunsFor(listingId)]);
     const scored = shadowRows({ changes, snapshot, state, learnings, landlordEdits, syncBlanks, priorRuns, priorRunsSeen, priorValues, holdReason });
     if (!scored.length) return [];
-    const full = await jevPass({ rows: scored, snapshot, state });
+    const full = await jevPass({ rows: scored, snapshot, state, runDeadline: jevDeadline });
     const rows = full.map(({ _in, _i, ...r }) => ({ ...r, jev: r.jev ?? null }));
     const runId = randomUUID();
     const runAt = new Date().toISOString();

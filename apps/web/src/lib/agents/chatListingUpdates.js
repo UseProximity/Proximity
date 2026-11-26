@@ -52,8 +52,12 @@ import { planChanges, namesTheProperty, namesTheUnit } from "@/lib/agents/chatLi
 import { TRUST, claimScore } from "@/lib/sourceImport/score";
 
 const FRESH_MS = 14 * 24 * 3600 * 1000;
-/* A listing with more offerings than this is not read (none comes close today). */
-const MAX_LEASES = 2000;
+/*
+ * A listing with more offerings than this is not read (none comes close
+ * today). Under PostgREST's 1000 row cap, so the extra row that says "too
+ * many" can actually come back.
+ */
+const MAX_LEASES = 900;
 /* Off-market offerings shown to the model, newest first ("available again" needs them). */
 const MAX_OFF_MARKET_SHOWN = 40;
 /* How sure we must be. Above the sync's own bars (0.75 to 0.85): Wyatt wants high confidence. */
@@ -235,9 +239,12 @@ export async function scoreChanges({ text, ctx, changes, today = todayChicago() 
   });
 }
 
-async function recentMessages(thread, beforeIso, limit = 6) {
-  const { data } = await supabase.from("chat_messages").select("sender_id, body, created_at")
-    .eq("thread_id", thread.id).is("deleted_at", null).lt("created_at", beforeIso)
+async function recentMessages(thread, beforeIso, { excludeId = null, limit = 6 } = {}) {
+  let q = supabase.from("chat_messages").select("sender_id, body, created_at")
+    .eq("thread_id", thread.id).is("deleted_at", null).lt("created_at", beforeIso);
+  // The new message itself is shown on its own, not as history too.
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data } = await q
     .order("created_at", { ascending: false }).limit(limit);
   return (data ?? []).reverse().map((m) => ({ ...m, side: m.sender_id === thread.landlord_id ? "Landlord" : "Student" }));
 }
@@ -258,9 +265,13 @@ export async function evaluateMessage({ threadId, messageId, senderId, body, cre
   if (senderId !== ctx.thread.landlord_id) return { eligible: false, reason: "not the landlord side" };
   if (!ctx.leases.length) return { eligible: false, reason: "no offerings" };
 
-  // Never a lease another landlord on the listing owns; unowned leases fall to the thread's landlord.
-  const ownLeases = new Set(ctx.leases.filter((l) => !l.owner_id || l.owner_id === senderId).map((l) => l.id));
-  const recent = await recentMessages(ctx.thread, createdAt ?? new Date().toISOString());
+  // Never a lease another landlord on the listing owns. An unowned lease is
+  // the property owner's, so it falls to the sender only when they are a
+  // listed owner (or the listing lists none): a subleaser or co-landlord
+  // whose thread is about their own lease changes only their own leases.
+  const ownsProperty = !ctx.ownerIds.length || ctx.ownerIds.includes(senderId);
+  const ownLeases = new Set(ctx.leases.filter((l) => l.owner_id === senderId || (!l.owner_id && ownsProperty)).map((l) => l.id));
+  const recent = await recentMessages(ctx.thread, createdAt ?? new Date().toISOString(), { excludeId: messageId });
   // A message is read as of the day it was written.
   const today = createdAt ? new Date(createdAt).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) : todayChicago();
   const reading = await readMessage({ text, ctx, recent, today });

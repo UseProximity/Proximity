@@ -232,6 +232,8 @@ export function cleanUnit(unit) {
   if (unit.fromModel === true) cleaned.fromModel = true;
   // Which reader: a recipe replayed by code, the pattern parser, or (absent) the model.
   if (unit.readBy === "recipe" || unit.readBy === "pattern") cleaned.readBy = unit.readBy;
+  // A name a recipe took for a new unit, unconfirmed by any model read (recipe.js).
+  if (unit.recipeAdded === true) cleaned.recipeAdded = true;
   // Other names the plan goes by (two sources' names merged): pairing only.
   const aka = (unit.aka ?? []).filter((n) => typeof n === "string" && n.trim()).map((n) => n.trim().slice(0, 80));
   if (aka.length) cleaned.aka = [...new Set(aka)];
@@ -271,6 +273,7 @@ export function makeSnapshot({
     existing.available = existing.available && u.available;
     if (!u.fromModel) delete existing.fromModel;
     if (!u.readBy) delete existing.readBy;
+    if (!u.recipeAdded) delete existing.recipeAdded;
     existing.photos = [...new Set([...existing.photos, ...u.photos])];
     existing.offers = consolidateOffers([...existing.offers, ...u.offers]);
   }

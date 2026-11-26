@@ -9,6 +9,7 @@
 import supabase from "@/lib/supabase";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import { applyEvents, undoEvents } from "./apply.js";
+import { allRows } from "./shadowStore.js";
 import { markLandlordSet } from "@/lib/agents/coreWrites";
 import { HIDDEN_RENT_MAX_AGE_DAYS } from "@/lib/listings/hiddenRents";
 
@@ -70,15 +71,15 @@ export async function recentDecisions({ listingId = null, days = 2, limit = 1500
   const since = new Date(Date.now() - days * 86400000).toISOString();
   let events = supabase.from("listing_source_events")
     .select("id, listing_id, kind, unit_key, field, old_value, new_value, status, applied, verdict_by, verdict_at, detail, created_at, listings(title, address)")
-    .gte("created_at", since).in("status", ["applied", "rejected"]).order("created_at", { ascending: false }).limit(limit);
+    .gte("created_at", since).in("status", ["applied", "rejected"]).order("created_at", { ascending: false }).order("id");
   let scores = supabase.from("listing_sync_scores")
     .select("listing_id, change_key, kind, unit_key, lease_id, field, new_value, source, platform, trust, read_quality, right_thing, freshness, score, need, bar, current_score, reads_in_row, borderline, ledger_apply, ledger_reason, policy_apply, policy_reason, run_at")
-    .gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).limit(limit * 2);
+    .gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).order("id");
   if (listingId) {
     events = events.eq("listing_id", listingId);
     scores = scores.eq("listing_id", listingId);
   }
-  const [{ data: ev, error }, { data: sc }] = await Promise.all([events, scores]);
+  const [{ data: ev, error }, { data: sc }] = await Promise.all([allRows(events, limit), allRows(scores, limit * 2)]);
   if (error) throw new Error(error.message);
   // The newest score for each change, by the key it was saved under (an
   // event made since PR 483 carries it; older ones are matched as before).
@@ -101,6 +102,8 @@ export async function recentDecisions({ listingId = null, days = 2, limit = 1500
       id: e.id,
       listingId: e.listing_id,
       leaseId: e.detail?.leaseId ?? null,
+      // The chat message a change came from, so its words go only to the person who wrote them.
+      messageId: e.detail?.source === "chat" ? e.detail?.messageId ?? null : null,
       listing: e.listings?.title ?? e.listings?.address ?? "A listing",
       at: e.created_at,
       status,
@@ -135,6 +138,8 @@ export function landlordReason(reason) {
   if (/^score [\d.]+ is under the bar/.test(r) || /does not beat the current value/.test(r)) return "The website change was not certain enough to apply on its own. You can apply it now if it is right.";
   if (/takes \d+ in a row/.test(r)) return "Seen gone from the website once. It is taken down if the next read agrees.";
   if (/^Jev /.test(r)) return "The page could not be double-checked this time. The next read tries again.";
+  // A save that failed: the database's own words are never shown (PR 483 review).
+  if (/^failed:/i.test(r)) return "The change could not be saved. You can try applying it now.";
   return r;
 }
 
@@ -152,18 +157,32 @@ export async function leasesOwnedBy(userId, leaseIds) {
   return new Set((data ?? []).map((l) => l.id));
 }
 
+/*
+ * An error fit to show a person. Messages written for people pass through;
+ * a database or write error ("lease: duplicate key value ...") is logged and
+ * replaced, so no table, column or constraint name leaves the server.
+ */
+const DB_WORDS = /violates|constraint|duplicate key|column|relation|syntax|null value|PGRST|permission denied|invalid input|^(lease|unit|listing|property|photos?)\s*:/i;
+export function plainError(e, what = "The change") {
+  const s = String(e ?? "");
+  if (s && !DB_WORDS.test(s)) return s;
+  if (s) console.error(`[source-sync] ${what} failed: ${s}`);
+  return `${what} could not be saved. Please try again.`;
+}
+
 /* Undo an applied change. Returns { ok, note } or { error }. */
 export async function undoChange({ listingId, eventId, userId }) {
   const [r] = await undoEvents({ listingId, eventIds: [eventId], userId });
   if (!r) return { error: "That change is no longer there." };
-  return r.ok ? { ok: true, note: r.note } : { error: r.error };
+  return r.ok ? { ok: true, note: r.note } : { error: plainError(r.error, "The undo") };
 }
 
 /* Apply now a change the sync left unapplied. Returns { ok, note } or { error }. */
 export async function applyNow({ listingId, eventId, userId, isAdmin = false }) {
-  const [r] = await applyEvents({ listingId, eventIds: [eventId], userId: isAdmin ? null : userId, verdictBy: userId, allowUnapplied: true });
+  // The person who pressed Apply now is recorded as making the edit.
+  const [r] = await applyEvents({ listingId, eventIds: [eventId], userId: isAdmin ? null : userId, verdictBy: userId, allowUnapplied: true, actorId: userId });
   if (!r) return { error: "That change is no longer there, or was already decided." };
-  return r.ok ? { ok: true, note: r.note } : { error: r.error };
+  return r.ok ? { ok: true, note: r.note } : { error: plainError(r.error) };
 }
 
 /*
@@ -175,9 +194,9 @@ export async function applyNow({ listingId, eventId, userId, isAdmin = false }) 
 export async function syncHealth({ days = 7 } = {}) {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const [{ data: sc }, { data: evAll }, { data: rc }] = await Promise.all([
-    supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).limit(20000),
-    supabase.from("listing_source_events").select("applied, status, verdict_by, verdict_at, detail, created_at").or(`created_at.gte.${since},verdict_at.gte.${since}`).limit(20000),
-    supabase.from("source_recipes").select("scope, status, uses, failures, made_from, created_at").limit(5000),
+    allRows(supabase.from("listing_sync_scores").select("listing_id, change_key, platform, source, ledger_apply, policy_apply, borderline, read_quality, jev, run_at").gte("run_at", since).neq("kind", "run").order("run_at", { ascending: false }).order("id"), 50000),
+    allRows(supabase.from("listing_source_events").select("applied, status, verdict_by, verdict_at, detail, created_at").or(`created_at.gte.${since},verdict_at.gte.${since}`).order("created_at", { ascending: false }).order("id"), 50000),
+    allRows(supabase.from("source_recipes").select("scope, status, uses, failures, made_from, created_at").order("id"), 10000),
   ]);
   // One row per change: the newest score.
   const seen = new Set();

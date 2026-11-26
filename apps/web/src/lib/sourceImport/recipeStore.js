@@ -63,6 +63,8 @@ export async function saveMadeRecipe({ listingId, info }) {
 /* Count a run against the recipe it used. */
 export async function noteRecipeRun({ info }) {
   if (!recipesOn() || !info?.usedId) return;
+  // A platform recipe that does not fit this listing has not failed: it still reads its own building (PR 483 review).
+  if (info.platformMiss) return;
   try {
     const { data } = await supabase.from("source_recipes").select("uses, failures").eq("id", info.usedId).maybeSingle();
     if (!data) return;

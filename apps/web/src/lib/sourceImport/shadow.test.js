@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shadowRows, actionOf, changeKey, saidOtherwiseBefore } from "./shadow.js";
+import { shadowRows, actionOf, changeKey, saidOtherwiseBefore, sourceOf } from "./shadow.js";
+import { TRUST } from "./score.js";
 
 const NOW = Date.parse("2026-11-24T12:00:00Z");
 const state = {
@@ -143,4 +144,11 @@ test("a unit that may be a new one renamed is not withdrawn by the scores", () =
   const c = { kind: "lease_withdrawn", lookalike: true, note: "the draft may be this unit renamed", unitId: "u1", leaseId: "l1", field: "unavailable", old: false, new: true, detail: { unitGone: true }, verdict: { apply: false } };
   const [r] = shadowRows({ changes: [c], snapshot: { ...snapshot, unitListComplete: true }, state, learnings, priorRuns: new Map([[changeKey(c), 3]]), now: NOW });
   assert.equal(r.ledger_apply, false);
+});
+
+test("Zillow and Apartments.com reads carry the listing-site trust (PR 483 review)", () => {
+  const s = sourceOf({ detail: {} }, { fromModel: true }, { sourceUrl: "https://www.apartments.com/the-place-st-louis-mo/abc/", platform: "generic" });
+  assert.equal(s.source, "portalSite");
+  assert.equal(s.trust, TRUST.portalSite);
+  assert.equal(sourceOf({ detail: {} }, { fromModel: true }, { sourceUrl: "https://example.com", platform: "generic" }).source, "model");
 });

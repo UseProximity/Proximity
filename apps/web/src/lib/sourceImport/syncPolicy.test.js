@@ -167,3 +167,10 @@ test("a duplicate or superseded unit's lease is withdrawn even on a partial read
   assert.equal(decideSyncChange({ ...base, detail: { unitGone: true, supersededBy: ["Azure"] } }, partial).apply, true);
   assert.equal(decideSyncChange(base, partial).apply, false);
 });
+
+test("a new unit only code found waits for the weekly read (PR 483 review)", () => {
+  const v = decide({ kind: "unit_new", detail: { recipeAdded: true } });
+  assert.deepEqual(v, { apply: false, reason: DENY.recipeAdded });
+  // The unit's own page still speaks for it.
+  assert.equal(decide({ kind: "unit_new", detail: { recipeAdded: true, fromUnitPage: true } }).apply, true);
+});

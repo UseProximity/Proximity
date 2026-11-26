@@ -36,6 +36,7 @@ export const DENY = {
   noLettings: "the read showed no units or no prices, so it says nothing about what is let",
   notFromSite: "not on the website, left as is: the website has never shown this unit",
   churn: "too much changed at once, so the whole run was skipped",
+  recipeAdded: "a new name only code found on the page; the weekly read confirms it is a unit before it is added",
   unknown: "not a change the sync makes on its own",
 };
 
@@ -59,6 +60,9 @@ export function decideSyncChange(c, { snapshot }) {
     case "lease_new":
       return { apply: true, reason: null };
     case "unit_new":
+      // Any short line above a layout line can look like a new plan to code
+      // ("Now Leasing for Fall"): only a model read adds it (PR 483 review).
+      if (d.recipeAdded && !fromUnitPage) return { apply: false, reason: DENY.recipeAdded };
       return { apply: true, reason: d.draft ? c.note ?? "added as a draft" : null };
     case "lease_updated":
       // Gaps were already left out while planning: only stated facts are here.

@@ -500,6 +500,20 @@ export const codeJudge = async () => ({ same: false, reason: "decided by code on
 
 export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
   const out = [];
+  const src = (x) => x.source ?? "website";
+  /*
+   * Two named plans from two sources are one plan by price alone only when
+   * the match is unique (PR 483 review): exactly one entry on the other
+   * source fits, and it has not already taken in a plan from this source.
+   * Two 4x4s at $725 on both sources stay four entries rather than two
+   * wrong pairs; matching then pairs each with the listing's own units.
+   */
+  const priceTwin = (u, fits) => {
+    const c = out.filter((o) => planKey(o.name) && src(o) !== src(u) && fits(o, u) && sameOfferings(o, u));
+    if (c.length !== 1 || (c[0].absorbed ?? []).includes(src(u))) return null;
+    const rivals = units.filter((x) => x !== u && planKey(x.name) && src(x) === src(u) && fits(c[0], x) && sameOfferings(c[0], x));
+    return rivals.length ? null : c[0];
+  };
   for (const u of units) {
     const named = planKey(u.name);
     let twin = named ? out.find((o) => planKey(o.name) === named) : null;
@@ -510,8 +524,9 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
           break;
         }
         if ((o.source ?? "website") === (u.source ?? "website")) continue;
-        // Same layout and the same prices from two sources: one plan, by code.
+        // Same layout and the same prices from two sources: one plan, by code, when no other plan fits as well.
         if (sameOfferings(o, u)) {
+          if (priceTwin(u, sameLayout) !== o) continue;
           twin = o;
           break;
         }
@@ -525,10 +540,9 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
     }
     // Two sources, two names, the same layout (within 3%) and the same prices:
     // one plan under two names (Wyatt, 2026-11-24).
-    if (!twin && named) {
-      twin = out.find((o) => planKey(o.name) && (o.source ?? "website") !== (u.source ?? "website") && closeLayout(o, u) && sameOfferings(o, u)) ?? null;
-    }
+    if (!twin && named) twin = priceTwin(u, closeLayout);
     if (twin) {
+      if (src(twin) !== src(u)) twin.absorbed = [...new Set([...(twin.absorbed ?? []), src(u)])];
       const keep = naturalName(twin.name, u.name);
       mergeInto(twin, u);
       // The name not kept stays with the plan, so a listing that already
@@ -538,6 +552,7 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
       twin.name = keep;
     } else out.push(u);
   }
+  for (const o of out) delete o.absorbed;
   return out;
 }
 
@@ -1199,7 +1214,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
       const replay = replayRecipe(recipe, pageTexts(), { known: pick.scope === "listing" ? saved.knownNames ?? [] : [] });
       // Another building's recipe works here only if it finds most of this listing's own units.
       const platformMiss = pick.scope === "platform" && !platformRecipeFits(replay.units, saved.knownNames ?? []);
-      Object.assign(recipeInfo, { used: pick.scope, usedId: pick.row.id, version: pick.row.version, found: replay.found, missing: replay.missing, added: replay.added, broken: recipeBroken(recipe, replay) || !replay.units.length || platformMiss, recentOk: pick.scope === "listing" && recentlyOk(pick.row) });
+      Object.assign(recipeInfo, { used: pick.scope, usedId: pick.row.id, version: pick.row.version, found: replay.found, missing: replay.missing, added: replay.added, platformMiss, broken: recipeBroken(recipe, replay) || !replay.units.length || platformMiss, recentOk: pick.scope === "listing" && recentlyOk(pick.row) });
       if (!recipeInfo.broken) {
         // Digging deeper: pages that may hold a real price for a starting-at one.
         const picks = deeperLinks({ units: replay.units, links: crawl.links, visited: new Set(crawl.fetched.map((f) => f.finalUrl)), origin: (() => { try { return new URL(main.finalUrl).host; } catch { return null; } })(), max: 4 });

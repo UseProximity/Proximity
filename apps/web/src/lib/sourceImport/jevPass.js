@@ -26,9 +26,14 @@ const PAGE_ASK_CHARS = 24000;
  * no Jev spend where code already knows). Never throws: a failed call marks
  * that unit's changes, which then wait for the next read.
  */
-export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(), now = Date.now() }) {
+/*
+ *   runDeadline  when the sync run must stop asking (a time, ms): the pass
+ *                ends at its own budget or this, whichever is first, so the
+ *                run keeps time to apply what it decided (PR 483 review)
+ */
+export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(), now = Date.now(), runDeadline = null }) {
   if (!on) return rows;
-  const deadline = now + JEV_BUDGET_MS;
+  const deadline = Math.min(now + JEV_BUDGET_MS, runDeadline ?? Infinity);
   const ev = snapshot?.evidence ?? null;
   const units = new Map((snapshot?.units ?? []).map((u) => [u.key, u]));
   const label = (key) => {
@@ -51,7 +56,7 @@ export async function jevPass({ rows, snapshot, state, ask = askJev, on = jevOn(
    * (2026-11-25). Too little text to judge by is not asked about at all.
    */
   const fullest = [...(ev?.pages ?? [])].sort((a, b) => b.text.length - a.text.length)[0]?.text?.slice(0, 8000) ?? pageText;
-  if (fullest.length >= 600 && building && address && !ev?.addressSeen && !textHasAddress(fullest, address)) {
+  if (Date.now() < deadline && fullest.length >= 600 && building && address && !ev?.addressSeen && !textHasAddress(fullest, address)) {
     try {
       const r = await ask(fullest, [{ type: "predicate", name: "building", instructions: `Is this text about ${building} at ${address}?` }]);
       calls += 1;

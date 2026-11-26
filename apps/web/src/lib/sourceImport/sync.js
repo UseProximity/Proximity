@@ -68,6 +68,13 @@ export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
  */
 const READ_BUDGET_MS = 210000;
 const KNOWLEDGE_CUTOFF_MS = 200000;
+/*
+ * Jev's checks stop asking this long into the run, whatever their own
+ * budget, so a long read plus the checks never runs the five-minute function
+ * out before the changes are saved (PR 483 review). Any it did not reach are
+ * scored as unchecked and asked again on the next read.
+ */
+const JEV_CUTOFF_MS = 225000;
 export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
 const plusDays = (days) => nextCheckAt(days);
 
@@ -248,7 +255,11 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     const images = goDeep || force || gaps.overdue;
     // An unpriced listing with no hidden prices yet takes one full pass even
     // on an unchanged page, so its website prices get saved (PR 474 review).
-    const sameAsLast = !force && m.last_fingerprint === fp && !(images && gaps.any);
+    // A complete weekly read always applies, even when it matches the last
+    // read: weekday code reads never withdraw a unit they did not find, so
+    // this is the run that takes a gone unit's leases down (PR 483 review).
+    const completeWeekly = goDeep && !!snapshot.unitListComplete;
+    const sameAsLast = !force && !completeWeekly && m.last_fingerprint === fp && !(images && gaps.any);
     // A withdrawal the scores left for its second read is read again even on an unchanged page.
     const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id)) && !(await awaitingSecondRead(listing.id));
     let result = null;
@@ -258,7 +269,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     if (unchanged) await touchHiddenRents(listing.id, [snapshot.sourceUrl, m.source_url]);
     if (!unchanged) {
       onStep("Saving");
-      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images, jevDeadline: started + JEV_CUTOFF_MS });
       // Skipped for churn: the team hears at once, the first day in a row.
       if (result?.churn && m.last_status !== "suppressed") {
         await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, newUnits: result.churn.newUnits, units: result.churn.units, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));

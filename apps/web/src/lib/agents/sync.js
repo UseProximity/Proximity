@@ -21,7 +21,8 @@ import { agentsEnabled } from "./flags";
 import { ensureAgent, getAgent } from "./store";
 import { PROXY_USER_ID } from "./threads";
 
-export const MANUAL_SYNCS_PER_DAY = Number(process.env.AGENT_MANUAL_SYNCS_PER_DAY) || 3;
+// One a day (Wyatt, 2026-11-26): each is the full weekly-kind read, which costs a model read.
+export const MANUAL_SYNCS_PER_DAY = Number(process.env.AGENT_MANUAL_SYNCS_PER_DAY) || 1;
 
 const todayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
@@ -146,11 +147,13 @@ export async function manualSync({ listingId, userId, isAdmin = false, daily = f
     if (used >= MANUAL_SYNCS_PER_DAY) return { error: `You can sync ${MANUAL_SYNCS_PER_DAY} times a day. Try again tomorrow.`, status: 429 };
     await supabase.from("listing_agents").update({ manual_sync_day: day, manual_syncs_today: used + 1, last_manual_sync_at: new Date().toISOString() }).eq("listing_id", listingId);
   }
-  // An admin's sync is a deep read, the weekly kind, so the team can try it
-  // on a listing any day (Wyatt, 2026-11-11).
+  // Sync now is a deep read, the weekly kind, any day (Wyatt, 2026-11-11
+  // for admins; 2026-11-26 for landlords, PR 483 review): a landlord who just
+  // changed their website gets a real read, not the code-only daily one that
+  // may leave their site for Sunday.
   // An admin can also ask for the daily kind (daily: true), to see exactly
   // what the nightly run would do: code only, no model.
-  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? !daily : null });
+  return enqueueSync({ listingId, userId, force: true, deep: isAdmin ? !daily : true });
 }
 
 /*

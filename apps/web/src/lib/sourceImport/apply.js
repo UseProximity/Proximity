@@ -377,6 +377,7 @@ export function planChanges({ state, snapshot, mode, ownerIds, withdrawnBySync =
           label,
           unit: { name: snap.name, bedrooms: snap.bedrooms, bathrooms: snap.bathrooms, area: snap.area, floorPlanImageUrl: images ? snap.floorPlanImageUrl : null },
           offers: noPublicPrice ? [askForPrice] : withBasis(snap.offers),
+          ...(snap.recipeAdded ? { recipeAdded: true } : {}),
           // A blank written because the website prices nothing, marked so a
           // later read can tell it from a landlord's blank (learnRules.js).
           ...(pricesUnknown ? { askForPrice: true } : {}),
@@ -824,8 +825,11 @@ function leaseRow({ state, userId, unitId, offer, available, draft }) {
 }
 
 /* Run one change record. Returns a short note of what was written. */
-export async function executeChange(change, { state, userId }) {
+export async function executeChange(change, { state, userId, actorId = null }) {
   const d = change.detail;
+  // A person's own action (Apply now): edits to existing rows go through the
+  // write-as-user path, so action_log names them (PR 483 review).
+  const edit = (table, id, values) => (actorId ? writeAsPerson(table, id, values, actorId) : supabase.from(table).update(values).eq("id", id));
   const slug = addressSlug(state.address);
   switch (d.op) {
     case "none":
@@ -837,7 +841,7 @@ export async function executeChange(change, { state, userId }) {
         if (id && !state.home_type_id) patch.home_type_id = id;
       }
       if (Object.keys(patch).length) {
-        const { error } = await supabase.from("listings").update(patch).eq("id", state.id);
+        const { error } = await edit("listings", state.id, patch);
         if (error) throw new Error(`property: ${error.message}`);
       }
       if (d.amenities?.length) {
@@ -925,7 +929,7 @@ export async function executeChange(change, { state, userId }) {
       }
       if (Object.keys(patch).length) {
         const was = state.listing_units.find((u) => u.id === d.unitId) ?? {};
-        const { error } = await supabase.from("listing_units").update(patch).eq("id", d.unitId);
+        const { error } = await edit("listing_units", d.unitId, patch);
         if (error) throw new Error(`unit: ${error.message}`);
         change.undo = { op: "unit_restore", unitId: d.unitId, values: Object.fromEntries(Object.keys(patch).map((k) => [k, was[k] ?? null])), wrote: patch };
       }
@@ -941,7 +945,7 @@ export async function executeChange(change, { state, userId }) {
     }
     case "lease_update": {
       const was = state.listing_units.flatMap((u) => u.unit_leases).find((l) => l.id === d.leaseId) ?? {};
-      const { error } = await supabase.from("unit_leases").update(d.patch).eq("id", d.leaseId);
+      const { error } = await edit("unit_leases", d.leaseId, d.patch);
       // The database keeps a lease withdrawn for an overdue invoice off the market
       // until an admin restores it (202611010003_billing_holds.sql).
       if (error && /lease_held_for_billing/.test(error.message ?? "")) throw new Error(HELD_FOR_BILLING_MESSAGE);
@@ -952,7 +956,7 @@ export async function executeChange(change, { state, userId }) {
       return Object.keys(d.patch).join(", ");
     }
     case "lease_withdraw": {
-      const { error } = await supabase.from("unit_leases").update({ unavailable: true }).eq("id", d.leaseId);
+      const { error } = await edit("unit_leases", d.leaseId, { unavailable: true });
       if (error) throw new Error(`lease: ${error.message}`);
       change.undo = { op: "lease_restore", leaseId: d.leaseId, values: { unavailable: false }, wrote: { unavailable: true } };
       return "withdrawn";
@@ -1179,7 +1183,7 @@ const unitKeyOf = (name) => norm(cleanUnitName(name ?? ""));
  *   autoApply  false records every change as open and writes nothing: the
  *              "proposed changes" a landlord reviews on an existing listing
  */
-export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true, images = true, dryRun = false }) {
+export async function applySnapshot({ snapshot, listingId, userId = null, mode = "sync", monitorId = null, autoApply = true, listingLabel = null, takeover = null, churnGuard = true, images = true, dryRun = false, jevDeadline = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const ownerIds = ownerIdsOf(state);
@@ -1346,8 +1350,9 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   }
 
   // The policy's verdict on every change, before the churn guard counts them.
+  // A claim is judged by the same rules (Wyatt, 2026-11-26, PR 483 review).
   const undone = mode === "sync" ? await undoneKeysFor(listingId) : new Map();
-  if (policyRun) {
+  if (policyRun || takeover) {
     for (const c of changes) {
       const v = decideSyncChange(c, { snapshot });
       c.verdict = v;
@@ -1377,14 +1382,14 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   let churn = null;
   if (mode === "sync" && !holdReason && churnGuard) {
     const existing = state.listing_units.flatMap((u) => u.unit_leases.filter((l) => isMine(l, ownerIds))).length;
-    churn = churnCheck({ changes, existingLeases: existing, existingUnits: state.listing_units.length, policyRun, portalPriced });
+    churn = churnCheck({ changes, existingLeases: existing, existingUnits: state.listing_units.length, policyRun: policyRun || !!takeover, portalPriced });
     if (churn) holdReason = "churn_hold";
   }
 
   // Shadow scores (stage 1): the ledger's verdict on each change, saved next
   // to today's. Writes only listing_sync_scores; never changes the run.
   if (policyRun) {
-    const scored = await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save: !dryRun });
+    const scored = await saveShadowScores({ listingId, monitorId, changes, snapshot, state, learnings, syncBlanks, holdReason, save: !dryRun, jevDeadline });
     /*
      * A dry run (the admin compare tool) stops here: every planned change
      * with the rules' verdict and the ledger's, and nothing written.
@@ -1406,6 +1411,7 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
         c.ledger = { score: r.score, need: r.need, bar: r.bar, current: r.current_score, trust: r.trust, readQuality: r.read_quality, rightThing: r.right_thing, freshness: r.freshness, readsInRow: r.reads_in_row, borderline: r.borderline, source: r.source, platform: r.platform, hidden: r.ledger_hidden };
         if (c.protected && r.ledger_apply) c.protected = false;
         if (c.undoneAt) c.verdict = { apply: false, reason: `undone on ${c.undoneAt.slice(0, 10)}, and the website still says the same` };
+        if (c.kind === "unit_new" && c.detail?.recipeAdded && !c.detail?.fromUnitPage) c.verdict = { apply: false, reason: DENY.recipeAdded };
       });
       if (holdReason === "churn_hold") {
         holdReason = null;
@@ -1538,20 +1544,23 @@ export async function applySnapshot({ snapshot, listingId, userId = null, mode =
   const applied = [];
   const held = [];
   /*
-   * A landlord claiming a building applies everything their website shows,
-   * units and leases included, the way a first import does (Wyatt,
-   * 2026-11-24); each change can be undone from their Agent tab. Only what
-   * the listing gate stops (billing, the agreement) still waits.
+   * A landlord claiming a building follows the same rules as the daily sync
+   * (Wyatt, 2026-11-26, PR 483 review): each change applies when the sync
+   * policy would apply it, a run with too much changing at once is held, and
+   * the rest wait on the landlord's tab as proposed changes. The one claim
+   * extra is the property itself: the stub's description and contact are
+   * replaced by the landlord's own (planChanges, takeover). Each applied
+   * change can be undone from their Agent tab.
    */
   if (takeover && (!autoApply || holdReason)) {
     for (const c of changes) {
-      /*
-       * Still held on a claim (PR 483 review): what the listing gate stops,
-       * another building's units on the same website or a unit a person
-       * removed (elsewhere), a value the landlord set by hand (protected),
-       * and a unit that may be another renamed (lookalike).
-       */
-      if ((c.gated && c.kind !== "unit_new") || c.elsewhere || c.protected || c.lookalike) {
+      const claimProperty = c.kind === "property_updated" && !c.protected;
+      const allowed = claimProperty || (c.verdict?.apply && c.detail?.op !== "none");
+      const churnHeld = holdReason === "churn_hold" && !c.detail?.fromUnitPage;
+      if (!allowed || churnHeld) {
+        c.auto = false;
+        if (!allowed && c.verdict?.reason) c.note = c.verdict.reason;
+        else if (churnHeld) c.note = `Held: ${DENY.churn}`;
         held.push(c);
         continue;
       }
@@ -1630,7 +1639,7 @@ export function changedSinceRead(e, lease) {
  * an existing listing's import tab, or a reviewed sync hold. Events already
  * applied are skipped; each success is marked applied with the verdict.
  */
-export async function applyEvents({ listingId, eventIds, userId, verdictBy = null, allowUnapplied = false }) {
+export async function applyEvents({ listingId, eventIds, userId, verdictBy = null, allowUnapplied = false, actorId = null }) {
   const state = await loadListingState(listingId);
   if (!state) throw new Error("listing not found");
   const { data: events } = await supabase.from("listing_source_events").select("id, kind, unit_key, field, old_value, new_value, detail, applied, status, verdict_by").in("id", eventIds).eq("listing_id", listingId);
@@ -1695,7 +1704,7 @@ export async function applyEvents({ listingId, eventIds, userId, verdictBy = nul
     }
     const change = { kind: e.kind, unitKey: e.unit_key, field: e.field, old: e.old_value, new: e.new_value, detail: e.detail };
     try {
-      const done = await executeChange(change, { state, userId: owner });
+      const done = await executeChange(change, { state, userId: owner, actorId });
       written.push(change);
       const note = gatedNote ? `${done}; ${gatedNote}` : done;
       await supabase.from("listing_source_events").update({ applied: true, status: "applied", verdict: "accepted", verdict_by: verdictBy, verdict_at: new Date().toISOString(), detail: { ...e.detail, note, ...(change.undo ? { undo: change.undo } : {}) } }).eq("id", e.id);
