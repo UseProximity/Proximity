@@ -1,0 +1,12 @@
+{
+  "view": "user-paths",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "top_paths": [
+    { "path": "/ -> /listings -> /listings/[id] -> exit", "users": 31 },
+    { "path": "/ -> /lease-check -> upload -> error -> retry -> exit", "users": 19 },
+    { "path": "/ -> /matchmaking -> (recommendations shown) -> /listings/[id] -> exit", "users": 17 },
+    { "path": "/ -> /matchmaking -> (recommendations shown) -> /listings -> filter change -> exit", "users": 12 },
+    { "path": "/ -> /lease-check -> upload -> Lease Check Completed", "users": 9 }
+  ],
+  "notes": "New dominant failure pattern: lease-check uploads erroring, students retrying once, then abandoning."
+}

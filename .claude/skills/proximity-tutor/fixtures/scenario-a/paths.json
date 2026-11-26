@@ -1,0 +1,12 @@
+{
+  "view": "user-paths",
+  "window": { "from": "2026-07-27T00:00:00Z", "to": "2026-08-10T00:00:00Z" },
+  "top_paths": [
+    { "path": "/ -> /matchmaking -> (recommendations shown) -> /listings -> filter change x3 -> exit", "users": 41 },
+    { "path": "/ -> /listings -> /listings/[id] -> exit", "users": 38 },
+    { "path": "/ -> /matchmaking -> (recommendations shown) -> exit", "users": 22 },
+    { "path": "/ -> /lease-check -> exit", "users": 12 },
+    { "path": "/ -> /matchmaking -> (recommendations shown) -> /listings/[id] -> Contact Submitted", "users": 7 }
+  ],
+  "notes": "Dominant pattern: students see recommendations, do not click the cards, then manually re-filter /listings for the same criteria they already gave the matchmaker."
+}

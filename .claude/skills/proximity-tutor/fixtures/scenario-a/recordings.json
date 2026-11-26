@@ -1,0 +1,12 @@
+{
+  "view": "session-recordings",
+  "window": { "from": "2026-07-27T00:00:00Z", "to": "2026-08-10T00:00:00Z" },
+  "total_recordings": 74,
+  "relevant": [
+    { "id": "rec_fx_a01", "summary": "Student completes matchmaking chat, hovers over all 5 recommendation cards for 40s, clicks none, navigates to /listings and applies price filter manually.", "duration_s": 312 },
+    { "id": "rec_fx_a02", "summary": "Recommendations shown; student scrolls cards twice, opens none, exits site.", "duration_s": 95 },
+    { "id": "rec_fx_a03", "summary": "Student reads recommendation card text closely, mouses between two cards repeatedly, closes tab.", "duration_s": 141 },
+    { "id": "rec_fx_a04", "summary": "Recommendations shown; student clicks browser back to the chat, re-reads own answers, returns to cards, exits.", "duration_s": 178 },
+    { "id": "rec_fx_a05", "summary": "Student opens /listings directly after recommendations, filters to same bedroom count the matchmaker already asked about.", "duration_s": 260 }
+  ]
+}

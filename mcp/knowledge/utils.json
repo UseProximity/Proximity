@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-25T20:16:47.882Z",
-  "count": 371,
+  "_generated": "2026-11-26T20:19:22.382Z",
+  "count": 372,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -1150,6 +1150,10 @@
     {
       "file": "src/lib/pms/types.js",
       "description": "PMS connector contract + normalized shapes."
+    },
+    {
+      "file": "src/lib/posthog.js",
+      "description": "PostHog is entirely key-gated: without NEXT_PUBLIC_POSTHOG_KEY every export"
     },
     {
       "file": "src/lib/push.js",

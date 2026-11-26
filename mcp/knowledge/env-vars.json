@@ -1,7 +1,7 @@
 {
   "_description": "Environment variables referenced via process.env in src/. `public` = exposed to the browser (NEXT_PUBLIC_ prefix).",
-  "_generated": "2026-11-17T16:41:02.050Z",
-  "count": 111,
+  "_generated": "2026-11-26T20:19:22.486Z",
+  "count": 113,
   "envVars": [
     {
       "name": "AGENT_LISTING_CAP_USD",
@@ -317,6 +317,14 @@
     },
     {
       "name": "NEXT_PUBLIC_MAPBOX_TOKEN",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_POSTHOG_HOST",
+      "public": true
+    },
+    {
+      "name": "NEXT_PUBLIC_POSTHOG_KEY",
       "public": true
     },
     {

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Product Tutor schedule. Install:
+       cp mcp/scripts/com.proximity.tutor.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.proximity.tutor.plist
+     Uninstall: launchctl unload ~/Library/LaunchAgents/com.proximity.tutor.plist
+     Cadence: Day=3 monthly (off-season default). For biweekly (in season),
+     replace the single dict with two dicts: Day 3 and Day 17. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.proximity.tutor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>"$HOME/Proximity Repo UI updates/Proximity/mcp/scripts/tutor-run.sh"</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Day</key><integer>3</integer>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>17</integer>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>/tmp/proximity-tutor-launchd.err</string>
+</dict>
+</plist>

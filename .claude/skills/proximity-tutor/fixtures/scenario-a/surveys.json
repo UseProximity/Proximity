@@ -1,0 +1,6 @@
+{
+  "view": "active-surveys",
+  "window": { "from": "2026-07-27T00:00:00Z", "to": "2026-08-10T00:00:00Z" },
+  "active_surveys": [],
+  "notes": "No surveys running in this window."
+}

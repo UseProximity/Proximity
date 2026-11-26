@@ -1,0 +1,14 @@
+{
+  "view": "core-journey-funnel",
+  "window": { "from": "2026-07-27T00:00:00Z", "to": "2026-08-10T00:00:00Z" },
+  "distinct_active_users": 220,
+  "steps": [
+    { "event": "Sign Up Completed", "users": 180 },
+    { "event": "Matchmaking Opened", "users": 96 },
+    { "event": "Proxy Recommendations Shown", "users": 84 },
+    { "event": "Proxy Listing Clicked", "users": 15 },
+    { "event": "Listing Opened", "users": 61 },
+    { "event": "Contact Submitted", "users": 9 }
+  ],
+  "notes": "Listing Opened exceeds Proxy Listing Clicked because most listing opens come from /listings browsing, not from recommendation cards."
+}

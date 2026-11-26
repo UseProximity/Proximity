@@ -1,0 +1,11 @@
+{
+  "view": "session-recordings",
+  "window": { "from": "2026-08-10T00:00:00Z", "to": "2026-09-10T00:00:00Z" },
+  "total_recordings": 51,
+  "relevant": [
+    { "id": "rec_fx_b01", "summary": "Student uploads a lease PDF from a phone camera scan; spinner runs 40s, generic error toast, student retries same file, same error, exits.", "duration_s": 210 },
+    { "id": "rec_fx_b02", "summary": "Lease Check upload fails instantly on a 22MB PDF; no size hint shown; student exits.", "duration_s": 88 },
+    { "id": "rec_fx_b03", "summary": "Student reads 'why this match' line on recommendation card, clicks through to listing, saves it.", "duration_s": 194 },
+    { "id": "rec_fx_b04", "summary": "Lease Check error; student opens FAQ page looking for file requirements, finds none, exits.", "duration_s": 160 }
+  ]
+}
