@@ -7,6 +7,7 @@ import { formatCents } from "@/lib/billing/money";
 import { BUTTON, FIELD, PRIMARY, call, openFile, postJson } from "./shared";
 import AdminAutopayLine from "../AdminAutopayLine";
 import { PrintPaperForm, RecordPaperForm, paperFileUrl } from "./PaperAgreement";
+import { PayerLookup, SignersAndPayersPanel } from "./SignersAndPayersPanel";
 
 const FILTERS = [
   ["all", "All"],
@@ -235,60 +236,6 @@ function CoverageDetail({ c, a }) {
   );
 }
 
-/*
- * The payer's email, looked up as it is typed (Wyatt, 2026-11-09): an existing
- * landlord or billing account is named; a new email says an account will be
- * made and they set a password from the email; an account that can't pay says
- * why. The name is filled from an existing account and asked for a new one.
- */
-function PayerLookup({ name, setName, email, setEmail, onStatus }) {
-  const [found, setFound] = useState(null);
-  useEffect(() => {
-    const e = email.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-      setFound(null);
-      onStatus(null);
-      return undefined;
-    }
-    const t = setTimeout(() => {
-      call(`/api/admin/billing/payers/lookup?${new URLSearchParams({ email: e })}`)
-        .then((r) => {
-          setFound(r);
-          onStatus(r.status);
-          if (r.status === "existing" && r.user?.name) setName((n) => n || r.user.name);
-        })
-        .catch(() => {
-          setFound(null);
-          onStatus(null);
-        });
-    }, 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
-  return (
-    <div className="space-y-2">
-      <input className={FIELD} type="email" placeholder="Authorized signer's email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} />
-      {found?.status === "existing" && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-xs text-green-900">
-          Existing {found.user.billingOnly ? "billing account" : "landlord account"}: {found.user.name || found.user.email}
-          {found.user.paysFor ? `, already pays for ${found.user.paysFor} ${found.user.paysFor === 1 ? "account" : "accounts"}` : ""}. They sign in with their
-          own login.
-        </p>
-      )}
-      {found?.status === "new" && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          No account has this email. Assigning creates a billing account for them, and the email we send asks them to set a password before
-          they review and sign.
-        </p>
-      )}
-      {found?.status === "refused" && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{found.reason}</p>}
-      {(found?.status === "new" || found?.status === "existing") && (
-        <input className={FIELD} placeholder="Authorized signer's full name (as it goes on the agreement)" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
-      )}
-    </div>
-  );
-}
-
 const assignedMessage = (r, name) =>
   `${name.trim()} is now the authorized signer for ${r.assigned.length} ${r.assigned.length === 1 ? "account" : "accounts"}. We emailed them.${
     r.failed?.length ? ` Not assigned: ${r.failed.map((f) => f.error).join(" ")}` : ""
@@ -422,6 +369,8 @@ function BulkPayerPanel({ busy, run, onDone }) {
 
 function LandlordRow({ row, busy, run, canEmail }) {
   const [settingPayer, setSettingPayer] = useState(false);
+  // Who signs and who pays, per listing (Wyatt, 2026-11-25).
+  const [showWho, setShowWho] = useState(false);
   const endPayer = () => {
     if (!window.confirm(`End ${row.payer.name} as the authorized signer for ${row.name || row.email}? Anything they signed for this account comes off their agreement.`)) return;
     return run(() => call("/api/admin/billing/payers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ landlordId: row.id }) }), "Authorized signer ended.");
@@ -463,7 +412,20 @@ function LandlordRow({ row, busy, run, canEmail }) {
           )}
           {row.paysForCount > 0 && (
             <p className="text-xs text-gray-600">
-              Authorized signer for {row.paysForCount} other {row.paysForCount === 1 ? "account" : "accounts"}.
+              Signs or pays for {row.paysForCount} other {row.paysForCount === 1 ? "account" : "accounts"}.
+            </p>
+          )}
+          {/* Wyatt, 2026-11-25: listings with their own signer, and authorized payers. */}
+          {row.listingSigners?.length > 0 && (
+            <p className="text-xs text-gray-600">
+              Own signer on {row.listingSigners.length === 1 ? "one listing" : `${row.listingSigners.length} listings`}:{" "}
+              {row.listingSigners.map((b) => `${b.address} (${b.name}${b.declined ? ", declined the last copy" : ""})`).join("; ")}.
+            </p>
+          )}
+          {row.authorizedPayers?.length > 0 && (
+            <p className="text-xs text-gray-600">
+              Authorized payer:{" "}
+              {row.authorizedPayers.map((b) => `${b.name} for ${b.address ?? "the account"} (${b.status === "accepted" ? "accepted" : "not accepted yet"})`).join("; ")}.
             </p>
           )}
         </div>
@@ -573,7 +535,13 @@ function LandlordRow({ row, busy, run, canEmail }) {
             End authorized signer
           </button>
         )}
+        {!row.billingOnly && (
+          <button type="button" disabled={busy} className={BUTTON} onClick={() => setShowWho((v) => !v)}>
+            {showWho ? "Hide signers and payers" : "Signers and payers"}
+          </button>
+        )}
       </div>
+      {showWho && <SignersAndPayersPanel row={row} busy={busy} run={run} />}
       {settingPayer && <PayerForm row={row} busy={busy} run={run} onDone={() => setSettingPayer(false)} />}
       {paperForm === "print" && <PrintPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}
       {paperForm === "record" && paper?.here && <RecordPaperForm row={row} busy={busy} run={run} onDone={() => setPaperForm(null)} />}

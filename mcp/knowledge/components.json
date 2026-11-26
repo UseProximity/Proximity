@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-24T03:38:29.162Z",
-  "count": 233,
+  "_generated": "2026-11-26T20:17:43.415Z",
+  "count": 234,
   "components": [
     {
       "name": "ErrorReporter",
@@ -251,6 +251,11 @@
     {
       "name": "PaperAgreement",
       "file": "src/components/admin/billing/agreements/PaperAgreement.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "SignersAndPayersPanel",
+      "file": "src/components/admin/billing/agreements/SignersAndPayersPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

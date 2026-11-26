@@ -3,11 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { adminBillingDb, readOnlyResponse } from "@/lib/billing/adminDb";
 import { requireDbRole } from "@/lib/userRole";
-import { getBaseUrl } from "@/lib/email";
 import { createCharge } from "@/lib/billing/charges";
 import { adminConfirmCharge, getAdminChargeView } from "@/lib/billing/adminReview";
 import { landlordProperties } from "@/lib/billing/adminLandlords";
-import { sendChargeCreatedEmail } from "@/lib/billing/billingEmails";
+import { sendChargeCreatedToAll } from "@/lib/billing/payerServices";
 import { dollarsToCents } from "@/lib/billing/money";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
@@ -112,16 +111,8 @@ export async function POST(req) {
     let emailed = false;
     try {
       const view = await getAdminChargeView(supabase, charge.id);
-      if (view.landlord.email) {
-        emailed = await sendChargeCreatedEmail(
-          { id: view.landlord.id, email: view.landlord.email, name: view.landlord.name },
-          {
-            charge: view,
-            reviewEndsAt: view.reviewEndsAt,
-            paymentsUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing`,
-          }
-        );
-      }
+      // To the landlord, and to their authorized payer when one is billed for it.
+      emailed = await sendChargeCreatedToAll({ view, payerId: charge.payer_id ?? null });
     } catch (emailErr) {
       console.error("billing: new charge email failed", emailErr);
     }

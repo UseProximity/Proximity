@@ -23,12 +23,12 @@
  *   6. Something is left once the quoted email and signature are removed, or
  *      a photo or PDF is attached.
  * Then the text goes in through rpc_send_chat_message like any in-app message,
- * so it is stored, rate limited and delivered exactly the same way. Contact
- * details (phone, email, outside link, handle, "let's talk elsewhere") are
- * delivered as written, flagged, and answered with a short email telling the
- * sender what the reply contained and that replying to these emails already
- * keeps the conversation on Proximity (Wyatt, 2026-10-12). Abuse, fraud and
- * phishing still lose the offending sentence before posting.
+ * so it is stored, rate limited and delivered exactly the same way. Before
+ * that, a landlord's application link, contact details (phone, email, outside
+ * link, handle, "let's talk elsewhere") and abuse, fraud or phishing are cut
+ * out and replaced with "[removed]", and the sender is emailed one note
+ * listing what was removed (Wyatt, 2026-11-23). In a tour conversation
+ * contact details are left in.
  *
  * Attached photos and PDFs are copied into R2 under the conversation and
  * screened by the same vision scan as in-app uploads. Signature logos and
@@ -48,7 +48,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { simpleParser } from "mailparser";
 import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
-import { getBaseUrl, sendReplyGuidelinesEmail, sendReplyNotDeliveredEmail } from "@/lib/email";
+import { getBaseUrl, sendReplyNotDeliveredEmail } from "@/lib/email";
 import { r2, getBucket } from "@/lib/r2";
 import {
   CHAT_ATTACHMENT_ALLOWED_TYPES,
@@ -61,6 +61,8 @@ import { authenticated, domainOf } from "@/lib/chat/inboundAuth";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { requestSenderApproval } from "@/lib/chat/replySenderRequest";
 import { CONTACT_REASONS, redactChatText, screenChatText } from "@/lib/chat/moderation";
+import { findApplicationLinks, stripApplicationLinks, APPLICATION_LINK_REASON } from "@/lib/chat/applicationLinks";
+import { emailReplyNote } from "@/lib/chat/replyNote";
 import { hashReplyToken, replyDomain } from "@/lib/chat/replyAddress";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { alertTeam } from "@/lib/chat/deliveryAlerts";
@@ -385,7 +387,7 @@ async function processOne({ bucket, key, recipients }) {
 
     const { data: participant } = await supabase
       .from("chat_participants")
-      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id)")
+      .select("thread_id, user_id, users:user_id(email, name, company_name, deleted_at), chat_threads:thread_id(deleted_at, landlord_id, interested_user_id, listing_id, unrestricted)")
       .eq("reply_token_hash", hashReplyToken(found.token))
       .maybeSingle();
     if (!participant || participant.users?.deleted_at) {
@@ -482,26 +484,81 @@ async function processOne({ bucket, key, recipients }) {
       quoted,
     });
     /*
-     * Contact details are delivered as written and the sender is emailed about
-     * it (Wyatt, 2026-10-12). Abuse, fraud and phishing still lose the sentence.
-     * Text that was removed in full is nothing to post; a photo sent with it
-     * still is.
+     * What an emailed reply loses before the other side sees it (Wyatt,
+     * 2026-11-23). It cannot be bounced back for an edit, so the offending
+     * parts are cut out, each replaced with "[removed]", and the rest is
+     * delivered:
+     *
+     *   - a landlord's application link (it belongs on the listing, 2026-11-20)
+     *   - contact details and requests to move elsewhere, except in a tour
+     *     conversation, where both sides already have them (2026-10-26)
+     *   - abuse, threats, payment and login requests, with their sentence
+     *
+     * The sender is then emailed one note listing what was removed and why.
      */
-    const verdict = screenChatText(extracted);
-    const reasons = verdict.action === "block" ? verdict.reasons : [];
-    const removed = reasons.some((r) => !CONTACT_REASONS.has(r));
-    let body = extracted.trim();
-    if (removed) {
-      const { text: redacted } = redactChatText(extracted);
-      body = redacted.trim() === "[removed]" ? "" : redacted.trim();
-    }
+    const thread = participant.chat_threads ?? {};
+    const isLandlord = thread.landlord_id === userId;
+    const unrestricted = thread.unrestricted === true;
+    const assistant = fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" });
+    const appLinks = isLandlord ? findApplicationLinks(extracted) : [];
+    const screenedText = appLinks.length > 0 ? stripApplicationLinks(extracted) : extracted;
+    const verdict = screenChatText(screenedText);
+    const reasons = verdict.action === "block"
+      ? verdict.reasons.filter((r) => !(unrestricted && CONTACT_REASONS.has(r)))
+      : [];
+    let body = screenedText.trim();
+    if (reasons.length > 0) body = redactChatText(screenedText, { keepContact: unrestricted }).text.trim();
+    const appReasons = appLinks.length > 0 ? [APPLICATION_LINK_REASON] : [];
+    const removedAny = appLinks.length > 0 || reasons.length > 0;
+    // Only what is left after a cut counts as empty: a reply of just "?" is
+    // still a reply and is posted as written.
+    if (removedAny && !body.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) body = "";
+
+    // Never to a leasing assistant: it answers every email, so the note and its
+    // answer would bounce between us (Wyatt, 2026-11-17). The record stays.
+    const sendNote = async ({ delivered, attachmentsRemoved = false }) => {
+      if (assistant || (!removedAny && !attachmentsRemoved)) return;
+      await emailReplyNote({
+        to: fromEmail,
+        audience: isLandlord ? "landlord" : "student",
+        senderId: userId,
+        otherId: isLandlord ? thread.interested_user_id : thread.landlord_id,
+        listingId: thread.listing_id ?? null,
+        threadId,
+        delivered,
+        reasons,
+        attachmentsRemoved,
+        applicationLink: appLinks.length > 0,
+        unrestricted,
+      });
+    };
+    // Nothing was posted: one block record for what was cut, then the note.
+    const notPosted = async ({ reason, attachmentsRemoved = false }) => {
+      if (removedAny) {
+        await supabase.rpc("rpc_log_chat_moderation_event", {
+          p_user_id: userId,
+          p_action: "block",
+          p_reasons: [...appReasons, ...reasons, "from_email"],
+          p_body: extracted,
+          p_thread_id: threadId,
+          p_message_id: null,
+          p_listing_id: thread.listing_id ?? null,
+        });
+      }
+      await finish(logId, { ...base, status: "empty", reason, thread_id: threadId });
+      await sendNote({ delivered: false, attachmentsRemoved });
+      return { status: "empty", reason };
+    };
+
     const files = emailAttachments(parsed);
     if (!body && files.length === 0) {
-      return notice("empty", reasons.length ? "only removed content" : "no new text", threadId);
+      if (removedAny) return notPosted({ reason: "only removed content" });
+      return notice("empty", "no new text", threadId);
     }
     if (body.length > MAX_BODY) body = `${body.slice(0, MAX_BODY - 1)}…`;
 
     let attachments = [];
+    let attachmentsRemoved = false;
     if (files.length > 0) {
       attachments = await storeAttachments(threadId, files);
       const scan = await scanChatAttachments({ attachments });
@@ -515,8 +572,9 @@ async function processOne({ bucket, key, recipients }) {
         });
       }
       if (scan.blocked) {
-        if (!body) return notice("empty", "attachments blocked", threadId, "attachments_removed");
+        if (!body) return notPosted({ reason: "attachments blocked", attachmentsRemoved: true });
         attachments = [];
+        attachmentsRemoved = true;
       }
     }
 
@@ -556,40 +614,19 @@ async function processOne({ bucket, key, recipients }) {
     // Flag-tier signals (a scam narrative, an SSN request) are recorded as they
     // are in the app, whether or not something was also removed.
     const flagReasons = verdict.action === "block" ? verdict.flags ?? [] : verdict.action === "flag" ? verdict.reasons : [];
-    if (reasons.length > 0 || flagReasons.length > 0) {
+    if (removedAny || flagReasons.length > 0) {
       await supabase.rpc("rpc_log_chat_moderation_event", {
         p_user_id: userId,
         p_action: "flag",
-        p_reasons: [...reasons, ...flagReasons, removed ? "redacted_from_email" : "delivered_from_email"],
+        p_reasons: [...appReasons, ...reasons, ...flagReasons, removedAny ? "redacted_from_email" : "delivered_from_email"],
         p_body: extracted,
         p_thread_id: threadId,
         p_message_id: sent.messageId,
         p_listing_id: sent.listingId ?? null,
       });
     }
-    // Never to a leasing assistant: it answers every email, so the note and its
-    // answer would bounce between us (Wyatt, 2026-11-17). The flag above stays.
-    const assistant = fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" });
-    if (reasons.length > 0 && !assistant) {
-      // Straight away, every time. The sender is authenticated by this point.
-      try {
-        const t = participant.chat_threads ?? {};
-        const otherId = t.landlord_id === userId ? t.interested_user_id : t.landlord_id;
-        const { data: other } = otherId
-          ? await supabase.from("users").select("name").eq("id", otherId).maybeSingle()
-          : { data: null };
-        await sendReplyGuidelinesEmail({
-          to: fromEmail,
-          audience: t.landlord_id === userId ? "landlord" : "student",
-          otherFirst: String(other?.name ?? "").trim().split(/\s+/)[0],
-          reasons,
-          removed,
-          baseUrl: getBaseUrl(),
-        });
-      } catch (err) {
-        console.error("inbound email: guidelines notice failed:", err);
-      }
-    }
+    // Straight away, every time. The sender is authenticated by this point.
+    await sendNote({ delivered: true, attachmentsRemoved });
 
     await finish(logId, { ...base, status: "posted", thread_id: threadId, chat_message_id: sent.messageId });
 

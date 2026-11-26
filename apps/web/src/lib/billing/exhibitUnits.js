@@ -16,6 +16,7 @@
  */
 import { BillingError } from "./errors.js";
 import { assertNoPaperOut, coverageFor, takeoverCoverage } from "./agreements.js";
+import { signerLinksFor } from "./payerLinks.js";
 import { exhibitChoice, planCoverage, resolvePublishedIds, unitLabel, withRequestedProperties, withRequiredUnits } from "./coverage.js";
 
 const NAME_MAX = 60;
@@ -27,8 +28,12 @@ const NAME_MAX = 60;
 // on the signer, is on it and stays on.
 // `paper`: the admin confirming a paper copy (paperAgreements.js); anyone else is
 // told the agreement is out on paper rather than shown a popup they can't finish.
-export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false, paper = false } = {}) {
-  const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now);
+// `holderId`: whose document this previews (a signer of the account, or the
+// landlord). Only the properties they hold show: a listing with its own signer is
+// never on anyone else's (Wyatt, 2026-11-25). Default: the account-wide holder.
+export async function exhibitPreview(db, userId, { listingIds = [], requiredUnits = null, now = new Date(), forPayee = false, takeover = false, paper = false, holderId = null } = {}) {
+  const holder = holderId ?? (await signerLinksFor(db, userId)).account?.payer_id ?? userId;
+  const loaded = takeover ? await takeoverCoverage(db, userId, now) : await coverageFor(db, userId, now, { holderId: holder });
   if (!paper) {
     assertNoPaperOut(loaded.state);
     // Taking over: the signer's copy for another account does not touch this one.

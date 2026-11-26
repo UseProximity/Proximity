@@ -81,6 +81,18 @@ export function studentLine({ school, graduationYear } = {}) {
 }
 
 /**
+ * The footer line on landlord emails that can be answered by replying (Wyatt,
+ * 2026-11-23): what is taken out of that reply before the student sees it.
+ * `tour`: the reply goes to the tour's chat, where contact details are allowed.
+ */
+export function landlordReplyNotice({ tour = false } = {}) {
+  const base = "Replies to this email go to the student on Proximity.";
+  return tour
+    ? `${base} Application links are removed before they see it, so add yours in your dashboard instead.`
+    : `${base} Application links are removed before they see it, and so are contact details (phone numbers, email addresses, outside links and social handles) until a tour is booked. Add your application link in your dashboard instead.`;
+}
+
+/**
  * Build one email.
  *
  *   lead        optional line above the message (a reminder)
@@ -93,6 +105,8 @@ export function studentLine({ school, graduationYear } = {}) {
  *   howToReply  one line on how to answer, with an optional { label, url } link
  *   button      optional { label, url } in the details block
  *   reason      why this landed in their inbox
+ *   replyNotice optional line on what is removed from an emailed reply
+ *               (landlordReplyNotice)
  *
  * Returns { html, text }.
  */
@@ -106,6 +120,7 @@ export function buildInquiryEmail({
   howToReply = null,
   button = null,
   reason,
+  replyNotice = null,
 }) {
   const list = messages.filter((m) => clean(m?.body));
   const lines = details.map(clean).filter(Boolean);
@@ -130,6 +145,7 @@ export function buildInquiryEmail({
         ${reply ? small(`${escapeHtml(reply.text)}${reply.link ? ` <a href="${reply.link.url}" style="color:#6b7280">${escapeHtml(reply.link.label)}</a>` : ""}`) : ""}
         ${button ? `<a href="${button.url}" style="display:inline-block;margin:8px 0 4px;padding:9px 16px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px">${escapeHtml(button.label)}</a>` : ""}
         <div style="margin-top:10px;color:${MUTED};font-size:12px">
+          ${replyNotice ? small(escapeHtml(replyNotice)) : ""}
           ${reason ? small(escapeHtml(reason)) : ""}
           <p style="margin:0">${POSTAL_ADDRESS}</p>
         </div>
@@ -148,6 +164,7 @@ export function buildInquiryEmail({
     reply ? `${reply.text}${reply.link ? ` ${reply.link.url}` : ""}` : null,
     button ? `${button.label}: ${button.url}` : null,
     "",
+    replyNotice || null,
     reason || null,
     POSTAL_ADDRESS,
   ]

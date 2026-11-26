@@ -7,7 +7,7 @@ import { exhibitPreview } from "@/lib/billing/exhibitUnits";
 import { cleanRequiredUnits } from "@/lib/billing/coverage";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { BillingError } from "@/lib/billing/errors";
-import { isPayerFor } from "@/lib/billing/payerLinks";
+import { signerLinksFor, signsForAccount } from "@/lib/billing/payerLinks";
 import { uncoveredDraftIds, waitingRequests } from "@/lib/billing/payers";
 
 /*
@@ -41,10 +41,11 @@ export async function GET(req) {
     if (accounts.length) {
       const previews = [];
       for (const accountId of accounts) {
-        if (!(await isPayerFor(supabase, session.user.id, accountId))) throw new BillingError("not_payer", "You don't pay for that account.", 403);
-        const waiting = (await waitingRequests(supabase, accountId)).map((w) => w.listing_id);
-        if (params.get("includeDrafts") === "1") waiting.push(...(await uncoveredDraftIds(supabase, accountId)));
-        previews.push(await exhibitPreview(supabase, accountId, { listingIds: waiting, forPayee: true }));
+        if (!signsForAccount(await signerLinksFor(supabase, accountId), session.user.id)) throw new BillingError("not_payer", "You don't sign for that account.", 403);
+        // Only what is theirs on that account: its other listings may have another signer.
+        const waiting = (await waitingRequests(supabase, accountId, { payerId: session.user.id })).map((w) => w.listing_id);
+        if (params.get("includeDrafts") === "1") waiting.push(...(await uncoveredDraftIds(supabase, accountId, undefined, { holderId: session.user.id })));
+        previews.push(await exhibitPreview(supabase, accountId, { listingIds: waiting, forPayee: true, holderId: session.user.id }));
       }
       if (previews.length === 1) return NextResponse.json(previews[0]);
       const any = previews.filter((p) => p.kind !== "none");

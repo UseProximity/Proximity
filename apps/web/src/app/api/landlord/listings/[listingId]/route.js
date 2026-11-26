@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse, after } from "next/server";
 import { getRequestUser } from "@/lib/getRequestUser";
 import supabase from "@/lib/supabase";
+import { endListingLinks } from "@/lib/billing/payerLinks";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { updateAsUser } from "@/lib/supabaseWithUser";
 import {
@@ -329,5 +330,7 @@ export async function DELETE(req, { params }) {
     console.error("[landlord/listings] archive failed:", error.message);
     return NextResponse.json({ error: "Could not delete listing" }, { status: 500 });
   }
+  // A signer or payer named for this listing alone has nothing left to sign or pay for.
+  await endListingLinks(supabase, listingId).catch((err) => console.error("[landlord/listings] ending the listing's signer and payer failed:", err?.message));
   return NextResponse.json({ ok: true });
 }

@@ -8,6 +8,14 @@
  */
 import supabase from "@/lib/supabase";
 import { screenChatText, confirmMessage, CONTACT_REASONS } from "@/lib/chat/moderation";
+import {
+  hasApplicationLink,
+  applicationLinkCopy,
+  applicationLinkStateOf,
+  applicationLinkSettingsPath,
+  APPLICATION_LINK_CODE,
+  APPLICATION_LINK_REASON,
+} from "@/lib/chat/applicationLinks";
 
 export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
 const CONFIRMED_REASON = "confirmed_in_app";
@@ -113,6 +121,90 @@ export async function screenOutgoingChat({
   }
 
   return { blocked: false, flagged: false, reasons: [] };
+}
+
+/**
+ * Where this landlord stands on this listing's application link: "live",
+ * "saved", "missing" or "no_leases" (see applicationLinkStateOf). Read off
+ * their own leases there, the same rows the dashboard's contact block writes.
+ * A failed read answers "missing": the copy then just says to add one.
+ */
+export async function landlordApplicationLinkState(landlordId, listingId) {
+  if (!landlordId || !listingId) return "missing";
+  // An owner of the property also counts its ownerless imported leases, the
+  // same rows the dashboard's contact block lets them edit.
+  const { data: ownerRow, error: ownerErr } = await supabase
+    .from("listing_landlords")
+    .select("user_id")
+    .eq("listing_id", listingId)
+    .eq("user_id", landlordId)
+    .maybeSingle();
+  if (ownerErr) {
+    console.error("application link owner lookup failed:", ownerErr);
+    return "missing";
+  }
+  let query = supabase
+    .from("unit_leases")
+    .select("application_url, is_active, unavailable, published_at, deleted_at, listing_units!inner(listing_id, published_at, deleted_at)");
+  query = ownerRow ? query.or(`owner_id.eq.${landlordId},owner_id.is.null`) : query.eq("owner_id", landlordId);
+  const { data, error } = await query
+    .eq("listing_units.listing_id", listingId)
+    .is("listing_units.deleted_at", null)
+    .is("deleted_at", null);
+  if (error) {
+    console.error("application link lookup failed:", error);
+    return "missing";
+  }
+  return applicationLinkStateOf(data);
+}
+
+/** The refusal a landlord sees, with the button into their dashboard. */
+export async function applicationLinkRefusal(landlordId, listingId) {
+  const state = await landlordApplicationLinkState(landlordId, listingId);
+  const { message, actionLabel } = applicationLinkCopy(state);
+  return {
+    code: APPLICATION_LINK_CODE,
+    message,
+    settingsUrl: applicationLinkSettingsPath(listingId),
+    actionLabel,
+    state,
+  };
+}
+
+/**
+ * Refuse a landlord's message that carries an application link (Wyatt,
+ * 2026-11-20). No "send anyway": the link belongs on the listing, where the
+ * Apply button opens it. Applies in every thread, tour threads included.
+ * Only the thread's landlord is screened; a student has no dashboard to send
+ * the link to. Recorded as a block so admins can see it was tried.
+ *
+ * @returns {Promise<null | {code: string, message: string, settingsUrl: string, actionLabel: string, state: string}>}
+ *   null when the message may go on to the usual screening
+ */
+export async function screenApplicationLinks({ userId, body, threadId = null, listingId = null, isLandlord }) {
+  if (!isLandlord || !hasApplicationLink(body)) return null;
+  await logModeration({
+    userId,
+    action: "block",
+    reasons: [APPLICATION_LINK_REASON],
+    body,
+    threadId,
+    listingId,
+  });
+  return applicationLinkRefusal(userId, listingId);
+}
+
+/** Record an application link cut from an emailed reply (or a whole reply refused for it). */
+export async function recordApplicationLinkFromEmail({ userId, threadId, messageId = null, listingId = null, body, delivered }) {
+  await logModeration({
+    userId,
+    action: delivered ? "flag" : "block",
+    reasons: [APPLICATION_LINK_REASON, delivered ? "redacted_from_email" : "from_email"],
+    body,
+    threadId,
+    messageId,
+    listingId,
+  });
 }
 
 /**

@@ -33,6 +33,25 @@ import { announceLandlordChange, onLandlordChange } from "@/components/landlord/
 import { chicagoToUtc } from "@/lib/agents/tourTime";
 import { openCoverageDialog } from "@/components/listings/CoverageSignDialog";
 
+/*
+ * A refused send. An application link refused for the student's chat (Wyatt,
+ * 2026-11-20) gets a link to the dashboard field, in a new tab so the reply
+ * being written here is not lost (Wyatt, 2026-11-22).
+ */
+function sendErrorToast(data, fallback) {
+  const message = data?.error || fallback;
+  if (data?.code !== "APPLICATION_LINK" || !data?.settingsUrl) return toast.error(message);
+  return toast.error(
+    <span className="text-sm">
+      {message}{" "}
+      <a href={data.settingsUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-red-700 underline">
+        {data.actionLabel || "Open your dashboard"}
+      </a>
+    </span>,
+    { duration: 12000 }
+  );
+}
+
 function ProxyAvatar({ show = true }) {
   return (
     <div className="w-6 shrink-0">
@@ -110,7 +129,7 @@ function TourControls({ tour, viewAsId, onDone, onReply = null }) {
     try {
       const r = await fetch(`/api/landlord/tours/${tour.id}${qs}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) { toast.error(data?.error || "Could not update the tour."); return; }
+      if (!r.ok) { sendErrorToast(data, "Could not update the tour."); return; }
       toast.success(payload.action === "confirm" ? "Tour confirmed. The student has been told." : payload.action === "message" ? "Sent. The chat with the student is open in your Messages." : "Tour cancelled.");
       onDone();
     } finally { setBusy(false); }
@@ -427,7 +446,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
   const post = useCallback(async (payload) => {
     const r = await fetch(`/api/landlord/proxy-chat${v}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ listingId, ...payload }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d?.error || "Could not send that.");
+    if (!r.ok) { const err = new Error(d?.error || "Could not send that."); err.data = d; throw err; }
     return d;
   }, [listingId, v]);
 
@@ -473,7 +492,7 @@ export default function LandlordProxyChat({ listingId, viewAsId = null, maxHeigh
       onChanged?.();
       announceLandlordChange({ listingId, source: selfRef.current });
     } catch (err) {
-      toast.error(err.message);
+      sendErrorToast(err.data ?? { error: err.message }, "Could not send that.");
       setText(p.text);
     } finally { inFlightRef.current = false; setWorking(false); setSent(null); setSending(null); }
   }, [post, load, onChanged]);

@@ -101,11 +101,16 @@ function patchMessage(list, message) {
  * re-send with confirmed: true.
  */
 export const CHAT_CONFIRM_SEND_CODE = "CONFIRM_SEND";
+// A landlord's application link: refused outright, with a link to the dashboard field.
+export const CHAT_APPLICATION_LINK_CODE = "APPLICATION_LINK";
 
 function rejectionError(errBody, fallback) {
   const err = new Error(errBody?.error || fallback);
   if (errBody?.code) err.code = errBody.code;
   if (Array.isArray(errBody?.reasons)) err.reasons = errBody.reasons;
+  // An application link refused in chat: where the landlord adds it instead.
+  if (typeof errBody?.settingsUrl === "string") err.settingsUrl = errBody.settingsUrl;
+  if (typeof errBody?.actionLabel === "string") err.actionLabel = errBody.actionLabel;
   return err;
 }
 

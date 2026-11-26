@@ -25,7 +25,7 @@ import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
 import { replyDomain } from "@/lib/chat/replyAddress";
 import { sign, uuid, proxyReplyAddress } from "./replyTokens";
-import { extractReplyText } from "@/lib/chat/emailReplyText";
+import { extractReplyText, fromLeasingAssistant } from "@/lib/chat/emailReplyText";
 import { SHARED_DOMAINS, senderDecision } from "@/lib/chat/replySenders";
 import { domainOf } from "@/lib/chat/inboundAuth";
 import { getBaseUrl, sendProxyStudentEmail } from "@/lib/email";
@@ -35,6 +35,9 @@ import { routedInquiryEmail } from "@/lib/chat/contactVerification";
 import { getThread, PROXY_USER_ID } from "./threads";
 import { handleStudentMessage } from "./proxy";
 import { recordOutcome } from "@/lib/marketing/record";
+import { findApplicationLinks, stripApplicationLinks } from "@/lib/chat/applicationLinks";
+import { recordApplicationLinkFromEmail } from "@/lib/chat/sendGuards";
+import { emailReplyNote } from "@/lib/chat/replyNote";
 
 export { tourReplyAddress, proxyReplyAddress } from "./replyTokens";
 
@@ -71,7 +74,7 @@ export async function handleAgentReplyEmail({ parsed, fromEmail, token, logId = 
 }
 
 async function tourReply({ parsed, fromEmail, token, logId, finish }) {
-  const { data: t } = await supabase.from("tour_requests").select("id, landlord_id, status, listing_id, lease_id").eq("id", token.id).maybeSingle();
+  const { data: t } = await supabase.from("tour_requests").select("id, landlord_id, student_id, status, listing_id, lease_id").eq("id", token.id).maybeSingle();
   if (!t || sign("t", t.id, t.landlord_id) !== token.sig) {
     await finish(logId, { status: "unknown_address", reason: "token matches no tour" });
     return { status: "unknown_address" };
@@ -89,9 +92,31 @@ async function tourReply({ parsed, fromEmail, token, logId, finish }) {
     await finish(logId, { user_id: t.landlord_id, status: "wrong_sender", reason: "from address is not this landlord" });
     return { status: "wrong_sender" };
   }
-  const text = cleanText(parsed, { senderName: landlord?.name, senderCompany: landlord?.company_name });
-  if (!text) {
+  const written = cleanText(parsed, { senderName: landlord?.name, senderCompany: landlord?.company_name });
+  if (!written) {
     await finish(logId, { user_id: t.landlord_id, status: "empty", reason: "no new text" });
+    return { status: "empty" };
+  }
+  /*
+   * An application link is cut out and the landlord is emailed where it goes
+   * instead (Wyatt, 2026-11-20); the rest of the reply still reaches the student.
+   */
+  const appLinks = findApplicationLinks(written);
+  const text = appLinks.length > 0 ? stripApplicationLinks(written).trim() : written;
+  // Recorded against the conversation and message, so the admin view labels
+  // it (a reply that was only the link has neither yet).
+  const notifyAppLink = async ({ delivered, threadId = null, messageId = null }) => {
+    if (appLinks.length === 0) return;
+    await recordApplicationLinkFromEmail({ userId: t.landlord_id, threadId, messageId, listingId: t.listing_id, body: written, delivered });
+    if (fromLeasingAssistant({ text: parsed.text, html: typeof parsed.html === "string" ? parsed.html : "" })) return;
+    await emailReplyNote({
+      to: fromEmail, audience: "landlord", senderId: t.landlord_id, otherId: t.student_id, listingId: t.listing_id,
+      threadId, delivered, applicationLink: true, unrestricted: true,
+    });
+  };
+  if (appLinks.length > 0 && !text.replace(/\[removed\]/g, "").replace(/[\s:.,;!?-]+/g, "")) {
+    await finish(logId, { user_id: t.landlord_id, status: "empty", reason: "only an application link" });
+    await notifyAppLink({ delivered: false });
     return { status: "empty" };
   }
   // Exactly "Message the student": opens their direct chat, or writes in it.
@@ -101,6 +126,7 @@ async function tourReply({ parsed, fromEmail, token, logId, finish }) {
     return { status: "rejected", reason: r.error };
   }
   await finish(logId, { user_id: t.landlord_id, thread_id: r.threadId ?? null, status: "posted", reason: "tour reply to student", body_preview: text.slice(0, 2000) });
+  await notifyAppLink({ delivered: true, threadId: r.threadId ?? null, messageId: r.messageId ?? null });
   return { status: "posted" };
 }
 

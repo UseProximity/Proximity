@@ -13,13 +13,14 @@ import { BillingError } from "./errors.js";
 import { coveringAgreement } from "./agreements.js";
 import { canTransition } from "./chargeLifecycle.js";
 import { chargeView } from "./chargeDisplay.js";
+import { linkForListing, payerRoleLinksFor } from "./payerLinks.js";
 
 const MAX_REASON_LENGTH = 2000;
 
 // The landlord-facing columns. resolution_note is the admin's internal note and
 // is never sent to a landlord.
 const LANDLORD_COLUMNS = `
-  id, landlord_id, payer_id, amount_cents, description, trigger_type, status, created_at,
+  id, landlord_id, payer_id, listing_id, amount_cents, description, trigger_type, status, created_at,
   pending_at, paid_at, voided_at, contest_reason, signed_rent_cents, commission_rate_percent,
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
@@ -97,6 +98,11 @@ export async function createCharge(db, input) {
   // The agreement covering the property, recorded on the charge with its rate
   // unless the caller gave one.
   const covering = input.listingId ? await coveringAgreement(db, input.landlordId, input.listingId) : null;
+  // Who is invoiced (Wyatt, 2026-11-25): the listing's authorized payer, else the
+  // account's, once they accepted; else whoever holds the covering agreement.
+  // Decided now and kept: a later change of payer never moves this charge.
+  const payerLink = linkForListing(await payerRoleLinksFor(db, input.landlordId), input.listingId ?? null);
+  const invoicedTo = payerLink?.payer_id ?? covering?.holderId ?? input.landlordId;
 
   const { data: charge, error } = await db
     .from("charges")
@@ -117,8 +123,8 @@ export async function createCharge(db, input) {
       commission_rate_percent: validRate(input.commissionRatePercent) ?? validRate(covering?.commissionRatePercent),
       covered_by_agreement_id: covering?.agreementId ?? null,
       covered_by_amendment_id: covering?.amendmentId ?? null,
-      // Invoiced to the payer who holds the covering agreement, when that is not the landlord.
-      ...(covering?.holderId && covering.holderId !== input.landlordId && { payer_id: covering.holderId }),
+      // Invoiced to someone other than the landlord: their authorized payer or signer.
+      ...(invoicedTo !== input.landlordId && { payer_id: invoicedTo }),
     })
     .select("*")
     .single();
@@ -143,13 +149,41 @@ export async function listChargesForLandlord(db, landlordId, now = new Date()) {
     .eq("landlord_id", landlordId)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return data.map((row) => chargeView(row, now));
+  const by = await contestedBy(db, data.filter((r) => r.status === "contested").map((r) => r.id));
+  // `contestedByOther`: the reason shown is the authorized payer's, not the landlord's own.
+  return data.map((row) => ({ ...chargeView(row, now), ...(by.has(row.id) && by.get(row.id) !== landlordId && { contestedByOther: "payer" }) }));
+}
+
+/*
+ * Who contested each of these charges (the landlord, or the authorized payer it
+ * is billed to): a Map chargeId -> user id, from the history row of the move to
+ * Contested. A charge with no such row (or no actor on it) is absent.
+ */
+export async function contestedBy(db, chargeIds) {
+  const out = new Map();
+  const ids = [...new Set((chargeIds ?? []).filter(Boolean))];
+  if (!ids.length) return out;
+  const { data, error } = await db
+    .from("charge_status_history")
+    .select("charge_id, actor_user_id, created_at")
+    .in("charge_id", ids)
+    .eq("to_status", "contested")
+    .order("created_at", { ascending: true });
+  if (error) {
+    // Only a label depends on this: never fail the list for it.
+    console.error("billing: could not read who contested", error.message);
+    return out;
+  }
+  // The latest contest wins (a charge is contested once, but read defensively).
+  for (const h of data ?? []) if (h.actor_user_id) out.set(h.charge_id, h.actor_user_id);
+  return out;
 }
 
 /*
  * Charges on the landlord accounts this payer pays for (charges.payer_id,
- * Project B), newest first, each with the account it came from. Read only: the
- * landlord approves or contests them.
+ * Project B), newest first, each with the account it came from. Read only for an
+ * authorized signer: the landlord approves or contests them. An authorized payer
+ * (Wyatt, 2026-11-25) can approve or dispute them too, alongside the landlord.
  */
 export async function listChargesPaidBy(db, payerId, now = new Date()) {
   const { data, error } = await db
@@ -162,23 +196,48 @@ export async function listChargesPaidBy(db, payerId, now = new Date()) {
     if (["42703", "PGRST200"].includes(error.code)) return [];
     throw error;
   }
-  return data.map((row) => ({
-    ...chargeView(row, now),
-    actions: { approve: false, contest: false, contactForDispute: false },
-    accountName: row.account?.company_name?.trim() || row.account?.name || row.account?.email || "Landlord account",
-  }));
+  // Approve and Dispute are per charge (Wyatt, 2026-11-25): only for a charge
+  // whose listing they are the accepted payer of now. One billed to them as the
+  // signer, or from before they were removed as payer, is read only.
+  const accounts = [...new Set(data.map((r) => r.landlord_id))];
+  const linksOf = new Map(await Promise.all(accounts.map(async (id) => [id, await payerRoleLinksFor(db, id)])));
+  const by = await contestedBy(db, data.filter((r) => r.status === "contested").map((r) => r.id));
+  return data.map((row) => {
+    const view = chargeView(row, now);
+    const mayAct = paysFor(linksOf.get(row.landlord_id), payerId, row.listing_id);
+    return {
+      ...view,
+      // They are still invoiced for it, so they are told how to dispute it.
+      ...(!mayAct && { actions: { approve: false, contest: false, contactForDispute: !["voided", "contested"].includes(row.status) } }),
+      ...(by.has(row.id) && by.get(row.id) !== payerId && { contestedByOther: "landlord" }),
+      accountName: row.account?.company_name?.trim() || row.account?.name || row.account?.email || "Landlord account",
+    };
+  });
+}
+
+// Whether `userId` is the accepted payer for this listing of the account
+// (`listingId` null: a charge on no listing, which the account's payer pays).
+const paysFor = (payers, userId, listingId) => !!payers && linkForListing(payers, listingId ?? null)?.payer_id === userId;
+
+// Whether this user may approve or dispute the charge: its landlord, or the
+// authorized payer it is billed to, while they are still the payer for that
+// charge's listing (not merely for something else on the account).
+async function mayActOn(db, userId, row) {
+  if (!row) return false;
+  if (row.landlord_id === userId) return true;
+  if (row.payer_id !== userId) return false;
+  return paysFor(await payerRoleLinksFor(db, row.landlord_id), userId, row.listing_id);
 }
 
 async function ownedCharge(db, userId, chargeId) {
   const { data, error } = await db
     .from("charges")
-    .select("id, landlord_id, status, amount_cents, trigger_type, listing_id, lease_id, student_id")
+    .select("id, landlord_id, payer_id, status, amount_cents, trigger_type, listing_id, lease_id, student_id")
     .eq("id", chargeId)
-    .eq("landlord_id", userId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new BillingError("not_found", "Charge not found.", 404);
-  return data;
+  if (!(await mayActOn(db, userId, data))) throw new BillingError("not_found", "Charge not found.", 404);
+  return { ...data, byPayer: data.landlord_id !== userId };
 }
 
 // The landlord confirms a charge themselves. From Unconfirmed or Pending; it
@@ -194,6 +253,7 @@ export async function landlordApprove(db, { userId, chargeId }) {
     to: "approved",
     actorType: "landlord",
     actorUserId: userId,
+    ...(charge.byPayer && { note: "Approved by the authorized payer" }),
   });
 }
 
@@ -221,7 +281,8 @@ export async function landlordContest(db, { userId, chargeId, reason }) {
     actorUserId: userId,
     note: text,
   });
-  return { charge: updated, reason: text };
+  // `byPayer`: the authorized payer contested it, on the account `landlordId`.
+  return { charge: updated, reason: text, byPayer: charge.byPayer, landlordId: charge.landlord_id };
 }
 
 // One charge as the landlord sees it (used to build the emails about it).
@@ -230,9 +291,8 @@ export async function getChargeViewForLandlord(db, userId, chargeId, now = new D
     .from("charges")
     .select(LANDLORD_COLUMNS)
     .eq("id", chargeId)
-    .eq("landlord_id", userId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new BillingError("not_found", "Charge not found.", 404);
+  if (!(await mayActOn(db, userId, data))) throw new BillingError("not_found", "Charge not found.", 404);
   return chargeView(data, now);
 }
