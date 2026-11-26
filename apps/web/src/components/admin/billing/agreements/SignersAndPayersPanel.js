@@ -19,7 +19,8 @@ export function PayerLookup({ name, setName, email, setEmail, onStatus, who = "A
       return undefined;
     }
     const t = setTimeout(() => {
-      call(`/api/admin/billing/payers/lookup?${new URLSearchParams({ email: e })}`)
+      // Checked against the rules of the role being named: a payer's differ from a signer's.
+      call(`/api/admin/billing/payers/lookup?${new URLSearchParams({ email: e, role: who === "Authorized payer" ? "payer" : "signer" })}`)
         .then((r) => {
           setFound(r);
           onStatus(r.status);

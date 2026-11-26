@@ -3315,7 +3315,7 @@
           "license_prefill:jsonb",
           "signer_id:uuid"
         ],
-        "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per user (uq_agreement_amendments_pending); unique provider_envelope_id; rls on, service role only"
+        "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per account per signer: unique (user_id, coalesce(signer_id, user_id)) where status=sent (uq_agreement_amendments_pending, 202611250001), so an account can have an addendum open with each of its signers and one of its own; unique provider_envelope_id; rls on, service role only"
       },
       {
         "table": "agreement_coverage",

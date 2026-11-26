@@ -1411,12 +1411,18 @@ export async function markAgreementSigned(db, { userId, signerName, signerTitle 
   }
 
   // A copy printed in the app is recorded from the landlord's row, with its properties.
-  if (isPaperOut(await agreementState(db, userId))) {
+  const before = await agreementState(db, userId);
+  if (isPaperOut(before)) {
     throw new BillingError("paper_out", "This landlord has a paper copy out. Record it with Record signed copy on their row.", 409);
   }
   const properties = await loadLandlordProperties(db, userId);
+  // Only what this agreement's holder signs for: a listing with its own signer is
+  // that signer's (Wyatt, 2026-11-25). On this Exhibit A it would count as covered
+  // the moment that signer was removed, without ever being signed for again.
+  const holder = before.holderId ?? userId;
+  const theirs = (p) => !before.links || holderForListing(before.links, userId, p.listingId) === holder;
   const exhibit = properties
-    .filter((p) => p.live)
+    .filter((p) => p.live && theirs(p))
     .map((p) => {
       const choice = exhibitChoice(p, null, { locked: true });
       const unitIds = choice.wholeBuilding ? [] : [...new Set(choice.units.flatMap((n) => p.idsByLabel?.[n] ?? []))];

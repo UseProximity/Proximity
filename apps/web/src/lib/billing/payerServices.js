@@ -11,8 +11,8 @@ import { getLiveVersion } from "./agreementVersions.js";
 import { agreementState, coverageFor } from "./agreements.js";
 import { displayAddress } from "./coverage.js";
 import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod, staleTakeoverLandlords } from "./payers.js";
-import { activePayerLink, allLinks, billedTo, billingLinksFor, signerLinksFor } from "./payerLinks.js";
-import { sendAuthorizedPayerAcceptedEmail, sendAuthorizedPayerAssignedEmail, sendAuthorizedPayerDeclinedEmail, sendAuthorizedPayerInviteEmail, sendAuthorizedPayerRemovedEmail, sendChargeCreatedEmail, sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
+import { activePayerLink, allLinks, billedTo, billingLinksFor, endLinksOfUser, signerLinksFor } from "./payerLinks.js";
+import { sendAuthorizedPayerAcceptedEmail, sendAuthorizedPayerAssignedEmail, sendAuthorizedPayerDeclinedEmail, sendAuthorizedPayerInviteEmail, sendAuthorizedPayerRemovedEmail, sendChargeCreatedEmail, sendLinkHolderGoneEmail, sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
 
 const BILLING_PATH = "/dashboard/landlord?tab=billing#marketing-agreement";
 
@@ -79,7 +79,8 @@ export async function sendPayerInvite({ landlordId = null, landlordIds = null, p
   }
   const sent = await sendPayerInviteEmail(
     { id: payer.id, email: payer.email, name: links[0].signer_name || payer.name },
-    { landlordName, addresses, setupUrl, signUrl, existingAgreement: state.valid },
+    // Named for some listings only (never the whole account): worded for those.
+    { landlordName, addresses, setupUrl, signUrl, existingAgreement: state.valid, listingsOnly: links.every((l) => l.listing_id) },
     await invitePdfs(payerId)
   );
   if (sent) await supabase.from("billing_payers").update({ invited_at: new Date().toISOString() }).in("id", links.map((l) => l.id));
@@ -194,14 +195,15 @@ export async function sendPayerDocumentCancelled({ payerId, otherAccounts = [], 
  * endPayerFor answered. When a document they were signing for other accounts too
  * was cancelled with it, that one email says both.
  */
-export async function sendPayerRevoked({ landlordId, ended, tookOver = false }) {
+// `byAdmin`: Proximity ended it, not the landlord. A link for one listing says which.
+export async function sendPayerRevoked({ landlordId, ended, tookOver = false, byAdmin = false }) {
   if (!ended?.link) return false;
   if (ended.cancelled) return sendPayerDocumentCancelled({ ...ended.cancelled, causeLandlordId: landlordId, reason: "ended" });
   const [landlord, payer] = await Promise.all([userRow(landlordId), userRow(ended.link.payer_id)]);
   if (!payer?.email) return false;
   return sendPayerRevokedEmail(
     { id: payer.id, email: payer.email, name: ended.link.signer_name || payer.name },
-    { landlordName: landlordLabel(landlord), released: ended.released ?? 0, tookOver, billingUrl: `${getBaseUrl()}${BILLING_PATH}` }
+    { landlordName: landlordLabel(landlord), released: ended.released ?? 0, tookOver, byAdmin, listingAddress: await listingAddress(ended.link.listing_id), billingUrl: `${getBaseUrl()}${BILLING_PATH}` }
   );
 }
 
@@ -307,8 +309,42 @@ export async function sendChargeCreatedToAll({ view, payerId = null }) {
   if (payer?.email) {
     await sendChargeCreatedEmail(
       { id: payer.id, email: payer.email, name: payerLink.signer_name || payer.name },
-      { ...input, forAccount: view.landlord.company_name?.trim() || view.landlord.name || "a landlord" }
+      { ...input, forAccount: landlordLabel(await userRow(view.landlord.id)).replace(/^A landlord$/, "a landlord") }
     ).catch((err) => console.error("billing: new charge email to the payer failed", err?.message));
   }
   return emailed;
+}
+
+/*
+ * An account was deleted (DELETE /api/account): every signer or payer link it is
+ * part of ends, and the other side of each is told. Someone it signed or paid
+ * for hears that the arrangement ended; someone who signed or paid for IT hears
+ * they no longer do. Best effort: the account is already deleted, so nothing
+ * here may throw.
+ */
+export async function endLinksForDeletedAccount(userId) {
+  let ended = [];
+  try {
+    ended = await endLinksOfUser(supabase, userId);
+  } catch (err) {
+    console.error("billing: ending the links of a deleted account failed", err?.message);
+    return 0;
+  }
+  for (const link of ended) {
+    try {
+      if (link.payer_id === userId) {
+        const landlord = await userRow(link.landlord_id);
+        if (landlord?.email) {
+          await sendLinkHolderGoneEmail(landlord, { personName: link.signer_name || "Your authorized " + link.role, role: link.role === "payer" ? "payer" : "signer", listingAddress: await listingAddress(link.listing_id), billingUrl: billingUrl() });
+        }
+      } else if (link.role === "payer") {
+        await sendAuthorizedPayerRemoved({ link });
+      } else {
+        await sendPayerRevoked({ landlordId: link.landlord_id, ended: { link, released: 0 } });
+      }
+    } catch (err) {
+      console.error("billing: email after a deleted account's link ended failed", err?.message);
+    }
+  }
+  return ended.length;
 }

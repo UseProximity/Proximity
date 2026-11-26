@@ -73,6 +73,7 @@ export const KINDS = {
   billing_authorized_payer_declined: ["billing", "Authorized payer declined"],
   billing_authorized_payer_removed: ["billing", "Authorized payer removed"],
   billing_authorized_payer_assigned: ["billing", "Authorized payer named for the account"],
+  billing_link_holder_gone: ["billing", "Authorized signer or payer deleted their account"],
   team_alert: ["team", "Team alert"],
   chat_checkin_digest: ["team", "Daily chat check-in"],
   chat_checkin_report: ["team", "Weekly chat report"],

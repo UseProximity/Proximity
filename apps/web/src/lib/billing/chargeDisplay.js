@@ -67,6 +67,7 @@ export function adminChargeView(row, now = new Date()) {
       id: row.landlord_id,
       name: row.landlord?.name ?? null,
       email: row.landlord?.email ?? null,
+      company_name: row.landlord?.company_name ?? null,
     },
     triggerRef: row.trigger_ref ?? null,
     pendingAt: row.pending_at ?? null,

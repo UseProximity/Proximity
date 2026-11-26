@@ -84,7 +84,8 @@ export async function landlordFlags(db, landlordIds) {
       openCopies: { master: openMasters.map((m) => m.version_id ?? null), amendment: openAmendments.map((a) => a.version_id ?? null) },
       paperOut: pending.some((m) => m.provider === PAPER && m.status === "sent"),
       signer: link ? { id: link.payer_id, name: link.signer_name || nameOf(userById.get(link.payer_id)) } : null,
-      signsFor: asPayer.filter((r) => r.payer_id === id).map((r) => ({ id: r.landlord_id, name: nameOf(userById.get(r.landlord_id)) })),
+      // One entry per account, however many of its listings they sign for.
+      signsFor: [...new Set(asPayer.filter((r) => r.payer_id === id).map((r) => r.landlord_id))].map((landlordId) => ({ id: landlordId, name: nameOf(userById.get(landlordId)) })),
     });
   }
   return out;

@@ -41,7 +41,8 @@ export async function PATCH(req) {
     if (!isUuid(body.linkId)) throw new BillingError("bad_link", "Choose a request.");
     if (body.action === "accept") {
       const link = await acceptAuthorizedPayer(supabase, { userId: session.user.id, linkId: body.linkId });
-      after(() => sendAuthorizedPayerAnswer({ link, accepted: true }).catch((err) => console.error("billing: payer accepted email failed", err?.message)));
+      // Only the click that accepted it emails the landlord, not a repeat from a stale page.
+      if (link.justAccepted) after(() => sendAuthorizedPayerAnswer({ link, accepted: true }).catch((err) => console.error("billing: payer accepted email failed", err?.message)));
     } else if (body.action === "decline") {
       const link = await declineAuthorizedPayer(supabase, { userId: session.user.id, linkId: body.linkId });
       after(() => sendAuthorizedPayerAnswer({ link, accepted: false }).catch((err) => console.error("billing: payer declined email failed", err?.message)));

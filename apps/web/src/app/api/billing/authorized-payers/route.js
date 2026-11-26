@@ -70,9 +70,8 @@ export async function PATCH(req) {
     if (!isUuid(body.linkId)) throw new BillingError("bad_link", "Choose an authorized payer.");
     const landlord = await landlordOf(session.user.id);
     if (body.action === "resend") {
-      const link = await touchPayerInvite(supabase, { landlordId: landlord.id, linkId: body.linkId });
-      const sent = await sendAuthorizedPayerInvite({ link });
-      if (!sent) throw new BillingError("send_failed", "We couldn't send the email. Try again in a few minutes.", 502);
+      // Stamped only once the email went, so a failed send can be retried at once.
+      await touchPayerInvite(supabase, { landlordId: landlord.id, linkId: body.linkId, send: (link) => sendAuthorizedPayerInvite({ link }) });
     } else if (body.action === "change") {
       const { link, created, old } = await changeAuthorizedPayer(supabase, { landlord, linkId: body.linkId, name: body.name, email: body.email });
       if (created) await stampSignup(req, { userId: link.payer_id, role: "landlord", label: "invite" });

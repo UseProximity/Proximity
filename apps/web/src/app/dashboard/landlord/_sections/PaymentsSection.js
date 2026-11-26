@@ -262,6 +262,7 @@ function PaymentsContent({ viewAsId }) {
 
   if (payer) {
     const ownOpen = invoices.filter((inv) => ["open", "failed", "processing"].includes(inv.status));
+    const paysForOthers = payingFor.some((a) => a.status === "accepted");
     return (
       <div className="space-y-4 max-w-3xl">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
@@ -270,13 +271,22 @@ function PaymentsContent({ viewAsId }) {
         {listingCards}
         {whoCard}
         <ChargesCard charges={charges} summary={summary} busy={busy} onApprove={approve} onContest={setContesting} billedTo={billedTo ?? payer.payer.name} />
-        {ownOpen.length > 0 && (
-          <>
-            <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
-            <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
-            <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />
-          </>
+        {paysForOthers ? (
+          // Their own account has a signer, but they are someone else's authorized
+          // payer (Wyatt, 2026-11-25): those invoices come here, so all of Billing's
+          // paying side shows, not only what is overdue in their own name.
+          <InvoicesCard invoices={invoices} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+        ) : (
+          ownOpen.length > 0 && (
+            <>
+              <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
+              <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+            </>
+          )
         )}
+        {/* Asked to pay for another account, even before accepting: the payment method is theirs to add here. */}
+        {(ownOpen.length > 0 || payingFor.length > 0) && <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />}
+        {paysForOthers && <AutopayCard methods={methods} />}
         {contesting && <ContestChargeModal charge={contesting} busy={busy} onCancel={() => setContesting(null)} onSubmit={contest} />}
       </div>
     );

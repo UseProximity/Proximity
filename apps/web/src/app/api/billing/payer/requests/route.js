@@ -7,7 +7,7 @@ import { agreementServices } from "@/lib/billing/agreementServices";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
 import { isPropertyOwner } from "@/lib/listings/ownership";
 import { BillingError } from "@/lib/billing/errors";
-import { landlordListingSignerViews, landlordPayerView, requestPayerCoverage } from "@/lib/billing/payers";
+import { landlordListingSignerViews, landlordPayerView, onceFor, requestPayerCoverage } from "@/lib/billing/payers";
 import { sendPayerRequest } from "@/lib/billing/payerServices";
 
 /*
@@ -43,9 +43,10 @@ export async function POST(req) {
       const addresses = (listings ?? []).map((l) => l.address).filter(Boolean);
       after(() => sendPayerRequest({ landlordId: session.user.id, addresses, link }).catch((err) => console.error("billing: payer request email failed", err?.message)));
     }
+    const once = onceFor();
     return NextResponse.json({
-      payer: await landlordPayerView(supabase, session.user.id),
-      listingSigners: await landlordListingSignerViews(supabase, session.user.id),
+      payer: await landlordPayerView(supabase, session.user.id, new Date(), { once }),
+      listingSigners: await landlordListingSignerViews(supabase, session.user.id, new Date(), { once }),
       // Listings sent along that the landlord signs for themselves: nothing was sent for these.
       own: mine,
     });

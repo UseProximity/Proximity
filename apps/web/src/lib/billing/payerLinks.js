@@ -28,17 +28,40 @@ export const LINK_COLUMNS = "id, landlord_id, payer_id, listing_id, role, signer
 export const SIGNER = "signer";
 export const PAYER = "payer";
 
+/*
+ * billing_payers.role and accepted_at come with migration 202611250001. If this
+ * code ever runs before it (a deploy ahead of the migration), every link there
+ * is a signer, as it was before: read the old columns instead of reading "no
+ * links", which would silently drop every authorized signer. Logged loudly.
+ */
+const LEGACY_COLUMNS = "id, landlord_id, payer_id, listing_id, signer_name, signer_email, status, invited_at, declined_at, created_at";
+const roleMissing = (error) => error?.code === "42703";
+let warnedLegacy = false;
+
+// `build(columns, withRole)` returns the query. Rows always carry role and accepted_at.
+async function readLinks(build, role) {
+  const first = await build(LINK_COLUMNS, true);
+  if (!roleMissing(first.error)) return first;
+  if (!warnedLegacy) {
+    warnedLegacy = true;
+    console.error("[billing] billing_payers.role is missing: apply migration 202611250001_authorized_payers. Reading every link as a signer until then.");
+  }
+  // Before the migration nobody is an authorized payer.
+  if (role !== SIGNER) return { data: null, error: null, legacy: true };
+  const { data, error } = await build(LEGACY_COLUMNS, false);
+  if (error) return { data, error };
+  const withRole = (l) => ({ ...l, role: SIGNER, accepted_at: null });
+  return { data: Array.isArray(data) ? data.map(withRole) : data ? withRole(data) : data, error: null };
+}
+
 // The account-wide authorized signer of a landlord, or null.
 export async function activePayerLink(db, landlordId) {
   if (!landlordId) return null;
-  const { data, error } = await db
-    .from("billing_payers")
-    .select(LINK_COLUMNS)
-    .eq("landlord_id", landlordId)
-    .eq("role", SIGNER)
-    .is("listing_id", null)
-    .eq("status", "active")
-    .maybeSingle();
+  const { data, error } = await readLinks((columns, withRole) => {
+    let q = db.from("billing_payers").select(columns).eq("landlord_id", landlordId);
+    if (withRole) q = q.eq("role", SIGNER);
+    return q.is("listing_id", null).eq("status", "active").maybeSingle();
+  }, SIGNER);
   if (missingSchema(error)) return null;
   if (error) throw error;
   return data ?? null;
@@ -50,7 +73,11 @@ const EMPTY = () => ({ account: null, byListing: new Map() });
 // one (listing_id NULL) or null, `byListing` a Map listingId -> that listing's own.
 async function linksOfRole(db, landlordId, role) {
   if (!landlordId) return EMPTY();
-  const { data, error } = await db.from("billing_payers").select(LINK_COLUMNS).eq("landlord_id", landlordId).eq("role", role).eq("status", "active");
+  const { data, error } = await readLinks((columns, withRole) => {
+    let q = db.from("billing_payers").select(columns).eq("landlord_id", landlordId);
+    if (withRole) q = q.eq("role", role);
+    return q.eq("status", "active");
+  }, role);
   if (missingSchema(error)) return EMPTY();
   if (error) throw error;
   const out = EMPTY();
@@ -124,13 +151,11 @@ export async function payerRoleLinksOf(db, payerId) {
 
 async function linksHeldBy(db, userId, role) {
   if (!userId) return [];
-  const { data, error } = await db
-    .from("billing_payers")
-    .select(LINK_COLUMNS)
-    .eq("payer_id", userId)
-    .eq("role", role)
-    .eq("status", "active")
-    .order("created_at", { ascending: true });
+  const { data, error } = await readLinks((columns, withRole) => {
+    let q = db.from("billing_payers").select(columns).eq("payer_id", userId);
+    if (withRole) q = q.eq("role", role);
+    return q.eq("status", "active").order("created_at", { ascending: true });
+  }, role);
   if (missingSchema(error)) return [];
   if (error) throw error;
   return data ?? [];
@@ -206,4 +231,90 @@ export async function declineDocumentRequests(db, { kind, id, now = new Date() }
     .eq("document_id", id)
     .eq("status", "waiting");
   if (error && !missingSchema(error)) throw error;
+}
+
+/*
+ * A signer or payer named for ONE listing is tied to that listing's row. When
+ * the row goes away the link must not be left behind, active, on a listing
+ * nobody can see (the person named would still read as signing or paying for
+ * it, and the landlord would have no card to remove them from):
+ *
+ *   moveListingLinks  a draft was merged into the live building at its address
+ *                     (lib/listings/publish.js): its links follow it there. A
+ *                     role the live listing already has for that account keeps
+ *                     its own, and the draft's link ends.
+ *   endListingLinks   the listing was deleted: its links end.
+ *
+ * Both are best effort for the caller (publishing or deleting must not fail on
+ * them): they answer how many links changed and throw only on a database error.
+ */
+export async function moveListingLinks(db, { fromListingId, toListingId, now = new Date() }) {
+  if (!fromListingId || !toListingId || fromListingId === toListingId) return { moved: 0, ended: 0 };
+  const { data, error } = await db.from("billing_payers").select("id").eq("listing_id", fromListingId).eq("status", "active");
+  if (missingSchema(error)) return { moved: 0, ended: 0 };
+  if (error) throw error;
+  let moved = 0;
+  let ended = 0;
+  for (const l of data ?? []) {
+    const { error: moveError } = await db.from("billing_payers").update({ listing_id: toListingId }).eq("id", l.id).eq("status", "active");
+    if (!moveError) {
+      moved += 1;
+      continue;
+    }
+    if (moveError.code !== "23505") throw moveError;
+    const { error: endError } = await db
+      .from("billing_payers")
+      .update({ status: "ended", ended_reason: "the listing was merged into one that already has its own", ended_at: now.toISOString() })
+      .eq("id", l.id)
+      .eq("status", "active");
+    if (endError) throw endError;
+    ended += 1;
+  }
+  // What was waiting on a signer for the draft now waits for the live listing.
+  if (moved) {
+    const { error: reqError } = await db.from("payer_publish_requests").update({ listing_id: toListingId }).eq("listing_id", fromListingId).eq("status", "waiting");
+    if (reqError && !missingSchema(reqError) && reqError.code !== "23505") throw reqError;
+  }
+  return { moved, ended };
+}
+
+export async function endListingLinks(db, listingIds, { reason = "the listing was deleted", now = new Date() } = {}) {
+  const ids = [...new Set((Array.isArray(listingIds) ? listingIds : [listingIds]).filter(Boolean))];
+  if (!ids.length) return 0;
+  const { data, error } = await db
+    .from("billing_payers")
+    .update({ status: "ended", ended_reason: String(reason).slice(0, 300), ended_at: now.toISOString() })
+    .in("listing_id", ids)
+    .eq("status", "active")
+    .select("id");
+  if (missingSchema(error)) return 0;
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/*
+ * An account was deleted: every link it is part of ends, the ones naming it as
+ * someone's signer or payer and the ones it named for itself. Left active, a
+ * deleted payer would still be invoiced and their missing payment method would
+ * block the landlord's publishing. Answers the ended links (for the emails).
+ */
+export async function endLinksOfUser(db, userId, { now = new Date() } = {}) {
+  if (!userId) return [];
+  const out = [];
+  for (const column of ["payer_id", "landlord_id"]) {
+    const { data, error } = await readLinks(
+      (columns) =>
+        db
+          .from("billing_payers")
+          .update({ status: "ended", ended_reason: "the account was deleted", ended_at: now.toISOString() })
+          .eq(column, userId)
+          .eq("status", "active")
+          .select(columns),
+      SIGNER
+    );
+    if (missingSchema(error)) return out;
+    if (error) throw error;
+    out.push(...(data ?? []));
+  }
+  return out;
 }

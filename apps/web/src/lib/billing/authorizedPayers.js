@@ -23,11 +23,12 @@
  *
  * `db` is a service-role Supabase client.
  */
+// Relative imports: a node test imports this file, and node does not know the "@/" alias.
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
 import { displayAddress, loadLandlordProperties } from "./coverage.js";
-import { allLinks, linkForListing, LINK_COLUMNS, payerRoleLinksFor, payerRoleLinksOf, signerLinksFor } from "./payerLinks.js";
-import { assertCanHoldBilling, billingUserByEmail, cleanPayerInput, createBillingAccount } from "./payers.js";
+import { allLinks, endListingLinks, linkForListing, LINK_COLUMNS, payerRoleLinksFor, payerRoleLinksOf, signerLinksFor } from "./payerLinks.js";
+import { assertCanHoldBilling, billingUserByEmail, cleanPayerInput, createBillingAccount, listingToName } from "./payers.js";
 
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
 
@@ -44,7 +45,8 @@ export const PAYER_RESEND_GAP_MS = 30 * 60 * 1000;
  *     landlord is a payer for someone else
  * Returns { link, payer, created } (created: a new billing-only account was made).
  */
-export async function nameAuthorizedPayer(db, { landlord, name, email, listingId = null, createdBy = null, now = new Date() }) {
+export async function nameAuthorizedPayer(db, { landlord, name, email, listingId: given = null, createdBy = null, now = new Date() }) {
+  let listingId = given;
   const input = cleanPayerInput({ name, email });
   if (String(landlord?.email ?? "").toLowerCase() === input.email) {
     throw new BillingError("payer_is_you", "That is your own email. You already pay for your own listings.");
@@ -52,6 +54,8 @@ export async function nameAuthorizedPayer(db, { landlord, name, email, listingId
   const [existing, signers] = await Promise.all([payerRoleLinksFor(db, landlord.id, { pending: true }), signerLinksFor(db, landlord.id)]);
   if (listingId) {
     const properties = await loadLandlordProperties(db, landlord.id);
+    // A draft copy of a listing they already have live is named on the live one.
+    listingId = await listingToName(db, properties, listingId);
     if (!properties.some((p) => p.listingId === listingId)) throw new BillingError("not_your_listing", "That listing isn't on this account.", 404);
     if (existing.byListing.has(listingId)) throw new BillingError("payer_exists", "That listing already has an authorized payer. Use Change payer instead.", 409);
     if (existing.account?.signer_email === input.email) {
@@ -66,7 +70,8 @@ export async function nameAuthorizedPayer(db, { landlord, name, email, listingId
   if (signer?.signer_email === input.email && !payerAbove) {
     throw new BillingError("already_pays", `${signer.signer_name} already pays for ${listingId ? "that listing" : "this account"} as its authorized signer.`, 409);
   }
-  if ((await payerRoleLinksOf(db, landlord.id)).length) {
+  // Only what they accepted: an invite anyone can send must not stop them naming their own payer.
+  if ((await payerRoleLinksOf(db, landlord.id)).some((l) => l.accepted_at)) {
     throw new BillingError("you_pay_for_others", "This account is the authorized payer for other accounts, so it pays for itself.", 409);
   }
 
@@ -123,11 +128,16 @@ async function invitedLink(db, userId, linkId) {
 
 /*
  * The person named accepts: from now on the charges made for it are invoiced to
- * them. Safe to repeat. Returns the link.
+ * them. Safe to repeat. Returns the link, with `justAccepted` true only for the
+ * call that accepted it (so the landlord is emailed once, not on every repeat).
+ * Refused while they have an authorized payer of their own (no chains).
  */
 export async function acceptAuthorizedPayer(db, { userId, linkId, now = new Date() }) {
   const link = await invitedLink(db, userId, linkId);
   if (link.accepted_at) return link;
+  if (allLinks(await payerRoleLinksFor(db, userId, { pending: true })).length) {
+    throw new BillingError("you_have_a_payer", "You have named an authorized payer for your own account, so you can't pay for another one. Remove them first, or decline this request.", 409);
+  }
   const { data, error } = await db
     .from("billing_payers")
     .update({ accepted_at: now.toISOString(), declined_at: null })
@@ -138,7 +148,7 @@ export async function acceptAuthorizedPayer(db, { userId, linkId, now = new Date
     .maybeSingle();
   if (error) throw error;
   // Another click got there first, or the landlord withdrew it in between.
-  return data ?? (await invitedLink(db, userId, linkId));
+  return data ? { ...data, justAccepted: true } : await invitedLink(db, userId, linkId);
 }
 
 /*
@@ -201,8 +211,12 @@ export async function changeAuthorizedPayer(db, { landlord, linkId, name, email,
   }
 }
 
-// The invite goes out again, at most every 30 minutes. Returns the link.
-export async function touchPayerInvite(db, { landlordId, linkId, now = new Date() }) {
+/*
+ * The invite goes out again, at most every 30 minutes. `send(link)` sends it and
+ * answers whether it went: the time is stamped only once it did, so a failed
+ * send can be tried again at once. Returns the link.
+ */
+export async function touchPayerInvite(db, { landlordId, linkId, send = null, now = new Date() }) {
   const link = await ownedLink(db, landlordId, linkId);
   if (link.accepted_at) throw new BillingError("already_accepted", `${link.signer_name} already accepted.`, 409);
   const wait = PAYER_RESEND_GAP_MS - (now.getTime() - new Date(link.invited_at).getTime());
@@ -210,21 +224,33 @@ export async function touchPayerInvite(db, { landlordId, linkId, now = new Date(
     const mins = Math.ceil(wait / 60000);
     throw new BillingError("too_soon", `We emailed them recently. You can resend in ${mins} minute${mins === 1 ? "" : "s"}.`, 429);
   }
+  if (send && !(await send(link))) throw new BillingError("send_failed", "We couldn't send the email. Try again in a few minutes.", 502);
   const { error } = await db.from("billing_payers").update({ invited_at: now.toISOString() }).eq("id", link.id);
   if (error) throw error;
   return link;
 }
 
+// The address of each listing that still exists. One that was deleted is left out
+// and its links are ended here, in case whatever deleted it did not (a link on a
+// listing nobody can see could never be removed).
 async function addressesOf(db, listingIds) {
   const ids = [...new Set(listingIds.filter(Boolean))];
   const out = new Map();
+  const gone = [];
   for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await db.from("listings").select("id, address, city, state, zipcode").in("id", ids.slice(i, i + 200));
+    const { data, error } = await db.from("listings").select("id, address, city, state, zipcode, deleted_at").in("id", ids.slice(i, i + 200));
     if (error) throw error;
-    for (const l of data ?? []) out.set(l.id, displayAddress(l));
+    for (const l of data ?? []) {
+      if (l.deleted_at) gone.push(l.id);
+      else out.set(l.id, displayAddress(l));
+    }
   }
+  if (gone.length) await endListingLinks(db, gone).catch((err) => console.error("billing: could not end the links of a deleted listing", err?.message));
   return out;
 }
+
+// A link on a listing that was deleted is not shown (addressesOf ended it).
+const stillThere = (addressOf) => (l) => !l.listing_id || addressOf.has(l.listing_id);
 
 const payerView = (link, addressOf) => ({
   linkId: link.id,
@@ -248,7 +274,7 @@ export async function landlordPayersView(db, landlordId) {
   const addressOf = await addressesOf(db, [...links.byListing.keys()]);
   return {
     account: links.account ? payerView(links.account, addressOf) : null,
-    listings: [...links.byListing.values()].map((l) => payerView(l, addressOf)).sort((a, b) => a.listingAddress.localeCompare(b.listingAddress, "en", { numeric: true })),
+    listings: [...links.byListing.values()].filter(stillThere(addressOf)).map((l) => payerView(l, addressOf)).sort((a, b) => a.listingAddress.localeCompare(b.listingAddress, "en", { numeric: true })),
   };
 }
 
@@ -263,7 +289,7 @@ export async function payingFor(db, payerId) {
   if (error) throw error;
   const userById = new Map((users ?? []).map((u) => [u.id, u]));
   const addressOf = await addressesOf(db, links.map((l) => l.listing_id));
-  return links.map((l) => {
+  return links.filter(stillThere(addressOf)).map((l) => {
     const u = userById.get(l.landlord_id);
     return {
       linkId: l.id,

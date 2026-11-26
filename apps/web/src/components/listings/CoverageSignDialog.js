@@ -106,7 +106,9 @@ function SendToPayerDialog({ uncovered, payer, alsoOwn = 0, onSent, onClose }) {
  * After the landlord signed: their drafts are covered, and publishing is their
  * choice, the same as a listing their authorized signer approved (Wyatt, 2026-11-09).
  */
-function CoveredDialog({ names, onPublish, onClose }) {
+// `alsoWaiting`: how many listings of the same publish went to an authorized
+// signer instead: they stay drafts whatever is chosen here.
+function CoveredDialog({ names, alsoWaiting = 0, onPublish, onClose }) {
   const [busy, setBusy] = useState(false);
   const what = names.length === 1 ? names[0] : "these listings";
   return (
@@ -119,6 +121,12 @@ function CoveredDialog({ names, onPublish, onClose }) {
           {what} {names.length === 1 ? "is" : "are"} now on your marketing agreement and still {names.length === 1 ? "a draft" : "drafts"}. Publish now, or
           keep {names.length === 1 ? "it" : "them"} as {names.length === 1 ? "a draft" : "drafts"} and publish later.
         </p>
+        {alsoWaiting > 0 && (
+          <p className="mt-2 text-sm text-gray-700">
+            {alsoWaiting === 1 ? "The listing you sent to its authorized signer stays a draft" : `The ${alsoWaiting} listings you sent to their authorized signers stay drafts`} until
+            they approve.
+          </p>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60">
             Keep as draft
@@ -202,13 +210,15 @@ export function openCoverageDialog({ uncovered, onSigned, payer = null }) {
           root.render(
             <CoveredDialog
               names={names}
+              alsoWaiting={theirs.length}
               onClose={() => {
                 toast.success("Saved as a draft. Publish it from your drafts when you're ready.");
                 done("covered");
               }}
               onPublish={async () => {
                 try {
-                  await onSigned?.();
+                  // Part of the batch went to a signer and stays a draft: publish the rest.
+                  await onSigned?.({ partial: theirs.length > 0 });
                 } finally {
                   done("signed");
                 }

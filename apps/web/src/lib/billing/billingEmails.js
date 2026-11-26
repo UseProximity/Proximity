@@ -146,3 +146,5 @@ export const sendAuthorizedPayerRemovedEmail = (payer, input) =>
   toLandlord("billing_authorized_payer_removed", payer, t.authorizedPayerRemovedEmail({ name: payer.name, ...input }));
 export const sendAuthorizedPayerAssignedEmail = (landlord, input) =>
   toLandlord("billing_authorized_payer_assigned", landlord, t.authorizedPayerAssignedEmail({ name: landlord.name, ...input }));
+export const sendLinkHolderGoneEmail = (landlord, input) =>
+  toLandlord("billing_link_holder_gone", landlord, t.linkHolderGoneEmail({ name: landlord.name, ...input }));

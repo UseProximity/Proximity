@@ -9,6 +9,7 @@ import { emailNewListingToOwners } from "@/lib/email/newListingEmail";
 import { nextUnitSortOrder } from "@/lib/listings/unitNames";
 import { hasPricedLease, liveRows } from "@/lib/listings/pricedLease";
 import { unitNameKey } from "@/utils/unitName";
+import { moveListingLinks } from "@/lib/billing/payerLinks";
 
 const now = () => new Date().toISOString();
 
@@ -137,6 +138,13 @@ async function mergeDraftIntoLive(draft, live) {
 
   const { error } = await supabase.from("listings").update({ deleted_at: now() }).eq("id", draft.id);
   if (error) throw error;
+
+  // A signer or payer named for the draft alone now holds the live listing
+  // (Wyatt, 2026-11-25): left on the retired row they would be ignored, and
+  // nobody could see or remove them. The merge is done either way.
+  await moveListingLinks(supabase, { fromListingId: draft.id, toListingId: live.id }).catch((err) =>
+    console.error("[publish] could not move the draft's signer or payer to the live listing:", err?.message)
+  );
 
   return { liveId: live.id, unitIds: [...new Set(target.values())] };
 }

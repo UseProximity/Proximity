@@ -47,7 +47,7 @@ import { BillingError } from "./errors.js";
 import { activePayerLink, allLinks, billedTo, billingLinksFor, clearDocumentRequests, linkForListing, LINK_COLUMNS, payeeLinks, payerRoleLinksFor, payerRoleLinksOf, signerLinksFor } from "./payerLinks.js";
 import { PAPER, PAPER_HOLD_MESSAGE, agreementState, coverageFor, voidDocument } from "./agreements.js";
 import { getLiveVersion } from "./agreementVersions.js";
-import { displayAddress } from "./coverage.js";
+import { displayAddress, resolvePublishedIds } from "./coverage.js";
 import { getGateSettings } from "./listingGate.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
 
@@ -70,14 +70,17 @@ export async function signerNeedsPaymentMethod(db, payerId, now = new Date()) {
  * else whoever signs for it, else the landlord). A Map listingId -> { userId,
  * name } (name null: the landlord themselves); a listing not waiting is absent.
  */
-export async function paymentMethodWaits(db, landlordId, listingIds, now = new Date()) {
+// `links`: the account's { signers, payers } when the caller has them already.
+// `needsOf(userId)`: a shared check, so several calls ask once per person.
+export async function paymentMethodWaits(db, landlordId, listingIds, now = new Date(), { links: given = null, needsOf = null } = {}) {
   const out = new Map();
   if (!listingIds.length) return out;
-  const links = await billingLinksFor(db, landlordId);
+  const links = given ?? (await billingLinksFor(db, landlordId));
   const needs = new Map();
+  const check = needsOf ?? ((userId) => signerNeedsPaymentMethod(db, userId, now));
   for (const listingId of listingIds) {
     const who = billedTo({ landlordId, listingId, ...links });
-    if (!needs.has(who.userId)) needs.set(who.userId, await signerNeedsPaymentMethod(db, who.userId, now));
+    if (!needs.has(who.userId)) needs.set(who.userId, await check(who.userId));
     if (needs.get(who.userId)) out.set(listingId, { userId: who.userId, name: who.name });
   }
   return out;
@@ -128,7 +131,10 @@ export const canSignIn = (u) => !!(u?.password_hash || u?.google_account || u?.a
  *                                  someone who has a payer themselves
  * `user` is { id, name, email, billingOnly, paysFor }.
  */
-export async function lookupPayer(db, email) {
+// `role`: who is being named. A signer can't have a signer of their own; a payer
+// can't have a payer of their own (nameAuthorizedPayer's rule). Having a signer
+// does not stop someone paying for another account.
+export async function lookupPayer(db, email, { role = "signer" } = {}) {
   const clean = String(email ?? "").trim().toLowerCase();
   if (!EMAIL_RE.test(clean)) return { status: "invalid" };
   const u = await userByEmail(db, clean);
@@ -136,7 +142,11 @@ export async function lookupPayer(db, email) {
   if ((u.roles?.name ?? null) !== "landlord" || u.review_sandbox) {
     return { status: "refused", reason: "That email belongs to an account that can't pay for listings (a student or admin). Use another email." };
   }
-  if (await activePayerLink(db, u.id)) {
+  if (role === "payer") {
+    if (allLinks(await payerRoleLinksFor(db, u.id, { pending: true })).length) {
+      return { status: "refused", reason: "That person has their own authorized payer, so they can't pay for another account." };
+    }
+  } else if (allLinks(await signerLinksFor(db, u.id)).length) {
     return { status: "refused", reason: "That landlord has their own authorized signer, so they can't sign for others." };
   }
   const paysFor = new Set([...(await payeeLinks(db, u.id)), ...(await payerRoleLinksOf(db, u.id))].map((l) => l.landlord_id)).size;
@@ -165,6 +175,8 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, l
   let handOff = null;
   if (listingId) {
     handOff = await checkListingHandOff(db, { landlordId: landlord.id, listingId, links, input, confirmUncover, now });
+    // A draft copy of a listing they already have live is named on the live one.
+    listingId = handOff.listingId;
   } else {
     if (links.account) {
       throw new BillingError("payer_exists", "You already have an authorized signer. Use Change signer instead.", 409);
@@ -293,8 +305,9 @@ export async function createBillingAccount(db, input) {
  * 2026-11-25): the landlord is told first, and it is uncovered until the new
  * signer signs. Returns { holderId, covered, proposed, address }.
  */
-async function checkListingHandOff(db, { landlordId, listingId, links, input, confirmUncover, now }) {
+async function checkListingHandOff(db, { landlordId, listingId: given, links, input, confirmUncover, now }) {
   const { properties, covered, rows, holderOf } = await coverageFor(db, landlordId, now);
+  const listingId = await listingToName(db, properties, given);
   const property = properties.find((p) => p.listingId === listingId);
   if (!property) throw new BillingError("not_your_listing", "That listing isn't on this account.", 404);
   if (links.byListing.has(listingId)) throw new BillingError("payer_exists", "That listing already has its own authorized signer. Use Change signer instead.", 409);
@@ -309,7 +322,19 @@ async function checkListingHandOff(db, { landlordId, listingId, links, input, co
       409
     );
   }
-  return { holderId: holderOf(listingId), covered: isCovered, proposed: rows.some((r) => r.listing_id === listingId && r.status === "proposed"), address: property.address };
+  return { listingId, holderId: holderOf(listingId), covered: isCovered, proposed: rows.some((r) => r.listing_id === listingId && r.status === "proposed"), address: property.address };
+}
+
+/*
+ * The listing a signer or payer is named on. A draft that is a copy of a listing
+ * this account already has live (the same building) is merged into it when it is
+ * published, and it is the live one that is checked and charged: so the person is
+ * named there, not on a row that is about to be retired. Anything else: itself.
+ */
+export async function listingToName(db, properties, listingId) {
+  if (!listingId) return listingId;
+  const [live] = await resolvePublishedIds(db, [listingId]);
+  return live && live !== listingId && properties.some((p) => p.listingId === live) ? live : listingId;
 }
 
 /*
@@ -330,13 +355,26 @@ export async function releaseListing(db, documenso, { landlordId, listingId, hol
     .eq("status", "proposed");
   if (openError && !missingSchema(openError)) throw openError;
   let cancelled = null;
+  // Each document once, voided under whoever it belongs to: an addendum is the
+  // account's; an agreement is its holder's, read from the row itself (who holds
+  // the listing NOW can differ from who was signing for it: a signer being
+  // changed is no longer the holder by the time this runs).
+  const docs = new Map();
   for (const r of open ?? []) {
-    const doc = r.amendment_id ? { userId: landlordId, kind: "amendment", id: r.amendment_id } : { userId: holderId, kind: "master", id: r.agreement_id };
-    // A signer's agreement being signed for several accounts is cancelled whole: tell them.
-    if (doc.kind === "master" && holderId !== landlordId) {
-      const { data } = await db.from("agreement_coverage").select("user_id").eq("agreement_id", doc.id).neq("status", "released").limit(500);
-      const otherAccounts = [...new Set((data ?? []).map((x) => x.user_id))].filter((id) => id !== landlordId && id !== holderId);
-      if (otherAccounts.length) cancelled = { payerId: holderId, otherAccounts };
+    if (r.amendment_id) docs.set(`amendment:${r.amendment_id}`, { userId: landlordId, kind: "amendment", id: r.amendment_id });
+    else if (r.agreement_id) docs.set(`master:${r.agreement_id}`, { userId: null, kind: "master", id: r.agreement_id });
+  }
+  for (const doc of docs.values()) {
+    if (doc.kind === "master") {
+      const { data: owner, error: ownerError } = await db.from("landlord_agreements").select("user_id").eq("id", doc.id).maybeSingle();
+      if (ownerError) throw ownerError;
+      doc.userId = owner?.user_id ?? holderId;
+      // A signer's agreement being signed for several accounts is cancelled whole: tell them.
+      if (doc.userId !== landlordId) {
+        const { data } = await db.from("agreement_coverage").select("user_id").eq("agreement_id", doc.id).neq("status", "released").limit(500);
+        const otherAccounts = [...new Set((data ?? []).map((x) => x.user_id))].filter((id) => id !== landlordId && id !== doc.userId);
+        if (otherAccounts.length) cancelled = { payerId: doc.userId, otherAccounts };
+      }
     }
     try {
       await voidDocument(db, documenso, { ...doc, now });
@@ -452,7 +490,7 @@ export async function changePayer(db, documenso, { landlord, name, email, listin
     throw err;
   }
   // Only now: the old signer's copy for this account stops working.
-  const cancelled = await cancelPayerDocuments(db, documenso, landlord.id, { payerId: link.payer_id }).catch((err) => {
+  const cancelled = await cancelPayerDocuments(db, documenso, landlord.id, { payerId: link.payer_id, listingId: link.listing_id ?? null }).catch((err) => {
     console.error("billing: cancelling the old signer's document failed", err?.message);
     return null;
   });
@@ -467,23 +505,39 @@ export async function changePayer(db, documenso, { landlord, name, email, listin
  * cancelled whole (Wyatt, 2026-11-09: cancel and email the payer). Returns
  * { payerId, otherAccounts } when that happened, so the caller emails the payer.
  */
-export async function cancelPayerDocuments(db, documenso, landlordId, { payerId = null } = {}) {
+// `listingId`: only ONE listing changed hands (its own signer was changed or
+// removed): only the documents that list it are cancelled. Whatever else that
+// person is signing for the account stays open (Wyatt, 2026-11-25).
+export async function cancelPayerDocuments(db, documenso, landlordId, { payerId = null, listingId = null } = {}) {
   // Before anything is cancelled: a paper copy holding this account stops it all.
   await assertNoPaperHold(db, landlordId);
   // Whose master: the payer given (the old one, after a change of signer), else the current one.
   const holderId = payerId ?? (await activePayerLink(db, landlordId))?.payer_id ?? null;
+  // The documents still being signed that list that one listing.
+  let onListing = null;
+  if (listingId) {
+    const { data, error } = await db.from("agreement_coverage").select("agreement_id, amendment_id").eq("user_id", landlordId).eq("listing_id", listingId).eq("status", "proposed");
+    if (error && !missingSchema(error)) throw error;
+    const { data: stamped } = await db.from("payer_publish_requests").select("document_kind, document_id").eq("landlord_id", landlordId).eq("listing_id", listingId).eq("status", "waiting").not("document_id", "is", null);
+    onListing = {
+      amendment: new Set([...(data ?? []).map((r) => r.amendment_id), ...(stamped ?? []).filter((r) => r.document_kind === "amendment").map((r) => r.document_id)].filter(Boolean)),
+      master: new Set([...(data ?? []).filter((r) => !r.amendment_id).map((r) => r.agreement_id), ...(stamped ?? []).filter((r) => r.document_kind === "master").map((r) => r.document_id)].filter(Boolean)),
+    };
+  }
   // Only this signer's addenda: the account may have others in progress, its own or another signer's.
   let amendQ = db.from("agreement_amendments").select("id").eq("user_id", landlordId).in("status", ["not_sent", "sent"]);
   if (holderId && holderId !== landlordId) amendQ = amendQ.eq("signer_id", holderId);
   const { data: amendments, error: amendError } = await amendQ;
   if (amendError && !missingSchema(amendError)) throw amendError;
   for (const a of amendments ?? []) {
+    if (onListing && !onListing.amendment.has(a.id)) continue;
     await voidDocument(db, documenso, { userId: landlordId, kind: "amendment", id: a.id }).catch(() => {});
   }
   if (!holderId || holderId === landlordId) return null;
   const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", holderId).in("status", ["not_sent", "sent"]);
   if (masterError) throw masterError;
   for (const m of masters ?? []) {
+    if (onListing && !onListing.master.has(m.id)) continue;
     const { data } = await db.from("agreement_coverage").select("user_id").eq("agreement_id", m.id).neq("status", "released").limit(500);
     const onIt = new Set((data ?? []).map((r) => r.user_id));
     const { data: stamped } = await db.from("payer_publish_requests").select("landlord_id").eq("document_kind", "master").eq("document_id", m.id).eq("status", "waiting");
@@ -711,12 +765,6 @@ export async function approvedDrafts(db, landlordId) {
   return (await requestsWithListings(db, landlordId, "approved")).filter((r) => !r.listings.published_at);
 }
 
-// The listings the payer declined, latest first, unless sent again or covered since.
-async function declinedRequests(db, landlordId, skip) {
-  const skipped = new Set(skip);
-  return (await requestsWithListings(db, landlordId, "declined")).filter((r) => !skipped.has(r.listing_id));
-}
-
 /*
  * What the landlord's Billing tab shows when they have a payer. Never the
  * agreement or its terms (Wyatt, 2026-11-09).
@@ -726,17 +774,30 @@ async function declinedRequests(db, landlordId, skip) {
  *   covered  [{ listingId, address }], waiting [{ listingId, address, since }]
  */
 // `link`: one signer's view (a listing's own signer); default the account's signer.
-export async function landlordPayerView(db, landlordId, now = new Date(), { link: given = null } = {}) {
+// `once`: a shared memo (onceFor), so the cards of one page load each thing once.
+export async function landlordPayerView(db, landlordId, now = new Date(), { link: given = null, once = onceFor() } = {}) {
   const link = given ?? (await activePayerLink(db, landlordId));
   if (!link) return null;
   const holderId = link.payer_id;
   // Only what this signer holds for the account.
-  const [{ state, properties, covered, links }, waiting] = await Promise.all([
-    coverageFor(db, landlordId, now, { holderId }),
-    waitingRequests(db, landlordId, { payerId: holderId }),
+  const [{ state, properties: held, covered: heldCovered, links }, allWaiting, billing, allApproved, allDeclined] = await Promise.all([
+    once(`coverage:${holderId}`, () => coverageFor(db, landlordId, now, { holderId })),
+    once("waiting", () => waitingRequests(db, landlordId)),
+    once("billing", () => billingLinksFor(db, landlordId)),
+    once("approved", () => approvedDrafts(db, landlordId)),
+    once("declined", () => requestsWithListings(db, landlordId, "declined")),
   ]);
-  const inScope = (listingId) => linkForListing(links, listingId)?.payer_id === holderId;
-  const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
+  /*
+   * What THIS card is about. The account's signer: every listing they hold. A
+   * listing's own signer: that one listing, even when the same person signs
+   * other listings of the account (each has its own card), so the card never
+   * reads "Signed" for a listing that was not signed for (Wyatt, 2026-11-25).
+   */
+  const inScope = link.listing_id ? (listingId) => listingId === link.listing_id : (listingId) => linkForListing(links, listingId)?.id === link.id;
+  const properties = held.filter((p) => inScope(p.listingId));
+  const covered = new Map([...heldCovered].filter(([listingId]) => inScope(listingId)));
+  const waiting = allWaiting.filter((w) => inScope(w.listing_id));
+  const nameOf = new Map(held.map((p) => [p.listingId, p.address]));
   const missingNames = [...waiting.map((w) => w.listing_id), ...(link.listing_id ? [link.listing_id] : [])].filter((id) => !nameOf.has(id));
   if (missingNames.length) {
     const { data } = await db.from("listings").select("id, address, city, state, zipcode").in("id", missingNames);
@@ -744,17 +805,28 @@ export async function landlordPayerView(db, landlordId, now = new Date(), { link
   }
   // What the signer verified (covered by their agreement), with when (Wyatt, 2026-11-09).
   const coveredList = [...covered.entries()].map(([listingId, row]) => ({ listingId, address: nameOf.get(listingId) ?? row.address, verifiedAt: row.covered_at ?? null }));
-  const live = properties.filter((p) => p.live);
-  const liveUncovered = live.filter((p) => !covered.has(p.listingId));
-  const approved = (await approvedDrafts(db, landlordId)).filter((r) => inScope(r.listing_id));
-  const declined = (await declinedRequests(db, landlordId, [...waiting.map((w) => w.listing_id), ...covered.keys()])).filter((r) => inScope(r.listing_id));
-  // Whose payment method each listing waits on, when one is required: its
-  // authorized payer's when it has one, else this signer's (Wyatt, 2026-11-25).
-  const scopeIds = [...new Set([...properties.map((p) => p.listingId), ...waiting.map((w) => w.listing_id), ...approved.map((r) => r.listing_id)])];
-  const methodWaits = await paymentMethodWaits(db, landlordId, scopeIds, now);
-  const signerPays = scopeIds.length ? scopeIds.some((id) => !methodWaits.has(id) || methodWaits.get(id).userId === holderId) : true;
-  const signerNeedsMethod = [...methodWaits.values()].some((w) => w.userId === holderId) || (!scopeIds.length && (await signerNeedsPaymentMethod(db, holderId, now)));
-  const status = link.declined_at ? "declined" : waiting.some((w) => !covered.has(w.listing_id)) || liveUncovered.length || !state.valid ? "pending" : "signed";
+  const liveUncovered = properties.filter((p) => p.live && !covered.has(p.listingId));
+  const approved = allApproved.filter((r) => inScope(r.listing_id));
+  const skipDeclined = new Set([...waiting.map((w) => w.listing_id), ...covered.keys()]);
+  const declined = allDeclined.filter((r) => inScope(r.listing_id) && !skipDeclined.has(r.listing_id));
+  /*
+   * Who is invoiced for what this card is about: the listing's authorized payer,
+   * else the account's, else this signer (Wyatt, 2026-11-25). The card says the
+   * signer pays only when they do, and names whoever does otherwise.
+   */
+  const scopeIds = [...new Set([...properties.map((p) => p.listingId), ...waiting.map((w) => w.listing_id), ...approved.map((r) => r.listing_id), ...(link.listing_id ? [link.listing_id] : [])])];
+  const billed = (scopeIds.length ? scopeIds : [null]).map((listingId) => billedTo({ landlordId, listingId, ...billing }));
+  const others = [...new Map(billed.filter((b) => b.userId !== holderId).map((b) => [b.userId, b.name])).values()].filter(Boolean);
+  const signerPays = billed.some((b) => b.userId === holderId);
+  const needsOf = (userId) => once(`method:${userId}`, () => signerNeedsPaymentMethod(db, userId, now));
+  // Whose payment method each listing waits on, when one is required.
+  const methodWaits = await paymentMethodWaits(db, landlordId, scopeIds, now, { links: billing, needsOf });
+  const signerNeedsMethod = signerPays && (await needsOf(holderId));
+  // Signed: their agreement counts, nothing is waiting on them, and (a listing's
+  // own signer) that listing is actually on it.
+  const nothingPending = !waiting.some((w) => !covered.has(w.listing_id)) && !liveUncovered.length && state.valid;
+  const status = link.declined_at ? "declined" : nothingPending && (!link.listing_id || covered.has(link.listing_id)) ? "signed" : "pending";
+  const methodOf = (listingId) => methodWaits.get(listingId)?.name ?? null;
   return {
     payer: { name: link.signer_name, email: link.signer_email, invitedAt: link.invited_at },
     // The whole account's signer, or one listing's own.
@@ -765,30 +837,50 @@ export async function landlordPayerView(db, landlordId, now = new Date(), { link
     status,
     signedAt: status === "signed" ? state.signed?.signed_at ?? null : null,
     // What the authorized signer has done of the two things publishing needs. The
-    // payment method is theirs only while nobody else pays for these listings.
-    signerChecklist: { agreementSigned: !!state.valid, paymentMethodAdded: !signerNeedsMethod, paymentMethodTheirs: signerPays },
+    // payment method is theirs only for what nobody else pays for: `paidBy` names
+    // the authorized payer(s) invoiced instead, for some or all of it.
+    signerChecklist: { agreementSigned: !!state.valid && (!link.listing_id || covered.has(link.listing_id)), paymentMethodAdded: !signerNeedsMethod, paymentMethodTheirs: signerPays, paidBy: others.length ? joinNames(others) : null },
     // Nothing has been signed for this account yet: the landlord may still change who signs.
     canChange: !coveredList.length,
     covered: coveredList.sort((a, b) => a.address.localeCompare(b.address, "en", { numeric: true })),
-    // Each waits for a signature, or (covered already) for a payment method.
+    // Each waits for a signature, or (covered already) for a payment method: `methodOf` says whose.
     waiting: waiting.map((w) => ({
       listingId: w.listing_id,
       address: nameOf.get(w.listing_id) ?? "Listing",
       since: w.created_at,
       waitingFor: covered.has(w.listing_id) ? (methodWaits.has(w.listing_id) ? "payment_method" : "approval") : "signature",
+      ...(covered.has(w.listing_id) && methodWaits.has(w.listing_id) && { methodOf: methodOf(w.listing_id) }),
     })),
     // Approved by the signer, still drafts: the landlord publishes them (Wyatt, 2026-11-09).
-    approved: approved.map((r) => ({ listingId: r.listing_id, address: displayAddress(r.listings), approvedAt: r.resolved_at, waitingFor: methodWaits.has(r.listing_id) ? "payment_method" : null })),
+    approved: approved.map((r) => ({
+      listingId: r.listing_id,
+      address: displayAddress(r.listings),
+      approvedAt: r.resolved_at,
+      waitingFor: methodWaits.has(r.listing_id) ? "payment_method" : null,
+      ...(methodWaits.has(r.listing_id) && { methodOf: methodOf(r.listing_id) }),
+    })),
     // On a document the signer signed (or rejected) and left off: they can be sent again.
     declined: declined.map((r) => ({ listingId: r.listing_id, address: displayAddress(r.listings), declinedAt: r.resolved_at })),
   };
 }
 
-// A card for each listing of the account that has its own signer (Wyatt, 2026-11-25).
-export async function landlordListingSignerViews(db, landlordId, now = new Date()) {
+// A memo for one page load: once(key, load) runs `load` the first time and
+// answers the same promise after, so several cards share each read.
+export function onceFor() {
+  const made = new Map();
+  return (key, load) => {
+    if (!made.has(key)) made.set(key, load());
+    return made.get(key);
+  };
+}
+
+const joinNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "");
+
+// A card for each listing of the account that has its own signer (Wyatt,
+// 2026-11-25). Everything the cards share is read once, however many there are.
+export async function landlordListingSignerViews(db, landlordId, now = new Date(), { once = onceFor() } = {}) {
   const links = await signerLinksFor(db, landlordId);
-  const out = [];
-  for (const link of links.byListing.values()) out.push(await landlordPayerView(db, landlordId, now, { link }));
+  const out = await Promise.all([...links.byListing.values()].map((link) => landlordPayerView(db, landlordId, now, { link, once })));
   return out.sort((a, b) => String(a.listingAddress).localeCompare(String(b.listingAddress), "en", { numeric: true }));
 }
 
@@ -821,6 +913,9 @@ export async function payerAccounts(db, payerId, now = new Date()) {
     // Covered listings held back by a missing payment method that is THEIRS to add.
     const methodWaits = await paymentMethodWaits(db, link.landlord_id, waiting.map((w) => w.listing_id), now);
     const theirMethod = (listingId) => methodWaits.get(listingId)?.userId === payerId;
+    const billing = await billingLinksFor(db, link.landlord_id);
+    const theirIds = [...new Set([...properties.map((p) => p.listingId), ...waiting.map((w) => w.listing_id)])];
+    const paysAny = (theirIds.length ? theirIds : [null]).some((listingId) => billedTo({ landlordId: link.landlord_id, listingId, ...billing }).userId === payerId);
     const u = userById.get(link.landlord_id);
     const nameOf = new Map(properties.map((p) => [p.listingId, p.address]));
     const liveUncovered = properties.filter((p) => p.live && !covered.has(p.listingId));
@@ -851,6 +946,9 @@ export async function payerAccounts(db, payerId, now = new Date()) {
       declined: !!link.declined_at,
       // They sign for some of this account's listings only, not all of it.
       listingsOnly: link.listingsOnly,
+      // Whether any of what they sign for here is invoiced to them. False when an
+      // authorized payer is invoiced for all of it: no payment method is theirs to add.
+      pays: paysAny,
     });
   }
   return out;
@@ -894,7 +992,7 @@ export async function endPayerFor(db, documenso, { landlordId, payerId = null, l
   if (error) throw error;
   if (!claimed?.length) throw new BillingError("no_payer", "This account has no authorized signer.", 404);
   try {
-    const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id });
+    const cancelled = await cancelPayerDocuments(db, documenso, landlordId, { payerId: link.payer_id, listingId: link.listing_id ?? null });
     const { data: masters, error: masterError } = await db.from("landlord_agreements").select("id").eq("user_id", link.payer_id);
     if (masterError) throw masterError;
     const masterIds = (masters ?? []).map((m) => m.id);

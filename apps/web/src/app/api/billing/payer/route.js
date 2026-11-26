@@ -7,7 +7,7 @@ import { billingReader } from "@/lib/billing/viewer";
 import { agreementServices } from "@/lib/billing/agreementServices";
 import { BillingError } from "@/lib/billing/errors";
 import { billingErrorResponse, isUuid } from "@/lib/billing/http";
-import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordListingSignerViews, landlordPayerView, namePayer } from "@/lib/billing/payers";
+import { cancelOwnSigning, changePayer, cleanPayerInput, endPayerFor, landlordListingSignerViews, landlordPayerView, namePayer, onceFor } from "@/lib/billing/payers";
 import { signerLinksFor } from "@/lib/billing/payerLinks";
 import { sendPayerDocumentCancelled, sendPayerInvite, sendPayerRevoked } from "@/lib/billing/payerServices";
 import { stampSignup } from "@/lib/marketing/accounts";
@@ -51,7 +51,13 @@ async function landlordOf(userId) {
 }
 
 // The account's signer (status only), and a card for each listing with its own.
-const views = async (landlordId) => ({ payer: await landlordPayerView(supabase, landlordId), listingSigners: await landlordListingSignerViews(supabase, landlordId) });
+// One shared memo, so the cards read the account's coverage, requests and links once.
+const views = async (landlordId) => {
+  const once = onceFor();
+  const now = new Date();
+  const [payer, listingSigners] = await Promise.all([landlordPayerView(supabase, landlordId, now, { once }), landlordListingSignerViews(supabase, landlordId, now, { once })]);
+  return { payer, listingSigners };
+};
 
 // The listing a write is about: null for the whole account.
 function listingOf(body) {

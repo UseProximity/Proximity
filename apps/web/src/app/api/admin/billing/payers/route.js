@@ -130,11 +130,14 @@ export async function DELETE(req) {
       after(() => sendAuthorizedPayerRemoved({ link }).catch(() => {}));
       return NextResponse.json({ ended: true });
     }
-    const listingId = isUuid(body.listingId) ? body.listingId : null;
+    // A listing id that is there but malformed is refused: read as "none", it
+    // would end the whole account's signer instead of one listing's.
+    if (body.listingId != null && !isUuid(body.listingId)) throw new BillingError("bad_listing", "Choose one of the landlord's listings.");
+    const listingId = body.listingId ?? null;
     const { documenso } = agreementServices();
     const result = await endPayerFor(db, documenso, { landlordId: body.landlordId, listingId, reason: "ended by an admin" });
     // The signer is told; a document they were signing for other accounts too was cancelled with it.
-    after(() => sendPayerRevoked({ landlordId: body.landlordId, ended: result }).catch(() => {}));
+    after(() => sendPayerRevoked({ landlordId: body.landlordId, ended: result, byAdmin: true }).catch(() => {}));
     return NextResponse.json({ released: result.released, cancelled: result.cancelled });
   } catch (err) {
     return billingErrorResponse(err, "end signer or payer");

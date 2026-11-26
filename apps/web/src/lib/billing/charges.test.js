@@ -81,7 +81,7 @@ describe("adminChargeView", () => {
 
   it("adds the landlord and the internal note for admins", () => {
     const v = adminChargeView(row);
-    assert.deepEqual(v.landlord, { id: "l1", name: "Pat", email: "pat@x.com" });
+    assert.deepEqual(v.landlord, { id: "l1", name: "Pat", email: "pat@x.com", company_name: null });
     assert.equal(v.resolutionNote, "INTERNAL");
     assert.equal(v.isTest, true);
     assert.equal(v.triggerRef, "ref-9");
