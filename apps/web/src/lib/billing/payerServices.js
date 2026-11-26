@@ -9,6 +9,7 @@ import { getMrecForm, MREC_FORM_FILENAME } from "@/lib/users/mrecForm";
 import { readAgreementFile } from "./agreementFiles.js";
 import { getLiveVersion } from "./agreementVersions.js";
 import { agreementState, coverageFor } from "./agreements.js";
+import { rebillChargesOf } from "./charges.js";
 import { displayAddress } from "./coverage.js";
 import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod, staleTakeoverLandlords } from "./payers.js";
 import { activePayerLink, allLinks, billedTo, billingLinksFor, endLinksOfUser, signerLinksFor } from "./payerLinks.js";
@@ -329,6 +330,13 @@ export async function endLinksForDeletedAccount(userId) {
   } catch (err) {
     console.error("billing: ending the links of a deleted account failed", err?.message);
     return 0;
+  }
+  // Charges billed to them and not invoiced yet go to whoever is next in line,
+  // so no invoice is ever built for a deleted account (PR 486 review).
+  try {
+    await rebillChargesOf(supabase, userId);
+  } catch (err) {
+    console.error("billing: moving a deleted account's charges failed", err?.message);
   }
   for (const link of ended) {
     try {

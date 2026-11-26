@@ -14,9 +14,9 @@ import { fakeDb, fakeDocumenso } from "./billingFakes.testutil.js";
 import { applyEnvelope, coverageFor, coveringAgreement, startSigning } from "./agreements.js";
 import { changePayer, endPayerFor, landlordListingSignerViews, landlordPayerView, namePayer, payerAccounts, requestPayerCoverage } from "./payers.js";
 import { acceptAuthorizedPayer, assignmentsFor, changeAuthorizedPayer, declineAuthorizedPayer, endAuthorizedPayer, landlordPayersView, nameAuthorizedPayer, payingFor, touchPayerInvite } from "./authorizedPayers.js";
-import { billedTo, billingLinksFor, endLinksOfUser, endListingLinks, moveListingLinks, signerLinksFor } from "./payerLinks.js";
+import { billedTo, billingLinksFor, endLinksOfUser, endLinksOnDeletedListings, endListingLinks, moveListingLinks, signerLinksFor } from "./payerLinks.js";
 import { checkListingGate, coverageOnly, gateResponseBody, methodWaitNames } from "./listingGate.js";
-import { createCharge, listChargesPaidBy } from "./charges.js";
+import { createCharge, listChargesPaidBy, rebillChargesOf } from "./charges.js";
 
 const MASTER = {
   id: "vm",
@@ -276,7 +276,79 @@ describe("a signer for one listing", () => {
     db.tables.listings.find((l) => l.id === "L3").deleted_at = "2027-01-10T00:00:00Z";
     assert.deepEqual(await payingFor(db, "acc"), []);
     assert.deepEqual((await landlordPayersView(db, "pm")).listings, []);
+    // Reading changes nothing, so an admin's view-as stays read-only (PR 486 review).
+    assert.equal(db.tables.billing_payers.find((l) => l.role === "payer").status, "active");
+    // The daily billing cron ends it.
+    assert.equal(await endLinksOnDeletedListings(db), 1);
     assert.equal(db.tables.billing_payers.find((l) => l.role === "payer").status, "ended");
+  });
+
+  it("a listing on an agreement still being signed needs a confirm that names what else is on it", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    // Pat's own agreement for 100 Pat St and 300 Olive Ave is out, not signed.
+    await signAs(db, documenso, pm);
+    const pats = db.tables.landlord_agreements.find((a) => a.user_id === "pm");
+    await assert.rejects(
+      () => namePayer(db, { landlord: pm, name: "Olive Owner", email: owner.email, listingId: "L3", documenso, now: later }),
+      (e) => e.code === "listing_covered" && /still being signed/.test(e.message) && /also covers 100 Pat St/.test(e.message) && /signed again/.test(e.message)
+    );
+    assert.equal(db.tables.billing_payers.length, 0, "nothing named without the confirm");
+    assert.ok(["sent", "not_sent"].includes(db.tables.landlord_agreements.find((a) => a.id === pats.id).status), "Pat's agreement is still out");
+
+    await namePayer(db, { landlord: pm, name: "Olive Owner", email: owner.email, listingId: "L3", confirmUncover: true, documenso, now: later });
+    assert.ok(!["sent", "not_sent"].includes(db.tables.landlord_agreements.find((a) => a.id === pats.id).status), "confirmed: Pat's agreement is cancelled");
+  });
+
+  it("a signer refused at the last moment leaves the listing's agreement as it was", async () => {
+    const db = world();
+    const documenso = fakeDocumenso();
+    await signAs(db, documenso, pm);
+    await complete(db, documenso, "envelope_1");
+    // A second click got there first: its link lands just before this one is saved.
+    const from = db.from.bind(db);
+    db.from = (table) => {
+      const q = from(table);
+      if (table !== "billing_payers") return q;
+      const insert = q.insert.bind(q);
+      q.insert = (row) => {
+        if (!db.tables.billing_payers.some((l) => l.id === "race")) db.tables.billing_payers.push(link({ id: "race", payer_id: "acc", listing_id: "L3", signer_name: "Ada Accountant", signer_email: acct.email }));
+        return insert(row);
+      };
+      return q;
+    };
+    await assert.rejects(
+      () => namePayer(db, { landlord: pm, name: "Olive Owner", email: owner.email, listingId: "L3", confirmUncover: true, documenso, now: later }),
+      (e) => e.code === "payer_exists"
+    );
+    assert.equal(db.tables.agreement_coverage.filter((c) => c.listing_id === "L3" && c.status === "released").length, 0, "300 Olive Ave was not taken off Pat's agreement");
+    assert.equal(db.tables.billing_payers.filter((l) => l.payer_id === "own").length, 0, "and Olive was not named");
+  });
+
+  it("changing a listing's signer emails everyone on the old signer's cancelled agreement", async () => {
+    const db = world({
+      users: [
+        { ...pm, roles: { name: "landlord" } },
+        { ...owner, billing_only: true, roles: { name: "landlord" } },
+        { ...acct, billing_only: true, roles: { name: "landlord" } },
+        { id: "bo", name: "Bo Builder", email: "bo@build.example.com", roles: { name: "landlord" } },
+      ],
+      listing_landlords: [
+        { user_id: "pm", listing_id: "L1" },
+        { user_id: "pm", listing_id: "L3" },
+        { user_id: "pm", listing_id: "L5" },
+        { user_id: "bo", listing_id: "L9" },
+      ],
+      listings: [listing("L1", "100 Pat St"), listing("L3", "300 Olive Ave"), listing("L5", "500 Draft Ln", false), listing("L9", "900 Bo Blvd")],
+      listing_units: [unit("U1", "L1", "Apt 1"), unit("U3", "L3", "Loft"), unit("U5", "L5", "Studio", false), unit("U9", "L9", "Penthouse")],
+      billing_payers: [oliveSigns("L3"), link({ id: "s-bo", landlord_id: "bo", payer_id: "own", signer_name: "Olive Owner", signer_email: owner.email })],
+    });
+    const documenso = fakeDocumenso();
+    // Olive's agreement, out for Pat's 300 Olive Ave and Bo's account at once.
+    await signAs(db, documenso, owner, { accountId: "pm", accountIds: ["bo"] });
+    const { cancelled } = await changePayer(db, documenso, { landlord: pm, name: "Ada Accountant", email: acct.email, listingId: "L3" });
+    assert.equal(cancelled?.payerId, "own");
+    assert.deepEqual(cancelled?.otherAccounts, ["bo"], "Bo's account is told its agreement was cancelled");
   });
 
   it("deleting an account ends every link it is part of", async () => {
@@ -287,6 +359,22 @@ describe("a signer for one listing", () => {
     assert.deepEqual(ended.map((l) => [l.landlord_id, l.role]), [["pm", "payer"]]);
     assert.equal((await billingLinksFor(db, "pm")).payers.account, null, "Pat is no longer billed through a deleted payer");
     assert.equal((await endLinksOfUser(db, "pm")).length, 1, "and Pat's own signer link ends with Pat's account");
+  });
+
+  it("a deleted payer's charges not invoiced yet go back to the landlord; invoiced ones stay", async () => {
+    const db = world();
+    const { link: made } = await nameAuthorizedPayer(db, { landlord: pm, name: "Ada Accountant", email: acct.email });
+    await acceptAuthorizedPayer(db, { userId: "acc", linkId: made.id });
+    const charge = (id, status, over = {}) => ({ id, landlord_id: "pm", payer_id: "acc", listing_id: "L1", amount_cents: 1000, trigger_type: "manual_test", status, invoice_id: null, created_at: "2027-01-02T00:00:00Z", ...over });
+    db.tables.charges.push(charge("c-ok", "approved"), charge("c-dis", "contested"), charge("c-pend", "pending"), charge("c-inv", "invoiced", { invoice_id: "inv-1" }));
+    await endLinksOfUser(db, "acc");
+    assert.equal(await rebillChargesOf(db, "acc"), 3);
+    const by = (id) => db.tables.charges.find((c) => c.id === id);
+    assert.equal(by("c-ok").payer_id ?? null, null, "back to Pat");
+    assert.equal(by("c-pend").payer_id ?? null, null);
+    assert.equal(by("c-dis").payer_id ?? null, null, "the dispute moves to Pat");
+    assert.equal(by("c-dis").status, "contested", "and is still disputed");
+    assert.equal(by("c-inv").payer_id, "acc", "already invoiced: untouched");
   });
 });
 

@@ -293,6 +293,26 @@ export async function endListingLinks(db, listingIds, { reason = "the listing wa
 }
 
 /*
+ * The daily safety net (cron billing-review-clock): links still active on a
+ * listing that was deleted by a path that did not end them. Reads never end
+ * links (PR 486 review: an admin's view-as must not change anything), so this
+ * is where they are tidied. Answers how many ended.
+ */
+export async function endLinksOnDeletedListings(db, { now = new Date() } = {}) {
+  const { data: links, error } = await db.from("billing_payers").select("listing_id").eq("status", "active").not("listing_id", "is", null).limit(1000);
+  if (missingSchema(error)) return 0;
+  if (error) throw error;
+  const ids = [...new Set((links ?? []).map((l) => l.listing_id))];
+  const gone = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error: listError } = await db.from("listings").select("id").in("id", ids.slice(i, i + 200)).not("deleted_at", "is", null);
+    if (listError) throw listError;
+    gone.push(...(data ?? []).map((l) => l.id));
+  }
+  return endListingLinks(db, gone, { now });
+}
+
+/*
  * An account was deleted: every link it is part of ends, the ones naming it as
  * someone's signer or payer and the ones it named for itself. Left active, a
  * deleted payer would still be invoiced and their missing payment method would

@@ -179,6 +179,52 @@ export async function contestedBy(db, chargeIds) {
   return out;
 }
 
+// Charges not on an invoice yet: they can still change hands.
+const NOT_INVOICED = ["unconfirmed", "pending", "approved", "contested"];
+
+/*
+ * An authorized payer or signer deleted their account (PR 486 review): every
+ * charge billed to them that is not on an invoice yet goes to whoever is next
+ * in line for its listing, by the same rule as a new charge (createCharge):
+ * the listing's accepted payer, else the account's, else whoever holds the
+ * agreement covering it, else the landlord. Their links must be ended first.
+ * A disputed charge keeps its dispute and goes along with the rest. Charges
+ * already invoiced stay as they are. Answers how many moved.
+ */
+export async function rebillChargesOf(db, userId) {
+  if (!userId) return 0;
+  const { data: rows, error } = await db
+    .from("charges")
+    .select("id, landlord_id, listing_id")
+    .eq("payer_id", userId)
+    .neq("landlord_id", userId)
+    .in("status", NOT_INVOICED)
+    .is("invoice_id", null)
+    .limit(1000);
+  if (error) {
+    if (error.code === "42703") return 0;
+    throw error;
+  }
+  const payersOf = new Map();
+  let moved = 0;
+  for (const c of rows ?? []) {
+    if (!payersOf.has(c.landlord_id)) payersOf.set(c.landlord_id, await payerRoleLinksFor(db, c.landlord_id));
+    const payerLink = linkForListing(payersOf.get(c.landlord_id), c.listing_id ?? null);
+    const covering = c.listing_id ? await coveringAgreement(db, c.landlord_id, c.listing_id) : null;
+    const holder = covering?.holderId && covering.holderId !== userId ? covering.holderId : null;
+    const next = payerLink?.payer_id ?? holder ?? c.landlord_id;
+    const { error: upError } = await db
+      .from("charges")
+      .update({ payer_id: next === c.landlord_id ? null : next })
+      .eq("id", c.id)
+      .eq("payer_id", userId)
+      .is("invoice_id", null);
+    if (upError) throw upError;
+    moved += 1;
+  }
+  return moved;
+}
+
 /*
  * Charges on the landlord accounts this payer pays for (charges.payer_id,
  * Project B), newest first, each with the account it came from. Read only for an

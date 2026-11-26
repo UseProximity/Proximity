@@ -211,19 +211,10 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, l
     created = true;
   }
 
-  // The listing comes off the agreement covering it now, and anything still being
-  // signed for it is cancelled, before the new signer is named (confirmed above).
-  let uncovered = null;
-  if (handOff?.covered || handOff?.proposed) {
-    try {
-      uncovered = await releaseListing(db, documenso, { landlordId: landlord.id, listingId, holderId: handOff.holderId, now });
-    } catch (err) {
-      if (created) await db.from("users").delete().eq("id", payer.id).eq("billing_only", true);
-      throw err;
-    }
-  }
-
-  // Anything the landlord had started signing themselves is cancelled: they no longer sign.
+  // The new signer is named first, and only then does the listing come off what
+  // covers it now (confirmed above). A refused name (a second click racing this
+  // one, a database error) then leaves the listing's coverage and documents as
+  // they were (PR 486 review).
   const { data: link, error: linkError } = await db
     .from("billing_payers")
     .insert({
@@ -244,6 +235,18 @@ export async function namePayer(db, { landlord, name, email, createdBy = null, l
     if (created) await db.from("users").delete().eq("id", payer.id).eq("billing_only", true);
     if (linkError.code === "23505") throw new BillingError("payer_exists", listingId ? "That listing already has an authorized signer. Reload the page." : "You already have an authorized signer. Reload the page.", 409);
     throw linkError;
+  }
+  // The listing comes off the agreement covering it now, and anything still being
+  // signed for it is cancelled. If that fails, the name is taken back.
+  let uncovered = null;
+  if (handOff?.covered || handOff?.proposed) {
+    try {
+      uncovered = await releaseListing(db, documenso, { landlordId: landlord.id, listingId, holderId: handOff.holderId, now });
+    } catch (err) {
+      await db.from("billing_payers").delete().eq("id", link.id);
+      if (created) await db.from("users").delete().eq("id", payer.id).eq("billing_only", true);
+      throw err;
+    }
   }
   // What was waiting on the signer before them for this listing now waits on them.
   if (listingId) {
@@ -315,15 +318,48 @@ async function checkListingHandOff(db, { landlordId, listingId: given, links, in
     throw new BillingError("same_payer", `${links.account.signer_name} already signs for this account, including that listing.`, 409);
   }
   const isCovered = covered.has(listingId);
-  if (isCovered && !confirmUncover) {
-    throw new BillingError(
-      "listing_covered",
-      `${property.address} is already covered under a marketing agreement. It will no longer be covered until ${input.name} signs. Confirm to hand it over.`,
-      409
-    );
+  const proposed = rows.some((r) => r.listing_id === listingId && r.status === "proposed");
+  if ((isCovered || proposed) && !confirmUncover) {
+    // A document out for signature can't be edited: taking this listing off it
+    // cancels it whole, so the landlord is told what else goes with it (PR 486 review).
+    const alsoOn = proposed ? await alsoOnOpenDocuments(db, { landlordId, listingId, properties }) : null;
+    const covers = isCovered
+      ? `${property.address} is already covered under a marketing agreement. It will no longer be covered until ${input.name} signs.`
+      : `${property.address} is on an agreement still being signed. It will not be covered until ${input.name} signs.`;
+    throw new BillingError("listing_covered", `${covers}${alsoOn ? ` ${alsoOn}` : ""} Confirm to hand it over.`, 409);
   }
-  return { listingId, holderId: holderOf(listingId), covered: isCovered, proposed: rows.some((r) => r.listing_id === listingId && r.status === "proposed"), address: property.address };
+  return { listingId, holderId: holderOf(listingId), covered: isCovered, proposed, address: property.address };
 }
+
+/*
+ * What else is on the documents still being signed that list this listing, as a
+ * sentence for the hand-off confirm, or null when nothing else is: those
+ * documents are cancelled whole, so the rest has to be signed again.
+ */
+async function alsoOnOpenDocuments(db, { landlordId, listingId, properties }) {
+  const { data: open, error } = await db.from("agreement_coverage").select("agreement_id, amendment_id").eq("user_id", landlordId).eq("listing_id", listingId).eq("status", "proposed");
+  if (error && !missingSchema(error)) throw error;
+  const amendmentIds = [...new Set((open ?? []).map((r) => r.amendment_id).filter(Boolean))];
+  const masterIds = [...new Set((open ?? []).filter((r) => !r.amendment_id).map((r) => r.agreement_id).filter(Boolean))];
+  const others = [];
+  for (const [column, ids] of [["amendment_id", amendmentIds], ["agreement_id", masterIds]]) {
+    if (!ids.length) continue;
+    let q = db.from("agreement_coverage").select("user_id, listing_id").in(column, ids).neq("status", "released").limit(500);
+    if (column === "agreement_id") q = q.is("amendment_id", null);
+    const { data, error: rowsError } = await q;
+    if (rowsError && !missingSchema(rowsError)) throw rowsError;
+    others.push(...(data ?? []));
+  }
+  const addressOf = new Map(properties.map((p) => [p.listingId, p.address]));
+  const listings = [...new Set(others.filter((r) => r.user_id === landlordId && r.listing_id && r.listing_id !== listingId).map((r) => r.listing_id))].map((id) => addressOf.get(id) ?? "another listing");
+  const accounts = new Set(others.filter((r) => r.user_id !== landlordId).map((r) => r.user_id)).size;
+  const parts = [];
+  if (listings.length) parts.push(joinNames([...new Set(listings)]));
+  if (accounts) parts.push(`${accounts} other account${accounts === 1 ? "" : "s"}`);
+  if (!parts.length) return null;
+  return `That agreement also covers ${joinNames(parts)}. It will be cancelled, and ${listings.length === 1 && !accounts ? "that listing needs" : "they need"} to be signed again.`;
+}
+
 
 /*
  * The listing a signer or payer is named on. A draft that is a copy of a listing
@@ -477,7 +513,9 @@ export async function changePayer(db, documenso, { landlord, name, email, listin
   if (error) throw error;
   let made;
   try {
-    made = await namePayer(db, { landlord, ...input, listingId, documenso, now });
+    // Changing the signer is itself the go-ahead to cancel what the old one was
+    // still signing for this listing: no second confirm.
+    made = await namePayer(db, { landlord, ...input, listingId, confirmUncover: true, documenso, now });
     // Waiting listings now wait on the new payer.
     const { error: moveError } = await db.from("payer_publish_requests").update({ payer_link_id: made.link.id }).eq("payer_link_id", link.id).eq("status", "waiting");
     if (moveError) {
@@ -494,7 +532,9 @@ export async function changePayer(db, documenso, { landlord, name, email, listin
     console.error("billing: cancelling the old signer's document failed", err?.message);
     return null;
   });
-  return { ...made, oldPayerId: link.payer_id, cancelled };
+  // The old signer's document may already have been cancelled by the hand-off
+  // inside namePayer (releaseListing): that one is emailed too (PR 486 review).
+  return { ...made, oldPayerId: link.payer_id, cancelled: cancelled ?? made.uncovered?.cancelled ?? null };
 }
 
 /*

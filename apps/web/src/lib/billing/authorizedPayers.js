@@ -27,7 +27,7 @@
 import { BillingError } from "./errors.js";
 import { coverageFor } from "./agreements.js";
 import { displayAddress, loadLandlordProperties } from "./coverage.js";
-import { allLinks, endListingLinks, linkForListing, LINK_COLUMNS, payerRoleLinksFor, payerRoleLinksOf, signerLinksFor } from "./payerLinks.js";
+import { allLinks, linkForListing, LINK_COLUMNS, payerRoleLinksFor, payerRoleLinksOf, signerLinksFor } from "./payerLinks.js";
 import { assertCanHoldBilling, billingUserByEmail, cleanPayerInput, createBillingAccount, listingToName } from "./payers.js";
 
 const missingSchema = (error) => ["PGRST205", "42P01", "42703", "PGRST200", "PGRST204"].includes(error?.code);
@@ -230,26 +230,22 @@ export async function touchPayerInvite(db, { landlordId, linkId, send = null, no
   return link;
 }
 
-// The address of each listing that still exists. One that was deleted is left out
-// and its links are ended here, in case whatever deleted it did not (a link on a
-// listing nobody can see could never be removed).
+// The address of each listing that still exists. One that was deleted is left
+// out. Reading never ends its links (PR 486 review: an admin's read-only
+// view-as goes through here): the delete paths and the daily billing cron
+// (endLinksOnDeletedListings) do that.
 async function addressesOf(db, listingIds) {
   const ids = [...new Set(listingIds.filter(Boolean))];
   const out = new Map();
-  const gone = [];
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await db.from("listings").select("id, address, city, state, zipcode, deleted_at").in("id", ids.slice(i, i + 200));
     if (error) throw error;
-    for (const l of data ?? []) {
-      if (l.deleted_at) gone.push(l.id);
-      else out.set(l.id, displayAddress(l));
-    }
+    for (const l of data ?? []) if (!l.deleted_at) out.set(l.id, displayAddress(l));
   }
-  if (gone.length) await endListingLinks(db, gone).catch((err) => console.error("billing: could not end the links of a deleted listing", err?.message));
   return out;
 }
 
-// A link on a listing that was deleted is not shown (addressesOf ended it).
+// A link on a listing that was deleted is not shown.
 const stillThere = (addressOf) => (l) => !l.listing_id || addressOf.has(l.listing_id);
 
 const payerView = (link, addressOf) => ({
